@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbaselabs/rosmar"
 	"github.com/couchbaselabs/walrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -27,6 +28,9 @@ import (
 func init() {
 	// Redirect Walrus logging to SG logs:
 	walrus.LoggingCallback = func(level walrus.LogLevel, fmt string, args ...any) {
+		logTo(context.TODO(), LogLevel(level), KeyWalrus, fmt, args...)
+	}
+	rosmar.LoggingCallback = func(level rosmar.LogLevel, fmt string, args ...any) {
 		logTo(context.TODO(), LogLevel(level), KeyWalrus, fmt, args...)
 	}
 }

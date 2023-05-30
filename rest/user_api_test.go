@@ -1221,9 +1221,9 @@ func TestRemovingUserXattr(t *testing.T) {
 			dataStore := rt.GetSingleDataStore()
 			require.True(t, ok)
 			_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData)
-			assert.NoError(t, err)
-
-			assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+			if assert.NoError(t, err) {
+				assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+			}
 
 			// Delete user xattr
 			_, err = gocbBucket.DeleteUserXattr(docKey, xattrKey)
@@ -1239,9 +1239,9 @@ func TestRemovingUserXattr(t *testing.T) {
 			// Ensure old channel set with user xattr has been removed
 			var syncData2 db.SyncData
 			_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData2)
-			assert.NoError(t, err)
-
-			assert.Equal(t, uint64(3), syncData2.Channels[channelName].Seq)
+			if assert.NoError(t, err) {
+				assert.Equal(t, uint64(3), syncData2.Channels[channelName].Seq)
+			}
 		})
 	}
 }

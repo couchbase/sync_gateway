@@ -295,13 +295,15 @@ func TestUserViewQuery(t *testing.T) {
 	assert.Equal(t, "seven", row.Value)
 
 	if base.UnitTestUrlIsWalrus() {
-		// include_docs=true only works with walrus as documented here:
+		// include_docs=true only works with walrus, as documented here:
 		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
+		if assert.NotNil(t, row.Doc) {
 		assert.Equal(t, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"}, *row.Doc)
+	}
 	}
 
 	// Admin should see both rows:
-	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
+	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?include_docs=true")
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, result.Rows, 2)
 	row = result.Rows[0]
@@ -309,9 +311,9 @@ func TestUserViewQuery(t *testing.T) {
 	assert.Equal(t, "seven", row.Value)
 
 	if base.UnitTestUrlIsWalrus() {
-		// include_docs=true only works with walrus as documented here:
-		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
+		if assert.NotNil(t, row.Doc) {
 		assert.Equal(t, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"}, *row.Doc)
+	}
 	}
 
 	row = result.Rows[1]
@@ -319,9 +321,9 @@ func TestUserViewQuery(t *testing.T) {
 	assert.Equal(t, "ten", row.Value)
 
 	if base.UnitTestUrlIsWalrus() {
-		// include_docs=true only works with walrus as documented here:
-		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
+		if assert.NotNil(t, row.Doc) {
 		assert.Equal(t, map[string]interface{}{"key": 10.0, "value": "ten", "channel": "W"}, *row.Doc)
+	}
 	}
 
 	// Make sure users are not allowed to query internal views:
@@ -747,7 +749,7 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 		}},
 	}
 
-	rt := NewRestTester(t, rtConfig)
+	rt := NewRestTesterDefaultCollection(t, rtConfig)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"value":"foo"}`)

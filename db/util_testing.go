@@ -435,6 +435,10 @@ func (dbc *DatabaseContext) ChannelViewForTest(tb testing.TB, channelName string
 	if err != nil {
 		return nil, err
 	}
+	return dbc.CollectionChannelViewForTest(tb, collection, channelName, startSeq, endSeq)
+}
+
+func (dbc *DatabaseContext) CollectionChannelViewForTest(tb testing.TB, collection *DatabaseCollection, channelName string, startSeq, endSeq uint64) (LogEntries, error) {
 	return collection.getChangesInChannelFromQuery(base.TestCtx(tb), channelName, startSeq, endSeq, 0, false)
 }
 

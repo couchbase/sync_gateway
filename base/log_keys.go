@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/couchbaselabs/rosmar"
 	"github.com/couchbaselabs/walrus"
 )
 
@@ -127,6 +128,7 @@ func (keyMask *LogKeyMask) Set(logKeyMask *LogKeyMask) {
 func (keyMask *LogKeyMask) changed() {
 	if keyMask.Enabled(KeyWalrus) {
 		walrus.Logging = walrus.LevelDebug
+		rosmar.Logging = rosmar.LevelDebug
 	}
 }
 

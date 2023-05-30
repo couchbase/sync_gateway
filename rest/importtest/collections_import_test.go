@@ -23,7 +23,9 @@ import (
 )
 
 func TestMultiCollectionImportFilter(t *testing.T) {
-
+	if base.ServerIsRosmar(base.UnitTestUrl()) {
+		t.Skip("Rosmar doesn't support DCP notifications between buckets on the same file")
+	}
 	base.SkipImportTestsIfNotEnabled(t)
 	base.RequireNumTestDataStores(t, 3)
 
@@ -244,6 +246,9 @@ const collectionsDbConfig = `{
 	}`
 
 func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
+	if base.ServerIsRosmar(base.UnitTestUrl()) {
+		t.Skip("Rosmar doesn't support DCP notifications between buckets on the same file")
+	}
 
 	base.SkipImportTestsIfNotEnabled(t)
 	base.RequireNumTestDataStores(t, 2)
@@ -337,6 +342,9 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 }
 
 func TestMultiCollectionImportRemoveCollection(t *testing.T) {
+	if base.ServerIsRosmar(base.UnitTestUrl()) {
+		t.Skip("Rosmar doesn't support DCP notifications between buckets on the same file")
+	}
 
 	defer db.SuspendSequenceBatching()()
 	base.SkipImportTestsIfNotEnabled(t)

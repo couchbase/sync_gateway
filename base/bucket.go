@@ -26,6 +26,7 @@ import (
 	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbaselabs/gocbconnstr.v1"
@@ -146,6 +147,10 @@ func (spec BucketSpec) MaxRetrySleeper(maxSleepMs int) RetrySleeper {
 
 func (spec BucketSpec) IsWalrusBucket() bool {
 	return ServerIsWalrus(spec.Server)
+}
+
+func (spec BucketSpec) IsRosmarBucket() bool {
+	return ServerIsRosmar(spec.Server)
 }
 
 func (spec BucketSpec) IsTLS() bool {
@@ -344,7 +349,19 @@ func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsH
 }
 
 func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
-	if spec.IsWalrusBucket() {
+	if spec.IsRosmarBucket() {
+		InfofCtx(context.TODO(), KeyAll, "Opening Rosmar database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
+		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
+		bucket, err = rosmar.GetBucket(spec.Server, spec.BucketName)
+		if err != nil {
+			ErrorfCtx(context.TODO(), "Failed to open Rosmar database %s on <%s>: %s", MD(spec.BucketName), SD(spec.Server), err)
+			return nil, err
+		}
+		if spec.FeedType != TapFeedType {
+			bucket = &LeakyBucket{bucket: bucket, config: &LeakyBucketConfig{TapFeedVbuckets: true}}
+		}
+
+	} else if spec.IsWalrusBucket() {
 		InfofCtx(context.TODO(), KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
 		bucket, err = walrus.GetCollectionBucket(spec.Server, spec.BucketName)
@@ -355,8 +372,8 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		if spec.FeedType != TapFeedType {
 			bucket = &LeakyBucket{bucket: bucket, config: &LeakyBucketConfig{TapFeedVbuckets: true}}
 		}
-	} else {
 
+	} else {
 		username := ""
 		if spec.Auth != nil {
 			username, _, _ = spec.Auth.GetCredentials()

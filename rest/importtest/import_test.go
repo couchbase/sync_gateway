@@ -500,7 +500,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	// 3.  Delete SG_delete through SG.
 	log.Printf("...............Delete through SG.......................................")
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", key, revId), "")
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, revId), "")
 	assert.Equal(t, 200, response.Code)
 	log.Printf("delete response: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -511,7 +511,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	// Attempt to retrieve via view.  Above operations were all synchronous (on-demand import of SDK delete, SG delete), so
 	// stale=false view results should be immediately updated.
-	results, err := rt.GetDatabase().ChannelViewForTest(t, "ABC", 0, 1000)
+	results, err := rt.GetDatabase().CollectionChannelViewForTest(t, rt.GetSingleTestDatabaseCollection(), "ABC", 0, 1000)
 	require.NoError(t, err, "Error issuing channel view query")
 	for _, entry := range results {
 		log.Printf("Got view result: %v", entry)

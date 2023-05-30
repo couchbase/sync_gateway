@@ -180,15 +180,20 @@ func (b *TestBucket) GetMetadataStore() sgbucket.DataStore {
 // 	return b.Bucket.DefaultDataStore()
 // }
 
-// Gets a Walrus bucket which will be persisted to a temporary directory
+// Gets a Walrus (or Rosmar) bucket which will be persisted to a temporary directory
 // Returns both the test bucket which is persisted and a function which can be used to remove the created temporary
 // directory once the test has finished with it.
 func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
-
-	tempDir, err := os.MkdirTemp("", "walrustemp")
+	var scheme string
+	if TestUseRosmar() {
+		scheme = "rosmar"
+	} else {
+		scheme = "walrus"
+	}
+	tempDir, err := os.MkdirTemp("", scheme+"temp")
 	require.NoError(t, err)
 
-	walrusFile := fmt.Sprintf("walrus:%s", tempDir)
+	walrusFile := fmt.Sprintf("%s:%s", scheme, tempDir)
 	bucket, spec, closeFn := GTestBucketPool.GetWalrusTestBucket(t, walrusFile)
 
 	// Return this separate to closeFn as we want to avoid this being removed on database close (/_offline handling)
@@ -303,6 +308,11 @@ func TestsDisableGSI() bool {
 func TestUseCouchbaseServer() bool {
 	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
 	return strings.EqualFold(backingStore, TestEnvBackingStoreCouchbase)
+}
+
+func TestUseRosmar() bool {
+	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
+	return strings.EqualFold(backingStore, TestEnvBackingStoreRosmar)
 }
 
 // Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase

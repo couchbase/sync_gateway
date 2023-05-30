@@ -82,6 +82,10 @@ func (lds *LeakyDataStore) SetGetRawCallback(callback func(string) error) {
 	lds.config.GetRawCallback = callback
 }
 
+func (lds *LeakyDataStore) SetGetWithXattrCallback(callback func(string) error) {
+	lds.config.GetWithXattrCallback = callback
+}
+
 func (lds *LeakyDataStore) GetRaw(k string) (v []byte, cas uint64, err error) {
 	if lds.config.GetRawCallback != nil {
 		err = lds.config.GetRawCallback(k)
