@@ -16,7 +16,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -322,8 +321,9 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	options := make(map[string]string)
 	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
 	options["managerLoadDataDir"] = "false"
-	// Ensure we always use TLS if configured - cbgt defaults to non-TLS on initial connection
-	options["feedInitialBootstrapNonTLS"] = strconv.FormatBool(!spec.IsTLS())
+	// TLS is controlled by the connection string.
+	// cbgt uses this parameter to run in mixed mode - non-TLS for CCCP but TLS for memcached. Sync Gateway does not need to set this parameter.
+	options["feedInitialBootstrapNonTLS"] = "false"
 
 	// Disable collections if unsupported
 	if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
