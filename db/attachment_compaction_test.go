@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -230,6 +231,71 @@ func TestAttachmentCleanup(t *testing.T) {
 		assert.NotContains(t, xattr, t.Name())
 		assert.NotContains(t, xattr, "old")
 		assert.Contains(t, xattr, "recent")
+	}
+
+}
+
+func TestAttachmentCleanupRollback(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	var garbageVBUUID gocbcore.VbUUID = 1234
+	testDb, ctx := setupTestDB(t)
+	defer testDb.Close(ctx)
+	collection := GetSingleDatabaseCollection(t, testDb.DatabaseContext)
+	dataStore := collection.dataStore
+	collectionID := collection.GetCollectionID()
+
+	makeMarkedDoc := func(docid string, compactID string) {
+		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
+		assert.NoError(t, err)
+		_, err = dataStore.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
+		assert.NoError(t, err)
+	}
+
+	// create some marked attachments
+	singleMarkedAttIDs := make([]string, 0, 100)
+	for i := 0; i < 100; i++ {
+		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "marked", i)
+		makeMarkedDoc(docID, t.Name())
+		singleMarkedAttIDs = append(singleMarkedAttIDs, docID)
+	}
+
+	// assert there are marked attachments to clean up
+	for _, docID := range singleMarkedAttIDs {
+		var xattr map[string]interface{}
+		_, err := dataStore.GetXattr(docID, base.AttachmentCompactionXattrName, &xattr)
+		assert.NoError(t, err)
+	}
+
+	bucket, err := base.AsGocbV2Bucket(testDb.Bucket)
+	require.NoError(t, err)
+	dcpFeedKey := GenerateCompactionDCPStreamName(t.Name(), CleanupPhase)
+	clientOptions, err := getCompactionDCPClientOptions(collectionID, testDb.Options.GroupID, testDb.MetadataKeys.DCPCheckpointPrefix(testDb.Options.GroupID))
+	require.NoError(t, err)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, nil, *clientOptions, bucket)
+	require.NoError(t, err)
+
+	// alter dcp metadata to feed into the compaction manager
+	vbUUID := base.GetVBUUIDs(dcpClient.GetMetadata())
+	vbUUID[0] = uint64(garbageVBUUID)
+
+	metadataKeys := base.NewMetadataKeys(testDb.Options.MetadataID)
+	testDb.AttachmentCompactionManager = NewAttachmentCompactionManager(dataStore, metadataKeys)
+	manager := AttachmentCompactionManager{CompactID: t.Name(), Phase: CleanupPhase, VBUUIDs: vbUUID}
+	testDb.AttachmentCompactionManager.Process = &manager
+
+	terminator := base.NewSafeTerminator()
+	err = testDb.AttachmentCompactionManager.Process.Run(ctx, map[string]interface{}{"database": testDb}, testDb.AttachmentCompactionManager.UpdateStatusClusterAware, terminator)
+	require.NoError(t, err)
+
+	// assert that the marked attachments have been "cleaned up"
+	for _, docID := range singleMarkedAttIDs {
+		var xattr map[string]interface{}
+		_, err := dataStore.GetXattr(docID, base.AttachmentCompactionXattrName, &xattr)
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, base.ErrXattrNotFound))
 	}
 
 }
