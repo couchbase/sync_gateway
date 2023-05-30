@@ -748,13 +748,13 @@ func (meh *sgMgrEventHandlers) OnFeedError(srcType string, r cbgt.Feed, feedErr 
 	// cbgt always passes srcType = SOURCE_GOCBCORE, but we have a wrapped type associated with our indexes - use that instead
 	// for our logging
 	srcType = SOURCE_DCP_SG
+	var bucketName, bucketUUID string
 	dcpFeed, ok := r.(cbgt.FeedEx)
-	if !ok {
-		return
+	if ok {
+		bucketName, bucketUUID = dcpFeed.GetBucketDetails()
 	}
-	bucketName, bucketUUID := dcpFeed.GetBucketDetails()
 	DebugfCtx(meh.ctx, KeyDCP, "cbgt Mgr OnFeedError, srcType: %s, feed name: %s, bucket name: %s, err: %v",
-		srcType, r.Name(), bucketName, feedErr)
+		srcType, r.Name(), MD(bucketName), feedErr)
 
 	// If we get an EOF error from the feeds and the import listener hasn't been closed,
 	// then there could at the least two potential error scenarios.
@@ -770,7 +770,7 @@ func (meh *sgMgrEventHandlers) OnFeedError(srcType string, r cbgt.Feed, feedErr 
 	if strings.Contains(feedErr.Error(), "EOF") {
 		// If this wasn't an intentional close, log about the EOF
 		if meh.ctx.Err() != context.Canceled {
-			InfofCtx(meh.ctx, KeyDCP, "Handling EOF on cbgt feed - notifying manager to trigger reconnection to feed for bucketName:%v, bucketUUID:%v, err: %v", bucketName, bucketUUID, feedErr)
+			InfofCtx(meh.ctx, KeyDCP, "Handling EOF on cbgt feed - notifying manager to trigger reconnection to feed for bucketName:%v, bucketUUID:%v, err: %v", MD(bucketName), bucketUUID, feedErr)
 		}
 		dcpFeed.NotifyMgrOnClose()
 	}
