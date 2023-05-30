@@ -105,7 +105,7 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[stri
 
 func (a *AttachmentCompactionManager) PurgeDCPMetadata(ctx context.Context, datastore base.DataStore, database *Database, phase string) error {
 	streamName := GenerateCompactionDCPStreamName(a.CompactID, phase)
-	checkpointPrefix := fmt.Sprintf("%s:%v", "_sync:dcp_ck:", streamName)
+	checkpointPrefix := fmt.Sprintf("%s:%v", database.MetadataKeys.DCPCheckpointPrefix(database.Options.GroupID), streamName)
 
 	bucket, err := base.AsGocbV2Bucket(database.Bucket)
 	if err != nil {
@@ -153,16 +153,16 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 		worker := func() (shouldRetry bool, err error, value interface{}) {
 			persistClusterStatus()
 			_, a.VBUUIDs, err = attachmentCompactMarkPhase(ctx, dataStore, collectionID, database, a.CompactID, terminator, &a.MarkedAttachments)
-			if errors.As(err, &rollbackErr) {
+			if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
 				base.InfofCtx(ctx, base.KeyDCP, "rollback indicated on mark phase of attachment, resetting the task")
 				err = a.PurgeDCPMetadata(ctx, dataStore, database, MarkPhase)
 				if err != nil {
-					base.WarnfCtx(ctx, "error occurred during purging of dcp metadata")
+					base.WarnfCtx(ctx, "error occurred during purging of dcp metadata: %w", err)
 					return false, err, nil
 				}
 				err = a.Init(ctx, options, nil)
 				if err != nil {
-					base.WarnfCtx(ctx, "error on initialization of new run after rollback has been indicated")
+					base.WarnfCtx(ctx, "error on initialization of new run after rollback has been indicated, %w", err)
 					return false, err, nil
 				}
 				// we should try again if it is rollback error
@@ -174,7 +174,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 		// retry loop for handling a rollback during mark phase of compaction process
 		err, _ = base.RetryLoop("attachmentCompactMarkPhase", worker, base.CreateMaxDoublingSleeperFunc(25, 100, 10000))
 		if err != nil || terminator.IsClosed() {
-			if errors.As(err, &rollbackErr) {
+			if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
 				// log warning to show we hit max number of retries
 				base.WarnfCtx(ctx, "maximum retry attempts reached on mark phase: %v", err)
 			}
@@ -198,7 +198,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 				base.InfofCtx(ctx, base.KeyDCP, "rollback indicated on cleanup phase of attachment, resetting the task")
 				err = a.PurgeDCPMetadata(ctx, dataStore, database, CleanupPhase)
 				if err != nil {
-					base.WarnfCtx(ctx, "error occurred during purging of dcp metadata")
+					base.WarnfCtx(ctx, "error occurred during purging of dcp metadata: %w", err)
 					return false, err, nil
 				}
 				a.VBUUIDs = nil

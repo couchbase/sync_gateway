@@ -419,7 +419,9 @@ func TestContinuousDCPRollback(t *testing.T) {
 	numVBuckets := len(dcpClient1.activeVbuckets)
 	require.Equal(t, dcpClient1.numVbuckets, uint16(numVBuckets))
 
-	require.NoError(t, dcpClient1.Close())
+	defer func() {
+		assert.NoError(t, dcpClient1.Close())
+	}()
 
 }
 
@@ -428,7 +430,8 @@ func TestContinuousDCPRollback(t *testing.T) {
 func (dc *DCPClient) forceRollbackvBucket(uuid gocbcore.VbUUID) {
 	metadata := make([]DCPMetadata, dc.numVbuckets)
 	for i := uint16(0); i < dc.numVbuckets; i++ {
-		if i%2 == 0 && i < 100 {
+		// rollback roughly half the vBuckets
+		if i%2 == 0 {
 			metadata[i] = dc.metadata.GetMeta(i)
 			metadata[i].VbUUID = uuid
 			dc.metadata.SetMeta(i, metadata[i])

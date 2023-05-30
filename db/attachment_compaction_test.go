@@ -237,7 +237,7 @@ func TestAttachmentCleanup(t *testing.T) {
 
 func TestAttachmentCleanupRollback(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+		t.Skip("This test only works against Couchbase Server since it requires DCP")
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	dbcOptions := DatabaseContextOptions{
