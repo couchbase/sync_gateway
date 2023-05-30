@@ -498,10 +498,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		base.MD(dbName), base.MD(spec.BucketName), base.SD(base.DefaultPool), base.SD(spec.Server))
 
 	// the connectToBucketFn is used for testing seam
-	if options.connectToBucketFn == nil {
-		options.connectToBucketFn = db.ConnectToBucket
+	var bucket base.Bucket
+	if options.connectToBucketFn != nil {
+		// the connectToBucketFn is used for testing seam
+		bucket, err = options.connectToBucketFn(ctx, spec, options.failFast)
+	} else {
+		bucket, err = db.ConnectToBucket(ctx, spec, options.failFast)
 	}
-	bucket, err := options.connectToBucketFn(ctx, spec, options.failFast)
 	if err != nil {
 		return nil, err
 	}
