@@ -775,5 +775,3 @@ func (meh *sgMgrEventHandlers) OnFeedError(srcType string, r cbgt.Feed, feedErr 
 		dcpFeed.NotifyMgrOnClose()
 	}
 }
-
-
