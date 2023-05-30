@@ -558,10 +558,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		for scopeName, scopeConfig := range config.Scopes {
 			for collectionName, _ := range scopeConfig.Collections {
 				var dataStore sgbucket.DataStore
-				err := base.WaitForNoError(func() error {
+
+				waitForCollection := func() (bool, error, interface{}) {
 					dataStore, err = bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
-					return err
-				})
+					return err != nil, err, nil
+				}
+
+				err, _ := base.RetryLoop(
+					fmt.Sprintf("waiting for %s.%s.%s to exist", base.MD(bucket.GetName()), base.MD(scopeName), base.MD(collectionName)),
+					waitForCollection,
+					base.CreateMaxDoublingSleeperFunc(30, 10, 1000))
 				if err != nil {
 					return nil, fmt.Errorf("error attempting to create/update database: %w", err)
 				}
@@ -1524,9 +1530,16 @@ func initClusterAgent(ctx context.Context, clusterAddress, clusterUser, clusterP
 		},
 	}
 
+	base.DebugfCtx(ctx, base.KeyAll, "Parsing cluster connection string %q", base.UD(clusterAddress))
+	beforeFromConnStr := time.Now()
 	err = config.FromConnStr(clusterAddress)
 	if err != nil {
 		return nil, err
+	}
+	if d := time.Since(beforeFromConnStr); d > base.FromConnStrWarningThreshold {
+		base.WarnfCtx(ctx, "Parsed cluster connection string %q in: %v", base.UD(clusterAddress), d)
+	} else {
+		base.DebugfCtx(ctx, base.KeyAll, "Parsed cluster connection string %q in: %v", base.UD(clusterAddress), d)
 	}
 
 	agent, err := gocbcore.CreateAgent(&config)
@@ -1839,9 +1852,9 @@ func (sc *ServerContext) Database(ctx context.Context, name string) *db.Database
 }
 
 func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Context) error {
-	base.InfofCtx(ctx, base.KeyAll, "initializing server connections")
+	base.InfofCtx(ctx, base.KeyAll, "Initializing server connections")
 	defer func() {
-		base.InfofCtx(ctx, base.KeyAll, "finished initializing server connections")
+		base.InfofCtx(ctx, base.KeyAll, "Finished initializing server connections")
 	}()
 	goCBAgent, err := sc.initializeGoCBAgent(ctx)
 	if err != nil {

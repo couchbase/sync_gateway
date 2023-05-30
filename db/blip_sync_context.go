@@ -648,7 +648,7 @@ func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) [
 
 // timeElapsedForStatsReporting will return true if enough time has passed since the previous report.
 func (bsc *BlipSyncContext) timeElapsedForStatsReporting(currentTime int64) bool {
-	return (currentTime - bsc.stats.lastReportTime.Load()) > bsc.blipContextDb.Options.BlipStatsReportingInterval
+	return (currentTime - bsc.stats.lastReportTime.Load()) >= bsc.blipContextDb.Options.BlipStatsReportingInterval
 }
 
 // reportStats will update the stats on a database immediately if updateImmediately is true, otherwise update on BlipStatsReportinInterval

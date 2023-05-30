@@ -1669,7 +1669,7 @@ func GetHttpClientForWebSocket(insecureSkipVerify bool) *http.Client {
 // (There's really no reason for a caller to take note of the return value.)
 func turnOffNoDelay(ctx context.Context, conn net.Conn) bool {
 	if tcpConn, ok := conn.(*net.TCPConn); !ok {
-		WarnfCtx(ctx, "Couldn't turn off NODELAY for %v: it's not a TCPConn", conn)
+		WarnfCtx(ctx, "Couldn't turn off NODELAY for %v: %T is not type *net.TCPConn", conn, conn)
 	} else if err := tcpConn.SetNoDelay(false); err != nil {
 		WarnfCtx(ctx, "Couldn't turn off NODELAY for %v: %v", conn, err)
 	} else {

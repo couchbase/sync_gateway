@@ -50,10 +50,6 @@ func getHighSeqMetadata(cbstore CouchbaseBucketStore) ([]DCPMetadata, error) {
 // StartGocbDCPFeed starts a DCP Feed.
 func StartGocbDCPFeed(bucket *GocbV2Bucket, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
 
-	metadata, err := getHighSeqMetadata(bucket)
-	if err != nil {
-		return err
-	}
 	feedName, err := GenerateDcpStreamName(args.ID)
 	if err != nil {
 		return err
@@ -84,19 +80,27 @@ func StartGocbDCPFeed(bucket *GocbV2Bucket, bucketName string, args sgbucket.Fee
 			}
 		}
 	}
+	options := DCPClientOptions{
+		MetadataStoreType: metadataStoreType,
+		GroupID:           groupID,
+		DbStats:           dbStats,
+		CollectionIDs:     collectionIDs,
+		AgentPriority:     gocbcore.DcpAgentPriorityMed,
+		CheckpointPrefix:  args.CheckpointPrefix,
+	}
+
+	if args.Backfill == sgbucket.FeedNoBackfill {
+		metadata, err := getHighSeqMetadata(bucket)
+		if err != nil {
+			return err
+		}
+		options.InitialMetadata = metadata
+	}
 
 	dcpClient, err := NewDCPClient(
 		feedName,
 		callback,
-		DCPClientOptions{
-			MetadataStoreType: metadataStoreType,
-			GroupID:           groupID,
-			InitialMetadata:   metadata,
-			DbStats:           dbStats,
-			CollectionIDs:     collectionIDs,
-			AgentPriority:     gocbcore.DcpAgentPriorityMed,
-			CheckpointPrefix:  args.CheckpointPrefix,
-		},
+		options,
 		bucket)
 	if err != nil {
 		return err
