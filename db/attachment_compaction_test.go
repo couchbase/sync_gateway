@@ -239,14 +239,14 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	if base.TestsUseNamedCollections() {
-		t.Skip("This test only works with default collection")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-	var garbageVBUUID gocbcore.VbUUID = 1234
-	testDb, ctx := setupTestDB(t)
+	dbcOptions := DatabaseContextOptions{
+		Scopes: GetScopesOptionsDefaultCollectionOnly(t),
+	}
+	testDb, ctx := SetupTestDBWithOptions(t, dbcOptions)
 	defer testDb.Close(ctx)
+
+	var garbageVBUUID gocbcore.VbUUID = 1234
 	collection := GetSingleDatabaseCollection(t, testDb.DatabaseContext)
 	dataStore := collection.dataStore
 	collectionID := collection.GetCollectionID()
