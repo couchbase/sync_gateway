@@ -1851,9 +1851,10 @@ func BenchmarkDatabase(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		ctx := base.TestCtx(b)
-		bucket, _ := connectToBucket(ctx, base.BucketSpec{
+		bucket, _ := ConnectToBucket(ctx, base.BucketSpec{
 			Server:     base.UnitTestUrl(),
-			BucketName: fmt.Sprintf("b-%d", i)})
+			BucketName: fmt.Sprintf("b-%d", i)},
+			true)
 		dbCtx, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 		db, _ := CreateDatabase(dbCtx)
 		collection := GetSingleDatabaseCollectionWithUser(b, db)
@@ -1869,9 +1870,10 @@ func BenchmarkPut(b *testing.B) {
 	base.DisableTestLogging(b)
 
 	ctx := base.TestCtx(b)
-	bucket, _ := connectToBucket(ctx, base.BucketSpec{
+	bucket, _ := ConnectToBucket(ctx, base.BucketSpec{
 		Server:     base.UnitTestUrl(),
-		BucketName: "Bucket"})
+		BucketName: "Bucket"},
+		true)
 	context, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	db, _ := CreateDatabase(context)
 	collection := GetSingleDatabaseCollectionWithUser(b, db)
