@@ -376,7 +376,8 @@ type CBLReplicationPullStats struct {
 	// The total amount of time processing rev messages (revisions) during pull revision.
 	RevProcessingTime *SgwIntStat `json:"rev_processing_time"`
 	// The total number of rev messages processed during replication.
-	RevSendCount *SgwIntStat `json:"rev_send_count"`
+	RevSendCount  *SgwIntStat `json:"rev_send_count"`
+	RevErrorCount *SgwIntStat `json:"rev_error_count"`
 	// The total amount of time between Sync Gateway receiving a request for a revision and that revision being sent.
 	//
 	// In a pull replication, Sync Gateway sends a /_changes request to the client and the client responds with the list of revisions it wants to receive.
@@ -392,6 +393,8 @@ type CBLReplicationPushStats struct {
 	AttachmentPushCount *SgwIntStat `json:"attachment_push_count"`
 	// The total number of documents pushed.
 	DocPushCount *SgwIntStat `json:"doc_push_count"`
+	// The total number of documents that failed to push.
+	DocPushErrorCount *SgwIntStat `json:"doc_push_error_count"`
 	// The total number of changes and-or proposeChanges messages processed since node start-up.
 	ProposeChangeCount *SgwIntStat `json:"propose_change_count"`
 	// The total time spent processing changes and/or proposeChanges messages.
@@ -1198,6 +1201,10 @@ func (d *DbStats) initCBLReplicationPullStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.RevErrorCount, err = NewIntStat(SubsystemReplicationPull, "rev_error_count", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.RevSendLatency, err = NewIntStat(SubsystemReplicationPull, "rev_send_latency", labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1223,6 +1230,7 @@ func (d *DbStats) unregisterCBLReplicationPullStats() {
 	prometheus.Unregister(d.CBLReplicationPullStats.RequestChangesTime)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevProcessingTime)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevSendCount)
+	prometheus.Unregister(d.CBLReplicationPullStats.RevErrorCount)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevSendLatency)
 }
 
@@ -1248,6 +1256,10 @@ func (d *DbStats) initCBLReplicationPushStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.DocPushErrorCount, err = NewIntStat(SubsystemReplicationPush, "doc_push_error_count", labelKeys, labelVals, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ProposeChangeCount, err = NewIntStat(SubsystemReplicationPush, "propose_change_count", labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1269,6 +1281,7 @@ func (d *DbStats) unregisterCBLReplicationPushStats() {
 	prometheus.Unregister(d.CBLReplicationPushStats.AttachmentPushBytes)
 	prometheus.Unregister(d.CBLReplicationPushStats.AttachmentPushCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.DocPushCount)
+	prometheus.Unregister(d.CBLReplicationPushStats.DocPushErrorCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.ProposeChangeCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.ProposeChangeTime)
 	prometheus.Unregister(d.CBLReplicationPushStats.WriteProcessingTime)
