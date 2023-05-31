@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	pkgerrors "github.com/pkg/errors"
 	"net/http"
 	"regexp"
 	"strings"
@@ -25,6 +24,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
