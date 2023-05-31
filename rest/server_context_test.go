@@ -11,7 +11,6 @@ package rest
 import (
 	"bytes"
 	"fmt"
-	"github.com/couchbase/sync_gateway/db"
 	"io"
 	"net/http"
 	"os"
@@ -22,11 +21,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/sync_gateway/auth"
-
 	"github.com/couchbase/gocbcore/v10/connstr"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
