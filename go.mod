@@ -5,13 +5,13 @@ go 1.19
 require (
 	github.com/bhoriuchi/graphql-go-tools v1.0.0
 	github.com/coreos/go-oidc v2.2.1+incompatible
-	github.com/couchbase/cbgt v1.3.2-0.20230405201040-c0ede9925e46
+	github.com/couchbase/cbgt v1.3.4
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20221021161139-215cbac22bd7
 	github.com/couchbase/go-couchbase v0.1.1
 	github.com/couchbase/gocb/v2 v2.6.2
-	github.com/couchbase/gocbcore/v10 v10.2.3-0.20230412164057-d9c465de8911
-	github.com/couchbase/gomemcached v0.1.4
+	github.com/couchbase/gocbcore/v10 v10.2.4-0.20230511103754-8dd1a95f5f33
+	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20230113211151-ac6a75f57046
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
@@ -31,9 +31,9 @@ require (
 	github.com/samuel/go-metrics v0.0.0-20150819231912-7ccf3e0e1fb1
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/stretchr/testify v1.8.2
-	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
+	golang.org/x/crypto v0.7.0
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e
-	golang.org/x/net v0.0.0-20220919232410-f2f64ebce3c1
+	golang.org/x/net v0.8.0
 	golang.org/x/oauth2 v0.0.0-20220718184931-c8730f7fcb92
 	gopkg.in/couchbaselabs/gocbconnstr.v1 v1.0.4
 	gopkg.in/square/go-jose.v2 v2.6.0
@@ -46,7 +46,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/couchbase/blance v0.1.3 // indirect
-	github.com/couchbase/cbauth v0.1.9 // indirect
+	github.com/couchbase/cbauth v0.1.10 // indirect
 	github.com/couchbase/tools-common v0.0.0-20220810163003-4c3c185822d4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
@@ -68,8 +68,8 @@ require (
 	github.com/stretchr/objx v0.5.0 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	golang.org/x/sys v0.0.0-20220728004956-3c1f35247d10 // indirect
-	golang.org/x/text v0.4.0 // indirect
+	golang.org/x/sys v0.6.0 // indirect
+	golang.org/x/text v0.8.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/couchbase/gocb.v1 v1.6.7 // indirect
