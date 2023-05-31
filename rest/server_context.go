@@ -809,6 +809,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		return nil, err
 	}
 
+	// Upsert replications
+	replicationErr := dbcontext.SGReplicateMgr.PutReplications(config.Replications)
+	if replicationErr != nil {
+		return nil, replicationErr
+	}
+
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
 	sc.dbConfigs[dbcontext.Name] = &RuntimeDatabaseConfig{DatabaseConfig: config}

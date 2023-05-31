@@ -531,6 +531,12 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		base.InfofCtx(ctx, base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbContext.Name))
 	}
 
+	// Initialize sg-replicate manager
+	dbContext.SGReplicateMgr, err = NewSGReplicateManager(ctx, dbContext, dbContext.CfgSG)
+	if err != nil {
+		return nil, err
+	}
+
 	return dbContext, nil
 }
 
@@ -2120,13 +2126,6 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) error {
 		}
 		db.changeCache.cfgEventCallback = cfgSG.FireEvent
 	}
-
-	// Initialize sg-replicate manager
-	sgrMgr, err := NewSGReplicateManager(ctx, db, db.CfgSG)
-	if err != nil {
-		return err
-	}
-	db.SGReplicateMgr = sgrMgr
 
 	importEnabled := db.UseXattrs() && db.autoImport
 	sgReplicateEnabled := db.Options.SGReplicateOptions.Enabled
