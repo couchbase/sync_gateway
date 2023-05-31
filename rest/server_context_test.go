@@ -11,6 +11,7 @@ package rest
 import (
 	"bytes"
 	"fmt"
+	"github.com/couchbase/sync_gateway/db"
 	"io"
 	"net/http"
 	"os"

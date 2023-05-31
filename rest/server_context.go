@@ -97,7 +97,7 @@ type getOrAddDatabaseConfigOptions struct {
 	failFast          bool            // if set, a failure to connect to a bucket of collection will immediately fail
 	useExisting       bool            //  if true, return an existing DatabaseContext vs return an error
 	connectToBucketFn db.OpenBucketFn // supply a custom function for buckets, used for testing only
-	forceOnline bool // force the database to come online, even if startOffline is set
+	forceOnline       bool            // force the database to come online, even if startOffline is set
 }
 
 func (sc *ServerContext) CreateLocalDatabase(ctx context.Context, dbs DbConfigMap) error {
@@ -819,7 +819,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	stateChangeMsg := "DB loaded from config"
 
-	if offline := base.BoolDefault(config.StartOffline, false) || len(dbcontext.RequireResync) > 0; !forceOnline && offline {
+	if offline := base.BoolDefault(config.StartOffline, false) || len(dbcontext.RequireResync) > 0; !options.forceOnline && offline {
 		if len(dbcontext.RequireResync) > 0 {
 			stateChangeMsg = "Resync required for collections"
 		}
