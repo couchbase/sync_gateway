@@ -55,7 +55,7 @@ type changeCache struct {
 	receivedSeqs       map[uint64]struct{}     // Set of all sequences received
 	pendingLogs        LogPriorityQueue        // Out-of-sequence entries waiting to be cached
 	notifyChange       func(channels.Set)      // Client callback that notifies of channel changes
-	stopped            bool                    // Set by the Stop method
+	stopped            *base.AtomicBool        // Set by the Stop method
 	skippedSeqs        *SkippedSequenceList    // Skipped sequences still pending on the TAP feed
 	lock               sync.RWMutex            // Coordinates access to struct fields
 	options            CacheOptions            // Cache config
@@ -162,6 +162,7 @@ func (c *changeCache) Init(logCtx context.Context, dbContext *DatabaseContext, c
 	c.logCtx = logCtx
 
 	c.notifyChange = notifyChange
+	c.stopped = base.NewAtomicBool(true) // set to false by Start
 	c.receivedSeqs = make(map[uint64]struct{})
 	c.terminator = make(chan bool)
 	c.initTime = time.Now()
@@ -212,13 +213,17 @@ func (c *changeCache) Start(initialSequence uint64) error {
 	// Set initial sequence for cache (validFrom)
 	c.channelCache.Init(initialSequence)
 
+	if !c.stopped.CompareAndSwap(true, false) {
+		return fmt.Errorf("changeCache already started")
+	}
+
 	return nil
 }
 
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
 func (c *changeCache) Stop() {
 
-	if !c.setStopped() {
+	if !c.stopped.CompareAndSwap(false, true) {
 		return
 	}
 
@@ -232,22 +237,6 @@ func (c *changeCache) Stop() {
 	c.lock.Lock()
 	c.logsDisabled = true
 	c.lock.Unlock()
-}
-
-func (c *changeCache) setStopped() bool {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if c.stopped {
-		return false
-	}
-	c.stopped = true
-	return true
-}
-
-func (c *changeCache) IsStopped() bool {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.stopped
 }
 
 // Empty out all channel caches.
@@ -768,7 +757,7 @@ func (c *changeCache) getChannelCache() ChannelCache {
 
 func (c *changeCache) GetChanges(channel channels.ID, options ChangesOptions) ([]*LogEntry, error) {
 
-	if c.IsStopped() {
+	if c.stopped.IsTrue() {
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
 	return c.channelCache.GetChanges(channel, options)

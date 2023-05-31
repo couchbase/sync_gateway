@@ -134,6 +134,11 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 		testBucket.Close()
 		t.Fatalf("Unable to create database context: %v", err)
 	}
+	err = dbCtx.StartOnlineProcesses(ctx)
+	if err != nil {
+		dbCtx.Close(ctx)
+		t.Fatalf("Unable to start online processes: %v", err)
+	}
 	db, err := CreateDatabase(dbCtx)
 	if err != nil {
 		dbCtx.Close(ctx)

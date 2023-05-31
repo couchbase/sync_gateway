@@ -1258,6 +1258,10 @@ func (ab *AtomicBool) IsTrue() bool {
 }
 
 func (ab *AtomicBool) CompareAndSwap(old bool, new bool) bool {
+	if ab == nil {
+		// ab was never initialized, so we can't do anything to it
+		return false
+	}
 	var oldint32 int32
 	var newint32 int32
 	if old {
