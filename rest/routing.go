@@ -360,16 +360,6 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 	return http.HandlerFunc(func(response http.ResponseWriter, rq *http.Request) {
 		FixQuotedSlashes(rq)
 		var match mux.RouteMatch
-
-		// Inject CORS if enabled and requested and not admin port
-		originHeader := rq.Header["Origin"]
-		if privs != adminPrivs && sc.Config.API.CORS != nil && len(originHeader) > 0 {
-			origin := matchedOrigin(sc.Config.API.CORS.Origin, originHeader)
-			response.Header().Add("Access-Control-Allow-Origin", origin)
-			response.Header().Add("Access-Control-Allow-Credentials", "true")
-			response.Header().Add("Access-Control-Allow-Headers", strings.Join(sc.Config.API.CORS.Headers, ", "))
-		}
-
 		if router.Match(rq, &match) {
 			router.ServeHTTP(response, rq)
 		} else {
@@ -377,19 +367,38 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 			h := newHandler(sc, privs, response, rq, false)
 			h.logRequestLine()
 
+			// Inject CORS if enabled and requested and not admin port
 			// What methods would have matched?
 			var options []string
+			var keyspace string
 			for _, method := range []string{"GET", "HEAD", "POST", "PUT", "DELETE"} {
-				if wouldMatch(router, rq, method) {
+				found, matchedKeyspace := wouldMatch(router, rq, method)
+				if found {
 					options = append(options, method)
+					if keyspace == "" && matchedKeyspace != "" {
+						keyspace = matchedKeyspace
+					}
 				}
+			}
+
+			cors := sc.Config.API.CORS
+			dbName, _, _, _ := ParseKeyspace(keyspace)
+			if dbName != "" {
+				db, err := h.server.GetActiveDatabase(dbName)
+				if err == nil {
+					cors = db.CORS
+				}
+			}
+			if cors != nil && privs != adminPrivs && privs != metricsPrivs {
+				cors.AddResponseHeaders(rq, response)
 			}
 			if len(options) == 0 {
 				h.writeStatus(http.StatusNotFound, "unknown URL")
 			} else {
+				// Add CORS headers for OPTIONS request, since these are never registered by muxer.
 				response.Header().Add("Allow", strings.Join(options, ", "))
-				if privs != adminPrivs && sc.Config.API.CORS != nil && len(originHeader) > 0 {
-					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(sc.Config.API.CORS.MaxAge))
+				if privs != adminPrivs && cors != nil && len(rq.Header["Origin"]) > 0 {
+					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(cors.MaxAge))
 					response.Header().Add("Access-Control-Allow-Methods", strings.Join(options, ", "))
 				}
 				if rq.Method != "OPTIONS" {
@@ -403,22 +412,6 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 	})
 }
 
-func matchedOrigin(allowOrigins []string, rqOrigins []string) string {
-	for _, rv := range rqOrigins {
-		for _, av := range allowOrigins {
-			if rv == av {
-				return av
-			}
-		}
-	}
-	for _, av := range allowOrigins {
-		if av == "*" {
-			return "*"
-		}
-	}
-	return ""
-}
-
 func FixQuotedSlashes(rq *http.Request) {
 	uri := rq.RequestURI
 	if docWithSlashPathRegex.MatchString(uri) {
@@ -429,10 +422,25 @@ func FixQuotedSlashes(rq *http.Request) {
 	}
 }
 
-func wouldMatch(router *mux.Router, rq *http.Request, method string) bool {
+func wouldMatch(router *mux.Router, rq *http.Request, method string) (found bool, keyspace string) {
 	savedMethod := rq.Method
 	rq.Method = method
 	defer func() { rq.Method = savedMethod }()
 	var matchInfo mux.RouteMatch
-	return router.Match(rq, &matchInfo)
+	found = router.Match(rq, &matchInfo)
+	// If a match is found, check for any db/keyspace path variable in the resolved match.  Some paths may
+	// match routes with different path variables depending on the method.
+	if found {
+		matchVars := matchInfo.Vars
+		if dbName, ok := matchVars["db"]; ok {
+			keyspace = dbName
+		} else if keyspaceName, ok := matchVars["keyspace"]; ok {
+			keyspace = keyspaceName
+		} else if targetDbName, ok := matchVars["targetdb"]; ok {
+			keyspace = targetDbName
+		} else if newDbName, ok := matchVars["newdb"]; ok {
+			keyspace = newDbName
+		}
+	}
+	return found, keyspace
 }
