@@ -26,7 +26,7 @@ import (
 
 const openStreamTimeout = 30 * time.Second
 const openRetryCount = uint32(10)
-const defaultNumWorkers = 8
+const DefaultNumWorkers = 8
 
 // DCP buffer size if we are running in serverless
 const DefaultDCPBufferServerless = 1 * 1024 * 1024
@@ -37,7 +37,7 @@ const infiniteOpenStreamRetries = uint32(math.MaxUint32)
 
 type endStreamCallbackFunc func(e endStreamEvent)
 
-var errVbUUIDMismatch = errors.New("VbUUID mismatch when failOnRollback set")
+var ErrVbUUIDMismatch = errors.New("VbUUID mismatch when failOnRollback set")
 
 type DCPClient struct {
 	ID                         string                         // unique ID for DCPClient - used for DCP stream name, must be unique
@@ -81,7 +81,7 @@ type DCPClientOptions struct {
 
 func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*DCPClient, error) {
 
-	numWorkers := defaultNumWorkers
+	numWorkers := DefaultNumWorkers
 	if options.NumWorkers > 0 {
 		numWorkers = options.NumWorkers
 	}
@@ -440,7 +440,7 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) error {
 		case errors.As(openStreamErr, &rollbackErr):
 			if dc.failOnRollback {
 				InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, closing client based on failOnRollback=true", vbID)
-				return fmt.Errorf("%s, failOnRollback requested", openStreamErr)
+				return fmt.Errorf("%w, failOnRollback requested", openStreamErr)
 			}
 			InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, will roll back metadata and retry: %v", vbID, openStreamErr)
 
@@ -449,7 +449,7 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) error {
 			err := fmt.Errorf("Invalid metadata out of range for vbID %d, err: %v metadata %+v, shutting down agent", vbID, openStreamErr, dc.metadata.GetMeta(vbID))
 			WarnfCtx(logCtx, "%s", err)
 			return err
-		case errors.Is(openStreamErr, errVbUUIDMismatch):
+		case errors.Is(openStreamErr, ErrVbUUIDMismatch):
 			WarnfCtx(logCtx, "Closing Stream for vbID: %d, %s", vbID, openStreamErr)
 			return openStreamErr
 		case errors.Is(openStreamErr, gocbcore.ErrShutdown):
@@ -549,7 +549,7 @@ func (dc *DCPClient) verifyFailoverLog(vbID uint16, f []gocbcore.FailoverEntry) 
 		currentVbUUID := getLatestVbUUID(f)
 		// if previousVbUUID hasn't been set yet (is zero), don't treat as rollback.
 		if previousMeta.VbUUID != currentVbUUID {
-			return errVbUUIDMismatch
+			return ErrVbUUIDMismatch
 		}
 	}
 	return nil
@@ -649,4 +649,8 @@ func getLatestVbUUID(failoverLog []gocbcore.FailoverEntry) (vbUUID gocbcore.VbUU
 	}
 	entry := failoverLog[len(failoverLog)-1]
 	return entry.VbUUID
+}
+
+func (dc *DCPClient) GetMetadataKeyPrefix() string {
+	return dc.metadata.GetKeyPrefix()
 }
