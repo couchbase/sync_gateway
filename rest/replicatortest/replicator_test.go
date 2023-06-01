@@ -1025,6 +1025,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 func TestPullOneshotReplicationAPI(t *testing.T) {
 
 	base.LongRunningTest(t)
+	fmt.Println("enterpirse?", base.IsEnterpriseEdition())
 
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
@@ -1901,8 +1902,8 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 
 	// If CE, recreate the replication
 	if !base.IsEnterpriseEdition() {
-		rt.CreateReplication("repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
-		rt.WaitForReplicationStatus("repl1", db.ReplicationStateRunning)
+		rt.CreateReplicationForDB("{{.db1}}", "repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+		rt.WaitForReplicationStatusForDB("{{.db1}}", "repl1", db.ReplicationStateRunning)
 	}
 
 	// Wait for second document to replicate to confirm replication restart
