@@ -733,6 +733,13 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error doing Delete: %+v", err)
 	}
+	// Get the updated cas after the Delete:
+	getCas, err = dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	if err != nil {
+		t.Errorf("Error doing GetWithXattr: %+v", err)
+	}
+	assert.NotEqual(t, cas, getCas)
+	cas = getCas
 
 	// Update the doc and xattr
 	val = make(map[string]interface{})
@@ -740,7 +747,6 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	xattrVal = make(map[string]interface{})
 	xattrVal["seq"] = float64(456)
 	xattrVal["rev"] = "2-2345"
-	//??? TEMP Why does this call expect that Delete() doesn't change the CAS?
 	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -1567,7 +1573,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas3int := uint64(0)
-	cas3int, err = dataStore.WriteCasWithXattr(key3, xattrName, 0, cas3int, nil, val, xattrVal)
+	_, err = dataStore.WriteCasWithXattr(key3, xattrName, 0, cas3int, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -1576,6 +1582,9 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error removing doc body: %+v", err)
 	}
+	// Get the updated cas from the delete:
+	cas3int, err = dataStore.GetWithXattr(key3, "_sync", "", nil, nil, nil)
+	assert.NoError(t, err, "Error getting updated CAS")
 
 	// 4. No xattr, no document
 	cas4 := 0

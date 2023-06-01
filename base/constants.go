@@ -209,7 +209,7 @@ func UnitTestUrl() string {
 		}
 		// Otherwise fallback to hardcoded default
 		return kTestCouchbaseServerURL
-	} else if true { // TestUseRosmar() {		// TEMP!!!
+	} else if TestUseRosmar() {
 		testRosmarUrl := os.Getenv(TestEnvRosmarUrl)
 		if testRosmarUrl != "" {
 			// If user explicitly set a Test Rosmar URL, use that

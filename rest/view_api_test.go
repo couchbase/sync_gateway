@@ -298,8 +298,8 @@ func TestUserViewQuery(t *testing.T) {
 		// include_docs=true only works with walrus, as documented here:
 		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
 		if assert.NotNil(t, row.Doc) {
-		assert.Equal(t, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"}, *row.Doc)
-	}
+			assert.Equal(t, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"}, *row.Doc)
+		}
 	}
 
 	// Admin should see both rows:
@@ -312,8 +312,8 @@ func TestUserViewQuery(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {
 		if assert.NotNil(t, row.Doc) {
-		assert.Equal(t, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"}, *row.Doc)
-	}
+			assert.Equal(t, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"}, *row.Doc)
+		}
 	}
 
 	row = result.Rows[1]
@@ -322,8 +322,8 @@ func TestUserViewQuery(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {
 		if assert.NotNil(t, row.Doc) {
-		assert.Equal(t, map[string]interface{}{"key": 10.0, "value": "ten", "channel": "W"}, *row.Doc)
-	}
+			assert.Equal(t, map[string]interface{}{"key": 10.0, "value": "ten", "channel": "W"}, *row.Doc)
+		}
 	}
 
 	// Make sure users are not allowed to query internal views:
@@ -469,7 +469,6 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 
 // Reproduces SG #3344.  Original issue only reproducible against Couchbase server (non-walrus)
 func TestViewQueryWithKeys(t *testing.T) {
-	//TEMP: Test still fails; Debug this, Jens!
 	// if base.UnitTestUrlIsWalrus() {
 	// 	t.Skip("Walrus does not support the 'keys' view parameter")
 	// }
