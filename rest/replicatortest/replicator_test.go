@@ -1025,7 +1025,6 @@ func TestReplicationRebalancePush(t *testing.T) {
 func TestPullOneshotReplicationAPI(t *testing.T) {
 
 	base.LongRunningTest(t)
-	fmt.Println("enterpirse?", base.IsEnterpriseEdition())
 
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
