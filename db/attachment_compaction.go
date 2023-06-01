@@ -29,7 +29,7 @@ const (
 	CleanupPhase    = "cleanup"
 )
 
-func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, terminator *base.SafeTerminator, markedAttachmentCount *base.AtomicInt) (count int64, vbUUIDs []uint64, err error) {
+func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, terminator *base.SafeTerminator, markedAttachmentCount *base.AtomicInt) (count int64, vbUUIDs []uint64, checkpointPrefix string, err error) {
 	base.InfofCtx(ctx, base.KeyAll, "Starting first phase of attachment compaction (mark phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Mark: " + compactionID
 
@@ -131,7 +131,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 
 	clientOptions, err := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, "", err
 	}
 
 	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for mark phase of attachment compaction", compactionLoggingID)
@@ -140,20 +140,21 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 
 	bucket, err := base.AsGocbV2Bucket(db.Bucket)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, "", err
 	}
 
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, bucket)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
-		return 0, nil, err
+		return 0, nil, "", err
 	}
+	metadataKeyPrefix := dcpClient.GetMetadataKeyPrefix()
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		_ = dcpClient.Close()
-		return 0, nil, err
+		return 0, nil, metadataKeyPrefix, err
 	}
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP feed started.", compactionLoggingID)
 
@@ -162,27 +163,27 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Mark phase of attachment compaction completed. Marked %d attachments", compactionLoggingID, markedAttachmentCount.Value())
 		err = dcpClient.Close()
 		if markProcessFailureErr != nil {
-			return markedAttachmentCount.Value(), nil, markProcessFailureErr
+			return markedAttachmentCount.Value(), nil, metadataKeyPrefix, markProcessFailureErr
 		}
 	case <-terminator.Done():
 		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Stopping mark phase.", compactionLoggingID)
 		err = dcpClient.Close()
 		if markProcessFailureErr != nil {
-			return markedAttachmentCount.Value(), nil, markProcessFailureErr
+			return markedAttachmentCount.Value(), nil, metadataKeyPrefix, markProcessFailureErr
 		}
 		if err != nil {
-			return markedAttachmentCount.Value(), base.GetVBUUIDs(dcpClient.GetMetadata()), err
+			return markedAttachmentCount.Value(), base.GetVBUUIDs(dcpClient.GetMetadata()), metadataKeyPrefix, err
 		}
 
 		err = <-doneChan
 		if err != nil {
-			return markedAttachmentCount.Value(), base.GetVBUUIDs(dcpClient.GetMetadata()), err
+			return markedAttachmentCount.Value(), base.GetVBUUIDs(dcpClient.GetMetadata()), metadataKeyPrefix, err
 		}
 
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Mark phase of attachment compaction was terminated. Marked %d attachments", compactionLoggingID, markedAttachmentCount.Value())
 	}
 
-	return markedAttachmentCount.Value(), base.GetVBUUIDs(dcpClient.GetMetadata()), err
+	return markedAttachmentCount.Value(), base.GetVBUUIDs(dcpClient.GetMetadata()), metadataKeyPrefix, err
 }
 
 // AttachmentsMetaMap struct is a very minimal struct to unmarshal into when getting attachments from bodies
@@ -405,7 +406,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 	return purgedAttachmentCount.Value(), err
 }
 
-func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, vbUUIDs []uint64, terminator *base.SafeTerminator) error {
+func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, vbUUIDs []uint64, terminator *base.SafeTerminator) (string, error) {
 	base.InfofCtx(ctx, base.KeyAll, "Starting third phase of attachment compaction (cleanup phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Cleanup: " + compactionID
 
@@ -492,7 +493,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 
 	clientOptions, err := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
 	if err != nil {
-		return err
+		return "", err
 	}
 	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
 
@@ -502,21 +503,22 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 
 	bucket, err := base.AsGocbV2Bucket(db.Bucket)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, bucket)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
-		return err
+		return "", err
 	}
+	metadataKeyPrefix := dcpClient.GetMetadataKeyPrefix()
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		// simplify close in CBG-2234
 		_ = dcpClient.Close()
-		return err
+		return metadataKeyPrefix, err
 	}
 
 	select {
@@ -529,18 +531,18 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 		err = dcpClient.Close()
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to close attachment compaction DCP client! %v", compactionLoggingID, err)
-			return err
+			return metadataKeyPrefix, err
 		}
 
 		err = <-doneChan
 		if err != nil {
-			return err
+			return metadataKeyPrefix, err
 		}
 
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Cleanup phase of attachment compaction was terminated", compactionLoggingID)
 	}
 
-	return err
+	return metadataKeyPrefix, err
 }
 
 // getCompactionIDSubDocPath is just a tiny helper func that just concatenates the subdoc path we're using to store

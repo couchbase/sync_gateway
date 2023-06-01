@@ -650,3 +650,7 @@ func getLatestVbUUID(failoverLog []gocbcore.FailoverEntry) (vbUUID gocbcore.VbUU
 	entry := failoverLog[len(failoverLog)-1]
 	return entry.VbUUID
 }
+
+func (dc *DCPClient) GetMetadataKeyPrefix() string {
+	return dc.metadata.GetKeyPrefix()
+}

@@ -61,7 +61,7 @@ func TestAttachmentMark(t *testing.T) {
 	attKeys = append(attKeys, createDocWithInBodyAttachment(t, ctx, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), databaseCollection))
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, _, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(13), attachmentsMarked)
 
@@ -197,7 +197,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), nil, terminator)
+	_, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), nil, terminator)
 	assert.NoError(t, err)
 
 	for _, docID := range singleMarkedAttIDs {
@@ -356,7 +356,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, vbUUIDS, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, vbUUIDS, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), attachmentsMarked)
 
@@ -378,7 +378,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		}
 	}
 
-	err = attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, terminator)
+	_, err = attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, terminator)
 	assert.NoError(t, err)
 
 	for _, attDocKey := range attKeys {
@@ -705,7 +705,7 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 
 	// Run mark phase as usual
 	terminator := base.NewSafeTerminator()
-	_, vbUUIDs, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDB, t.Name(), terminator, &base.AtomicInt{})
+	_, vbUUIDs, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDB, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 
 	// Manually modify a vbUUID and ensure the Sweep phase errors
@@ -976,7 +976,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	stat := &base.AtomicInt{}
 	count := int64(0)
 	go func() {
-		attachmentCount, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, "mark", terminator, stat)
+		attachmentCount, _, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, "mark", terminator, stat)
 		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
 	}()
