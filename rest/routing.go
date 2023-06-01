@@ -327,7 +327,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r.Handle("/{newdb:"+dbRegex+"}/",
 		makeHandlerSpecificAuthScope(sc, adminPrivs, []Permission{PermCreateDb}, nil, (*handler).handleCreateDB, getAuthScopeHandleCreateDB)).Methods("PUT")
 	r.Handle("/{db:"+dbRegex+"}/",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermDeleteDb}, nil, (*handler).handleDeleteDB)).Methods("DELETE")
+		makeMetadataDBOfflineHandler(sc, adminPrivs, []Permission{PermDeleteDb}, nil, (*handler).handleDeleteDB)).Methods("DELETE")
 
 	r.Handle("/_all_dbs",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleAllDbs)).Methods("GET", "HEAD")
@@ -364,7 +364,7 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 			router.ServeHTTP(response, rq)
 		} else {
 			// Log the request
-			h := newHandler(sc, privs, response, rq, false)
+			h := newHandler(sc, privs, response, rq, handlerOptions{})
 			h.logRequestLine()
 
 			// Inject CORS if enabled and requested and not admin port

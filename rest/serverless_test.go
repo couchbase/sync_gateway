@@ -51,7 +51,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	assert.Empty(t, configs)
 
 	// Create a database
-	rt2 := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1.NoCloseClone(), PersistentConfig: true, groupID: &sc.Config.Bootstrap.ConfigGroupID})
+	rt2 := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1.NoCloseClone(), PersistentConfig: true, GroupID: &sc.Config.Bootstrap.ConfigGroupID})
 	defer rt2.Close()
 	// Create a new db on the RT to confirm fetch won't retrieve it (due to bucket not being in BucketCredentials)
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{

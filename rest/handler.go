@@ -1,4 +1,4 @@
-//  Copyright 2012-Present Couchbase, Inc.
+///  Copyright 2012-Present Couchbase, Inc.
 //
 //  Use of this software is governed by the Business Source License included
 //  in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
@@ -100,7 +100,8 @@ type handler struct {
 	serialNumber          uint64
 	formattedSerialNumber string
 	loggedDuration        bool
-	runOffline            bool
+	runOffline            bool       // allows running on an offline database
+	allowNilDBContext     bool       // allow acceess to a database based only on name, looking up in metadata registry
 	queryValues           url.Values // Copy of results of rq.URL.Query()
 	permissionsResults    map[string]bool
 	authScopeFunc         authScopeFunc
@@ -123,8 +124,7 @@ type handlerMethod func(*handler) error
 // Creates an http.Handler that will run a handler with the given method
 func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		runOffline := false
-		h := newHandler(server, privs, r, rq, runOffline)
+		h := newHandler(server, privs, r, rq, handlerOptions{})
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
@@ -134,8 +134,24 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 // Creates an http.Handler that will run a handler with the given method even if the target DB is offline
 func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		runOffline := true
-		h := newHandler(server, privs, r, rq, runOffline)
+		options := handlerOptions{
+			runOffline: true,
+		}
+		h := newHandler(server, privs, r, rq, options)
+		err := h.invoke(method, accessPermissions, responsePermissions)
+		h.writeError(err)
+		h.logDuration(true)
+	})
+}
+
+// makeMetadataDBOfflineHandler creates an http.Handler that will run a handler with the given method even if the target DB is not able to be instantiated
+func makeMetadataDBOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
+	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
+		options := handlerOptions{
+			runOffline:        true,
+			allowNilDBContext: true,
+		}
+		h := newHandler(server, privs, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
@@ -146,8 +162,7 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermiss
 // given the endpoint payload returns an auth scope.
 func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, dbAuthStringFunc func([]byte) (string, error)) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		runOffline := false
-		h := newHandler(server, privs, r, rq, runOffline)
+		h := newHandler(server, privs, r, rq, handlerOptions{})
 		h.authScopeFunc = dbAuthStringFunc
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
@@ -155,16 +170,22 @@ func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, acc
 	})
 }
 
-func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request, runOffline bool) *handler {
+type handlerOptions struct {
+	runOffline        bool // if true, allow handler to run when a database is offline
+	allowNilDBContext bool // if true, allow a db-scoped handler to be invoked with a nil dbContext in cases where the database config exists but has an error preventing dbContext initialization"
+}
+
+func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request, options handlerOptions) *handler {
 	h := &handler{
-		server:       server,
-		privs:        privs,
-		rq:           rq,
-		response:     r,
-		status:       http.StatusOK,
-		serialNumber: atomic.AddUint64(&lastSerialNum, 1),
-		startTime:    time.Now(),
-		runOffline:   runOffline,
+		server:            server,
+		privs:             privs,
+		rq:                rq,
+		response:          r,
+		status:            http.StatusOK,
+		serialNumber:      atomic.AddUint64(&lastSerialNum, 1),
+		startTime:         time.Now(),
+		runOffline:        options.runOffline,
+		allowNilDBContext: options.allowNilDBContext,
 	}
 
 	// initialize h.rqCtx
@@ -300,13 +321,14 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	var dbContext *db.DatabaseContext
 
+	var bucketName string
+
 	// look up the database context:
 	if keyspaceDb != "" {
 		h.addDatabaseLogContext(keyspaceDb)
 		var err error
 		if dbContext, err = h.server.GetActiveDatabase(keyspaceDb); err != nil {
 			if err == base.ErrNotFound {
-
 				if shouldCheckAdminAuth {
 					// Check if authenticated before attempting to get inactive database
 					authorized, err := h.checkAdminAuthenticationOnly()
@@ -317,10 +339,11 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 						return ErrInvalidLogin
 					}
 				}
-				dbContext, err = h.server.GetInactiveDatabase(h.ctx(), keyspaceDb)
+				var dbConfigFound bool
+				dbContext, dbConfigFound, err = h.server.GetInactiveDatabase(h.ctx(), keyspaceDb)
 				if err != nil {
 					if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
-						if shouldCheckAdminAuth {
+						if shouldCheckAdminAuth && (!h.allowNilDBContext || !dbConfigFound) {
 							return base.HTTPErrorf(http.StatusForbidden, "")
 						} else if h.privs == regularPrivs || h.privs == publicPrivs {
 							if !h.providedAuthCredentials() {
@@ -330,8 +353,11 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 							return ErrInvalidLogin
 						}
 					}
-					base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
-					return err
+					if !h.allowNilDBContext || !dbConfigFound {
+						base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
+						return err
+					}
+					bucketName, _ = h.server.bucketNameFromDbName(keyspaceDb)
 				}
 			} else {
 				return err
@@ -395,7 +421,6 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			h.user, err = dbContext.Authenticator(h.ctx()).GetUser(*updates.Name)
 		}
 	}
-
 	if shouldCheckAdminAuth {
 		// If server is walrus but auth is enabled we should just kick the user out as invalid as we have nothing to
 		// validate credentials against
@@ -422,13 +447,12 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			authScope = dbContext.Bucket.GetName()
 		} else {
 			managementEndpoints, httpClient, err = h.server.ObtainManagementEndpointsAndHTTPClient()
-			authScope = ""
+			authScope = bucketName
 		}
 		if err != nil {
 			base.WarnfCtx(h.ctx(), "An error occurred whilst obtaining management endpoints: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
-
 		if h.authScopeFunc != nil {
 			body, err := h.readBody()
 			if err != nil {

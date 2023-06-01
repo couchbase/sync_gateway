@@ -307,17 +307,15 @@ func connectToBucketErrorHandling(ctx context.Context, spec base.BucketSpec, got
 	return false, nil
 }
 
-type OpenBucketFn func(ctx context.Context, spec base.BucketSpec) (base.Bucket, error)
+type OpenBucketFn func(context.Context, base.BucketSpec, bool) (base.Bucket, error)
 
-// connectToBucketFailFast opens a Couchbase connect and return a specific bucket without retrying on failure.
-func connectToBucketFailFast(ctx context.Context, spec base.BucketSpec) (bucket base.Bucket, err error) {
-	bucket, err = base.GetBucket(spec)
-	_, err = connectToBucketErrorHandling(ctx, spec, err)
-	return bucket, err
-}
-
-// connectToBucket opens a Couchbase connection and return a specific bucket.
-func connectToBucket(ctx context.Context, spec base.BucketSpec) (base.Bucket, error) {
+// ConnectToBucket opens a Couchbase connection and return a specific bucket. If failFast is set, fail immediately if the bucket doesn't exist, otherwise retry waiting for bucket to exist.
+func ConnectToBucket(ctx context.Context, spec base.BucketSpec, failFast bool) (base.Bucket, error) {
+	if failFast {
+		bucket, err := base.GetBucket(spec)
+		_, err = connectToBucketErrorHandling(ctx, spec, err)
+		return bucket, err
+	}
 
 	// start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (bool, error, interface{}) {
@@ -337,14 +335,6 @@ func connectToBucket(ctx context.Context, spec base.BucketSpec) (base.Bucket, er
 	}
 
 	return ibucket.(base.Bucket), nil
-}
-
-// GetConnectToBucketFn returns a different OpenBucketFn to connect to the bucket depending on the value of failFast
-func GetConnectToBucketFn(failFast bool) OpenBucketFn {
-	if failFast {
-		return connectToBucketFailFast
-	}
-	return connectToBucket
 }
 
 // Returns Couchbase Server Cluster UUID on a timeout. If running against walrus, do return an empty string.

@@ -176,6 +176,22 @@ func (b *TestBucket) GetMetadataStore() sgbucket.DataStore {
 	return b.Bucket.DefaultDataStore()
 }
 
+func (b *TestBucket) CreateDataStore(name sgbucket.DataStoreName) error {
+	dynamicDataStore, ok := b.Bucket.(sgbucket.DynamicDataStoreBucket)
+	if !ok {
+		return fmt.Errorf("Bucket %T doesn't support dynamic collection creation", b.Bucket)
+	}
+	return dynamicDataStore.CreateDataStore(name)
+}
+
+func (b *TestBucket) DropDataStore(name sgbucket.DataStoreName) error {
+	dynamicDataStore, ok := b.GetUnderlyingBucket().(sgbucket.DynamicDataStoreBucket)
+	if !ok {
+		return fmt.Errorf("Bucket %T doesn't support dynamic collection creation", b.GetUnderlyingBucket())
+	}
+	return dynamicDataStore.DropDataStore(name)
+}
+
 // GetDefaultDataStore returns the default DataStore. This is likely never actually wanted over GetSingleDataStore, so is left commented until absolutely required.
 // func (b *TestBucket) GetDefaultDataStore() sgbucket.DataStore {
 // 	b.t.Logf("Using default collection - Are you sure you want this instead of GetSingleDataStore() ?")
