@@ -93,8 +93,6 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 	var partitions *uint16
 	if base.IsEnterpriseEdition() {
 		partitions = base.Uint16Ptr(base.GetDefaultImportPartitions(sc.IsServerless()))
-	} else {
-		partitions = nil
 	}
 	dbConfig := DbConfig{
 		BucketConfig:       BucketConfig{},
