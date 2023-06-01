@@ -37,6 +37,12 @@ const kDefaultTimeoutMS = 5 * 60 * 1000
 // Maximum value of _changes?timeout property
 const kMaxTimeoutMS = 15 * 60 * 1000
 
+// Values for feed parameter on changes request
+const feedTypeContinuous = "continuous"
+const feedTypeLongpoll = "longpoll"
+const feedTypeNormal = "normal"
+const feedTypeWebsocket = "websocket"
+
 func (h *handler) handleRevsDiff() error {
 	var input map[string][]string
 	err := h.readJSONInto(&input)
@@ -180,6 +186,16 @@ func (h *handler) handleChanges() error {
 		options.ActiveOnly = h.getBoolQuery("active_only")
 		options.IncludeDocs = h.getBoolQuery("include_docs")
 		options.Revocations = h.getBoolQuery("revocations")
+
+		useRequestPlus, _ := h.getOptBoolQuery("request_plus", h.db.Options.ChangesRequestPlus)
+		if useRequestPlus && feed != feedTypeContinuous {
+			var seqErr error
+			options.RequestPlusSeq, seqErr = h.db.GetRequestPlusSequence()
+			if seqErr != nil {
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "Unable to retrieve requestPlus sequence")
+			}
+
+		}
 		filter = h.getQuery("filter")
 		channelsParam := h.getQuery("channels")
 		if channelsParam != "" {
@@ -303,18 +319,18 @@ func (h *handler) handleChanges() error {
 	var err error
 
 	switch feed {
-	case "normal":
+	case feedTypeNormal:
 		if filter == "_doc_ids" {
 			err, forceClose = h.sendSimpleChanges(userChannels, options, docIdsArray)
 		} else {
 			err, forceClose = h.sendSimpleChanges(userChannels, options, nil)
 		}
-	case "longpoll":
+	case feedTypeLongpoll:
 		options.Wait = true
 		err, forceClose = h.sendSimpleChanges(userChannels, options, nil)
-	case "continuous":
+	case feedTypeContinuous:
 		err, forceClose = h.sendContinuousChangesByHTTP(userChannels, options)
-	case "websocket":
+	case feedTypeWebsocket:
 		err, forceClose = h.sendContinuousChangesByWebSocket(userChannels, options)
 	default:
 		err = base.HTTPErrorf(http.StatusBadRequest, "Unknown feed type")
@@ -445,7 +461,7 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 	options.Continuous = true
 	err, forceClose := db.GenerateChanges(h.ctx(), h.rq.Context(), h.collection, inChannels, options, nil, send)
 	if sendErr, ok := err.(*db.ChangesSendErr); ok {
-		h.logStatus(http.StatusOK, fmt.Sprintf("0Write error: %v", sendErr))
+		h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", sendErr))
 		return nil, forceClose // error is probably because the client closed the connection
 	} else {
 		h.logStatus(http.StatusOK, "OK (continuous feed closed)")
@@ -571,7 +587,8 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		HeartbeatMs    *uint64       `json:"heartbeat"`
 		TimeoutMs      *uint64       `json:"timeout"`
 		AcceptEncoding string        `json:"accept_encoding"`
-		ActiveOnly     bool          `json:"active_only"` // Return active revisions only
+		ActiveOnly     bool          `json:"active_only"`  // Return active revisions only
+		RequestPlus    *bool         `json:"request_plus"` // Wait for sequence buffering to catch up to database seq value at time request was issued
 	}
 
 	// Initialize since clock and hasher ahead of unmarshalling sequence
@@ -615,6 +632,20 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 
 	compress = (input.AcceptEncoding == "gzip")
 
+	if h.db != nil && feed != feedTypeContinuous {
+		useRequestPlus := h.db.Options.ChangesRequestPlus
+		if input.RequestPlus != nil {
+			useRequestPlus = *input.RequestPlus
+		}
+		if useRequestPlus {
+			var seqErr error
+			options.RequestPlusSeq, seqErr = h.db.GetRequestPlusSequence()
+			if seqErr != nil {
+				err = base.HTTPErrorf(http.StatusServiceUnavailable, "Unable to retrieve requestPlus sequence: %v", seqErr)
+				return
+			}
+		}
+	}
 	return
 }
 
