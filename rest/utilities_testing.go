@@ -946,7 +946,8 @@ func (rt *RestTester) WaitForDatabaseState(dbName string, targetState uint32) er
 		resp := rt.SendAdminRequest("GET", "/"+dbName+"/", "")
 		RequireStatus(rt.TB, resp, 200)
 		require.NoError(rt.TB, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
-		if dbRootResponse.State == db.RunStateString[targetState] {
+		stateCurr = dbRootResponse.State
+		if stateCurr == db.RunStateString[targetState] {
 			return nil
 		}
 		time.Sleep(50 * time.Millisecond)
