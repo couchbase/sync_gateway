@@ -86,23 +86,15 @@ pipeline {
                     }
                 }
                 stage('CE macOS') {
-                    // TODO: Remove skip
-                    when { expression { return false } }
                     steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            echo 'TODO: figure out why build issues are caused by gosigar'
-                            sh "GOOS=darwin go build -o sync_gateway_ce-darwin -v ${SGW_REPO}"
-                        }
+			// macos cross compilation requires cgo
+			sh "CGO_ENABLED=true GOOS=darwin go build -o sync_gateway_ce-darwin -v ${SGW_REPO}"
                     }
                 }
                 stage('EE macOS') {
-                    // TODO: Remove skip
-                    when { expression { return false } }
                     steps {
-                        withEnv(["PATH+GO=${GOPATH}/bin"]) {
-                            echo 'TODO: figure out why build issues are caused by gosigar'
-                            sh "GOOS=darwin go build -o sync_gateway_ee-darwin -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
-                        }
+			// macos cross compilation requires cgo
+                        sh "CGO_ENABLED=true GOOS=darwin go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                     }
                 }
                 stage('CE Windows') {
