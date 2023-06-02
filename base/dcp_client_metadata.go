@@ -62,6 +62,9 @@ type DCPMetadataStore interface {
 	// Purge removes all metadata associated with the metadata store from the bucket.  It does not remove the
 	// in-memory metadata.
 	Purge(numWorkers int)
+
+	// GetKeyPrefix will retrieve the key prefix used for metadata persistence
+	GetKeyPrefix() string
 }
 
 type dcpMetadataBase struct {
@@ -153,6 +156,10 @@ func (md *DCPMetadataMem) Persist(workerID int, vbIDs []uint16) {
 // Purge is no-op for in-memory metadata store
 func (md *DCPMetadataMem) Purge(numWorkers int) {
 	return
+}
+
+func (md *DCPMetadataMem) GetKeyPrefix() string {
+	return ""
 }
 
 // Reset sets metadata sequences to zero, but maintains vbucket UUID and failover entries.  Used for scenarios
@@ -259,6 +266,10 @@ func (m *DCPMetadataCS) Purge(numWorkers int) {
 			InfofCtx(context.TODO(), KeyDCP, "Unable to remove DCP checkpoint for key %s: %v", m.getMetadataKey(i), err)
 		}
 	}
+}
+
+func (m *DCPMetadataCS) GetKeyPrefix() string {
+	return m.keyPrefix
 }
 
 func (m *DCPMetadataCS) getMetadataKey(workerID int) string {

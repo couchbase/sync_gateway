@@ -1901,8 +1901,8 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 
 	// If CE, recreate the replication
 	if !base.IsEnterpriseEdition() {
-		rt.CreateReplication("repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
-		rt.WaitForReplicationStatus("repl1", db.ReplicationStateRunning)
+		rt.CreateReplicationForDB("{{.db1}}", "repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+		rt.WaitForReplicationStatusForDB("{{.db1}}", "repl1", db.ReplicationStateRunning)
 	}
 
 	// Wait for second document to replicate to confirm replication restart

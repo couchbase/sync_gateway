@@ -11,6 +11,7 @@ package base
 
 import (
 	"expvar"
+	"fmt"
 	"math"
 	"time"
 
@@ -27,6 +28,7 @@ type LeakyBucket struct {
 }
 
 var _ sgbucket.BucketStore = &LeakyBucket{}
+var _ sgbucket.DynamicDataStoreBucket = &LeakyBucket{}
 
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) *LeakyBucket {
 	return &LeakyBucket{
@@ -92,6 +94,22 @@ func (b *LeakyBucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.Data
 
 func (b *LeakyBucket) GetUnderlyingBucket() Bucket {
 	return b.bucket
+}
+
+func (b *LeakyBucket) CreateDataStore(name sgbucket.DataStoreName) error {
+	dynamicDataStore, ok := b.GetUnderlyingBucket().(sgbucket.DynamicDataStoreBucket)
+	if !ok {
+		return fmt.Errorf("Bucket %T doesn't support dynamic collection creation", b.GetUnderlyingBucket())
+	}
+	return dynamicDataStore.CreateDataStore(name)
+}
+
+func (b *LeakyBucket) DropDataStore(name sgbucket.DataStoreName) error {
+	dynamicDataStore, ok := b.GetUnderlyingBucket().(sgbucket.DynamicDataStoreBucket)
+	if !ok {
+		return fmt.Errorf("Bucket %T doesn't support dynamic collection creation", b.GetUnderlyingBucket())
+	}
+	return dynamicDataStore.DropDataStore(name)
 }
 
 // The config object that controls the LeakyBucket behavior

@@ -218,7 +218,7 @@ func (h *handler) handleFlush() error {
 		}
 
 		// Manually re-open a temporary bucket connection just for flushing purposes
-		tempBucketForFlush, err := db.GetConnectToBucketFn(false)(h.ctx(), spec)
+		tempBucketForFlush, err := db.ConnectToBucket(h.ctx(), spec, false)
 		if err != nil {
 			return err
 		}

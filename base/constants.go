@@ -154,6 +154,9 @@ const (
 
 	// ServerlessChannelLimit is hard limit on channels allowed per user when running in serverless mode
 	ServerlessChannelLimit = 500
+
+	// FromConnStrWarningThreshold determines the amount of time it should take before we warn about parsing a connstr (mostly for DNS resolution)
+	FromConnStrWarningThreshold = 10 * time.Second
 )
 
 const (
