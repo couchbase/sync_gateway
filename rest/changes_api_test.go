@@ -4169,6 +4169,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 		defer oneShotComplete.Done()
 		changesResponse := rt.SendUserRequest("GET", "/db/_changes", "", "bernard")
 		RequireStatus(t, changesResponse, 200)
+		var changes changesResults
 		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.NoError(t, err, "Error unmarshalling changes response")
 		for _, entry := range changes.Results {
