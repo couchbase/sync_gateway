@@ -96,8 +96,9 @@ jobs:
         include:
           - os: macos-latest
             name: macos
-          - os: windows-latest
-            name: windows
+          # v8 windows does not work yet CBG-2741
+          #- os: windows-latest
+          #name: windows
           - os: ubuntu-latest
             name: ubuntu
     env:
