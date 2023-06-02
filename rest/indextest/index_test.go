@@ -11,6 +11,7 @@ package indextest
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -106,4 +107,125 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		require.Equal(t, roles, responseRoles)
 	})
 
+}
+
+func TestAsyncInitializeIndexes(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
+	ctx := base.TestCtx(t)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
+	require.NoError(t, err)
+	defer func() {
+		sc.Close(ctx)
+		require.NoError(t, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- rest.StartServer(ctx, &config, sc)
+	}()
+	require.NoError(t, sc.WaitForRESTAPIs())
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() { tb.Close() }()
+
+	importFilter := "function(doc) { return true }"
+	syncFunc := "function(doc){ channel(doc.channels); }"
+
+	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
+	dbConfig.StartOffline = base.BoolPtr(true)
+	dbConfigPayload, err := json.Marshal(dbConfig)
+	dbName := "db"
+
+	keyspace := dbName
+	if len(dbConfig.Scopes) > 0 {
+		keyspaces := getRESTKeyspaces(dbName, dbConfig.Scopes)
+		keyspace = keyspaces[0]
+	}
+	require.NoError(t, err)
+
+	// Persist config
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/"+dbName+"/", string(dbConfigPayload))
+	resp.RequireStatus(http.StatusCreated)
+
+	// Get config values before taking db offline
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/"+dbName+"/_config", "")
+	resp.RequireStatus(http.StatusOK)
+	dbConfigBeforeOffline := resp.Body
+
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/"+keyspace+"/_config/import_filter", "")
+	resp.RequireResponse(http.StatusOK, importFilter)
+
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/"+keyspace+"/_config/sync", "")
+	resp.RequireResponse(http.StatusOK, syncFunc)
+
+	// Take DB offline
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/"+dbName+"/_offline", "")
+	resp.RequireStatus(http.StatusOK)
+
+	// Check offline config matches online config
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/"+dbName+"/_config", "")
+	resp.RequireResponse(http.StatusOK, dbConfigBeforeOffline)
+
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/"+keyspace+"/_config/import_filter", "")
+	resp.RequireResponse(http.StatusOK, importFilter)
+
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/"+keyspace+"/_config/sync", "")
+	resp.RequireResponse(http.StatusOK, syncFunc)
+}
+
+//TODO:
+//   - remove indexes, add callbacks to verify functionality works while database is offline
+//   - similar test that has data populated in the bucket, validate resync
+//    - create db, write a bunch of docs
+//    - delete db
+//    - manually drop indexes  (simulates something like XDCR of populated data into a collection with no data)
+//    - create new db, init indexes, run resync without indexes
+
+func makeDbConfig(t *testing.T, tb *base.TestBucket, syncFunction string, importFilter string) rest.DbConfig {
+
+	scopesConfig := rest.GetCollectionsConfig(t, tb, 3)
+	for scopeName, scope := range scopesConfig {
+		for collectionName, _ := range scope.Collections {
+			collectionConfig := rest.CollectionConfig{}
+			if syncFunction != "" {
+				collectionConfig.SyncFn = &syncFunction
+			}
+			if importFilter != "" {
+				collectionConfig.ImportFilter = &importFilter
+			}
+			scopesConfig[scopeName].Collections[collectionName] = collectionConfig
+		}
+	}
+	bucketName := tb.GetName()
+	numIndexReplicas := uint(0)
+	enableXattrs := base.TestUseXattrs()
+
+	dbConfig := rest.DbConfig{
+		BucketConfig: rest.BucketConfig{
+			Bucket: &bucketName,
+		},
+		NumIndexReplicas: &numIndexReplicas,
+		EnableXattrs:     &enableXattrs,
+		Scopes:           scopesConfig,
+	}
+	return dbConfig
+}
+
+func getRESTKeyspaces(dbName string, scopesConfig rest.ScopesConfig) []string {
+	keyspaces := make([]string, 0)
+	for scopeName, scope := range scopesConfig {
+		for collectionName, _ := range scope.Collections {
+			keyspaces = append(keyspaces, strings.Join([]string{dbName, scopeName, collectionName}, base.ScopeCollectionSeparator))
+		}
+	}
+	return keyspaces
 }

@@ -64,15 +64,16 @@ type ServerContext struct {
 	statsContext                  *statsContext
 	BootstrapContext              *bootstrapContext
 	HTTPClient                    *http.Client
-	cpuPprofFileMutex             sync.Mutex      // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
-	cpuPprofFile                  *os.File        // An open file descriptor holds the reference during CPU profiling
-	_httpServers                  []*http.Server  // A list of HTTP servers running under the ServerContext
-	GoCBAgent                     *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
-	NoX509HTTPClient              *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
-	hasStarted                    chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
-	LogContextID                  string          // ID to differentiate log messages from different server context
-	fetchConfigsLastUpdate        time.Time       // The last time fetchConfigsWithTTL() updated dbConfigs
-	allowScopesInPersistentConfig bool            // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
+	cpuPprofFileMutex             sync.Mutex           // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
+	cpuPprofFile                  *os.File             // An open file descriptor holds the reference during CPU profiling
+	_httpServers                  []*http.Server       // A list of HTTP servers running under the ServerContext
+	GoCBAgent                     *gocbcore.Agent      // GoCB Agent to use when obtaining management endpoints
+	NoX509HTTPClient              *http.Client         // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
+	hasStarted                    chan struct{}        // A channel that is closed via PostStartup once the ServerContext has fully started
+	LogContextID                  string               // ID to differentiate log messages from different server context
+	fetchConfigsLastUpdate        time.Time            // The last time fetchConfigsWithTTL() updated dbConfigs
+	allowScopesInPersistentConfig bool                 // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
+	DatabaseInitManager           *DatabaseInitManager // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
 }
 
@@ -155,6 +156,10 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 	}
 	if config.Replicator.MaxConcurrentReplications != 0 {
 		sc.ActiveReplicationsCounter.activeReplicatorLimit = config.Replicator.MaxConcurrentReplications
+	}
+
+	if sc.persistentConfig {
+		sc.DatabaseInitManager = &DatabaseInitManager{}
 	}
 
 	sc.startStatsLogger(ctx)
@@ -518,8 +523,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		useViews = true
 	}
 
+	type indexInitData struct {
+		scopeAndCollection base.ScopeAndCollectionName
+		indexSet           db.CollectionIndexesType
+		datastore          base.DataStore
+	}
+
+	collectionsRequiringIndexes := make([]indexInitData, 0)
+
 	// initDataStore is a function to initialize Views or GSI indexes for a datastore
-	initDataStore := func(ds base.DataStore, metadataIndexes db.CollectionIndexesType) (err error) {
+	initDataStore := func(ds base.DataStore, metadataIndexes db.CollectionIndexesType, name base.ScopeAndCollectionName) (err error) {
 		if useViews {
 			viewErr := db.InitializeViews(ctx, ds)
 			if viewErr != nil {
@@ -528,37 +541,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return nil
 		}
 
-		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
-		if !gsiSupported {
-			return errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
+		indexInit := indexInitData{
+			scopeAndCollection: name,
+			indexSet:           metadataIndexes,
+			datastore:          ds,
 		}
-
-		numReplicas := DefaultNumIndexReplicas
-		if config.NumIndexReplicas != nil {
-			numReplicas = *config.NumIndexReplicas
-		}
-		n1qlStore, ok := base.AsN1QLStore(ds)
-		if !ok {
-			return errors.New("Cannot create indexes on non-Couchbase data store.")
-
-		}
-		options := db.InitializeIndexOptions{
-			FailFast:        false,
-			NumReplicas:     numReplicas,
-			Serverless:      sc.Config.IsServerless(),
-			MetadataIndexes: metadataIndexes,
-			UseXattrs:       config.UseXattrs(),
-		}
-		dsName, ok := base.AsDataStoreName(ds)
-		if !ok {
-			return fmt.Errorf("Could not get datastore name from %s", base.MD(ds.GetName()))
-		}
-		ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), dsName.ScopeName(), dsName.CollectionName())
-		indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
-		if indexErr != nil {
-			return indexErr
-		}
-
+		collectionsRequiringIndexes = append(collectionsRequiringIndexes, indexInit)
 		return nil
 	}
 
@@ -605,17 +593,17 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				if err != nil {
 					return nil, err
 				}
+				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
 				if resyncRequired {
-					collectionsRequiringResync = append(collectionsRequiringResync, base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+					collectionsRequiringResync = append(collectionsRequiringResync, scName)
 				}
-
-				if err := initDataStore(dataStore, metadataIndexOption); err != nil {
+				if err := initDataStore(dataStore, metadataIndexOption, scName); err != nil {
 					return nil, err
 				}
 			}
 		}
 		if !hasDefaultCollection {
-			if err := initDataStore(bucket.DefaultDataStore(), db.IndexesMetadataOnly); err != nil {
+			if err := initDataStore(bucket.DefaultDataStore(), db.IndexesMetadataOnly, base.DefaultScopeAndCollectionName()); err != nil {
 				return nil, err
 			}
 		}
@@ -628,8 +616,63 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if resyncRequired {
 			collectionsRequiringResync = append(collectionsRequiringResync, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: base.DefaultCollection})
 		}
-		if err := initDataStore(bucket.DefaultDataStore(), db.IndexesAll); err != nil {
+		if err := initDataStore(bucket.DefaultDataStore(), db.IndexesAll, base.DefaultScopeAndCollectionName()); err != nil {
 			return nil, err
+		}
+	}
+
+	startOffline := base.BoolDefault(config.StartOffline, false)
+	// Initialize any required indexes
+	if len(collectionsRequiringIndexes) > 0 {
+		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
+		if !gsiSupported {
+			return nil, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
+		}
+
+		// If database has been requested to start offline, or there's an active async initialization, use async initialization
+		if sc.DatabaseInitManager != nil && (startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)) {
+			// Initialize indexes asynchronously using DatabaseInitManager.
+			doneChan, err := sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
+			if err != nil {
+				return nil, err
+			}
+			// If not starting offline, block until initialization is complete
+			if !startOffline {
+				initError := <-doneChan
+				if initError != nil {
+					return nil, initError
+				}
+			}
+		} else {
+			// Initialize indexes as a blocking, synchronous operation using per-collection N1QL store
+			numReplicas := DefaultNumIndexReplicas
+			if config.NumIndexReplicas != nil {
+				numReplicas = *config.NumIndexReplicas
+			}
+
+			for _, indexInfo := range collectionsRequiringIndexes {
+				ds := indexInfo.datastore
+				n1qlStore, ok := base.AsN1QLStore(ds)
+				if !ok {
+					return nil, errors.New("Cannot create indexes on non-Couchbase data store.")
+				}
+				options := db.InitializeIndexOptions{
+					FailFast:        false,
+					NumReplicas:     numReplicas,
+					Serverless:      sc.Config.IsServerless(),
+					MetadataIndexes: indexInfo.indexSet,
+					UseXattrs:       config.UseXattrs(),
+				}
+				dsName, ok := base.AsDataStoreName(ds)
+				if !ok {
+					return nil, fmt.Errorf("Could not get datastore name from %s", base.MD(ds.GetName()))
+				}
+				ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), dsName.ScopeName(), dsName.CollectionName())
+				indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
+				if indexErr != nil {
+					return nil, indexErr
+				}
+			}
 		}
 	}
 
@@ -825,7 +868,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	stateChangeMsg := "DB loaded from config"
 
-	startOffline := base.BoolDefault(config.StartOffline, false)
 	needsResync := len(dbcontext.RequireResync) > 0
 
 	if needsResync || (startOffline && !options.forceOnline) {
@@ -1906,6 +1948,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 		return err
 	}
 	sc.GoCBAgent = goCBAgent
+	//sc.DatabaseInitManager.cluster = goCBAgent.
 
 	sc.NoX509HTTPClient, err = sc.initializeNoX509HttpClient()
 	if err != nil {

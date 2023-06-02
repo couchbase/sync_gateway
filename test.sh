@@ -67,3 +67,4 @@ for edition in "${build_editions[@]}"; do
     echo "  Testing edition: ${edition}"
     doTest $edition "$@"
 done
+golangci-lint run --config=.golangci-strict.yml
