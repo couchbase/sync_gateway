@@ -1138,7 +1138,7 @@ func (sc *ServerContext) TakeDbOnline(nonContextStruct base.NonCancellableContex
 		}
 
 		if len(reloadedDb.RequireResync) > 0 {
-			base.ErrorfCtx(nonContextStruct.Ctx, "Database has collections that require resync before it can go online: %v", reloadedDb.RequireResync)
+			base.ErrorfCtx(nonContextStruct.Ctx, "Database has collections that require regenerate_sequences resync before it can go online: %v", reloadedDb.RequireResync)
 			return
 		}
 		// Reloaded DB should already be online in most cases, but force state to online to handle cases
