@@ -223,6 +223,10 @@ func (c *changeCache) Start(initialSequence uint64) error {
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
 func (c *changeCache) Stop() {
 
+	if c.stopped == nil {
+		// changeCache never initialized - nothing to stop
+		return
+	}
 	if !c.stopped.CompareAndSwap(false, true) {
 		return
 	}

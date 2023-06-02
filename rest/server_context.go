@@ -825,8 +825,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	stateChangeMsg := "DB loaded from config"
 
-	if offline := base.BoolDefault(config.StartOffline, false) || len(dbcontext.RequireResync) > 0; !options.forceOnline && offline {
-		if len(dbcontext.RequireResync) > 0 {
+	startOffline := base.BoolDefault(config.StartOffline, false)
+	needsResync := len(dbcontext.RequireResync) > 0
+
+	if needsResync || (startOffline && !options.forceOnline) {
+		if needsResync {
 			stateChangeMsg = "Resync required for collections"
 		}
 

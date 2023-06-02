@@ -537,6 +537,12 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
+	if dbContext.UseQueryBasedResyncManager() {
+		dbContext.ResyncManager = NewResyncManager(metadataStore, metaKeys)
+	} else {
+		dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
+	}
+
 	return dbContext, nil
 }
 
@@ -2293,11 +2299,6 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) error {
 		// No cleanup necessary, stop heartbeater above will take care of it
 	}
 
-	if db.UseQueryBasedResyncManager() {
-		db.ResyncManager = NewResyncManager(db.MetadataStore, db.MetadataKeys)
-	} else {
-		db.ResyncManager = NewResyncManagerDCP(db.MetadataStore, db.UseXattrs(), db.MetadataKeys)
-	}
 	db.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	db.AttachmentCompactionManager = NewAttachmentCompactionManager(db.MetadataStore, db.MetadataKeys)
 
