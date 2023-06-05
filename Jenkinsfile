@@ -335,7 +335,7 @@ pipeline {
                                     // Generate junit-formatted test report
                                     script {
                                         try {
-                                            sh 'go2xunit -fail -suite-name-prefix="EE-V8-" -input verbose_ee-v8.out -output reports/test-ee-v8.xml'
+                                            sh 'go2xunit -fail -suite-name-prefix="EE-V8-" -input verbose_ee_v8.out -output reports/test-ee-v8.xml'
                                             githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-v8-unit-tests', description: env.TEST_EE_V8_PASS+'/'+env.TEST_EE_V8_TOTAL+' passed ('+env.TEST_EE_V8_SKIP+' skipped)', status: 'SUCCESS')
                                         } catch (Exception e) {
                                             githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_V8_FAIL+'/'+env.TEST_EE_V8_TOTAL+' failed ('+env.TEST_EE_V8_SKIP+' skipped)', status: 'FAILURE')
