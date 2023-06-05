@@ -18,11 +18,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/js"
 	v8 "github.com/snej/v8go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

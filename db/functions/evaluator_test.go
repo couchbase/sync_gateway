@@ -18,8 +18,8 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/js"
 	"github.com/stretchr/testify/assert"
 )
 

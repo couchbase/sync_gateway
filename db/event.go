@@ -16,8 +16,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/js"
 )
 
 // EventType is an enum for each unique event type.

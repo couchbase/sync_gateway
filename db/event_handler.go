@@ -19,8 +19,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/js"
 )
 
 // EventHandler interface represents an instance of an event handler defined in the database config

@@ -34,10 +34,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/square/go-jose.v2"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/js"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

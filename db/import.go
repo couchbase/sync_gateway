@@ -17,9 +17,9 @@ import (
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/js"
 )
 
 type ImportMode uint8

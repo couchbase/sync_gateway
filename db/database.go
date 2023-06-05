@@ -21,10 +21,10 @@ import (
 
 	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/js"
 	pkgerrors "github.com/pkg/errors"
 )
 

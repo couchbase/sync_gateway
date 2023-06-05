@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/js"
 )
 
 /** The data given to the channel-mapper function. */

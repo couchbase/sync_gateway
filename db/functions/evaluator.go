@@ -22,9 +22,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/js"
 	v8 "github.com/snej/v8go" // Docs: https://pkg.go.dev/github.com/snej/v8go
 )
 

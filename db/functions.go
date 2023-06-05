@@ -18,9 +18,9 @@ import (
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/js"
 )
 
 /* This is the interface to the functions and GraphQL APIs implemented in the functions package. */

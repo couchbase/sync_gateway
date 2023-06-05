@@ -14,8 +14,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/js"
 )
 
 // Validates a FunctionsConfig & GraphQLConfig.

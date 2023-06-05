@@ -19,9 +19,9 @@ import (
 	"os"
 
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/js"
 )
 
 //////// INITIALIZATION:
