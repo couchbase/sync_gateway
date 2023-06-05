@@ -137,8 +137,8 @@ type BlipSyncContext struct {
 	readOnly bool
 
 	collections *blipCollections // all collections handled by blipSyncContext, implicit or via GetCollections
-	revSender         *blipRevSender // schedules sending 'rev' messages
-	stats blipSyncStats // internal structure to store stats
+	revSender   *blipRevSender   // schedules sending 'rev' messages
+	stats       blipSyncStats    // internal structure to store stats
 }
 
 // blipSyncStats has support structures to support reporting stats at regular interval
