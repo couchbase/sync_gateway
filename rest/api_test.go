@@ -2684,13 +2684,11 @@ func TestDocChannelSetPruning(t *testing.T) {
 }
 
 func TestNullDocHandlingForMutable1xBody(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollectionWithUser()
+	documentRev, err := documents.ParseDocumentRevision([]byte("null"))
+	require.NoError(t, err)
+	documentRev.DocID = "doc1"
 
-	documentRev := db.DocumentRevision{DocID: "doc1", BodyBytes: []byte("null")}
-
-	body, err := documentRev.Mutable1xBody(collection, nil, nil, false)
+	body, err := documentRev.UnmarshalBody()
 	require.Error(t, err)
 	require.Nil(t, body)
 	assert.Contains(t, err.Error(), "null doc body for doc")

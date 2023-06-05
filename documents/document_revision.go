@@ -153,6 +153,9 @@ func (rev *DocumentRevision) BodyBytesWith(specialProperties ...string) ([]byte,
 //
 // This function is expensive and should be used RARELY, primarily for tests.
 func (rev *DocumentRevision) UnmarshalBody() (map[string]any, error) {
+	if rev._bodyBytes == nil {
+		return nil, fmt.Errorf("null doc body for doc")
+	}
 	var body Body
 	err := body.Unmarshal(rev._bodyBytes)
 	return body, err
