@@ -9,6 +9,7 @@ pipeline {
         BRANCH = "${BRANCH_NAME}"
         COVERALLS_TOKEN = credentials('SG_COVERALLS_TOKEN')
         EE_BUILD_TAG = "cb_sg_enterprise"
+        V8_BUILD_TAG = "cb_sg_v8"
         SGW_REPO = "github.com/couchbase/sync_gateway"
         GH_ACCESS_TOKEN_CREDENTIAL = "github_cb-robot-sg_access_token"
         GO111MODULE = "on"
@@ -80,9 +81,19 @@ pipeline {
                         sh "GOOS=linux go build -o sync_gateway_ce-linux -v ${SGW_REPO}"
                     }
                 }
+                stage('CE Linux V8') {
+                    steps {
+                        sh "GOOS=linux go build -tags ${V8_BUILD_TAG} -o sync_gateway_ce-linux -v ${SGW_REPO}"
+                    }
+                }
                 stage('EE Linux') {
                     steps {
                         sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
+                    }
+                }
+                stage('EE Linux V8') {
+                    steps {
+                        sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG},${V8_BUILD_TAG} -v ${SGW_REPO}"
                     }
                 }
                 stage('CE macOS') {
@@ -286,6 +297,51 @@ pipeline {
                                             // archive verbose test logs in the event of a test failure
                                             archiveArtifacts artifacts: 'verbose_ee.out', fingerprint: false
                                             unstable("At least one EE unit test failed")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        stage('EE V8') {
+                            steps {
+                                withEnv(["PATH+GO=${env.GOTOOLS}/bin"]) {
+                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-v8-unit-tests', description: 'EE V8 Unit Tests Running', status: 'PENDING')
+
+                                    // Build EE coverprofiles
+                                    sh "2>&1 go test -timeout=20m -tags ${EE_BUILD_TAG},${V8_BUILD_TAG} -coverpkg=./... -coverprofile=cover_ee_v8.out -race -count=1 -v ./... > verbose_ee_v8.out.raw || true"
+
+                                    sh 'go tool cover -func=cover_ee_v8.out | awk \'END{print "Total SG EE V8 Coverage: " $3}\''
+
+                                    sh 'mkdir -p reports'
+
+                                    // strip non-printable characters from the raw verbose test output
+                                    sh 'LC_CTYPE=C tr -dc [:print:][:space:] < verbose_ee_v8.out.raw > verbose_ee_v8.out'
+
+                                    // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
+                                    sh 'gocov convert cover_ee_v8.out | gocov-xml > reports/coverage-ee_v8.xml'
+
+                                    // Grab test fail/total counts so we can print them later
+                                    sh "grep '\\-\\-\\- PASS: ' verbose_ee_v8.out | wc -l | awk '{printf \$1}' > test-ee-v8-pass.count"
+                                    sh "grep '\\-\\-\\- FAIL: ' verbose_ee_v8.out | wc -l | awk '{printf \$1}' > test-ee-v8-fail.count"
+                                    sh "grep '\\-\\-\\- SKIP: ' verbose_ee_v8.out | wc -l | awk '{printf \$1}' > test-ee-v8-skip.count"
+                                    sh "grep '=== RUN' verbose_ee_v8.out | wc -l | awk '{printf \$1}' > test-ee-v8-total.count"
+                                    script {
+                                        env.TEST_EE_PASS = readFile 'test-ee-v8-pass.count'
+                                        env.TEST_EE_FAIL = readFile 'test-ee-v8-fail.count'
+                                        env.TEST_EE_SKIP = readFile 'test-ee-v8-skip.count'
+                                        env.TEST_EE_TOTAL = readFile 'test-ee-v8-total.count'
+                                    }
+
+                                    // Generate junit-formatted test report
+                                    script {
+                                        try {
+                                            sh 'go2xunit -fail -suite-name-prefix="EE-V8-" -input verbose_ee-v8.out -output reports/test-ee-v8.xml'
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-v8-unit-tests', description: env.TEST_EE_V8_PASS+'/'+env.TEST_EE_V8_TOTAL+' passed ('+env.TEST_EE_V8_SKIP+' skipped)', status: 'SUCCESS')
+                                        } catch (Exception e) {
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_V8_FAIL+'/'+env.TEST_EE_V8_TOTAL+' failed ('+env.TEST_EE_V8_SKIP+' skipped)', status: 'FAILURE')
+                                            // archive verbose test logs in the event of a test failure
+                                            archiveArtifacts artifacts: 'verbose_ee_v8.out', fingerprint: false
+                                            unstable("At least one EE V8 unit test failed")
                                         }
                                     }
                                 }
