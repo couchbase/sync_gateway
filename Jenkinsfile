@@ -94,7 +94,7 @@ pipeline {
                 stage('EE macOS') {
                     steps {
 			// macos cross compilation requires cgo
-                        sh "CGO_ENABLED=1 GOOS=darwin go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
+                        sh "CGO_ENABLED=1 GOOS=darwin go build -o sync_gateway_ee-darwin -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                     }
                 }
                 stage('CE Windows') {
