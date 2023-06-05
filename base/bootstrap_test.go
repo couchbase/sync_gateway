@@ -9,6 +9,7 @@
 package base
 
 import (
+	"strings"
 	"sync"
 	"testing"
 
@@ -59,7 +60,14 @@ func TestBootstrapRefCounting(t *testing.T) {
 
 	buckets, err := cluster.GetConfigBuckets()
 	require.NoError(t, err)
-	require.Len(t, buckets, tbpNumBuckets())
+	var testBuckets []string
+	for _, bucket := range buckets {
+		if strings.HasPrefix(bucket, tbpBucketNamePrefix) {
+			testBuckets = append(testBuckets, bucket)
+		}
+
+	}
+	require.Len(t, testBuckets, tbpNumBuckets())
 	// GetConfigBuckets doesn't cache connections, it uses cluster connection to determine number of buckets
 	require.Len(t, cluster.cachedBucketConnections.buckets, 0)
 
@@ -73,11 +81,11 @@ func TestBootstrapRefCounting(t *testing.T) {
 	}
 
 	primeBucketConnectionCache(buckets)
-	require.Len(t, cluster.cachedBucketConnections.buckets, tbpNumBuckets())
+	require.Len(t, cluster.cachedBucketConnections.buckets, len(buckets))
 
 	// call removeOutdatedBuckets as no-op
 	cluster.cachedBucketConnections.removeOutdatedBuckets(SetOf(buckets...))
-	require.Len(t, cluster.cachedBucketConnections.buckets, tbpNumBuckets())
+	require.Len(t, cluster.cachedBucketConnections.buckets, len(buckets))
 
 	// call removeOutdatedBuckets to remove all cached buckets, call multiple times to make sure idempotent
 	for i := 0; i < 3; i++ {
@@ -86,7 +94,7 @@ func TestBootstrapRefCounting(t *testing.T) {
 	}
 
 	primeBucketConnectionCache(buckets)
-	require.Len(t, cluster.cachedBucketConnections.buckets, tbpNumBuckets())
+	require.Len(t, cluster.cachedBucketConnections.buckets, len(buckets))
 
 	// make sure that you can still use an active connection while the bucket has been removed
 	wg := sync.WaitGroup{}
