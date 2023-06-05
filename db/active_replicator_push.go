@@ -63,7 +63,7 @@ func (apr *ActivePushReplicator) Start(ctx context.Context) error {
 		base.WarnfCtx(apr.ctx, "Couldn't connect: %s", err)
 		if errors.Is(err, fatalReplicatorConnectError) {
 			base.WarnfCtx(apr.ctx, "Stopping replication connection attempt")
-		} else if apr.config.TotalReconnectTimeout != 0 {
+		} else {
 			base.InfofCtx(apr.ctx, base.KeyReplicate, "Attempting to reconnect in background: %v", err)
 			apr.reconnectActive.Set(true)
 			go apr.reconnectLoop()
