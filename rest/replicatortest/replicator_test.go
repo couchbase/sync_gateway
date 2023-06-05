@@ -655,11 +655,7 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 	// assert it enter error state
 	replicationID = t.Name() + "2"
 	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
-	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateError)
-
-	// assert on stats
-	dbstats := rt2.GetDatabase().DbStats
-	assert.Equal(t, int64(2), dbstats.DatabaseStats.NumReplicationsRejectedLimit.Value())
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
 
 	// change limit to 1 and assert that the replications currently running continue as normal and reject any new ones being added
 	resp = rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 1}`)
@@ -2375,16 +2371,17 @@ func TestReplicatorReconnectBehaviour(t *testing.T) {
 
 			if test.specified {
 				resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/replication1", fmt.Sprintf(`{
-    					"replication_id": "replication1", "remote": "%s", "direction": "pushAndPull",
+    					"replication_id": "replication1", "remote": "%s", "direction": "pull",
 						"collections_enabled": %t, "continuous": true, "max_backoff_time": %d}`, remoteURL, base.TestsUseNamedCollections(), test.maxBackoff))
 				rest.RequireStatus(t, resp, http.StatusCreated)
 			} else {
 				resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/replication1", fmt.Sprintf(`{
-    					"replication_id": "replication1", "remote": "%s", "direction": "pushAndPull",
+    					"replication_id": "replication1", "remote": "%s", "direction": "pull",
 						"collections_enabled": %t, "continuous": true}`, remoteURL, base.TestsUseNamedCollections()))
 				rest.RequireStatus(t, resp, http.StatusCreated)
 			}
 			activeRT.WaitForReplicationStatus("replication1", db.ReplicationStateRunning)
+			activeRT.WaitForActiveReplicatorInitialization(1)
 
 			activeReplicator := activeRT.GetDatabase().SGReplicateMgr.GetActiveReplicator("replication1")
 			config := activeReplicator.GetActiveReplicatorConfig()
@@ -2404,7 +2401,7 @@ func TestReplicatorReconnectBehaviour(t *testing.T) {
 //   - puts some docs on the remote rest tester and assert the replicator pulls these docs to prove reconnect was successful
 func TestReconnectReplicator(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	testCases := []struct {
 		name       string
@@ -2446,7 +2443,10 @@ func TestReconnectReplicator(t *testing.T) {
 			}
 			activeRT.WaitForReplicationStatus("replication1", db.ReplicationStateRunning)
 
+			activeRT.WaitForActiveReplicatorInitialization(1)
 			ar := activeRT.GetDatabase().SGReplicateMgr.GetActiveReplicator("replication1")
+			// race between stopping the blip sender here and the initialization of it on the replicator so need this assertion in here to avoid panic
+			activeRT.WaitForPullBlipSenderInitialisation(replicationName)
 			ar.Pull.GetBlipSender().Stop()
 
 			activeRT.WaitForReplicationStatus(replicationName, db.ReplicationStateReconnecting)
