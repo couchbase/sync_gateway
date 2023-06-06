@@ -242,9 +242,11 @@ User:
       description: A set of access grants by scope and collection.
       type: object
       additionalProperties:
+        x-additionalPropertiesName: scopename
         description: An object keyed by scope, containing a set of collections.
         type: object
         additionalProperties:
+          x-additionalPropertiesName: collectionname
           $ref: '#/CollectionAccessConfig'
     email:
       description: The email address of the user.
@@ -345,9 +347,11 @@ Role:
       description: A set of access grants by scope and collection.
       type: object
       additionalProperties:
+        x-additionalPropertiesName: scopename
         description: An object keyed by scope, containing a set of collections.
         type: object
         additionalProperties:
+          x-additionalPropertiesName: collectionname
           $ref: '#/CollectionAccessConfig'
   title: Role
 User-session-information:
@@ -465,6 +469,7 @@ Document:
     _attachments:
       type: object
       additionalProperties:
+        x-additionalPropertiesName: attachmentname
         description: The name of the attachment.
         type: object
         properties:
@@ -529,15 +534,15 @@ Design-doc:
       type: string
     views:
       type: object
-      properties:
-        additionalProperties:
-          description: The name of the view.
-          type: object
-          properties:
-            map:
-              type: string
-            reduce:
-              type: string
+      additionalProperties:
+        x-additionalPropertiesName: viewname
+        description: The name of the view.
+        type: object
+        properties:
+          map:
+            type: string
+          reduce:
+            type: string
     options:
       type: object
       properties:
@@ -1078,19 +1083,24 @@ Replication-status:
     - replication_id
   title: Replication-status
 Scopes:
-  description: A map of all the collections with their corresponding configs for this scope
+  description: Scope-specific configuration.
   type: object
-  additionalProperties:
-    $ref: '#/CollectionConfig'
+  properties:
+    collections:
+      description: An object keyed by collection name containing config for the specific collection.
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: collectionname
+        $ref: '#/CollectionConfig'
   title: Scopes
 CollectionConfig:
-  description: The configuration for the individual collection
+  description: Collection-specific configuration.
   type: object
   properties:
     sync:
       description: The Javascript function that newly created documents in this collection are ran through.
       type: string
-      example: 'function(doc){channel(doc.channels);}'
+      example: 'function(doc){channel("collection name");}'
     import_filter:
       description: |-
         This is the function that all imported documents in this collection are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
@@ -1156,23 +1166,27 @@ Database:
       type: integer
       default: 1000
     scopes:
-      description: Scope and collection specific config.
+      description: An object keyed by scope name containing config for the specific collection.
       type: object
-      properties:
-        additionalProperties:
-          $ref: '#/Scopes'
+      additionalProperties:
+        x-additionalPropertiesName: scopename
+        $ref: '#/Scopes'
     name:
       description: The name of the database.
       type: string
     sync:
-      description: The Javascript function that newly created documents are ran through for the _default scope and collection.
+      description: The Javascript function that newly created documents are ran through for the default scope and collection.
+
+        If `scopes` parameter is set, this is ignored.
       type: string
       default: 'function(doc){channel(doc.channels);}'
     users:
       additionalProperties:
+        x-additionalPropertiesName: username
         $ref: '#/User'
     roles:
       additionalProperties:
+        x-additionalPropertiesName: rolename
         $ref: '#/Role'
     revs_limit:
       description: |-
@@ -1203,9 +1217,11 @@ Database:
       default: 16
     import_filter:
       description: |-
-        This is the function that all imported documents in the _default scope and collection are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
+        This is the function that all imported documents in the default scope and collection are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
 
         `import_docs` must be true to make this field applicable.
+
+        If `scopes` parameter is set, this is ignored.
       type: string
       example: 'function(doc) { if (doc.type != ''mobile'') { return false; } return true; }'
     import_backup_old_rev:
@@ -1231,8 +1247,8 @@ Database:
       type: string
       default: DCP
       enum:
-        - TAP
         - DCP
+        - TAP
       deprecated: true
     allow_empty_password:
       description: This controls whether users that are created can have an empty password or not.
@@ -1294,7 +1310,7 @@ Database:
             enable_star_channel:
               description: Used to control whether Sync Gateway should use the all documents (*) channel.
               type: boolean
-              default: false
+              default: true
             max_length:
               description: The maximum number of entries to maintain in the cache per channel.
               type: integer
@@ -1443,6 +1459,7 @@ Database:
       description: Configuration for Local JWT authentication.
       type: object
       additionalProperties:
+        x-additionalPropertiesName: providername
         description: The providers name.
         type: object
         required: ['issuer', 'client_id', 'algorithms', 'keys']
@@ -1529,6 +1546,7 @@ Database:
           description: List of OpenID Connect issuers.
           type: object
           additionalProperties:
+            x-additionalPropertiesName: providername
             description: The providers name.
             type: object
             properties:
@@ -1784,9 +1802,8 @@ Event-config:
     options:
       description: The options for the event.
       type: object
-      properties:
-        additionalProperties:
-          description: The option key and value.
+      additionalProperties:
+        description: The option key and value.
   title: Event-config
 Resync-status:
   description: The status of a resync operation
@@ -2112,6 +2129,9 @@ Startup-config:
           type: integer
           maximum: 9
           minimum: 0
+        max_concurrent_replications:
+          description: Maximum number of concurrent replication connections allowed. If set to 0 this limit will be ignored.
+          type: integer
       readOnly: true
     unsupported:
       description: Settings that are not officially supported. It is highly recommended these are **not** used.
@@ -2143,12 +2163,14 @@ Startup-config:
       description: 'A map of database name to credentials, that can be used instead of the bootstrap ones.'
       type: object
       additionalProperties:
+        x-additionalPropertiesName: databasename
         $ref: '#/CredentialsConfig'
       readOnly: true
     bucket_credentials:
       description: 'A map of bucket names to credentials, that can be used instead of the bootstrap ones.'
       type: object
       additionalProperties:
+        x-additionalPropertiesName: bucketname
         $ref: '#/CredentialsConfig'
       readOnly: true
     max_file_descriptors:
@@ -2162,6 +2184,46 @@ Startup-config:
       type: integer
       readOnly: true
   title: Startup-config
+Runtime-config:
+  type: object
+  properties:
+    logging:
+      description: The configuration settings for modifying Sync Gateway logging.
+      type: object
+      properties:
+        log_file_path:
+          description: Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
+          type: string
+          readOnly: true
+        redaction_level:
+          description: Redaction level to apply to log output.
+          type: string
+          default: partial
+          enum:
+            - none
+            - partial
+            - full
+            - unset
+          readOnly: true
+        console:
+          $ref: '#/Console-logging-config'
+        error:
+          $ref: '#/File-logging-config'
+        warn:
+          $ref: '#/File-logging-config'
+        info:
+          $ref: '#/File-logging-config'
+        debug:
+          $ref: '#/File-logging-config'
+        trace:
+          $ref: '#/File-logging-config'
+        stats:
+          $ref: '#/File-logging-config'
+    max_concurrent_replications:
+      description: Maximum number of concurrent replication connections allowed. If set to 0 this limit will be ignored.
+      type: integer
+      default: 0
+  title: Runtime-config
 File-logging-config:
   type: object
   properties:

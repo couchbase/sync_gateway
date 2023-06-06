@@ -218,7 +218,7 @@ func (h *handler) handleFlush() error {
 		}
 
 		// Manually re-open a temporary bucket connection just for flushing purposes
-		tempBucketForFlush, err := db.GetConnectToBucketFn(false)(h.ctx(), spec)
+		tempBucketForFlush, err := db.ConnectToBucket(h.ctx(), spec, false)
 		if err != nil {
 			return err
 		}
@@ -330,7 +330,7 @@ func (h *handler) handlePostResync() error {
 			}
 
 			if dbState != db.DBOffline {
-				return base.HTTPErrorf(http.StatusServiceUnavailable, "Database must be _offline before calling _resync")
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "Database must be _offline before calling _resync, current state: %s", db.RunStateString[dbState])
 			}
 		}
 

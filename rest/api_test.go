@@ -260,8 +260,12 @@ func TestCORSOrigin(t *testing.T) {
 				response := rt.SendRequestWithHeaders(method, "/{{.keyspace}}/", "", reqHeaders)
 				assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
 				if method == http.MethodGet {
-					RequireStatus(t, response, http.StatusBadRequest)
-					require.Contains(t, response.Body.String(), invalidDatabaseName)
+					if base.TestsUseNamedCollections() {
+						RequireStatus(t, response, http.StatusBadRequest)
+						require.Contains(t, response.Body.String(), invalidDatabaseName)
+					} else { // CBG-2978, should not be different from GSI/collections
+						RequireStatus(t, response, http.StatusUnauthorized)
+					}
 				} else {
 					RequireStatus(t, response, http.StatusNoContent)
 
@@ -2671,6 +2675,19 @@ func TestDocChannelSetPruning(t *testing.T) {
 	assert.Equal(t, "a", syncData.ChannelSetHistory[0].Name)
 	assert.Equal(t, uint64(1), syncData.ChannelSetHistory[0].Start)
 	assert.Equal(t, uint64(12), syncData.ChannelSetHistory[0].End)
+}
+
+func TestNullDocHandlingForMutable1xBody(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollectionWithUser()
+
+	documentRev := db.DocumentRevision{DocID: "doc1", BodyBytes: []byte("null")}
+
+	body, err := documentRev.Mutable1xBody(collection, nil, nil, false)
+	require.Error(t, err)
+	require.Nil(t, body)
+	assert.Contains(t, err.Error(), "null doc body for doc")
 }
 
 func TestTombstoneCompactionAPI(t *testing.T) {

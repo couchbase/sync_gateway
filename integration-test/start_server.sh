@@ -55,10 +55,11 @@ docker stop ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
 docker rm ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
 # --volume: Makes and mounts a CBS folder for storing a CBCollect if needed
 
-if [[ -z "${MULTI_NODE:-}" ]]; then
-    docker run -d --name ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} --volume "${DOCKER_CBS_ROOT_DIR}/cbs:/root" --volume "${WORKSPACE_ROOT}:/workspace" -p 8091-8096:8091-8096 -p 11207:11207 -p 11210:11210 -p 11211:11211 -p 18091-18094:18091-18094 "couchbase/server:${COUCHBASE_DOCKER_IMAGE_NAME}"
-else
+if [ "${MULTI_NODE:-}" == "true" ]; then
     ${DOCKER_COMPOSE} up -d --force-recreate --renew-anon-volumes --remove-orphans
+else
+    # single node
+    docker run -d --name ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} --volume "${DOCKER_CBS_ROOT_DIR}/cbs:/root" --volume "${WORKSPACE_ROOT}:/workspace" -p 8091-8096:8091-8096 -p 11207:11207 -p 11210:11210 -p 11211:11211 -p 18091-18094:18091-18094 "couchbase/server:${COUCHBASE_DOCKER_IMAGE_NAME}"
 fi
 
 # Test to see if Couchbase Server is up
@@ -72,7 +73,8 @@ docker exec couchbase couchbase-cli setting-index --cluster couchbase://localhos
 
 curl -u Administrator:password -v -X POST http://127.0.0.1:8091/node/controller/rename -d 'hostname=127.0.0.1'
 
-if [[ -n "${MULTI_NODE:-}" ]]; then
+
+if [ "${MULTI_NODE:-}" == "true" ]; then
     REPLICA1_NAME=couchbase-replica1
     REPLICA2_NAME=couchbase-replica2
     CLI_ARGS=(-c couchbase://couchbase -u Administrator -p password)

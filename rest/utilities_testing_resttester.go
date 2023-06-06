@@ -146,6 +146,14 @@ func (rt *RestTester) WaitForActiveReplicatorInitialization(count int) {
 	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "mismatch on number of active replicators")
 }
 
+func (rt *RestTester) WaitForPullBlipSenderInitialisation(name string) {
+	successFunc := func() bool {
+		bs := rt.GetDatabase().SGReplicateMgr.GetActiveReplicator(name).Pull.GetBlipSender()
+		return bs != nil
+	}
+	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "blip sender on active replicator not initialized")
+}
+
 // createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
 func (rt *RestTester) CreateReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
 	rt.CreateReplicationForDB("{{.db}}", replicationID, remoteURLString, direction, channels, continuous, conflictResolver)
@@ -177,6 +185,21 @@ func (rt *RestTester) WaitForAssignedReplications(count int) {
 		return len(replicationStatuses) == count
 	}
 	require.NoError(rt.TB, rt.WaitForCondition(successFunc))
+}
+
+func (rt *RestTester) GetActiveReplicatorCount() int {
+	rt.ServerContext().ActiveReplicationsCounter.lock.Lock()
+	defer rt.ServerContext().ActiveReplicationsCounter.lock.Unlock()
+	return rt.ServerContext().ActiveReplicationsCounter.activeReplicatorCount
+}
+
+func (rt *RestTester) WaitForActiveReplicatorCount(expCount int) {
+	var count int
+	successFunc := func() bool {
+		count = rt.GetActiveReplicatorCount()
+		return count == expCount
+	}
+	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "Mismatch in active replicator count, expected count %d actual %d", expCount, count)
 }
 
 func (rt *RestTester) WaitForReplicationStatusForDB(dbName string, replicationID string, targetStatus string) {

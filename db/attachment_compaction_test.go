@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -60,7 +61,7 @@ func TestAttachmentMark(t *testing.T) {
 	attKeys = append(attKeys, createDocWithInBodyAttachment(t, ctx, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), databaseCollection))
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, _, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(13), attachmentsMarked)
 
@@ -196,7 +197,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), nil, terminator)
+	_, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), nil, terminator)
 	assert.NoError(t, err)
 
 	for _, docID := range singleMarkedAttIDs {
@@ -230,6 +231,90 @@ func TestAttachmentCleanup(t *testing.T) {
 		assert.NotContains(t, xattr, t.Name())
 		assert.NotContains(t, xattr, "old")
 		assert.Contains(t, xattr, "recent")
+	}
+
+}
+
+func TestAttachmentCleanupRollback(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server since it requires DCP")
+	}
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	dbcOptions := DatabaseContextOptions{
+		Scopes: GetScopesOptionsDefaultCollectionOnly(t),
+	}
+	testDb, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer testDb.Close(ctx)
+
+	var garbageVBUUID gocbcore.VbUUID = 1234
+	collection := GetSingleDatabaseCollection(t, testDb.DatabaseContext)
+	dataStore := collection.dataStore
+	collectionID := collection.GetCollectionID()
+
+	makeMarkedDoc := func(docid string, compactID string) {
+		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
+		assert.NoError(t, err)
+		_, err = dataStore.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
+		assert.NoError(t, err)
+	}
+
+	// create some marked attachments
+	singleMarkedAttIDs := make([]string, 0, 100)
+	for i := 0; i < 100; i++ {
+		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "marked", i)
+		makeMarkedDoc(docID, t.Name())
+		singleMarkedAttIDs = append(singleMarkedAttIDs, docID)
+	}
+
+	// assert there are marked attachments to clean up
+	for _, docID := range singleMarkedAttIDs {
+		var xattr map[string]interface{}
+		_, err := dataStore.GetXattr(docID, base.AttachmentCompactionXattrName, &xattr)
+		assert.NoError(t, err)
+	}
+
+	bucket, err := base.AsGocbV2Bucket(testDb.Bucket)
+	require.NoError(t, err)
+	dcpFeedKey := GenerateCompactionDCPStreamName(t.Name(), CleanupPhase)
+	clientOptions, err := getCompactionDCPClientOptions(collectionID, testDb.Options.GroupID, testDb.MetadataKeys.DCPCheckpointPrefix(testDb.Options.GroupID))
+	require.NoError(t, err)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, nil, *clientOptions, bucket)
+	require.NoError(t, err)
+
+	// alter dcp metadata to feed into the compaction manager
+	vbUUID := base.GetVBUUIDs(dcpClient.GetMetadata())
+	vbUUID[0] = uint64(garbageVBUUID)
+
+	metadataKeys := base.NewMetadataKeys(testDb.Options.MetadataID)
+	testDb.AttachmentCompactionManager = NewAttachmentCompactionManager(dataStore, metadataKeys)
+	manager := AttachmentCompactionManager{CompactID: t.Name(), Phase: CleanupPhase, VBUUIDs: vbUUID}
+	testDb.AttachmentCompactionManager.Process = &manager
+
+	terminator := base.NewSafeTerminator()
+	err = testDb.AttachmentCompactionManager.Process.Run(ctx, map[string]interface{}{"database": testDb}, testDb.AttachmentCompactionManager.UpdateStatusClusterAware, terminator)
+	require.NoError(t, err)
+
+	err = WaitForConditionWithOptions(func() bool {
+		var status AttachmentManagerResponse
+		rawStatus, err := testDb.AttachmentCompactionManager.GetStatus()
+		assert.NoError(t, err)
+		err = base.JSONUnmarshal(rawStatus, &status)
+		require.NoError(t, err)
+
+		if status.State == BackgroundProcessStateCompleted {
+			return true
+		}
+
+		return false
+	}, 100, 1000)
+	require.NoError(t, err)
+
+	// assert that the marked attachments have been "cleaned up"
+	for _, docID := range singleMarkedAttIDs {
+		var xattr map[string]interface{}
+		_, err := dataStore.GetXattr(docID, base.AttachmentCompactionXattrName, &xattr)
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, base.ErrXattrNotFound))
 	}
 
 }
@@ -271,7 +356,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, vbUUIDS, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, vbUUIDS, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), attachmentsMarked)
 
@@ -293,7 +378,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		}
 	}
 
-	err = attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, terminator)
+	_, err = attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, terminator)
 	assert.NoError(t, err)
 
 	for _, attDocKey := range attKeys {
@@ -620,14 +705,14 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 
 	// Run mark phase as usual
 	terminator := base.NewSafeTerminator()
-	_, vbUUIDs, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDB, t.Name(), terminator, &base.AtomicInt{})
+	_, vbUUIDs, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDB, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 
 	// Manually modify a vbUUID and ensure the Sweep phase errors
 	vbUUIDs[0] = 1
 
 	_, err = attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "error opening stream for vb 0: VbUUID mismatch when failOnRollback set")
 }
 
@@ -891,7 +976,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	stat := &base.AtomicInt{}
 	count := int64(0)
 	go func() {
-		attachmentCount, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, "mark", terminator, stat)
+		attachmentCount, _, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, "mark", terminator, stat)
 		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
 	}()

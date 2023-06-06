@@ -545,6 +545,143 @@ func TestPullReplicationAPI(t *testing.T) {
 	assert.Equal(t, "rt2", doc2Body["source"])
 }
 
+func TestStopServerlessConnectionLimitingDuringReplications(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+
+	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	for i := 0; i < 10; i++ {
+		_ = rt2.PutDoc(fmt.Sprint(i), `{"source":"rt2","channels":["alice"]}`)
+	}
+
+	// create two replications to take us to the limit
+	replicationID := t.Name()
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	replicationID = t.Name() + "1"
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	rt1.WaitForActiveReplicatorInitialization(2)
+
+	// try create a new replication to take it beyond the threshold set by runtime config call
+	// assert it enter error state
+	replicationID = t.Name() + "2"
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
+
+	// change limit to 0 (turning limiting off) and assert that the replications currently running continue as normal and reject any new ones being added
+	resp = rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 0}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// assert the replications aren't killed as result of change in limit
+	rt2.WaitForActiveReplicatorCount(2)
+	// assert we still can create a new replication given that originally the limit was 2 replications
+	replicationID = t.Name() + "3"
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+}
+
+func TestServerlessConnectionLimitingOneshotFeed(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+
+	// update runtime config to limit to 2 concurrent replication connections
+	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	for i := 0; i < 200; i++ {
+		_ = rt2.PutDoc(fmt.Sprint(i), `{"source":"rt2","channels":["alice"]}`)
+	}
+
+	replicationID := t.Name()
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	replicationID = t.Name() + "1"
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+	rt1.WaitForActiveReplicatorInitialization(2)
+	// assert the active replicator count has increased by 2
+	rt2.WaitForActiveReplicatorCount(2)
+	replicationID = t.Name()
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+	replicationID = t.Name() + "1"
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+
+	// assert that the count for active replicators has decreased by 2 as both replications have finished
+	rt2.WaitForActiveReplicatorCount(0)
+
+	// assert we can create a new replication as count has decreased below threshold
+	replicationID = t.Name() + "2"
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+}
+
+func TestServerlessConnectionLimitingContinuous(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+
+	// update runtime config to limit to 2 concurrent replication connections
+	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	for i := 0; i < 200; i++ {
+		_ = rt2.PutDoc(fmt.Sprint(i), `{"source":"rt2","channels":["alice"]}`)
+	}
+
+	// create two replications to take us to the limit
+	replicationID := t.Name()
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	replicationID = t.Name() + "1"
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	rt1.WaitForActiveReplicatorInitialization(2)
+
+	// try create a new replication to take it beyond the threshold set by runtime config call
+	// assert it enter error state
+	replicationID = t.Name() + "2"
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
+
+	// change limit to 1 and assert that the replications currently running continue as normal and reject any new ones being added
+	resp = rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 1}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// assert the replications aren't killed as result of change in limit
+	rt2.WaitForActiveReplicatorCount(2)
+	// assert we still can't create a new replication
+	replicationID = t.Name() + "3"
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
+
+	// stop one of the replicators currently running
+	resp = rt1.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/"+t.Name()+"1?action=stop", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rt1.WaitForReplicationStatus(t.Name()+"1", db.ReplicationStateStopped)
+	// assert the count has been decremented
+	rt2.WaitForActiveReplicatorCount(1)
+
+	// assert we still can't create new replication (new limit is 1)
+	replicationID = t.Name() + "4"
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
+
+}
+
 // TestPullReplicationAPI
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates a continuous pull replication on rt1 via the REST API
@@ -640,7 +777,8 @@ func TestReplicationStatusActions(t *testing.T) {
 
 }
 
-func TestStatusAfterReplicationRebalanceFail(t *testing.T) {
+// TestReplicationRebalanceToZeroNodes checks that the replication goes into an unassigned state when there are no nodes available to run replications.
+func TestReplicationRebalanceToZeroNodes(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	activeRT, remoteRT, _, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
@@ -1759,8 +1897,8 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 
 	// If CE, recreate the replication
 	if !base.IsEnterpriseEdition() {
-		rt.CreateReplication("repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
-		rt.WaitForReplicationStatus("repl1", db.ReplicationStateRunning)
+		rt.CreateReplicationForDB("{{.db1}}", "repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+		rt.WaitForReplicationStatusForDB("{{.db1}}", "repl1", db.ReplicationStateRunning)
 	}
 
 	// Wait for second document to replicate to confirm replication restart
@@ -2191,6 +2329,139 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
 	assert.Equal(t, int64(0), dbstats.ExpectedSequenceLenPostCleanup.Value())
 	assert.Equal(t, int64(0), dbstats.ProcessedSequenceLenPostCleanup.Value())
+}
+
+// TestReplicatorReconnectBehaviour tests the interactive values that configure replicator reconnection behaviour
+func TestReplicatorReconnectBehaviour(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	testCases := []struct {
+		name                 string
+		maxBackoff           int
+		specified            bool
+		reconnectTimeout     time.Duration
+		maxReconnectInterval time.Duration
+	}{
+		{
+			name:                 "maxbackoff 0",
+			specified:            true,
+			maxBackoff:           0,
+			reconnectTimeout:     10 * time.Minute,
+			maxReconnectInterval: 5 * time.Minute,
+		},
+		{
+			name:                 "max backoff not specified",
+			specified:            false,
+			reconnectTimeout:     0 * time.Minute,
+			maxReconnectInterval: 5 * time.Minute,
+		},
+		{
+			name:                 "maxbackoff 1",
+			specified:            true,
+			maxBackoff:           1,
+			reconnectTimeout:     0 * time.Minute,
+			maxReconnectInterval: 1 * time.Minute,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			activeRT, _, remoteURL, teardown := rest.SetupSGRPeers(t)
+			defer teardown()
+			var resp *rest.TestResponse
+
+			if test.specified {
+				resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/replication1", fmt.Sprintf(`{
+    					"replication_id": "replication1", "remote": "%s", "direction": "pull",
+						"collections_enabled": %t, "continuous": true, "max_backoff_time": %d}`, remoteURL, base.TestsUseNamedCollections(), test.maxBackoff))
+				rest.RequireStatus(t, resp, http.StatusCreated)
+			} else {
+				resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/replication1", fmt.Sprintf(`{
+    					"replication_id": "replication1", "remote": "%s", "direction": "pull",
+						"collections_enabled": %t, "continuous": true}`, remoteURL, base.TestsUseNamedCollections()))
+				rest.RequireStatus(t, resp, http.StatusCreated)
+			}
+			activeRT.WaitForReplicationStatus("replication1", db.ReplicationStateRunning)
+			activeRT.WaitForActiveReplicatorInitialization(1)
+
+			activeReplicator := activeRT.GetDatabase().SGReplicateMgr.GetActiveReplicator("replication1")
+			config := activeReplicator.GetActiveReplicatorConfig()
+
+			assert.Equal(t, test.reconnectTimeout, config.TotalReconnectTimeout)
+			assert.Equal(t, test.maxReconnectInterval, config.MaxReconnectInterval)
+		})
+	}
+
+}
+
+// TestReconnectReplicator:
+//   - Starts 2 RestTesters, one active, and one remote.
+//   - creates a pull replication from remote to active rest tester
+//   - kills the blip sender to simulate a disconnect that was not initiated by the user
+//   - asserts the replicator enters a reconnecting state and eventually enters a running state again
+//   - puts some docs on the remote rest tester and assert the replicator pulls these docs to prove reconnect was successful
+func TestReconnectReplicator(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	testCases := []struct {
+		name       string
+		maxBackoff int
+		specified  bool
+	}{
+		{
+			name:       "maxbackoff 0",
+			specified:  true,
+			maxBackoff: 0,
+		},
+		{
+			name:      "max backoff not specified",
+			specified: false,
+		},
+		{
+			name:       "maxbackoff 1",
+			specified:  true,
+			maxBackoff: 1,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			activeRT, remoteRT, remoteURL, teardown := rest.SetupSGRPeers(t)
+			defer teardown()
+			var resp *rest.TestResponse
+			const replicationName = "replication1"
+
+			if test.specified {
+				resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/replication1", fmt.Sprintf(`{
+    					"replication_id": "%s", "remote": "%s", "direction": "pull",
+						"collections_enabled": %t, "continuous": true, "max_backoff_time": %d}`, replicationName, remoteURL, base.TestsUseNamedCollections(), test.maxBackoff))
+				rest.RequireStatus(t, resp, http.StatusCreated)
+			} else {
+				resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/replication1", fmt.Sprintf(`{
+    					"replication_id": "%s", "remote": "%s", "direction": "pull",
+						"collections_enabled": %t, "continuous": true}`, replicationName, remoteURL, base.TestsUseNamedCollections()))
+				rest.RequireStatus(t, resp, http.StatusCreated)
+			}
+			activeRT.WaitForReplicationStatus("replication1", db.ReplicationStateRunning)
+
+			activeRT.WaitForActiveReplicatorInitialization(1)
+			ar := activeRT.GetDatabase().SGReplicateMgr.GetActiveReplicator("replication1")
+			// race between stopping the blip sender here and the initialization of it on the replicator so need this assertion in here to avoid panic
+			activeRT.WaitForPullBlipSenderInitialisation(replicationName)
+			ar.Pull.GetBlipSender().Stop()
+
+			activeRT.WaitForReplicationStatus(replicationName, db.ReplicationStateReconnecting)
+
+			activeRT.WaitForReplicationStatus(replicationName, db.ReplicationStateRunning)
+
+			for i := 0; i < 10; i++ {
+				response := remoteRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"source": "remote"}`)
+				rest.RequireStatus(t, response, http.StatusCreated)
+			}
+			_, err := activeRT.WaitForChanges(10, "/{{.keyspace}}/_changes", "", true)
+			require.NoError(t, err)
+		})
+	}
+
 }
 
 // TestActiveReplicatorPullAttachments:

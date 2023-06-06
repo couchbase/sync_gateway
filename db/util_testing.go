@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/go-blip"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -87,6 +88,17 @@ func (db *DatabaseContext) WaitForCaughtUp(targetCount int64) error {
 	for i := 0; i < 100; i++ {
 		// caughtUpCount := base.ExpvarVar2Int(db.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
 		caughtUpCount := db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
+		if caughtUpCount >= targetCount {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return errors.New("WaitForCaughtUp didn't catch up")
+}
+
+func (db *DatabaseContext) WaitForTotalCaughtUp(targetCount int64) error {
+	for i := 0; i < 100; i++ {
+		caughtUpCount := db.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
 		if caughtUpCount >= targetCount {
 			return nil
 		}
@@ -597,4 +609,22 @@ func GetSingleDatabaseCollection(tb testing.TB, database *DatabaseContext) *Data
 	}
 	tb.Fatalf("Could not find a collection")
 	return nil
+}
+
+// AllocateTestSequence allocates a sequence via the sequenceAllocator.  For use by non-db tests
+func AllocateTestSequence(database *DatabaseContext) (uint64, error) {
+	return database.sequences.incrementSequence(1)
+}
+
+// ReleaseTestSequence releases a sequence via the sequenceAllocator.  For use by non-db tests
+func ReleaseTestSequence(database *DatabaseContext, sequence uint64) error {
+	return database.sequences.releaseSequence(sequence)
+}
+
+func (a *ActiveReplicator) GetActiveReplicatorConfig() *ActiveReplicatorConfig {
+	return a.config
+}
+
+func (apr *ActivePullReplicator) GetBlipSender() *blip.Sender {
+	return apr.blipSender
 }

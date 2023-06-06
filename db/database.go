@@ -124,6 +124,7 @@ type DatabaseContext struct {
 	NoX509HTTPClient             *http.Client                   // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}                  // Closed via PostStartup once the server has fully started
 	userFunctions                *UserFunctions                 // client-callable JavaScript functions
+	UserFunctionTimeout          time.Duration                  // Default timeout for N1QL, JavaScript and GraphQL queries. (Applies to REST and BLIP requests.)
 	graphQL                      *GraphQL                       // GraphQL query evaluator
 	Scopes                       map[string]Scope               // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
@@ -173,6 +174,8 @@ type DatabaseContextOptions struct {
 	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
 	MetadataID                    string         // MetadataID used for metadata storage
+	BlipStatsReportingInterval    int64          // interval to report blip stats in milliseconds
+	ChangesRequestPlus            bool           // Sets the default value for request_plus, for non-continuous changes feeds
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -307,17 +310,15 @@ func connectToBucketErrorHandling(ctx context.Context, spec base.BucketSpec, got
 	return false, nil
 }
 
-type OpenBucketFn func(ctx context.Context, spec base.BucketSpec) (base.Bucket, error)
+type OpenBucketFn func(context.Context, base.BucketSpec, bool) (base.Bucket, error)
 
-// connectToBucketFailFast opens a Couchbase connect and return a specific bucket without retrying on failure.
-func connectToBucketFailFast(ctx context.Context, spec base.BucketSpec) (bucket base.Bucket, err error) {
-	bucket, err = base.GetBucket(spec)
-	_, err = connectToBucketErrorHandling(ctx, spec, err)
-	return bucket, err
-}
-
-// connectToBucket opens a Couchbase connection and return a specific bucket.
-func connectToBucket(ctx context.Context, spec base.BucketSpec) (base.Bucket, error) {
+// ConnectToBucket opens a Couchbase connection and return a specific bucket. If failFast is set, fail immediately if the bucket doesn't exist, otherwise retry waiting for bucket to exist.
+func ConnectToBucket(ctx context.Context, spec base.BucketSpec, failFast bool) (base.Bucket, error) {
+	if failFast {
+		bucket, err := base.GetBucket(spec)
+		_, err = connectToBucketErrorHandling(ctx, spec, err)
+		return bucket, err
+	}
 
 	// start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (bool, error, interface{}) {
@@ -337,14 +338,6 @@ func connectToBucket(ctx context.Context, spec base.BucketSpec) (base.Bucket, er
 	}
 
 	return ibucket.(base.Bucket), nil
-}
-
-// GetConnectToBucketFn returns a different OpenBucketFn to connect to the bucket depending on the value of failFast
-func GetConnectToBucketFn(failFast bool) OpenBucketFn {
-	if failFast {
-		return connectToBucketFailFast
-	}
-	return connectToBucket
 }
 
 // Returns Couchbase Server Cluster UUID on a timeout. If running against walrus, do return an empty string.
@@ -408,16 +401,17 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 	dbContext := &DatabaseContext{
-		Name:           dbName,
-		UUID:           cbgt.NewUUID(),
-		MetadataStore:  metadataStore,
-		Bucket:         bucket,
-		StartTime:      time.Now(),
-		autoImport:     autoImport,
-		Options:        options,
-		DbStats:        dbStats,
-		CollectionByID: make(map[uint32]*DatabaseCollection),
-		ServerUUID:     serverUUID,
+		Name:                dbName,
+		UUID:                cbgt.NewUUID(),
+		MetadataStore:       metadataStore,
+		Bucket:              bucket,
+		StartTime:           time.Now(),
+		autoImport:          autoImport,
+		Options:             options,
+		DbStats:             dbStats,
+		CollectionByID:      make(map[uint32]*DatabaseCollection),
+		ServerUUID:          serverUUID,
+		UserFunctionTimeout: defaultUserFunctionTimeout,
 	}
 
 	// Initialize metadata ID and keys
@@ -1063,16 +1057,21 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 	if context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.WarningThresholds != nil {
 		channelsWarningThreshold = context.Options.UnsupportedOptions.WarningThresholds.ChannelsPerUser
 	}
+	var channelServerlessThreshold uint32
+	if context.IsServerless() {
+		channelServerlessThreshold = base.ServerlessChannelLimit
+	}
 
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
 	authenticator := auth.NewAuthenticator(context.MetadataStore, context, auth.AuthenticatorOptions{
-		ClientPartitionWindow:    context.Options.ClientPartitionWindow,
-		ChannelsWarningThreshold: channelsWarningThreshold,
-		SessionCookieName:        sessionCookieName,
-		BcryptCost:               context.Options.BcryptCost,
-		LogCtx:                   ctx,
-		Collections:              context.CollectionNames,
-		MetaKeys:                 context.MetadataKeys,
+		ClientPartitionWindow:      context.Options.ClientPartitionWindow,
+		ChannelsWarningThreshold:   channelsWarningThreshold,
+		ServerlessChannelThreshold: channelServerlessThreshold,
+		SessionCookieName:          sessionCookieName,
+		BcryptCost:                 context.Options.BcryptCost,
+		LogCtx:                     ctx,
+		Collections:                context.CollectionNames,
+		MetaKeys:                   context.MetadataKeys,
 	})
 
 	return authenticator
@@ -2316,4 +2315,11 @@ func (dbc *DatabaseContext) AuthenticatorOptions() auth.AuthenticatorOptions {
 	defaultOptions := auth.DefaultAuthenticatorOptions()
 	defaultOptions.MetaKeys = dbc.MetadataKeys
 	return defaultOptions
+}
+
+// GetRequestPlusSequence fetches the current value of the sequence counter for the database.
+// Uses getSequence (instead of lastSequence) as it's intended to be up to date with allocations
+// across all nodes, while lastSequence is just the latest allocation from this node
+func (dbc *DatabaseContext) GetRequestPlusSequence() (uint64, error) {
+	return dbc.sequences.getSequence()
 }

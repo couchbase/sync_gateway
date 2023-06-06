@@ -165,6 +165,7 @@ type DbConfig struct {
 	GraphQL                          *functions.GraphQLConfig         `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
 	UserFunctions                    *functions.FunctionsConfig       `json:"functions,omitempty"`                            // Named JS fns for clients to call
 	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
+	ChangesRequestPlus               *bool                            `json:"changes_request_plus,omitempty"`                 // If set, is used as the default value of request_plus for non-continuous replications
 	CORS                             *auth.CORSConfig                 `json:"cors,omitempty"`
 }
 
@@ -1266,7 +1267,8 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 
 	sc := NewServerContext(ctx, config, persistentConfig)
 	if !base.ServerIsWalrus(config.Bootstrap.Server) {
-		if err := sc.initializeCouchbaseServerConnections(ctx); err != nil {
+		failFast := false
+		if err := sc.initializeCouchbaseServerConnections(ctx, failFast); err != nil {
 			return nil, err
 		}
 	}
@@ -1372,7 +1374,7 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 		if getErr == base.ErrNotFound {
 			continue
 		} else if getErr != nil {
-			return fmt.Errorf("Error retrieving 3.0 config for bucket: %s, groupID: %s: %w", bucketName, groupID, err)
+			return fmt.Errorf("Error retrieving 3.0 config for bucket: %s, groupID: %s: %w", bucketName, groupID, getErr)
 		}
 
 		base.InfofCtx(ctx, base.KeyConfig, "Found legacy persisted config for database %s - migrating to db registry.", base.MD(dbConfig.Name))
@@ -1480,6 +1482,9 @@ func (sc *ServerContext) bucketNameFromDbName(dbName string) (bucketName string,
 		return dbc.Bucket.GetName(), true
 	}
 
+	if sc.BootstrapContext.Connection == nil {
+		return "", false
+	}
 	// To search for database with the specified name, need to iterate over all buckets:
 	//   - look for dbName-scoped config file
 	//   - fetch default config file (backward compatibility, check internal DB name)
@@ -1610,7 +1615,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 // _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.
 func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig, isInitialStartup bool) (count int) {
 	for dbName, cnf := range dbNameConfigs {
-		applied, err := sc._applyConfig(base.NewNonCancelCtx(), cnf, false, isInitialStartup)
+		applied, err := sc._applyConfig(base.NewNonCancelCtx(), cnf, true, isInitialStartup)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue

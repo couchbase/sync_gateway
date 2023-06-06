@@ -376,7 +376,8 @@ type CBLReplicationPullStats struct {
 	// The total amount of time processing rev messages (revisions) during pull revision.
 	RevProcessingTime *SgwIntStat `json:"rev_processing_time"`
 	// The total number of rev messages processed during replication.
-	RevSendCount *SgwIntStat `json:"rev_send_count"`
+	RevSendCount  *SgwIntStat `json:"rev_send_count"`
+	RevErrorCount *SgwIntStat `json:"rev_error_count"`
 	// The total amount of time between Sync Gateway receiving a request for a revision and that revision being sent.
 	//
 	// In a pull replication, Sync Gateway sends a /_changes request to the client and the client responds with the list of revisions it wants to receive.
@@ -392,6 +393,8 @@ type CBLReplicationPushStats struct {
 	AttachmentPushCount *SgwIntStat `json:"attachment_push_count"`
 	// The total number of documents pushed.
 	DocPushCount *SgwIntStat `json:"doc_push_count"`
+	// The total number of documents that failed to push.
+	DocPushErrorCount *SgwIntStat `json:"doc_push_error_count"`
 	// The total number of changes and-or proposeChanges messages processed since node start-up.
 	ProposeChangeCount *SgwIntStat `json:"propose_change_count"`
 	// The total time spent processing changes and/or proposeChanges messages.
@@ -430,6 +433,8 @@ type CollectionStats struct {
 }
 
 type DatabaseStats struct {
+	ReplicationBytesReceived *SgwIntStat `json:"replication_bytes_received"`
+	ReplicationBytesSent     *SgwIntStat `json:"replication_bytes_sent"`
 	// The compaction_attachment_start_time.
 	CompactionAttachmentStartTime *SgwIntStat `json:"compaction_attachment_start_time"`
 	// The compaction_tombstone_start_time.
@@ -493,6 +498,8 @@ type DatabaseStats struct {
 	SyncFunctionTime *SgwIntStat `json:"sync_function_time"`
 	// The total number of times that a sync function encountered an exception (across all collections).
 	SyncFunctionExceptionCount *SgwIntStat `json:"sync_function_exception_count"`
+	// The total number of times a replication connection is rejected due ot it being over the threshold
+	NumReplicationsRejectedLimit *SgwIntStat `json:"num_replications_rejected_limit"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
@@ -1198,6 +1205,10 @@ func (d *DbStats) initCBLReplicationPullStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.RevErrorCount, err = NewIntStat(SubsystemReplicationPull, "rev_error_count", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.RevSendLatency, err = NewIntStat(SubsystemReplicationPull, "rev_send_latency", labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1223,6 +1234,7 @@ func (d *DbStats) unregisterCBLReplicationPullStats() {
 	prometheus.Unregister(d.CBLReplicationPullStats.RequestChangesTime)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevProcessingTime)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevSendCount)
+	prometheus.Unregister(d.CBLReplicationPullStats.RevErrorCount)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevSendLatency)
 }
 
@@ -1248,6 +1260,10 @@ func (d *DbStats) initCBLReplicationPushStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.DocPushErrorCount, err = NewIntStat(SubsystemReplicationPush, "doc_push_error_count", labelKeys, labelVals, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ProposeChangeCount, err = NewIntStat(SubsystemReplicationPush, "propose_change_count", labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1269,6 +1285,7 @@ func (d *DbStats) unregisterCBLReplicationPushStats() {
 	prometheus.Unregister(d.CBLReplicationPushStats.AttachmentPushBytes)
 	prometheus.Unregister(d.CBLReplicationPushStats.AttachmentPushCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.DocPushCount)
+	prometheus.Unregister(d.CBLReplicationPushStats.DocPushErrorCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.ProposeChangeCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.ProposeChangeTime)
 	prometheus.Unregister(d.CBLReplicationPushStats.WriteProcessingTime)
@@ -1284,6 +1301,14 @@ func (d *DbStats) initDatabaseStats() error {
 	labelKeys := []string{DatabaseLabelKey}
 	labelVals := []string{d.dbName}
 
+	resUtil.ReplicationBytesReceived, err = NewIntStat(SubsystemDatabaseKey, "replication_bytes_received", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.ReplicationBytesSent, err = NewIntStat(SubsystemDatabaseKey, "replication_bytes_sent", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.CompactionAttachmentStartTime, err = NewIntStat(SubsystemDatabaseKey, "compaction_attachment_start_time", labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
@@ -1412,6 +1437,10 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.NumReplicationsRejectedLimit, err = NewIntStat(SubsystemDatabaseKey, "num_replications_rejected_limit", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ImportFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
 
 	resUtil.CacheFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
@@ -1421,6 +1450,8 @@ func (d *DbStats) initDatabaseStats() error {
 }
 
 func (d *DbStats) unregisterDatabaseStats() {
+	prometheus.Unregister(d.DatabaseStats.ReplicationBytesReceived)
+	prometheus.Unregister(d.DatabaseStats.ReplicationBytesSent)
 	prometheus.Unregister(d.DatabaseStats.CompactionAttachmentStartTime)
 	prometheus.Unregister(d.DatabaseStats.CompactionTombstoneStartTime)
 	prometheus.Unregister(d.DatabaseStats.ConflictWriteCount)
@@ -1453,6 +1484,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionCount)
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionTime)
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionExceptionCount)
+	prometheus.Unregister(d.DatabaseStats.NumReplicationsRejectedLimit)
 }
 
 func (d *DbStats) CollectionStat(scopeName, collectionName string) (*CollectionStats, error) {

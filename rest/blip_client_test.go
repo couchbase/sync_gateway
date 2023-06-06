@@ -310,6 +310,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				}
 
 				var missingDigests []string
+				var knownDigests []string
 				btcr.attachmentsLock.RLock()
 				for _, attachment := range attsMap {
 					attMap, ok := attachment.(map[string]interface{})
@@ -320,9 +321,62 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 					if _, found := btcr.attachments[digest]; !found {
 						missingDigests = append(missingDigests, digest)
+					} else {
+						if btr.bt.blipContext.ActiveSubprotocol() == db.BlipCBMobileReplicationV2 {
+							// only v2 clients care about proveAttachments
+							knownDigests = append(knownDigests, digest)
+						}
 					}
 				}
 				btcr.attachmentsLock.RUnlock()
+
+				for _, digest := range knownDigests {
+					attData, err := btcr.getAttachment(digest)
+					if err != nil {
+						panic(err)
+					}
+					nonce, proof, err := db.GenerateProofOfAttachment(attData)
+					if err != nil {
+						panic(err)
+					}
+
+					// if we already have this attachment, _we_ should ask the peer whether _they_ have the attachment
+					outrq := blip.NewRequest()
+					outrq.SetProfile(db.MessageProveAttachment)
+					outrq.Properties[db.ProveAttachmentDigest] = digest
+					outrq.SetBody(nonce)
+
+					err = btcr.sendPullMsg(outrq)
+					if err != nil {
+						panic(err)
+					}
+
+					resp := outrq.Response()
+					btc.pullReplication.storeMessage(resp)
+					respBody, err := resp.Body()
+					if err != nil {
+						panic(err)
+					}
+
+					if resp.Type() == blip.ErrorType {
+						// forward error from proveAttachment response into rev response
+						if !msg.NoReply() {
+							response := msg.Response()
+							errorCode, _ := strconv.Atoi(resp.Properties["Error-Code"])
+							response.SetError(resp.Properties["Error-Code"], errorCode, string(respBody))
+						}
+						return
+					}
+
+					if string(respBody) != proof {
+						// forward error from proveAttachment response into rev response
+						if !msg.NoReply() {
+							response := msg.Response()
+							response.SetError(resp.Properties["Error-Code"], http.StatusForbidden, fmt.Sprintf("Incorrect proof for attachment %s", digest))
+						}
+						return
+					}
+				}
 
 				for _, digest := range missingDigests {
 					outrq := blip.NewRequest()
@@ -430,10 +484,11 @@ func (btc *BlipTesterCollectionClient) saveAttachment(_, base64data string) (dat
 
 	digest = db.Sha1DigestKey(data)
 	if _, found := btc.attachments[digest]; found {
-		return 0, "", fmt.Errorf("attachment with digest already exists")
+		base.InfofCtx(context.TODO(), base.KeySync, "attachment with digest %s already exists", digest)
+	} else {
+		btc.attachments[digest] = data
 	}
 
-	btc.attachments[digest] = data
 	return len(data), digest, nil
 }
 
@@ -632,19 +687,23 @@ func (btc *BlipTesterClient) Collection(collectionName string) *BlipTesterCollec
 
 // StartPull will begin a continuous pull replication since 0 between the client and server
 func (btcc *BlipTesterCollectionClient) StartPull() (err error) {
-	return btcc.StartPullSince("true", "0", "false", "")
+	return btcc.StartPullSince("true", "0", "false", "", "")
 }
 
 func (btcc *BlipTesterCollectionClient) StartOneshotPull() (err error) {
-	return btcc.StartPullSince("false", "0", "false", "")
+	return btcc.StartPullSince("false", "0", "false", "", "")
 }
 
 func (btcc *BlipTesterCollectionClient) StartOneshotPullFiltered(channels string) (err error) {
-	return btcc.StartPullSince("false", "0", "false", channels)
+	return btcc.StartPullSince("false", "0", "false", channels, "")
+}
+
+func (btcc *BlipTesterCollectionClient) StartOneshotPullRequestPlus() (err error) {
+	return btcc.StartPullSince("false", "0", "false", "", "true")
 }
 
 // StartPullSince will begin a pull replication between the client and server with the given params.
-func (btc *BlipTesterCollectionClient) StartPullSince(continuous, since, activeOnly string, channels string) (err error) {
+func (btc *BlipTesterCollectionClient) StartPullSince(continuous, since, activeOnly, channels, requestPlus string) (err error) {
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile(db.MessageSubChanges)
 	subChangesRequest.Properties[db.SubChangesContinuous] = continuous
@@ -653,6 +712,9 @@ func (btc *BlipTesterCollectionClient) StartPullSince(continuous, since, activeO
 	if channels != "" {
 		subChangesRequest.Properties[db.SubChangesFilter] = base.ByChannelFilter
 		subChangesRequest.Properties[db.SubChangesChannels] = channels
+	}
+	if requestPlus != "" {
+		subChangesRequest.Properties[db.SubChangesRequestPlus] = requestPlus
 	}
 	subChangesRequest.SetNoReply(true)
 
@@ -923,6 +985,9 @@ func (btc *BlipTesterCollectionClient) GetRev(docID, revID string) (data []byte,
 
 // WaitForRev blocks until the given doc ID and rev ID have been stored by the client, and returns the data when found.
 func (btc *BlipTesterCollectionClient) WaitForRev(docID, revID string) (data []byte, found bool) {
+	if data, found := btc.GetRev(docID, revID); found {
+		return data, found
+	}
 	ticker := time.NewTicker(50 * time.Millisecond)
 	timeout := time.After(10 * time.Second)
 	for {
@@ -932,6 +997,41 @@ func (btc *BlipTesterCollectionClient) WaitForRev(docID, revID string) (data []b
 			return nil, false
 		case <-ticker.C:
 			if data, found := btc.GetRev(docID, revID); found {
+				return data, found
+			}
+		}
+	}
+}
+
+// GetDoc returns a rev stored in the Client under the given docID.  (if multiple revs are present, rev body returned is non-deterministic)
+func (btc *BlipTesterCollectionClient) GetDoc(docID string) (data []byte, found bool) {
+	btc.docsLock.RLock()
+	defer btc.docsLock.RUnlock()
+
+	if rev, ok := btc.docs[docID]; ok {
+		for _, data := range rev {
+			return data.body, true
+		}
+	}
+
+	return nil, false
+}
+
+// WaitForDoc blocks until the given doc ID has been stored by the client, and returns the data when found.
+func (btc *BlipTesterCollectionClient) WaitForDoc(docID string) (data []byte, found bool) {
+
+	if data, found := btc.GetDoc(docID); found {
+		return data, found
+	}
+	ticker := time.NewTicker(50 * time.Millisecond)
+	timeout := time.After(10 * time.Second)
+	for {
+		select {
+		case <-timeout:
+			btc.parent.rt.TB.Fatalf("BlipTesterClient timed out waiting for doc ID: %v", docID)
+			return nil, false
+		case <-ticker.C:
+			if data, found := btc.GetDoc(docID); found {
 				return data, found
 			}
 		}
@@ -1026,6 +1126,10 @@ func (btc *BlipTesterClient) WaitForRev(docID string, revID string) ([]byte, boo
 	return btc.SingleCollection().WaitForRev(docID, revID)
 }
 
+func (btc *BlipTesterClient) WaitForDoc(docID string) ([]byte, bool) {
+	return btc.SingleCollection().WaitForDoc(docID)
+}
+
 func (btc *BlipTesterClient) WaitForBlipRevMessage(docID string, revID string) (*blip.Message, bool) {
 	return btc.SingleCollection().WaitForBlipRevMessage(docID, revID)
 }
@@ -1038,16 +1142,20 @@ func (btc *BlipTesterClient) StartOneshotPullFiltered(channels string) error {
 	return btc.SingleCollection().StartOneshotPullFiltered(channels)
 }
 
+func (btc *BlipTesterClient) StartOneshotPullRequestPlus() error {
+	return btc.SingleCollection().StartOneshotPullRequestPlus()
+}
+
 func (btc *BlipTesterClient) PushRev(docID string, revID string, body []byte) (string, error) {
 	return btc.SingleCollection().PushRev(docID, revID, body)
 }
 
 func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string) error {
-	return btc.SingleCollection().StartPullSince(continuous, since, activeOnly, "")
+	return btc.SingleCollection().StartPullSince(continuous, since, activeOnly, "", "")
 }
 
 func (btc *BlipTesterClient) StartFilteredPullSince(continuous, since, activeOnly string, channels string) error {
-	return btc.SingleCollection().StartPullSince(continuous, since, activeOnly, channels)
+	return btc.SingleCollection().StartPullSince(continuous, since, activeOnly, channels, "")
 }
 
 func (btc *BlipTesterClient) GetRev(docID, revID string) ([]byte, bool) {

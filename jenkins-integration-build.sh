@@ -120,12 +120,13 @@ if [ "${RUN_WALRUS}" == "true" ]; then
 fi
 
 # Run CBS
-if [[ -z ${MULTI_NODE:-} ]]; then
-    # Run CBS
-    ./integration-test/start_server.sh "${COUCHBASE_SERVER_VERSION}"
-else
+if [ "${MULTI_NODE:-}" == "true" ]; then
+    # multi node
     ./integration-test/start_server.sh -m "${COUCHBASE_SERVER_VERSION}"
     export SG_TEST_BUCKET_NUM_REPLICAS=1
+else
+    # single node
+    ./integration-test/start_server.sh "${COUCHBASE_SERVER_VERSION}"
 fi
 
 # Set up test environment variables for CBS runs
@@ -148,7 +149,7 @@ if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
 fi
 
 # Collect CBS logs if server error occurred
-if [ "${SG_CBCOLLECT_ALWAYS:-}" == "true" ] || grep -a -q "server logs for details\|Timed out after 1m0s waiting for a bucket to become available\|unambiguous timeout" "${INT_LOG_FILE_NAME}.out.raw"; then
+if [ "${SG_CBCOLLECT_ALWAYS:-}" == "true" ] || grep -a -q "server logs for details\|Timed out after 1m0s waiting for a bucket to become available" "${INT_LOG_FILE_NAME}.out.raw"; then
     docker exec -t couchbase /opt/couchbase/bin/cbcollect_info /workspace/cbcollect.zip
 fi
 

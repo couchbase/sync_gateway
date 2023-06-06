@@ -156,6 +156,12 @@ const (
 	// DefaultJavascriptTimeoutSecs is number of seconds before Javascript functions (i.e. the sync function or import filter) timeout
 	// If set to zero, timeout is disabled.
 	DefaultJavascriptTimeoutSecs = uint32(0)
+
+	// ServerlessChannelLimit is hard limit on channels allowed per user when running in serverless mode
+	ServerlessChannelLimit = 500
+
+	// FromConnStrWarningThreshold determines the amount of time it should take before we warn about parsing a connstr (mostly for DNS resolution)
+	FromConnStrWarningThreshold = 10 * time.Second
 )
 
 const (

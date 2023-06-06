@@ -16,7 +16,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -52,6 +51,11 @@ type CbgtContext struct {
 	Cfg               cbgt.Cfg                 // Cfg manages storage of the current pindex set and node assignment
 	heartbeater       Heartbeater              // Heartbeater used for failed node detection
 	heartbeatListener *importHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
+	eventHandlers     *sgMgrEventHandlers      // Event handler callbacks
+	ctx               context.Context          // Log context
+	dbName            string                   // Database name
+	sourceName        string                   // cbgt source name. Store on CbgtContext for access during teardown
+	sourceUUID        string                   // cbgt source UUID.  Store on CbgtContext for access during teardown
 }
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
@@ -115,11 +119,6 @@ func GenerateLegacyIndexName(dbName string) string {
 // will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
 func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16) error {
 	sourceType := SOURCE_DCP_SG
-
-	bucketUUID, err := bucket.UUID()
-	if err != nil {
-		return err
-	}
 
 	sourceParams, err := cbgtFeedParams(spec, scope, collections, dbName)
 	if err != nil {
@@ -191,8 +190,8 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configG
 	indexType := CBGTIndexTypeSyncGatewayImport + configGroupID
 	err = c.Manager.CreateIndex(
 		sourceType,        // sourceType
-		bucket.GetName(),  // sourceName
-		bucketUUID,        // sourceUUID
+		c.sourceName,      // bucket name
+		c.sourceUUID,      // bucket UUID
 		sourceParams,      // sourceParams
 		indexType,         // indexType
 		indexName,         // indexName
@@ -316,18 +315,16 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	//   avoids file system usage, in conjunction with managerLoadDataDir=false in options.
 	dataDir := ""
 
-	// eventHandlers: SG doesn't currently do any processing on manager events:
-	//   - OnRegisterPIndex
-	//   - OnUnregisterPIndex
-	//   - OnFeedError
-	var eventHandlers cbgt.ManagerEventHandlers
+	eventHandlersCtx, eventHandlersCancel := context.WithCancel(ctx)
+	eventHandlers := &sgMgrEventHandlers{ctx: eventHandlersCtx, ctxCancel: eventHandlersCancel}
 
 	// Specify one feed per pindex
 	options := make(map[string]string)
 	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
 	options["managerLoadDataDir"] = "false"
-	// Ensure we always use TLS if configured - cbgt defaults to non-TLS on initial connection
-	options["feedInitialBootstrapNonTLS"] = strconv.FormatBool(!spec.IsTLS())
+	// TLS is controlled by the connection string.
+	// cbgt uses this parameter to run in mixed mode - non-TLS for CCCP but TLS for memcached. Sync Gateway does not need to set this parameter.
+	options["feedInitialBootstrapNonTLS"] = "false"
 
 	// Disable collections if unsupported
 	if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
@@ -349,10 +346,21 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		serverURL,
 		eventHandlers,
 		options)
+	eventHandlers.manager = mgr
+
+	bucketUUID, err := bucket.UUID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch UUID of bucket %v: %w", MD(bucket.GetName()).Redact(), err)
+	}
 
 	cbgtContext := &CbgtContext{
-		Manager: mgr,
-		Cfg:     cfgSG,
+		Manager:       mgr,
+		Cfg:           cfgSG,
+		eventHandlers: eventHandlers,
+		ctx:           ctx,
+		dbName:        dbName,
+		sourceName:    bucket.GetName(),
+		sourceUUID:    bucketUUID,
 	}
 
 	if spec.Auth != nil || (spec.Certpath != "" && spec.Keypath != "") {
@@ -361,10 +369,6 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	}
 
 	if spec.IsTLS() {
-		bucketUUID, err := bucket.UUID()
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch UUID of bucket %v: %w", MD(bucket.GetName()).Redact(), err)
-		}
 		if spec.TLSSkipVerify {
 			setCbgtRootCertsForBucket(bucketUUID, nil)
 		} else {
@@ -443,13 +447,32 @@ func getMinNodeVersion(cfg cbgt.Cfg) (*ComparableVersion, error) {
 	return minVersion, nil
 }
 
-// StopHeartbeatListener unregisters the listener from the heartbeater, and stops it.
-func (c *CbgtContext) StopHeartbeatListener() {
+// Stop unregisters the listener from the heartbeater, and stops it and associated handlers.
+func (c *CbgtContext) Stop() {
+	if c.eventHandlers != nil {
+		c.eventHandlers.ctxCancel()
+	}
 
 	if c.heartbeatListener != nil {
 		c.heartbeater.UnregisterListener(c.heartbeatListener.Name())
 		c.heartbeatListener.Stop()
 	}
+
+	// Close open PIndexes before stopping the manager.
+	_, pindexes := c.Manager.CurrentMaps()
+	for _, pIndex := range pindexes {
+		err := c.Manager.ClosePIndex(pIndex)
+		if err != nil {
+			DebugfCtx(c.ctx, KeyImport, "Error closing pindex: %v", err)
+		}
+	}
+	// ClosePIndex calls are synchronous, so can stop manager once they've completed
+	c.Manager.Stop()
+	// CloseStatsClients closes the memcached connection cbgt uses for stats calls (highseqno, etc).  sourceName and
+	// sourceUUID are bucketName/bucket UUID in our usage.  cbgt has a single global stats connection per bucket,
+	// but does a refcount check before closing, so handles the case of multiple SG databases targeting the same bucket.
+	cbgt.CloseStatsClients(c.sourceName, c.sourceUUID)
+	c.RemoveFeedCredentials(c.dbName)
 }
 
 func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
@@ -696,5 +719,59 @@ func GetDefaultImportPartitions(serverless bool) uint16 {
 		return DefaultImportPartitionsServerless
 	} else {
 		return DefaultImportPartitions
+	}
+}
+
+type sgMgrEventHandlers struct {
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+	manager   *cbgt.Manager
+}
+
+func (meh *sgMgrEventHandlers) OnRefreshManagerOptions(options map[string]string) {
+	// No-op for SG
+}
+
+func (meh *sgMgrEventHandlers) OnRegisterPIndex(pindex *cbgt.PIndex) {
+	// No-op for SG
+}
+
+func (meh *sgMgrEventHandlers) OnUnregisterPIndex(pindex *cbgt.PIndex) {
+	// No-op for SG
+}
+
+// OnFeedError is required to trigger reconnection to a feed on a closed connection (EOF).
+// NotifyMgrOnClose will trigger cbgt closing and then attempt to reconnect to the feed, if the manager hasn't
+// been stopped.
+func (meh *sgMgrEventHandlers) OnFeedError(srcType string, r cbgt.Feed, feedErr error) {
+
+	// cbgt always passes srcType = SOURCE_GOCBCORE, but we have a wrapped type associated with our indexes - use that instead
+	// for our logging
+	srcType = SOURCE_DCP_SG
+	var bucketName, bucketUUID string
+	dcpFeed, ok := r.(cbgt.FeedEx)
+	if ok {
+		bucketName, bucketUUID = dcpFeed.GetBucketDetails()
+	}
+	DebugfCtx(meh.ctx, KeyDCP, "cbgt Mgr OnFeedError, srcType: %s, feed name: %s, bucket name: %s, err: %v",
+		srcType, r.Name(), MD(bucketName), feedErr)
+
+	// If we get an EOF error from the feeds and the import listener hasn't been closed,
+	// then there could at the least two potential error scenarios.
+	//
+	// 1. Faulty kv node is failed over.
+	// 2. Ephemeral network connection issues with the host.
+	//
+	// In either case, the current feed instance turns dangling.
+	// Hence we can close the feeds so that they get refreshed to fix
+	// the connectivity problems either during the next rebalance
+	// (new kv node after failover-recovery rebalance) or
+	// on the next janitor work cycle(ephemeral network issue to the same node).
+	if strings.Contains(feedErr.Error(), "EOF") {
+		// If this wasn't an intentional close, log about the EOF
+		if meh.ctx.Err() != context.Canceled {
+			InfofCtx(meh.ctx, KeyDCP, "Handling EOF on cbgt feed - notifying manager to trigger reconnection to feed for bucketName:%v, bucketUUID:%v, err: %v", MD(bucketName), bucketUUID, feedErr)
+		}
+		dcpFeed.NotifyMgrOnClose()
 	}
 }

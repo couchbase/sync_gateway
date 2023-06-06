@@ -3931,6 +3931,292 @@ func TestTombstoneCompaction(t *testing.T) {
 	TestCompact(db.QueryTombstoneBatch + 20)
 }
 
+// TestOneShotGrantTiming simulates a one-shot changes feed returning before a previously issued grant has been
+// buffered over DCP.
+func TestOneShotGrantTiming(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyHTTP)
+
+	defer db.SuspendSequenceBatching()()
+
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			SyncFn: `function(doc) {
+				channel(doc.channel);
+				if (doc.accessUser != "") {
+					access(doc.accessUser, doc.accessChannel)
+				}
+			}`,
+		})
+	defer rt.Close()
+
+	// Create user with access to no channels
+	ctx := rt.Context()
+	database := rt.GetDatabase()
+	a := database.Authenticator(ctx)
+	bernard, err := a.NewUser("bernard", "letmein", nil)
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
+
+	// Put several documents in channel PBS
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-1", `{"channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-2", `{"channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-3", `{"channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-4", `{"channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+
+	// Allocate a sequence but do not write a doc for it - will block DCP buffering until sequence is skipped
+	slowSequence, seqErr := db.AllocateTestSequence(database)
+	require.NoError(t, seqErr)
+	log.Printf("Allocated slowSequence: %v", slowSequence)
+
+	// Write a document granting user access to PBS
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/grantDoc", `{"accessUser":"bernard", "accessChannel":"PBS"}`)
+	rest.RequireStatus(t, response, 201)
+
+	// Issue normal one-shot changes request.  Expect no results as granting document hasn't been buffered (blocked by
+	// slowSequence)
+	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
+	rest.RequireStatus(t, changesResponse, 200)
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	require.Len(t, changes.Results, 0)
+
+	// Release the slow sequence and wait for it to be processed over DCP
+	releaseErr := db.ReleaseTestSequence(database, slowSequence)
+	require.NoError(t, releaseErr)
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	// Issue normal one-shot changes request.  Expect results as granting document buffering is unblocked
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
+	rest.RequireStatus(t, changesResponse, 200)
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	require.Len(t, changes.Results, 4)
+
+}
+
+// TestOneShotGrantRequestPlus simulates a one-shot changes feed being made before a previously issued grant has been
+// buffered over DCP.  When requestPlus is set, changes feed should block until grant is processed.
+func TestOneShotGrantRequestPlus(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyHTTP)
+
+	defer db.SuspendSequenceBatching()() // Required for slow sequence simulation
+
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			SyncFn: `function(doc) {
+				channel(doc.channel);
+				if (doc.accessUser != "") {
+					access(doc.accessUser, doc.accessChannel)
+				}
+			}`,
+		})
+	defer rt.Close()
+
+	// Create user with access to no channels
+	ctx := rt.Context()
+	database := rt.GetDatabase()
+	a := database.Authenticator(ctx)
+	bernard, err := a.NewUser("bernard", "letmein", nil)
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
+
+	// Put several documents in channel PBS
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-1", `{"channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-2", `{"channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-3", `{"channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-4", `{"channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+
+	// Allocate a sequence but do not write a doc for it - will block DCP buffering until sequence is skipped
+	slowSequence, seqErr := db.AllocateTestSequence(database)
+	require.NoError(t, seqErr)
+
+	// Write a document granting user access to PBS
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/grantDoc", `{"accessUser":"bernard", "accessChannel":"PBS"}`)
+	rest.RequireStatus(t, response, 201)
+
+	caughtUpStart := database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
+
+	var oneShotComplete sync.WaitGroup
+	// Issue a GET requestPlus one-shot changes request in a separate goroutine.
+	oneShotComplete.Add(1)
+	go func() {
+		defer oneShotComplete.Done()
+		var changes rest.ChangesResults
+		changesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?request_plus=true", "", "bernard")
+		rest.RequireStatus(t, changesResponse, 200)
+		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+		assert.NoError(t, err, "Error unmarshalling changes response")
+		for _, entry := range changes.Results {
+			log.Printf("Entry:%+v", entry)
+		}
+		require.Len(t, changes.Results, 4)
+	}()
+
+	// Issue a POST requestPlus one-shot changes request in a separate goroutine.
+	oneShotComplete.Add(1)
+	go func() {
+		defer oneShotComplete.Done()
+		var changes rest.ChangesResults
+		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", `{"request_plus":true}`, "bernard")
+		rest.RequireStatus(t, changesResponse, 200)
+		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+		assert.NoError(t, err, "Error unmarshalling changes response")
+		for _, entry := range changes.Results {
+			log.Printf("Entry:%+v", entry)
+		}
+		require.Len(t, changes.Results, 4)
+	}()
+
+	// Wait for the one-shot changes feed to go into wait mode before releasing the slow sequence
+	require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+2))
+
+	// Release the slow sequence and wait for it to be processed over DCP
+	releaseErr := db.ReleaseTestSequence(database, slowSequence)
+	require.NoError(t, releaseErr)
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	oneShotComplete.Wait()
+}
+
+// TestOneShotGrantRequestPlusDbConfig simulates a one-shot changes feed being made before a previously issued grant has been
+// buffered over DCP.  When requestPlus is set via config, changes feed should block until grant is processed.
+func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyHTTP)
+
+	defer db.SuspendSequenceBatching()()
+
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			SyncFn: `function(doc) {
+				channel(doc.channel);
+				if (doc.accessUser != "") {
+					access(doc.accessUser, doc.accessChannel)
+				}
+			}`,
+			DatabaseConfig: &rest.DatabaseConfig{
+				DbConfig: rest.DbConfig{
+					ChangesRequestPlus: base.BoolPtr(true),
+				},
+			},
+		})
+	defer rt.Close()
+
+	// Create user with access to no channels
+	ctx := rt.Context()
+	database := rt.GetDatabase()
+	a := database.Authenticator(ctx)
+	bernard, err := a.NewUser("bernard", "letmein", nil)
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
+
+	// Put several documents in channel PBS
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-1", `{"channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-2", `{"channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-3", `{"channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-4", `{"channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+
+	// Allocate a sequence but do not write a doc for it - will block DCP buffering until sequence is skipped
+	slowSequence, seqErr := db.AllocateTestSequence(database)
+	require.NoError(t, seqErr)
+	log.Printf("Allocated slowSequence: %v", slowSequence)
+
+	// Write a document granting user access to PBS
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/grantDoc", `{"accessUser":"bernard", "accessChannel":"PBS"}`)
+	rest.RequireStatus(t, response, 201)
+
+	// Issue one-shot GET changes request explicitly setting request_plus=false (should override config value).
+	// Expect no results as granting document hasn't been buffered (blocked by slowSequence)
+	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?request_plus=false", "", "bernard")
+	rest.RequireStatus(t, changesResponse, 200)
+	var changes rest.ChangesResults
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	require.Len(t, changes.Results, 0)
+
+	// Issue one-shot POST changes request explicitly setting request_plus=false (should override config value).
+	// Expect no results as granting document hasn't been buffered (blocked by slowSequence)
+	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", `{"request_plus":false}`, "bernard")
+	rest.RequireStatus(t, changesResponse, 200)
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	require.Len(t, changes.Results, 0)
+
+	caughtUpStart := database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
+
+	var oneShotComplete sync.WaitGroup
+	// Issue a GET one-shot changes request in a separate goroutine.  Should run as request plus based on config
+	oneShotComplete.Add(1)
+	go func() {
+		defer oneShotComplete.Done()
+		var changes rest.ChangesResults
+		changesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
+		rest.RequireStatus(t, changesResponse, 200)
+		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+		assert.NoError(t, err, "Error unmarshalling changes response")
+		for _, entry := range changes.Results {
+			log.Printf("Entry:%+v", entry)
+		}
+		require.Len(t, changes.Results, 4)
+	}()
+
+	// Issue a POST one-shot changes request in a separate goroutine. Should run as request plus based on config
+	oneShotComplete.Add(1)
+	go func() {
+		defer oneShotComplete.Done()
+		var changes rest.ChangesResults
+		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", `{}`, "bernard")
+		rest.RequireStatus(t, changesResponse, 200)
+		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+		assert.NoError(t, err, "Error unmarshalling changes response")
+		for _, entry := range changes.Results {
+			log.Printf("Entry:%+v", entry)
+		}
+		require.Len(t, changes.Results, 4)
+	}()
+
+	// Wait for the one-shot changes feed to go into wait mode before releasing the slow sequence
+	require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+2))
+
+	// Release the slow sequence and wait for it to be processed over DCP
+	releaseErr := db.ReleaseTestSequence(database, slowSequence)
+	require.NoError(t, releaseErr)
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	oneShotComplete.Wait()
+}
+
 func waitForCompactStopped(dbc *db.DatabaseContext) error {
 	for i := 0; i < 100; i++ {
 		compactRunning := dbc.CacheCompactActive()

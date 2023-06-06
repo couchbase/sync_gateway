@@ -49,10 +49,12 @@ func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket) (*Database, con
 	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions)
 }
 
-func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+func setupTestDBWithOptionsAndImport(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	tBucket := base.GetTestBucket(t)
+	if tBucket == nil {
+		tBucket = base.GetTestBucket(t)
+	}
 	if dbcOptions.Scopes == nil {
 		dbcOptions.Scopes = GetScopesOptions(t, tBucket, 1)
 	}
@@ -241,6 +243,35 @@ func TestDatabase(t *testing.T) {
 		"3-foo"}, missing)
 
 	assert.True(t, possible == nil)
+
+	// Test CheckProposedRev:
+	log.Printf("Check CheckProposedRev...")
+	proposedStatus, current := collection.CheckProposedRev(ctx, "doc1", "3-foo",
+		"2-488724414d0ed6b398d6d2aeb228d797")
+	assert.Equal(t, ProposedRev_OK, proposedStatus)
+	assert.Equal(t, "", current)
+
+	proposedStatus, current = collection.CheckProposedRev(ctx, "doc1",
+		"2-488724414d0ed6b398d6d2aeb228d797",
+		"1-xxx")
+	assert.Equal(t, ProposedRev_Exists, proposedStatus)
+	assert.Equal(t, "", current)
+
+	proposedStatus, current = collection.CheckProposedRev(ctx, "doc1",
+		"3-foo",
+		"2-bogus")
+	assert.Equal(t, ProposedRev_Conflict, proposedStatus)
+	assert.Equal(t, "2-488724414d0ed6b398d6d2aeb228d797", current)
+
+	proposedStatus, current = collection.CheckProposedRev(ctx, "doc1",
+		"3-foo",
+		"")
+	assert.Equal(t, ProposedRev_Conflict, proposedStatus)
+	assert.Equal(t, "2-488724414d0ed6b398d6d2aeb228d797", current)
+
+	proposedStatus, current = collection.CheckProposedRev(ctx, "nosuchdoc", "3-foo", "")
+	assert.Equal(t, ProposedRev_OK_IsNew, proposedStatus)
+	assert.Equal(t, "", current)
 
 	// Test PutExistingRev:
 	log.Printf("Check PutExistingRev...")
@@ -1822,9 +1853,10 @@ func BenchmarkDatabase(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		ctx := base.TestCtx(b)
-		bucket, _ := connectToBucket(ctx, base.BucketSpec{
+		bucket, _ := ConnectToBucket(ctx, base.BucketSpec{
 			Server:     base.UnitTestUrl(),
-			BucketName: fmt.Sprintf("b-%d", i)})
+			BucketName: fmt.Sprintf("b-%d", i)},
+			true)
 		dbCtx, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 		db, _ := CreateDatabase(dbCtx)
 		collection := GetSingleDatabaseCollectionWithUser(b, db)
@@ -1840,9 +1872,10 @@ func BenchmarkPut(b *testing.B) {
 	base.DisableTestLogging(b)
 
 	ctx := base.TestCtx(b)
-	bucket, _ := connectToBucket(ctx, base.BucketSpec{
+	bucket, _ := ConnectToBucket(ctx, base.BucketSpec{
 		Server:     base.UnitTestUrl(),
-		BucketName: "Bucket"})
+		BucketName: "Bucket"},
+		true)
 	context, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	db, _ := CreateDatabase(context)
 	collection := GetSingleDatabaseCollectionWithUser(b, db)
@@ -2429,7 +2462,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 		t.Skip("Xattrs required")
 	}
 
-	db, ctx := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{})
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
@@ -2944,7 +2977,7 @@ func TestImportCompactPanic(t *testing.T) {
 	}
 
 	// Set the compaction and purge interval unrealistically low to reproduce faster
-	db, ctx := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{
 		CompactInterval: 1,
 	})
 	defer db.Close(ctx)
