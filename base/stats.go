@@ -500,6 +500,8 @@ type DatabaseStats struct {
 	SyncFunctionExceptionCount *SgwIntStat `json:"sync_function_exception_count"`
 	// The total number of times a replication connection is rejected due ot it being over the threshold
 	NumReplicationsRejectedLimit *SgwIntStat `json:"num_replications_rejected_limit"`
+	// The number incoming of concurrent replication connections
+	NumConcurrentReplications *SgwIntStat `json:"num_concurrent_replications"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
@@ -1441,6 +1443,10 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.NumConcurrentReplications, err = NewIntStat(SubsystemDatabaseKey, "num_concurrent_replications", labelKeys, labelVals, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ImportFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
 
 	resUtil.CacheFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
@@ -1485,6 +1491,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionTime)
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionExceptionCount)
 	prometheus.Unregister(d.DatabaseStats.NumReplicationsRejectedLimit)
+	prometheus.Unregister(d.DatabaseStats.NumConcurrentReplications)
 }
 
 func (d *DbStats) CollectionStat(scopeName, collectionName string) (*CollectionStats, error) {
