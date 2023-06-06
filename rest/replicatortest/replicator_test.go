@@ -684,7 +684,7 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 
 func TestConcurrentConnectionLimitStat(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
