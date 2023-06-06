@@ -682,7 +682,7 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 
 }
 
-func TestConcurrentConnectionLimit(t *testing.T) {
+func TestConcurrentConnectionLimitStat(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
@@ -702,18 +702,16 @@ func TestConcurrentConnectionLimit(t *testing.T) {
 	rt1.WaitForActiveReplicatorInitialization(2)
 
 	statValue := rt2.GetDatabase().DbStats.DatabaseStats.NumConcurrentReplications
-	fmt.Println(statValue.Value())
 	assert.Equal(t, int64(2), statValue.Value())
 
 	// try create a new replication to take it beyond the threshold set by runtime config call
 	// assert it enter error state
 	replicationID = t.Name() + "2"
 	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
-	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateError)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
 
 	// assert the concurrent replications value doesn't increase due to the limit
 	statValue = rt2.GetDatabase().DbStats.DatabaseStats.NumConcurrentReplications
-	fmt.Println(statValue.Value())
 	assert.Equal(t, int64(2), statValue.Value())
 
 	// stop all replicators created
@@ -729,7 +727,6 @@ func TestConcurrentConnectionLimit(t *testing.T) {
 
 	// assert the concurrent replications stat will be decremented
 	statValue = rt2.GetDatabase().DbStats.DatabaseStats.NumConcurrentReplications
-	fmt.Println(statValue.Value())
 	assert.Equal(t, int64(0), statValue.Value())
 }
 
