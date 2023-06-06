@@ -7,7 +7,7 @@ require (
 	github.com/coreos/go-oidc v2.2.1+incompatible
 	github.com/couchbase/cbgt v1.3.2-0.20230405201040-c0ede9925e46
 	github.com/couchbase/clog v0.1.0
-	github.com/couchbase/go-blip v0.0.0-20230515195238-a7b936f01f65
+	github.com/couchbase/go-blip v0.0.0-20230606182423-3f1855f3bfe9
 	github.com/couchbase/go-couchbase v0.1.1
 	github.com/couchbase/gocb/v2 v2.6.2
 	github.com/couchbase/gocbcore/v10 v10.2.3-0.20230412164057-d9c465de8911
