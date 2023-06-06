@@ -684,7 +684,7 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 
 func TestConcurrentConnectionLimitStat(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
@@ -726,8 +726,9 @@ func TestConcurrentConnectionLimitStat(t *testing.T) {
 	rt1.WaitForReplicationStatus(t.Name()+"1", db.ReplicationStateStopped)
 
 	// assert the concurrent replications stat will be decremented
-	statValue = rt2.GetDatabase().DbStats.DatabaseStats.NumConcurrentReplications
-	assert.Equal(t, int64(0), statValue.Value())
+	base.WaitForStat(func() int64 {
+		return rt2.GetDatabase().DbStats.DatabaseStats.NumConcurrentReplications.Value()
+	}, 0)
 }
 
 // TestPullReplicationAPI

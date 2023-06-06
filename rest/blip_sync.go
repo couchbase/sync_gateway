@@ -102,6 +102,7 @@ func (sc *ServerContext) incrementConcurrentReplications(ctx context.Context, db
 		return false, base.ErrReplicationLimitExceeded
 	}
 	sc.ActiveReplicationsCounter.activeReplicatorCount++
+	// increment the current replication connection stat
 	db.DbStats.Database().NumConcurrentReplications.Add(1)
 	base.TracefCtx(ctx, base.KeyHTTP, "Acquired replication slot (active: %d/%d)", sc.ActiveReplicationsCounter.activeReplicatorCount, capacity)
 
@@ -110,6 +111,8 @@ func (sc *ServerContext) incrementConcurrentReplications(ctx context.Context, db
 
 // decrementConcurrentReplications decrements the number of active replications on the server context
 func (sc *ServerContext) decrementConcurrentReplications(ctx context.Context, db *db.Database) {
+	// decrement the current replication connection stat
+	//db.DbStats.Database().NumConcurrentReplications.Add(-1)
 	// lock replications config limit + the active replications counter
 	sc.ActiveReplicationsCounter.lock.Lock()
 	defer sc.ActiveReplicationsCounter.lock.Unlock()
