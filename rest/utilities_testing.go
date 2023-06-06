@@ -66,7 +66,7 @@ type RestTesterConfig struct {
 	enableAdminAuthPermissionsCheck bool
 	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
 	PersistentConfig                bool
-	groupID                         *string
+	GroupID                         *string
 	serverless                      bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
 	collectionConfig                collectionConfiguration
 	numCollections                  int
@@ -227,8 +227,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 	}
 
-	if rt.RestTesterConfig.groupID != nil {
-		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.groupID
+	if rt.RestTesterConfig.GroupID != nil {
+		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.GroupID
 	} else if rt.RestTesterConfig.PersistentConfig {
 		// If running in persistent config mode, the database has to be manually created. If the db name is the same as a
 		// past tests db name, a db already exists error could happen if the past tests bucket is still flushing. Prevent this
@@ -270,7 +270,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.TestBucket.BucketSpec.TLSSkipVerify = base.TestTLSSkipVerify()
 
-		if err := rt.RestTesterServerContext.initializeCouchbaseServerConnections(ctx); err != nil {
+		if err := rt.RestTesterServerContext.initializeCouchbaseServerConnections(ctx, true); err != nil {
 			panic("Couldn't initialize Couchbase Server connection: " + err.Error())
 		}
 	}
@@ -1181,9 +1181,14 @@ func (s *SlowResponseRecorder) Write(buf []byte) (int, error) {
 // AddDatabaseFromConfigWithBucket adds a database to the ServerContext and sets a specific bucket on the database context.
 // If an existing config is found for the name, returns an error.
 func (sc *ServerContext) AddDatabaseFromConfigWithBucket(ctx context.Context, tb testing.TB, config DatabaseConfig, bucket base.Bucket) (*db.DatabaseContext, error) {
-	return sc.getOrAddDatabaseFromConfig(ctx, config, false, func(ctx context.Context, spec base.BucketSpec) (base.Bucket, error) {
-		return bucket, nil
-	})
+	options := getOrAddDatabaseConfigOptions{
+		useExisting: false,
+		failFast:    false,
+		connectToBucketFn: func(_ context.Context, spec base.BucketSpec, _ bool) (base.Bucket, error) {
+			return bucket, nil
+		},
+	}
+	return sc.getOrAddDatabaseFromConfig(ctx, config, options)
 }
 
 // The parameters used to create a BlipTester
@@ -2468,6 +2473,7 @@ func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int
 }
 
 func (rt *RestTester) NewDbConfig() DbConfig {
+	// make sure bucket has been initialized
 	config := DbConfig{
 		BucketConfig: BucketConfig{
 			Bucket: base.StringPtr(rt.Bucket().GetName()),
