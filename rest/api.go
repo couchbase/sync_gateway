@@ -330,7 +330,7 @@ func (h *handler) handlePostResync() error {
 			}
 
 			if dbState != db.DBOffline {
-				return base.HTTPErrorf(http.StatusServiceUnavailable, "Database must be _offline before calling _resync")
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "Database must be _offline before calling _resync, current state: %s", db.RunStateString[dbState])
 			}
 		}
 
