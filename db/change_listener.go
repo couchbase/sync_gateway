@@ -193,7 +193,7 @@ func (listener *changeListener) Stop() {
 	base.DebugfCtx(logCtx, base.KeyChanges, "changeListener.Stop() called")
 
 	if !listener.started.IsTrue() {
-		// already stopped
+		// never started
 		return
 	}
 
