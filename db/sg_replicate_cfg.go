@@ -1204,6 +1204,12 @@ func (m *sgReplicateManager) GetNumberActiveReplicators() int {
 	return len(m.activeReplicators)
 }
 
+func (m *sgReplicateManager) GetActiveReplicator(name string) *ActiveReplicator {
+	m.activeReplicatorsLock.Lock()
+	defer m.activeReplicatorsLock.Unlock()
+	return m.activeReplicators[name]
+}
+
 // RebalanceReplications distributes the set of defined replications across the set of available nodes
 func (c *SGRCluster) RebalanceReplications() {
 
