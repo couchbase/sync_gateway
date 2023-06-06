@@ -516,27 +516,18 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	// initDataStore is a function to initialize Views or GSI indexes for a datastore
-	initDataStore := func(ds base.DataStore, metadataIndexes db.CollectionIndexesType, verifySyncInfo bool) (resyncRequired bool, err error) {
-
-		// If this collection uses syncInfo, verify the collection isn't associated with a different database's metadataID
-		if verifySyncInfo {
-			resyncRequired, err = base.InitSyncInfo(ds, config.MetadataID)
-			if err != nil {
-				return true, err
-			}
-		}
-
+	initDataStore := func(ds base.DataStore, metadataIndexes db.CollectionIndexesType) (err error) {
 		if useViews {
 			viewErr := db.InitializeViews(ctx, ds)
 			if viewErr != nil {
-				return false, viewErr
+				return viewErr
 			}
-			return resyncRequired, nil
+			return nil
 		}
 
 		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
 		if !gsiSupported {
-			return false, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
+			return errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
 		}
 
 		numReplicas := DefaultNumIndexReplicas
@@ -545,7 +536,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		n1qlStore, ok := base.AsN1QLStore(ds)
 		if !ok {
-			return false, errors.New("Cannot create indexes on non-Couchbase data store.")
+			return errors.New("Cannot create indexes on non-Couchbase data store.")
 
 		}
 		options := db.InitializeIndexOptions{
@@ -557,15 +548,15 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		dsName, ok := base.AsDataStoreName(ds)
 		if !ok {
-			return false, fmt.Errorf("Could not get datastore name from %s", base.MD(ds.GetName()))
+			return fmt.Errorf("Could not get datastore name from %s", base.MD(ds.GetName()))
 		}
 		ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), dsName.ScopeName(), dsName.CollectionName())
 		indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
 		if indexErr != nil {
-			return false, indexErr
+			return indexErr
 		}
 
-		return resyncRequired, nil
+		return nil
 	}
 
 	collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
@@ -605,28 +596,37 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 					hasDefaultCollection = true
 					metadataIndexOption = db.IndexesAll
 				}
-				requiresResync, err := initDataStore(dataStore, metadataIndexOption, true)
+
+				// Verify whether the collection is associated with a different database's metadataID - if so, add to set requiring resync
+				resyncRequired, err := base.InitSyncInfo(dataStore, config.MetadataID)
 				if err != nil {
 					return nil, err
 				}
-				if requiresResync {
+				if resyncRequired {
 					collectionsRequiringResync = append(collectionsRequiringResync, base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+				}
+
+				if err := initDataStore(dataStore, metadataIndexOption); err != nil {
+					return nil, err
 				}
 			}
 		}
 		if !hasDefaultCollection {
-			if _, err := initDataStore(bucket.DefaultDataStore(), db.IndexesMetadataOnly, false); err != nil {
+			if err := initDataStore(bucket.DefaultDataStore(), db.IndexesMetadataOnly); err != nil {
 				return nil, err
 			}
 		}
 	} else {
 		// no scopes configured - init the default data store
-		requiresResync, err := initDataStore(bucket.DefaultDataStore(), db.IndexesAll, true)
+		resyncRequired, err := base.InitSyncInfo(bucket.DefaultDataStore(), config.MetadataID)
 		if err != nil {
 			return nil, err
 		}
-		if requiresResync {
+		if resyncRequired {
 			collectionsRequiringResync = append(collectionsRequiringResync, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: base.DefaultCollection})
+		}
+		if err := initDataStore(bucket.DefaultDataStore(), db.IndexesAll); err != nil {
+			return nil, err
 		}
 	}
 
