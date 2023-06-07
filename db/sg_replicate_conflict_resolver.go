@@ -202,6 +202,14 @@ func NewCustomConflictResolver(source string, timeout time.Duration, host js.Ser
 			defer cancelFn()
 		}
 
+		if service.Host().Engine() == js.Otto {
+			// Otto exposes Go objects directly to JS, meaning that the resolver fn is capable of
+			// modifying the document maps. A conflict resolver isn't allowed to do that, so make
+			// deep copies of both docs before calling it.
+			conflict.LocalDocument = conflict.LocalDocument.DeepCopy()
+			conflict.RemoteDocument = conflict.RemoteDocument.DeepCopy()
+		}
+
 		result, err := service.Run(ctx, conflict)
 
 		if err != nil {
