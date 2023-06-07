@@ -128,7 +128,6 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
-		h.logRESTCount()
 	})
 }
 
@@ -142,7 +141,6 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermiss
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
-		h.logRESTCount()
 	})
 }
 
@@ -267,6 +265,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		if !isRequestLogged {
 			h.logRequestLine()
 		}
+		h.logRESTCount()
 	}()
 
 	defer func() {
@@ -607,6 +606,7 @@ func (h *handler) logDuration(realTime bool) {
 	)
 }
 
+// logRESTCount will increment the number of public REST requests stat for public REST requests excluding blipsync requests
 func (h *handler) logRESTCount() {
 	if h.db == nil {
 		return
