@@ -682,55 +682,6 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 
 }
 
-func TestConcurrentConnectionLimitStat(t *testing.T) {
-	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
-	defer teardown()
-
-	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
-	rest.RequireStatus(t, resp, http.StatusOK)
-
-	// create two replications to take us to the limit
-	replicationID := t.Name()
-	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
-	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
-	replicationID = t.Name() + "1"
-	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
-	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
-	rt1.WaitForActiveReplicatorInitialization(2)
-
-	statValue := rt2.GetDatabase().DbStats.DatabaseStats.NumConcurrentReplications
-	assert.Equal(t, int64(2), statValue.Value())
-
-	// try create a new replication to take it beyond the threshold set by runtime config call
-	// assert it enter error state
-	replicationID = t.Name() + "2"
-	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
-	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
-
-	// assert the concurrent replications value doesn't increase due to the limit
-	statValue = rt2.GetDatabase().DbStats.DatabaseStats.NumConcurrentReplications
-	assert.Equal(t, int64(2), statValue.Value())
-
-	// stop all replicators created
-	resp = rt1.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/"+t.Name()+"1?action=stop", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	rt1.WaitForReplicationStatus(t.Name()+"1", db.ReplicationStateStopped)
-	resp = rt1.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/"+t.Name()+"2?action=stop", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	rt1.WaitForReplicationStatus(t.Name()+"1", db.ReplicationStateStopped)
-	resp = rt1.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/"+t.Name()+"?action=stop", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	rt1.WaitForReplicationStatus(t.Name()+"1", db.ReplicationStateStopped)
-
-	// assert the concurrent replications stat will be decremented
-	base.WaitForStat(func() int64 {
-		return rt2.GetDatabase().DbStats.DatabaseStats.NumConcurrentReplications.Value()
-	}, 0)
-}
-
 // TestPullReplicationAPI
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates a continuous pull replication on rt1 via the REST API

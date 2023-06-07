@@ -23,14 +23,14 @@ import (
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
-	needRelease, err := h.server.incrementConcurrentReplications(h.rqCtx, h.db)
+	needRelease, err := h.server.incrementConcurrentReplications(h.rqCtx)
 	if err != nil {
 		h.db.DbStats.Database().NumReplicationsRejectedLimit.Add(1)
 		return err
 	}
 	// if we haven't incremented the active replicator due to MaxConcurrentReplications being 0, we don't need to decrement it
 	if needRelease {
-		defer h.server.decrementConcurrentReplications(h.rqCtx, h.db)
+		defer h.server.decrementConcurrentReplications(h.rqCtx)
 	}
 
 	// Exit early when the connection can't be switched to websocket protocol.
@@ -85,7 +85,7 @@ func (h *handler) handleBLIPSync() error {
 
 // incrementConcurrentReplications increments the number of active replications (if there is capacity to do so)
 // and rejects calls if no capacity is available
-func (sc *ServerContext) incrementConcurrentReplications(ctx context.Context, db *db.Database) (bool, error) {
+func (sc *ServerContext) incrementConcurrentReplications(ctx context.Context) (bool, error) {
 	// lock replications config limit + the active replications counter
 	sc.ActiveReplicationsCounter.lock.Lock()
 	defer sc.ActiveReplicationsCounter.lock.Unlock()
@@ -102,17 +102,13 @@ func (sc *ServerContext) incrementConcurrentReplications(ctx context.Context, db
 		return false, base.ErrReplicationLimitExceeded
 	}
 	sc.ActiveReplicationsCounter.activeReplicatorCount++
-	// increment the current replication connection stat
-	db.DbStats.Database().NumConcurrentReplications.Add(1)
 	base.TracefCtx(ctx, base.KeyHTTP, "Acquired replication slot (active: %d/%d)", sc.ActiveReplicationsCounter.activeReplicatorCount, capacity)
 
 	return true, nil
 }
 
 // decrementConcurrentReplications decrements the number of active replications on the server context
-func (sc *ServerContext) decrementConcurrentReplications(ctx context.Context, db *db.Database) {
-	// decrement the current replication connection stat
-	db.DbStats.Database().NumConcurrentReplications.Add(-1)
+func (sc *ServerContext) decrementConcurrentReplications(ctx context.Context) {
 	// lock replications config limit + the active replications counter
 	sc.ActiveReplicationsCounter.lock.Lock()
 	defer sc.ActiveReplicationsCounter.lock.Unlock()
