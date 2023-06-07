@@ -423,6 +423,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	metaKeys := base.NewMetadataKeys(options.MetadataID)
 	dbContext.MetadataKeys = metaKeys
 
+	cleanupFunctions = append(cleanupFunctions, func() {
+		base.SyncGatewayStats.ClearDBStats(dbName)
+	})
+
 	// Initialize JavaScript VMPool:
 	jsEngineName := DefaultJavaScriptEngine
 	if options.JavaScriptEngine != nil {
@@ -433,11 +437,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	} else {
 		return nil, fmt.Errorf("%q is not an available JavaScript engine", jsEngineName)
 	}
-
-	cleanupFunctions = append(cleanupFunctions, func() {
-		base.SyncGatewayStats.ClearDBStats(dbName)
-		dbContext.JS.Close()
-	})
+	cleanupFunctions = append(cleanupFunctions, dbContext.JS.Close)
 
 	if dbContext.AllowConflicts() {
 		dbContext.RevsLimit = DefaultRevsLimitConflicts

@@ -468,6 +468,6 @@ func NewImportFilterFunction(vms *js.VMPool, fnSource string, timeout time.Durat
 		case string:
 			return strconv.ParseBool(result)
 		}
-		return false, fmt.Errorf("import filter function returned non-boolean type %T", result)
+		return false, fmt.Errorf("import filter function returned non-boolean type %T: %+v", result, result)
 	}
 }

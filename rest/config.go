@@ -714,7 +714,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		dbConfig.Sync = nil
 	}
 
-	if isEmpty, err := validateJavascriptFunction(jsvm, dbConfig.ImportFilter, 1, 999); err != nil {
+	if isEmpty, err := validateJavascriptFunction(jsvm, dbConfig.ImportFilter, 1, 1); err != nil {
 		multiError = multiError.Append(fmt.Errorf("import filter error: %w", err))
 	} else if isEmpty {
 		dbConfig.ImportFilter = nil
@@ -883,7 +883,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 					collectionConfig.SyncFn = nil
 				}
 
-				if isEmpty, err := validateJavascriptFunction(jsvm, collectionConfig.ImportFilter, 1, 99); err != nil {
+				if isEmpty, err := validateJavascriptFunction(jsvm, collectionConfig.ImportFilter, 1, 1); err != nil {
 					multiError = multiError.Append(fmt.Errorf("collection %q import filter error: %w", collectionName, err))
 				} else if isEmpty {
 					collectionConfig.ImportFilter = nil

@@ -143,26 +143,7 @@ func wrappedFuncSource(funcSource string, host js.ServiceHost) string {
 }
 
 // Runs the sync function. Thread-safe.
-func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]any, oldBodyJSON string, metaMap MetaMap, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
-	bodyJSON, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	docID, _ := body["_id"].(string)
-	revID, _ := body["_rev"].(string)
-	input := ChannelMapperInput{
-		DocID:   docID,
-		RevID:   revID,
-		Body:    string(bodyJSON),
-		OldBody: oldBodyJSON,
-		Meta:    metaMap,
-		UserCtx: userCtx,
-	}
-	return mapper.MapToChannelsAndAccess2(input)
-}
-
-// Runs the sync function. Thread-safe.
-func (mapper *ChannelMapper) MapToChannelsAndAccess2(input ChannelMapperInput) (*ChannelMapperOutput, error) {
+func (mapper *ChannelMapper) Run(input ChannelMapperInput) (*ChannelMapperOutput, error) {
 	result, err := mapper.service.WithRunner(func(runner js.Runner) (any, error) {
 		ctx := context.Background()
 		if mapper.timeout > 0 {
@@ -193,7 +174,7 @@ func callSyncFn(runner js.Runner, in ChannelMapperInput) (*ChannelMapperOutput, 
 	// Call the sync fn:
 	jsResult, err := runner.Run(in.DocID, in.RevID, in.Deleted, js.JSONString(in.Body), in.OldBody, in.Meta.Key, string(in.Meta.JSONValue), in.UserCtx)
 	if err != nil {
-		return nil, fmt.Errorf("unexpected error calling sync fn: %+w", err)
+		return nil, fmt.Errorf("unexpected error calling sync fn: %w", err)
 	}
 	var result syncFnResult
 	if err := json.Unmarshal([]byte(jsResult.(string)), &result); err != nil {
@@ -214,7 +195,7 @@ func callSyncFn(runner js.Runner, in ChannelMapperInput) (*ChannelMapperOutput, 
 	if output.Access, err = compileJSAccessMap(result.Access, ""); err != nil {
 		return nil, err
 	}
-	if output.Roles, err = compileJSAccessMap(result.Roles, "role:"); err != nil {
+	if output.Roles, err = compileJSAccessMap(result.Roles, RoleAccessPrefix); err != nil {
 		return nil, err
 	}
 	if result.Expiry != nil {

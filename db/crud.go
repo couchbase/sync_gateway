@@ -1513,7 +1513,7 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 	if curBodyBytes != nil && string(curBodyBytes) != "null" {
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
 			base.UD(doc.ID), newRevID, doc.CurrentRev)
-		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(ctx, doc, curBodyBytes, metaMap, doc.CurrentRev, false /*TODO: Is false correct??*/)
+		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(ctx, doc, curBodyBytes, metaMap, doc.CurrentRev, false)
 		if err != nil {
 			return
 		}
@@ -2269,9 +2269,9 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 		}
 		var output *channels.ChannelMapperOutput
 
-		base.DebugfCtx(ctx, base.KeyCRUD, "Calling sync fn with _id=%q, _rev=%q, _del=%v, body %s , oldBody %s", doc.ID, revID, doc.Deleted, body, oldJson) //TEMP
+		base.TracefCtx(ctx, base.KeyCRUD, "Calling sync fn with _id=%q, _rev=%q, _del=%v, body %s , oldBody %s", doc.ID, revID, doc.Deleted, body, oldJson)
 		startTime := time.Now()
-		output, err = col.ChannelMapper.MapToChannelsAndAccess2(input)
+		output, err = col.ChannelMapper.Run(input)
 		syncFunctionTimeNano := time.Since(startTime).Nanoseconds()
 
 		col.dbStats().Database().SyncFunctionTime.Add(syncFunctionTimeNano)

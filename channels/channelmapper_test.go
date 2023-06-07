@@ -33,14 +33,33 @@ func emptyMetaMap() MetaMap {
 
 var noUser = map[string]interface{}{"name": nil, "channels": []string{}}
 
+// Runs the sync function. Thread-safe.
+// (Wrapper around ChannelMapper.Run, kept around because a bunch of tests still call it.)
+func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]any, oldBodyJSON string, metaMap MetaMap, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	docID, _ := body["_id"].(string)
+	revID, _ := body["_rev"].(string)
+	input := ChannelMapperInput{
+		DocID:   docID,
+		RevID:   revID,
+		Body:    string(bodyJSON),
+		OldBody: oldBodyJSON,
+		Meta:    metaMap,
+		UserCtx: userCtx,
+	}
+	return mapper.Run(input)
+}
+
 // verify that our version of Otto treats JSON parsed arrays like real arrays
 func TestJavaScriptWorks(t *testing.T) {
 	js.TestWithVMs(t, func(t *testing.T, vm js.VM) {
 		mapper := NewChannelMapper(vm, `function(doc) {channel(doc.x.concat(doc.y));}`, 0)
 		res, err := mapper.MapToChannelsAndAccess(parse(`{"x":["abc"],"y":["xyz"]}`), `{}`, emptyMetaMap(), noUser)
-		if assert.NoError(t, err, "MapToChannelsAndAccess failed") {
-			assert.Equal(t, BaseSetOf(t, "abc", "xyz"), res.Channels)
-		}
+		require.NoError(t, err, "MapToChannelsAndAccess failed")
+		assert.Equal(t, BaseSetOf(t, "abc", "xyz"), res.Channels)
 	})
 }
 
@@ -50,10 +69,9 @@ func TestHiddenVariables(t *testing.T) {
 		for _, hidden := range []string{"userCtx", "shouldValidate", "result", "eval", "Function"} {
 			mapper := NewChannelMapper(vm, `function(doc) {return `+hidden+`;}`, 0)
 			_, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, emptyMetaMap(), noUser)
-			if assert.Error(t, err, "Was able to access %q", hidden) {
-				assert.ErrorContains(t, err, "ReferenceError:")
-				assert.ErrorContains(t, err, " is not defined")
-			}
+			require.Error(t, err, "Was able to access %q", hidden)
+			assert.ErrorContains(t, err, "ReferenceError:")
+			assert.ErrorContains(t, err, " is not defined")
 		}
 	})
 }
@@ -367,9 +385,8 @@ func TestCheckRole(t *testing.T) {
 		}
 
 		res, err = mapper.MapToChannelsAndAccess(parse(`{"role": "girl"}`), `{}`, emptyMetaMap(), nil)
-		if assert.NoError(t, err, "MapToChannelsAndAccess failed") {
-			assert.Equal(t, nil, res.Rejection)
-		}
+		require.NoError(t, err, "MapToChannelsAndAccess failed")
+		assert.Equal(t, nil, res.Rejection)
 	})
 }
 
