@@ -380,6 +380,20 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// in order to pass it to RegisterImportPindexImpl
 	ctx = base.DatabaseLogCtx(ctx, dbName)
 
+	if err := base.RequireNoBucketTTL(bucket); err != nil {
+		return nil, err
+	}
+
+	serverUUID, err := getServerUUID(ctx, bucket)
+	if err != nil {
+		return nil, err
+	}
+
+	dbStats, statsError := initDatabaseStats(dbName, autoImport, options)
+	if statsError != nil {
+		return nil, statsError
+	}
+
 	// options.MetadataStore is always passed via rest._getOrAddDatabase...
 	// but in db package tests this is unlikely to be set. In this case we'll use the existing bucket connection to store metadata.
 	metadataStore := options.MetadataStore
@@ -391,15 +405,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// Register the cbgt pindex type for the configGroup
 	RegisterImportPindexImpl(ctx, options.GroupID)
 
-	dbStats, statsError := initDatabaseStats(dbName, autoImport, options)
-	if statsError != nil {
-		return nil, statsError
-	}
-
-	serverUUID, err := getServerUUID(ctx, bucket)
-	if err != nil {
-		return nil, err
-	}
 	dbContext := &DatabaseContext{
 		Name:                dbName,
 		UUID:                cbgt.NewUUID(),
@@ -2104,7 +2109,16 @@ func (dbc *DatabaseContext) GetRequestPlusSequence() (uint64, error) {
 	return dbc.sequences.getSequence()
 }
 
-func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) error {
+func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedError error) {
+	cleanupFunctions := make([]func(), 0)
+
+	defer func() {
+		if returnedError != nil {
+			for _, cleanupFunc := range cleanupFunctions {
+				cleanupFunc()
+			}
+		}
+	}()
 
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
 	notifyChange := func(changedChannels channels.Set) {
@@ -2123,6 +2137,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) error {
 		base.DebugfCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)
 		return err
 	}
+
 	db.mutationListener.OnChangeCallback = db.changeCache.DocChanged
 
 	if base.IsEnterpriseEdition() {
@@ -2150,6 +2165,10 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) error {
 			return err
 		}
 		db.Heartbeater = heartbeater
+
+		cleanupFunctions = append(cleanupFunctions, func() {
+			db.Heartbeater.Stop()
+		})
 	}
 
 	// If sgreplicate is enabled on this node, register this node to accept notifications
@@ -2158,15 +2177,23 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) error {
 		if registerNodeErr != nil {
 			return registerNodeErr
 		}
+
+		cleanupFunctions = append(cleanupFunctions, func() {
+			db.SGReplicateMgr.Stop()
+		})
 	}
 
 	// Start DCP feed
-	base.InfofCtx(ctx, base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(db.Bucket.GetName()))
+	base.InfofCtx(ctx, base.KeyDCP, "Starting mutation feed on bucket %v", base.MD(db.Bucket.GetName()))
 	cacheFeedStatsMap := db.DbStats.Database().CacheFeedMapStats
 	if err := db.mutationListener.Start(db.Bucket, cacheFeedStatsMap.Map, db.Scopes, db.MetadataStore); err != nil {
 		db.channelCache = nil
 		return err
 	}
+
+	cleanupFunctions = append(cleanupFunctions, func() {
+		db.mutationListener.Stop()
+	})
 
 	// Get current value of _sync:seq
 	initialSequence, seqErr := db.sequences.lastSequence()
@@ -2184,6 +2211,9 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) error {
 	if err := db.changeCache.Start(initialSequence); err != nil {
 		return err
 	}
+	cleanupFunctions = append(cleanupFunctions, func() {
+		db.changeCache.Stop()
+	})
 
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
 	// subscription relies on the caching feed.
@@ -2192,6 +2222,10 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) error {
 		if importFeedErr := db.ImportListener.StartImportFeed(db); importFeedErr != nil {
 			return importFeedErr
 		}
+
+		cleanupFunctions = append(cleanupFunctions, func() {
+			db.ImportListener.Stop()
+		})
 	}
 
 	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.
@@ -2276,16 +2310,8 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) error {
 
 	}
 
-	// Make sure there is no MaxTTL set on the bucket (SG #3314)
-	cbs, ok := base.AsCouchbaseBucketStore(db.Bucket)
-	if ok {
-		maxTTL, err := cbs.MaxTTL()
-		if err != nil {
-			return err
-		}
-		if maxTTL != 0 {
-			return fmt.Errorf("Backing Couchbase Server bucket has a non-zero MaxTTL value: %d.  Please set MaxTTL to 0 in Couchbase Server Admin UI and try again.", maxTTL)
-		}
+	if err := base.RequireNoBucketTTL(db.Bucket); err != nil {
+		return err
 	}
 
 	db.ExitChanges = make(chan struct{})
