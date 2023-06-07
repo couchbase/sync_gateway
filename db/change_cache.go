@@ -55,7 +55,8 @@ type changeCache struct {
 	receivedSeqs       map[uint64]struct{}     // Set of all sequences received
 	pendingLogs        LogPriorityQueue        // Out-of-sequence entries waiting to be cached
 	notifyChange       func(channels.Set)      // Client callback that notifies of channel changes
-	stopped            *base.AtomicBool        // Set by the Stop method
+	started            base.AtomicBool         // Set by the Start method
+	stopped            base.AtomicBool         // Set by the Stop method
 	skippedSeqs        *SkippedSequenceList    // Skipped sequences still pending on the TAP feed
 	lock               sync.RWMutex            // Coordinates access to struct fields
 	options            CacheOptions            // Cache config
@@ -162,7 +163,6 @@ func (c *changeCache) Init(logCtx context.Context, dbContext *DatabaseContext, c
 	c.logCtx = logCtx
 
 	c.notifyChange = notifyChange
-	c.stopped = base.NewAtomicBool(true) // set to false by Start
 	c.receivedSeqs = make(map[uint64]struct{})
 	c.terminator = make(chan bool)
 	c.initTime = time.Now()
@@ -213,8 +213,8 @@ func (c *changeCache) Start(initialSequence uint64) error {
 	// Set initial sequence for cache (validFrom)
 	c.channelCache.Init(initialSequence)
 
-	if !c.stopped.CompareAndSwap(true, false) {
-		return fmt.Errorf("changeCache already started")
+	if !c.started.CompareAndSwap(false, true) {
+		return errors.New("changeCache already started")
 	}
 
 	return nil
@@ -223,11 +223,13 @@ func (c *changeCache) Start(initialSequence uint64) error {
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
 func (c *changeCache) Stop() {
 
-	if c.stopped == nil {
-		// changeCache never initialized - nothing to stop
+	if !c.started.IsTrue() {
+		// changeCache never started - nothing to stop
 		return
 	}
+
 	if !c.stopped.CompareAndSwap(false, true) {
+		base.WarnfCtx(c.logCtx, "changeCache was already stopped")
 		return
 	}
 
