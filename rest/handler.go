@@ -128,6 +128,7 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
+		h.logRESTCount()
 	})
 }
 
@@ -141,6 +142,7 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermiss
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
+		h.logRESTCount()
 	})
 }
 
@@ -603,6 +605,19 @@ func (h *handler) logDuration(realTime bool) {
 		h.formatSerialNumber(), h.status, h.statusMessage,
 		float64(duration)/float64(time.Millisecond),
 	)
+}
+
+func (h *handler) logRESTCount() {
+	if h.db == nil {
+		return
+	}
+	if h.privs != publicPrivs && h.privs != regularPrivs {
+		return
+	}
+	if h.isBlipSync() {
+		return
+	}
+	h.db.DbStats.DatabaseStats.NumPublicRestRequests.Add(1)
 }
 
 // logStatusWithDuration will log the request status and the duration of the request.
@@ -1508,6 +1523,10 @@ func requiresWritePermission(accessPermissions []Permission) bool {
 		}
 	}
 	return false
+}
+
+func (h *handler) isBlipSync() bool {
+	return h.pathTemplateContains("_blipsync")
 }
 
 // Checks whether the mux path template for the current route contains the specified pattern

@@ -68,6 +68,40 @@ func TestRoot(t *testing.T) {
 	assert.Equal(t, "GET, HEAD", response.Header().Get("Allow"))
 }
 
+func TestPublicRESTStatCount(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+
+	// create a user to authenticate as for public api calls and assert the stat hasn't incremented as a result
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/greg", GetUserPayload(t, "greg", "letmein", "", rt.GetSingleTestDatabaseCollection(), []string{"ABC"}, nil))
+	RequireStatus(t, resp, http.StatusCreated)
+	base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
+	}, 0)
+
+	// use public api to put a doc through SGW then assert the stat has increased by 1
+	resp = rt.SendUserRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"foo":"bar", "channels":["ABC"]}`, "greg")
+	RequireStatus(t, resp, http.StatusCreated)
+	base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
+	}, 1)
+
+	// send admin request assert that the public rest count doesn't increase
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc1", "")
+	RequireStatus(t, resp, http.StatusOK)
+	base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
+	}, 1)
+
+	// send another public request to assert the stat increases by 1
+	resp = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc1", "", "greg")
+	RequireStatus(t, resp, http.StatusOK)
+	base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
+	}, 2)
+
+}
+
 func TestDBRoot(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
