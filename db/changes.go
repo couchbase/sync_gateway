@@ -627,8 +627,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		var userChanged bool                // Whether the user document has changed in a given iteration loop
 		var deferredBackfill bool           // Whether there's a backfill identified in the user doc that's deferred while the SG cache catches up
 
-		// Retrieve the current max cached sequence - ensures there isn't a race between the subsequent channel cache queries
-		currentCachedSequence = db.changeCache.getChannelCache().GetHighCacheSequence()
 		var useLateSequenceFeeds bool // LateSequence feeds are only used for continuous, or one-shot where options.RequestPlusSeq > currentCachedSequence
 		// Retrieve the current max cached sequence - ensures there isn't a race between the subsequent channel cache queries
 		currentCachedSequence = db.changeCache.getChannelCache().GetHighCacheSequence()
@@ -986,7 +984,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					break waitForChanges
 				}
 
-				db.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Add(1)
 				db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Add(1)
 				waitResponse := changeWaiter.Wait()
 				db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Add(-1)
