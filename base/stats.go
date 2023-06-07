@@ -469,7 +469,7 @@ type DatabaseStats struct {
 	NumDocReadsRest *SgwIntStat `json:"num_doc_reads_rest"`
 	// The total number of documents written by any means (replication, rest API interaction or imports) since Sync Gateway node startup.
 	NumDocWrites *SgwIntStat `json:"num_doc_writes"`
-	// The total number of active replications. This metric only counts continuous pull replications.
+	// The total number of active replications.
 	NumReplicationsActive *SgwIntStat `json:"num_replications_active"`
 	// The total number of replications created since Sync Gateway node startup.
 	NumReplicationsTotal   *SgwIntStat `json:"num_replications_total"`
