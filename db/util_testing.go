@@ -94,6 +94,17 @@ func (db *DatabaseContext) WaitForCaughtUp(targetCount int64) error {
 	return errors.New("WaitForCaughtUp didn't catch up")
 }
 
+func (db *DatabaseContext) WaitForTotalCaughtUp(targetCount int64) error {
+	for i := 0; i < 100; i++ {
+		caughtUpCount := db.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
+		if caughtUpCount >= targetCount {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return errors.New("WaitForCaughtUp didn't catch up")
+}
+
 type StatWaiter struct {
 	initCount   int64            // Document cached count when NewStatWaiter is called
 	targetCount int64            // Target count used when Wait is called
@@ -367,4 +378,14 @@ func SuspendSequenceBatching() func() {
 	oldFrequency := MaxSequenceIncrFrequency
 	MaxSequenceIncrFrequency = 0 * time.Millisecond
 	return func() { MaxSequenceIncrFrequency = oldFrequency }
+}
+
+// AllocateTestSequence allocates a sequence via the sequenceAllocator.  For use by non-db tests
+func AllocateTestSequence(database *DatabaseContext) (uint64, error) {
+	return database.sequences.incrementSequence(1)
+}
+
+// ReleaseTestSequence releases a sequence via the sequenceAllocator.  For use by non-db tests
+func ReleaseTestSequence(database *DatabaseContext, sequence uint64) error {
+	return database.sequences.releaseSequence(sequence)
 }

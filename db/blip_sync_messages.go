@@ -60,6 +60,7 @@ const (
 	SubChangesContinuous  = "continuous"
 	SubChangesBatch       = "batch"
 	SubChangesRevocations = "revocations"
+	SubChangesRequestPlus = "requestPlus"
 
 	// rev message properties
 	RevMessageId          = "id"
@@ -197,6 +198,14 @@ func (s *SubChangesParams) revocations() bool {
 
 func (s *SubChangesParams) activeOnly() bool {
 	return (s.rq.Properties[SubChangesActiveOnly] == "true")
+}
+
+func (s *SubChangesParams) requestPlus(defaultValue bool) (value bool) {
+	propertyValue, isDefined := s.rq.Properties[SubChangesRequestPlus]
+	if !isDefined {
+		return defaultValue
+	}
+	return propertyValue == "true"
 }
 
 func (s *SubChangesParams) filter() string {

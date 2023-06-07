@@ -26,19 +26,20 @@ import (
 // Options for changes-feeds.  ChangesOptions must not contain any mutable pointer references, as
 // changes processing currently assumes a deep copy when doing chanOpts := changesOptions.
 type ChangesOptions struct {
-	Since       SequenceID      // sequence # to start _after_
-	Limit       int             // Max number of changes to return, if nonzero
-	Conflicts   bool            // Show all conflicting revision IDs, not just winning one?
-	IncludeDocs bool            // Include doc body of each change?
-	Wait        bool            // Wait for results, instead of immediately returning empty result?
-	Continuous  bool            // Run continuously until terminated?
-	Terminator  chan bool       // Caller can close this channel to terminate the feed
-	HeartbeatMs uint64          // How often to send a heartbeat to the client
-	TimeoutMs   uint64          // After this amount of time, close the longpoll connection
-	ActiveOnly  bool            // If true, only return information on non-deleted, non-removed revisions
-	Revocations bool            // Specifies whether revocation messages should be sent on the changes feed
-	clientType  clientType      // Can be used to determine if the replication is being started from a CBL 2.x or SGR2 client
-	Ctx         context.Context // Used for adding context to logs
+	Since          SequenceID      // sequence # to start _after_
+	Limit          int             // Max number of changes to return, if nonzero
+	Conflicts      bool            // Show all conflicting revision IDs, not just winning one?
+	IncludeDocs    bool            // Include doc body of each change?
+	Wait           bool            // Wait for results, instead of immediately returning empty result?
+	Continuous     bool            // Run continuously until terminated?
+	Terminator     chan bool       // Caller can close this channel to terminate the feed
+	HeartbeatMs    uint64          // How often to send a heartbeat to the client
+	TimeoutMs      uint64          // After this amount of time, close the longpoll connection
+	ActiveOnly     bool            // If true, only return information on non-deleted, non-removed revisions
+	Revocations    bool            // Specifies whether revocation messages should be sent on the changes feed
+	clientType     clientType      // Can be used to determine if the replication is being started from a CBL 2.x or SGR2 client
+	Ctx            context.Context // Used for adding context to logs
+	RequestPlusSeq uint64          // Do not stop changes before cached sequence catches up with requestPlusSeq
 }
 
 // A changes entry; Database.GetChanges returns an array of these.
@@ -626,11 +627,13 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		var userChanged bool                // Whether the user document has changed in a given iteration loop
 		var deferredBackfill bool           // Whether there's a backfill identified in the user doc that's deferred while the SG cache catches up
 
+		var useLateSequenceFeeds bool // LateSequence feeds are only used for continuous, or one-shot where options.RequestPlusSeq > currentCachedSequence
 		// Retrieve the current max cached sequence - ensures there isn't a race between the subsequent channel cache queries
 		currentCachedSequence = db.changeCache.getChannelCache().GetHighCacheSequence()
-		if options.Wait {
-			options.Wait = false
-			changeWaiter = db.startChangeWaiter(base.Set{}) // Waiter is updated with the actual channel set (post-user reload) at the start of the outer changes loop
+
+		// If changes feed requires more than one ChangesLoop iteration, initialize changeWaiter
+		if options.Wait || options.RequestPlusSeq > currentCachedSequence {
+			changeWaiter = db.startChangeWaiter(nil) // Waiter is updated with the actual channel set (post-user reload) at the start of the outer changes loop
 			userCounter = changeWaiter.CurrentUserCount()
 			// Reload user to pick up user changes that happened between auth and the change waiter
 			// initialization.  Without this, notification for user doc changes in that window (a) won't be
@@ -665,7 +668,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 		// For a continuous feed, initialise the lateSequenceFeeds that track late-arriving sequences
 		// to the channel caches.
-		if options.Continuous {
+		if options.Continuous || options.RequestPlusSeq > currentCachedSequence {
+			useLateSequenceFeeds = true
 			lateSequenceFeeds = make(map[string]*lateSequenceFeed)
 			defer db.closeLateFeeds(lateSequenceFeeds)
 		}
@@ -723,7 +727,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				// Handles previously skipped sequences prior to options.Since that
 				// have arrived in the channel cache since this changes request started.  Only needed for
 				// continuous feeds - one-off changes requests only require the standard channel cache.
-				if options.Continuous {
+				if useLateSequenceFeeds {
 					lateSequenceFeedHandler := lateSequenceFeeds[name]
 					if lateSequenceFeedHandler != nil {
 						latefeed, err := db.getLateFeed(lateSequenceFeedHandler, singleChannelCache)
@@ -940,14 +944,18 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				}
 			}
 
-			if !options.Continuous && (sentSomething || changeWaiter == nil) {
-				break
+			// Check whether non-continuous changes feeds that aren't waiting to reach requestPlus sequence can exit
+			if !options.Continuous && currentCachedSequence >= options.RequestPlusSeq {
+				// If non-longpoll, or longpoll has sent something, can exit
+				if !options.Wait || sentSomething {
+					break
+				}
 			}
 
 			// For longpoll requests that didn't send any results, reset low sequence to the original since value,
 			// as the system low sequence may change before the longpoll request wakes up, and longpoll feeds don't
 			// use lateSequenceFeeds.
-			if !options.Continuous {
+			if !useLateSequenceFeeds {
 				options.Since.LowSeq = requestLowSeq
 			}
 
@@ -964,6 +972,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 		waitForChanges:
 			for {
+				db.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Add(1)
 				// If we're in a deferred Backfill, the user may not get notification when the cache catches up to the backfill (e.g. when the granting doc isn't
 				// visible to the user), and so ChangeWaiter.Wait() would block until the next user-visible doc arrives.  Use a hardcoded wait instead
 				// Similar handling for when we see sequences later than the stable sequence.
@@ -975,7 +984,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					break waitForChanges
 				}
 
-				db.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Add(1)
 				db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Add(1)
 				waitResponse := changeWaiter.Wait()
 				db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Add(-1)
@@ -1288,7 +1296,7 @@ func createChangesEntry(docid string, db *Database, options ChangesOptions) *Cha
 
 func (options ChangesOptions) String() string {
 	return fmt.Sprintf(
-		`{Since: %s, Limit: %d, Conflicts: %t, IncludeDocs: %t, Wait: %t, Continuous: %t, HeartbeatMs: %d, TimeoutMs: %d, ActiveOnly: %t}`,
+		`{Since: %s, Limit: %d, Conflicts: %t, IncludeDocs: %t, Wait: %t, Continuous: %t, HeartbeatMs: %d, TimeoutMs: %d, ActiveOnly: %t, RequestPlusSeq: %d}`,
 		options.Since,
 		options.Limit,
 		options.Conflicts,
@@ -1298,6 +1306,7 @@ func (options ChangesOptions) String() string {
 		options.HeartbeatMs,
 		options.TimeoutMs,
 		options.ActiveOnly,
+		options.RequestPlusSeq,
 	)
 }
 

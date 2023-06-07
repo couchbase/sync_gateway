@@ -823,6 +823,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		ClientPartitionWindow:     clientPartitionWindow,
 		BcryptCost:                bcryptCost,
 		GroupID:                   groupID,
+		ChangesRequestPlus:        base.BoolDefault(config.ChangesRequestPlus, false),
 	}
 
 	return contextOptions, nil

@@ -2862,7 +2862,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &docResp))
 
 	// start an initial pull
-	require.NoError(t, btc.StartPullSince("true", "0", "true", ""))
+	require.NoError(t, btc.StartPullSince("true", "0", "true", "", ""))
 
 	rev, found := btc.WaitForRev("doc1", docResp.Rev)
 	assert.True(t, found)
@@ -3475,7 +3475,7 @@ func TestRevocationMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a pull since 5 to receive revocation and removal
-	err = btc.StartPullSince("false", "5", "false", "")
+	err = btc.StartPullSince("false", "5", "false", "", "")
 	assert.NoError(t, err)
 
 	// Wait for doc1 rev2 - This is the last rev we expect so we can be sure replication is complete here
@@ -3585,7 +3585,7 @@ func TestRevocationNoRev(t *testing.T) {
 	_, err = rt.WaitForChanges(3, "/db/_changes?since="+lastSeq, "user", true)
 	require.NoError(t, err)
 
-	err = btc.StartPullSince("false", lastSeq, "false", "")
+	err = btc.StartPullSince("false", lastSeq, "false", "", "")
 	assert.NoError(t, err)
 
 	_, ok = btc.WaitForRev("docmarker", waitRevID)
