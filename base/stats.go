@@ -1943,6 +1943,7 @@ func (d *DbStats) unregisterSharedBucketImportStats() {
 	prometheus.Unregister(d.SharedBucketImportStats.ImportProcessingTime)
 	prometheus.Unregister(d.SharedBucketImportStats.ImportHighSeq)
 	prometheus.Unregister(d.SharedBucketImportStats.ImportPartitions)
+	prometheus.Unregister(d.SharedBucketImportStats.ImportProcessCompute)
 }
 
 func (d *DbStats) SharedBucketImport() *SharedBucketImportStats {
