@@ -469,6 +469,8 @@ type DatabaseStats struct {
 	NumDocReadsRest *SgwIntStat `json:"num_doc_reads_rest"`
 	// The total number of documents written by any means (replication, rest API interaction or imports) since Sync Gateway node startup.
 	NumDocWrites *SgwIntStat `json:"num_doc_writes"`
+	// The total number of requests sent over the public REST api
+	NumPublicRestRequests *SgwIntStat `json:"num_public_rest_requests"`
 	// The total number of active replications.
 	NumReplicationsActive *SgwIntStat `json:"num_replications_active"`
 	// The total number of replications created since Sync Gateway node startup.
@@ -1441,6 +1443,10 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.NumPublicRestRequests, err = NewIntStat(SubsystemDatabaseKey, "num_public_rest_requests", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ImportFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
 
 	resUtil.CacheFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
@@ -1485,6 +1491,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionTime)
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionExceptionCount)
 	prometheus.Unregister(d.DatabaseStats.NumReplicationsRejectedLimit)
+	prometheus.Unregister(d.DatabaseStats.NumPublicRestRequests)
 }
 
 func (d *DbStats) CollectionStat(scopeName, collectionName string) (*CollectionStats, error) {

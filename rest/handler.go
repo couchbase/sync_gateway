@@ -265,6 +265,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		if !isRequestLogged {
 			h.logRequestLine()
 		}
+		h.logRESTCount()
 	}()
 
 	defer func() {
@@ -603,6 +604,20 @@ func (h *handler) logDuration(realTime bool) {
 		h.formatSerialNumber(), h.status, h.statusMessage,
 		float64(duration)/float64(time.Millisecond),
 	)
+}
+
+// logRESTCount will increment the number of public REST requests stat for public REST requests excluding _blipsync requests if they are attached to a database.
+func (h *handler) logRESTCount() {
+	if h.db == nil {
+		return
+	}
+	if h.privs != publicPrivs && h.privs != regularPrivs {
+		return
+	}
+	if h.isBlipSync() {
+		return
+	}
+	h.db.DbStats.DatabaseStats.NumPublicRestRequests.Add(1)
 }
 
 // logStatusWithDuration will log the request status and the duration of the request.
@@ -1508,6 +1523,10 @@ func requiresWritePermission(accessPermissions []Permission) bool {
 		}
 	}
 	return false
+}
+
+func (h *handler) isBlipSync() bool {
+	return h.pathTemplateContains("_blipsync")
 }
 
 // Checks whether the mux path template for the current route contains the specified pattern
