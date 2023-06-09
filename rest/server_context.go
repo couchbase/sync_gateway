@@ -97,6 +97,7 @@ type getOrAddDatabaseConfigOptions struct {
 	failFast          bool            // if set, a failure to connect to a bucket of collection will immediately fail
 	useExisting       bool            //  if true, return an existing DatabaseContext vs return an error
 	connectToBucketFn db.OpenBucketFn // supply a custom function for buckets, used for testing only
+	forceOnline       bool            // force the database to come online, even if startOffline is set
 }
 
 func (sc *ServerContext) CreateLocalDatabase(ctx context.Context, dbs DbConfigMap) error {
@@ -363,19 +364,21 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 }
 
 // Removes and re-adds a database to the ServerContext.
-func (sc *ServerContext) _reloadDatabase(ctx context.Context, reloadDbName string, failFast bool) (*db.DatabaseContext, error) {
+func (sc *ServerContext) _reloadDatabase(ctx context.Context, reloadDbName string, failFast bool, forceOnline bool) (*db.DatabaseContext, error) {
 	sc._unloadDatabase(ctx, reloadDbName)
 	config := sc.dbConfigs[reloadDbName]
 	return sc._getOrAddDatabaseFromConfig(ctx, config.DatabaseConfig, getOrAddDatabaseConfigOptions{
 		useExisting: true,
-		failFast:    failFast})
+		failFast:    failFast,
+		forceOnline: forceOnline,
+	})
 }
 
 // Removes and re-adds a database to the ServerContext.
-func (sc *ServerContext) ReloadDatabase(ctx context.Context, reloadDbName string) (*db.DatabaseContext, error) {
+func (sc *ServerContext) ReloadDatabase(ctx context.Context, reloadDbName string, forceOnline bool) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
-	dbContext, err := sc._reloadDatabase(ctx, reloadDbName, false)
+	dbContext, err := sc._reloadDatabase(ctx, reloadDbName, false, forceOnline)
 	sc.lock.Unlock()
 
 	return dbContext, err
@@ -820,18 +823,28 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		sc.collectionRegistry[name] = dbName
 	}
 
-	if base.BoolDefault(config.StartOffline, false) {
+	stateChangeMsg := "DB loaded from config"
+
+	startOffline := base.BoolDefault(config.StartOffline, false)
+	needsResync := len(dbcontext.RequireResync) > 0
+
+	if needsResync || (startOffline && !options.forceOnline) {
+		if needsResync {
+			stateChangeMsg = "Resync required for collections"
+		}
+
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
-		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", &sc.Config.API.AdminInterface)
-	} else if len(dbcontext.RequireResync) > 0 {
-		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
-		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "Resync required for collections", &sc.Config.API.AdminInterface)
-	} else {
-		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
-		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", &sc.Config.API.AdminInterface)
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", stateChangeMsg, &sc.Config.API.AdminInterface)
+
+		return dbcontext, nil
 	}
 
-	dbcontext.StartReplications(ctx)
+	atomic.StoreUint32(&dbcontext.State, db.DBOnline)
+	_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
+
+	if err := dbcontext.StartOnlineProcesses(ctx); err != nil {
+		return nil, err
+	}
 
 	return dbcontext, nil
 }
@@ -1118,14 +1131,14 @@ func (sc *ServerContext) TakeDbOnline(nonContextStruct base.NonCancellableContex
 
 	// We can only transition to Online from Offline state
 	if atomic.CompareAndSwapUint32(&database.State, db.DBOffline, db.DBStarting) {
-		reloadedDb, err := sc.ReloadDatabase(nonContextStruct.Ctx, database.Name)
+		reloadedDb, err := sc.ReloadDatabase(nonContextStruct.Ctx, database.Name, true)
 		if err != nil {
 			base.ErrorfCtx(nonContextStruct.Ctx, "Error reloading database from config: %v", err)
 			return
 		}
 
 		if len(reloadedDb.RequireResync) > 0 {
-			base.ErrorfCtx(nonContextStruct.Ctx, "Database has collections that require resync before it can go online: %v", reloadedDb.RequireResync)
+			base.ErrorfCtx(nonContextStruct.Ctx, "Database has collections that require regenerate_sequences resync before it can go online: %v", reloadedDb.RequireResync)
 			return
 		}
 		// Reloaded DB should already be online in most cases, but force state to online to handle cases
@@ -1387,7 +1400,8 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 		failFast := false
 		dbCtx, err = sc._getOrAddDatabaseFromConfig(ctx, dbConfig.DatabaseConfig, getOrAddDatabaseConfigOptions{
 			useExisting: false,
-			failFast:    failFast})
+			failFast:    failFast,
+		})
 		if err != nil {
 			return nil, err
 		}
