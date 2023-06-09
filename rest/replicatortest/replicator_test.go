@@ -2445,14 +2445,18 @@ func TestReconnectReplicator(t *testing.T) {
 
 			activeRT.WaitForActiveReplicatorInitialization(1)
 			ar := activeRT.GetDatabase().SGReplicateMgr.GetActiveReplicator("replication1")
+			numConnectionAttempts := ar.Pull.GetStats().NumConnectAttempts.Value()
 			// race between stopping the blip sender here and the initialization of it on the replicator so need this assertion in here to avoid panic
 			activeRT.WaitForPullBlipSenderInitialisation(replicationName)
 			ar.Pull.GetBlipSender().Stop()
 
-			activeRT.WaitForReplicationStatus(replicationName, db.ReplicationStateReconnecting)
-
+			// assert on replicator reconnecting and getting back to running state once reconnected
+			// due to race in jenkins we assert on connection stat increasing instead of asserting on replication state hitting reconnecting state
+			ar = activeRT.GetDatabase().SGReplicateMgr.GetActiveReplicator("replication1")
+			assert.Greater(t, ar.Pull.GetStats().NumConnectAttempts.Value(), numConnectionAttempts)
 			activeRT.WaitForReplicationStatus(replicationName, db.ReplicationStateRunning)
 
+			// assert the replicator works and we replicate docs still after replicator reconnects
 			for i := 0; i < 10; i++ {
 				response := remoteRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"source": "remote"}`)
 				rest.RequireStatus(t, response, http.StatusCreated)
