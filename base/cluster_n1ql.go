@@ -14,11 +14,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
-	"strings"
-	"time"
 )
 
 var _ N1QLStore = &ClusterOnlyN1QLStore{}
