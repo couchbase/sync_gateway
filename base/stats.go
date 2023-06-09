@@ -692,6 +692,8 @@ type SharedBucketImportStats struct {
 	ImportHighSeq *SgwIntStat `json:"import_high_seq"`
 	// The total number of import partitions.
 	ImportPartitions *SgwIntStat `json:"import_partitions"`
+	// Represents the compute unit
+	ImportProcessCompute *SgwFloatStat `json:"import_process_compute"`
 }
 
 type SgwStat struct {
@@ -1921,6 +1923,10 @@ func (d *DbStats) InitSharedBucketImportStats() error {
 			return err
 		}
 		resUtil.ImportPartitions, err = NewIntStat(SubsystemSharedBucketImport, "import_partitions", labelKeys, labelVals, prometheus.GaugeValue, 0)
+		if err != nil {
+			return err
+		}
+		resUtil.ImportProcessCompute, err = NewFloatStat(SubsystemSharedBucketImport, "import_process_compute", labelKeys, labelVals, prometheus.GaugeValue, 0)
 		if err != nil {
 			return err
 		}

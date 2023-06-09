@@ -15,10 +15,13 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
+
+const MiB = 1048576
 
 // ImportListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
 // and invokes ImportFeedEvent for any event that's eligible for import handling.
@@ -156,7 +159,24 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 	return true
 }
 
+// calculateImportCompute calculates the import Process compute stat. NOTE: this current uses MiB as the MB unit to compute the stat
+// to use MB (Si) unit we must change the 'MiB' constant used here to 1000000
+func calculateImportCompute(timeMS, bytes float64) float64 {
+	eventMb := bytes / MiB
+	stat := timeMS * (eventMb / 32 * MiB)
+	return stat
+}
+
 func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
+	startTime := time.Now()
+	defer func() {
+		// we must grab the time in seconds here and convert to ms as the .Milliseconds() function returns integer millisecond count
+		functionTime := time.Since(startTime).Seconds()
+		bytes := float64(len(event.Value))
+		ms := functionTime * float64(1000)
+		stat := calculateImportCompute(ms, bytes)
+		il.importStats.ImportProcessCompute.Add(stat)
+	}()
 	// Unmarshal the doc metadata (if present) to determine if this mutation requires import.
 	collectionCtx, ok := il.collections[event.CollectionID]
 	if !ok {

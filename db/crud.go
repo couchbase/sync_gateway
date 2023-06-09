@@ -231,6 +231,15 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 // OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
 func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, rawXattr []byte, rawUserXattr []byte, cas uint64) (docOut *Document, err error) {
+	startTime := time.Now()
+	defer func() {
+		// we must grab the time in seconds here and convert to ms as the .Milliseconds() function returns integer millisecond count
+		functionTime := time.Since(startTime).Seconds()
+		bytes := float64(len(docOut._rawBody))
+		ms := functionTime * float64(1000)
+		stat := calculateImportCompute(ms, bytes)
+		c.dbCtx.DbStats.SharedBucketImportStats.ImportProcessCompute.Add(stat)
+	}()
 	isDelete := rawDoc == nil
 	importDb := DatabaseCollectionWithUser{DatabaseCollection: c, user: nil}
 	var importErr error
@@ -819,7 +828,15 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 // ////// UPDATING DOCUMENTS:
 
 func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context, docid string, doc *Document, deleted bool) error {
-
+	startTime := time.Now()
+	defer func() {
+		// we must grab the time in seconds here and convert to ms as the .Milliseconds() function returns integer millisecond count
+		functionTime := time.Since(startTime).Seconds()
+		bytes := float64(len(doc._rawBody))
+		ms := functionTime * float64(1000)
+		stat := calculateImportCompute(ms, bytes)
+		db.dbCtx.DbStats.SharedBucketImportStats.ImportProcessCompute.Add(stat)
+	}()
 	// Check whether the doc requiring import is an SDK delete
 	isDelete := false
 	if doc.Body() == nil {

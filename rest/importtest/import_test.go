@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
@@ -1914,6 +1915,97 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	// 6. Attempt to retrieve previous revision body.  Should return missing, as rev wasn't in rev cache when import occurred.
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
 	assert.Equal(t, 404, response.Code)
+}
+
+func TestImportComputeStatOnDemand(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: false,
+		}},
+	}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+
+	key := t.Name()
+	docBody := make(map[string]interface{})
+	docBody["test"] = t.Name()
+	docBody["channels"] = "ABC"
+
+	// assert the stat starts at 0 for a new database
+	computeStat := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	assert.Equal(t, float64(0), computeStat)
+
+	// add doc to bucket
+	_, err := dataStore.Add(key, 0, docBody)
+	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
+
+	// trigger import via SG retrieval
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
+	assert.Equal(t, 200, response.Code)
+	var rawInsertResponse rest.RawResponse
+	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
+	assert.NoError(t, err, "Unable to unmarshal raw response")
+	// assert the process compute stat has incremented
+	computeStat1 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	assert.Greater(t, computeStat1, float64(0))
+
+	// update doc in bucket
+	updatedBody := make(map[string]interface{})
+	updatedBody["test"] = t.Name() + "Modified"
+	updatedBody["channels"] = "DEF"
+	err = dataStore.Set(key, 0, nil, updatedBody)
+	assert.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
+
+	// trigger import via SG retrieval
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
+	assert.Equal(t, 200, response.Code)
+	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
+	assert.NoError(t, err, "Unable to unmarshal raw response")
+	// assert the process compute stat has incremented again after another import
+	computeStat2 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	assert.Greater(t, computeStat2, computeStat1)
+
+}
+
+func TestAutoImportComputeStat(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: true,
+		}},
+	}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+
+	key := t.Name()
+	docBody := make(map[string]interface{})
+	docBody["test"] = t.Name()
+	docBody["channels"] = "ABC"
+
+	// assert the stat starts at 0 for a new database
+	computeStat := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	assert.Equal(t, float64(0), computeStat)
+
+	// add doc to bucket
+	_, err := dataStore.Add(key, 0, docBody)
+	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
+
+	// wait for import to process
+	_, ok := base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
+	}, 1)
+	assert.True(t, ok)
+
+	// assert the stat increments for the auto import of the above doc
+	computeStat1 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	assert.Greater(t, computeStat1, float64(0))
 }
 
 // Verify config flag for import creation of backup revision on import
