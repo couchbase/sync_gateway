@@ -235,7 +235,12 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 	defer func() {
 		// we must grab the time in seconds here and convert to ms as the .Milliseconds() function returns integer millisecond count
 		functionTime := time.Since(startTime).Seconds()
-		bytes := float64(len(docOut._rawBody))
+		var bytes float64
+		if docOut != nil {
+			bytes = float64(len(docOut._rawBody))
+		} else {
+			return
+		}
 		stat := calculateImportCompute(bytes, functionTime)
 		c.dbCtx.DbStats.SharedBucketImportStats.ImportProcessCompute.Add(stat)
 	}()
@@ -831,7 +836,12 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 	defer func() {
 		// we must grab the time in seconds here and convert to ms as the .Milliseconds() function returns integer millisecond count
 		functionTime := time.Since(startTime).Seconds()
-		bytes := float64(len(doc._rawBody))
+		var bytes float64
+		if doc != nil {
+			bytes = float64(len(doc._rawBody))
+		} else {
+			return
+		}
 		stat := calculateImportCompute(bytes, functionTime)
 		db.dbCtx.DbStats.SharedBucketImportStats.ImportProcessCompute.Add(stat)
 	}()
