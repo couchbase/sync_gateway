@@ -161,7 +161,8 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 
 // calculateImportCompute calculates the import Process compute stat. NOTE: this current uses MiB as the MB unit to compute the stat
 // to use MB (Si) unit we must change the 'MiB' constant used here to 1000000
-func calculateImportCompute(timeMS, bytes float64) float64 {
+func calculateImportCompute(bytes, functionTime float64) float64 {
+	timeMS := functionTime * float64(1000)
 	eventMb := bytes / MiB
 	stat := timeMS * (eventMb / 32 * MiB)
 	return stat
@@ -173,8 +174,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 		// we must grab the time in seconds here and convert to ms as the .Milliseconds() function returns integer millisecond count
 		functionTime := time.Since(startTime).Seconds()
 		bytes := float64(len(event.Value))
-		ms := functionTime * float64(1000)
-		stat := calculateImportCompute(ms, bytes)
+		stat := calculateImportCompute(bytes, functionTime)
 		il.importStats.ImportProcessCompute.Add(stat)
 	}()
 	// Unmarshal the doc metadata (if present) to determine if this mutation requires import.

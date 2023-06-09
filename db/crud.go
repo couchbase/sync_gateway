@@ -236,8 +236,7 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 		// we must grab the time in seconds here and convert to ms as the .Milliseconds() function returns integer millisecond count
 		functionTime := time.Since(startTime).Seconds()
 		bytes := float64(len(docOut._rawBody))
-		ms := functionTime * float64(1000)
-		stat := calculateImportCompute(ms, bytes)
+		stat := calculateImportCompute(bytes, functionTime)
 		c.dbCtx.DbStats.SharedBucketImportStats.ImportProcessCompute.Add(stat)
 	}()
 	isDelete := rawDoc == nil
@@ -833,8 +832,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 		// we must grab the time in seconds here and convert to ms as the .Milliseconds() function returns integer millisecond count
 		functionTime := time.Since(startTime).Seconds()
 		bytes := float64(len(doc._rawBody))
-		ms := functionTime * float64(1000)
-		stat := calculateImportCompute(ms, bytes)
+		stat := calculateImportCompute(bytes, functionTime)
 		db.dbCtx.DbStats.SharedBucketImportStats.ImportProcessCompute.Add(stat)
 	}()
 	// Check whether the doc requiring import is an SDK delete
