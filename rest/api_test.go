@@ -104,7 +104,7 @@ func TestPublicRESTStatCount(t *testing.T) {
 	require.True(t, ok)
 
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/_blipsync", "", "greg")
-	fmt.Println(resp.Code)
+	RequireStatus(t, resp, http.StatusUpgradeRequired)
 
 	_, ok = base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
