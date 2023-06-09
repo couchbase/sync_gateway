@@ -670,9 +670,14 @@ func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptio
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	dbCtx, err := db.NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	require.NoError(t, err, "Couldn't create context for database 'db'")
+
+	err = dbCtx.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
 	db, err := db.CreateDatabase(dbCtx)
-	assert.NoError(t, err, "Couldn't create database 'db'")
+	require.NoError(t, err, "Couldn't create database 'db'")
+
 	ctx = db.AddDatabaseLogContext(ctx)
 	return db, ctx
 }

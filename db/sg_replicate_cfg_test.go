@@ -678,14 +678,20 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	dbDefault, err := NewDatabaseContext(ctx, "default", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "", Scopes: scopesConfig})
 	require.NoError(t, err)
 	defer dbDefault.Close(ctx)
+	err = dbDefault.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
 
 	dbGroupA, err := NewDatabaseContext(ctx, "groupa", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupA", Scopes: scopesConfig})
 	require.NoError(t, err)
 	defer dbGroupA.Close(ctx)
+	err = dbGroupA.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
 
 	dbGroupB, err := NewDatabaseContext(ctx, "groupb", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupB", Scopes: scopesConfig})
 	require.NoError(t, err)
 	defer dbGroupB.Close(ctx)
+	err = dbGroupB.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
 
 	// Set up replicators
 	err = dbDefault.SGReplicateMgr.RegisterNode("nodeDefault")

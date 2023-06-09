@@ -1973,6 +1973,9 @@ func BenchmarkProcessEntry(b *testing.B) {
 			require.NoError(b, err)
 			defer context.Close(ctx)
 
+			err = context.StartOnlineProcesses(ctx)
+			require.NoError(b, err)
+
 			collection := GetSingleDatabaseCollection(b, context)
 			collectionID := collection.GetCollectionID()
 
@@ -2204,6 +2207,9 @@ func BenchmarkDocChanged(b *testing.B) {
 			context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 			require.NoError(b, err)
 			defer context.Close(ctx)
+
+			err = context.StartOnlineProcesses(ctx)
+			require.NoError(b, err)
 
 			collection := GetSingleDatabaseCollection(b, context)
 			collectionID := collection.GetCollectionID()
