@@ -606,7 +606,7 @@ func (h *handler) logDuration(realTime bool) {
 	)
 }
 
-// logRESTCount will increment the number of public REST requests stat for public REST requests excluding blipsync requests
+// logRESTCount will increment the number of public REST requests stat for public REST requests excluding _blipsync requests if they are attached to a database.
 func (h *handler) logRESTCount() {
 	if h.db == nil {
 		return

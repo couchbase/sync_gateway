@@ -73,15 +73,14 @@ func TestPublicRESTStatCount(t *testing.T) {
 	defer rt.Close()
 
 	// create a user to authenticate as for public api calls and assert the stat hasn't incremented as a result
-	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/greg", GetUserPayload(t, "greg", "letmein", "", rt.GetSingleTestDatabaseCollection(), []string{"ABC"}, nil))
-	RequireStatus(t, resp, http.StatusCreated)
+	rt.CreateUser("greg", []string{"ABC"})
 	_, ok := base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
 	}, 0)
 	require.True(t, ok)
 
 	// use public api to put a doc through SGW then assert the stat has increased by 1
-	resp = rt.SendUserRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"foo":"bar", "channels":["ABC"]}`, "greg")
+	resp := rt.SendUserRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"foo":"bar", "channels":["ABC"]}`, "greg")
 	RequireStatus(t, resp, http.StatusCreated)
 	_, ok = base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
@@ -104,6 +103,36 @@ func TestPublicRESTStatCount(t *testing.T) {
 	}, 2)
 	require.True(t, ok)
 
+	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/_blipsync", "", "greg")
+	fmt.Println(resp.Code)
+
+	_, ok = base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
+	}, 2)
+	require.True(t, ok)
+
+	srv := httptest.NewServer(rt.TestMetricsHandler())
+	defer srv.Close()
+	httpClient := http.DefaultClient
+
+	// test metrics endpoint
+	response, err := httpClient.Get(srv.URL + "/_metrics")
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, response.StatusCode)
+	// assert the stat doesn't increment
+	_, ok = base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
+	}, 2)
+	require.True(t, ok)
+
+	// test public endpoint but one that doesn't access a db
+	resp = rt.SendUserRequest(http.MethodGet, "/", "", "greg")
+	RequireStatus(t, resp, http.StatusOK)
+	// assert the stat doesn't increment
+	_, ok = base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
+	}, 2)
+	require.True(t, ok)
 }
 
 func TestDBRoot(t *testing.T) {
