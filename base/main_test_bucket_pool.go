@@ -202,7 +202,8 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	var walrusBucket Bucket
 	var typeName string
 	if TestUseRosmar() {
-		walrusBucket, err = rosmar.NewBucket(url, tbpBucketNamePrefix+"rosmar_"+id)
+		bucketName := tbpBucketNamePrefix + "rosmar_" + id
+		walrusBucket, err = rosmar.OpenBucketIn(url, bucketName, rosmar.CreateOrOpen)
 		typeName = "rosmar"
 	} else {
 		walrusBucket, err = walrus.GetCollectionBucket(url, tbpBucketNamePrefix+"walrus_"+id)

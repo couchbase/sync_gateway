@@ -352,7 +352,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	if spec.IsRosmarBucket() {
 		InfofCtx(context.TODO(), KeyAll, "Opening Rosmar database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
-		bucket, err = rosmar.GetBucket(spec.Server, spec.BucketName)
+		bucket, err = rosmar.OpenBucketIn(spec.Server, spec.BucketName, rosmar.CreateOrOpen)
 		if err != nil {
 			ErrorfCtx(context.TODO(), "Failed to open Rosmar database %s on <%s>: %s", MD(spec.BucketName), SD(spec.Server), err)
 			return nil, err
