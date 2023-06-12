@@ -1918,8 +1918,6 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 }
 
 func TestImportComputeStatOnDemandGet(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -1937,43 +1935,42 @@ func TestImportComputeStatOnDemandGet(t *testing.T) {
 
 	// assert the stat starts at 0 for a new database
 	computeStat := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
-	assert.Equal(t, float64(0), computeStat)
+	require.Equal(t, float64(0), computeStat)
 
 	// add doc to bucket
 	_, err := dataStore.Add(key, 0, docBody)
-	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
+	require.NoError(t, err, fmt.Sprintf("Unable to insert doc %s", key))
 
 	// trigger import via SG retrieval
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
-	assert.Equal(t, 200, response.Code)
+	rest.RequireStatus(t, response, http.StatusOK)
 	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assert.NoError(t, err, "Unable to unmarshal raw response")
+	require.NoError(t, err, "Unable to unmarshal raw response")
+
 	// assert the process compute stat has incremented
 	computeStat1 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
-	assert.Greater(t, computeStat1, float64(0))
+	require.Greater(t, computeStat1, float64(0))
 
 	// update doc in bucket
 	updatedBody := make(map[string]interface{})
 	updatedBody["test"] = t.Name() + "Modified"
 	updatedBody["channels"] = "DEF"
 	err = dataStore.Set(key, 0, nil, updatedBody)
-	assert.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
+	require.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
 
 	// trigger import via SG retrieval
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
-	assert.Equal(t, 200, response.Code)
+	rest.RequireStatus(t, response, http.StatusOK)
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assert.NoError(t, err, "Unable to unmarshal raw response")
+	require.NoError(t, err, "Unable to unmarshal raw response")
 	// assert the process compute stat has incremented again after another import
 	computeStat2 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
-	assert.Greater(t, computeStat2, computeStat1)
+	require.Greater(t, computeStat2, computeStat1)
 
 }
 
 func TestImportComputeStatOnDemandWrite(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
-
 	importFilter := `function (doc) { return doc.type == "mobile"}`
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
@@ -1993,11 +1990,11 @@ func TestImportComputeStatOnDemandWrite(t *testing.T) {
 
 	// assert the stat starts at 0 for a new database
 	computeStat := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
-	assert.Equal(t, float64(0), computeStat)
+	require.Equal(t, float64(0), computeStat)
 
 	// add doc to bucket
 	_, err := dataStore.Add(key, 0, docBody)
-	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
+	require.NoError(t, err, fmt.Sprintf("Unable to insert doc %s", key))
 
 	// trigger on demand import of this doc - should be rejected
 	response := rt.SendAdminRequest("GET", "/db/_raw/"+key, "")
@@ -2006,17 +2003,17 @@ func TestImportComputeStatOnDemandWrite(t *testing.T) {
 
 	// assert stat still no incremented as import filter rejects the doc
 	computeStat1 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
-	assert.Equal(t, float64(0), computeStat1)
+	require.Equal(t, float64(0), computeStat1)
 
 	// rewrite through SG - should treat as new insert
 	docBodyString := `{"type":"SG client rewrite",
 	                 "channels": "NBC"}`
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), docBodyString)
-	assert.Equal(t, 201, response.Code)
+	rest.RequireStatus(t, response, http.StatusCreated)
 
 	// assert stat increases as function OnDemandImportForWrite will have been executed
 	computeStat2 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
-	assert.Greater(t, computeStat2, computeStat1)
+	require.Greater(t, computeStat2, computeStat1)
 }
 
 func TestAutoImportComputeStat(t *testing.T) {
@@ -2039,21 +2036,21 @@ func TestAutoImportComputeStat(t *testing.T) {
 
 	// assert the stat starts at 0 for a new database
 	computeStat := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
-	assert.Equal(t, float64(0), computeStat)
+	require.Equal(t, float64(0), computeStat)
 
 	// add doc to bucket
 	_, err := dataStore.Add(key, 0, docBody)
-	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
+	require.NoError(t, err, fmt.Sprintf("Unable to insert doc %s", key))
 
 	// wait for import to process
 	_, ok := base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
 	}, 1)
-	assert.True(t, ok)
+	require.True(t, ok)
 
 	// assert the stat increments for the auto import of the above doc
 	computeStat1 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
-	assert.Greater(t, computeStat1, float64(0))
+	require.Greater(t, computeStat1, float64(0))
 }
 
 // Verify config flag for import creation of backup revision on import
