@@ -64,10 +64,7 @@ func (c *Collection) BucketName() string {
 
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaKeyspaceID() string {
-	if c.IsDefaultScopeCollection() {
-		return c.BucketName()
-	}
-	return c.CollectionName()
+	return IndexMetaKeyspaceID(c.BucketName(), c.ScopeName(), c.CollectionName())
 }
 
 func (c *Collection) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
@@ -130,56 +127,7 @@ func (c *Collection) CreatePrimaryIndex(indexName string, options *N1qlIndexOpti
 
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
 func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) error {
-	logCtx := context.TODO()
-	mgr := c.Bucket.cluster.QueryIndexes()
-	maxNumAttempts := 180
-	if failfast {
-		maxNumAttempts = 1
-	}
-	retrySleeper := CreateMaxDoublingSleeperFunc(maxNumAttempts, 100, 5000)
-	retryCount := 0
-
-	onlineIndexes := make(map[string]bool)
-
-	indexOption := gocb.GetAllQueryIndexesOptions{
-		ScopeName:      c.ScopeName(),
-		CollectionName: c.CollectionName(),
-		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
-	}
-
-	for {
-		watchedOnlineIndexCount := 0
-		currIndexes, err := mgr.GetAllIndexes(c.BucketName(), &indexOption)
-		if err != nil {
-			return err
-		}
-		// check each of the current indexes state, add to map once finished to make sure each index online is only being logged once
-		for i := 0; i < len(currIndexes); i++ {
-			if currIndexes[i].State == IndexStateOnline {
-				if !onlineIndexes[currIndexes[i].Name] {
-					InfofCtx(logCtx, KeyAll, "Index %s is online", MD(currIndexes[i].Name))
-					onlineIndexes[currIndexes[i].Name] = true
-				}
-			}
-		}
-		// check online index against indexes we watch to have online, increase counter as each comes online
-		for _, listVal := range indexNames {
-			if onlineIndexes[listVal] {
-				watchedOnlineIndexCount++
-			}
-		}
-
-		if watchedOnlineIndexCount == len(indexNames) {
-			return nil
-		}
-		retryCount++
-		shouldContinue, sleepMs := retrySleeper(retryCount)
-		if !shouldContinue {
-			return fmt.Errorf("error waiting for indexes for bucket %s....", MD(c.BucketName()))
-		}
-		InfofCtx(logCtx, KeyAll, "Indexes for bucket %s not ready - retrying...", MD(c.BucketName()))
-		time.Sleep(time.Millisecond * time.Duration(sleepMs))
-	}
+	return WaitForIndexesOnline(c.Bucket.cluster, c.BucketName(), c.ScopeName(), c.CollectionName(), indexNames, failfast)
 }
 
 func (c *Collection) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {
@@ -246,24 +194,11 @@ func (c *Collection) IsErrNoResults(err error) bool {
 }
 
 func (c *Collection) GetIndexes() (indexes []string, err error) {
-
-	indexes = []string{}
-	var opts *gocb.GetAllQueryIndexesOptions
 	if c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		opts = &gocb.GetAllQueryIndexesOptions{
-			ScopeName:      c.ScopeName(),
-			CollectionName: c.CollectionName(),
-		}
+		return GetAllIndexes(c.Bucket.cluster, c.BucketName(), c.ScopeName(), c.CollectionName())
+	} else {
+		return GetAllIndexes(c.Bucket.cluster, c.BucketName(), "", "")
 	}
-	indexInfo, err := c.Bucket.cluster.QueryIndexes().GetAllIndexes(c.BucketName(), opts)
-	if err != nil {
-		return indexes, err
-	}
-
-	for _, indexInfo := range indexInfo {
-		indexes = append(indexes, indexInfo.Name)
-	}
-	return indexes, nil
 }
 
 // waitUntilQueryServiceReady will wait for the specified duration until the query service is available.
