@@ -1974,7 +1974,7 @@ func TestImportComputeStatOnDemandGet(t *testing.T) {
 
 func TestImportComputeStatOnDemandWrite(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
-	
+
 	importFilter := `function (doc) { return doc.type == "mobile"}`
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
@@ -1993,8 +1993,6 @@ func TestImportComputeStatOnDemandWrite(t *testing.T) {
 	docBody["channels"] = "ABC"
 
 	// assert the stat starts at 0 for a new database
-	//fmt.Println(rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute)
-	time.Sleep(5 * time.Second)
 	computeStat := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
 	require.Equal(t, float64(0), computeStat)
 
