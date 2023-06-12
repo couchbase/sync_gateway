@@ -30,9 +30,11 @@ func init() {
 	walrus.LoggingCallback = func(level walrus.LogLevel, fmt string, args ...any) {
 		logTo(context.TODO(), LogLevel(level), KeyWalrus, fmt, args...)
 	}
+	walrus.Logging = walrus.LevelTrace
 	rosmar.LoggingCallback = func(level rosmar.LogLevel, fmt string, args ...any) {
 		logTo(context.TODO(), LogLevel(level), KeyWalrus, fmt, args...)
 	}
+	rosmar.Logging = rosmar.LevelTrace
 }
 
 // GetLogKeys returns log keys in a map

@@ -15,9 +15,6 @@ import (
 	"fmt"
 	"strings"
 	"sync/atomic"
-
-	"github.com/couchbaselabs/rosmar"
-	"github.com/couchbaselabs/walrus"
 )
 
 // LogKeyMask is a bitfield of log keys.
@@ -109,27 +106,17 @@ func (i LogKey) KeyMaskValue() uint64 {
 func (keyMask *LogKeyMask) Enable(logKey LogKey) {
 	val := atomic.LoadUint64((*uint64)(keyMask))
 	atomic.StoreUint64((*uint64)(keyMask), val|logKey.KeyMaskValue())
-	keyMask.changed()
 }
 
 // Disable will disable the given logKey in keyMask.
 func (keyMask *LogKeyMask) Disable(logKey LogKey) {
 	val := atomic.LoadUint64((*uint64)(keyMask))
 	atomic.StoreUint64((*uint64)(keyMask), val & ^logKey.KeyMaskValue())
-	keyMask.changed()
 }
 
 // Set will override the keyMask with the given logKeyMask.
 func (keyMask *LogKeyMask) Set(logKeyMask *LogKeyMask) {
 	atomic.StoreUint64((*uint64)(keyMask), uint64(*logKeyMask))
-	keyMask.changed()
-}
-
-func (keyMask *LogKeyMask) changed() {
-	if keyMask.Enabled(KeyWalrus) {
-		walrus.Logging = walrus.LevelDebug
-		rosmar.Logging = rosmar.LevelDebug
-	}
 }
 
 // Enabled returns true if the given logKey is enabled in keyMask.
