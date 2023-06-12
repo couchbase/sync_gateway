@@ -21,8 +21,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-const MiB = 1048576
-
 // ImportListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
 // and invokes ImportFeedEvent for any event that's eligible for import handling.
 type importListener struct {
@@ -163,8 +161,8 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 // to use MB (Si) unit we must change the 'MiB' constant used here to 1000000
 func calculateImportCompute(bytes, functionTime float64) float64 {
 	timeMS := functionTime * float64(1000)
-	eventMb := bytes / MiB
-	stat := timeMS * (eventMb / 32 * MiB)
+	eventMb := bytes / base.MiB
+	stat := timeMS * (eventMb / 32 * base.MiB)
 	return stat
 }
 

@@ -177,6 +177,8 @@ const (
 	EmptyDocument = `{}`
 )
 
+const MiB = 1 * 1024 * 1024
+
 var (
 	SyncFnAccessErrors = []string{
 		HTTPErrorf(403, SyncFnErrorMissingRole).Error(),

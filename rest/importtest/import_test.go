@@ -1917,7 +1917,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	assert.Equal(t, 404, response.Code)
 }
 
-func TestImportComputeStatOnDemand(t *testing.T) {
+func TestImportComputeStatOnDemandGet(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -1969,6 +1969,54 @@ func TestImportComputeStatOnDemand(t *testing.T) {
 	computeStat2 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
 	assert.Greater(t, computeStat2, computeStat1)
 
+}
+
+func TestImportComputeStatOnDemandWrite(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	importFilter := `function (doc) { return doc.type == "mobile"}`
+	rtConfig := rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport:   false,
+			ImportFilter: &importFilter,
+		}},
+	}
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+
+	key := t.Name()
+	docBody := make(map[string]interface{})
+	docBody["type"] = "non-mobile"
+	docBody["channels"] = "ABC"
+
+	// assert the stat starts at 0 for a new database
+	computeStat := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	assert.Equal(t, float64(0), computeStat)
+
+	// add doc to bucket
+	_, err := dataStore.Add(key, 0, docBody)
+	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
+
+	// trigger on demand import of this doc - should be rejected
+	response := rt.SendAdminRequest("GET", "/db/_raw/"+key, "")
+	rest.RequireStatus(t, response, http.StatusNotFound)
+	assertDocProperty(t, response, "reason", "Not imported")
+
+	// assert stat still no incremented as import filter rejects the doc
+	computeStat1 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	assert.Equal(t, float64(0), computeStat1)
+
+	// rewrite through SG - should treat as new insert
+	docBodyString := `{"type":"SG client rewrite",
+	                 "channels": "NBC"}`
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), docBodyString)
+	assert.Equal(t, 201, response.Code)
+
+	// assert stat increases as function OnDemandImportForWrite will have been executed
+	computeStat2 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	assert.Greater(t, computeStat2, computeStat1)
 }
 
 func TestAutoImportComputeStat(t *testing.T) {
