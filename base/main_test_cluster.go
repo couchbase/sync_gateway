@@ -109,7 +109,7 @@ func (c *tbpClusterV2) isServerEnterprise() (bool, error) {
 		return false, err
 	}
 
-	if strings.Contains("enterprise", metadata[0].Version) {
+	if strings.Contains(metadata[0].Version, "enterprise") {
 		return true, nil
 	}
 	return false, nil
