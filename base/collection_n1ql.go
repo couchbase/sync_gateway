@@ -154,8 +154,7 @@ func (b *GocbV2Bucket) runQuery(scopeName string, statement string, n1qlOptions 
 	var queryResults *gocb.QueryResult
 	var err error
 	if b.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		scope := b.cluster.Bucket(b.BucketName()).Scope(scopeName)
-		queryResults, err = scope.Query(statement, n1qlOptions)
+		queryResults, err = b.bucket.Scope(scopeName).Query(statement, n1qlOptions)
 	} else {
 		queryResults, err = b.cluster.Query(statement, n1qlOptions)
 	}
