@@ -181,9 +181,11 @@ func (cl *ClusterOnlyN1QLStore) runQuery(statement string, n1qlOptions *gocb.Que
 	if n1qlOptions == nil {
 		n1qlOptions = &gocb.QueryOptions{}
 	}
-	queryResults, err := cl.cluster.Query(statement, n1qlOptions)
-
-	return queryResults, err
+	if !cl.supportsCollections {
+		return cl.cluster.Query(statement, n1qlOptions)
+	}
+	scope := cl.cluster.Bucket(cl.bucketName).Scope(cl.scopeName)
+	return scope.Query(statement, n1qlOptions)
 }
 
 func (cl *ClusterOnlyN1QLStore) WaitForIndexesOnline(indexNames []string, failfast bool) error {

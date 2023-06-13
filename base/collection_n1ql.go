@@ -81,7 +81,7 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
 		TracefCtx(logCtx, KeyQuery, "Executing N1QL query: %v - %+v", UD(keyspaceStatement), UD(params))
-		queryResults, queryErr := c.Bucket.runQuery(keyspaceStatement, n1qlOptions)
+		queryResults, queryErr := c.Bucket.runQuery(c.ScopeName(), keyspaceStatement, n1qlOptions)
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{
 				rawResult:                  queryResults.Raw(),
@@ -144,13 +144,21 @@ func (c *Collection) BuildDeferredIndexes(indexSet []string) error {
 	return BuildDeferredIndexes(c, indexSet)
 }
 
-func (b *GocbV2Bucket) runQuery(statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {
+func (b *GocbV2Bucket) runQuery(scopeName string, statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {
 	b.waitForAvailQueryOp()
 
 	if n1qlOptions == nil {
 		n1qlOptions = &gocb.QueryOptions{}
 	}
-	queryResults, err := b.cluster.Query(statement, n1qlOptions)
+
+	var queryResults *gocb.QueryResult
+	var err error
+	if b.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		scope := b.cluster.Bucket(b.BucketName()).Scope(scopeName)
+		queryResults, err = scope.Query(statement, n1qlOptions)
+	} else {
+		queryResults, err = b.cluster.Query(statement, n1qlOptions)
+	}
 	// In the event that we get an error during query we should release a view op as Close() will not be called.
 	if err != nil {
 		b.releaseQueryOp()
@@ -160,7 +168,7 @@ func (b *GocbV2Bucket) runQuery(statement string, n1qlOptions *gocb.QueryOptions
 }
 
 func (c *Collection) executeQuery(statement string) (sgbucket.QueryResultIterator, error) {
-	queryResults, queryErr := c.Bucket.runQuery(statement, nil)
+	queryResults, queryErr := c.Bucket.runQuery(c.ScopeName(), statement, nil)
 	if queryErr != nil {
 		return nil, queryErr
 	}
@@ -173,7 +181,7 @@ func (c *Collection) executeQuery(statement string) (sgbucket.QueryResultIterato
 }
 
 func (c *Collection) executeStatement(statement string) error {
-	queryResults, queryErr := c.Bucket.runQuery(statement, nil)
+	queryResults, queryErr := c.Bucket.runQuery(c.ScopeName(), statement, nil)
 	if queryErr != nil {
 		return queryErr
 	}
