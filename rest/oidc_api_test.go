@@ -933,6 +933,15 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBody))
 			require.NoError(t, response.Body.Close(), "Error closing response body")
 			assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
+
+			// Make a keyspace-scoped request
+			request, err = http.NewRequest(http.MethodPut, mockSyncGatewayURL+"/"+restTester.GetSingleKeyspace()+"/doc1", bytes.NewBufferString(`{"foo":"bar"}`))
+			require.NoError(t, err, "Error creating new request")
+			request.Header.Add("Authorization", BearerToken+" "+refreshResponseActual.IDToken)
+			response, err = client.Do(request)
+			require.NoError(t, err, "Error sending request with bearer token")
+			require.Equal(t, http.StatusCreated, response.StatusCode)
+			require.NoError(t, response.Body.Close(), "Error closing response body")
 		})
 	}
 }
