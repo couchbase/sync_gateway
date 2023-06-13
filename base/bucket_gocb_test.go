@@ -1168,9 +1168,6 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not yet implement SubdocXattrStore") // TODO
-	}
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
@@ -1198,11 +1195,16 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
 
-	subdocXattrStore, ok := AsSubdocXattrStore(dataStore)
-	require.True(t, ok)
-
-	_, mutateErr := subdocXattrStore.SubdocUpdateXattrDeleteBody(key, xattrName, 0, cas, xattrVal)
-	assert.NoError(t, mutateErr)
+	if subdocXattrStore, ok := AsSubdocXattrStore(dataStore); ok {
+		// Couchbase Server:
+		_, mutateErr := subdocXattrStore.SubdocUpdateXattrDeleteBody(key, xattrName, 0, cas, xattrVal)
+		assert.NoError(t, mutateErr)
+	} else {
+		// Walrus/Rosmar:
+		xattrValJson, _ := JSONMarshal(xattrVal)
+		_, mutateErr := dataStore.WriteWithXattr(key, xattrName, 0, cas, nil, nil, xattrValJson, false, true)
+		assert.NoError(t, mutateErr)
+	}
 
 	// Verify delete of body and update of XATTR
 	var retrievedVal map[string]interface{}
@@ -1220,9 +1222,6 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not implement SubdocXattrStore")
-	}
 
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
@@ -1283,25 +1282,21 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 	updatedVal := make(map[string]interface{})
 	updatedVal["type"] = "updated"
 
-	updatedXattrVal := make(map[string]interface{})
-	updatedXattrVal["seq"] = 123
-	updatedXattrVal["rev"] = "2-1234"
+	updatedXattrVal := []byte(`{"seq":123, "rev":"2-1234"}`)
 
 	// Attempt to delete DocExistsXattrExists, DocExistsNoXattr, and XattrExistsNoDoc
 	// No errors should be returned when deleting these.
 	keys := []string{key1, key2, key3}
 	casValues := []uint64{cas1, cas2, cas3}
 	shouldDeleteBody := []bool{true, true, false}
-	subdocStore, ok := AsSubdocXattrStore(dataStore)
-	require.True(t, ok)
 	for i, key := range keys {
 
 		log.Printf("Delete testing for key: %v", key)
 		// First attempt to update with a bad cas value, and ensure we're getting the expected error
-		_, errCasMismatch := UpdateTombstoneXattr(subdocStore, key, xattrName, 0, uint64(1234), &updatedXattrVal, shouldDeleteBody[i])
+		_, errCasMismatch := dataStore.WriteWithXattr(key, xattrName, 0, uint64(1234), nil, nil, updatedXattrVal, true, shouldDeleteBody[i])
 		assert.True(t, IsCasMismatch(errCasMismatch), fmt.Sprintf("Expected cas mismatch for %s", key))
 
-		_, errDelete := UpdateTombstoneXattr(subdocStore, key, xattrName, 0, uint64(casValues[i]), &updatedXattrVal, shouldDeleteBody[i])
+		_, errDelete := dataStore.WriteWithXattr(key, xattrName, 0, uint64(casValues[i]), nil, nil, updatedXattrVal, true, shouldDeleteBody[i])
 		log.Printf("Delete error: %v", errDelete)
 
 		assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
@@ -1310,7 +1305,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	// Now attempt to tombstone key4 (NoDocNoXattr), should not return an error (per SG #3307).  Should save xattr metadata.
 	log.Printf("Deleting key: %v", key4)
-	_, errDelete := UpdateTombstoneXattr(subdocStore, key4, xattrName, 0, uint64(0), &updatedXattrVal, false)
+	_, errDelete := dataStore.WriteWithXattr(key4, xattrName, 0, uint64(0), nil, nil, updatedXattrVal, true, false)
 	assert.NoError(t, errDelete, "Unexpected error tombstoning non-existent doc")
 	assert.True(t, verifyDocDeletedXattrExists(dataStore, key4, xattrName), "Expected doc to be deleted, but xattrs to exist")
 
@@ -2147,17 +2142,11 @@ func verifyDocDeletedXattrExists(store sgbucket.XattrStore, key, xattrName strin
 
 func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not implement SubdocXattrStore")
-	}
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 	dataStore := bucket.GetSingleDataStore()
-
-	subdocXattrStore, ok := AsSubdocXattrStore(dataStore)
-	require.True(t, ok)
 
 	// Create a document with extended attributes
 	key := "DocWithXattrAndIsDelete"
@@ -2174,12 +2163,10 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 	cas, err := dataStore.WriteCasWithXattr(key, xattrKey, 0, cas, nil, val, xattrVal)
 	require.NoError(t, err, "Error doing WriteCasWithXattr")
 
-	updatedXattrVal := make(map[string]interface{})
-	updatedXattrVal["seq"] = 123
-	updatedXattrVal["rev"] = "2-EmDC"
+	updatedXattrVal := []byte(`{"seq":123, "rev":"2-EmDC"}`)
 
 	// Attempt to delete the document body (deleteBody = true); isDelete is true to mark this doc as a tombstone.
-	_, errDelete := UpdateTombstoneXattr(subdocXattrStore, key, xattrKey, 0, cas, &updatedXattrVal, true)
+	_, errDelete := dataStore.WriteWithXattr(key, xattrKey, 0, cas, nil, nil, updatedXattrVal, true, true)
 	assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
 	assert.True(t, verifyDocDeletedXattrExists(dataStore, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
 
@@ -2256,17 +2243,11 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 
 func TestInsertTombstoneWithXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not implement SubdocXattrStore")
-	}
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 	dataStore := bucket.GetSingleDataStore()
-
-	subdocXattrStore, ok := AsSubdocXattrStore(dataStore)
-	require.True(t, ok)
 
 	// Create a document with extended attributes
 	key := "InsertedTombstoneDoc"
@@ -2274,13 +2255,12 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 	val["type"] = key
 
 	xattrKey := SyncXattrName
-	xattrVal := make(map[string]interface{})
-	xattrVal["seq"] = 123
-	xattrVal["rev"] = "1-EmDC"
+	xattrVal := []byte(`{"seq":123, "rev":"1-EmDC"}`)
 
 	cas := uint64(0)
 	// Attempt to delete the document body (deleteBody = true); isDelete is true to mark this doc as a tombstone.
-	_, errDelete := UpdateTombstoneXattr(subdocXattrStore, key, xattrKey, 0, cas, &xattrVal, false)
+	_, errDelete := dataStore.WriteWithXattr(key, xattrKey, 0, cas, nil, nil, xattrVal, true, false)
+
 	assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
 	assert.True(t, verifyDocDeletedXattrExists(dataStore, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
 

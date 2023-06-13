@@ -617,9 +617,6 @@ func TestImportFilterLogging(t *testing.T) {
 func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus doesn't provide SubdocXattrStore") //TODO
-	}
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -654,11 +651,8 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
-	xattrVal := make(map[string]interface{})
-	xattrVal["actor"] = "not mobile"
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
-	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
-	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	xattrVal := []byte(`{"actor":"not mobile"}`)
+	_, mutateErr := dataStore.WriteWithXattr(mobileKey, "_nonmobile", uint32(0), cas, nil, nil, xattrVal, false, false)
 
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
@@ -676,9 +670,6 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus doesn't provide SubdocXattrStore") //TODO
-	}
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -713,11 +704,8 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
-	xattrVal := make(map[string]interface{})
-	xattrVal["actor"] = "not mobile"
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
-	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
-	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	xattrVal := []byte(`{"actor":"not mobile"}`)
+	_, mutateErr := dataStore.WriteWithXattr(mobileKey, "_nonmobile", uint32(0), cas, nil, nil, xattrVal, false, false)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to update the document again via Sync Gateway.  Should not trigger import, PUT should be successful,
@@ -737,9 +725,6 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus doesn't provide SubdocXattrStore") //TODO
-	}
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -778,11 +763,8 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	crcMatchesBefore := rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value()
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
-	xattrVal := make(map[string]interface{})
-	xattrVal["actor"] = "not mobile"
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
-	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
-	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	xattrVal := []byte(`{"actor":"not mobile"}`)
+	_, mutateErr := dataStore.WriteWithXattr(mobileKey, "_nonmobile", uint32(0), cas, nil, nil, xattrVal, false, false)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Wait until crc match count changes
