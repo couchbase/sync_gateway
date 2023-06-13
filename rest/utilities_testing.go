@@ -1104,11 +1104,11 @@ func (r TestResponse) GetRestDocument() RestDocument {
 
 func Request(method, resource, body string) *http.Request {
 	request, err := http.NewRequest(method, "http://localhost"+resource, bytes.NewBufferString(body))
-	request.RequestURI = resource // This doesn't get filled in by NewRequest
-	FixQuotedSlashes(request)
 	if err != nil {
 		panic(fmt.Sprintf("http.NewRequest failed: %v", err))
 	}
+	request.RequestURI = resource // This doesn't get filled in by NewRequest
+	FixQuotedSlashes(request)
 	return request
 }
 

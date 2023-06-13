@@ -341,3 +341,10 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 	}
 
 }
+
+func TestRequest(t *testing.T) {
+	assert.PanicsWithValue(t, `http.NewRequest failed: parse "http://localhost%": invalid URL escape "%"`, func() {
+		// invalid URL escape - should panic (with a prefix in message)
+		_ = Request(http.MethodGet, "%", "")
+	})
+}
