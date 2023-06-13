@@ -75,10 +75,10 @@ func TestsUseNamedCollections() bool {
 	return err == nil && ok
 }
 
-// TestsUseNamedCollections returns true if the tests use named collections.
+// TestsUseServerCE returns true if the tests are targeting a CE server.
 func TestsUseServerCE() bool {
-	ok, err := GTestBucketPool.cluster.isServerEnterprise()
-	return err == nil && ok
+	isEE, err := GTestBucketPool.cluster.isServerEnterprise()
+	return err == nil && !isEE
 }
 
 // TestsRequireMobileRBAC returns true if the server has Sync Gateway RBAC roles.

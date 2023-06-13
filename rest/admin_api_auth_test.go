@@ -845,8 +845,10 @@ func TestAdminAPIAuth(t *testing.T) {
 		},
 	}
 
+	serverIsCE := base.TestsUseServerCE()
+
 	SGWorBFArole := MobileSyncGatewayRole.RoleName
-	if base.TestsUseServerCE() {
+	if serverIsCE {
 		SGWorBFArole = BucketFullAccessRole.RoleName
 	}
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
@@ -861,7 +863,8 @@ func TestAdminAPIAuth(t *testing.T) {
 	MakeUser(t, httpClient, eps[0], "ROAdminUser", "password", []string{ReadOnlyAdminRole.RoleName})
 	defer DeleteUser(t, httpClient, eps[0], "ROAdminUser")
 
-	if base.TestsUseServerCE() {
+	// EE only role
+	if !serverIsCE {
 		MakeUser(t, httpClient, eps[0], "ClusterAdminUser", "password", []string{ClusterAdminRole.RoleName})
 		defer DeleteUser(t, httpClient, eps[0], "ClusterAdminUser")
 	}
@@ -896,7 +899,7 @@ func TestAdminAPIAuth(t *testing.T) {
 						RequireStatus(t, resp, http.StatusForbidden)
 					}
 
-					if base.TestsUseServerCE() {
+					if !serverIsCE {
 						resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "ClusterAdminUser", "password")
 						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 					}
@@ -918,9 +921,11 @@ func TestDisablePermissionCheck(t *testing.T) {
 	viewsAdminRole := RouteRole{RoleName: "views_admin", DatabaseScoped: true}
 	statsReadPermission := Permission{".stats!read", true}
 
+	serverIsCE := base.TestsUseServerCE()
+
 	rt := NewRestTester(t, nil)
 	SGWorBFArole := RouteRole{MobileSyncGatewayRole.RoleName, true}
-	if base.TestsUseServerCE() {
+	if serverIsCE {
 		SGWorBFArole = RouteRole{BucketFullAccessRole.RoleName, true}
 	}
 	rt.Close()
@@ -930,6 +935,7 @@ func TestDisablePermissionCheck(t *testing.T) {
 		CreateUser         string
 		CreateUserRole     *RouteRole
 		RequirePerms       []Permission
+		EEOnly             bool
 		DoPermissionCheck  bool
 		ExpectedStatusCode int
 	}{
@@ -946,6 +952,7 @@ func TestDisablePermissionCheck(t *testing.T) {
 			CreateUser:         "PermUser",
 			CreateUserRole:     &viewsAdminRole,
 			RequirePerms:       []Permission{statsReadPermission},
+			EEOnly:             true, // Permissions only exist in EE Server
 			DoPermissionCheck:  true,
 			ExpectedStatusCode: http.StatusOK,
 		},
@@ -954,6 +961,7 @@ func TestDisablePermissionCheck(t *testing.T) {
 			CreateUser:         "SGWUser",
 			CreateUserRole:     &viewsAdminRole,
 			RequirePerms:       []Permission{statsReadPermission},
+			EEOnly:             true, // Permissions only exist in EE Server
 			DoPermissionCheck:  false,
 			ExpectedStatusCode: http.StatusForbidden,
 		},
@@ -961,6 +969,10 @@ func TestDisablePermissionCheck(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
+			if testCase.EEOnly && serverIsCE {
+				t.Skip("This test case only works against Couchbase Server EE")
+			}
+
 			rt := NewRestTester(t, &RestTesterConfig{
 				enableAdminAuthPermissionsCheck: testCase.DoPermissionCheck,
 			})
