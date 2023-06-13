@@ -135,16 +135,22 @@ func TestCECheck(t *testing.T) {
 	}
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	form := url.Values{}
-	form.Add("password", "password")
-	form.Add("roles", "[mobile_sync_Gateway]")
 	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
-	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", eps[0], "username"), strings.NewReader(form.Encode()))
-	require.Error(t, err)
-	require.Equal(t, req, http.StatusBadRequest)
+	form := url.Values{}
+	form.Add("password", "password")
+	form.Add("roles", "[mobile_sync_Gateway]")
 
+	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", eps[0], "username"), strings.NewReader(form.Encode()))
+	require.NoError(t, err)
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, resp.StatusCode, http.StatusBadRequest)
 }
 
 func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
