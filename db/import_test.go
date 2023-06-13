@@ -531,6 +531,9 @@ func TestImportNonZeroStart(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("test requires import feed, which requies DCP")
 	}
+	if !base.TestUseXattrs() {
+		t.Skip("auto import requires xattrs")
+	}
 
 	bucket := base.GetTestBucket(t)
 
