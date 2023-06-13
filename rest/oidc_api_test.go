@@ -1071,6 +1071,11 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 				return
 			}
 			checkGoodAuthResponse(t, restTester, response, "foo_noah")
+
+			c := getCookie(response.Cookies(), auth.DefaultCookieName)
+
+			resp := restTester.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc1", `{"foo":"bar"}`, map[string]string{"Cookie": c.String()})
+			RequireStatus(t, resp, http.StatusCreated)
 		})
 	}
 }
