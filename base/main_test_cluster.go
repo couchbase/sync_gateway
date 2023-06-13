@@ -109,7 +109,7 @@ func (c *tbpClusterV2) isServerEnterprise() (bool, error) {
 		return false, err
 	}
 
-	if strings.Contains("enterprise", metadata[0].Version) {
+	if strings.Contains(metadata[0].Version, "enterprise") {
 		return true, nil
 	}
 	return false, nil
@@ -200,6 +200,15 @@ func (c *tbpClusterV2) supportsCollections() (bool, error) {
 
 // supportsMobileRBAC is true if running couchbase server with all Sync Gateway roles
 func (c *tbpClusterV2) supportsMobileRBAC() (bool, error) {
+	isEE, err := c.isServerEnterprise()
+	if err != nil {
+		return false, err
+	}
+	// mobile RBAC is only supported on EE
+	if !isEE {
+		return false, nil
+	}
+	// mobile RBAC is only supported on 7.1+
 	major, minor, err := getClusterVersion(c.cluster)
 	if err != nil {
 		return false, err
