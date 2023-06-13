@@ -845,8 +845,10 @@ func TestAdminAPIAuth(t *testing.T) {
 		},
 	}
 
+	serverIsCE := base.TestsUseServerCE()
+
 	SGWorBFArole := MobileSyncGatewayRole.RoleName
-	if base.TestsUseServerCE() {
+	if serverIsCE {
 		SGWorBFArole = BucketFullAccessRole.RoleName
 	}
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
@@ -861,7 +863,8 @@ func TestAdminAPIAuth(t *testing.T) {
 	MakeUser(t, httpClient, eps[0], "ROAdminUser", "password", []string{ReadOnlyAdminRole.RoleName})
 	defer DeleteUser(t, httpClient, eps[0], "ROAdminUser")
 
-	if base.TestsUseServerCE() {
+	// EE only role
+	if !serverIsCE {
 		MakeUser(t, httpClient, eps[0], "ClusterAdminUser", "password", []string{ClusterAdminRole.RoleName})
 		defer DeleteUser(t, httpClient, eps[0], "ClusterAdminUser")
 	}
@@ -896,7 +899,7 @@ func TestAdminAPIAuth(t *testing.T) {
 						RequireStatus(t, resp, http.StatusForbidden)
 					}
 
-					if base.TestsUseServerCE() {
+					if !serverIsCE {
 						resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "ClusterAdminUser", "password")
 						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 					}
