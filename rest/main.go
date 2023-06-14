@@ -40,7 +40,7 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	defer base.FatalPanicHandler()
 
 	base.InitializeMemoryLoggers()
-	base.LogSyncGatewayVersion()
+	base.LogSyncGatewayVersion(ctx)
 
 	flagStartupConfig, fs, disablePersistentConfig, err := parseFlags(osArgs)
 	if err != nil {

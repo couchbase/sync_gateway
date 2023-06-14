@@ -709,7 +709,7 @@ func TestLogFlush(t *testing.T) {
 			config = testCase.EnableFunc(config)
 
 			// Setup logging
-			err := config.SetupAndValidateLogging()
+			err := config.SetupAndValidateLogging(base.TestCtx(t))
 			assert.NoError(t, err)
 
 			// Flush memory loggers
