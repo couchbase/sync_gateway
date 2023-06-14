@@ -1651,26 +1651,23 @@ func GetHttpClientForWebSocket(insecureSkipVerify bool) *http.Client {
 // On success returns true; on failure logs a warning and returns false.
 // (There's really no reason for a caller to take note of the return value.)
 func turnOffNoDelay(ctx context.Context, conn net.Conn) {
-	var underlyingTCPConn *net.TCPConn
-	if tlsConn, ok := conn.(*tls.Conn); ok {
-		netConnection := tlsConn.NetConn()
-		if tcp, isTCPConn := netConnection.(*net.TCPConn); isTCPConn {
-			underlyingTCPConn = tcp
-		} else {
-			WarnfCtx(ctx, "Couldn't turn off NODELAY for conn %v: underlying connection is not type *net.TCPConn", conn)
-		}
-	} else if tcpConn, isTCPConn := conn.(*net.TCPConn); isTCPConn {
-		underlyingTCPConn = tcpConn
-	} else {
-		WarnfCtx(ctx, "Couldn't turn off NODELAY for conn %v: underlying connection is not type *net.TCPConn", conn)
+	netConnection := conn
+	var tcpConn *net.TCPConn
+
+	if tlsConn, ok := netConnection.(*tls.Conn); ok {
+		netConnection = tlsConn.NetConn()
 	}
 
-	if underlyingTCPConn != nil {
-		if err := underlyingTCPConn.SetNoDelay(false); err != nil {
-			WarnfCtx(ctx, "Couldn't turn off NODELAY for %v: %v", conn, err)
-		}
+	if netTCPConn, isTCPConn := netConnection.(*net.TCPConn); isTCPConn {
+		tcpConn = netTCPConn
+	} else {
+		WarnfCtx(ctx, "Couldn't turn off NODELAY for %v: %T is not type *net.TCPConn", conn, conn)
+		return
 	}
-	return
+
+	if err := tcpConn.SetNoDelay(false); err != nil {
+		WarnfCtx(ctx, "Couldn't turn off NODELAY for %v: %v", conn, err)
+	}
 }
 
 // IsConnectionRefusedError returns true if the given error is due to a connection being actively refused.
