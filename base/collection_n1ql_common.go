@@ -81,6 +81,27 @@ func ExplainQuery(store N1QLStore, statement string, params map[string]interface
 	return plan, unmarshalErr
 }
 
+type indexManager struct {
+	cluster        *gocb.QueryIndexManager
+	collection     *gocb.CollectionQueryIndexManager
+	bucketName     string
+	scopeName      string
+	collectionName string
+}
+
+func (im *indexManager) GetAllIndexes() ([]gocb.QueryIndex, error) {
+	opts := &gocb.GetAllQueryIndexesOptions{
+		RetryStrategy: &goCBv2FailFastRetryStrategy{},
+	}
+
+	if im.collection != nil {
+		return im.collection.GetAllIndexes(opts)
+	}
+	opts.ScopeName = im.scopeName
+	opts.CollectionName = im.collectionName
+	return im.cluster.GetAllIndexes(im.bucketName, opts)
+}
+
 // CreateIndex issues a CREATE INDEX query in the current bucket, using the form:
 //
 //	CREATE INDEX indexName ON bucket.Name(expression) WHERE filterExpression WITH options
@@ -515,9 +536,8 @@ func IndexMetaKeyspaceID(bucketName, scopeName, collectionName string) string {
 }
 
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
-func WaitForIndexesOnline(cluster *gocb.Cluster, bucketName, scopeName, collectionName string, indexNames []string, failfast bool) error {
+func WaitForIndexesOnline(mgr *indexManager, indexNames []string, failfast bool) error {
 	logCtx := context.TODO()
-	mgr := cluster.QueryIndexes()
 	maxNumAttempts := 180
 	if failfast {
 		maxNumAttempts = 1
@@ -527,15 +547,9 @@ func WaitForIndexesOnline(cluster *gocb.Cluster, bucketName, scopeName, collecti
 
 	onlineIndexes := make(map[string]bool)
 
-	indexOption := gocb.GetAllQueryIndexesOptions{
-		ScopeName:      scopeName,
-		CollectionName: collectionName,
-		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
-	}
-
 	for {
 		watchedOnlineIndexCount := 0
-		currIndexes, err := mgr.GetAllIndexes(bucketName, &indexOption)
+		currIndexes, err := mgr.GetAllIndexes()
 		if err != nil {
 			return err
 		}
@@ -561,20 +575,16 @@ func WaitForIndexesOnline(cluster *gocb.Cluster, bucketName, scopeName, collecti
 		retryCount++
 		shouldContinue, sleepMs := retrySleeper(retryCount)
 		if !shouldContinue {
-			return fmt.Errorf("error waiting for indexes for bucket %s....", MD(bucketName))
+			return fmt.Errorf("error waiting for indexes for bucket %s....", MD(mgr.bucketName))
 		}
-		InfofCtx(logCtx, KeyAll, "Indexes for bucket %s not ready - retrying...", MD(bucketName))
+		InfofCtx(logCtx, KeyAll, "Indexes for bucket %s not ready - retrying...", MD(mgr.bucketName))
 		time.Sleep(time.Millisecond * time.Duration(sleepMs))
 	}
 }
 
-func GetAllIndexes(cluster *gocb.Cluster, bucketName, scopeName, collectionName string) (indexes []string, err error) {
+func GetAllIndexes(mgr *indexManager) (indexes []string, err error) {
 	indexes = []string{}
-	opts := &gocb.GetAllQueryIndexesOptions{
-		ScopeName:      scopeName,
-		CollectionName: collectionName,
-	}
-	indexInfo, err := cluster.QueryIndexes().GetAllIndexes(bucketName, opts)
+	indexInfo, err := mgr.GetAllIndexes()
 	if err != nil {
 		return indexes, err
 	}

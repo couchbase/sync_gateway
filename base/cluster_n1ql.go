@@ -186,8 +186,17 @@ func (cl *ClusterOnlyN1QLStore) runQuery(statement string, n1qlOptions *gocb.Que
 	return queryResults, err
 }
 
+func (cl *ClusterOnlyN1QLStore) indexManager(scopeName, collectionName string) *indexManager {
+	return &indexManager{
+		cluster:        cl.cluster.QueryIndexes(),
+		bucketName:     cl.bucketName,
+		scopeName:      scopeName,
+		collectionName: collectionName,
+	}
+}
+
 func (cl *ClusterOnlyN1QLStore) WaitForIndexesOnline(indexNames []string, failfast bool) error {
-	return WaitForIndexesOnline(cl.cluster, cl.bucketName, cl.scopeName, cl.collectionName, indexNames, failfast)
+	return WaitForIndexesOnline(cl.indexManager(cl.scopeName, cl.collectionName), indexNames, failfast)
 }
 
 func (cl *ClusterOnlyN1QLStore) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {
@@ -208,9 +217,9 @@ func (cl *ClusterOnlyN1QLStore) EscapedKeyspace() string {
 
 func (cl *ClusterOnlyN1QLStore) GetIndexes() (indexes []string, err error) {
 	if cl.supportsCollections {
-		return GetAllIndexes(cl.cluster, cl.bucketName, cl.scopeName, cl.collectionName)
+		return GetAllIndexes(cl.indexManager(cl.scopeName, cl.collectionName))
 	} else {
-		return GetAllIndexes(cl.cluster, cl.bucketName, "", "")
+		return GetAllIndexes(cl.indexManager("", ""))
 	}
 }
 
