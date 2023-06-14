@@ -63,12 +63,17 @@ func (c *Collection) BucketName() string {
 }
 
 func (c *Collection) indexManager() *indexManager {
-	return &indexManager{
+	m := &indexManager{
 		bucketName:     c.BucketName(),
 		collectionName: c.CollectionName(),
 		scopeName:      c.ScopeName(),
-		collection:     c.Collection.QueryIndexes(),
 	}
+	if !c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		m.cluster = c.Bucket.cluster.QueryIndexes()
+	} else {
+		m.collection = c.Collection.QueryIndexes()
+	}
+	return m
 }
 
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
