@@ -62,6 +62,15 @@ func (c *Collection) BucketName() string {
 	return c.Bucket.GetName()
 }
 
+func (c *Collection) indexManager() *indexManager {
+	return &indexManager{
+		bucketName:     c.BucketName(),
+		collectionName: c.CollectionName(),
+		scopeName:      c.ScopeName(),
+		collection:     c.Collection.QueryIndexes(),
+	}
+}
+
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaKeyspaceID() string {
 	return IndexMetaKeyspaceID(c.BucketName(), c.ScopeName(), c.CollectionName())
@@ -127,7 +136,7 @@ func (c *Collection) CreatePrimaryIndex(indexName string, options *N1qlIndexOpti
 
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
 func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) error {
-	return WaitForIndexesOnline(c.Bucket.cluster, c.BucketName(), c.ScopeName(), c.CollectionName(), indexNames, failfast)
+	return WaitForIndexesOnline(c.indexManager(), indexNames, failfast)
 }
 
 func (c *Collection) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {
@@ -201,11 +210,7 @@ func (c *Collection) IsErrNoResults(err error) bool {
 }
 
 func (c *Collection) GetIndexes() (indexes []string, err error) {
-	if c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		return GetAllIndexes(c.Bucket.cluster, c.BucketName(), c.ScopeName(), c.CollectionName())
-	} else {
-		return GetAllIndexes(c.Bucket.cluster, c.BucketName(), "", "")
-	}
+	return GetAllIndexes(c.indexManager())
 }
 
 // waitUntilQueryServiceReady will wait for the specified duration until the query service is available.
