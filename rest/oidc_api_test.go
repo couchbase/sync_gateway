@@ -1081,12 +1081,47 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 			}
 			checkGoodAuthResponse(t, restTester, response, "foo_noah")
 
+			// try using cookie in a subsequent keyspace request
 			c := getCookie(response.Cookies(), auth.DefaultCookieName)
-
 			resp := restTester.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc1", `{"foo":"bar"}`, map[string]string{"Cookie": c.String()})
+			RequireStatus(t, resp, http.StatusCreated)
+
+			// try directly using bearer token in a keyspace request
+			resp = restTester.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc2", `{"foo":"bar"}`, map[string]string{"Authorization": BearerToken + " " + token})
 			RequireStatus(t, resp, http.StatusCreated)
 		})
 	}
+}
+
+// TestOpenIDConnectImplicitFlowInitWithKeyspace ensures that a keyspace request that initializes an OIDC provider works correctly and isn't reliant on a database endpoint to initialize the provider first.
+func TestOpenIDConnectImplicitFlowInitWithKeyspace(t *testing.T) {
+	testProviders := auth.OIDCProviderMap{
+		"foo": mockProviderWith("foo", mockProviderUserPrefix{"foo"}),
+	}
+	defaultProvider := "foo"
+
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/" + defaultProvider
+	refreshProviderConfig(testProviders, mockAuthServer.URL)
+
+	opts := auth.OIDCOptions{Providers: testProviders, DefaultProvider: &defaultProvider}
+	restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
+	restTester := NewRestTester(t, &restTesterConfig)
+	require.NoError(t, restTester.SetAdminParty(false))
+	defer restTester.Close()
+
+	createUser(t, restTester, "foo_noah")
+
+	token, err := mockAuthServer.makeToken(claimsAuthentic())
+	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
+	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
+
+	// try directly using bearer token in a keyspace request
+	resp := restTester.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc1", `{"foo":"bar"}`, map[string]string{"Authorization": BearerToken + " " + token})
+	RequireStatus(t, resp, http.StatusCreated)
 }
 
 // checkGoodAuthResponse asserts expected session response values against the given response.
