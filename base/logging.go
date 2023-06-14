@@ -132,7 +132,8 @@ func PanicfCtx(ctx context.Context, format string, args ...interface{}) {
 	if errorLogger == nil {
 		log.Panicf(format, args...)
 	}
-	logTo(ctx, LevelError, KeyAll, format, args...)
+	// ensure the log message always reaches console
+	ConsolefCtx(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	panic(fmt.Sprintf(format, args...))
 }
@@ -143,7 +144,8 @@ func FatalfCtx(ctx context.Context, format string, args ...interface{}) {
 	if errorLogger == nil {
 		log.Fatalf(format, args...)
 	}
-	logTo(ctx, LevelError, KeyAll, format, args...)
+	// ensure the log message always reaches console
+	ConsolefCtx(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	os.Exit(1)
 }
