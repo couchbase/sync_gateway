@@ -1661,13 +1661,16 @@ func (sc *ServerContext) initializeGoCBAgent(ctx context.Context) (*gocbcore.Age
 			sc.Config.Bootstrap.Server, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password,
 			sc.Config.Bootstrap.X509CertPath, sc.Config.Bootstrap.X509KeyPath, sc.Config.Bootstrap.CACertPath, sc.Config.Bootstrap.ServerTLSSkipVerify)
 		if err != nil {
-			base.InfofCtx(ctx, base.KeyConfig, "Couldn't initialize cluster agent: %v - will retry...", err)
+			// since we're starting up - let's be verbose (on console) about these retries happening ... otherwise it looks like nothing is happening ...
+			base.ConsolefCtx(ctx, base.LevelInfo, base.KeyConfig, "Couldn't initialize cluster agent: %v - will retry...", err)
 			return true, err, nil
 		}
 
 		return false, nil, agent
 	}, base.CreateSleeperFunc(27, 1000)) // ~2 mins total - 5 second gocb WaitUntilReady timeout and 1 second interval
 	if err != nil {
+		// warn and bubble up error for further handling
+		base.ConsolefCtx(ctx, base.LevelWarn, base.KeyConfig, "Giving up initializing cluster agent after retry: %v", err)
 		return nil, err
 	}
 
@@ -1921,10 +1924,8 @@ func (sc *ServerContext) Database(ctx context.Context, name string) *db.Database
 }
 
 func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Context) error {
-	base.InfofCtx(ctx, base.KeyAll, "initializing server connections")
-	defer func() {
-		base.InfofCtx(ctx, base.KeyAll, "finished initializing server connections")
-	}()
+	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Initializing server connections...")
+
 	goCBAgent, err := sc.initializeGoCBAgent(ctx)
 	if err != nil {
 		return err
@@ -2001,6 +2002,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 		}
 	}
 
+	base.InfofCtx(ctx, base.KeyAll, "Finished initializing server connections")
 	return nil
 }
 
