@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -49,7 +50,7 @@ type ConsoleLoggerConfig struct {
 }
 
 // NewConsoleLogger returns a new ConsoleLogger from a config.
-func NewConsoleLogger(shouldLogLocation bool, config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
+func NewConsoleLogger(ctx context.Context, shouldLogLocation bool, config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
 	if config == nil {
 		config = &ConsoleLoggerConfig{}
 	}
@@ -92,9 +93,9 @@ func NewConsoleLogger(shouldLogLocation bool, config *ConsoleLoggerConfig) (*Con
 			if config.FileOutput != "" {
 				consoleOutput = config.FileOutput
 			}
-			Consolef(LevelInfo, KeyNone, "Logging: Console to %v", consoleOutput)
+			ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Console to %v", consoleOutput)
 		} else {
-			Consolef(LevelInfo, KeyNone, "Logging: Console disabled")
+			ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Console disabled")
 		}
 	}
 
@@ -216,8 +217,8 @@ func (lcc *ConsoleLoggerConfig) init() error {
 	return nil
 }
 
-func mustInitConsoleLogger(config *ConsoleLoggerConfig) *ConsoleLogger {
-	logger, err := NewConsoleLogger(false, config)
+func mustInitConsoleLogger(ctx context.Context, config *ConsoleLoggerConfig) *ConsoleLogger {
+	logger, err := NewConsoleLogger(ctx, false, config)
 	if err != nil {
 		// TODO: CBG-1948
 		panic(err)
