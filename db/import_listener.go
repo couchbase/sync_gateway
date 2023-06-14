@@ -167,8 +167,13 @@ func calculateImportCompute(bytes, functionTime float64) float64 {
 }
 
 func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
+	var importAttempt bool
 	startTime := time.Now()
 	defer func() {
+		// if we aren't attempting to import doc we don't want a calculation to happen
+		if !importAttempt {
+			return
+		}
 		// we must grab the time in seconds here and convert to ms as the .Milliseconds() function returns integer millisecond count
 		functionTime := time.Since(startTime).Seconds()
 		bytes := float64(len(event.Value))
@@ -202,6 +207,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 
 	// If syncData is nil, or if this was not an SG write, attempt to import
 	if syncData == nil || !isSGWrite {
+		importAttempt = true
 		isDelete := event.Opcode == sgbucket.FeedOpDeletion
 		if isDelete {
 			rawBody = nil
