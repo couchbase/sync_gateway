@@ -312,11 +312,6 @@ func TestAccessQuery(t *testing.T) {
 }
 
 func TestRoleAccessQuery(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is Couchbase Server only")
-	}
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)

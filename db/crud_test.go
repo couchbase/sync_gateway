@@ -179,9 +179,6 @@ func TestHasAttachmentsFlag(t *testing.T) {
 }
 
 func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
-		t.Skip("Test only works with a Couchbase server and Xattrs")
-	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)

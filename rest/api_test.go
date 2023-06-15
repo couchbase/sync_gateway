@@ -1100,11 +1100,6 @@ func TestLocalDocs(t *testing.T) {
 }
 
 func TestLocalDocExpiry(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket for expiry")
-	}
-
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 

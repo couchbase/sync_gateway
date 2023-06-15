@@ -201,7 +201,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 }
 
 func TestImportWithCasFailureUpdate(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+	if !base.TestUseXattrs() {
 		t.Skip("Test only works with a Couchbase server and XATTRS")
 	}
 
@@ -389,7 +389,7 @@ func rawDocWithSyncMeta() []byte {
 // Invokes db.importDoc() with a null document body
 // Reproduces https://github.com/couchbase/sync_gateway/issues/3774
 func TestImportNullDoc(t *testing.T) {
-	if !base.TestUseXattrs() || base.UnitTestUrlIsWalrus() {
+	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled and in integration mode")
 	}
 
@@ -534,10 +534,6 @@ func TestImportStampClusterUUID(t *testing.T) {
 
 // TestImporNonZeroStart makes sure docs written before sync gateway start get imported
 func TestImportNonZeroStart(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("test requires import feed, which requies DCP")
-	}
-
 	bucket := base.GetTestBucket(t)
 
 	doc1 := "doc1"

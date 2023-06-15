@@ -243,7 +243,7 @@ func TestUseXattrs() bool {
 
 // Should Sync Gateway use expiration functionality when running unit tests?
 func TestUseExpiry() bool {
-	return !UnitTestUrlIsWalrus() // Walrus does not yet support expiry
+	return true // Rosmar supports expiry
 }
 
 // Should Sync Gateway skip TLS verification. Default: DefaultTestTLSSkipVerify

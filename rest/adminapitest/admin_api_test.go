@@ -262,10 +262,10 @@ func TestServerlessChangesEndpointLimit(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3", `{"value":3, "channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
-	changesJSON := `{"style":"all_docs", 
-					 "heartbeat":300000, 
-					 "feed":"longpoll", 
-					 "limit":50, 
+	changesJSON := `{"style":"all_docs",
+					 "heartbeat":300000,
+					 "feed":"longpoll",
+					 "limit":50,
 					 "since":"1",
 					 "filter":"` + base.ByChannelFilter + `",
 					 "channels":"ABC,PBS"}`
@@ -955,9 +955,6 @@ func TestResyncUsingDCPStream(t *testing.T) {
 }
 
 func TestResyncForNamedCollection(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("DCP client doesn't work with walrus. Waiting on CBG-2661")
-	}
 	base.TestRequiresCollections(t)
 
 	base.RequireNumTestDataStores(t, 2)
@@ -1502,7 +1499,7 @@ func TestResyncStop(t *testing.T) {
 
 func TestResyncStopUsingDCPStream(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		// Walrus doesn't support Collections which is required to create DCP stream
+		// This test requires a gocb bucket
 		t.Skip("This test doesn't works with walrus")
 	}
 

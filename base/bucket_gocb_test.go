@@ -2353,11 +2353,6 @@ func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 }
 
 func TestGetExpiry(t *testing.T) {
-
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Walrus doesn't support expiry")
-	}
-
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 	dataStore := bucket.GetSingleDataStore()

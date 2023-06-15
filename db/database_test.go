@@ -1817,7 +1817,7 @@ func TestChannelView(t *testing.T) {
 
 func TestConcurrentImport(t *testing.T) {
 
-	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+	if !base.TestUseXattrs() {
 		t.Skip("Test only works with a Couchbase server and XATTRS")
 	}
 
