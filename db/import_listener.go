@@ -162,7 +162,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 func calculateImportCompute(bytes, functionTime float64) float64 {
 	timeMS := functionTime * float64(1000)
 	eventMb := bytes / base.MiB
-	stat := timeMS * (eventMb / 32 * base.MiB)
+	stat := timeMS * eventMb
 	return stat
 }
 
