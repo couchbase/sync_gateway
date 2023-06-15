@@ -34,7 +34,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/walrus"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/robertkrimen/otto/underscore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1251,9 +1251,9 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 func TestAddingLargeDoc(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	defer func() { walrus.MaxDocSize = 0 }()
+	defer func() { rosmar.MaxDocSize = 0 }()
 
-	walrus.MaxDocSize = 20 * 1024 * 1024
+	rosmar.MaxDocSize = 20 * 1024 * 1024
 
 	docBody := `{"value":"` + base64.StdEncoding.EncodeToString(make([]byte, 22000000)) + `"}`
 

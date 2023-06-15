@@ -27,7 +27,6 @@ import (
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/rosmar"
-	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
@@ -147,10 +146,6 @@ func (spec BucketSpec) MaxRetrySleeper(maxSleepMs int) RetrySleeper {
 
 func (spec BucketSpec) IsWalrusBucket() bool {
 	return ServerIsWalrus(spec.Server)
-}
-
-func (spec BucketSpec) IsRosmarBucket() bool {
-	return ServerIsRosmar(spec.Server)
 }
 
 func (spec BucketSpec) IsTLS() bool {
@@ -349,28 +344,13 @@ func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsH
 }
 
 func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
-	if spec.IsRosmarBucket() {
-		InfofCtx(context.TODO(), KeyAll, "Opening Rosmar database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
+	if spec.IsWalrusBucket() {
+		InfofCtx(context.TODO(), KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
 		bucket, err = rosmar.OpenBucketIn(spec.Server, spec.BucketName, rosmar.CreateOrOpen)
 		if err != nil {
-			ErrorfCtx(context.TODO(), "Failed to open Rosmar database %s on <%s>: %s", MD(spec.BucketName), SD(spec.Server), err)
+			ErrorfCtx(context.TODO(), "Failed to open Walrus database %s on <%s>: %s", MD(spec.BucketName), SD(spec.Server), err)
 			return nil, err
-		}
-		if spec.FeedType != TapFeedType {
-			bucket = &LeakyBucket{bucket: bucket, config: &LeakyBucketConfig{TapFeedVbuckets: true}}
-		}
-
-	} else if spec.IsWalrusBucket() {
-		InfofCtx(context.TODO(), KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
-		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
-		bucket, err = walrus.GetCollectionBucket(spec.Server, spec.BucketName)
-		// If feed type is not specified (defaults to DCP) or isn't TAP, wrap with pseudo-vbucket handling for walrus
-		if err != nil {
-			return nil, err
-		}
-		if spec.FeedType != TapFeedType {
-			bucket = &LeakyBucket{bucket: bucket, config: &LeakyBucketConfig{TapFeedVbuckets: true}}
 		}
 
 	} else {

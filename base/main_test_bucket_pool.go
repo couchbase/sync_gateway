@@ -24,7 +24,6 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/rosmar"
-	"github.com/couchbaselabs/walrus"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
@@ -201,14 +200,13 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 
 	var walrusBucket Bucket
 	var typeName string
-	if TestUseRosmar() {
-		bucketName := tbpBucketNamePrefix + "rosmar_" + id
-		walrusBucket, err = rosmar.OpenBucketIn(url, bucketName, rosmar.CreateOrOpen)
-		typeName = "rosmar"
+	bucketName := tbpBucketNamePrefix + "rosmar_" + id
+	if url == "walrus:" || url == rosmar.InMemoryURL {
+		walrusBucket, err = rosmar.OpenBucket(url, rosmar.CreateOrOpen)
 	} else {
-		walrusBucket, err = walrus.GetCollectionBucket(url, tbpBucketNamePrefix+"walrus_"+id)
-		typeName = "walrus"
+		walrusBucket, err = rosmar.OpenBucketIn(url, bucketName, rosmar.CreateOrOpen)
 	}
+	typeName = "rosmar"
 	if err != nil {
 		tbp.Fatalf(testCtx, "couldn't get %s bucket from <%s>: %v", typeName, url, err)
 	}
@@ -250,7 +248,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 		atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
 		atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(openedStart).Nanoseconds())
 		tbp.markBucketClosed(t, b)
-		if url == kTestWalrusURL || url == kTestRosmarURL {
+		if url == kTestWalrusURL {
 			b.Close()
 		} else {
 			// Persisted buckets should call close and delete
@@ -297,21 +295,14 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, persistentBucket b
 	if !tbp.integrationMode {
 		tbp.Logf(ctx, "Getting walrus test bucket - tbp.integrationMode is not set")
 		var walrusURL string
-		if TestUseRosmar() {
-			if persistentBucket {
-				u := url.URL{
-					Scheme: rosmar.URLScheme,
-					Path:   t.TempDir(),
-				}
-				walrusURL = u.String()
-			} else {
-				walrusURL = kTestRosmarURL
+		if persistentBucket {
+			u := url.URL{
+				Scheme: rosmar.URLScheme,
+				Path:   t.TempDir(),
 			}
+			walrusURL = u.String()
 		} else {
 			walrusURL = kTestWalrusURL
-			if persistentBucket {
-				walrusURL = walrusURL + t.TempDir()
-			}
 		}
 		return tbp.GetWalrusTestBucket(t, walrusURL)
 	}

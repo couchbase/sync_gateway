@@ -26,8 +26,7 @@ const (
 	ISO8601Format = "2006-01-02T15:04:05.000Z07:00"
 
 	kTestCouchbaseServerURL = "couchbase://localhost"
-	kTestWalrusURL          = "walrus:"
-	kTestRosmarURL          = rosmar.InMemoryURL
+	kTestWalrusURL          = rosmar.InMemoryURL
 
 	// These settings are used when running unit tests against a live Couchbase Server to create/flush buckets
 	DefaultCouchbaseAdministrator = "Administrator"
@@ -45,7 +44,7 @@ const (
 
 	// Env variable to enable user to override the Couchbase Server URL used in tests
 	TestEnvCouchbaseServerUrl = "SG_TEST_COUCHBASE_SERVER_URL"
-	TestEnvRosmarUrl          = "SG_TEST_ROSMAR_URL"
+	TestEnvWalrusUrl          = "SG_TEST_ROSMAR_URL"
 
 	// Env variable to enable skipping of TLS certificate verification for client and server
 	TestEnvTLSSkipVerify     = "SG_TEST_TLS_SKIP_VERIFY"
@@ -54,7 +53,7 @@ const (
 	// Walrus by default, but can set to "Couchbase" to have it use http://localhost:8091
 	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
 	TestEnvBackingStoreCouchbase   = "Couchbase"
-	TestEnvBackingStoreRosmar      = "Rosmar"
+	TestEnvBackingStoreWalrus      = "Walrus"
 
 	TestEnvUseExistingBucket = "SG_TEST_USE_EXISTING_BUCKET"
 
@@ -215,15 +214,13 @@ func UnitTestUrl() string {
 		}
 		// Otherwise fallback to hardcoded default
 		return kTestCouchbaseServerURL
-	} else if TestUseRosmar() {
-		testRosmarUrl := os.Getenv(TestEnvRosmarUrl)
-		if testRosmarUrl != "" {
-			// If user explicitly set a Test Rosmar URL, use that
-			return testRosmarUrl
+	} else {
+		testWalrusUrl := os.Getenv(TestEnvWalrusUrl)
+		if testWalrusUrl != "" {
+			// If user explicitly set a Test Walrus URL, use that
+			return testWalrusUrl
 		}
 		// Otherwise fallback to hardcoded default
-		return kTestRosmarURL
-	} else {
 		return kTestWalrusURL
 	}
 }
@@ -247,9 +244,4 @@ func ServerIsWalrus(server string) bool {
 		strings.HasPrefix(server, "file:") ||
 		strings.HasPrefix(server, "/") ||
 		strings.HasPrefix(server, ".")
-}
-
-// ServerIsRosmar returns true when the given server is a Rosmar URI
-func ServerIsRosmar(server string) bool {
-	return strings.HasPrefix(server, "rosmar:")
 }

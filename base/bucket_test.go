@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/walrus"
+	"github.com/couchbaselabs/rosmar"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -452,19 +452,19 @@ func TestBaseBucket(t *testing.T) {
 		bucket Bucket
 	}{
 		{
-			name:   "walrus",
-			bucket: &walrus.CollectionBucket{},
+			name:   "rosmar",
+			bucket: &rosmar.Bucket{},
 		},
 		{
 			name:   "leaky",
-			bucket: &LeakyBucket{bucket: &walrus.CollectionBucket{}},
+			bucket: &LeakyBucket{bucket: &rosmar.Bucket{}},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			baseBucket := GetBaseBucket(test.bucket)
-			_, ok := baseBucket.(*walrus.CollectionBucket)
+			_, ok := baseBucket.(*rosmar.Bucket)
 			assert.True(t, ok, "Base bucket wasn't walrus bucket")
 		})
 	}
@@ -481,6 +481,10 @@ func TestBucketSpecIsWalrusBucket(t *testing.T) {
 		},
 		{
 			spec:     BucketSpec{Server: "walrus:"},
+			expected: true,
+		},
+		{
+			spec:     BucketSpec{Server: "rosmar:"},
 			expected: true,
 		},
 		{
