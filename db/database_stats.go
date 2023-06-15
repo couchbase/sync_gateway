@@ -27,3 +27,9 @@ func (db *DatabaseContext) UpdateCalculatedStats() {
 	db.DbStats.Cache().HighSeqCached.Set(int64(channelCache.GetHighCacheSequence()))
 
 }
+
+// UpdateTotalSyncTimeStat updates the TotalSyncTime to the current value + NumReplicationsActive each time this is called
+func (db *DatabaseContext) UpdateTotalSyncTimeStat() {
+	currentActiveReplications := db.DbStats.DatabaseStats.NumReplicationsActive.Value()
+	db.DbStats.DatabaseStats.TotalSyncTime.Add(currentActiveReplications)
+}

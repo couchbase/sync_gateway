@@ -2468,6 +2468,40 @@ func TestReconnectReplicator(t *testing.T) {
 
 }
 
+// TestTotalSyncTimeStat:
+//   - starts a replicator to simulate a long lived websocket connection on a sync gateway
+//   - wait for this replication connection to be picked up on stats (NumReplicationsActive)
+//   - wait some time for the background task to increment TotalSyncTime stat
+//   - assert on the stat being incremented
+func TestTotalSyncTimeStat(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
+
+	activeRT, passiveRT, remoteURL, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+	const repName = "replication1"
+
+	startValue := passiveRT.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
+	require.Equal(t, int64(0), startValue)
+
+	// create a replication to just make a long lived websocket connection between two rest testers
+	activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
+
+	// wait for active replication stat to pick up the replication connection
+	_, ok := base.WaitForStat(func() int64 {
+		return passiveRT.GetDatabase().DbStats.DatabaseStats.NumReplicationsActive.Value()
+	}, 1)
+	require.True(t, ok)
+
+	// wait some time to wait for the stat to increment more
+	time.Sleep(3 * time.Second)
+
+	syncTimeStat := passiveRT.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
+	// we can't be certain only 3 seconds have passed since grabbing the stat so to avoid flake here just assert the stat has incremented
+	require.Greater(t, syncTimeStat, startValue)
+}
+
 // TestActiveReplicatorPullAttachments:
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates a document with an attachment on rt2 which can be pulled by the replicator running in rt1.
