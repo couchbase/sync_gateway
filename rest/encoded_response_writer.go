@@ -12,25 +12,32 @@ package rest
 
 import (
 	"compress/gzip"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // An implementation of http.ResponseWriter that wraps another instance and transparently applies
 // GZip compression when appropriate.
 type EncodedResponseWriter struct {
 	http.ResponseWriter
-	gz            *gzip.Writer
-	status        int
-	sniffDone     bool
-	headerWritten bool
-	bytesWritten  int64
+	gz                  *gzip.Writer
+	status              int
+	sniffDone           bool
+	headerWritten       bool
+	bytesWrittenStat    *base.SgwIntStat
+	lastBytesWritten    int64
+	lastReportTime      time.Time
+	statsUpdateInterval time.Duration
 }
 
 // Creates a new EncodedResponseWriter, or returns nil if the request doesn't allow encoded responses.
-func NewEncodedResponseWriter(response http.ResponseWriter, rq *http.Request) *EncodedResponseWriter {
+func NewEncodedResponseWriter(response http.ResponseWriter, rq *http.Request, statsUpdateInterval time.Duration) *EncodedResponseWriter {
 	isWebSocketRequest := strings.ToLower(rq.Header.Get("Upgrade")) == "websocket" &&
 		strings.Contains(strings.ToLower(rq.Header.Get("Connection")), "upgrade")
 
@@ -50,7 +57,7 @@ func NewEncodedResponseWriter(response http.ResponseWriter, rq *http.Request) *E
 		}
 	}
 
-	return &EncodedResponseWriter{ResponseWriter: response}
+	return &EncodedResponseWriter{ResponseWriter: response, statsUpdateInterval: statsUpdateInterval}
 }
 
 func (w *EncodedResponseWriter) WriteHeader(status int) {
@@ -68,12 +75,32 @@ func (w *EncodedResponseWriter) Write(b []byte) (int, error) {
 	w.sniff(b)
 	if w.gz != nil {
 		n, err := w.gz.Write(b)
-		w.bytesWritten += int64(n)
+		w.lastBytesWritten += int64(n)
+		w.reportStats(false)
 		return n, err
 	}
 	n, err := w.ResponseWriter.Write(b)
-	w.bytesWritten += int64(n)
+	w.lastBytesWritten += int64(n)
+	w.reportStats(false)
 	return n, err
+}
+
+func (w *EncodedResponseWriter) setStat(stat *base.SgwIntStat) {
+	w.bytesWrittenStat = stat
+}
+
+// ReportStats reports bytes written GetLastBytesWritten returns the number of bytes written by this response writer. This is not locked, so is only safe to call while no one is calling CountedResponseWriter.Write, usually after the response has been fully written.
+func (w *EncodedResponseWriter) reportStats(updateImmediately bool) {
+	if w.bytesWrittenStat == nil {
+		return
+	}
+	currentTime := time.Now()
+	if !updateImmediately && time.Since(currentTime) < w.statsUpdateInterval {
+		return
+	}
+	w.bytesWrittenStat.Add(w.lastBytesWritten)
+	w.lastBytesWritten = 0
+	w.lastReportTime = currentTime
 }
 
 func (w *EncodedResponseWriter) disableCompression() {
@@ -81,6 +108,7 @@ func (w *EncodedResponseWriter) disableCompression() {
 }
 
 func (w *EncodedResponseWriter) sniff(bytes []byte) {
+	fmt.Println(w)
 	if w.sniffDone {
 		return
 	}
@@ -123,10 +151,6 @@ func (w *EncodedResponseWriter) Close() {
 		ReturnGZipWriter(w.gz)
 		w.gz = nil
 	}
-}
-
-func (w *EncodedResponseWriter) GetBytesWritten() int64 {
-	return w.bytesWritten
 }
 
 //////// GZIP WRITER CACHE:

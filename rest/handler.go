@@ -139,8 +139,7 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermiss
 		h := newHandler(server, privs, r, rq, runOffline)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
-		h.logDuration(true)
-		h.logBytesWritten()
+		h.response.reportStats(true)
 	})
 }
 
@@ -162,7 +161,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		server:       server,
 		privs:        privs,
 		rq:           rq,
-		response:     &CountedResponseWriter{writer: r},
+		response:     NewCountedResponseWriter(r, defaultBytesStatsReportingInterval),
 		status:       http.StatusOK,
 		serialNumber: atomic.AddUint64(&lastSerialNum, 1),
 		startTime:    time.Now(),
@@ -226,13 +225,15 @@ func ParseKeyspace(ks string) (db string, scope, collection *string, err error) 
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
 	if h.server.Config.API.CompressResponses == nil || *h.server.Config.API.CompressResponses {
-		if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
+		if encoded := NewEncodedResponseWriter(h.response, h.rq, defaultBytesStatsReportingInterval); encoded != nil {
 			h.response = encoded
 			defer encoded.Close()
 		}
 	}
 
 	err := h.validateAndWriteHeaders(method, accessPermissions, responsePermissions)
+	h.updateStatsWriter()
+
 	if err != nil {
 		return err
 	}
@@ -559,8 +560,8 @@ func (h *handler) logRequestLine() {
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "%s %s%s%s", h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formattedEffectiveUserName())
 }
 
-// logBytesWritten only logs database level bytes written over the public API
-func (h *handler) logBytesWritten() {
+// updateStatsWriter only logs database level bytes written over the public API
+func (h *handler) updateStatsWriter() {
 	if h.db == nil {
 		return
 	}
@@ -570,7 +571,7 @@ func (h *handler) logBytesWritten() {
 	if h.isBlipSync() {
 		return
 	}
-	h.db.DbStats.Database().HTTPBytesWritten.Add(int64(h.response.GetBytesWritten()))
+	h.response.setStat(h.db.DbStats.Database().HTTPBytesWritten)
 }
 
 func (h *handler) logDuration(realTime bool) {

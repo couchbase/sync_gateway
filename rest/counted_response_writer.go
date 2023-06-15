@@ -13,18 +13,35 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"time"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // CountableResponseWriter is an interface that any custom http.ResponseWriter used by Sync Gateway handlers need to implement.
 type CountableResponseWriter interface {
 	http.ResponseWriter
-	GetBytesWritten() int64
+	setStat(*base.SgwIntStat)
+	reportStats(bool)
 }
 
 // http.ResponseWriter wrapper that counts the number of bytes written in a response. This ignores the bytes written in headers.
 type CountedResponseWriter struct {
-	writer       http.ResponseWriter
-	bytesWritten int64
+	writer              http.ResponseWriter
+	lastBytesWritten    int64
+	statsUpdateInterval time.Duration
+	lastReportTime      time.Time
+	bytesWrittenStat    *base.SgwIntStat
+}
+
+// NewCountedResponseWriter returns a new CountedResponseWriter that wraps the given ResponseWriter.
+func NewCountedResponseWriter(writer http.ResponseWriter, statsUpdateInterval time.Duration) *CountedResponseWriter {
+	return &CountedResponseWriter{
+		writer:              writer,
+		lastReportTime:      time.Now(),
+		lastBytesWritten:    0,
+		statsUpdateInterval: statsUpdateInterval,
+	}
 }
 
 var _ CountedResponseWriter = CountedResponseWriter{}
@@ -37,7 +54,8 @@ func (w *CountedResponseWriter) Header() http.Header {
 // Write passes through to the underlying ResponseWriter while incrementing the number of bytes.
 func (w *CountedResponseWriter) Write(b []byte) (int, error) {
 	n, err := w.writer.Write(b)
-	w.bytesWritten += int64(n)
+	w.lastBytesWritten += int64(n)
+	w.reportStats(false)
 	return n, err
 }
 
@@ -46,9 +64,22 @@ func (w *CountedResponseWriter) WriteHeader(statusCode int) {
 	w.writer.WriteHeader(statusCode)
 }
 
-// GetBytesWritten returns the number of bytes written by this response writer. This is not locked, so is only safe to call while no one is calling CountedResponseWriter.Write, usually after the response has been fully written.
-func (w *CountedResponseWriter) GetBytesWritten() int64 {
-	return w.bytesWritten
+func (w *CountedResponseWriter) setStat(stat *base.SgwIntStat) {
+	w.bytesWrittenStat = stat
+}
+
+// ReportStats reports bytes written GetLastBytesWritten returns the number of bytes written by this response writer. This is not locked, so is only safe to call while no one is calling CountedResponseWriter.Write, usually after the response has been fully written.
+func (w *CountedResponseWriter) reportStats(updateImmediately bool) {
+	if w.bytesWrittenStat == nil {
+		return
+	}
+	currentTime := time.Now()
+	if !updateImmediately && time.Since(currentTime) < w.statsUpdateInterval {
+		return
+	}
+	w.bytesWrittenStat.Add(w.lastBytesWritten)
+	w.lastBytesWritten = 0
+	w.lastReportTime = currentTime
 }
 
 // Hijack implement http.Hijcker interface to satisfy the upgrade to websockets
