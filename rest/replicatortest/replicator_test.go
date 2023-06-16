@@ -2472,7 +2472,7 @@ func TestReconnectReplicator(t *testing.T) {
 //   - starts a replicator to simulate a long lived websocket connection on a sync gateway
 //   - wait for this replication connection to be picked up on stats (NumReplicationsActive)
 //   - wait some time for the background task to increment TotalSyncTime stat
-//   - assert on the stat being incremented
+//   - assert on the TotalSyncTime stat being incremented
 func TestTotalSyncTimeStat(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
@@ -2503,6 +2503,72 @@ func TestTotalSyncTimeStat(t *testing.T) {
 	syncTimeStat := passiveRT.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
 	// we can't be certain how long has passed since grabbing the stat so to avoid flake here just assert the stat has incremented
 	require.Greater(t, syncTimeStat, startValue)
+}
+
+// TestChangesEndpointTotalSyncTime:
+//   - add a user to run the changes endpoint as
+//   - start a changes feed request with user (simulating CBL replication)
+//   - wait for CBL stat NumPullReplActiveContinuous to pick up the replication connection
+//   - assert on the TotalSyncTime stat being incremented
+//   - put doc to end changes feed connection
+func TestChangesEndpointTotalSyncTime(t *testing.T) {
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn: `function(doc) {channel(doc.channel);}`,
+	})
+	defer rt.Close()
+
+	// to run changes feed as
+	rt.CreateUser("alice", []string{"ABC"})
+
+	// assert stat is zero value to begin with
+	startValue := rt.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
+	require.Equal(t, int64(0), startValue)
+
+	// Put several documents in channel PBS
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs1", `{"value":1, "channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs2", `{"value":2, "channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3", `{"value":3, "channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+
+	changesJSON := `{"style":"all_docs", 
+					 "heartbeat":300000, 
+					 "feed":"longpoll", 
+					 "limit":50, 
+					 "since":"1",
+					 "filter":"` + base.ByChannelFilter + `",
+					 "channels":"ABC,PBS"}`
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		resp1 := rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_changes", changesJSON, "alice")
+		rest.RequireStatus(t, resp1, http.StatusOK)
+	}()
+
+	// wait for active replication stat for CBL to pick up the replication connection
+	_, ok := base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.CBLReplicationPullStats.NumPullReplActiveContinuous.Value()
+	}, 1)
+	require.True(t, ok)
+
+	// wait some time to wait for the stat to increment
+	_, ok = base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
+	}, 2)
+	require.True(t, ok)
+
+	syncTimeStat := rt.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
+	// we can't be certain how long has passed since grabbing the stat so to avoid flake here just assert the stat has incremented
+	require.Greater(t, syncTimeStat, startValue)
+
+	// put doc to end changes feed
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/abc1", `{"value":3, "channel":["ABC"]}`)
+	rest.RequireStatus(t, response, 201)
+	wg.Wait()
+
 }
 
 // TestActiveReplicatorPullAttachments:
