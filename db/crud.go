@@ -233,7 +233,6 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, rawXattr []byte, rawUserXattr []byte, cas uint64) (docOut *Document, err error) {
 	startTime := time.Now()
 	defer func() {
-		// we must grab the time in seconds here and convert to ms as the .Milliseconds() function returns integer millisecond count
 		functionTime := time.Since(startTime).Milliseconds()
 		var bytes int
 		if docOut != nil {
@@ -834,7 +833,6 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context, docid string, doc *Document, deleted bool) error {
 	startTime := time.Now()
 	defer func() {
-		// we must grab the time in seconds here and convert to ms as the .Milliseconds() function returns integer millisecond count
 		functionTime := time.Since(startTime).Milliseconds()
 		var bytes int
 		if doc != nil {
