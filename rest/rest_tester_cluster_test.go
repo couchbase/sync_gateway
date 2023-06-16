@@ -100,9 +100,9 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 
 	// Set group ID for each RestTester from cluster
 	if config.rtConfig == nil {
-		config.rtConfig = &RestTesterConfig{groupID: config.groupID}
+		config.rtConfig = &RestTesterConfig{GroupID: config.groupID}
 	} else {
-		config.rtConfig.groupID = config.groupID
+		config.rtConfig.GroupID = config.groupID
 	}
 	// only persistent mode is supported for a RestTesterCluster
 	config.rtConfig.PersistentConfig = true

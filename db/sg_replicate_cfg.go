@@ -447,7 +447,7 @@ func (ar *ActiveReplicator) alignState(ctx context.Context, targetState string) 
 
 }
 
-func (dbc *DatabaseContext) StartReplications(ctx context.Context) {
+func (dbc *DatabaseContext) startReplications(ctx context.Context) {
 	if dbc.Options.SGReplicateOptions.Enabled {
 		base.DebugfCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Will start Inter-Sync Gateway Replications for database %q", dbc.Name)
 		dbc.SGReplicateMgr.closeWg.Add(1)
@@ -1202,6 +1202,12 @@ func (m *sgReplicateManager) GetNumberActiveReplicators() int {
 	m.activeReplicatorsLock.Lock()
 	defer m.activeReplicatorsLock.Unlock()
 	return len(m.activeReplicators)
+}
+
+func (m *sgReplicateManager) GetActiveReplicator(name string) *ActiveReplicator {
+	m.activeReplicatorsLock.Lock()
+	defer m.activeReplicatorsLock.Unlock()
+	return m.activeReplicators[name]
 }
 
 // RebalanceReplications distributes the set of defined replications across the set of available nodes

@@ -49,10 +49,12 @@ func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket) (*Database, con
 	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions)
 }
 
-func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+func setupTestDBWithOptionsAndImport(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	tBucket := base.GetTestBucket(t)
+	if tBucket == nil {
+		tBucket = base.GetTestBucket(t)
+	}
 	if dbcOptions.Scopes == nil {
 		dbcOptions.Scopes = GetScopesOptions(t, tBucket, 1)
 	}
@@ -61,6 +63,10 @@ func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOpt
 	}
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, true, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
+
+	err = dbCtx.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
 	db, err := CreateDatabase(dbCtx)
 	require.NoError(t, err, "Couldn't create database 'db'")
 	ctx = db.AddDatabaseLogContext(ctx)
@@ -109,6 +115,10 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
+
+	err = dbCtx.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
 	db, err := CreateDatabase(dbCtx)
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
@@ -131,6 +141,11 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 	if err != nil {
 		testBucket.Close()
 		t.Fatalf("Unable to create database context: %v", err)
+	}
+	err = dbCtx.StartOnlineProcesses(ctx)
+	if err != nil {
+		dbCtx.Close(ctx)
+		t.Fatalf("Unable to start online processes: %v", err)
 	}
 	db, err := CreateDatabase(dbCtx)
 	if err != nil {
@@ -1849,9 +1864,10 @@ func BenchmarkDatabase(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		ctx := base.TestCtx(b)
-		bucket, _ := connectToBucket(ctx, base.BucketSpec{
+		bucket, _ := ConnectToBucket(ctx, base.BucketSpec{
 			Server:     base.UnitTestUrl(),
-			BucketName: fmt.Sprintf("b-%d", i)})
+			BucketName: fmt.Sprintf("b-%d", i)},
+			true)
 		dbCtx, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 		db, _ := CreateDatabase(dbCtx)
 		collection := GetSingleDatabaseCollectionWithUser(b, db)
@@ -1867,9 +1883,10 @@ func BenchmarkPut(b *testing.B) {
 	base.DisableTestLogging(b)
 
 	ctx := base.TestCtx(b)
-	bucket, _ := connectToBucket(ctx, base.BucketSpec{
+	bucket, _ := ConnectToBucket(ctx, base.BucketSpec{
 		Server:     base.UnitTestUrl(),
-		BucketName: "Bucket"})
+		BucketName: "Bucket"},
+		true)
 	context, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	db, _ := CreateDatabase(context)
 	collection := GetSingleDatabaseCollectionWithUser(b, db)
@@ -2456,7 +2473,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 		t.Skip("Xattrs required")
 	}
 
-	db, ctx := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{})
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
@@ -2971,7 +2988,7 @@ func TestImportCompactPanic(t *testing.T) {
 	}
 
 	// Set the compaction and purge interval unrealistically low to reproduce faster
-	db, ctx := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{
 		CompactInterval: 1,
 	})
 	defer db.Close(ctx)

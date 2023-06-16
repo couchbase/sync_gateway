@@ -10,6 +10,7 @@ package adminapitest
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -2675,7 +2676,7 @@ func TestConfigEndpoint(t *testing.T) {
 			base.InitializeMemoryLoggers()
 			tempDir := os.TempDir()
 			test := rest.DefaultStartupConfig(tempDir)
-			err := test.SetupAndValidateLogging()
+			err := test.SetupAndValidateLogging(base.TestCtx(t))
 			assert.NoError(t, err)
 
 			rt := rest.NewRestTester(t, nil)
@@ -2776,7 +2777,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	base.InitializeMemoryLoggers()
 	tempDir := os.TempDir()
 	test := rest.DefaultStartupConfig(tempDir)
-	err := test.SetupAndValidateLogging()
+	err := test.SetupAndValidateLogging(base.TestCtx(t))
 	assert.NoError(t, err)
 
 	rt := rest.NewRestTester(t, nil)
@@ -4024,6 +4025,19 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
 	resp.RequireStatus(http.StatusCreated)
 
+	// because we moved database - resync is required for the default collection before we're able to bring db2 online
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db2/_resync?regenerate_sequences=true", "")
+	resp.RequireStatus(http.StatusOK)
+
+	// after resync is done, state will flip back to offline
+	BootstrapWaitForDatabaseState(t, "db2", db.DBOffline)
+
+	// now bring the db online so we're able to check dest factory
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db2/_online", "")
+	resp.RequireStatus(http.StatusOK)
+
+	BootstrapWaitForDatabaseState(t, "db2", db.DBOnline)
+
 	scopeName := ""
 	collectionNames := []string{}
 	// Validate that deleted database is no longer in dest factory set
@@ -4031,6 +4045,22 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	assert.Equal(t, base.ErrNotFound, fetchDb1DestErr)
 	_, fetchDb2DestErr := base.FetchDestFactory(base.ImportDestKey("db2", scopeName, collectionNames))
 	assert.NoError(t, fetchDb2DestErr)
+}
+
+func BootstrapWaitForDatabaseState(t *testing.T, dbName string, state uint32) {
+	err := base.WaitForNoError(func() error {
+		resp := rest.BootstrapAdminRequest(t, http.MethodGet, "/"+dbName+"/", "")
+		if resp.StatusCode != http.StatusOK {
+			return errors.New("expected 200 status")
+		}
+		var rootResp rest.DatabaseRoot
+		require.NoError(t, json.Unmarshal([]byte(resp.Body), &rootResp))
+		if rootResp.State != db.RunStateString[state] {
+			return errors.New("expected db to be offline")
+		}
+		return nil
+	})
+	require.NoError(t, err)
 }
 
 func TestApiInternalPropertiesHandling(t *testing.T) {
@@ -4366,4 +4396,31 @@ func TestPerDBCredsOverride(t *testing.T) {
 	require.NotNil(t, configs["db"])
 	assert.Equal(t, "invalidUsername", configs["db"].BucketConfig.Username)
 	assert.Equal(t, "invalidPassword", configs["db"].BucketConfig.Password)
+}
+
+// Can be used to reproduce connections left open after database close.  Manually deleting the bucket used by the test
+// once the test reaches the sleep loop will log connection errors for unclosed connections.
+func TestDeleteDatabaseCBGTTeardown(t *testing.T) {
+	t.Skip("Dev-time test used to repro agent connections being left open after database close")
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeyImport)
+
+	rtConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{AutoImport: true}}}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	// Initialize database
+	_ = rt.GetDatabase()
+
+	for i := 0; i < 1; i++ {
+		time.Sleep(1 * time.Second) // some time for polling
+	}
+
+	resp := rt.SendAdminRequest(http.MethodDelete, "/db/", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	for i := 0; i < 1000; i++ {
+		time.Sleep(1 * time.Second) // some time for polling
+	}
 }

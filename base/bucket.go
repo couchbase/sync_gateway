@@ -586,3 +586,23 @@ func WaitUntilDataStoreExists(ds DataStore) error {
 		return err
 	})
 }
+
+// RequireNoBucketTTL ensures there is no MaxTTL set on the bucket (SG #3314)
+func RequireNoBucketTTL(b Bucket) error {
+	cbs, ok := AsCouchbaseBucketStore(b)
+	if !ok {
+		// Not a Couchbase bucket - no TTL check to do
+		return nil
+	}
+
+	maxTTL, err := cbs.MaxTTL()
+	if err != nil {
+		return err
+	}
+
+	if maxTTL != 0 {
+		return fmt.Errorf("Backing Couchbase Server bucket has a non-zero MaxTTL value: %d.  Please set MaxTTL to 0 in Couchbase Server Admin UI and try again.", maxTTL)
+	}
+
+	return nil
+}

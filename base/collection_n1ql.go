@@ -62,12 +62,23 @@ func (c *Collection) BucketName() string {
 	return c.Bucket.GetName()
 }
 
+func (c *Collection) indexManager() *indexManager {
+	m := &indexManager{
+		bucketName:     c.BucketName(),
+		collectionName: c.CollectionName(),
+		scopeName:      c.ScopeName(),
+	}
+	if !c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		m.cluster = c.Bucket.cluster.QueryIndexes()
+	} else {
+		m.collection = c.Collection.QueryIndexes()
+	}
+	return m
+}
+
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaKeyspaceID() string {
-	if c.IsDefaultScopeCollection() {
-		return c.BucketName()
-	}
-	return c.CollectionName()
+	return IndexMetaKeyspaceID(c.BucketName(), c.ScopeName(), c.CollectionName())
 }
 
 func (c *Collection) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
@@ -84,7 +95,7 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
 		TracefCtx(logCtx, KeyQuery, "Executing N1QL query: %v - %+v", UD(keyspaceStatement), UD(params))
-		queryResults, queryErr := c.Bucket.runQuery(keyspaceStatement, n1qlOptions)
+		queryResults, queryErr := c.Bucket.runQuery(c.ScopeName(), keyspaceStatement, n1qlOptions)
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{
 				rawResult:                  queryResults.Raw(),
@@ -130,56 +141,7 @@ func (c *Collection) CreatePrimaryIndex(indexName string, options *N1qlIndexOpti
 
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
 func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) error {
-	logCtx := context.TODO()
-	mgr := c.Bucket.cluster.QueryIndexes()
-	maxNumAttempts := 180
-	if failfast {
-		maxNumAttempts = 1
-	}
-	retrySleeper := CreateMaxDoublingSleeperFunc(maxNumAttempts, 100, 5000)
-	retryCount := 0
-
-	onlineIndexes := make(map[string]bool)
-
-	indexOption := gocb.GetAllQueryIndexesOptions{
-		ScopeName:      c.ScopeName(),
-		CollectionName: c.CollectionName(),
-		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
-	}
-
-	for {
-		watchedOnlineIndexCount := 0
-		currIndexes, err := mgr.GetAllIndexes(c.BucketName(), &indexOption)
-		if err != nil {
-			return err
-		}
-		// check each of the current indexes state, add to map once finished to make sure each index online is only being logged once
-		for i := 0; i < len(currIndexes); i++ {
-			if currIndexes[i].State == IndexStateOnline {
-				if !onlineIndexes[currIndexes[i].Name] {
-					InfofCtx(logCtx, KeyAll, "Index %s is online", MD(currIndexes[i].Name))
-					onlineIndexes[currIndexes[i].Name] = true
-				}
-			}
-		}
-		// check online index against indexes we watch to have online, increase counter as each comes online
-		for _, listVal := range indexNames {
-			if onlineIndexes[listVal] {
-				watchedOnlineIndexCount++
-			}
-		}
-
-		if watchedOnlineIndexCount == len(indexNames) {
-			return nil
-		}
-		retryCount++
-		shouldContinue, sleepMs := retrySleeper(retryCount)
-		if !shouldContinue {
-			return fmt.Errorf("error waiting for indexes for bucket %s....", MD(c.BucketName()))
-		}
-		InfofCtx(logCtx, KeyAll, "Indexes for bucket %s not ready - retrying...", MD(c.BucketName()))
-		time.Sleep(time.Millisecond * time.Duration(sleepMs))
-	}
+	return WaitForIndexesOnline(c.indexManager(), indexNames, failfast)
 }
 
 func (c *Collection) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {
@@ -196,13 +158,20 @@ func (c *Collection) BuildDeferredIndexes(indexSet []string) error {
 	return BuildDeferredIndexes(c, indexSet)
 }
 
-func (b *GocbV2Bucket) runQuery(statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {
+func (b *GocbV2Bucket) runQuery(scopeName string, statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {
 	b.waitForAvailQueryOp()
 
 	if n1qlOptions == nil {
 		n1qlOptions = &gocb.QueryOptions{}
 	}
-	queryResults, err := b.cluster.Query(statement, n1qlOptions)
+
+	var queryResults *gocb.QueryResult
+	var err error
+	if b.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		queryResults, err = b.bucket.Scope(scopeName).Query(statement, n1qlOptions)
+	} else {
+		queryResults, err = b.cluster.Query(statement, n1qlOptions)
+	}
 	// In the event that we get an error during query we should release a view op as Close() will not be called.
 	if err != nil {
 		b.releaseQueryOp()
@@ -212,7 +181,7 @@ func (b *GocbV2Bucket) runQuery(statement string, n1qlOptions *gocb.QueryOptions
 }
 
 func (c *Collection) executeQuery(statement string) (sgbucket.QueryResultIterator, error) {
-	queryResults, queryErr := c.Bucket.runQuery(statement, nil)
+	queryResults, queryErr := c.Bucket.runQuery(c.ScopeName(), statement, nil)
 	if queryErr != nil {
 		return nil, queryErr
 	}
@@ -225,7 +194,7 @@ func (c *Collection) executeQuery(statement string) (sgbucket.QueryResultIterato
 }
 
 func (c *Collection) executeStatement(statement string) error {
-	queryResults, queryErr := c.Bucket.runQuery(statement, nil)
+	queryResults, queryErr := c.Bucket.runQuery(c.ScopeName(), statement, nil)
 	if queryErr != nil {
 		return queryErr
 	}
@@ -246,24 +215,7 @@ func (c *Collection) IsErrNoResults(err error) bool {
 }
 
 func (c *Collection) GetIndexes() (indexes []string, err error) {
-
-	indexes = []string{}
-	var opts *gocb.GetAllQueryIndexesOptions
-	if c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		opts = &gocb.GetAllQueryIndexesOptions{
-			ScopeName:      c.ScopeName(),
-			CollectionName: c.CollectionName(),
-		}
-	}
-	indexInfo, err := c.Bucket.cluster.QueryIndexes().GetAllIndexes(c.BucketName(), opts)
-	if err != nil {
-		return indexes, err
-	}
-
-	for _, indexInfo := range indexInfo {
-		indexes = append(indexes, indexInfo.Name)
-	}
-	return indexes, nil
+	return GetAllIndexes(c.indexManager())
 }
 
 // waitUntilQueryServiceReady will wait for the specified duration until the query service is available.

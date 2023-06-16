@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/go-blip"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -545,8 +546,13 @@ func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, 
 
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
+
+	err = dbCtx.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
 	db, err := CreateDatabase(dbCtx)
 	require.NoError(t, err, "Couldn't create database 'db'")
+
 	ctx = db.AddDatabaseLogContext(ctx)
 	return db, ctx
 }
@@ -618,4 +624,12 @@ func AllocateTestSequence(database *DatabaseContext) (uint64, error) {
 // ReleaseTestSequence releases a sequence via the sequenceAllocator.  For use by non-db tests
 func ReleaseTestSequence(database *DatabaseContext, sequence uint64) error {
 	return database.sequences.releaseSequence(sequence)
+}
+
+func (a *ActiveReplicator) GetActiveReplicatorConfig() *ActiveReplicatorConfig {
+	return a.config
+}
+
+func (apr *ActivePullReplicator) GetBlipSender() *blip.Sender {
+	return apr.blipSender
 }

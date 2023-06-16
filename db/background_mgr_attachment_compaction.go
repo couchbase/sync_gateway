@@ -10,9 +10,11 @@ package db
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
+	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/google/uuid"
 )
@@ -100,6 +102,23 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[stri
 	return newRunInit()
 }
 
+func (a *AttachmentCompactionManager) PurgeDCPMetadata(ctx context.Context, datastore base.DataStore, database *Database, metadataKeyPrefix string) error {
+
+	bucket, err := base.AsGocbV2Bucket(database.Bucket)
+	if err != nil {
+		return err
+	}
+	numVbuckets, err := bucket.GetMaxVbno()
+	if err != nil {
+		return err
+	}
+
+	metadata := base.NewDCPMetadataCS(datastore, numVbuckets, base.DefaultNumWorkers, metadataKeyPrefix)
+	base.InfofCtx(ctx, base.KeyDCP, "purging persisted dcp metadata for attachment compaction run %s", a.CompactID)
+	metadata.Purge(base.DefaultNumWorkers)
+	return nil
+}
+
 func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	database := options["database"].(*Database)
 
@@ -110,6 +129,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	// but we'll consider that a follow-up enhancement to point this compaction operation at arbitrary collections.
 	dataStore := database.Bucket.DefaultDataStore()
 	collectionID := base.DefaultCollectionID
+	var metadataKeyPrefix string
 
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback()
@@ -120,15 +140,29 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 
 	defer persistClusterStatus()
 
+	var rollbackErr gocbcore.DCPRollbackError
+
 	// Need to check the current phase in the event we are resuming - No need to run mark again if we got as far as
 	// cleanup last time...
 	var err error
 	switch a.Phase {
 	case "mark", "":
 		a.SetPhase("mark")
-		persistClusterStatus()
-		_, a.VBUUIDs, err = attachmentCompactMarkPhase(ctx, dataStore, collectionID, database, a.CompactID, terminator, &a.MarkedAttachments)
+		worker := func() (shouldRetry bool, err error, value interface{}) {
+			persistClusterStatus()
+			_, a.VBUUIDs, metadataKeyPrefix, err = attachmentCompactMarkPhase(ctx, dataStore, collectionID, database, a.CompactID, terminator, &a.MarkedAttachments)
+			if err != nil {
+				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, MarkPhase, metadataKeyPrefix)
+			}
+			return shouldRetry, err, nil
+		}
+		// retry loop for handling a rollback during mark phase of compaction process
+		err, _ = base.RetryLoop("attachmentCompactMarkPhase", worker, base.CreateMaxDoublingSleeperFunc(25, 100, 10000))
 		if err != nil || terminator.IsClosed() {
+			if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
+				// log warning to show we hit max number of retries
+				base.WarnfCtx(ctx, "maximum retry attempts reached on mark phase: %v", err)
+			}
 			return err
 		}
 		fallthrough
@@ -142,15 +176,57 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 		fallthrough
 	case "cleanup":
 		a.SetPhase("cleanup")
-		persistClusterStatus()
-		err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, terminator)
+		worker := func() (shouldRetry bool, err error, value interface{}) {
+			persistClusterStatus()
+			metadataKeyPrefix, err = attachmentCompactCleanupPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, terminator)
+			if err != nil {
+				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, CleanupPhase, metadataKeyPrefix)
+			}
+			return shouldRetry, err, nil
+		}
+		// retry loop for handling a rollback during mark phase of compaction process
+		err, _ = base.RetryLoop("attachmentCompactCleanupPhase", worker, base.CreateMaxDoublingSleeperFunc(25, 100, 10000))
 		if err != nil || terminator.IsClosed() {
+			if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
+				// log warning to show we hit max number of retries
+				base.WarnfCtx(ctx, "maximum retry attempts reached on cleanup phase: %v", err)
+			}
 			return err
 		}
 	}
 
 	a.SetPhase("")
 	return nil
+}
+
+func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ctx context.Context, options map[string]interface{}, dataStore base.DataStore, database *Database, err error, phase, keyPrefix string) (bool, error) {
+	var rollbackErr gocbcore.DCPRollbackError
+	if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
+		base.InfofCtx(ctx, base.KeyDCP, "rollback indicated on %s phase of attachment compaction, resetting the task", phase)
+		// to rollback any phase for attachment compaction we need to purge all persisted dcp metadata
+		err = a.PurgeDCPMetadata(ctx, dataStore, database, keyPrefix)
+		if err != nil {
+			base.WarnfCtx(ctx, "error occurred during purging of dcp metadata: %w", err)
+			return false, err
+		}
+		if phase == MarkPhase {
+			// initialise new compaction run as we want to start the phase mark again in event of rollback
+			err = a.Init(ctx, options, nil)
+			if err != nil {
+				base.WarnfCtx(ctx, "error on initialization of new run after rollback has been indicated, %w", err)
+				return false, err
+			}
+		} else {
+			// we only handle rollback for mark and cleanup so if we call here it will be for cleanup phase
+			// we need to clear the vbUUID's on the manager for cleanup phase otherwise we will end up in loop of constant rollback
+			// as these are used for the initial metadata on the client
+			a.VBUUIDs = nil
+		}
+		// we should try again if it is rollback error
+		return true, nil
+	}
+	// if error isn't rollback then assume it's not recoverable
+	return false, err
 }
 
 func (a *AttachmentCompactionManager) SetPhase(phase string) {

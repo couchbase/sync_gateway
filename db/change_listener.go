@@ -192,6 +192,11 @@ func (listener *changeListener) Stop() {
 	logCtx := context.TODO()
 	base.DebugfCtx(logCtx, base.KeyChanges, "changeListener.Stop() called")
 
+	if !listener.started.IsTrue() {
+		// not started, nothing to do
+		return
+	}
+
 	if listener.terminator != nil {
 		close(listener.terminator)
 	}

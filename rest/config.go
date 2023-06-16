@@ -1101,7 +1101,7 @@ func envDefaultExpansion(key string, getEnvFn func(string) string) (value string
 }
 
 // SetupAndValidateLogging validates logging config and initializes all logging.
-func (sc *StartupConfig) SetupAndValidateLogging() (err error) {
+func (sc *StartupConfig) SetupAndValidateLogging(ctx context.Context) (err error) {
 
 	base.SetRedaction(sc.Logging.RedactionLevel)
 
@@ -1109,7 +1109,7 @@ func (sc *StartupConfig) SetupAndValidateLogging() (err error) {
 		sc.Logging.LogFilePath = defaultLogFilePath
 	}
 
-	return base.InitLogging(
+	return base.InitLogging(ctx,
 		sc.Logging.LogFilePath,
 		sc.Logging.Console,
 		sc.Logging.Error,
@@ -1244,7 +1244,7 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 	// Logging config will now have been loaded from command line
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
-	if err := config.SetupAndValidateLogging(); err != nil {
+	if err := config.SetupAndValidateLogging(ctx); err != nil {
 		// If we didn't set up logging correctly, we *probably* can't log via normal means...
 		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
 		log.Printf("[ERR] Error setting up logging: %v", err)
@@ -1267,7 +1267,8 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 
 	sc := NewServerContext(ctx, config, persistentConfig)
 	if !base.ServerIsWalrus(config.Bootstrap.Server) {
-		if err := sc.initializeCouchbaseServerConnections(ctx); err != nil {
+		failFast := false
+		if err := sc.initializeCouchbaseServerConnections(ctx, failFast); err != nil {
 			return nil, err
 		}
 	}
@@ -1481,6 +1482,9 @@ func (sc *ServerContext) bucketNameFromDbName(dbName string) (bucketName string,
 		return dbc.Bucket.GetName(), true
 	}
 
+	if sc.BootstrapContext.Connection == nil {
+		return "", false
+	}
 	// To search for database with the specified name, need to iterate over all buckets:
 	//   - look for dbName-scoped config file
 	//   - fetch default config file (backward compatibility, check internal DB name)
@@ -1611,7 +1615,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 // _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.
 func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig, isInitialStartup bool) (count int) {
 	for dbName, cnf := range dbNameConfigs {
-		applied, err := sc._applyConfig(base.NewNonCancelCtx(), cnf, false, isInitialStartup)
+		applied, err := sc._applyConfig(base.NewNonCancelCtx(), cnf, true, isInitialStartup)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue
@@ -1732,21 +1736,21 @@ func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) 
 
 	go sc.PostStartup()
 
-	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
+	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
 	go func() {
 		if err := sc.Serve(config, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
 			base.ErrorfCtx(ctx, "Error serving the Metrics API: %v", err)
 		}
 	}()
 
-	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", config.API.AdminInterface)
+	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting admin server on %s", config.API.AdminInterface)
 	go func() {
 		if err := sc.Serve(config, config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
 			base.ErrorfCtx(ctx, "Error serving the Admin API: %v", err)
 		}
 	}()
 
-	base.Consolef(base.LevelInfo, base.KeyAll, "Starting server on %s ...", config.API.PublicInterface)
+	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting server on %s ...", config.API.PublicInterface)
 	return sc.Serve(config, config.API.PublicInterface, CreatePublicHandler(sc))
 }
 

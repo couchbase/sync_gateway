@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -55,20 +56,20 @@ type LegacyLoggingConfig struct {
 	Stats          FileLoggerConfig    `json:"stats,omitempty"`           // Stats log file output
 }
 
-func InitLogging(logFilePath string,
+func InitLogging(ctx context.Context, logFilePath string,
 	console *ConsoleLoggerConfig,
 	error, warn, info, debug, trace, stats *FileLoggerConfig) (err error) {
 
-	consoleLogger, err = NewConsoleLogger(true, console)
+	consoleLogger, err = NewConsoleLogger(ctx, true, console)
 	if err != nil {
 		return err
 	}
 
 	// If there's nowhere to specified put log files, we'll log an error, but continue anyway.
 	if logFilePath == "" {
-		Consolef(LevelInfo, KeyNone, "Logging: Files disabled")
+		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Files disabled")
 		// Explicitly log this error to console
-		Consolef(LevelError, KeyNone, ErrUnsetLogFilePath.Error())
+		ConsolefCtx(ctx, LevelError, KeyNone, ErrUnsetLogFilePath.Error())
 
 		// nil out other loggers
 		errorLogger = nil
@@ -85,7 +86,7 @@ func InitLogging(logFilePath string,
 	if err != nil {
 		return err
 	} else {
-		Consolef(LevelInfo, KeyNone, "Logging: Files to %v", logFilePath)
+		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Files to %v", logFilePath)
 	}
 
 	errorLogger, err = NewFileLogger(error, LevelError, LevelError.String(), logFilePath, errorMinAge, &errorLogger.buffer)

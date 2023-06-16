@@ -198,7 +198,7 @@ func TestLogSyncGatewayVersion(t *testing.T) {
 	for i := LevelNone; i < levelCount; i++ {
 		t.Run(i.String(), func(t *testing.T) {
 			consoleLogger.LogLevel.Set(i)
-			out := CaptureConsolefLogOutput(LogSyncGatewayVersion)
+			out := CaptureConsolefLogOutput(func() { LogSyncGatewayVersion(TestCtx(t)) })
 			assert.Contains(t, out, LongVersionString)
 		})
 	}

@@ -21,12 +21,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/sync_gateway/auth"
-	"github.com/couchbase/sync_gateway/db"
-
 	"github.com/couchbase/gocbcore/v10/connstr"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -168,7 +167,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 
 	// Get or add database name from config without valid database name; throws 400 Illegal database name error
 	dbConfig := DbConfig{OldRevExpirySeconds: &oldRevExpirySeconds, LocalDocExpirySecs: &localDocExpirySecs}
-	dbContext, err := serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(false))
+	dbContext, err := serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, getOrAddDatabaseConfigOptions{useExisting: false, failFast: false})
 	assert.Nil(t, dbContext, "Can't create database context without a valid database name")
 	assert.Error(t, err, "It should throw 400 Illegal database name")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
@@ -187,7 +186,10 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 		BucketConfig:        BucketConfig{Server: &server, Bucket: &bucketName},
 	}
 
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(false))
+	dbContext, err = serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, getOrAddDatabaseConfigOptions{
+		failFast:    false,
+		useExisting: false,
+	})
 	assert.Nil(t, dbContext, "Can't create database context from config with unrecognized value for import_docs")
 	assert.Error(t, err, "It should throw Unrecognized value for import_docs")
 
@@ -214,14 +216,22 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 		AutoImport:          false,
 	}
 
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(false))
+	dbContext, err = serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, getOrAddDatabaseConfigOptions{
+		failFast:    false,
+		useExisting: false,
+	})
 	assert.Nil(t, dbContext, "Can't create database context with duplicate database name")
 	assert.Error(t, err, "It should throw 412 Duplicate database names")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusPreconditionFailed))
 
 	// Get or add database from config with duplicate database name and useExisting as true
 	// Existing database context should be returned
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, true, db.GetConnectToBucketFn(false))
+	dbContext, err = serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig},
+		getOrAddDatabaseConfigOptions{
+			failFast:    false,
+			useExisting: true,
+		})
+
 	assert.NoError(t, err, "No error while trying to get the existing database name")
 	assert.Equal(t, server, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
@@ -615,7 +625,12 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 			},
 		},
 	}
-	_, err := serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(true))
+	_, err := serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig},
+		getOrAddDatabaseConfigOptions{
+			failFast:    false,
+			useExisting: false,
+		})
+
 	require.ErrorIs(t, err, errCollectionsUnsupported)
 }
 
@@ -694,7 +709,7 @@ func TestLogFlush(t *testing.T) {
 			config = testCase.EnableFunc(config)
 
 			// Setup logging
-			err := config.SetupAndValidateLogging()
+			err := config.SetupAndValidateLogging(base.TestCtx(t))
 			assert.NoError(t, err)
 
 			// Flush memory loggers
@@ -790,7 +805,11 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 					}
 					dbConfig.Scopes = GetCollectionsConfigWithSyncFn(t, bucket, nil, 1)
 				}
-				dbContext, err := serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(false))
+				dbContext, err := serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig},
+					getOrAddDatabaseConfigOptions{
+						failFast:    false,
+						useExisting: false,
+					})
 				if persistentConfig || scopes == false {
 					require.NoError(t, err)
 					require.NotNil(t, dbContext)
@@ -803,4 +822,52 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestOfflineDatabaseStartup ensures that background processes are not actually running when starting up a database in offline mode.
+func TestOfflineDatabaseStartup(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("TestOfflineDatabaseStartup requires xattrs for document import")
+	}
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				StartOffline: base.BoolPtr(true),
+				AutoImport:   true,
+				EnableXattrs: base.BoolPtr(true),
+			},
+		},
+	})
+	defer rt.Close()
+
+	ds := rt.GetSingleDataStore()
+	_, err := ds.AddRaw("doc1", 0, []byte(`{"type":"doc1"}`))
+	require.NoError(t, err)
+
+	// make sure we actually started offline (try to put a doc through the REST API)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"type":"doc2"}`)
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+
+	// put doc2 bypassing offline checks (this step will begin to fail with Elixir - since we're making offline more comprehensive)
+	_, _, err = rt.GetSingleTestDatabaseCollectionWithUser().Put(base.TestCtx(t), "doc2", db.Body{"type": "doc2"})
+	require.NoError(t, err)
+
+	// wait long enough to be confident that import isn't running...
+	time.Sleep(time.Second * 5)
+
+	// ensure doc1 is not imported - since we started the database offline
+	assert.Equal(t, int64(0), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+
+	rt.ServerContext().TakeDbOnline(base.NewNonCancelCtx(), rt.GetDatabase())
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc3", `{"type":"doc3"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// ensure doc1 is imported now we're online
+	_, err = rt.WaitForChanges(3, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 }

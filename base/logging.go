@@ -122,7 +122,7 @@ func init() {
 	// initializing a logging config, and when running under a test scenario.
 	initialCollationBufferSize := 0
 
-	consoleLogger = mustInitConsoleLogger(&ConsoleLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true), CollationBufferSize: &initialCollationBufferSize}})
+	consoleLogger = mustInitConsoleLogger(context.Background(), &ConsoleLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true), CollationBufferSize: &initialCollationBufferSize}})
 	initExternalLoggers()
 }
 
@@ -132,7 +132,8 @@ func PanicfCtx(ctx context.Context, format string, args ...interface{}) {
 	if errorLogger == nil {
 		log.Panicf(format, args...)
 	}
-	logTo(ctx, LevelError, KeyAll, format, args...)
+	// ensure the log message always reaches console
+	ConsolefCtx(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	panic(fmt.Sprintf(format, args...))
 }
@@ -143,7 +144,8 @@ func FatalfCtx(ctx context.Context, format string, args ...interface{}) {
 	if errorLogger == nil {
 		log.Fatalf(format, args...)
 	}
-	logTo(ctx, LevelError, KeyAll, format, args...)
+	// ensure the log message always reaches console
+	ConsolefCtx(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	os.Exit(1)
 }
@@ -240,24 +242,24 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 
 var consoleFOutput io.Writer = os.Stderr
 
-// Consolef logs the given formatted string and args to the given log level and log key,
+// ConsolefCtx logs the given formatted string and args to the given log level and log key,
 // as well as making sure the message is *always* logged to stdout.
-func Consolef(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
-	logTo(context.Background(), logLevel, logKey, format, args...)
+func ConsolefCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+	logTo(ctx, logLevel, logKey, format, args...)
 
 	// If the above logTo didn't already log to stderr, do it directly here
 	if !consoleLogger.isStderr || !consoleLogger.shouldLog(logLevel, logKey) {
-		format = color(addPrefixes(format, context.Background(), logLevel, logKey), logLevel)
+		format = color(addPrefixes(format, ctx, logLevel, logKey), logLevel)
 		_, _ = fmt.Fprintf(consoleFOutput, format+"\n", args...)
 	}
 }
 
 // LogSyncGatewayVersion will print the '==== name/version ====' startup indicator to ALL log outputs.
-func LogSyncGatewayVersion() {
+func LogSyncGatewayVersion(ctx context.Context) {
 	msg := fmt.Sprintf("==== %s ====", LongVersionString)
 
 	// Log the startup indicator to the stderr.
-	Consolef(LevelNone, KeyNone, msg)
+	ConsolefCtx(ctx, LevelNone, KeyNone, msg)
 
 	// Log the startup indicator to ALL log files too.
 	msg = addPrefixes(msg, context.Background(), LevelNone, KeyNone)

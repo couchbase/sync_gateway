@@ -80,7 +80,7 @@ type ActiveReplicatorConfig struct {
 	InitialReconnectInterval time.Duration
 	// MaxReconnectInterval is the maximum amount of time to wait between exponential backoff reconnect attempts.
 	MaxReconnectInterval time.Duration
-	// TotalReconnectTimeout, if non-zero, is the amount of time to wait before giving up trying to reconnect. Zero disables reconnect entirely.
+	// TotalReconnectTimeout, if non-zero, is the amount of time to wait before giving up trying to reconnect. Zero value will retry indefinitely.
 	TotalReconnectTimeout time.Duration
 
 	// CollectionsEnabled can be set to replicate one or more named collections, rather than just the default collection.
