@@ -1937,7 +1937,7 @@ func TestImportComputeStatOnDemandGet(t *testing.T) {
 
 	// assert the stat starts at 0 for a new database
 	computeStat := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
-	require.Equal(t, float64(0), computeStat)
+	require.Equal(t, int64(0), computeStat)
 
 	// add doc to bucket
 	_, err := dataStore.Add(key, 0, docBody)
@@ -1952,7 +1952,7 @@ func TestImportComputeStatOnDemandGet(t *testing.T) {
 
 	// assert the process compute stat has incremented
 	computeStat1 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
-	require.Greater(t, computeStat1, float64(0))
+	require.Greater(t, computeStat1, int64(0))
 
 	// update doc in bucket
 	updatedBody := make(map[string]interface{})
@@ -1994,7 +1994,7 @@ func TestImportComputeStatOnDemandWrite(t *testing.T) {
 
 	// assert the stat starts at 0 for a new database
 	computeStat := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
-	require.Equal(t, float64(0), computeStat)
+	require.Equal(t, int64(0), computeStat)
 
 	// add doc to bucket
 	_, err := dataStore.Add(key, 0, docBody)
@@ -2007,7 +2007,7 @@ func TestImportComputeStatOnDemandWrite(t *testing.T) {
 
 	// assert stat still no incremented as import filter rejects the doc
 	computeStat1 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
-	require.Equal(t, float64(0), computeStat1)
+	require.Equal(t, int64(0), computeStat1)
 
 	// rewrite through SG - should treat as new insert
 	docBodyString := `{"type":"SG client rewrite",
@@ -2040,7 +2040,7 @@ func TestAutoImportComputeStat(t *testing.T) {
 
 	// assert the stat starts at 0 for a new database
 	computeStat := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
-	require.Equal(t, float64(0), computeStat)
+	require.Equal(t, int64(0), computeStat)
 
 	// add doc to bucket
 	_, err := dataStore.Add(key, 0, docBody)
@@ -2054,7 +2054,7 @@ func TestAutoImportComputeStat(t *testing.T) {
 
 	// assert the stat increments for the auto import of the above doc
 	computeStat1 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
-	require.Greater(t, computeStat1, float64(0))
+	require.Greater(t, computeStat1, int64(0))
 }
 
 // Verify config flag for import creation of backup revision on import
