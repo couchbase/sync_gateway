@@ -2494,7 +2494,7 @@ func TestTotalSyncTimeStat(t *testing.T) {
 	}, 1)
 	require.True(t, ok)
 
-	// wait some time to wait for the stat to increment. this should wait for
+	// wait some time to wait for the stat to increment
 	_, ok = base.WaitForStat(func() int64 {
 		return passiveRT.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
 	}, 2)
