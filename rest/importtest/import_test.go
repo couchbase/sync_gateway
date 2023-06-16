@@ -1946,9 +1946,6 @@ func TestImportComputeStatOnDemandGet(t *testing.T) {
 	// trigger import via SG retrieval
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
 	rest.RequireStatus(t, response, http.StatusOK)
-	var rawInsertResponse rest.RawResponse
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
-	require.NoError(t, err, "Unable to unmarshal raw response")
 
 	// assert the process compute stat has incremented
 	computeStat1 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
@@ -1964,8 +1961,6 @@ func TestImportComputeStatOnDemandGet(t *testing.T) {
 	// trigger import via SG retrieval
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
 	rest.RequireStatus(t, response, http.StatusOK)
-	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
-	require.NoError(t, err, "Unable to unmarshal raw response")
 	// assert the process compute stat has incremented again after another import
 	computeStat2 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
 	require.Greater(t, computeStat2, computeStat1)
