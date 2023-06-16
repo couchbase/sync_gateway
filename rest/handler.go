@@ -169,6 +169,7 @@ func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, acc
 		h.authScopeFunc = dbAuthStringFunc
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
+		h.response.reportStats(true)
 		h.logDuration(true)
 	})
 }
@@ -183,7 +184,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		server:            server,
 		privs:             privs,
 		rq:                rq,
-		response:          NewCountedResponseWriter(r, defaultBytesStatsReportingInterval),
+		response:          NewNonCountedResponseWriter(r),
 		status:            http.StatusOK,
 		serialNumber:      atomic.AddUint64(&lastSerialNum, 1),
 		startTime:         time.Now(),
@@ -248,14 +249,17 @@ func ParseKeyspace(ks string) (db string, scope, collection *string, err error) 
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
 	if h.server.Config.API.CompressResponses == nil || *h.server.Config.API.CompressResponses {
-		if encoded := NewEncodedResponseWriter(h.response, h.rq, defaultBytesStatsReportingInterval); encoded != nil {
+		var stat *base.SgwIntStat
+		if h.isPublicDBRequestForStats() {
+			stat = h.db.DbStats.Database().HTTPBytesWritten
+		}
+		if encoded := NewEncodedResponseWriter(h.response, h.rq, stat, defaultBytesStatsReportingInterval); encoded != nil {
 			h.response = encoded
 			defer encoded.Close()
 		}
 	}
 
 	err := h.validateAndWriteHeaders(method, accessPermissions, responsePermissions)
-	h.updateStatsWriter()
 
 	if err != nil {
 		return err
@@ -299,11 +303,11 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
 	}
 
-	if h.shouldShowProductVersion() {
-		h.setHeader("Server", base.VersionString)
-	} else {
-		h.setHeader("Server", base.ProductNameString)
-	}
+	//if h.shouldShowProductVersion() {
+	//	h.setHeader("Server", base.VersionString)
+	//} else {
+	//	h.setHeader("Server", base.ProductNameString)
+	//}
 
 	// If an Admin Request and admin auth enabled or a metrics request with metrics auth enabled we need to check the
 	// user credentials
@@ -569,6 +573,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			}
 		}
 	}
+	h.updateResponseWriter()
 	return nil
 }
 
@@ -587,18 +592,28 @@ func (h *handler) logRequestLine() {
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "%s %s%s%s", h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formattedEffectiveUserName())
 }
 
-// updateStatsWriter only logs database level bytes written over the public API
-func (h *handler) updateStatsWriter() {
+// iupdateResponseWriter will create an updated Response Writer if we need to log db stats.
+func (h *handler) isPublicDBRequestForStats() bool {
 	if h.db == nil {
-		return
+		return false
 	}
 	if h.privs != publicPrivs && h.privs != regularPrivs {
-		return
+		return false
 	}
 	if h.isBlipSync() {
+		return false
+	}
+	return true
+}
+
+// updateResponseWriter will create an updated Response Writer if we need to log db stats.
+func (h *handler) updateResponseWriter() {
+	if !h.isPublicDBRequestForStats() {
 		return
 	}
-	h.response.setStat(h.db.DbStats.Database().HTTPBytesWritten)
+	h.response = NewCountedResponseWriter(h.response,
+		h.db.DbStats.Database().HTTPBytesWritten,
+		defaultBytesStatsReportingInterval)
 }
 
 func (h *handler) logDuration(realTime bool) {

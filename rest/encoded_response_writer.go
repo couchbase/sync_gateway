@@ -37,7 +37,7 @@ type EncodedResponseWriter struct {
 }
 
 // Creates a new EncodedResponseWriter, or returns nil if the request doesn't allow encoded responses.
-func NewEncodedResponseWriter(response http.ResponseWriter, rq *http.Request, statsUpdateInterval time.Duration) *EncodedResponseWriter {
+func NewEncodedResponseWriter(response http.ResponseWriter, rq *http.Request, stat *base.SgwIntStat, statsUpdateInterval time.Duration) *EncodedResponseWriter {
 	isWebSocketRequest := strings.ToLower(rq.Header.Get("Upgrade")) == "websocket" &&
 		strings.Contains(strings.ToLower(rq.Header.Get("Connection")), "upgrade")
 
@@ -57,7 +57,11 @@ func NewEncodedResponseWriter(response http.ResponseWriter, rq *http.Request, st
 		}
 	}
 
-	return &EncodedResponseWriter{ResponseWriter: response, statsUpdateInterval: statsUpdateInterval}
+	return &EncodedResponseWriter{
+		ResponseWriter:      response,
+		bytesWrittenStat:    stat,
+		statsUpdateInterval: statsUpdateInterval,
+	}
 }
 
 func (w *EncodedResponseWriter) WriteHeader(status int) {
@@ -83,10 +87,6 @@ func (w *EncodedResponseWriter) Write(b []byte) (int, error) {
 	w.lastBytesWritten += int64(n)
 	w.reportStats(false)
 	return n, err
-}
-
-func (w *EncodedResponseWriter) setStat(stat *base.SgwIntStat) {
-	w.bytesWrittenStat = stat
 }
 
 // ReportStats reports bytes written GetLastBytesWritten returns the number of bytes written by this response writer. This is not locked, so is only safe to call while no one is calling CountedResponseWriter.Write, usually after the response has been fully written.
