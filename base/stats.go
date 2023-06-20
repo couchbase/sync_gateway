@@ -498,6 +498,9 @@ type DatabaseStats struct {
 	SyncFunctionCount *SgwIntStat `json:"sync_function_count"`
 	// The total time spent evaluating a sync function (across all collections).
 	SyncFunctionTime *SgwIntStat `json:"sync_function_time"`
+	// The total total sync time is a proxy for websocket connections. Tracking long lived and potentially idle connections.
+	// This stat represents teh continually growing number of connections per sec.
+	TotalSyncTime *SgwIntStat `json:"total_sync_time"`
 	// The total number of times that a sync function encountered an exception (across all collections).
 	SyncFunctionExceptionCount *SgwIntStat `json:"sync_function_exception_count"`
 	// The total number of times a replication connection is rejected due ot it being over the threshold
@@ -1447,6 +1450,10 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.TotalSyncTime, err = NewIntStat(SubsystemDatabaseKey, "total_sync_time", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ImportFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
 
 	resUtil.CacheFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
@@ -1492,6 +1499,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionExceptionCount)
 	prometheus.Unregister(d.DatabaseStats.NumReplicationsRejectedLimit)
 	prometheus.Unregister(d.DatabaseStats.NumPublicRestRequests)
+	prometheus.Unregister(d.DatabaseStats.TotalSyncTime)
 }
 
 func (d *DbStats) CollectionStat(scopeName, collectionName string) (*CollectionStats, error) {
