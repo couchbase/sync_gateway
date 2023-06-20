@@ -2217,7 +2217,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
 	// subscription relies on the caching feed.
-	if db.autoImport {
+	if importEnabled {
 		db.ImportListener = NewImportListener(ctx, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID), db)
 		if importFeedErr := db.ImportListener.StartImportFeed(db); importFeedErr != nil {
 			return importFeedErr
