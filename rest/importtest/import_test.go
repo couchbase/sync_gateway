@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package importtest
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -1936,7 +1937,7 @@ func TestImportComputeStatOnDemandGet(t *testing.T) {
 	docBody["channels"] = "ABC"
 
 	// assert the stat starts at 0 for a new database
-	computeStat := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	computeStat := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
 	require.Equal(t, int64(0), computeStat)
 
 	// add doc to bucket
@@ -1948,7 +1949,7 @@ func TestImportComputeStatOnDemandGet(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusOK)
 
 	// assert the process compute stat has incremented
-	computeStat1 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
 	require.Greater(t, computeStat1, int64(0))
 
 	// update doc in bucket
@@ -1962,7 +1963,7 @@ func TestImportComputeStatOnDemandGet(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
 	rest.RequireStatus(t, response, http.StatusOK)
 	// assert the process compute stat has incremented again after another import
-	computeStat2 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	computeStat2 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
 	require.Greater(t, computeStat2, computeStat1)
 
 }
@@ -1988,7 +1989,7 @@ func TestImportComputeStatOnDemandWrite(t *testing.T) {
 	docBody["channels"] = "ABC"
 
 	// assert the stat starts at 0 for a new database
-	computeStat := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	computeStat := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
 	require.Equal(t, int64(0), computeStat)
 
 	// add doc to bucket
@@ -2001,7 +2002,7 @@ func TestImportComputeStatOnDemandWrite(t *testing.T) {
 	assertDocProperty(t, response, "reason", "Not imported")
 
 	// assert stat still no incremented as import filter rejects the doc
-	computeStat1 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
 	require.Equal(t, int64(0), computeStat1)
 
 	// rewrite through SG - should treat as new insert
@@ -2011,7 +2012,7 @@ func TestImportComputeStatOnDemandWrite(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusCreated)
 
 	// assert stat increases as function OnDemandImportForWrite will have been executed
-	computeStat2 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	computeStat2 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
 	require.Greater(t, computeStat2, computeStat1)
 }
 
@@ -2034,7 +2035,7 @@ func TestAutoImportComputeStat(t *testing.T) {
 	docBody["channels"] = "ABC"
 
 	// assert the stat starts at 0 for a new database
-	computeStat := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	computeStat := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
 	require.Equal(t, int64(0), computeStat)
 
 	// add doc to bucket
@@ -2048,8 +2049,58 @@ func TestAutoImportComputeStat(t *testing.T) {
 	require.True(t, ok)
 
 	// assert the stat increments for the auto import of the above doc
-	computeStat1 := rt.GetDatabase().DbStats.SharedBucketImportStats.ImportProcessCompute.Value()
+	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
 	require.Greater(t, computeStat1, int64(0))
+}
+
+func TestQueryResyncImportComputeStat(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+
+	rtConfig := rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: false,
+			Unsupported: &db.UnsupportedOptions{
+				UseQueryBasedResyncManager: true,
+			},
+		}},
+	}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	const numDocs = 1000
+	var resp *rest.TestResponse
+
+	for i := 0; i < numDocs; i++ {
+		resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"random": "doc"}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+	}
+
+	computeStat := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	require.Equal(t, int64(0), computeStat)
+
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	err := rt.WaitForConditionWithOptions(func() bool {
+		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
+		var status db.ResyncManagerResponse
+		err := json.Unmarshal(response.BodyBytes(), &status)
+		assert.NoError(t, err)
+
+		var val interface{}
+		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
+	}, 200, 200)
+	assert.NoError(t, err)
+
+	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	require.Greater(t, computeStat1, computeStat)
+
 }
 
 // Verify config flag for import creation of backup revision on import

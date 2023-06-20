@@ -180,7 +180,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 		functionTime := time.Since(startTime).Milliseconds()
 		bytes := len(event.Value)
 		stat := calculateImportCompute(int64(bytes), functionTime)
-		il.importStats.ImportProcessCompute.Add(stat)
+		il.dbStats.ImportProcessCompute.Add(stat)
 	}()
 	// Unmarshal the doc metadata (if present) to determine if this mutation requires import.
 	collectionCtx, ok := il.collections[event.CollectionID]
