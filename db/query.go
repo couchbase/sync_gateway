@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -702,6 +703,33 @@ type AllDocsIndexQueryRow struct {
 
 // AllDocs returns all non-deleted documents in the bucket between startKey and endKey
 func (c *DatabaseCollection) QueryAllDocs(ctx context.Context, startKey string, endKey string) (sgbucket.QueryResultIterator, error) {
+
+	if queryable, ok := base.GetBaseDataStore(c.dataStore).(sgbucket.QueryableStore); ok {
+		stmt := "SELECT id , " +
+			"$sync.rev as r, " +
+			"$sync.sequence as s, " +
+			"$sync.channels as c " +
+			"FROM $_keyspace AS keyspace " +
+			"WHERE $sync.sequence > 0 AND " + // Required to use IndexAllDocs
+			"id NOT LIKE '_sync:%' " +
+			"AND $sync IS NOT NULL " +
+			"AND ($sync.flags IS NULL OR ($sync.flags & 1) = false)"
+		params := make(map[string]interface{}, 0)
+		if startKey != "" {
+			stmt += " AND id >= $startkey"
+			params[QueryParamStartKey] = startKey
+		}
+		if endKey != "" {
+			stmt += " AND id <= $endkey"
+			params[QueryParamEndKey] = endKey
+		}
+		stmt += " ORDER BY id"
+
+		syncRE := regexp.MustCompile(`\$sync((\.\w+)*)`)
+		stmt = syncRE.ReplaceAllString(stmt, `xattrs->>'_sync$1'`)
+
+		return queryable.Query(sgbucket.SQLiteLanguage, stmt, params, sgbucket.RequestPlus, QueryAllDocs.adhoc)
+	}
 
 	// View Query
 	if c.useViews() {
