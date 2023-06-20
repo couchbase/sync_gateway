@@ -478,6 +478,9 @@ func readFromPath(path string, insecureSkipVerify bool) (rc io.ReadCloser, err e
 
 func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 	if dbConfig.AutoImport == nil {
+		if !dbConfig.UseXattrs() {
+			return false, nil
+		}
 		return base.DefaultAutoImport, nil
 	}
 
