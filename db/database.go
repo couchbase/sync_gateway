@@ -2143,12 +2143,11 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		db.changeCache.cfgEventCallback = cfgSG.FireEvent
 	}
 
-	importEnabled := db.UseXattrs() && db.autoImport
 	sgReplicateEnabled := db.Options.SGReplicateOptions.Enabled
 
 	// Initialize node heartbeater in EE mode if sg-replicate or import enabled on the node.  This node must start
 	// sending heartbeats before registering itself to the cfg, to avoid triggering immediate removal by other active nodes.
-	if base.IsEnterpriseEdition() && (importEnabled || sgReplicateEnabled) {
+	if base.IsEnterpriseEdition() && (db.autoImport || sgReplicateEnabled) {
 		// Create heartbeater
 		heartbeaterPrefix := db.MetadataKeys.HeartbeaterPrefix(db.Options.GroupID)
 		heartbeater, err := base.NewCouchbaseHeartbeater(db.MetadataStore, heartbeaterPrefix, db.UUID)
