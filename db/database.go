@@ -2310,6 +2310,16 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	}
 
+	// create a background task to keep track of the number of active replication connections the database has each second
+	bgtSyncTime, err := NewBackgroundTask(ctx, "TotalSyncTimeStat", func(ctx context.Context) error {
+		db.UpdateTotalSyncTimeStat()
+		return nil
+	}, 1*time.Second, db.terminator)
+	if err != nil {
+		return err
+	}
+	db.backgroundTasks = append(db.backgroundTasks, bgtSyncTime)
+
 	if err := base.RequireNoBucketTTL(db.Bucket); err != nil {
 		return err
 	}
