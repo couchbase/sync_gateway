@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
@@ -36,12 +38,12 @@ const (
 // N1QLStore defines the set of operations Sync Gateway uses to manage and interact with N1QL
 type N1QLStore interface {
 	GetName() string
-	BuildDeferredIndexes(indexSet []string) error
-	CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error
-	CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error
-	DropIndex(indexName string) error
+	BuildDeferredIndexes(ctx context.Context, indexSet []string) error
+	CreateIndex(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error
+	CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error
+	DropIndex(ctx context.Context, indexName string) error
 	ExplainQuery(statement string, params map[string]interface{}) (plan map[string]interface{}, err error)
-	GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error)
+	GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error)
 	Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error)
 	IsErrNoResults(error) bool
 	EscapedKeyspace() string
@@ -49,7 +51,7 @@ type N1QLStore interface {
 	IndexMetaScopeID() string
 	IndexMetaKeyspaceID() string
 	BucketName() string
-	WaitForIndexesOnline(indexNames []string, failfast bool) error
+	WaitForIndexesOnline(ctx context.Context, indexNames []string, failfast bool) error
 
 	// executeQuery performs the specified query without any built-in retry handling and returns the resultset
 	executeQuery(statement string) (sgbucket.QueryResultIterator, error)
@@ -90,7 +92,7 @@ func ExplainQuery(store N1QLStore, statement string, params map[string]interface
 //
 //	  CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
 //	CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
-func CreateIndex(store N1QLStore, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+func CreateIndex(ctx context.Context, store N1QLStore, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
 	createStatement := fmt.Sprintf("CREATE INDEX `%s` ON %s(%s)", indexName, store.EscapedKeyspace(), expression)
 
 	// Add filter expression, when present
@@ -101,7 +103,7 @@ func CreateIndex(store N1QLStore, indexName string, expression string, filterExp
 	// Replace any KeyspaceQueryToken references in the index expression
 	createStatement = strings.Replace(createStatement, KeyspaceQueryToken, store.EscapedKeyspace(), -1)
 
-	createErr := createIndex(store, indexName, createStatement, options)
+	createErr := createIndex(ctx, store, indexName, createStatement, options)
 	if createErr != nil {
 		if strings.Contains(createErr.Error(), "already exists") || strings.Contains(createErr.Error(), "duplicate index name") {
 			return ErrAlreadyExists
@@ -110,12 +112,12 @@ func CreateIndex(store N1QLStore, indexName string, expression string, filterExp
 	return createErr
 }
 
-func CreatePrimaryIndex(store N1QLStore, indexName string, options *N1qlIndexOptions) error {
+func CreatePrimaryIndex(ctx context.Context, store N1QLStore, indexName string, options *N1qlIndexOptions) error {
 	createStatement := fmt.Sprintf("CREATE PRIMARY INDEX `%s` ON %s", indexName, store.EscapedKeyspace())
-	return createIndex(store, indexName, createStatement, options)
+	return createIndex(ctx, store, indexName, createStatement, options)
 }
 
-func createIndex(store N1QLStore, indexName string, createStatement string, options *N1qlIndexOptions) error {
+func createIndex(ctx context.Context, store N1QLStore, indexName string, createStatement string, options *N1qlIndexOptions) error {
 
 	if options != nil {
 		withClause, marshalErr := JSONMarshal(options)
@@ -125,7 +127,7 @@ func createIndex(store N1QLStore, indexName string, createStatement string, opti
 		createStatement = fmt.Sprintf(`%s with %s`, createStatement, withClause)
 	}
 
-	DebugfCtx(context.TODO(), KeyQuery, "Attempting to create index using statement: [%s]", UD(createStatement))
+	DebugfCtx(ctx, KeyQuery, "Attempting to create index using statement: [%s]", UD(createStatement))
 
 	err := store.executeStatement(createStatement)
 	if err == nil {
@@ -133,27 +135,27 @@ func createIndex(store N1QLStore, indexName string, createStatement string, opti
 	}
 
 	if IsIndexerRetryIndexError(err) {
-		InfofCtx(context.TODO(), KeyQuery, "Indexer error creating index - waiting for server background retry.  Error:%v", err)
+		InfofCtx(ctx, KeyQuery, "Indexer error creating index - waiting for server background retry.  Error:%v", err)
 		// Wait for bucket to be created in background before returning
-		return waitForIndexExistence(store, indexName, true)
+		return waitForIndexExistence(ctx, store, indexName, true)
 	}
 
 	if IsCreateDuplicateIndexError(err) {
-		InfofCtx(context.TODO(), KeyQuery, "Duplicate index creation in progress - waiting for index readiness.  Error:%v", err)
+		InfofCtx(ctx, KeyQuery, "Duplicate index creation in progress - waiting for index readiness.  Error:%v", err)
 		// Wait for bucket to be created in background before returning
-		return waitForIndexExistence(store, indexName, true)
+		return waitForIndexExistence(ctx, store, indexName, true)
 	}
 
 	return pkgerrors.WithStack(RedactErrorf("Error creating index with statement: %s.  Error: %v", UD(createStatement), err))
 }
 
 // Waits for index to exist/not exist.  Used in response to background create/drop processing by server.
-func waitForIndexExistence(store N1QLStore, indexName string, shouldExist bool) error {
+func waitForIndexExistence(ctx context.Context, store N1QLStore, indexName string, shouldExist bool) error {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		// GetIndexMeta has its own error retry handling,
 		// but keep the retry logic up here for checking if the index exists.
-		exists, _, err := store.GetIndexMeta(indexName)
+		exists, _, err := store.GetIndexMeta(ctx, indexName)
 		if err != nil {
 			return false, err, nil
 		}
@@ -175,7 +177,7 @@ func waitForIndexExistence(store N1QLStore, indexName string, shouldExist bool) 
 }
 
 // BuildDeferredIndexes issues a build command for any deferred sync gateway indexes associated with the bucket.
-func BuildDeferredIndexes(s N1QLStore, indexSet []string) error {
+func BuildDeferredIndexes(ctx context.Context, s N1QLStore, indexSet []string) error {
 
 	if len(indexSet) == 0 {
 		return nil
@@ -218,15 +220,15 @@ func BuildDeferredIndexes(s N1QLStore, indexSet []string) error {
 		return nil
 	}
 
-	InfofCtx(context.TODO(), KeyQuery, "Building deferred indexes: %v", deferredIndexes)
-	buildErr := buildIndexes(s, deferredIndexes)
+	InfofCtx(ctx, KeyQuery, "Building deferred indexes: %v", deferredIndexes)
+	buildErr := buildIndexes(ctx, s, deferredIndexes)
 	return buildErr
 }
 
 // BuildIndexes executes a BUILD INDEX statement in the current bucket, using the form:
 //
 //	BUILD INDEX ON `bucket.Name`(`index1`, `index2`, ...)
-func buildIndexes(s N1QLStore, indexNames []string) error {
+func buildIndexes(ctx context.Context, s N1QLStore, indexNames []string) error {
 	if len(indexNames) == 0 {
 		return nil
 	}
@@ -241,7 +243,7 @@ func buildIndexes(s N1QLStore, indexNames []string) error {
 	if IsIndexerRetryBuildError(err) {
 		InfofCtx(context.TODO(), KeyQuery, "Indexer error creating index - waiting for background build.  Error:%v", err)
 		// Wait for bucket to be created in background before returning
-		return s.WaitForIndexesOnline(indexNames, false)
+		return s.WaitForIndexesOnline(ctx, indexNames, false)
 	}
 
 	return err
@@ -263,13 +265,13 @@ type getIndexMetaRetryValues struct {
 	meta   *IndexMeta
 }
 
-func GetIndexMeta(store N1QLStore, indexName string) (exists bool, meta *IndexMeta, err error) {
+func GetIndexMeta(ctx context.Context, store N1QLStore, indexName string) (exists bool, meta *IndexMeta, err error) {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		exists, meta, err := getIndexMetaWithoutRetry(store, indexName)
 		if err != nil {
 			// retry
-			WarnfCtx(context.TODO(), "Error from GetIndexMeta for index %s: %v will retry", indexName, err)
+			WarnfCtx(ctx, "Error from GetIndexMeta for index %s: %v will retry", indexName, err)
 			return true, err, nil
 		}
 		return false, nil, getIndexMetaRetryValues{
@@ -318,7 +320,7 @@ func getIndexMetaWithoutRetry(store N1QLStore, indexName string) (exists bool, m
 }
 
 // DropIndex drops the specified index from the current bucket.
-func DropIndex(store N1QLStore, indexName string) error {
+func DropIndex(ctx context.Context, store N1QLStore, indexName string) error {
 	statement := fmt.Sprintf("DROP INDEX default:%s.`%s`", store.EscapedKeyspace(), indexName)
 
 	err := store.executeStatement(statement)
@@ -327,9 +329,9 @@ func DropIndex(store N1QLStore, indexName string) error {
 	}
 
 	if IsIndexerRetryIndexError(err) {
-		InfofCtx(context.TODO(), KeyQuery, "Indexer error dropping index - waiting for server background retry.  Error:%v", err)
+		InfofCtx(ctx, KeyQuery, "Indexer error dropping index - waiting for server background retry.  Error:%v", err)
 		// Wait for bucket to be dropped in background before returning
-		return waitForIndexExistence(store, indexName, false)
+		return waitForIndexExistence(ctx, store, indexName, false)
 	}
 
 	return err
@@ -516,8 +518,7 @@ func IndexMetaKeyspaceID(bucketName, scopeName, collectionName string) string {
 }
 
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
-func WaitForIndexesOnline(cluster *gocb.Cluster, bucketName, scopeName, collectionName string, indexNames []string, failfast bool) error {
-	logCtx := context.TODO()
+func WaitForIndexesOnline(ctx context.Context, cluster *gocb.Cluster, bucketName, scopeName, collectionName string, indexNames []string, failfast bool) error {
 	mgr := cluster.QueryIndexes()
 	maxNumAttempts := 180
 	if failfast {
@@ -542,17 +543,22 @@ func WaitForIndexesOnline(cluster *gocb.Cluster, bucketName, scopeName, collecti
 		}
 		// check each of the current indexes state, add to map once finished to make sure each index online is only being logged once
 		for i := 0; i < len(currIndexes); i++ {
-			if currIndexes[i].State == IndexStateOnline {
-				if !onlineIndexes[currIndexes[i].Name] {
-					InfofCtx(logCtx, KeyAll, "Index %s is online", MD(currIndexes[i].Name))
-					onlineIndexes[currIndexes[i].Name] = true
+			name := currIndexes[i].Name
+			// use slices.Contains since the number of indexes is expected to be small
+			if currIndexes[i].State == IndexStateOnline && slices.Contains(indexNames, name) {
+				if !onlineIndexes[name] {
+					InfofCtx(ctx, KeyAll, "Index %s is online", MD(name))
+					onlineIndexes[name] = true
 				}
 			}
 		}
 		// check online index against indexes we watch to have online, increase counter as each comes online
+		var offlineIndexes []string
 		for _, listVal := range indexNames {
 			if onlineIndexes[listVal] {
 				watchedOnlineIndexCount++
+			} else {
+				offlineIndexes = append(offlineIndexes, listVal)
 			}
 		}
 
@@ -562,9 +568,9 @@ func WaitForIndexesOnline(cluster *gocb.Cluster, bucketName, scopeName, collecti
 		retryCount++
 		shouldContinue, sleepMs := retrySleeper(retryCount)
 		if !shouldContinue {
-			return fmt.Errorf("error waiting for indexes for bucket %s....", MD(bucketName))
+			return fmt.Errorf("error waiting for indexes %s ...", strings.Join(offlineIndexes, ", "))
 		}
-		InfofCtx(logCtx, KeyAll, "Indexes for bucket %s not ready - retrying...", MD(bucketName))
+		InfofCtx(ctx, KeyAll, "Indexes %s not ready - retrying...", strings.Join(offlineIndexes, ", "))
 		time.Sleep(time.Millisecond * time.Duration(sleepMs))
 	}
 }
