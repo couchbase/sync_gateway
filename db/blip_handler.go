@@ -26,6 +26,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 // handlersByProfile defines the routes for each message profile (verb) of an incoming request to the function that handles it.
@@ -838,7 +839,11 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID str
 	if redactedRev != nil {
 		history := toHistory(redactedRev.History, knownRevs, maxHistory)
 		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq)
-		return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, redactedRev.BodyBytes, nil, properties, seq, nil)
+		bodyBytes, err := redactedRev.BodyBytesWith(BodyRemoved)
+		if err != nil {
+			return err
+		}
+		return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, bodyBytes, nil, properties, seq, nil)
 	}
 
 	if revDelta == nil {
@@ -966,13 +971,8 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 	}
 
-	newDoc := &Document{
-		ID:    docID,
-		RevID: revID,
-	}
-	newDoc.UpdateBodyBytes(bodyBytes)
+	var newRev documents.DocumentRevision
 
-	injectedAttachmentsForDelta := false
 	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta {
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
@@ -998,19 +998,23 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't use delta. Found tombstone for doc %s deltaSrc=%s", base.UD(docID), deltaSrcRevID)
 		}
 
-		deltaSrcBody, err := deltaSrcRev.MutableBody()
+		deltaSrcBody, err := deltaSrcRev.UnmarshalBody()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to unmarshal mutable body for doc %s deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
 		}
 
 		// Stamp attachments so we can patch them
 		if len(deltaSrcRev.Attachments) > 0 {
-			deltaSrcBody[BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
-			injectedAttachmentsForDelta = true
+			deltaSrcBody[BodyAttachments] = map[string]any(deltaSrcRev.Attachments.AsMap())
+		}
+
+		var newDocBody Body
+		if err = newDocBody.Unmarshal(bodyBytes); err != nil {
+			return err
 		}
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
-		err = base.Patch(&deltaSrcMap, newDoc.Body())
+		err = base.Patch(&deltaSrcMap, newDocBody)
 		// err should only ever be a FleeceDeltaError here - but to be defensive, handle other errors too (e.g. somehow reaching this code in a CE build)
 		if err != nil {
 			// Something went wrong in the diffing library. We want to know about this!
@@ -1018,28 +1022,25 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error patching deltaSrc with delta: %s", err)
 		}
 
-		newDoc.UpdateBody(deltaSrcMap)
 		base.TracefCtx(bh.loggingCtx, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
 		stats.deltaRecvCount.Add(1)
-	}
 
-	err = validateBlipBody(bodyBytes, newDoc)
-	if err != nil {
-		return err
-	}
-
-	// Handle and pull out expiry
-	if bytes.Contains(bodyBytes, []byte(BodyExpiry)) {
-		body := newDoc.Body()
-		expiry, err := body.ExtractExpiry()
+		// Create a DocumentRevision from the merged body:
+		newRev, err = documents.DocumentRevisionFromBody(deltaSrcMap, BodyAttachments, BodyExpiry)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+			return err
 		}
-		newDoc.DocExpiry = expiry
-		newDoc.UpdateBody(body)
-	}
 
-	newDoc.Deleted = revMessage.Deleted()
+	} else {
+		// Non-delta case:
+		newRev, err = documents.ParseDocumentRevision(bodyBytes, BodyAttachments, BodyExpiry)
+		if err != nil {
+			return err
+		}
+	}
+	newRev.DocID = docID
+	newRev.RevID = revID
+	newRev.Deleted = revMessage.Deleted()
 
 	// noconflicts flag from LiteCore
 	// https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#rev
@@ -1060,20 +1061,18 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	var rawBucketDoc *sgbucket.BucketDocument
 
 	// Pull out attachments
-	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
-		body := newDoc.Body()
-
+	if len(newRev.Attachments) > 0 {
 		var currentBucketDoc *Document
 
 		// Look at attachments with revpos > the last common ancestor's
 		minRevpos := 1
 		if len(history) > 0 {
-			currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
+			currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, documents.DocUnmarshalSync)
 			// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
 			// as we will already have any attachments on the common ancestor so don't need to ask for them.
 			// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
 			if err == nil {
-				commonAncestor := currentDoc.History.findAncestorFromSet(currentDoc.CurrentRev, history)
+				commonAncestor := currentDoc.History.FindAncestorFromSet(currentDoc.CurrentRev, history)
 				minRevpos, _ = ParseRevID(commonAncestor)
 				minRevpos++
 				rawBucketDoc = rawDoc
@@ -1089,69 +1088,43 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 		// Do we have a previous doc? If not don't need to do this check
 		if currentBucketDoc != nil {
-			bodyAtts := GetBodyAttachments(body)
+			bodyAtts := newRev.Attachments
 			currentDigests = make(map[string]string, len(bodyAtts))
-			for name, value := range bodyAtts {
+			for name, incomingAttachmentMeta := range bodyAtts {
 				// Check if we have this attachment name already, if we do, continue check
-				currentAttachment, ok := currentBucketDoc.Attachments[name]
+				currentAttachmentMeta, ok := currentBucketDoc.Attachments[name]
 				if !ok {
 					// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
 					// update to ensure it's fetched and uploaded
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(revID)
+					bodyAtts[name].Revpos, _ = ParseRevID(revID)
 					continue
 				}
 
-				currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
-				if !ok {
+				if currentAttachmentMeta.Digest == "" {
 					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
 				}
-
-				currentAttachmentDigest, ok := currentAttachmentMeta["digest"].(string)
-				if !ok {
-					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
-				}
-				currentDigests[name] = currentAttachmentDigest
-
-				incomingAttachmentMeta, ok := value.(map[string]interface{})
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
-				}
+				currentDigests[name] = currentAttachmentMeta.Digest
 
 				// If this attachment has data then we're fine, this isn't a stub attachment and therefore doesn't
 				// need the check.
-				if incomingAttachmentMeta["data"] != nil {
+				if incomingAttachmentMeta.Data != nil {
 					continue
-				}
-
-				incomingAttachmentDigest, ok := incomingAttachmentMeta["digest"].(string)
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
-				}
-
-				incomingAttachmentRevpos, ok := base.ToInt64(incomingAttachmentMeta["revpos"])
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
 				}
 
 				// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
 				// digest is different we need to override the revpos and set it to the current revision to ensure
 				// the attachment is requested and stored
-				if int(incomingAttachmentRevpos) <= minRevpos && currentAttachmentDigest != incomingAttachmentDigest {
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(revID)
+				if int(incomingAttachmentMeta.Revpos) <= minRevpos && currentAttachmentMeta.Digest != incomingAttachmentMeta.Digest {
+					incomingAttachmentMeta.Revpos, _ = ParseRevID(revID)
 				}
 			}
-
-			body[BodyAttachments] = bodyAtts
 		}
 
-		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID, currentDigests); err != nil {
+		fakeBody := Body{BodyAttachments: newRev.Attachments}
+		if err := bh.downloadOrVerifyAttachments(rq.Sender, fakeBody, minRevpos, docID, currentDigests); err != nil {
 			base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
 			return err
 		}
-
-		newDoc.DocAttachments = GetBodyAttachments(body)
-		delete(body, BodyAttachments)
-		newDoc.UpdateBody(body)
 	}
 
 	if rawBucketDoc == nil && bh.collectionCtx.checkPendingInsertion(docID) {
@@ -1167,6 +1140,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 	// If the doc is a tombstone we want to allow conflicts when running SGR2
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
+	newDoc := newRev.AsDocument()
 	forceAllowConflictingTombstone := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
 	if bh.conflictResolver != nil {
 		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc)
@@ -1292,7 +1266,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 var errNoBlipHandler = fmt.Errorf("404 - No handler for BLIP request")
 
 // sendGetAttachment requests the full attachment from the peer.
-func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name string, digest string, meta map[string]interface{}) ([]byte, error) {
+func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name string, digest string, meta *DocAttachment) ([]byte, error) {
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Asking for attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
 	outrq := blip.NewRequest()
 	outrq.SetProfile(MessageGetAttachment)
@@ -1322,19 +1296,14 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 	if resp.Properties[BlipErrorCode] != "" {
 		return nil, fmt.Errorf("error %s from getAttachment: %s", resp.Properties[BlipErrorCode], respBody)
 	}
-	lNum, metaLengthOK := meta["length"]
-	metaLength, ok := base.ToInt64(lNum)
-	if !ok {
-		return nil, fmt.Errorf("invalid attachment length found in meta")
-	}
 
 	// Verify that the attachment we received matches the metadata stored in the document
-	if !metaLengthOK || len(respBody) != int(metaLength) || Sha1DigestKey(respBody) != digest {
+	if meta.Length == 0 || len(respBody) != meta.Length || Sha1DigestKey(respBody) != digest {
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "Incorrect data sent for attachment with digest: %s", digest)
 	}
 
 	bh.replicationStats.GetAttachment.Add(1)
-	bh.replicationStats.GetAttachmentBytes.Add(metaLength)
+	bh.replicationStats.GetAttachmentBytes.Add(int64(meta.Length))
 
 	return respBody, nil
 }
@@ -1393,7 +1362,7 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 // upload it if necessary. This method blocks until all the attachments have been processed.
 func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string, currentDigests map[string]string) error {
 	return bh.collection.ForEachStubAttachment(body, minRevpos, docID, currentDigests,
-		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
+		func(name string, digest string, knownData []byte, meta *DocAttachment) ([]byte, error) {
 			// Request attachment if we don't have it
 			if knownData == nil {
 				return bh.sendGetAttachment(sender, docID, name, digest, meta)
@@ -1436,14 +1405,14 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 		bsc.allowedAttachments = make(map[string]AllowedAttachment, 100)
 	}
 	for _, attachment := range attMeta {
-		key := allowedAttachmentKey(docID, attachment.digest, activeSubprotocol)
+		key := allowedAttachmentKey(docID, attachment.Digest, activeSubprotocol)
 		att, found := bsc.allowedAttachments[key]
 		if found {
 			att.counter++
 			bsc.allowedAttachments[key] = att
 		} else {
 			bsc.allowedAttachments[key] = AllowedAttachment{
-				version: attachment.version,
+				version: attachment.Version,
 				counter: 1,
 				docID:   docID,
 			}
@@ -1462,7 +1431,7 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []Att
 	defer bsc.allowedAttachmentsLock.Unlock()
 
 	for _, attachment := range attMeta {
-		key := allowedAttachmentKey(docID, attachment.digest, activeSubprotocol)
+		key := allowedAttachmentKey(docID, attachment.Digest, activeSubprotocol)
 		att, found := bsc.allowedAttachments[key]
 		if found {
 			if n := att.counter; n > 1 {

@@ -28,6 +28,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/documents"
 	"github.com/robertkrimen/otto/underscore"
 	"github.com/stretchr/testify/assert"
 )
@@ -206,29 +207,29 @@ func TestDatabase(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc...")
-	gotbody, err := collection.Get1xBody(ctx, "doc1")
+	gotbody, err := collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	AssertEqualBodies(t, body, gotbody)
 
 	log.Printf("Retrieve rev 1...")
-	gotbody, err = collection.Get1xRevBody(ctx, "doc1", rev1id, false, nil)
+	gotbody, err = collection.get1xRevBody(ctx, "doc1", rev1id, false, nil)
 	assert.NoError(t, err, "Couldn't get document with rev 1")
 	expectedResult := Body{"key1": "value1", "key2": 1234, BodyId: "doc1", BodyRev: rev1id}
 	AssertEqualBodies(t, expectedResult, gotbody)
 
 	log.Printf("Retrieve rev 2...")
-	gotbody, err = collection.Get1xRevBody(ctx, "doc1", rev2id, false, nil)
+	gotbody, err = collection.get1xRevBody(ctx, "doc1", rev2id, false, nil)
 	assert.NoError(t, err, "Couldn't get document with rev")
 	AssertEqualBodies(t, body, gotbody)
 
-	gotbody, err = collection.Get1xRevBody(ctx, "doc1", "bogusrev", false, nil)
+	gotbody, err = collection.get1xRevBody(ctx, "doc1", "bogusrev", false, nil)
 	status, _ := base.ErrorAsHTTPStatus(err)
 	assert.Equal(t, 404, status)
 	require.Nil(t, gotbody)
 
 	// Test the _revisions property:
 	log.Printf("Check _revisions...")
-	gotbody, err = collection.Get1xRevBody(ctx, "doc1", rev2id, true, nil)
+	gotbody, err = collection.get1xRevBody(ctx, "doc1", rev2id, true, nil)
 	require.NoError(t, err)
 	revisions := gotbody[BodyRevisions].(Revisions)
 	assert.Equal(t, 2, revisions[RevisionsStart])
@@ -300,7 +301,7 @@ func TestDatabase(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Check Get...")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	AssertEqualBodies(t, body, gotbody)
 
@@ -320,7 +321,7 @@ func TestGetDeleted(t *testing.T) {
 	assert.NoError(t, err, "DeleteDoc")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true
-	body, err = collection.Get1xRevBody(ctx, "doc1", rev2id, true, nil)
+	body, err = collection.get1xRevBody(ctx, "doc1", rev2id, true, nil)
 	assert.NoError(t, err, "Get1xRevBody")
 	expectedResult := Body{
 		BodyId:        "doc1",
@@ -341,7 +342,7 @@ func TestGetDeleted(t *testing.T) {
 	assert.NoError(t, err, "GetUser")
 	collection.user.SetExplicitChannels(nil, 1)
 
-	body, err = collection.Get1xRevBody(ctx, "doc1", rev2id, true, nil)
+	body, err = collection.get1xRevBody(ctx, "doc1", rev2id, true, nil)
 	assert.NoError(t, err, "Get1xRevBody")
 	AssertEqualBodies(t, expectedResult, body)
 }
@@ -379,7 +380,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assert.NoError(t, err, "Put Rev 3")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
-	body, err := collection.Get1xRevBody(ctx, "doc1", rev2id, true, nil)
+	body, err := collection.get1xRevBody(ctx, "doc1", rev2id, true, nil)
 	assert.NoError(t, err, "Get1xRevBody")
 	rev2digest := rev2id[2:]
 	rev1digest := rev1id[2:]
@@ -398,7 +399,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
+	collection.revisionCache = documents.NewShardedLRURevisionCache(documents.DefaultRevisionCacheShardCount, documents.DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -412,7 +413,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	collection.user.SetExplicitChannels(chans, 1)
 
 	// Get the removal revision with its history; equivalent to GET with ?revs=true
-	body, err = collection.Get1xRevBody(ctx, "doc1", rev2id, true, nil)
+	body, err = collection.get1xRevBody(ctx, "doc1", rev2id, true, nil)
 	require.NoError(t, err, "Get1xRevBody")
 	expectedResult = Body{
 		BodyId:      "doc1",
@@ -422,13 +423,13 @@ func TestGetRemovedAsUser(t *testing.T) {
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
 	}
-	assert.Equal(t, expectedResult, body)
+	assert.Equal(t, expectedResult, Body(body))
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
-	_, err = collection.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
+	_, err = collection.get1xRevBody(ctx, "doc1", rev1id, true, nil)
 	assertHTTPError(t, err, 404)
 }
 
@@ -476,7 +477,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	// Create the first revision of doc1.
 	rev1Body := Body{
 		"k1":       "v1",
-		"channels": append([]string{"ABC", "NBC"}),
+		"channels": []any{"ABC", "NBC"},
 	}
 	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
 	require.NoError(t, err, "Error creating doc")
@@ -484,7 +485,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	// Create the second revision of doc1 on channel ABC as removal from channel NBC.
 	rev2Body := Body{
 		"k2":       "v2",
-		"channels": []string{"ABC"},
+		"channels": []any{"ABC"},
 		BodyRev:    rev1ID,
 	}
 	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
@@ -493,7 +494,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	// Create the third revision of doc1 on channel ABC.
 	rev3Body := Body{
 		"k3":       "v3",
-		"channels": []string{"ABC"},
+		"channels": []any{"ABC"},
 		BodyRev:    rev2ID,
 	}
 	rev3ID, _, err := collection.Put(ctx, "doc1", rev3Body)
@@ -502,15 +503,15 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 
 	// Get rev2 of the doc as a user who have access to this revision.
 	collection.user = userAlice
-	body, err := collection.Get1xRevBody(ctx, "doc1", rev2ID, true, nil)
+	body, err := collection.get1xRevBody(ctx, "doc1", rev2ID, true, nil)
 	require.NoError(t, err, "Error getting 1x rev body")
 
 	_, rev1Digest := ParseRevID(rev1ID)
 	_, rev2Digest := ParseRevID(rev2ID)
 
-	bodyExpected := Body{
+	bodyExpected := map[string]any{
 		"k2":       "v2",
-		"channels": []string{"ABC"},
+		"channels": []any{"ABC"},
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2Digest, rev1Digest},
@@ -522,9 +523,9 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 
 	// Get rev2 of the doc as a user who doesn't have access to this revision.
 	collection.user = userBob
-	body, err = collection.Get1xRevBody(ctx, "doc1", rev2ID, true, nil)
+	body, err = collection.get1xRevBody(ctx, "doc1", rev2ID, true, nil)
 	require.NoError(t, err, "Error getting 1x rev body")
-	bodyExpected = Body{
+	bodyExpected = map[string]any{
 		BodyRemoved: true,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
@@ -542,15 +543,15 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 
 	// Try with a user who has access to this revision.
 	collection.user = userAlice
-	body, err = collection.Get1xRevBody(ctx, "doc1", rev2ID, true, nil)
+	body, err = collection.get1xRevBody(ctx, "doc1", rev2ID, true, nil)
 	assertHTTPError(t, err, 404)
 	require.Nil(t, body)
 
 	// Get rev2 of the doc as a user who doesn't have access to this revision.
 	collection.user = userBob
-	body, err = collection.Get1xRevBody(ctx, "doc1", rev2ID, true, nil)
+	body, err = collection.get1xRevBody(ctx, "doc1", rev2ID, true, nil)
 	require.NoError(t, err, "Error getting 1x rev body")
-	bodyExpected = Body{
+	bodyExpected = map[string]any{
 		BodyRemoved: true,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
@@ -679,7 +680,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev1ID, rev2ID)
 	require.NoError(t, err)
 	assert.Nil(t, delta)
-	assert.Equal(t, `{"_removed":true}`, string(redactedRev.BodyBytes))
+	assert.True(t, redactedRev.Removed)
 
 	// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
 	// as a user who has access to the removed revision via another channel.
@@ -727,7 +728,7 @@ func TestGetRemoved(t *testing.T) {
 	assert.NoError(t, err, "Put Rev 3")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
-	body, err := collection.Get1xRevBody(ctx, "doc1", rev2id, true, nil)
+	body, err := collection.get1xRevBody(ctx, "doc1", rev2id, true, nil)
 	assert.NoError(t, err, "Get1xRevBody")
 	rev2digest := rev2id[2:]
 	rev1digest := rev1id[2:]
@@ -746,12 +747,12 @@ func TestGetRemoved(t *testing.T) {
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
+	collection.revisionCache = documents.NewShardedLRURevisionCache(documents.DefaultRevisionCacheShardCount, documents.DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Get the removal revision with its history; equivalent to GET with ?revs=true
-	body, err = collection.Get1xRevBody(ctx, "doc1", rev2id, true, nil)
+	body, err = collection.get1xRevBody(ctx, "doc1", rev2id, true, nil)
 	assertHTTPError(t, err, 404)
 	require.Nil(t, body)
 
@@ -759,7 +760,7 @@ func TestGetRemoved(t *testing.T) {
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
-	_, err = collection.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
+	_, err = collection.get1xRevBody(ctx, "doc1", rev1id, true, nil)
 	assertHTTPError(t, err, 404)
 }
 
@@ -795,7 +796,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	assert.NoError(t, err, "Put Rev 3")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
-	body, err := collection.Get1xRevBody(ctx, "doc1", rev2id, true, nil)
+	body, err := collection.get1xRevBody(ctx, "doc1", rev2id, true, nil)
 	assert.NoError(t, err, "Get1xRevBody")
 	rev2digest := rev2id[2:]
 	rev1digest := rev1id[2:]
@@ -814,12 +815,12 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
+	collection.revisionCache = documents.NewShardedLRURevisionCache(documents.DefaultRevisionCacheShardCount, documents.DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true
-	body, err = collection.Get1xRevBody(ctx, "doc1", rev2id, true, nil)
+	body, err = collection.get1xRevBody(ctx, "doc1", rev2id, true, nil)
 	assertHTTPError(t, err, 404)
 	require.Nil(t, body)
 
@@ -827,7 +828,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
-	_, err = collection.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
+	_, err = collection.get1xRevBody(ctx, "doc1", rev1id, true, nil)
 	assertHTTPError(t, err, 404)
 }
 
@@ -1094,17 +1095,17 @@ func TestConflicts(t *testing.T) {
 	log.Printf("got raw body: %s", rawBody)
 
 	// Verify the change with the higher revid won:
-	gotBody, err := collection.Get1xBody(ctx, "doc")
+	gotBody, err := collection.get1xBody(ctx, "doc")
 	require.NoError(t, err)
 	expectedResult := Body{BodyId: "doc", BodyRev: "2-b", "n": 2, "channels": []string{"all", "2b"}}
 	AssertEqualBodies(t, expectedResult, gotBody)
 
 	// Verify we can still get the other two revisions:
-	gotBody, err = collection.Get1xRevBody(ctx, "doc", "1-a", false, nil)
+	gotBody, err = collection.get1xRevBody(ctx, "doc", "1-a", false, nil)
 	require.NoError(t, err)
 	expectedResult = Body{BodyId: "doc", BodyRev: "1-a", "n": 1, "channels": []string{"all", "1"}}
 	AssertEqualBodies(t, expectedResult, gotBody)
-	gotBody, err = collection.Get1xRevBody(ctx, "doc", "2-a", false, nil)
+	gotBody, err = collection.get1xRevBody(ctx, "doc", "2-a", false, nil)
 	require.NoError(t, err)
 	expectedResult = Body{BodyId: "doc", BodyRev: "2-a", "n": 3, "channels": []string{"all", "2a"}}
 	AssertEqualBodies(t, expectedResult, gotBody)
@@ -1143,7 +1144,7 @@ func TestConflicts(t *testing.T) {
 	rawBody, _, _ = collection.dataStore.GetRaw("doc")
 	log.Printf("post-delete, got raw body: %s", rawBody)
 
-	gotBody, err = collection.Get1xBody(ctx, "doc")
+	gotBody, err = collection.get1xBody(ctx, "doc")
 	require.NoError(t, err)
 	expectedResult = Body{BodyId: "doc", BodyRev: "2-a", "n": 3, "channels": []string{"all", "2a"}}
 	AssertEqualBodies(t, expectedResult, gotBody)
@@ -1703,7 +1704,7 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	doc, err = collection.GetDocument(ctx, docid, DocUnmarshalAll)
 	require.NotNil(t, doc)
 	assert.Equal(t, rev2id, doc.CurrentRev)
-	assert.Equal(t, "value", doc.Body()["_special"])
+	assert.Equal(t, "value", doc.UnmarshalBody()["_special"])
 	assert.NoError(t, err, "Unable to retrieve doc using generated uuid")
 }
 
@@ -2120,11 +2121,11 @@ func TestSyncFnMutateBody(t *testing.T) {
 
 	rev, err := collection.GetRev(ctx, "doc1", rev1id, false, nil)
 	require.NoError(t, err)
-	revBody, err := rev.Body()
+	revBody, err := rev.UnmarshalBody()
 	require.NoError(t, err, "Couldn't get mutable body")
 	assert.Equal(t, "value1", revBody["key1"])
 	assert.Equal(t, map[string]interface{}{"subkey1": "subvalue1"}, revBody["key2"])
-	log.Printf("rev: %s", rev.BodyBytes)
+	log.Printf("rev: %s", rev.BodyBytes())
 
 }
 
@@ -2167,8 +2168,8 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.Equal(t, revId, doc.RevID)
 	assert.NoError(t, err, "Couldn't retrieve document")
-	assert.Equal(t, "Bob", doc.Body()["name"])
-	assert.Equal(t, json.Number("52"), doc.Body()["age"])
+	assert.Equal(t, "Bob", doc.UnmarshalBody()["name"])
+	assert.Equal(t, json.Number("52"), doc.UnmarshalBody()["age"])
 }
 
 // Multiple clients are attempting to push the same new, non-winning revision concurrently; non-winning is an
@@ -2346,14 +2347,14 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 
 	rev, err := collection.GetRev(ctx, "doc1", "3-b1", false, nil)
 	assert.NoError(t, err, "Retrieve revision 3-b1")
-	revBody, err := rev.Body()
+	revBody, err := rev.UnmarshalBody()
 	assert.NoError(t, err, "Retrieve body of revision 3-b1")
 	assert.Equal(t, "Joshua", revBody["name"])
 	assert.Equal(t, json.Number("11"), revBody["age"])
 
 	rev, err = collection.GetRev(ctx, "doc1", "3-b2", false, nil)
 	assert.NoError(t, err, "Retrieve revision 3-b2")
-	revBody, err = rev.Body()
+	revBody, err = rev.UnmarshalBody()
 	assert.NoError(t, err, "Retrieve body of revision 3-b2")
 	assert.Equal(t, "Liam", revBody["name"])
 	assert.Equal(t, json.Number("12"), revBody["age"])
@@ -2929,7 +2930,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 
 		raw, _, err := db.Bucket.DefaultDataStore().GetRaw(docID)
 		require.NoError(t, err)
-		doc, err := unmarshalDocument(docID, raw)
+		doc, err := documents.UnmarshalDocument(docID, raw)
 		require.NoError(t, err)
 
 		collection := GetSingleDatabaseCollectionWithUser(t, db)

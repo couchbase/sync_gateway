@@ -23,6 +23,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 // HTTP handler for _all_docs
@@ -39,7 +40,7 @@ func (h *handler) handleAllDocs() error {
 	if h.rq.Method == "POST" {
 		input, err := h.readJSON()
 		if err == nil {
-			if explicitDocIDs, _ = db.GetStringArrayProperty(input, "keys"); explicitDocIDs == nil {
+			if explicitDocIDs, _ = documents.GetStringArrayProperty(input, "keys"); explicitDocIDs == nil {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad/missing keys")
 			}
 		}
@@ -399,7 +400,7 @@ func (h *handler) handleBulkGet() error {
 			if docid == "" || !revok {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Invalid doc/rev ID in _bulk_get")
 			} else {
-				attsSince, err = db.GetStringArrayProperty(doc, "atts_since")
+				attsSince, err = documents.GetStringArrayProperty(doc, "atts_since")
 
 				if showRevs {
 					docRevsLimit = globalRevsLimit
@@ -414,7 +415,7 @@ func (h *handler) handleBulkGet() error {
 					}
 
 					if docRevsLimit > 0 {
-						revsFrom, err = db.GetStringArrayProperty(doc, "revs_from")
+						revsFrom, err = documents.GetStringArrayProperty(doc, "revs_from")
 						if revsFrom == nil {
 							revsFrom = attsSince // revs_from defaults to same value as atts_since
 						}
@@ -430,7 +431,7 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			if err == nil {
-				body, err = h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
+				body, err = get1xRevBodyWithHistory(h, docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
 			}
 
 			if err != nil {
@@ -510,7 +511,7 @@ func (h *handler) handleBulkDocs() error {
 				docid, revid, _, err = h.collection.Post(h.ctx(), doc)
 			}
 		} else {
-			revisions := db.ParseRevisions(doc)
+			revisions := parseRevisions(doc)
 			if revisions == nil {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {

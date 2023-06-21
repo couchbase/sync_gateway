@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"bytes"
 	"fmt"
 	"math"
 	"mime/multipart"
@@ -21,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 // HTTP handler for a GET of a document
@@ -67,7 +67,7 @@ func (h *handler) handleGetDoc() error {
 
 	if openRevs == "" {
 		// Single-revision GET:
-		value, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+		value, err := get1xRevBodyWithHistory(h, docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 		if err != nil {
 			if err == base.ErrImportCancelledPurged {
 				base.DebugfCtx(h.ctx(), base.KeyImport, fmt.Sprintf("Import cancelled as document %v is purged", base.UD(docid)))
@@ -93,7 +93,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 			return h.writeMultipart("related", func(writer *multipart.Writer) error {
-				WriteMultipartDocument(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), value, writer, canCompress)
+				WriteMultipartDocument(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), db.Body(value), writer, canCompress)
 				return nil
 			})
 		} else {
@@ -124,7 +124,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") {
 			err := h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 				for _, revid := range revids {
-					revBody, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+					revBody, err := get1xRevBodyWithHistory(h, docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 					if err != nil {
 						revBody = db.Body{"missing": revid} // TODO: More specific error
 					}
@@ -140,7 +140,7 @@ func (h *handler) handleGetDoc() error {
 			_, _ = h.response.Write([]byte(`[` + "\n"))
 			separator := []byte(``)
 			for _, revid := range revids {
-				revBody, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+				revBody, err := get1xRevBodyWithHistory(h, docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 				if err != nil {
 					revBody = db.Body{"missing": revid} // TODO: More specific error
 				} else {
@@ -171,12 +171,9 @@ func (h *handler) handleGetDocReplicator2(docid, revid string) error {
 	}
 
 	// Stamp _attachments into message to match BLIP sendRevision behaviour
-	bodyBytes := rev.BodyBytes
-	if len(rev.Attachments) > 0 {
-		bodyBytes, err = base.InjectJSONProperties(bodyBytes, base.KVPair{Key: db.BodyAttachments, Val: rev.Attachments})
-		if err != nil {
-			return err
-		}
+	bodyBytes, err := rev.BodyBytesWith(documents.BodyAttachments)
+	if err != nil {
+		return err
 	}
 
 	h.setHeader("Content-Type", "application/json")
@@ -195,19 +192,16 @@ func (h *handler) handleGetAttachment() error {
 	if err != nil {
 		return err
 	}
-	if rev.BodyBytes == nil {
+	if rev.BodyBytes() == nil {
 		return kNotFoundError
 	}
 
-	meta, ok := rev.Attachments[attachmentName].(map[string]interface{})
+	meta, ok := rev.Attachments[attachmentName]
 	if !ok {
 		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
-	digest := meta["digest"].(string)
-	version, ok := db.GetAttachmentVersion(meta)
-	if !ok {
-		return db.ErrAttachmentVersion
-	}
+	digest := meta.Digest
+	version := meta.Version
 	attachmentKey := db.MakeAttachmentKey(version, docid, digest)
 	data, err := h.collection.GetAttachment(attachmentKey)
 	if err != nil {
@@ -216,8 +210,9 @@ func (h *handler) handleGetAttachment() error {
 
 	metaOption := h.getBoolQuery("meta")
 	if metaOption {
-		meta["key"] = attachmentKey
-		h.writeJSONStatus(http.StatusOK, meta)
+		result := meta.AsMap()
+		result["key"] = attachmentKey
+		h.writeJSONStatus(http.StatusOK, result)
 		return nil
 	}
 
@@ -238,7 +233,8 @@ func (h *handler) handleGetAttachment() error {
 	// attachment has a content type which is vulnerable to a phishing attack. If this is the case we will return with
 	// the Content Disposition header so that browsers will download the attachment rather than attempt to render it
 	// unless overridden by config option. CBG-1004
-	contentType, contentTypeSet := meta["content_type"].(string)
+	contentType := meta.ContentType
+	contentTypeSet := (contentType != "")
 	if contentTypeSet {
 		h.setHeader("Content-Type", contentType)
 	}
@@ -263,16 +259,16 @@ func (h *handler) handleGetAttachment() error {
 		}
 	}
 
-	if encoding, ok := meta["encoding"].(string); ok {
+	if meta.Encoding != "" {
 		if result, _ := h.getOptBoolQuery("content_encoding", true); result {
-			h.setHeader("Content-Encoding", encoding)
+			h.setHeader("Content-Encoding", meta.Encoding)
 		} else {
 			// Couchbase Lite wants to download the encoded form directly and store it that way,
 			// but some HTTP client libraries like NSURLConnection will automatically decompress
 			// the HTTP response if it has a Content-Encoding header. As a workaround, allow the
 			// client to add ?content_encoding=false to the request URL to disable setting this
 			// header.
-			h.setHeader("X-Content-Encoding", encoding)
+			h.setHeader("X-Content-Encoding", meta.Encoding)
 			h.setHeader("Content-Type", "application/gzip")
 		}
 	}
@@ -314,7 +310,7 @@ func (h *handler) handlePutAttachment() error {
 		return err
 	}
 
-	body, err := h.collection.Get1xRevBody(h.ctx(), docid, revid, false, nil)
+	body, err := get1xRevBody(h, docid, revid, false, nil)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			// couchdb creates empty body on attachment PUT
@@ -332,18 +328,18 @@ func (h *handler) handlePutAttachment() error {
 	}
 
 	// find attachment (if it existed)
-	attachments := db.GetBodyAttachments(body)
-	if attachments == nil {
-		attachments = make(map[string]interface{})
+	attachments, err := db.Body(body).GetAttachments()
+	if err != nil {
+		return err
+	} else if attachments == nil {
+		attachments = make(documents.AttachmentsMeta)
 	}
 
 	// create new attachment
-	attachment := make(map[string]interface{})
-	attachment["data"] = attachmentData
-	attachment["content_type"] = attachmentContentType
-
-	// attach it
-	attachments[attachmentName] = attachment
+	attachments[attachmentName] = &documents.DocAttachment{
+		Data:        attachmentData,
+		ContentType: attachmentContentType,
+	}
 	body[db.BodyAttachments] = attachments
 
 	newRev, _, err := h.collection.Put(h.ctx(), docid, body)
@@ -372,7 +368,7 @@ func (h *handler) handleDeleteAttachment() error {
 		}
 	}
 
-	body, err := h.collection.Get1xRevBody(h.ctx(), docid, revid, false, nil)
+	body, err := get1xRevBody(h, docid, revid, false, nil)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			// Check here if error is relating to incorrect revid, if so return 409 code else return 404 code
@@ -393,8 +389,10 @@ func (h *handler) handleDeleteAttachment() error {
 	}
 
 	// get document attachments and check if attachment exists
-	attachments := db.GetBodyAttachments(body)
-	if _, ok := attachments[attachmentName]; !ok {
+	attachments, err := db.Body(body).GetAttachments()
+	if err != nil {
+		return err
+	} else if _, ok := attachments[attachmentName]; !ok {
 		return base.HTTPErrorf(http.StatusNotFound, "Attachment %s is not found", attachmentName)
 	}
 	// delete specified attachment from the map
@@ -460,18 +458,18 @@ func (h *handler) handlePutDoc() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Revision IDs provided do not match")
 		}
 
-		newRev, doc, err = h.collection.Put(h.ctx(), docid, body)
+		newRev, doc, err = h.collection.Put(h.ctx(), docid, db.Body(body))
 		if err != nil {
 			return err
 		}
 		h.setEtag(newRev)
 	} else {
 		// Replicator-style PUT with new_edits=false:
-		revisions := db.ParseRevisions(body)
+		revisions := parseRevisions(body)
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
-		doc, newRev, err = h.collection.PutExistingRevWithBody(h.ctx(), docid, body, revisions, false)
+		doc, newRev, err = h.collection.PutExistingRevWithBody(h.ctx(), docid, db.Body(body), revisions, false)
 		if err != nil {
 			return err
 		}
@@ -503,10 +501,11 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 		return base.ErrEmptyDocument
 	}
 
-	newDoc := &db.Document{
-		ID: docid,
+	newRev, err := documents.ParseDocumentRevision(bodyBytes, documents.BodyAttachments, documents.BodyExpiry)
+	if err != nil {
+		return err
 	}
-	newDoc.UpdateBodyBytes(bodyBytes)
+	newRev.DocID = docid
 
 	var parentRev string
 	if oldRev := h.getQuery("rev"); oldRev != "" {
@@ -519,36 +518,16 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	generation++
 
 	deleted, _ := h.getOptBoolQuery("deleted", false)
-	newDoc.Deleted = deleted
+	newRev.Deleted = deleted
 
-	newDoc.RevID = db.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
-	history := []string{newDoc.RevID}
+	newRev.RevID = documents.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
+	history := []string{newRev.RevID}
 
 	if parentRev != "" {
 		history = append(history, parentRev)
 	}
 
-	// Handle and pull out expiry
-	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
-		body := newDoc.Body()
-		expiry, err := body.ExtractExpiry()
-		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
-		}
-		newDoc.DocExpiry = expiry
-		newDoc.UpdateBody(body)
-	}
-
-	// Pull out attachments
-	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
-		body := newDoc.Body()
-
-		newDoc.DocAttachments = db.GetBodyAttachments(body)
-		delete(body, db.BodyAttachments)
-		newDoc.UpdateBody(body)
-	}
-
-	doc, rev, err := h.collection.PutExistingRev(h.ctx(), newDoc, history, true, false, nil)
+	doc, rev, err := h.collection.PutExistingRev(h.ctx(), newRev.AsDocument(), history, true, false, nil)
 
 	if err != nil {
 		return err
@@ -576,7 +555,7 @@ func (h *handler) handlePostDoc() error {
 		return err
 	}
 
-	docid, newRev, doc, err := h.collection.Post(h.ctx(), body)
+	docid, newRev, doc, err := h.collection.Post(h.ctx(), db.Body(body))
 	if err != nil {
 		return err
 	}
@@ -635,7 +614,7 @@ func (h *handler) handlePutLocalDoc() error {
 	body, err := h.readJSON()
 	if err == nil {
 		var revid string
-		revid, err = h.collection.PutSpecial(db.DocTypeLocal, docid, body)
+		revid, err = h.collection.PutSpecial(db.DocTypeLocal, docid, db.Body(body))
 		if err == nil {
 			h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString("_local/"+docid)+`,"ok":true,"rev":"`+revid+`"}`))
 		}

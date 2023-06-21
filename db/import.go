@@ -20,6 +20,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/documents"
 	"github.com/robertkrimen/otto"
 )
 
@@ -32,22 +33,21 @@ const (
 
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
 func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid string, value []byte, xattrValue []byte, userXattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
-
 	var body Body
 	if isDelete {
 		body = Body{}
 	} else {
 		err := body.Unmarshal(value)
 		if err != nil {
-			base.InfofCtx(ctx, base.KeyImport, "Unmarshal error during importDoc %v", err)
+			base.InfofCtx(ctx, base.KeyImport, "Unmarshal error during ImportDocRaw %v", err)
 			return nil, err
 		}
 
-		err = validateImportBody(body)
+		err = documents.ValidateImportBody(body)
 		if err != nil {
 			return nil, err
 		}
-		delete(body, BodyPurged)
+		delete(body, documents.BodyPurged)
 	}
 
 	existingBucketDoc := &sgbucket.BucketDocument{
@@ -71,12 +71,12 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 	//       but should refactor import processing to support using the already-unmarshalled doc.
 	existingBucketDoc := &sgbucket.BucketDocument{
 		Cas:       existingDoc.Cas,
-		UserXattr: existingDoc.rawUserXattr,
+		UserXattr: existingDoc.RawUserXattr(),
 	}
 
 	// If we marked this as having inline Sync Data ensure that the existingBucketDoc we pass to importDoc has syncData
 	// in the body so we can detect this and perform the migrate
-	if existingDoc.inlineSyncData {
+	if existingDoc.InlineSyncData {
 		existingBucketDoc.Body, err = existingDoc.MarshalJSON()
 		existingBucketDoc.Xattr = nil
 	} else {
@@ -91,7 +91,12 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 		return nil, err
 	}
 
-	return db.importDoc(ctx, docid, existingDoc.Body(), expiry, isDelete, existingBucketDoc, mode)
+	body, err := existingDoc.GetDeepMutableBody()
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyImport, "Unmarshal error during ImportDoc %v", err)
+		return nil, err
+	}
+	return db.importDoc(ctx, docid, body, expiry, isDelete, existingBucketDoc, mode)
 }
 
 // Import document
@@ -103,7 +108,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 //	mode - ImportMode - ImportFromFeed or ImportOnDemand
 func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid string, body Body, expiry *uint32, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
 
-	base.DebugfCtx(ctx, base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
+	base.DebugfCtx(ctx, base.KeyImport, "Attempting to import doc %q; isDelete=%v...", base.UD(docid), isDelete)
 	importStartTime := time.Now()
 
 	if existingDoc == nil {
@@ -150,9 +155,12 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 			// If this is an on-demand import, we want to continue to import the current version of the doc.  Re-initialize existing doc based on the latest doc
 			if mode == ImportOnDemand {
-				body = doc.Body()
+				body, err = doc.GetDeepMutableBody()
 				if body == nil {
-					return nil, nil, false, nil, base.ErrEmptyDocument
+					if err == nil {
+						err = base.ErrEmptyDocument
+					}
+					return nil, nil, false, nil, err
 				}
 
 				existingDoc = &sgbucket.BucketDocument{
@@ -169,7 +177,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 					updatedExpiry = &expiry
 				}
 
-				if doc.inlineSyncData {
+				if doc.InlineSyncData {
 					existingDoc.Body, err = doc.MarshalBodyAndSync()
 				} else {
 					existingDoc.Body, err = doc.BodyBytes()
@@ -183,7 +191,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 		// If the existing doc is a legacy SG write (_sync in body), check for migrate instead of import.
 		_, ok := body[base.SyncPropertyName]
-		if ok || doc.inlineSyncData {
+		if ok || doc.InlineSyncData {
 			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(ctx, newDoc.ID, body, existingDoc, &mutationOptions)
 			if migrateErr != nil {
 				return nil, nil, false, updatedExpiry, migrateErr
@@ -196,7 +204,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 			// If document still requires import post-migration attempt, continue with import processing based on the body returned by migrate
 			doc = migratedDoc
-			body = migratedDoc.Body()
+			body, _ = migratedDoc.GetDeepMutableBody()
 			base.InfofCtx(ctx, base.KeyMigrate, "Falling back to import with cas: %v", doc.Cas)
 		}
 
@@ -262,7 +270,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			rawBodyForRevID = existingDoc.Body
 		} else {
 			var bodyWithoutInternalProps Body
-			bodyWithoutInternalProps, wasStripped = stripInternalProperties(body)
+			bodyWithoutInternalProps, wasStripped = documents.StripInternalProperties(body)
 			rawBodyForRevID, err = base.JSONMarshalCanonical(bodyWithoutInternalProps)
 			if err != nil {
 				return nil, nil, false, nil, err
@@ -278,14 +286,14 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			parentRev := doc.CurrentRev
 			generation, _ := ParseRevID(parentRev)
 			generation++
-			newRev = CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
+			newRev = documents.CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
 			if err != nil {
 				return nil, nil, false, updatedExpiry, err
 			}
 			base.DebugfCtx(ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(newDoc.ID), newRev)
 			// body[BodyRev] = newRev
 			newDoc.RevID = newRev
-			err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
+			err := doc.History.AddRevision(newDoc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
 			if err != nil {
 				base.InfofCtx(ctx, base.KeyImport, "Error adding new rev ID for doc %q / %q, Error: %v", base.UD(newDoc.ID), newRev, err)
 			}
@@ -307,7 +315,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 		newDoc.UpdateBody(body)
 		if !wasStripped && !isDelete {
-			newDoc._rawBody = rawBodyForRevID
+			newDoc.UpdateBodyBytes(rawBodyForRevID)
 		}
 
 		// Existing attachments are preserved while importing an updated body - we don't (currently) support changing
@@ -359,7 +367,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid string, body Body, existingDoc *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions) (docOut *Document, requiresImport bool, err error) {
 
 	// Unmarshal the existing doc in legacy SG format
-	doc, unmarshalErr := unmarshalDocument(docid, existingDoc.Body)
+	doc, unmarshalErr := documents.UnmarshalDocument(docid, existingDoc.Body)
 	if unmarshalErr != nil {
 		return nil, false, unmarshalErr
 	}
@@ -372,7 +380,7 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	}
 
 	// Move any large revision bodies to external storage
-	err = doc.migrateRevisionBodies(db.dataStore)
+	err = doc.MigrateRevisionBodies(db.dataStore)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyMigrate, "Error migrating revision bodies to external storage, doc %q, (cas=%d), Error: %v", base.UD(docid), doc.Cas, err)
 	}
@@ -384,7 +392,7 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	}
 
 	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
-	isDelete := doc.hasFlag(channels.Deleted)
+	isDelete := doc.HasFlag(channels.Deleted)
 	deleteBody := isDelete && len(existingDoc.Body) > 0
 	casOut, writeErr := db.dataStore.WriteWithXattr(docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, opts, value, xattrValue, isDelete, deleteBody)
 	if writeErr == nil {
@@ -420,17 +428,8 @@ func (db *DatabaseCollectionWithUser) backupPreImportRevision(ctx context.Contex
 		return nil
 	}
 
-	var kvPairs []base.KVPair
-	if len(previousRev.Attachments) > 0 {
-		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: previousRev.Attachments})
-	}
-
-	if previousRev.Deleted {
-		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
-	}
-
 	// Stamp _attachments and _deleted into backup
-	oldRevJSON, err := base.InjectJSONProperties(previousRev.BodyBytes, kvPairs...)
+	oldRevJSON, err := previousRev.BodyBytesWith(BodyAttachments, BodyDeleted)
 	if err != nil {
 		return err
 	}

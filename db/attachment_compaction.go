@@ -20,6 +20,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 const (
@@ -188,14 +189,14 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 
 // AttachmentsMetaMap struct is a very minimal struct to unmarshal into when getting attachments from bodies
 type AttachmentsMetaMap struct {
-	Attachments map[string]AttachmentsMeta `json:"_attachments"`
+	Attachments AttachmentsMeta `json:"_attachments"`
 }
 
 // AttachmentCompactionData struct to unmarshal a document sync data into in order to process attachments during mark
 // phase. Contains only what is necessary
 type AttachmentCompactionData struct {
-	Attachments map[string]AttachmentsMeta `json:"attachments"`
-	Flags       uint8                      `json:"flags"`
+	Attachments AttachmentsMeta `json:"attachments"`
+	Flags       uint8           `json:"flags"`
 	History     struct {
 		BodyMap    map[string]string `json:"bodymap"`
 		BodyKeyMap map[string]string `json:"BodyKeyMap"`
@@ -209,7 +210,7 @@ func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionDa
 	var documentBody []byte
 
 	if dataType&base.MemcachedDataTypeXattr != 0 {
-		body, xattr, _, err := parseXattrStreamData(base.SyncXattrName, "", data)
+		body, xattr, _, err := documents.ParseXattrStreamData(base.SyncXattrName, "", data)
 		if err != nil {
 			if errors.Is(err, base.ErrXattrNotFound) {
 				return nil, nil
@@ -269,26 +270,12 @@ func checkForInlineAttachments(body []byte) (*AttachmentsMetaMap, error) {
 // handleAttachments will iterate over the provided attachments and add any attachment doc IDs to the provided map
 // Doesn't require an error return as if we fail at any point in here the attachment is either not a v1 attachment, or
 // is unreadable which is likely unrecoverable.
-func handleAttachments(attachmentKeyMap map[string]string, docKey string, attachmentsMap map[string]AttachmentsMeta) {
-	for attName, attachmentMeta := range attachmentsMap {
-		attMetaMap := attachmentMeta
-
-		attVer, ok := GetAttachmentVersion(attMetaMap)
-		if !ok {
-			continue
+func handleAttachments(attachmentKeyMap map[string]string, docKey string, attachmentsMap AttachmentsMeta) {
+	for attName, attachment := range attachmentsMap {
+		if attachment.Version <= AttVersion1 && attachment.Digest != "" {
+			attKey := MakeAttachmentKey(AttVersion1, docKey, attachment.Digest)
+			attachmentKeyMap[attName] = attKey
 		}
-
-		if attVer != AttVersion1 {
-			continue
-		}
-
-		digest, ok := attMetaMap["digest"]
-		if !ok {
-			continue
-		}
-
-		attKey := MakeAttachmentKey(AttVersion1, docKey, digest.(string))
-		attachmentKeyMap[attName] = attKey
 	}
 }
 
@@ -310,7 +297,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 
 		// If the data contains an xattr then the attachment likely has a compaction ID, need to check this value
 		if event.DataType&base.MemcachedDataTypeXattr != 0 {
-			_, xattr, _, err := parseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
+			_, xattr, _, err := documents.ParseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
 			if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
 				base.WarnfCtx(ctx, "[%s] Unexpected error occurred attempting to parse attachment xattr: %v", compactionLoggingID, err)
 				return true
@@ -422,7 +409,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 			return true
 		}
 
-		_, xattr, _, err := parseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
+		_, xattr, _, err := documents.ParseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
 		if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
 			base.WarnfCtx(ctx, "[%s] Unexpected error occurred attempting to parse attachment xattr: %v", compactionLoggingID, err)
 			return true

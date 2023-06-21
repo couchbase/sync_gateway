@@ -138,11 +138,11 @@ func (db *DatabaseCollectionWithUser) addDocToChangeEntry(ctx context.Context, e
 }
 
 func (db *DatabaseCollectionWithUser) AddDocToChangeEntryUsingRevCache(ctx context.Context, entry *ChangeEntry, revID string) (err error) {
-	rev, err := db.getRev(ctx, entry.ID, revID, 0, nil, RevCacheIncludeBody)
+	rev, err := db.getRev(ctx, entry.ID, revID, 0, nil, nil)
 	if err != nil {
 		return err
 	}
-	entry.Doc, err = rev.As1xBytes(db, nil, nil, false)
+	entry.Doc, err = rev.BodyBytesWith(BodyId, BodyRev, BodyAttachments, BodyDeleted, BodyRemoved)
 	return err
 }
 
@@ -153,7 +153,7 @@ func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Co
 
 	revID := entry.Changes[0]["rev"]
 	if includeConflicts {
-		doc.History.forEachLeaf(func(leaf *RevInfo) {
+		doc.History.ForEachLeaf(func(leaf *RevInfo) {
 			if leaf.ID != revID {
 				if !leaf.Deleted {
 					entry.Deleted = false
@@ -322,7 +322,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 
 // UserHasDocAccess checks whether the user has access to the active revision of the document
 func UserHasDocAccess(ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (bool, error) {
-	currentRev, err := collection.revisionCache.GetActive(ctx, docID, false)
+	currentRev, err := collection.revisionCache.GetActive(ctx, docID)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			return false, nil

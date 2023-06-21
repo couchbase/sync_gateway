@@ -1664,3 +1664,159 @@ func TestReplaceLast(t *testing.T) {
 		})
 	}
 }
+
+func TestJSONExtract(t *testing.T) {
+	type attachment struct {
+		Digest string
+		Type   string
+		Length uint64
+	}
+	type values struct {
+		id          string
+		rev         string
+		attachments map[string]attachment
+		deleted     bool
+	}
+
+	cases := []struct {
+		name, input, output string
+		values              values
+		error               string
+	}{
+		{
+			name:   "Empty",
+			input:  "{ }",
+			output: "{}",
+		},
+		{
+			name:   "Null",
+			input:  "null",
+			output: "",
+		},
+		{
+			name:   "One regular",
+			input:  `{"foo": 1234}`,
+			output: `{"foo": 1234}`,
+		},
+		{
+			name:   "Two regular",
+			input:  `{"foo":1234,"bar":{"a": 1, "z": 26}}`,
+			output: `{"foo":1234,"bar":{"a": 1, "z": 26}}`, // (Commas removed before top keys)
+		},
+		{
+			name:   "One underscored",
+			input:  `{"_id": "Hey"}`,
+			output: `{}`,
+			values: values{id: "Hey"},
+		},
+		{
+			name:   "Two underscored",
+			input:  `{"_id": "Hey", "_attachments": {"a": {"length":1}}}`,
+			output: `{}`,
+			values: values{id: "Hey", attachments: map[string]attachment{"a": {Length: 1}}},
+		},
+		{
+			name:   "Underscored and regular",
+			input:  `{"_id":"Hey","foo":1234,"bar":{"a": 1, "z": 26},"_rev":"1-abcd","baz":true}`,
+			output: `{"foo":1234,"bar":{"a": 1, "z": 26},"baz":true}`,
+			values: values{id: "Hey", rev: "1-abcd"},
+		},
+		{
+			name:   "Regular and underscored",
+			input:  `{"foo":1234,"_id":"Hey","_rev":"1-abcd","bar":{"a": 1, "z": 26},"baz":true}`,
+			output: `{"foo":1234,"bar":{"a": 1, "z": 26},"baz":true}`,
+			values: values{id: "Hey", rev: "1-abcd"},
+		},
+
+		{
+			name:   "Shape with one underscored",
+			input:  `{"_id": "Hey"}`,
+			output: `{}`,
+			values: values{id: "Hey"},
+		},
+		{
+			name:   "Shape with all",
+			input:  `{"_id":"Hey","_rev":"1-abcd","_deleted":true,"_attachments":{"a.txt":{"digest":"123"}}}`,
+			output: `{}`,
+			values: values{id: "Hey", rev: "1-abcd", deleted: true, attachments: map[string]attachment{"a.txt": {Digest: "123"}}},
+		},
+
+		// Errors:
+		{
+			name:  "Array not object",
+			input: "[]",
+			error: "expected an object",
+		},
+		{
+			name:  "Null plus garbage",
+			input: "null 17",
+			error: "unexpected data after end",
+		},
+		{
+			name:  "Unclosed object",
+			input: `{"_id":"foo",`,
+			error: "EOF",
+		},
+		{
+			name:  "Bad token in object",
+			input: `{"_id":"foo", ,}`,
+			error: "ANY",
+		},
+		{
+			name:  "Object plus garbage",
+			input: `{"_id":"foo"} "but it keeps going"`,
+			error: "unexpected data after end",
+		},
+		{
+			name:  "Duplicate key",
+			input: `{"_id": "doc1","_id":"fake"}`,
+			error: "duplicate key",
+		},
+		{
+			name:  "Illegal key",
+			input: `{"_id": "foo", "_sync_whoa":"hi"}`,
+			error: `key "_sync_whoa" is reserved`,
+		},
+		{
+			name:  "Wrong type",
+			input: `{"_id": "foo", "_rev":false}`,
+			error: `invalid value type for special key "_rev"`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			theValues := values{}
+			output, err := JSONExtract([]byte(tc.input), func(key string) (any, error) {
+				switch key {
+				case "_id":
+					return &theValues.id, nil
+				case "_rev":
+					return &theValues.rev, nil
+				case "_attachments":
+					return &theValues.attachments, nil
+				case "_deleted":
+					return &theValues.deleted, nil
+				default:
+					if strings.HasPrefix(key, "_sync_") {
+						return nil, fmt.Errorf("key %q is reserved", key)
+					} else {
+						return nil, nil
+					}
+				}
+			})
+
+			if tc.error == "ANY" {
+				assert.Error(t, err)
+				log.Printf("--> %s", err)
+			} else if tc.error != "" {
+				assert.ErrorContains(t, err, tc.error)
+				log.Printf("--> %s", err)
+			} else if assert.NoError(t, err) {
+				assert.Equal(t, tc.output, string(output))
+				log.Printf("--> %#v", theValues)
+				assert.Equal(t, tc.values, theValues)
+			}
+		})
+	}
+
+}

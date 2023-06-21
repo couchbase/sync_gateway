@@ -16,12 +16,13 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 // DatabaseCollection provides a representation of a single collection of a database.
 type DatabaseCollection struct {
 	dataStore            base.DataStore          // Storage
-	revisionCache        RevisionCache           // Cache of recently-accessed doc revisions
+	revisionCache        documents.RevisionCache // Cache of recently-accessed doc revisions
 	collectionStats      *base.CollectionStats   // pointer to the collection stats (to avoid map lookups when used)
 	dbCtx                *DatabaseContext        // pointer to database context to allow passthrough of functions
 	ChannelMapper        *channels.ChannelMapper // Collection's sync function
@@ -44,7 +45,7 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, data
 		dbCtx:           dbContext,
 		collectionStats: stats,
 	}
-	dbCollection.revisionCache = NewRevisionCache(
+	dbCollection.revisionCache = documents.NewRevisionCache(
 		dbContext.Options.RevisionCacheOptions,
 		dbCollection,
 		dbContext.DbStats.Cache(),
@@ -146,7 +147,7 @@ func (c *DatabaseCollection) GetCollectionID() uint32 {
 }
 
 // GetRevisionCacheForTest allow accessing a copy of revision cache.
-func (c *DatabaseCollection) GetRevisionCacheForTest() RevisionCache {
+func (c *DatabaseCollection) GetRevisionCacheForTest() documents.RevisionCache {
 	return c.revisionCache
 }
 
@@ -163,7 +164,7 @@ func (c *DatabaseCollection) FlushChannelCache(ctx context.Context) error {
 
 // FlushRevisionCacheForTest creates a new revision cache. This is currently at the database level. Only use this in test code.
 func (c *DatabaseCollection) FlushRevisionCacheForTest() {
-	c.revisionCache = NewRevisionCache(
+	c.revisionCache = documents.NewRevisionCache(
 		c.dbCtx.Options.RevisionCacheOptions,
 		c,
 		c.dbStats().Cache(),
@@ -325,4 +326,10 @@ func (c *DatabaseCollection) UpdateSyncFun(ctx context.Context, syncFun string) 
 		err = nil
 	}
 	return
+}
+
+// RevisionBodyLoader retrieves a non-winning revision body stored outside the document metadata
+func (c *DatabaseCollection) RevisionBodyLoader(key string) ([]byte, error) {
+	body, _, err := c.dataStore.GetRaw(key)
+	return body, err
 }

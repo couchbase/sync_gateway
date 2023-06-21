@@ -17,6 +17,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/documents"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,30 +27,30 @@ type treeDoc struct {
 }
 
 type treeMeta struct {
-	RevTree revTreeList `json:"history"`
+	RevTree documents.RevTreeList `json:"history"`
 }
 
-// Retrieve the raw doc from the bucket, and unmarshal sync history as revTreeList, to validate low-level  storage
-func getRevTreeList(dataStore sgbucket.DataStore, key string, useXattrs bool) (revTreeList, error) {
+// Retrieve the raw doc from the bucket, and unmarshal sync history as document.RevTreeList, to validate low-level  storage
+func getRevTreeList(dataStore sgbucket.DataStore, key string, useXattrs bool) (documents.RevTreeList, error) {
 	switch useXattrs {
 	case true:
 		var rawDoc, rawXattr []byte
 		_, getErr := dataStore.GetWithXattr(key, base.SyncXattrName, "", &rawDoc, &rawXattr, nil)
 		if getErr != nil {
-			return revTreeList{}, getErr
+			return documents.RevTreeList{}, getErr
 		}
 
 		var treeMeta treeMeta
 		err := base.JSONUnmarshal(rawXattr, &treeMeta)
 		if err != nil {
-			return revTreeList{}, err
+			return documents.RevTreeList{}, err
 		}
 		return treeMeta.RevTree, nil
 
 	default:
 		rawDoc, _, err := dataStore.GetRaw(key)
 		if err != nil {
-			return revTreeList{}, err
+			return documents.RevTreeList{}, err
 		}
 		var doc treeDoc
 		err = base.JSONUnmarshal(rawDoc, &doc)
@@ -81,7 +82,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 1-a...")
-	_, err = collection.Get1xRevBody(ctx, "doc1", "1-a", false, nil)
+	_, err = collection.get1xRevBody(ctx, "doc1", "1-a", false, nil)
 	assert.NoError(t, err, "Couldn't get document")
 
 	docRev, err := collection.GetRev(ctx, "doc1", "1-a", false, nil)
@@ -89,14 +90,14 @@ func TestRevisionCacheLoad(t *testing.T) {
 	assert.Equal(t, "1-a", docRev.RevID)
 
 	// Validate that mutations to the body don't affect the revcache value
-	_, err = base.InjectJSONProperties(docRev.BodyBytes, base.KVPair{Key: "modified", Val: "property"})
+	_, err = base.InjectJSONProperties(docRev.BodyBytes(), base.KVPair{Key: "modified", Val: "property"})
 	assert.NoError(t, err)
 
 	docRevAgain, err := collection.GetRev(ctx, "doc1", "1-a", false, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, "1-a", docRevAgain.RevID)
 
-	body, err = docRevAgain.Body()
+	body, err = docRevAgain.UnmarshalBody()
 	assert.NoError(t, err)
 	_, ok := body["modified"]
 	assert.False(t, ok)
@@ -135,13 +136,13 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	gotDoc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
 	require.Contains(t, gotDoc.Attachments, "hello.txt")
-	attachmentData, ok := gotDoc.Attachments["hello.txt"].(map[string]interface{})
+	attachmentData, ok := gotDoc.Attachments["hello.txt"]
 	require.True(t, ok)
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData["digest"])
-	assert.Equal(t, float64(11), attachmentData["length"])
-	assert.Equal(t, float64(2), attachmentData["revpos"])
-	assert.True(t, attachmentData["stub"].(bool))
-	assert.Equal(t, float64(2), attachmentData["ver"])
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData.Digest)
+	assert.Equal(t, 11, attachmentData.Length)
+	assert.Equal(t, 2, attachmentData.Revpos)
+	assert.True(t, attachmentData.Stub)
+	assert.Equal(t, 2, attachmentData.Version)
 
 	// Create rev 2-b
 	//    1-a
@@ -161,13 +162,13 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	gotDoc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
 	require.Contains(t, gotDoc.Attachments, "hello.txt")
-	attachmentData, ok = gotDoc.Attachments["hello.txt"].(map[string]interface{})
+	attachmentData, ok = gotDoc.Attachments["hello.txt"]
 	require.True(t, ok)
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData["digest"])
-	assert.Equal(t, float64(11), attachmentData["length"])
-	assert.Equal(t, float64(2), attachmentData["revpos"])
-	assert.True(t, attachmentData["stub"].(bool))
-	assert.Equal(t, float64(2), attachmentData["ver"])
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData.Digest)
+	assert.Equal(t, 11, attachmentData.Length)
+	assert.Equal(t, 2, attachmentData.Revpos)
+	assert.True(t, attachmentData.Stub)
+	assert.Equal(t, 2, attachmentData.Version)
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
@@ -268,7 +269,7 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := collection.Get1xBody(ctx, "doc1")
+	gotbody, err := collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, Body{"_id": "doc1", "_rev": "1-a", "key1": "value1", "version": "1a"}, gotbody)
 
@@ -288,7 +289,7 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-b")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2b_body, gotbody)
 
@@ -334,7 +335,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := collection.Get1xBody(ctx, "doc1")
+	gotbody, err := collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2a_body, gotbody)
 
@@ -353,7 +354,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-b")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2b_body, gotbody)
 
@@ -375,9 +376,9 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the non-inline revision
 	collection.FlushRevisionCacheForTest()
-	rev2aGet, err := collection.Get1xRevBody(ctx, "doc1", "2-a", false, nil)
+	rev2aGet, err := collection.get1xRevBody(ctx, "doc1", "2-a", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 2-a")
-	assert.Equal(t, rev2a_body, rev2aGet)
+	assert.Equal(t, rev2a_body, Body(rev2aGet))
 
 	// Tombstone 2-b (with rev 3-b, minimal tombstone)
 	//    1-a
@@ -396,13 +397,13 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	assert.NoError(t, err, "add 3-b (tombstone)")
 
 	// Retrieve tombstone
-	rev3bGet, err := collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
+	rev3bGet, err := collection.get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-b")
-	assert.Equal(t, rev3b_body, rev3bGet)
+	assert.Equal(t, rev3b_body, Body(rev3bGet))
 
 	// Retrieve the document, validate that we get 2-a
 	log.Printf("Retrieve doc, expect 2-a")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2a_body, gotbody)
 
@@ -433,7 +434,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-c")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2c_body, gotbody)
 
@@ -463,12 +464,12 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the non-inline tombstone revision
 	collection.FlushRevisionCacheForTest()
-	rev3cGet, err := collection.Get1xRevBody(ctx, "doc1", "3-c", false, nil)
+	rev3cGet, err := collection.get1xRevBody(ctx, "doc1", "3-c", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-c")
-	assert.Equal(t, rev3c_body, rev3cGet)
+	assert.Equal(t, rev3c_body, Body(rev3cGet))
 
 	log.Printf("Retrieve doc, verify active rev is 2-a")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2a_body, gotbody)
 
@@ -518,7 +519,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := collection.Get1xBody(ctx, "doc1")
+	gotbody, err := collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2a_body, gotbody)
 
@@ -537,7 +538,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-b")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2b_body, gotbody)
 
@@ -559,9 +560,9 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve the non-inline revision
 	collection.FlushRevisionCacheForTest()
-	rev2aGet, err := collection.Get1xRevBody(ctx, "doc1", "2-a", false, nil)
+	rev2aGet, err := collection.get1xRevBody(ctx, "doc1", "2-a", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 2-a")
-	assert.Equal(t, rev2a_body, rev2aGet)
+	assert.Equal(t, rev2a_body, Body(rev2aGet))
 
 	// Tombstone 2-b (with rev 3-b, large tombstone)
 	//    1-a
@@ -583,13 +584,13 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve tombstone
 	collection.FlushRevisionCacheForTest()
-	rev3bGet, err := collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
+	rev3bGet, err := collection.get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-b")
-	assert.Equal(t, rev3b_body, rev3bGet)
+	assert.Equal(t, rev3b_body, Body(rev3bGet))
 
 	// Retrieve the document, validate that we get 2-a
 	log.Printf("Retrieve doc, expect 2-a")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2a_body, gotbody)
 
@@ -625,7 +626,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Verify that 3-b is still present at this point
 	collection.FlushRevisionCacheForTest()
-	_, err = collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
+	_, err = collection.get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Rev 3-b should still exist")
 
 	// Add one more rev that triggers pruning since gen(9-3) > revsLimit
@@ -635,7 +636,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	// Verify that 3-b has been pruned
 	log.Printf("Attempt to retrieve 3-b, expect pruned")
 	collection.FlushRevisionCacheForTest()
-	_, err = collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
+	_, err = collection.get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	require.Error(t, err)
 	assert.Equal(t, "404 missing", err.Error())
 
@@ -674,7 +675,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := collection.Get1xBody(ctx, "doc1")
+	gotbody, err := collection.get1xBody(ctx, "doc1")
 	require.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2a_body, gotbody)
 
@@ -694,7 +695,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 3-a...")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	require.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev3a_body, gotbody)
 
@@ -711,7 +712,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify still rev 3-a")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	require.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev3a_body, gotbody)
 
@@ -736,7 +737,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 6-a...")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	require.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev6a_body, gotbody)
 
@@ -834,7 +835,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := collection.Get1xBody(ctx, "doc1")
+	gotbody, err := collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2a_body, gotbody)
 
@@ -866,7 +867,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify still rev 3-a")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev3a_body, gotbody)
 
@@ -891,7 +892,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 6-a...")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev6a_body, gotbody)
 
@@ -1048,17 +1049,17 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 
 	b.Run("ShortLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = collection.Get1xRevBody(ctx, "doc1", "", false, nil)
+			_, _ = collection.get1xRevBody(ctx, "doc1", "", false, nil)
 		}
 	})
 	b.Run("LongLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = collection.Get1xRevBody(ctx, "doc2", "", false, nil)
+			_, _ = collection.get1xRevBody(ctx, "doc2", "", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = collection.Get1xRevBody(ctx, "doc3", "", false, nil)
+			_, _ = collection.get1xRevBody(ctx, "doc3", "", false, nil)
 		}
 	})
 
@@ -1069,17 +1070,17 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 
 	b.Run("ShortOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = collection.Get1xRevBody(ctx, "doc1", "1-a", false, nil)
+			_, _ = collection.get1xRevBody(ctx, "doc1", "1-a", false, nil)
 		}
 	})
 	b.Run("LongOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = collection.Get1xRevBody(ctx, "doc2", "1-a", false, nil)
+			_, _ = collection.get1xRevBody(ctx, "doc2", "1-a", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = collection.Get1xRevBody(ctx, "doc3", "1-a", false, nil)
+			_, _ = collection.get1xRevBody(ctx, "doc3", "1-a", false, nil)
 		}
 	})
 }
@@ -1155,15 +1156,15 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 	getDelta := func(newDoc *Document) {
 		deltaSrcRev, _ := collection.GetRev(ctx, "doc1", "1-a", false, nil)
 
-		deltaSrcBody, _ := deltaSrcRev.MutableBody()
+		deltaSrcBody, _ := deltaSrcRev.UnmarshalBody()
 
 		// Stamp attachments so we can patch them
 		if len(deltaSrcRev.Attachments) > 0 {
-			deltaSrcBody[BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
+			deltaSrcBody[BodyAttachments] = deltaSrcRev.Attachments
 		}
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
-		_ = base.Patch(&deltaSrcMap, newDoc.Body())
+		_ = base.Patch(&deltaSrcMap, newDoc.UnmarshalBody())
 	}
 
 	b.Run("SmallDiff", func(b *testing.B) {
@@ -1215,18 +1216,18 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 
 	// Get available attachments by immediate ancestor revision or parent revision
 	meta, found := collection.getAvailableRevAttachments(ctx, doc, parent)
-	attachment := meta["camera.txt"].(map[string]interface{})
-	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
-	assert.Equal(t, json.Number("20"), attachment["length"])
-	assert.Equal(t, json.Number("1"), attachment["revpos"])
+	attachment := meta["camera.txt"]
+	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment.Digest)
+	assert.Equal(t, 20, attachment.Length)
+	assert.Equal(t, 1, attachment.Revpos)
 	assert.True(t, found, "Ancestor should exists")
 
 	// Get available attachments by immediate ancestor revision
 	meta, found = collection.getAvailableRevAttachments(ctx, doc, ancestor)
-	attachment = meta["camera.txt"].(map[string]interface{})
-	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
-	assert.Equal(t, json.Number("20"), attachment["length"])
-	assert.Equal(t, json.Number("1"), attachment["revpos"])
+	attachment = meta["camera.txt"]
+	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment.Digest)
+	assert.Equal(t, 20, attachment.Length)
+	assert.Equal(t, 1, attachment.Revpos)
 	assert.True(t, found, "Ancestor should exists")
 }
 
@@ -1399,18 +1400,18 @@ func TestMergeAttachments(t *testing.T) {
 		{
 			"pre25Atts only",
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
 			},
 			nil,
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
 			},
 		},
@@ -1418,121 +1419,123 @@ func TestMergeAttachments(t *testing.T) {
 			"docAtts only",
 			nil,
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
 			},
 		},
 		{
 			"disjoint set",
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
 			},
 			AttachmentsMeta{
-				"att2": map[string]interface{}{
-					"digest": "def",
-					"revpos": json.Number("6"),
-					"stub":   true,
+				"att2": &DocAttachment{
+					Digest: "def",
+					Revpos: 6,
+					Stub:   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
-				"att2": map[string]interface{}{
-					"digest": "def",
-					"revpos": json.Number("6"),
-					"stub":   true,
+				"att2": &DocAttachment{
+					Digest: "def",
+					Revpos: 6,
+					Stub:   true,
 				},
 			},
 		},
 		{
 			"25Atts wins",
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "def",
-					"revpos": json.Number("6"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "def",
+					Revpos: 6,
+					Stub:   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "def",
-					"revpos": json.Number("6"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "def",
+					Revpos: 6,
+					Stub:   true,
 				},
 			},
 		},
 		{
 			"docAtts wins",
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "def",
-					"revpos": json.Number("6"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "def",
+					Revpos: 6,
+					Stub:   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "def",
-					"revpos": json.Number("6"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "def",
+					Revpos: 6,
+					Stub:   true,
 				},
 			},
 		},
-		{
-			"invalid pre25 revpos",
-			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "def",
-					"revpos": "6",
-					"stub":   true,
+		/*
+			{
+				"invalid pre25 revpos",
+				AttachmentsMeta{
+					"att1": &DocAttachment{
+						Digest: "def",
+						"revpos": "6",
+						Stub:   true,
+					},
+				},
+				AttachmentsMeta{
+					"att1": &DocAttachment{
+						Digest: "abc",
+						Revpos:4,
+						Stub:   true,
+					},
+				},
+				AttachmentsMeta{
+					"att1": &DocAttachment{
+						Digest: "abc",
+						Revpos:4,
+						Stub:   true,
+					},
 				},
 			},
-			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
-				},
-			},
-			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
-				},
-			},
-		},
+		*/
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

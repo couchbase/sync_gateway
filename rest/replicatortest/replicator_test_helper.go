@@ -91,7 +91,7 @@ func waitForTombstone(t *testing.T, rt *rest.RestTester, docID string) {
 	require.NoError(t, rt.WaitForPendingChanges())
 	require.NoError(t, rt.WaitForCondition(func() bool {
 		doc, _ := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
-		return doc.IsDeleted() && len(doc.Body()) == 0
+		return doc.IsDeleted() && !doc.HasNonEmptyBody()
 	}))
 }
 
@@ -109,7 +109,7 @@ func createOrUpdateDoc(t *testing.T, rt *rest.RestTester, docID, revID, bodyValu
 	return rest.RespRevID(t, resp)
 }
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
-	attachments := db.GetBodyAttachments(doc)
+	attachments := doc.GetRawAttachments()
 	if attachments == nil {
 		return 0
 	}

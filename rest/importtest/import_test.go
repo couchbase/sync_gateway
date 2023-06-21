@@ -44,7 +44,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
 				channel("oldDocNil")
-			} 
+			}
 			if (doc._deleted) {
 				channel("docDeleted")
 			}
@@ -131,7 +131,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
 				channel("oldDocNil")
-			} 
+			}
 		}`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
@@ -937,32 +937,32 @@ func TestMigrateTombstone(t *testing.T) {
 	key := "TestMigrateTombstone"
 	bodyString := `
 {
-    "_deleted": true, 
+    "_deleted": true,
     "_sync": {
-        "flags": 1, 
+        "flags": 1,
         "history": {
             "channels": [
-                null, 
+                null,
                 null
-            ], 
+            ],
             "deleted": [
                 1
-            ], 
+            ],
             "parents": [
-                -1, 
+                -1,
                 0
-            ], 
+            ],
             "revs": [
-                "1-f6fa803508c40388de38c9f99729c835", 
+                "1-f6fa803508c40388de38c9f99729c835",
                 "2-6b1e1af9190829c1ceab6f1c8fb9fa3f"
             ]
-        }, 
+        },
         "recent_sequences": [
-            4, 
+            4,
             5
-        ], 
-        "rev": "2-6b1e1af9190829c1ceab6f1c8fb9fa3f", 
-        "sequence": 5, 
+        ],
+        "rev": "2-6b1e1af9190829c1ceab6f1c8fb9fa3f",
+        "sequence": 5,
         "time_saved": "2017-11-22T13:24:33.115313269-08:00"
     }
 }`

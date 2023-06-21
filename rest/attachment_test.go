@@ -958,8 +958,8 @@ func TestAttachmentRevposPre25Metadata(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, response, 200)
 	var body struct {
-		Test        bool             `json:"test"`
-		Attachments db.AttachmentMap `json:"_attachments"`
+		Test        bool          `json:"test"`
+		Attachments AttachmentMap `json:"_attachments"`
 	}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.False(t, body.Test)
@@ -2464,7 +2464,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 	finalRev4 := RespRevID(t, resp)
 
 	type docResp struct {
-		Attachments db.AttachmentsMeta `json:"_attachments"`
+		Attachments map[string]any `json:"_attachments"`
 	}
 
 	var doc1 docResp
@@ -2689,7 +2689,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	doc1, err := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	assert.Equal(t, "sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=", doc1.Attachments["attachment"].(map[string]interface{})["digest"])
+	assert.Equal(t, "sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=", doc1.Attachments["attachment"].Digest)
 
 	req = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
 	assert.Equal(t, "attachmentB", string(req.BodyBytes()))
