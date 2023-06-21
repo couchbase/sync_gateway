@@ -396,6 +396,8 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, collectionIdx *int,
 	bodyBytes []byte, attMeta []AttachmentStorageMeta, properties blip.Properties, seq SequenceID, resendFullRevisionFunc func() error) error {
 
+	var docSent bool
+	startTime := time.Now()
 	outrq := NewRevMessage()
 	outrq.SetID(docID)
 	outrq.SetRev(revID)
@@ -408,6 +410,20 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	outrq.SetProperties(properties)
 
 	outrq.SetJSONBodyAsBytes(bodyBytes)
+	defer func() {
+		// if no doc was sent we don't want to calculate this stat
+		if !docSent {
+			return
+		}
+		functionTime := time.Since(startTime).Milliseconds()
+		messBody, err := outrq.Body()
+		if err != nil {
+			return
+		}
+		bytes := len(messBody)
+		stat := CalculateComputeStat(int64(bytes), functionTime)
+		bsc.replicationStats.DocWriteComputeUnit.Add(stat)
+	}()
 
 	// Update read stats
 	if messageBody, err := outrq.Body(); err == nil {
@@ -428,6 +444,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 		// Allow client to download attachments in 'atts', but only while pulling this rev
 		bsc.addAllowedAttachments(docID, attMeta, activeSubprotocol)
 	} else {
+		docSent = true
 		bsc.replicationStats.SendRevCount.Add(1)
 		outrq.SetNoReply(true)
 	}
@@ -485,6 +502,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 					}
 				}
 			} else {
+				docSent = true
 				bsc.replicationStats.SendRevCount.Add(1)
 			}
 

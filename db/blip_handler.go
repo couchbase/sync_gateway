@@ -638,6 +638,17 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 	// Include changes messages w/ proposeChanges stats, although CBL should only be using proposeChanges
 	startTime := time.Now()
+	// defer function for calculating the doc check compute unit stat
+	defer func() {
+		functionTime := time.Since(startTime).Milliseconds()
+		messageBody, err := rq.Body()
+		if err != nil {
+			return
+		}
+		bytes := len(messageBody)
+		stat := CalculateComputeStat(int64(bytes), functionTime)
+		bh.replicationStats.DocCheckComputeUnit.Add(stat)
+	}()
 	bh.replicationStats.HandleChangesCount.Add(int64(len(changeList)))
 	defer func() {
 		bh.replicationStats.HandleChangesTime.Add(time.Since(startTime).Nanoseconds())
@@ -764,6 +775,17 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 	// proposeChanges stats
 	startTime := time.Now()
+	// defer function for calculating the doc check compute unit stat
+	defer func() {
+		functionTime := time.Since(startTime).Milliseconds()
+		messageBody, err := rq.Body()
+		if err != nil {
+			return
+		}
+		bytes := len(messageBody)
+		stat := CalculateComputeStat(int64(bytes), functionTime)
+		bh.replicationStats.DocCheckComputeUnit.Add(stat)
+	}()
 	bh.replicationStats.HandleChangesCount.Add(int64(len(changeList)))
 	defer func() {
 		bh.replicationStats.HandleChangesTime.Add(time.Since(startTime).Nanoseconds())
@@ -914,6 +936,14 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		} else {
 			stats.errorCount.Add(1)
 		}
+		messageBody, err := rq.Body()
+		if err != nil || messageBody == nil {
+			return
+		}
+		bytes := len(messageBody)
+		functionTime := time.Since(startTime).Milliseconds()
+		stat := CalculateComputeStat(int64(bytes), functionTime)
+		bh.replicationStats.DocReadComputeUnit.Add(stat)
 	}()
 
 	// addRevisionParams := newAddRevisionParams(rq)
@@ -1245,6 +1275,25 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 
 // Received a "getAttachment" request
 func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
+	var gotAttachment bool
+	startTime := time.Now()
+	defer func() {
+		if !gotAttachment {
+			return
+		}
+		functionTime := time.Since(startTime).Milliseconds()
+		messagesBytes, err := rq.Body()
+		if err != nil || messagesBytes == nil {
+			return
+		}
+		bytes := len(messagesBytes)
+		stat := CalculateComputeStat(int64(bytes), functionTime)
+		if rq.Outgoing {
+			bh.replicationStats.WriteAttachmentComputeUnit.Add(stat)
+		} else {
+			bh.replicationStats.ReadAttachmentComputeUnit.Add(stat)
+		}
+	}()
 
 	getAttachmentParams := newGetAttachmentParams(rq)
 	bh.logEndpointEntry(rq.Profile(), getAttachmentParams.String())
@@ -1284,6 +1333,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	response.SetBody(attachment)
 	response.SetCompressed(rq.Properties[BlipCompress] == trueProperty)
 	bh.replicationStats.HandleGetAttachment.Add(1)
+	gotAttachment = true
 	bh.replicationStats.HandleGetAttachmentBytes.Add(int64(len(attachment)))
 
 	return nil

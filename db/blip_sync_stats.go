@@ -61,6 +61,11 @@ type BlipSyncStats struct {
 	NumConnectAttempts               *base.SgwIntStat
 	NumReconnectsAborted             *base.SgwIntStat
 	NumHandlersPanicked              *base.SgwIntStat
+	ReadAttachmentComputeUnit        *base.SgwIntStat
+	WriteAttachmentComputeUnit       *base.SgwIntStat
+	DocReadComputeUnit               *base.SgwIntStat
+	DocWriteComputeUnit              *base.SgwIntStat
+	DocCheckComputeUnit              *base.SgwIntStat
 }
 
 func NewBlipSyncStats() *BlipSyncStats {
@@ -109,6 +114,11 @@ func NewBlipSyncStats() *BlipSyncStats {
 		NumConnectAttempts:               &base.SgwIntStat{},
 		NumReconnectsAborted:             &base.SgwIntStat{},
 		NumHandlersPanicked:              &base.SgwIntStat{},
+		ReadAttachmentComputeUnit:        &base.SgwIntStat{},
+		WriteAttachmentComputeUnit:       &base.SgwIntStat{},
+		DocReadComputeUnit:               &base.SgwIntStat{},
+		DocWriteComputeUnit:              &base.SgwIntStat{},
+		DocCheckComputeUnit:              &base.SgwIntStat{},
 	}
 }
 
