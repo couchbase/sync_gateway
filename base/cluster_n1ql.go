@@ -60,24 +60,24 @@ func (cl *ClusterOnlyN1QLStore) GetName() string {
 	return cl.bucketName
 }
 
-func (cl *ClusterOnlyN1QLStore) BuildDeferredIndexes(indexSet []string) error {
-	return BuildDeferredIndexes(cl, indexSet)
+func (cl *ClusterOnlyN1QLStore) BuildDeferredIndexes(ctx context.Context, indexSet []string) error {
+	return BuildDeferredIndexes(ctx, cl, indexSet)
 }
 
-func (cl *ClusterOnlyN1QLStore) CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
-	return CreateIndex(cl, indexName, expression, filterExpression, options)
+func (cl *ClusterOnlyN1QLStore) CreateIndex(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+	return CreateIndex(ctx, cl, indexName, expression, filterExpression, options)
 }
 
-func (cl *ClusterOnlyN1QLStore) CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error {
-	return CreatePrimaryIndex(cl, indexName, options)
+func (cl *ClusterOnlyN1QLStore) CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error {
+	return CreatePrimaryIndex(ctx, cl, indexName, options)
 }
 
 func (cl *ClusterOnlyN1QLStore) ExplainQuery(statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
 	return ExplainQuery(cl, statement, params)
 }
 
-func (cl *ClusterOnlyN1QLStore) DropIndex(indexName string) error {
-	return DropIndex(cl, indexName)
+func (cl *ClusterOnlyN1QLStore) DropIndex(ctx context.Context, indexName string) error {
+	return DropIndex(ctx, cl, indexName)
 }
 
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
@@ -195,12 +195,12 @@ func (cl *ClusterOnlyN1QLStore) indexManager(scopeName, collectionName string) *
 	}
 }
 
-func (cl *ClusterOnlyN1QLStore) WaitForIndexesOnline(indexNames []string, failfast bool) error {
-	return WaitForIndexesOnline(cl.indexManager(cl.scopeName, cl.collectionName), indexNames, failfast)
+func (cl *ClusterOnlyN1QLStore) WaitForIndexesOnline(ctx context.Context, indexNames []string, failfast bool) error {
+	return WaitForIndexesOnline(ctx, cl.indexManager(cl.scopeName, cl.collectionName), indexNames, failfast)
 }
 
-func (cl *ClusterOnlyN1QLStore) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {
-	return GetIndexMeta(cl, indexName)
+func (cl *ClusterOnlyN1QLStore) GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error) {
+	return GetIndexMeta(ctx, cl, indexName)
 }
 
 func (cl *ClusterOnlyN1QLStore) IsErrNoResults(err error) bool {

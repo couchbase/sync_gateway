@@ -55,7 +55,7 @@ var primaryIndexInit base.TBPBucketInitFunc = func(ctx context.Context, b base.B
 			return err
 		}
 
-		err = n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+		err = n1qlStore.CreatePrimaryIndex(ctx, base.PrimaryIndexName, nil)
 		if err != nil {
 			return err
 		}

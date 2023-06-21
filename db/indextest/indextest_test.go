@@ -51,7 +51,7 @@ func TestRoleQuery(t *testing.T) {
 			n1QLStores, reset, err := setupN1QLStore(ctx, database.Bucket, testCase.isServerless)
 			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
 			defer func() {
-				assert.NoError(t, reset(n1QLStores, testCase.isServerless))
+				assert.NoError(t, reset(ctx, n1QLStores, testCase.isServerless))
 			}()
 
 			authenticator := database.Authenticator(ctx)
@@ -114,7 +114,7 @@ func TestBuildRolesQuery(t *testing.T) {
 			n1QLStores, reset, err := setupN1QLStore(ctx, database.Bucket, testCase.isServerless)
 			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
 			defer func() {
-				assert.NoError(t, reset(n1QLStores, testCase.isServerless))
+				assert.NoError(t, reset(ctx, n1QLStores, testCase.isServerless))
 			}()
 
 			// roles
@@ -158,7 +158,7 @@ func TestBuildUsersQuery(t *testing.T) {
 			n1QLStores, reset, err := setupN1QLStore(ctx, database.Bucket, testCase.isServerless)
 			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
 			defer func() {
-				assert.NoError(t, reset(n1QLStores, testCase.isServerless))
+				assert.NoError(t, reset(ctx, n1QLStores, testCase.isServerless))
 			}()
 
 			// Sessions
@@ -201,7 +201,7 @@ func TestQueryAllRoles(t *testing.T) {
 			n1QLStores, reset, err := setupN1QLStore(ctx, database.Bucket, testCase.isServerless)
 			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
 			defer func() {
-				assert.NoError(t, reset(n1QLStores, testCase.isServerless))
+				assert.NoError(t, reset(ctx, n1QLStores, testCase.isServerless))
 			}()
 
 			authenticator := database.Authenticator(ctx)
@@ -262,7 +262,7 @@ func TestAllPrincipalIDs(t *testing.T) {
 			n1QLStores, reset, err := setupN1QLStore(ctx, database.Bucket, testCase.isServerless)
 			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
 			defer func() {
-				assert.NoError(t, reset(n1QLStores, testCase.isServerless))
+				assert.NoError(t, reset(ctx, n1QLStores, testCase.isServerless))
 			}()
 
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
@@ -346,7 +346,7 @@ func TestGetRoleIDs(t *testing.T) {
 			n1QLStores, reset, err := setupN1QLStore(ctx, database.Bucket, testCase.isServerless)
 			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
 			defer func() {
-				assert.NoError(t, reset(n1QLStores, testCase.isServerless))
+				assert.NoError(t, reset(ctx, n1QLStores, testCase.isServerless))
 			}()
 
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
@@ -396,7 +396,7 @@ func getDatabaseContextOptions(isServerless bool) db.DatabaseContextOptions {
 	}
 }
 
-type resetN1QLStoreFn func(n1QLStores []base.N1QLStore, isServerless bool) error
+type resetN1QLStoreFn func(ctx context.Context, n1QLStores []base.N1QLStore, isServerless bool) error
 
 func setupN1QLStore(ctx context.Context, bucket base.Bucket, isServerless bool) ([]base.N1QLStore, resetN1QLStoreFn, error) {
 
@@ -436,7 +436,7 @@ func setupN1QLStore(ctx context.Context, bucket base.Bucket, isServerless bool) 
 }
 
 // resetN1QLStores restores the set of indexes to the starting state
-var clearIndexes resetN1QLStoreFn = func(n1QLStores []base.N1QLStore, isServerless bool) error {
+var clearIndexes resetN1QLStoreFn = func(ctx context.Context, n1QLStores []base.N1QLStore, isServerless bool) error {
 	options := db.InitializeIndexOptions{
 		UseXattrs:       base.TestUseXattrs(),
 		NumReplicas:     0,
@@ -449,7 +449,7 @@ var clearIndexes resetN1QLStoreFn = func(n1QLStores []base.N1QLStore, isServerle
 	var err error
 	for _, n1QLStore := range n1QLStores {
 		for _, index := range indexes {
-			newErr := n1QLStore.DropIndex(index)
+			newErr := n1QLStore.DropIndex(ctx, index)
 			if newErr != nil && strings.Contains(newErr.Error(), "Index not exist") {
 				err = errors.Wrap(err, newErr.Error())
 			}

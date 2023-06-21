@@ -762,7 +762,7 @@ func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, preview
 			errs = errs.Append(errors.New(err))
 			continue
 		}
-		collectionRemovedIndexes, err := removeObsoleteIndexes(n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
+		collectionRemovedIndexes, err := removeObsoleteIndexes(ctx, n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
 		if err != nil {
 			errs = errs.Append(err)
 			continue
