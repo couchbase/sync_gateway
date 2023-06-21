@@ -77,13 +77,20 @@ func makeService(functions *FunctionsConfig, graphql *GraphQLConfig) js.Template
 		}
 
 		// Create a JS string of the configuration JSON:
-		jsonConfig := mustSucceed(json.Marshal(jsConfig{Functions: functions, GraphQL: graphql}))
+		jsonConfig, err := json.Marshal(jsConfig{Functions: functions, GraphQL: graphql})
+		if err != nil {
+			return nil, err
+		}
+		jsonConfigVal, err := base.NewString(string(jsonConfig))
+		if err != nil {
+			return nil, err
+		}
 
 		// Wrap the service in a js.Service implementation:
 		return &functionServiceTemplate{
 			V8BasicTemplate:  base,
 			upstreamTemplate: upstream,
-			jsonConfig:       base.NewString(string(jsonConfig)),
+			jsonConfig:       jsonConfigVal,
 		}, nil
 	}
 }
@@ -211,27 +218,40 @@ func (eval *evaluator) setMutationAllowed(allowed bool) {
 // Calls a named function. Result is returned as JSON data.
 func (eval *evaluator) callFunction(name string, args map[string]any) ([]byte, error) {
 	return eval.wrapCall(func() (*v8.Value, error) {
+		user, roles, channels, err := eval.v8Credentials()
+		if err != nil {
+			return nil, err
+		}
+		jsonArgs, err := eval.runner.NewJSONString(args)
+		if err != nil {
+			return nil, err
+		}
+		args, err := eval.runner.ConvertArgs(name, jsonArgs, user, roles, channels, eval.mutationAllowed)
+		if err != nil {
+			return nil, err
+		}
 		// Calling JS method API.callFunction (api.ts)
-		user, roles, channels := eval.v8Credentials()
-		return eval.runner.Call(eval.functionFn, eval.api,
-			eval.runner.NewString(name),
-			mustSucceed(eval.runner.NewJSONString(args)),
-			user, roles, channels,
-			mustSucceed(eval.runner.NewValue(eval.mutationAllowed)))
+		return eval.runner.Call(eval.functionFn, eval.api, args...)
 	})
 }
 
 // Performs a GraphQL query. Result is an object of the usual GraphQL result shape, i.e. with `data` and/or `errors` properties. It is returned as a JSON string.
 func (eval *evaluator) callGraphQL(query string, operationName string, variables map[string]any) ([]byte, error) {
 	return eval.wrapCall(func() (*v8.Value, error) {
-		user, roles, channels := eval.v8Credentials()
+		user, roles, channels, err := eval.v8Credentials()
+		if err != nil {
+			return nil, err
+		}
+		jsonVariables, err := eval.runner.NewJSONString(variables)
+		if err != nil {
+			return nil, err
+		}
+		args, err := eval.runner.ConvertArgs(query, operationName, jsonVariables, user, roles, channels, eval.mutationAllowed)
+		if err != nil {
+			return nil, err
+		}
 		// Calling JS method API.callGraphQL (api.ts)
-		return eval.runner.Call(eval.graphqlFn, eval.api,
-			eval.runner.NewString(query),
-			eval.runner.NewString(operationName),
-			mustSucceed(eval.runner.NewJSONString(variables)),
-			user, roles, channels,
-			mustSucceed(eval.runner.NewValue(eval.mutationAllowed)))
+		return eval.runner.Call(eval.graphqlFn, eval.api, args...)
 	})
 }
 
@@ -251,20 +271,29 @@ func (eval *evaluator) wrapCall(fn func() (*v8.Value, error)) (result []byte, er
 }
 
 // Encodes credentials as 3 parameters to pass to JS.
-func (eval *evaluator) v8Credentials() (user *v8.Value, roles *v8.Value, channels *v8.Value) {
+func (eval *evaluator) v8Credentials() (user *v8.Value, roles *v8.Value, channels *v8.Value, err error) {
 	undef := eval.runner.UndefinedValue()
 	if eval.user != nil {
-		user = eval.runner.NewString(eval.user.Name)
+		user, err = eval.runner.NewString(eval.user.Name)
+		if err != nil {
+			return
+		}
 	} else {
 		user = undef
 	}
 	if eval.user != nil && len(eval.user.Roles) > 0 {
-		roles = eval.runner.NewString(strings.Join(eval.user.Roles, ","))
+		roles, err = eval.runner.NewString(strings.Join(eval.user.Roles, ","))
+		if err != nil {
+			return
+		}
 	} else {
 		roles = undef
 	}
 	if eval.user != nil && len(eval.user.Channels) > 0 {
-		channels = eval.runner.NewString(strings.Join(eval.user.Channels, ","))
+		channels, err = eval.runner.NewString(strings.Join(eval.user.Channels, ","))
+		if err != nil {
+			return
+		}
 	} else {
 		channels = undef
 	}
