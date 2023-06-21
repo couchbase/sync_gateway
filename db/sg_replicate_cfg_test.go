@@ -647,9 +647,10 @@ func TestIsCfgChanged(t *testing.T) {
 	testCfg, err := base.NewCfgSG(testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
+	ctx := base.TestCtx(t)
 	dbctx := DatabaseContext{Name: "test"}
-	dbctx.JS.Init(js.EngineNamed(DefaultJavaScriptEngine), 4)
-	mgr, err := NewSGReplicateManager(base.TestCtx(t), &dbctx, testCfg)
+	dbctx.JS.Init(ctx, js.EngineNamed(DefaultJavaScriptEngine), 4)
+	mgr, err := NewSGReplicateManager(ctx, &dbctx, testCfg)
 	require.NoError(t, err)
 	defer mgr.Stop()
 

@@ -75,7 +75,7 @@ func TestGraphQLSubgraph(t *testing.T) {
 
 	// Validate the config:
 	t.Run("ValidateSchema", func(t *testing.T) {
-		assert.NoError(t, testValidateFunctions(nil, &config))
+		assert.NoError(t, testValidateFunctions(t, nil, &config))
 	})
 
 	db, ctx := setupTestDBWithFunctions(t, nil, &config)
@@ -220,5 +220,5 @@ func TestGraphQLApolloCompatibilitySubgraph(t *testing.T) {
 		},
 	}
 
-	assert.NoError(t, testValidateFunctions(nil, &config))
+	assert.NoError(t, testValidateFunctions(t, nil, &config))
 }

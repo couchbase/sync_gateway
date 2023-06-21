@@ -13,7 +13,6 @@ licenses/APL2.txt.
 package functions
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 	"testing"
@@ -25,11 +24,12 @@ import (
 
 // A basic bring-up test of the Evaluator and TypeScript engine.
 func TestEvaluator(t *testing.T) {
-	vm := js.V8.NewVM()
+	ctx := base.TestCtx(t)
+	vm := js.V8.NewVM(ctx)
 	defer vm.Close()
 
 	delegate := mockEvaluatorDelegate{}
-	eval, err := newStandaloneEvaluator(context.Background(), vm, &kTestFunctionsConfig, &kTestGraphQLConfig, &delegate)
+	eval, err := newStandaloneEvaluator(ctx, vm, &kTestFunctionsConfig, &kTestGraphQLConfig, &delegate)
 	if !assert.NoError(t, err) {
 		return
 	}

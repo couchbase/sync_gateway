@@ -481,10 +481,11 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	})
 }
 
-func testValidateFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) error {
-	vm := js.V8.NewVM()
+func testValidateFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) error {
+	ctx := base.TestCtx(t)
+	vm := js.V8.NewVM(ctx)
 	defer vm.Close()
-	return ValidateFunctions(context.TODO(), vm, fnConfig, gqConfig)
+	return ValidateFunctions(ctx, vm, fnConfig, gqConfig)
 }
 
 // Test that JS syntax errors are detected when the db opens.
@@ -503,7 +504,7 @@ func TestUserFunctionSyntaxError(t *testing.T) {
 		},
 	}
 
-	err := testValidateFunctions(&functionConfig, nil)
+	err := testValidateFunctions(t, &functionConfig, nil)
 	assert.Error(t, err)
 }
 
@@ -524,7 +525,7 @@ func TestUserFunctionsMaxFunctionCount(t *testing.T) {
 			},
 		},
 	}
-	err := testValidateFunctions(&functionConfig, nil)
+	err := testValidateFunctions(t, &functionConfig, nil)
 	assert.ErrorContains(t, err, "too many functions (> 1)")
 }
 
@@ -540,7 +541,7 @@ func TestUserFunctionsMaxCodeSize(t *testing.T) {
 			},
 		},
 	}
-	err := testValidateFunctions(&functionConfig, nil)
+	err := testValidateFunctions(t, &functionConfig, nil)
 	assert.ErrorContains(t, err, "function square: code is too large (> 20 bytes)")
 }
 

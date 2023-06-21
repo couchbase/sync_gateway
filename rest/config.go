@@ -703,7 +703,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			// Keep going with jsvm == nil. `validateJavascriptFunction` will detect this and
 			// just act as a no-op, rather than panicking or adding more errors.
 		} else {
-			jsvm = jsEngine.NewVM()
+			jsvm = jsEngine.NewVM(ctx)
 			defer jsvm.Close()
 		}
 	}

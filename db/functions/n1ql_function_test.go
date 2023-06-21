@@ -233,7 +233,7 @@ func TestUserN1QLQueriesInvalid(t *testing.T) {
 		},
 	}
 
-	err := testValidateFunctions(&kBadN1QLFunctionsConfig, nil)
+	err := testValidateFunctions(t, &kBadN1QLFunctionsConfig, nil)
 	assert.ErrorContains(t, err, "only SELECT queries are allowed")
 
 	var kOKN1QLFunctionsConfig = FunctionsConfig{
@@ -253,6 +253,6 @@ func TestUserN1QLQueriesInvalid(t *testing.T) {
 		},
 	}
 
-	err = testValidateFunctions(&kOKN1QLFunctionsConfig, nil)
+	err = testValidateFunctions(t, &kOKN1QLFunctionsConfig, nil)
 	assert.NoError(t, err)
 }

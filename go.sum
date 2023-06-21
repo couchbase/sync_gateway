@@ -80,8 +80,8 @@ github.com/couchbase/gomemcached v0.2.1 h1:lDONROGbklo8pOt4Sr4eV436PVEaKDr3o9gUl
 github.com/couchbase/gomemcached v0.2.1/go.mod h1:mxliKQxOv84gQ0bJWbI+w9Wxdpt9HjDvgW9MjCym5Vo=
 github.com/couchbase/goutils v0.1.2 h1:gWr8B6XNWPIhfalHNog3qQKfGiYyh4K4VhO3P2o9BCs=
 github.com/couchbase/goutils v0.1.2/go.mod h1:h89Ek/tiOxxqjz30nPPlwZdQbdB8BwgnuBxeoUe/ViE=
-github.com/couchbase/sg-bucket v0.0.0-20230620210011-fa73ec2cc466 h1:G+OjHPx7gjWrEK4C82WZ2K2wUBKxXy7DFqMjDh9k17E=
-github.com/couchbase/sg-bucket v0.0.0-20230620210011-fa73ec2cc466/go.mod h1:8iG7ky5o1c/KaGeviobWSOz7t0oBXyyfjKc3CjYSGTU=
+github.com/couchbase/sg-bucket v0.0.0-20230620233502-c77093455120 h1:ZV6q8uc41jl9r5OPzdJ75sC0XIHXQzlp3EVTeaz+MMs=
+github.com/couchbase/sg-bucket v0.0.0-20230620233502-c77093455120/go.mod h1:8iG7ky5o1c/KaGeviobWSOz7t0oBXyyfjKc3CjYSGTU=
 github.com/couchbase/tools-common v0.0.0-20220810163003-4c3c185822d4 h1:Ub0gZWccoNL+ag59v8S23tbHDknfN1l3CVl7Kb+hFO0=
 github.com/couchbase/tools-common v0.0.0-20220810163003-4c3c185822d4/go.mod h1:lW0Em1mo5xqQ0mRMzJlg013/6ruyISupTfW7nbLaa1E=
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f h1:al5DxXEBAUmINnP5dR950gL47424WzncuRpNdg0TWR0=

@@ -2118,9 +2118,10 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			terminator := make(chan bool)
 			defer close(terminator)
 			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager(terminator)}
-			ctx.JS.Init(js.EngineNamed(db.DefaultJavaScriptEngine), 4)
+			testCtx := base.TestCtx(t)
+			ctx.JS.Init(testCtx, js.EngineNamed(db.DefaultJavaScriptEngine), 4)
 			sc := &ServerContext{}
-			err := sc.initEventHandlers(base.TestCtx(t), ctx, &dbConfig)
+			err := sc.initEventHandlers(testCtx, ctx, &dbConfig)
 			if test.errExpected != nil {
 				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {

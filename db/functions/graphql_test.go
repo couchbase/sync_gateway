@@ -547,7 +547,7 @@ func TestUserGraphQLMaxSchemaSize(t *testing.T) {
 			},
 		},
 	}
-	err := testValidateFunctions(nil, &config)
+	err := testValidateFunctions(t, nil, &config)
 	assert.ErrorContains(t, err, "GraphQL schema too large (> 20 bytes)")
 }
 
@@ -585,7 +585,7 @@ func TestUserGraphQLMaxResolverCount(t *testing.T) {
 			},
 		},
 	}
-	err := testValidateFunctions(nil, &config)
+	err := testValidateFunctions(t, nil, &config)
 	assert.ErrorContains(t, err, "too many GraphQL resolvers (> 1)")
 }
 
@@ -602,7 +602,7 @@ func TestArgsInResolverConfig(t *testing.T) {
 			},
 		},
 	}
-	err := testValidateFunctions(nil, &config)
+	err := testValidateFunctions(t, nil, &config)
 	assert.ErrorContains(t, err, `'args' is not valid in a GraphQL resolver config`)
 }
 
@@ -611,7 +611,7 @@ func TestUnresolvedTypesInSchema(t *testing.T) {
 		Schema:    base.StringPtr(`type Query{foo:Int!}`),
 		Resolvers: nil,
 	}
-	err := testValidateFunctions(nil, &config)
+	err := testValidateFunctions(t, nil, &config)
 	assert.ErrorContains(t, err, `GraphQL resolver Query.foo: missing function definition`)
 }
 
@@ -628,7 +628,7 @@ func TestInvalidMutationType(t *testing.T) {
 				},
 			},
 		}
-		err := testValidateFunctions(nil, &config)
+		err := testValidateFunctions(t, nil, &config)
 		assert.ErrorContains(t, err, `unrecognized 'type' "cpp"`)
 	})
 	t.Run("Unrecognized type query", func(t *testing.T) {
@@ -643,7 +643,7 @@ func TestInvalidMutationType(t *testing.T) {
 				},
 			},
 		}
-		err := testValidateFunctions(nil, &config)
+		err := testValidateFunctions(t, nil, &config)
 		assert.ErrorContains(t, err, `GraphQL mutations must be implemented in JavaScript`)
 	})
 }
@@ -660,7 +660,7 @@ func TestCompilationErrorInResolverCode(t *testing.T) {
 			},
 		},
 	}
-	err := testValidateFunctions(nil, &config)
+	err := testValidateFunctions(t, nil, &config)
 	assert.ErrorContains(t, err, `Query.square`)
 	assert.ErrorContains(t, err, `SyntaxError`)
 }
@@ -679,7 +679,7 @@ func TestGraphQLMaxCodeSize(t *testing.T) {
 			},
 		},
 	}
-	err := testValidateFunctions(nil, &config)
+	err := testValidateFunctions(t, nil, &config)
 	assert.ErrorContains(t, err, "Query.square")
 	assert.ErrorContains(t, err, "code is too large (> 2 bytes)")
 }
@@ -704,7 +704,7 @@ func TestTypenameResolver(t *testing.T) {
 				},
 			},
 		}
-		err := testValidateFunctions(nil, &config)
+		err := testValidateFunctions(t, nil, &config)
 		assert.ErrorContains(t, err, "a GraphQL '__typename' resolver must be JavaScript")
 	})
 	t.Run("Error in compiling typename resolver", func(t *testing.T) {
@@ -723,7 +723,7 @@ func TestTypenameResolver(t *testing.T) {
 				},
 			},
 		}
-		err := testValidateFunctions(nil, &config)
+		err := testValidateFunctions(t, nil, &config)
 		assert.ErrorContains(t, err, `Book.__typename`)
 		assert.ErrorContains(t, err, `SyntaxError`)
 	})
@@ -746,7 +746,7 @@ func TestTypenameResolver(t *testing.T) {
 				},
 			},
 		}
-		err := testValidateFunctions(nil, &config)
+		err := testValidateFunctions(t, nil, &config)
 		assert.ErrorContains(t, err, "'allow' is not valid in a GraphQL '__typename' resolver")
 	})
 
@@ -774,7 +774,7 @@ func TestTypenameResolver(t *testing.T) {
 				},
 			},
 		}
-		err := testValidateFunctions(nil, &config)
+		err := testValidateFunctions(t, nil, &config)
 		assert.NoError(t, err)
 		db, ctx := setupTestDBWithFunctions(t, nil, &config)
 		defer db.Close(ctx)
@@ -791,7 +791,7 @@ func TestInvalidSchemaAndSchemaFile(t *testing.T) {
 			SchemaFile: base.StringPtr("someInvalidPath/someInvalidFileName"),
 			Resolvers:  nil,
 		}
-		err := testValidateFunctions(nil, &config)
+		err := testValidateFunctions(t, nil, &config)
 		assert.ErrorContains(t, err, "GraphQL config: only one of `schema` and `schemaFile` may be used")
 	})
 
@@ -799,7 +799,7 @@ func TestInvalidSchemaAndSchemaFile(t *testing.T) {
 		var config = GraphQLConfig{
 			Resolvers: nil,
 		}
-		err := testValidateFunctions(nil, &config)
+		err := testValidateFunctions(t, nil, &config)
 		assert.ErrorContains(t, err, "GraphQL config: either `schema` or `schemaFile` must be defined")
 	})
 
@@ -807,7 +807,7 @@ func TestInvalidSchemaAndSchemaFile(t *testing.T) {
 		var config = GraphQLConfig{
 			SchemaFile: base.StringPtr("dummySchemaFile.txt"),
 		}
-		err := testValidateFunctions(nil, &config)
+		err := testValidateFunctions(t, nil, &config)
 		assert.ErrorContains(t, err, "GraphQL: can't read schema file dummySchemaFile.txt")
 		assert.ErrorContains(t, err, "no such file or directory") //? Might be OS specific
 	})
@@ -830,7 +830,7 @@ func TestValidSchemaFile(t *testing.T) {
 				},
 			},
 		}
-		err = testValidateFunctions(nil, &config)
+		err = testValidateFunctions(t, nil, &config)
 		assert.NoError(t, err)
 
 		err = os.Remove("schema.graphql")

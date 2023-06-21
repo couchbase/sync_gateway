@@ -433,7 +433,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		jsEngineName = *options.JavaScriptEngine
 	}
 	if engine := js.EngineNamed(jsEngineName); engine != nil {
-		dbContext.JS.Init(engine, MaxJavaScriptVMs)
+		dbContext.JS.Init(ctx, engine, MaxJavaScriptVMs)
 	} else {
 		return nil, fmt.Errorf("%q is not an available JavaScript engine", jsEngineName)
 	}

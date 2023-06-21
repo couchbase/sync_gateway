@@ -202,7 +202,7 @@ func callSyncFn(runner js.Runner, in ChannelMapperInput) (*ChannelMapperOutput, 
 		if expiry, reflectErr := base.ReflectExpiry(result.Expiry); reflectErr == nil {
 			output.Expiry = expiry
 		} else {
-			base.WarnfCtx(runner.ContextOrDefault(), "sync function set invalid expiry value `%+v` ", result.Expiry)
+			base.WarnfCtx(runner.Context(), "sync function set invalid expiry value `%+v` ", result.Expiry)
 		}
 	}
 	return output, nil
