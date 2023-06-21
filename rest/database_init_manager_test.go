@@ -116,7 +116,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 		currentCount := atomic.LoadInt64(&collectionCount)
 		if currentCount == 0 {
 			notifyChannel(t, singleCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", collectionName)) // notify the test that indexes have been created for this collection
-			waitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", collectionName))             // wait for the test to unblock before proceeding to the next collection
+			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", collectionName))             // wait for the test to unblock before proceeding to the next collection
 		}
 		atomic.AddInt64(&collectionCount, 1)
 	}
@@ -129,7 +129,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
-	waitForChannel(t, singleCollectionInitChannel, "first collection init")
+	WaitForChannel(t, singleCollectionInitChannel, "first collection init")
 
 	// Make a duplicate call to initialize database, should reuse the existing agent
 	duplicateDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig())
@@ -139,8 +139,8 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	close(testSignalChannel)
 
 	// Wait for notification on both done channels
-	waitForChannel(t, doneChan, "first init done chan")
-	waitForChannel(t, duplicateDoneChan, "duplicate init done chan")
+	WaitForChannel(t, doneChan, "first init done chan")
+	WaitForChannel(t, duplicateDoneChan, "duplicate init done chan")
 
 	// Verify initialization was only run for two collections
 	totalCount := atomic.LoadInt64(&collectionCount)
@@ -151,7 +151,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	// Rerun init, should start a new worker for the database and re-verify init for each collection
 	rerunDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig())
 	require.NoError(t, err)
-	waitForChannel(t, rerunDoneChan, "repeated init done chan")
+	WaitForChannel(t, rerunDoneChan, "repeated init done chan")
 	totalCount = atomic.LoadInt64(&collectionCount)
 	require.Equal(t, expectedCollectionCount*2, totalCount)
 }
@@ -209,7 +209,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 		currentCount := atomic.LoadInt64(&collectionCount)
 		if currentCount == 0 {
 			notifyChannel(t, firstCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", collectionName)) // notify the test that indexes have been created for this collection
-			waitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", collectionName))            // wait for the test to unblock before proceeding to the next collection
+			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", collectionName))            // wait for the test to unblock before proceeding to the next collection
 		}
 		atomic.AddInt64(&collectionCount, 1)
 	}
@@ -222,7 +222,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
-	waitForChannel(t, firstCollectionInitChannel, "first collection init")
+	WaitForChannel(t, firstCollectionInitChannel, "first collection init")
 
 	// Make a call to initialize database for the same db name, different collections
 	modifiedDbConfig := makeDbConfig(tb.GetName(), dbName, collection1and3ScopesConfig)
@@ -237,7 +237,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	require.Error(t, cancelErr)
 
 	// Wait for notification on new done channel
-	waitForChannel(t, modifiedDoneChan, "modified init done chan")
+	WaitForChannel(t, modifiedDoneChan, "modified init done chan")
 
 	// Verify initialization was run for four collections (one prior to cancellation, three for subsequent init)
 	totalCount := atomic.LoadInt64(&collectionCount)
@@ -296,7 +296,7 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 		currentCount := atomic.LoadInt64(&collectionCount)
 		if currentCount == 0 {
 			notifyChannel(t, firstCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", collectionName)) // notify the test that indexes have been created for this collection
-			waitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", collectionName))            // wait for the test to unblock before proceeding to the next collection
+			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", collectionName))            // wait for the test to unblock before proceeding to the next collection
 		}
 		atomic.AddInt64(&collectionCount, 1)
 	}
@@ -312,7 +312,7 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
-	waitForChannel(t, firstCollectionInitChannel, "first collection init")
+	WaitForChannel(t, firstCollectionInitChannel, "first collection init")
 
 	// Start second async index creation for db2 while first is still running
 	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig())
@@ -322,8 +322,8 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	close(testSignalChannel)
 
 	// Wait for notification on both done channels
-	waitForChannel(t, doneChan1, "modified init done chan")
-	waitForChannel(t, doneChan2, "modified init done chan")
+	WaitForChannel(t, doneChan1, "modified init done chan")
+	WaitForChannel(t, doneChan2, "modified init done chan")
 
 	// Verify initialization was run for 5 collections (three for db1, two for db2)
 	totalCount := atomic.LoadInt64(&collectionCount)
@@ -391,7 +391,7 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 		currentCount := atomic.LoadInt64(&collectionCount)
 		if currentCount == 0 {
 			notifyChannel(t, firstCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", collectionName)) // notify the test that indexes have been created for this collection
-			waitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", collectionName))            // wait for the test to unblock before proceeding to the next collection
+			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", collectionName))            // wait for the test to unblock before proceeding to the next collection
 		}
 		atomic.AddInt64(&collectionCount, 1)
 	}
@@ -410,7 +410,7 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
-	waitForChannel(t, firstCollectionInitChannel, "first collection init")
+	WaitForChannel(t, firstCollectionInitChannel, "first collection init")
 
 	// Start second async index creation for db2 while first is still running
 	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig())
@@ -420,12 +420,12 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	close(testSignalChannel)
 
 	// Wait for notification on both done channels
-	waitForChannel(t, doneChan1, "modified init done chan")
-	waitForChannel(t, doneChan2, "modified init done chan")
+	WaitForChannel(t, doneChan1, "modified init done chan")
+	WaitForChannel(t, doneChan2, "modified init done chan")
 
 	// Wait for db completion notifications for both databases
-	waitForChannel(t, databaseCompleteChannel, "database 1 init complete")
-	waitForChannel(t, databaseCompleteChannel, "database 2 init complete")
+	WaitForChannel(t, databaseCompleteChannel, "database 1 init complete")
+	WaitForChannel(t, databaseCompleteChannel, "database 2 init complete")
 
 	// Verify initialization was run for 6 collections (three for db1, three for db2)
 	totalCount := atomic.LoadInt64(&collectionCount)
@@ -499,8 +499,8 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig())
 	require.NoError(t, err)
 
-	waitForChannel(t, doneChan1, "done chan 1")
-	waitForChannel(t, doneChan2, "done chan 2")
+	WaitForChannel(t, doneChan1, "done chan 1")
+	WaitForChannel(t, doneChan2, "done chan 2")
 
 	// Verify initialization was run for 3 collections only
 	totalCollectionInitCount := atomic.LoadInt64(&collectionCount)
@@ -510,61 +510,6 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	totalDbCompleteCount := atomic.LoadInt64(&databaseCompleteCount)
 	require.Equal(t, int64(1), totalDbCompleteCount)
 
-}
-
-// testChannelTimeout can be increased to support step-through debugging
-const testChannelTimeout = 10 * time.Second
-
-func waitForChannel(t *testing.T, ch <-chan error, message string) {
-	if message != "" {
-		log.Printf("[%s] starting wait", message)
-		defer func() {
-			log.Printf("[%s] completed wait", message)
-		}()
-	}
-	select {
-	case err := <-ch:
-		if err != nil {
-			require.Fail(t, fmt.Sprintf("[%s] channel returned error: %v", message, err))
-		}
-		return
-	case <-time.After(testChannelTimeout):
-		require.Fail(t, fmt.Sprintf("[%s] expected channel message did not arrive in 10s", message))
-	}
-}
-
-func waitForError(t *testing.T, ch <-chan error, message string) error {
-	if message != "" {
-		log.Printf("[%s] starting wait for error", message)
-		defer func() {
-			log.Printf("[%s] completed wait for error", message)
-		}()
-	}
-	select {
-	case err := <-ch:
-		if err == nil {
-			require.Fail(t, "[%s] Received non-error message on channel", message)
-		}
-		return err
-	case <-time.After(testChannelTimeout):
-		require.Fail(t, fmt.Sprintf("[%s] expected error message did not arrive in 10s", message))
-		return nil
-	}
-}
-
-func notifyChannel(t *testing.T, ch chan<- error, message string) {
-	if message != "" {
-		log.Printf("[%s] starting notify", message)
-		defer func() {
-			log.Printf("[%s] completed notify", message)
-		}()
-	}
-	select {
-	case ch <- nil:
-		return
-	case <-time.After(testChannelTimeout):
-		require.Fail(t, fmt.Sprintf("[%s] unable to send channel notification within 10s", message))
-	}
 }
 
 func dropAllTestIndexes(t *testing.T, tb *base.TestBucket) {

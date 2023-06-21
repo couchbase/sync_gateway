@@ -80,13 +80,15 @@ type changeCacheStats struct {
 func (c *changeCache) updateStats() {
 
 	c.lock.Lock()
-
+	defer c.lock.Unlock()
+	if c.db == nil {
+		return
+	}
 	c.db.DbStats.Database().HighSeqFeed.SetIfMax(int64(c.internalStats.highSeqFeed))
 	c.db.DbStats.Cache().PendingSeqLen.Set(int64(c.internalStats.pendingSeqLen))
 	c.db.DbStats.CBLReplicationPull().MaxPending.SetIfMax(int64(c.internalStats.maxPending))
 	c.db.DbStats.Cache().HighSeqStable.Set(int64(c._getMaxStableCached()))
 
-	c.lock.Unlock()
 }
 
 type LogEntry channels.LogEntry

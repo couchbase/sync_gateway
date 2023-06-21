@@ -622,6 +622,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	startOffline := base.BoolDefault(config.StartOffline, false)
+	var dbInitDoneChan chan error
 	// Initialize any required indexes
 	if len(collectionsRequiringIndexes) > 0 {
 		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
@@ -632,16 +633,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// If database has been requested to start offline, or there's an active async initialization, use async initialization
 		if sc.DatabaseInitManager != nil && (startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)) {
 			// Initialize indexes asynchronously using DatabaseInitManager.
-			doneChan, err := sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
+			dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
 			if err != nil {
 				return nil, err
-			}
-			// If not starting offline, block until initialization is complete
-			if !startOffline {
-				initError := <-doneChan
-				if initError != nil {
-					return nil, initError
-				}
 			}
 		} else {
 			// Initialize indexes as a blocking, synchronous operation using per-collection N1QL store
@@ -881,6 +875,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		return dbcontext, nil
 	}
 
+	// If not starting offline, block until initialization is complete
+	if dbInitDoneChan != nil {
+		initError := <-dbInitDoneChan
+		if initError != nil {
+			return nil, initError
+		}
+	}
 	atomic.StoreUint32(&dbcontext.State, db.DBOnline)
 	_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
 
@@ -1593,7 +1594,10 @@ func (sc *ServerContext) updateCalculatedStats() {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
 	for _, dbContext := range sc.databases_ {
-		dbContext.UpdateCalculatedStats()
+		dbState := atomic.LoadUint32(&dbContext.State)
+		if dbState == db.DBOnline {
+			dbContext.UpdateCalculatedStats()
+		}
 	}
 
 }

@@ -10,11 +10,15 @@ package indextest
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/require"
 )
@@ -133,6 +137,23 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 	}()
 	require.NoError(t, sc.WaitForRESTAPIs())
 
+	// Set testing callbacks for async initialization
+
+	collectionCount := int64(0)
+	initStarted := make(chan error)
+	unblockInit := make(chan error)
+	collectionCompleteCallback := func(dbName, collectionName string) {
+		count := atomic.AddInt64(&collectionCount, 1)
+		// On first collection, close initStarted channel
+		log.Printf("collection callback count: %v", count)
+		if count == 1 {
+			log.Printf("closing initStarted")
+			close(initStarted)
+		}
+		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
+	}
+	sc.DatabaseInitManager.SetCallbacks(collectionCompleteCallback, nil)
+
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
 	defer func() { tb.Close() }()
@@ -156,6 +177,10 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/"+dbName+"/", string(dbConfigPayload))
 	resp.RequireStatus(http.StatusCreated)
 
+	// Wait for init to start before interacting with the db
+	rest.WaitForChannel(t, initStarted, "waiting for initialization to start")
+	log.Printf("initialization started")
+
 	// Get config values before taking db offline
 	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/"+dbName+"/_config", "")
 	resp.RequireStatus(http.StatusOK)
@@ -167,11 +192,7 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/"+keyspace+"/_config/sync", "")
 	resp.RequireResponse(http.StatusOK, syncFunc)
 
-	// Take DB offline
-	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/"+dbName+"/_offline", "")
-	resp.RequireStatus(http.StatusOK)
-
-	// Check offline config matches online config
+	// Check values are updated
 	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/"+dbName+"/_config", "")
 	resp.RequireResponse(http.StatusOK, dbConfigBeforeOffline)
 
@@ -180,6 +201,31 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 
 	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/"+keyspace+"/_config/sync", "")
 	resp.RequireResponse(http.StatusOK, syncFunc)
+
+	log.Printf("closing unblockInit")
+	close(unblockInit)
+
+	// Bring the database online
+	dbConfig.StartOffline = base.BoolPtr(false)
+	dbOnlineConfigPayload, err := json.Marshal(dbConfig)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
+	resp.RequireStatus(http.StatusCreated)
+
+	// wait for db to come online
+	var stateCurr string
+	for i := 0; i < 100; i++ {
+		var dbRootResponse rest.DatabaseRoot
+		resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/"+dbName+"/", "")
+		resp.Unmarshal(&dbRootResponse)
+		stateCurr = dbRootResponse.State
+		log.Printf("db state: %v", stateCurr)
+		if stateCurr == db.RunStateString[db.DBOnline] {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	require.Equal(t, db.RunStateString[db.DBOnline], stateCurr)
+
 }
 
 //TODO:
