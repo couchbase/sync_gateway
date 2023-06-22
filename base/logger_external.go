@@ -57,8 +57,10 @@ func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...inter
 		logTo(context.TODO(), LevelInfo, KeyGoCB, format, v...)
 	case gocb.LogDebug:
 		logTo(context.TODO(), LevelDebug, KeyGoCB, format, v...)
-	case gocb.LogTrace, gocb.LogSched:
+	case gocb.LogTrace:
 		logTo(context.TODO(), LevelTrace, KeyGoCB, format, v...)
+	case gocb.LogSched:
+		logTo(context.TODO(), LevelTrace, KeyGoCB, "<SCHED>: "+format, v...)
 	}
 	return nil
 }
@@ -85,6 +87,7 @@ var _ gocb.Logger = GoCBLoggerRemapped{}
 //	Info   -> SG Debug
 //	Debug  -> SG Trace
 //	Trace  -> SG Trace
+//	Sched  -> SG Trace
 //	Others -> no-op
 func (GoCBLoggerRemapped) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
 	switch level {
