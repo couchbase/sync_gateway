@@ -2081,7 +2081,7 @@ func TestQueryResyncImportComputeStat(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	rt.WaitForDatabaseState(rt.GetDatabase().Name, db.DBOffline)
+	require.NoError(t, rt.WaitForDatabaseState(rt.GetDatabase().Name, db.DBOffline))
 
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
