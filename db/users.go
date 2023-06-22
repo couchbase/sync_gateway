@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -172,10 +173,6 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			if updates.JWTChannels != nil && !updatedJWTChannels.Equals(updates.JWTChannels) {
 				changed = true
 			}
-
-			if updates.JWTLastUpdated != nil && !user.JWTLastUpdated().Equal(*updates.JWTLastUpdated) {
-				changed = true
-			}
 		}
 
 		// And finally save the Principal if anything has changed:
@@ -211,9 +208,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			if updates.JWTChannels != nil && updatedJWTChannels.UpdateAtSequence(updates.JWTChannels, nextSeq) {
 				user.SetJWTChannels(updatedJWTChannels, nextSeq)
 			}
-			if updates.JWTLastUpdated != nil {
-				user.SetJWTLastUpdated(*updates.JWTLastUpdated)
-			}
+			user.SetJWTLastUpdated(time.Now())
 		}
 		err = authenticator.Save(princ)
 		// On cas error, retry.  Otherwise break out of loop
