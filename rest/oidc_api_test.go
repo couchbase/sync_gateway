@@ -31,6 +31,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
@@ -1122,6 +1123,96 @@ func TestOpenIDConnectImplicitFlowInitWithKeyspace(t *testing.T) {
 	// try directly using bearer token in a keyspace request
 	resp := restTester.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc1", `{"foo":"bar"}`, map[string]string{"Authorization": BearerToken + " " + token})
 	RequireStatus(t, resp, http.StatusCreated)
+}
+
+// TestOpenIDConnectImplicitFlowReuseToken ensures that requests that use the same token containing channel grants don't end up recomputing or updating the user for each use.
+func TestOpenIDConnectImplicitFlowReuseToken(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
+
+	testProviders := auth.OIDCProviderMap{
+		"foo": mockProviderWith("foo", mockProviderUserPrefix{"foo"}, mockProviderChannelsClaim{"channels"}),
+	}
+	defaultProvider := "foo"
+
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/" + defaultProvider
+	refreshProviderConfig(testProviders, mockAuthServer.URL)
+
+	opts := auth.OIDCOptions{Providers: testProviders, DefaultProvider: &defaultProvider}
+	restTesterConfig := RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
+
+	// JWT claim based grants do not support named collections
+	restTester := NewRestTesterDefaultCollection(t, &restTesterConfig)
+	require.NoError(t, restTester.SetAdminParty(false))
+	defer restTester.Close()
+
+	createUser(t, restTester, "foo_noah")
+
+	token, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{"foo"}}))
+	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
+	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
+
+	// try directly using bearer token in a keyspace request
+	resp := restTester.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc1", `{"channels":"foo"}`, map[string]string{"Authorization": BearerToken + " " + token})
+	RequireStatus(t, resp, http.StatusCreated)
+	docSeq := restTester.GetDocumentSequence("doc1")
+
+	require.NoError(t, restTester.WaitForPendingChanges())
+
+	u, err := restTester.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("foo_noah")
+	require.NoError(t, err)
+	firstJWTLastUpdated := u.JWTLastUpdated()
+
+	lastSeq, err := restTester.GetDatabase().LastSequence()
+	assert.NoError(t, err)
+
+	// Observing an updated user inside the changes request isn't deterministic, as it depends on the timing of the DCP feed for the principal update made during the changes request...
+	// If we send some of these, we can at least compare JWTLastUpdated timestamps to ensure it hasn't changed.
+	const numChanges = 10
+	var observedUserUpdateCount int64
+	for i := 0; i < numChanges; i++ {
+		resp = restTester.SendRequestWithHeaders(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", docSeq), ``, map[string]string{"Authorization": BearerToken + " " + token})
+		RequireStatus(t, resp, http.StatusOK)
+		var changesResp ChangesResults
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &changesResp))
+		if !assert.Lenf(t, changesResp.Results, 0, "Expected no changes, got %d: %v", len(changesResp.Results), changesResp) {
+			observedUserUpdateCount++
+		}
+	}
+	assert.Equalf(t, int64(0), observedUserUpdateCount, "%d of %d changes observed user update (expected 0)", observedUserUpdateCount, numChanges)
+
+	// since we made no changes to channels, we shouldn't expect the user to actually be updated with a new JWT timestamp.
+	u, err = restTester.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("foo_noah")
+	require.NoError(t, err)
+	finalJWTLastUpdated := u.JWTLastUpdated()
+	assert.Equal(t, firstJWTLastUpdated, finalJWTLastUpdated)
+
+	finalLastSeq, err := restTester.GetDatabase().LastSequence()
+	assert.NoError(t, err)
+	assert.Equal(t, int64(lastSeq), int64(finalLastSeq))
+
+	// add new channel - expect user to be updated after using this new token
+	token, err = mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{"foo", "bar"}}))
+	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
+	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
+
+	resp = restTester.SendRequestWithHeaders(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", docSeq), ``, map[string]string{"Authorization": BearerToken + " " + token})
+	RequireStatus(t, resp, http.StatusOK)
+	var changesResp ChangesResults
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &changesResp))
+	assert.Lenf(t, changesResp.Results, 1, "Expected user update on changes feed")
+
+	u, err = restTester.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("foo_noah")
+	require.NoError(t, err)
+	postUpdateJWTLastUpdated := u.JWTLastUpdated()
+	base.AssertTimeGreaterThan(t, postUpdateJWTLastUpdated, finalJWTLastUpdated)
+
+	postUpdateLastSeq, err := restTester.GetDatabase().LastSequence()
+	assert.NoError(t, err)
+	assert.Equal(t, int64(finalLastSeq+1), int64(postUpdateLastSeq))
 }
 
 // checkGoodAuthResponse asserts expected session response values against the given response.
