@@ -827,16 +827,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.ServeInsecureAttachmentTypes = base.BoolDefault(config.ServeInsecureAttachmentTypes, false)
 
 	// Create default users & roles:
-	if err := sc.installPrincipals(ctx, dbcontext, config.Roles, "role"); err != nil {
+	if err := dbcontext.InstallPrincipals(ctx, config.Roles, "role"); err != nil {
 		return nil, err
 	}
-	if err := sc.installPrincipals(ctx, dbcontext, config.Users, "user"); err != nil {
+	if err := dbcontext.InstallPrincipals(ctx, config.Users, "user"); err != nil {
 		return nil, err
 	}
 
 	if config.Guest != nil {
 		guest := map[string]*auth.PrincipalConfig{base.GuestUsername: config.Guest}
-		if err := sc.installPrincipals(ctx, dbcontext, guest, "user"); err != nil {
+		if err := dbcontext.InstallPrincipals(ctx, guest, "user"); err != nil {
 			return nil, err
 		}
 	}
@@ -1452,58 +1452,6 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 	}
 
 	return nil, base.ErrNotFound
-}
-
-func (sc *ServerContext) installPrincipals(ctx context.Context, dbc *db.DatabaseContext, spec map[string]*auth.PrincipalConfig, what string) error {
-	for name, princ := range spec {
-		isGuest := name == base.GuestUsername
-		if isGuest {
-			internalName := ""
-			princ.Name = &internalName
-		} else {
-			n := name
-			princ.Name = &n
-		}
-
-		createdPrincipal := true
-		worker := func() (shouldRetry bool, err error, value interface{}) {
-			_, err = dbc.UpdatePrincipal(ctx, princ, (what == "user"), isGuest)
-			if err != nil {
-				if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
-					// Ignore and absorb this error if it's a conflict error, which just means that updatePrincipal didn't overwrite an existing user.
-					// Since if there's an existing user it's "mission accomplished", this can be treated as a success case.
-					createdPrincipal = false
-					return false, nil, nil
-				}
-
-				if err == base.ErrViewTimeoutError {
-					// Timeout error, possibly due to view re-indexing, so retry
-					base.InfofCtx(ctx, base.KeyAuth, "Error calling UpdatePrincipal(): %v.  Will retry in case this is a temporary error", err)
-					return true, err, nil
-				}
-
-				// Unexpected error, return error don't retry
-				return false, err, nil
-			}
-
-			// No errors, assume it worked
-			return false, nil, nil
-
-		}
-
-		err, _ := base.RetryLoop("installPrincipals", worker, base.CreateDoublingSleeperFunc(16, 10))
-		if err != nil {
-			return err
-		}
-
-		if isGuest {
-			base.InfofCtx(ctx, base.KeyAll, "Reset guest user to config")
-		} else if createdPrincipal {
-			base.InfofCtx(ctx, base.KeyAll, "Created %s %q", what, base.UD(name))
-		}
-
-	}
-	return nil
 }
 
 // ////// STATS LOGGING

@@ -1708,7 +1708,7 @@ func (sc *ServerContext) addLegacyPrincipals(ctx context.Context, legacyDbUsers,
 			base.ErrorfCtx(ctx, "Couldn't get database context to install user principles: %v", err)
 			continue
 		}
-		err = sc.installPrincipals(ctx, dbCtx, dbUser, "user")
+		err = dbCtx.InstallPrincipals(ctx, dbUser, "user")
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't install user principles: %v", err)
 		}
@@ -1720,7 +1720,7 @@ func (sc *ServerContext) addLegacyPrincipals(ctx context.Context, legacyDbUsers,
 			base.ErrorfCtx(ctx, "Couldn't get database context to install role principles: %v", err)
 			continue
 		}
-		err = sc.installPrincipals(ctx, dbCtx, dbRole, "role")
+		err = dbCtx.InstallPrincipals(ctx, dbRole, "role")
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't install role principles: %v", err)
 		}
