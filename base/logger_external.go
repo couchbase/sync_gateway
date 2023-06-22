@@ -21,11 +21,19 @@ import (
 	"github.com/couchbase/goutils/logging"
 )
 
+// remapGoCBLogLevels controls whether the gocb and gocbcore log levels are remapped to match the verbosity of SG's log levels.
+const remapGoCBLogLevels = true
+
 // This file implements wrappers around the loggers of external packages
 // so that all of SG's logging output is consistent
 func initExternalLoggers() {
-	gocb.SetLogger(GoCBLogger{})
-	gocbcore.SetLogger(GoCBCoreLogger{})
+	if remapGoCBLogLevels {
+		gocb.SetLogger(GoCBLoggerRemapped{})
+		gocbcore.SetLogger(GoCBCoreLoggerRemapped{})
+	} else {
+		gocb.SetLogger(GoCBLogger{})
+		gocbcore.SetLogger(GoCBCoreLogger{})
+	}
 
 	logging.SetLogger(CBGoUtilsLogger{})
 	clog.SetLoggerCallback(ClogCallback)
@@ -38,8 +46,39 @@ type GoCBLogger struct{}
 
 var _ gocb.Logger = GoCBLogger{}
 
-// Log wraps the levelled SG logs for gocb to use.
-// Log levels are mapped as follows:
+// Log wraps the levelled SG logs for gocb to use. Log levels are not changed or remapped.
+func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
+	switch level {
+	case gocb.LogError:
+		logTo(context.TODO(), LevelError, KeyAll, KeyGoCB.String()+": "+format, v...)
+	case gocb.LogWarn:
+		logTo(context.TODO(), LevelWarn, KeyAll, KeyGoCB.String()+": "+format, v...)
+	case gocb.LogInfo:
+		logTo(context.TODO(), LevelInfo, KeyGoCB, format, v...)
+	case gocb.LogDebug:
+		logTo(context.TODO(), LevelDebug, KeyGoCB, format, v...)
+	case gocb.LogTrace, gocb.LogSched:
+		logTo(context.TODO(), LevelTrace, KeyGoCB, format, v...)
+	}
+	return nil
+}
+
+type GoCBCoreLogger struct{}
+
+var _ gocbcore.Logger = GoCBCoreLogger{}
+
+func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
+	return GoCBLogger{}.Log(gocb.LogLevel(level), offset, format, v...)
+}
+
+// **************************************************
+// Implementation of github.com/couchbase/gocb.Logger
+// **************************************************
+type GoCBLoggerRemapped struct{}
+
+var _ gocb.Logger = GoCBLoggerRemapped{}
+
+// Log wraps the levelled SG logs for gocb to use. Log levels are mapped as follows:
 //
 //	Error  -> SG Error
 //	Warn   -> SG Warn
@@ -47,7 +86,7 @@ var _ gocb.Logger = GoCBLogger{}
 //	Debug  -> SG Trace
 //	Trace  -> SG Trace
 //	Others -> no-op
-func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
+func (GoCBLoggerRemapped) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
 	switch level {
 	case gocb.LogError:
 		logTo(context.TODO(), LevelError, KeyAll, KeyGoCB.String()+": "+format, v...)
@@ -61,13 +100,12 @@ func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...inter
 	return nil
 }
 
-type GoCBCoreLogger struct{}
-type GoCBCoreV7Logger struct{}
+type GoCBCoreLoggerRemapped struct{}
 
-var _ gocbcore.Logger = GoCBCoreLogger{}
+var _ gocbcore.Logger = GoCBCoreLoggerRemapped{}
 
-func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
-	return GoCBLogger{}.Log(gocb.LogLevel(level), offset, format, v...)
+func (GoCBCoreLoggerRemapped) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
+	return GoCBLoggerRemapped{}.Log(gocb.LogLevel(level), offset, format, v...)
 }
 
 // **************************************************************************
