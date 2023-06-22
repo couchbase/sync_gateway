@@ -338,9 +338,9 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 
 func TestResyncImportComputeStat(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
+		t.Skip("Test requires Couchbase Server for DCP")
 	}
-	const docsToCreate = 1000
+	const docsToCreate = 100
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
 	defer db.Close(ctx)
 

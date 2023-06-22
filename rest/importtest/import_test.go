@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package importtest
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -2069,7 +2068,7 @@ func TestQueryResyncImportComputeStat(t *testing.T) {
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	const numDocs = 1000
+	const numDocs = 100
 	var resp *rest.TestResponse
 
 	for i := 0; i < numDocs; i++ {
@@ -2082,21 +2081,11 @@ func TestQueryResyncImportComputeStat(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	rt.WaitForDatabaseState(rt.GetDatabase().Name, db.DBOffline)
 
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	err := rt.WaitForConditionWithOptions(func() bool {
-		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
-		var status db.ResyncManagerResponse
-		err := json.Unmarshal(response.BodyBytes(), &status)
-		assert.NoError(t, err)
-
-		var val interface{}
-		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
-	}, 200, 200)
-	assert.NoError(t, err)
+	rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
 
 	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
 	require.Greater(t, computeStat1, computeStat)

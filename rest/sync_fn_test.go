@@ -441,18 +441,7 @@ func TestDBOfflinePostResync(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Offline")
 
 	RequireStatus(t, rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=start", ""), 200)
-	err := rt.WaitForCondition(func() bool {
-		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
-		var status db.ResyncManagerResponse
-		err := json.Unmarshal(response.BodyBytes(), &status)
-		assert.NoError(t, err)
-
-		var val interface{}
-		_, err = rt.MetadataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
-	})
-	assert.NoError(t, err)
+	_ = rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
 }
 
 // Take DB offline and ensure only one _resync can be in progress
@@ -496,18 +485,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
 	RequireStatus(t, rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=start", ""), 503)
 
-	err := rt.WaitForCondition(func() bool {
-		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
-		var status db.ResyncManagerResponse
-		err := json.Unmarshal(response.BodyBytes(), &status)
-		assert.NoError(t, err)
-
-		var val interface{}
-		_, err = rt.MetadataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
-	})
-	assert.NoError(t, err)
+	_ = rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
 
 	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
@@ -583,23 +561,27 @@ func TestResyncOverDCP(t *testing.T) {
 			response = rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=start", "")
 			RequireStatus(t, response, http.StatusOK)
 
-			var resyncManagerStatus db.ResyncManagerResponse
-			err := rt.WaitForCondition(func() bool {
-				response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
-				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
-				assert.NoError(t, err)
+			resyncManagerStatus := rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
+			/*
+				var resyncManagerStatus db.ResyncManagerResponse
+				err := rt.WaitForCondition(func() bool {
+					response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
+					err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
+					assert.NoError(t, err)
 
-				var val interface{}
-				_, err = rt.MetadataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+					var val interface{}
+					_, err = rt.MetadataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
 
-				if resyncManagerStatus.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err) {
-					return true
-				} else {
-					t.Logf("resyncManagerStatus.State != %v: %v - err:%v", db.BackgroundProcessStateCompleted, resyncManagerStatus.State, err)
-					return false
-				}
-			})
-			require.NoError(t, err)
+					if resyncManagerStatus.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err) {
+						return true
+					} else {
+						t.Logf("resyncManagerStatus.State != %v: %v - err:%v", db.BackgroundProcessStateCompleted, resyncManagerStatus.State, err)
+						return false
+					}
+				})
+				require.NoError(t, err)
+
+			*/
 
 			assert.GreaterOrEqual(t, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()), testCase.expectedSyncFnRuns)
 			assert.GreaterOrEqual(t, resyncManagerStatus.DocsProcessed, testCase.docsCreated)
@@ -1137,20 +1119,7 @@ func TestResyncPersistence(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Wait for resync to complete
-	var resyncManagerStatus db.ResyncManagerResponse
-	err := rt1.WaitForCondition(func() bool {
-		resp = rt1.SendAdminRequest("GET", "/{{.db}}/_resync", "")
-		err := json.Unmarshal(resp.BodyBytes(), &resyncManagerStatus)
-		assert.NoError(t, err)
-
-		if resyncManagerStatus.State == db.BackgroundProcessStateCompleted {
-			return true
-		} else {
-			t.Logf("resyncManagerStatus.State != %v: %v", db.BackgroundProcessStateCompleted, resyncManagerStatus.State)
-			return false
-		}
-	})
-	require.NoError(t, err)
+	_ = rt1.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
 
 	// Check statuses match
 	resp2 := rt2.SendAdminRequest("GET", "/{{.db}}/_resync", "")
