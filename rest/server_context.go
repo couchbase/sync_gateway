@@ -826,19 +826,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.AllowEmptyPassword = base.BoolDefault(config.AllowEmptyPassword, false)
 	dbcontext.ServeInsecureAttachmentTypes = base.BoolDefault(config.ServeInsecureAttachmentTypes, false)
 
-	// Create default users & roles:
-	if err := dbcontext.InstallPrincipals(ctx, config.Roles, "role"); err != nil {
-		return nil, err
-	}
-	if err := dbcontext.InstallPrincipals(ctx, config.Users, "user"); err != nil {
-		return nil, err
-	}
-
-	if config.Guest != nil {
-		guest := map[string]*auth.PrincipalConfig{base.GuestUsername: config.Guest}
-		if err := dbcontext.InstallPrincipals(ctx, guest, "user"); err != nil {
-			return nil, err
-		}
+	dbcontext.Options.ConfigPrincipals = &db.ConfigPrincipals{
+		Users: config.Users,
+		Roles: config.Roles,
+		Guest: config.Guest,
 	}
 
 	// Initialize event handlers

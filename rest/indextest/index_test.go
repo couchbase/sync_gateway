@@ -208,6 +208,7 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 	// Bring the database online
 	dbConfig.StartOffline = base.BoolPtr(false)
 	dbOnlineConfigPayload, err := json.Marshal(dbConfig)
+	require.NoError(t, err)
 	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
 	resp.RequireStatus(http.StatusCreated)
 

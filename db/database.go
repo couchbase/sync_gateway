@@ -176,6 +176,13 @@ type DatabaseContextOptions struct {
 	MetadataID                    string         // MetadataID used for metadata storage
 	BlipStatsReportingInterval    int64          // interval to report blip stats in milliseconds
 	ChangesRequestPlus            bool           // Sets the default value for request_plus, for non-continuous changes feeds
+	ConfigPrincipals              *ConfigPrincipals
+}
+
+type ConfigPrincipals struct {
+	Users map[string]*auth.PrincipalConfig
+	Roles map[string]*auth.PrincipalConfig
+	Guest *auth.PrincipalConfig
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -2119,6 +2126,24 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 			}
 		}
 	}()
+
+	// Create config-based principals
+	// Create default users & roles:
+	if db.Options.ConfigPrincipals != nil {
+		if err := db.InstallPrincipals(ctx, db.Options.ConfigPrincipals.Roles, "role"); err != nil {
+			return err
+		}
+		if err := db.InstallPrincipals(ctx, db.Options.ConfigPrincipals.Users, "user"); err != nil {
+			return err
+		}
+
+		if db.Options.ConfigPrincipals.Guest != nil {
+			guest := map[string]*auth.PrincipalConfig{base.GuestUsername: db.Options.ConfigPrincipals.Guest}
+			if err := db.InstallPrincipals(ctx, guest, "user"); err != nil {
+				return err
+			}
+		}
+	}
 
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
 	notifyChange := func(changedChannels channels.Set) {
