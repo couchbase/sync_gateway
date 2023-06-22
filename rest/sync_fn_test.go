@@ -562,26 +562,6 @@ func TestResyncOverDCP(t *testing.T) {
 			RequireStatus(t, response, http.StatusOK)
 
 			resyncManagerStatus := rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
-			/*
-				var resyncManagerStatus db.ResyncManagerResponse
-				err := rt.WaitForCondition(func() bool {
-					response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
-					err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
-					assert.NoError(t, err)
-
-					var val interface{}
-					_, err = rt.MetadataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-					if resyncManagerStatus.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err) {
-						return true
-					} else {
-						t.Logf("resyncManagerStatus.State != %v: %v - err:%v", db.BackgroundProcessStateCompleted, resyncManagerStatus.State, err)
-						return false
-					}
-				})
-				require.NoError(t, err)
-
-			*/
 
 			assert.GreaterOrEqual(t, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()), testCase.expectedSyncFnRuns)
 			assert.GreaterOrEqual(t, resyncManagerStatus.DocsProcessed, testCase.docsCreated)
