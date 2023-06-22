@@ -1101,9 +1101,12 @@ func TestResyncPersistence(t *testing.T) {
 	// Wait for resync to complete
 	_ = rt1.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
 
+	resp = rt1.SendAdminRequest("GET", "/{{.db}}/_resync", "")
+	RequireStatus(t, resp, http.StatusOK)
+
 	// Check statuses match
 	resp2 := rt2.SendAdminRequest("GET", "/{{.db}}/_resync", "")
-	RequireStatus(t, resp, http.StatusOK)
+	RequireStatus(t, resp2, http.StatusOK)
 	fmt.Printf("RT1 Resync Status: %s\n", resp.BodyBytes())
 	fmt.Printf("RT2 Resync Status: %s\n", resp2.BodyBytes())
 	assert.Equal(t, resp.BodyBytes(), resp2.BodyBytes())
