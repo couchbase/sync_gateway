@@ -12,7 +12,6 @@ package db
 
 import (
 	"fmt"
-	"runtime"
 	"strconv"
 	"testing"
 
@@ -70,12 +69,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	channelQueryErrorCountAfter := db.DbStats.Query(queryExpvar).QueryErrorCount.Value()
 
 	assert.Equal(t, channelQueryCountBefore+1, channelQueryCountAfter)
-	// time.Nanoseconds has poor precision on Windows
-	if runtime.GOOS == "windows" {
-		assert.GreaterOrEqual(t, channelQueryTimeAfter, channelQueryTimeBefore, "Channel query time stat didn't change")
-	} else {
-		assert.Greater(t, channelQueryTimeAfter, channelQueryTimeBefore, "Channel query time stat didn't change")
-	}
+	base.AssertTimestampGreaterThan(t, channelQueryTimeAfter, channelQueryTimeBefore, "Channel query time stat didn't change")
 	assert.Equal(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
 
 }
@@ -125,12 +119,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	channelQueryErrorCountAfter := db.DbStats.Query(QueryTypeChannels).QueryErrorCount.Value()
 
 	assert.Equal(t, channelQueryCountBefore+1, channelQueryCountAfter)
-	// time.Nanoseconds has poor precision on Windows
-	if runtime.GOOS == "windows" {
-		assert.GreaterOrEqual(t, channelQueryTimeAfter, channelQueryTimeBefore, "Channel query time stat didn't change")
-	} else {
-		assert.Greater(t, channelQueryTimeAfter, channelQueryTimeBefore, "Channel query time stat didn't change")
-	}
+	base.AssertTimestampGreaterThan(t, channelQueryTimeAfter, channelQueryTimeBefore, "Channel query time stat didn't change")
 	assert.Equal(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
 
 }
