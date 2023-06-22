@@ -26,6 +26,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"reflect"
 	"regexp"
 	"runtime"
 	"runtime/debug"
@@ -1802,9 +1803,13 @@ func safeCutAfter(s, sep string) (value, remainder string) {
 func AllOrNoneNil(vals ...interface{}) bool {
 	nonNil := 0
 	for _, val := range vals {
-		if val != nil {
-			nonNil++
+		// slow path reflect for typed nils
+		// see: https://codefibershq.com/blog/golang-why-nil-is-not-always-nil
+		if val == nil || reflect.ValueOf(val).IsNil() {
+			continue
 		}
+		nonNil++
+
 	}
 	return nonNil == 0 || nonNil == len(vals)
 }
