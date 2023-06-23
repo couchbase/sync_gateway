@@ -8042,6 +8042,8 @@ func TestGroupIDReplications(t *testing.T) {
 			BucketConfig: rest.BucketConfig{
 				Bucket: base.StringPtr(activeBucket.GetName()),
 			},
+			EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+			UseViews:     base.BoolPtr(base.TestsDisableGSI()),
 		}
 		if rt.GetDatabase().OnlyDefaultCollection() {
 			dbConfig.Sync = base.StringPtr(channels.DocChannelsSyncFunction)
