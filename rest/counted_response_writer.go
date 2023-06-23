@@ -22,6 +22,7 @@ import (
 type CountableResponseWriter interface {
 	http.ResponseWriter
 	reportStats(bool)
+	isHijackable() bool
 }
 
 // CountedResponseWriter is an http.ResponseWriter wrapper that counts the number of bytes written in a response. This ignores the bytes written in headers.
@@ -66,7 +67,7 @@ func (w *CountedResponseWriter) WriteHeader(statusCode int) {
 	w.writer.WriteHeader(statusCode)
 }
 
-// ReportStats reports bytes written GetLastBytesWritten returns the number of bytes written by this response writer. This is not locked, so is only safe to call while no one is calling CountedResponseWriter.Write, usually after the response has been fully written.
+// ReportStats reports bytes written since the last time this function was called. This is not locked, so is only safe to call while no one is calling Write from multiple goroutines.
 func (w *CountedResponseWriter) reportStats(updateImmediately bool) {
 	currentTime := time.Now()
 	if !updateImmediately && time.Since(currentTime) < w.statsUpdateInterval {
@@ -84,4 +85,10 @@ func (w *CountedResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 		return nil, nil, errors.New("underlying ResponseWriter doesn't support http.Hijacker interface")
 	}
 	return h.Hijack()
+}
+
+// isHijackable determines if the underlying writer implements hijack interface
+func (w *CountedResponseWriter) isHijackable() bool {
+	_, ok := w.writer.(http.Hijacker)
+	return ok
 }

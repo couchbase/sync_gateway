@@ -104,8 +104,7 @@ func TestPublicRESTStatCount(t *testing.T) {
 	require.True(t, ok)
 
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/_blipsync", "", "greg")
-	RequireStatus(t, resp, http.StatusInternalServerError)
-	require.Contains(t, resp.Body.String(), "I only speak")
+	RequireStatus(t, resp, http.StatusUpgradeRequired)
 
 	_, ok = base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
@@ -2276,7 +2275,6 @@ func TestHandleStats(t *testing.T) {
 
 // TestHideProductInfo ensures that detailed product info is not shown on non-admin REST API responses if set.
 func TestHideProductInfo(t *testing.T) {
-	t.Skip("here")
 	tests := []struct {
 		hideProductInfo, admin, expectedProductInfo bool
 	}{

@@ -41,7 +41,7 @@ const kStatsReportInterval = time.Hour
 const kDefaultSlowQueryWarningThreshold = 500 // ms
 const KDefaultNumShards = 16
 
-// defaultBytesStatsReportingInterval is the default interval when to report blip stats, at the end of a message handler.
+// defaultBytesStatsReportingInterval is the default interval when to report bytes transferred stats
 const defaultBytesStatsReportingInterval = 30 * time.Second
 
 var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named collections specified in database config, but not supported by connected Couchbase Server.")

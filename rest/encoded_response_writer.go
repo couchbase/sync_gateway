@@ -12,7 +12,6 @@ package rest
 
 import (
 	"compress/gzip"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -108,7 +107,6 @@ func (w *EncodedResponseWriter) disableCompression() {
 }
 
 func (w *EncodedResponseWriter) sniff(bytes []byte) {
-	fmt.Println(w)
 	if w.sniffDone {
 		return
 	}
@@ -151,6 +149,11 @@ func (w *EncodedResponseWriter) Close() {
 		ReturnGZipWriter(w.gz)
 		w.gz = nil
 	}
+}
+
+// isHijackable determines if the underlying writer implements hijack interface
+func (w *EncodedResponseWriter) isHijackable() bool {
+	return false
 }
 
 //////// GZIP WRITER CACHE:

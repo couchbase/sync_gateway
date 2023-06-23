@@ -54,3 +54,9 @@ func (w *NonCountedResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error)
 	}
 	return h.Hijack()
 }
+
+// isHijackable determines if the underlying writer implements hijack interface
+func (w *NonCountedResponseWriter) isHijackable() bool {
+	_, ok := w.writer.(http.Hijacker)
+	return ok
+}

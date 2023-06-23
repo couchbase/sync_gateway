@@ -303,11 +303,11 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
 	}
 
-	//if h.shouldShowProductVersion() {
-	//	h.setHeader("Server", base.VersionString)
-	//} else {
-	//	h.setHeader("Server", base.ProductNameString)
-	//}
+	if h.shouldShowProductVersion() {
+		h.setHeader("Server", base.VersionString)
+	} else {
+		h.setHeader("Server", base.ProductNameString)
+	}
 
 	// If an Admin Request and admin auth enabled or a metrics request with metrics auth enabled we need to check the
 	// user credentials
