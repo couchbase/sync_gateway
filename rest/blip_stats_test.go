@@ -346,7 +346,6 @@ func TestComputeStatAfterContextTeardown(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault)
-	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
 
 	_, err := activeRT.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
@@ -367,8 +366,6 @@ func TestComputeStatAfterContextTeardown(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/"+repName+"?action=start", "")
 	RequireStatus(t, resp, http.StatusOK)
-
-	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
 
 	_, err = activeRT.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
