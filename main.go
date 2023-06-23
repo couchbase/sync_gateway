@@ -15,6 +15,7 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 )
 
+// test
 func init() {
 	rand.Seed(time.Now().UTC().UnixNano())
 }
