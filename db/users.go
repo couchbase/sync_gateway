@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -43,7 +44,7 @@ func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bo
 // UpdatePrincipal updates or creates a principal from a PrincipalConfig structure.
 func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.PrincipalConfig, isUser bool, allowReplace bool) (replaced bool, err error) {
 	// Sanity checking
-	if !base.AllOrNoneNil(updates.JWTIssuer, updates.JWTRoles, updates.JWTChannels, updates.JWTLastUpdated) {
+	if !base.AllOrNoneNil(updates.JWTIssuer, updates.JWTRoles, updates.JWTChannels) {
 		return false, fmt.Errorf("must either specify all OIDC properties or none")
 	}
 
@@ -172,10 +173,6 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			if updates.JWTChannels != nil && !updatedJWTChannels.Equals(updates.JWTChannels) {
 				changed = true
 			}
-
-			if updates.JWTLastUpdated != nil && !user.JWTLastUpdated().Equal(*updates.JWTLastUpdated) {
-				changed = true
-			}
 		}
 
 		// And finally save the Principal if anything has changed:
@@ -205,14 +202,17 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			if updates.ExplicitRoleNames != nil && updatedExplicitRoles.UpdateAtSequence(updates.ExplicitRoleNames, nextSeq) {
 				user.SetExplicitRoles(updatedExplicitRoles, nextSeq)
 			}
+			var hasJWTUpdates bool
 			if updates.JWTRoles != nil && updatedJWTRoles.UpdateAtSequence(updates.JWTRoles, nextSeq) {
 				user.SetJWTRoles(updatedJWTRoles, nextSeq)
+				hasJWTUpdates = true
 			}
 			if updates.JWTChannels != nil && updatedJWTChannels.UpdateAtSequence(updates.JWTChannels, nextSeq) {
 				user.SetJWTChannels(updatedJWTChannels, nextSeq)
+				hasJWTUpdates = true
 			}
-			if updates.JWTLastUpdated != nil {
-				user.SetJWTLastUpdated(*updates.JWTLastUpdated)
+			if hasJWTUpdates {
+				user.SetJWTLastUpdated(time.Now())
 			}
 		}
 		err = authenticator.Save(princ)
