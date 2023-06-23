@@ -250,7 +250,7 @@ func ParseKeyspace(ks string) (db string, scope, collection *string, err error) 
 func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
 	if h.server.Config.API.CompressResponses == nil || *h.server.Config.API.CompressResponses {
 		var stat *base.SgwIntStat
-		if h.isPublicDBRequestForStats() {
+		if h.shouldUpdateBytesTransferredStats() {
 			stat = h.db.DbStats.Database().HTTPBytesWritten
 		}
 		if encoded := NewEncodedResponseWriter(h.response, h.rq, stat, defaultBytesStatsReportingInterval); encoded != nil {
@@ -592,8 +592,8 @@ func (h *handler) logRequestLine() {
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "%s %s%s%s", h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formattedEffectiveUserName())
 }
 
-// iupdateResponseWriter will create an updated Response Writer if we need to log db stats.
-func (h *handler) isPublicDBRequestForStats() bool {
+// shouldUpdateBytesTransferredStats returns true if we want to log the bytes transferred. The criteria is if this is db scoped over the public port. Blip is skipped since those stats are tracked separately.
+func (h *handler) shouldUpdateBytesTransferredStats() bool {
 	if h.db == nil {
 		return false
 	}
@@ -608,7 +608,7 @@ func (h *handler) isPublicDBRequestForStats() bool {
 
 // updateResponseWriter will create an updated Response Writer if we need to log db stats.
 func (h *handler) updateResponseWriter() {
-	if !h.isPublicDBRequestForStats() {
+	if !h.shouldUpdateBytesTransferredStats() {
 		return
 	}
 	h.response = NewCountedResponseWriter(h.response,
