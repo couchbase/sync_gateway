@@ -743,10 +743,10 @@ func (bsc *BlipSyncContext) reportTotalSyncTimeStats() {
 	if dbStats == nil {
 		return
 	}
+	blipInterval := time.Duration(bsc.blipContextDb.Options.BlipStatsReportingInterval)
 	bsc.loadStats()
 	go func() {
-		interval := time.Duration(bsc.blipContextDb.Options.BlipStatsReportingInterval)
-		ticker := time.NewTicker(interval)
+		ticker := time.NewTicker(blipInterval)
 		defer ticker.Stop()
 		for {
 			select {
