@@ -240,7 +240,7 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 		} else {
 			return
 		}
-		stat := calculateImportCompute(int64(bytes), functionTime)
+		stat := CalculateComputeStat(int64(bytes), functionTime)
 		c.dbCtx.DbStats.DatabaseStats.ImportProcessCompute.Add(stat)
 	}()
 	isDelete := rawDoc == nil
@@ -840,7 +840,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 		} else {
 			return
 		}
-		stat := calculateImportCompute(int64(bytes), functionTime)
+		stat := CalculateComputeStat(int64(bytes), functionTime)
 		db.dbCtx.DbStats.DatabaseStats.ImportProcessCompute.Add(stat)
 	}()
 	// Check whether the doc requiring import is an SDK delete

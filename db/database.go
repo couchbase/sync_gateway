@@ -1746,7 +1746,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 		} else {
 			return
 		}
-		stat := calculateImportCompute(int64(bytes), functionTime)
+		stat := CalculateComputeStat(int64(bytes), functionTime)
 		db.dbStats().DatabaseStats.ImportProcessCompute.Add(stat)
 	}()
 	if db.UseXattrs() {
