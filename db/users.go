@@ -202,13 +202,18 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			if updates.ExplicitRoleNames != nil && updatedExplicitRoles.UpdateAtSequence(updates.ExplicitRoleNames, nextSeq) {
 				user.SetExplicitRoles(updatedExplicitRoles, nextSeq)
 			}
+			var hasJWTUpdates bool
 			if updates.JWTRoles != nil && updatedJWTRoles.UpdateAtSequence(updates.JWTRoles, nextSeq) {
 				user.SetJWTRoles(updatedJWTRoles, nextSeq)
+				hasJWTUpdates = true
 			}
 			if updates.JWTChannels != nil && updatedJWTChannels.UpdateAtSequence(updates.JWTChannels, nextSeq) {
 				user.SetJWTChannels(updatedJWTChannels, nextSeq)
+				hasJWTUpdates = true
 			}
-			user.SetJWTLastUpdated(time.Now())
+			if hasJWTUpdates {
+				user.SetJWTLastUpdated(time.Now())
+			}
 		}
 		err = authenticator.Save(princ)
 		// On cas error, retry.  Otherwise break out of loop
