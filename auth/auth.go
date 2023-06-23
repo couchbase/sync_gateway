@@ -835,14 +835,12 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 	}
 
 	if user != nil {
-		now := time.Now()
 		updates = PrincipalConfig{
-			Name:           base.StringPtr(user.Name()),
-			Email:          &identity.Email,
-			JWTIssuer:      &provider.Issuer,
-			JWTRoles:       jwtRoles,
-			JWTChannels:    jwtChannels,
-			JWTLastUpdated: &now,
+			Name:        base.StringPtr(user.Name()),
+			Email:       &identity.Email,
+			JWTIssuer:   &provider.Issuer,
+			JWTRoles:    jwtRoles,
+			JWTChannels: jwtChannels,
 		}
 	}
 
