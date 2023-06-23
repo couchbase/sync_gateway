@@ -505,18 +505,18 @@ type DatabaseStats struct {
 	SyncFunctionExceptionCount *SgwIntStat `json:"sync_function_exception_count"`
 	// The total number of times a replication connection is rejected due ot it being over the threshold
 	NumReplicationsRejectedLimit *SgwIntStat `json:"num_replications_rejected_limit"`
+	// The compute unit used relating to reading attachments over blip
+	ReadAttachmentComputeUnit *SgwIntStat `json:"read_attachment_compute_unit"`
+	// The compute unit used relating to writing attachments over blip
+	WriteAttachmentComputeUnit *SgwIntStat `json:"write_attachment_compute_unit"`
+	// The compute unit used relating to reading docs over blip
+	DocReadComputeUnit *SgwIntStat `json:"doc_read_compute_unit"`
+	// The compute unit used relating to writing docs over blip
+	DocWriteComputeUnit *SgwIntStat `json:"doc_write_compute_unit"`
+	// The compute unit used relating to changes, proposeChanges over blip
+	DocCheckComputeUnit *SgwIntStat `json:"doc_check_compute_unit"`
 	// Represents the compute unit for import processes on the database
 	ImportProcessCompute *SgwIntStat `json:"import_process_compute"`
-
-	ReadAttachmentComputeUnit *SgwIntStat `json:"read_attachment_compute_unit"`
-
-	WriteAttachmentComputeUnit *SgwIntStat `json:"write_attachment_compute_unit"`
-
-	DocReadComputeUnit *SgwIntStat `json:"doc_read_compute_unit"`
-
-	DocWriteComputeUnit *SgwIntStat `json:"doc_write_compute_unit"`
-
-	DocCheckComputeUnit *SgwIntStat `json:"doc_check_compute_unit"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars

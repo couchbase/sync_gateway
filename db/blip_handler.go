@@ -963,6 +963,10 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			return
 		}
 		bytes := len(messageBody)
+		// if message body is 0 bytes don't calculate stat
+		if bytes == 0 {
+			return
+		}
 		functionTime := time.Since(startTime).Milliseconds()
 		stat := CalculateComputeStat(int64(bytes), functionTime)
 		bh.replicationStats.DocReadComputeUnit.Add(stat)

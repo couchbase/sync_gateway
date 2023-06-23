@@ -120,7 +120,7 @@ type BlipSyncContext struct {
 
 	stats blipSyncStats // internal structure to store stats
 
-	persistedComputeStats syncComputeStats
+	persistedComputeStats syncComputeStats // representation of the persisted database compute stats on the blipSyncStats
 }
 
 // blipSyncStats has support structures to support reporting stats at regular interval
@@ -131,13 +131,13 @@ type blipSyncStats struct {
 	lock           sync.Mutex
 }
 
+// syncComputeStats will represent the persisted value of compute stats off the database stats at each interval
 type syncComputeStats struct {
 	docCheckComputeUnit        atomic.Int64
 	docReadComputeUnit         atomic.Int64
 	docWriteComputeUnit        atomic.Int64
 	readAttachmentComputeUnit  atomic.Int64
 	writeAttachmentComputeUnit atomic.Int64
-	lock                       sync.Mutex
 }
 
 // AllowedAttachment contains the metadata for handling allowed attachments
