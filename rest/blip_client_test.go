@@ -97,7 +97,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		btr.replicationStats = db.NewBlipSyncStats()
 	}
 
-	btr.bt.blipContext.HandlerForProfile[db.MessageProveAttachment] = func(msg *blip.Message) {
+	btr.bt.dispatcher.SetHandler(db.MessageProveAttachment, blip.AsAsyncHandler(func(msg *blip.Message) {
 		btr.storeMessage(msg)
 
 		nonce, err := msg.Body()
@@ -126,9 +126,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		resp := msg.Response()
 		resp.SetBody([]byte(proof))
 		btr.replicationStats.ProveAttachment.Add(1)
-	}
+	}))
 
-	btr.bt.blipContext.HandlerForProfile[db.MessageChanges] = func(msg *blip.Message) {
+	btr.bt.dispatcher.SetHandler(db.MessageChanges, blip.AsAsyncHandler(func(msg *blip.Message) {
 		btr.storeMessage(msg)
 
 		btcr := btc.getCollectionClientFromMessage(msg)
@@ -217,13 +217,13 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		}
 
 		response.SetBody(b)
-	}
+	}))
 
-	btr.bt.blipContext.HandlerForProfile[db.MessageProposeChanges] = func(msg *blip.Message) {
+	btr.bt.dispatcher.SetHandler(db.MessageProposeChanges, blip.AsAsyncHandler(func(msg *blip.Message) {
 		btc.pullReplication.storeMessage(msg)
-	}
+	}))
 
-	btr.bt.blipContext.HandlerForProfile[db.MessageRev] = func(msg *blip.Message) {
+	btr.bt.dispatcher.SetHandler(db.MessageRev, blip.AsAsyncHandler(func(msg *blip.Message) {
 		btc.pullReplication.storeMessage(msg)
 
 		btcr := btc.getCollectionClientFromMessage(msg)
@@ -439,9 +439,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			response := msg.Response()
 			response.SetBody([]byte(`[]`))
 		}
-	}
+	}))
 
-	btr.bt.blipContext.HandlerForProfile[db.MessageGetAttachment] = func(msg *blip.Message) {
+	btr.bt.dispatcher.SetHandler(db.MessageGetAttachment, blip.AsAsyncHandler(func(msg *blip.Message) {
 		btr.storeMessage(msg)
 
 		digest, ok := msg.Properties[db.GetAttachmentDigest]
@@ -459,17 +459,17 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		response := msg.Response()
 		response.SetBody(attachment)
 		btr.replicationStats.GetAttachment.Add(1)
-	}
+	}))
 
-	btr.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
+	btr.bt.dispatcher.SetHandler(db.MessageNoRev, blip.AsAsyncHandler(func(msg *blip.Message) {
 		// TODO: Support norev messages
 		btr.storeMessage(msg)
-	}
+	}))
 
-	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
+	btr.bt.dispatcher.SetDefaultHandler(blip.AsAsyncHandler(func(msg *blip.Message) {
 		btr.storeMessage(msg)
 		base.PanicfCtx(context.TODO(), "Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)
-	}
+	}))
 }
 
 // saveAttachment takes a content-type, and base64 encoded data and stores the attachment on the client
@@ -701,6 +701,8 @@ func (btcc *BlipTesterCollectionClient) StartOneshotPullFiltered(channels string
 func (btcc *BlipTesterCollectionClient) StartOneshotPullRequestPlus() (err error) {
 	return btcc.StartPullSince("false", "0", "false", "", "true")
 }
+
+//////// HELPER FUNCTIONS:
 
 // StartPullSince will begin a pull replication between the client and server with the given params.
 func (btc *BlipTesterCollectionClient) StartPullSince(continuous, since, activeOnly, channels, requestPlus string) (err error) {
@@ -1051,15 +1053,13 @@ func (btr *BlipTesterReplicator) GetMessage(serialNumber blip.MessageNumber) (ms
 }
 
 // GetMessages returns a copy of all messages stored in the Client keyed by serial number
-func (btr *BlipTesterReplicator) GetMessages() map[blip.MessageNumber]blip.Message {
+func (btr *BlipTesterReplicator) GetMessages() map[blip.MessageNumber]*blip.Message {
 	btr.messagesLock.RLock()
 	defer btr.messagesLock.RUnlock()
 
-	messages := make(map[blip.MessageNumber]blip.Message, len(btr.messages))
+	messages := make(map[blip.MessageNumber]*blip.Message, len(btr.messages))
 	for k, v := range btr.messages {
-		// Read the body before copying, since it might be read asynchronously
-		_, _ = v.Body()
-		messages[k] = *v
+		messages[k] = v.Clone()
 	}
 
 	return messages

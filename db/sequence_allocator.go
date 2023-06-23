@@ -53,6 +53,7 @@ type sequenceAllocator struct {
 	lastSequenceReserveTime time.Time           // Time of most recent sequence reserve
 	releaseSequenceWait     time.Duration       // Supports test customization
 	metaKeys                *base.MetadataKeys  // Key generator for sequence and unused sequence documents
+	preRequestCount         uint64              // Number of sequences pre-requested
 }
 
 func newSequenceAllocator(datastore base.DataStore, dbStatsMap *base.DatabaseStats, metaKeys *base.MetadataKeys) (*sequenceAllocator, error) {
@@ -135,6 +136,9 @@ func (s *sequenceAllocator) releaseUnusedSequences() {
 		s.sequenceBatchSize = s.sequenceBatchSize - unusedAmount
 	}
 
+	// Ignore any pre-requests if we're releasing sequences
+	s.preRequestCount = 0
+
 	s.last = s.max
 	s.mutex.Unlock()
 }
@@ -185,9 +189,16 @@ func (s *sequenceAllocator) nextSequence() (sequence uint64, err error) {
 	return sequence, nil
 }
 
+func (s *sequenceAllocator) reserveRequest(count uint64) {
+	base.InfofCtx(context.TODO(), base.KeyCRUD, "request for %d sequences on next refill", count)
+	s.mutex.Lock()
+	s.preRequestCount += count
+	s.mutex.Unlock()
+}
+
 // Reserve a new sequence range.  Called by nextSequence when the previously allocated sequences have all been used.
 func (s *sequenceAllocator) _reserveSequenceRange() error {
-
+	var count uint64
 	// If the time elapsed since the last reserveSequenceRange invocation reserve is shorter than our target frequency,
 	// this indicates we're making an incr call more frequently than we want to.  Triggers an increase in batch size to
 	// reduce incr frequency.
@@ -198,20 +209,36 @@ func (s *sequenceAllocator) _reserveSequenceRange() error {
 		}
 		base.DebugfCtx(context.TODO(), base.KeyCRUD, "Increased sequence batch to %d", s.sequenceBatchSize)
 	}
+	count = s.sequenceBatchSize
 
-	max, err := s.incrementSequence(s.sequenceBatchSize)
+	// If a caller has indicated it will need sequences soon, increase the count:
+	if s.preRequestCount > count {
+		count = s.preRequestCount
+		if count > maxBatchSize {
+			count = maxBatchSize
+		}
+		base.InfofCtx(context.TODO(), base.KeyCRUD, "Reserving %d sequences by special request", count)
+	}
+	s.preRequestCount = 0
+
+	return s._reserveSequenceCount(count)
+}
+
+// Reserves a specified number of sequences.
+func (s *sequenceAllocator) _reserveSequenceCount(count uint64) error {
+	max, err := s.incrementSequence(count)
 	if err != nil {
-		base.WarnfCtx(context.TODO(), "Error from incrementSequence in _reserveSequences(%d): %v", s.sequenceBatchSize, err)
+		base.WarnfCtx(context.TODO(), "Error from incrementSequence in _reserveSequenceCount(%d): %v", count, err)
 		return err
 	}
 
 	// Update max and last used sequences.  Last is updated here to account for sequences allocated/used by other
 	// Sync Gateway nodes
 	s.max = max
-	s.last = max - s.sequenceBatchSize
+	s.last = max - count
 	s.lastSequenceReserveTime = time.Now()
 
-	s.dbStats.SequenceReservedCount.Add(int64(s.sequenceBatchSize))
+	s.dbStats.SequenceReservedCount.Add(int64(count))
 	return nil
 }
 
