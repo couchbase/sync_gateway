@@ -1664,3 +1664,42 @@ func TestReplaceLast(t *testing.T) {
 		})
 	}
 }
+
+func TestAllOrNoneNil(t *testing.T) {
+	tests := []struct {
+		name string
+		args []interface{}
+		want bool
+	}{
+		{
+			name: "untyped nils",
+			args: []interface{}{nil, nil, nil},
+			want: true,
+		},
+		{
+			name: "typed nils",
+			args: []interface{}{(*int64)(nil), (*float64)(nil), (*string)(nil), (*time.Time)(nil)},
+			want: true,
+		},
+		{
+			name: "one non-nil",
+			args: []interface{}{nil, StringPtr("foo"), nil},
+			want: false,
+		},
+		{
+			name: "one typed nil",
+			args: []interface{}{Uint64Ptr(1234), StringPtr("foo"), (*time.Time)(nil)},
+			want: false,
+		},
+		{
+			name: "all non-nil",
+			args: []interface{}{Uint64Ptr(1234), StringPtr("foo"), StdlibDurationPtr(time.Second)},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, AllOrNoneNil(tt.args...), "AllOrNoneNil(%v)", tt.args...)
+		})
+	}
+}
