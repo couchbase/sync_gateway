@@ -762,7 +762,7 @@ func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, preview
 			errs = errs.Append(errors.New(err))
 			continue
 		}
-		collectionRemovedIndexes, err := removeObsoleteIndexes(n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
+		collectionRemovedIndexes, err := removeObsoleteIndexes(ctx, n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
 		if err != nil {
 			errs = errs.Append(err)
 			continue
@@ -2148,12 +2148,11 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		db.changeCache.cfgEventCallback = cfgSG.FireEvent
 	}
 
-	importEnabled := db.UseXattrs() && db.autoImport
 	sgReplicateEnabled := db.Options.SGReplicateOptions.Enabled
 
 	// Initialize node heartbeater in EE mode if sg-replicate or import enabled on the node.  This node must start
 	// sending heartbeats before registering itself to the cfg, to avoid triggering immediate removal by other active nodes.
-	if base.IsEnterpriseEdition() && (importEnabled || sgReplicateEnabled) {
+	if base.IsEnterpriseEdition() && (db.autoImport || sgReplicateEnabled) {
 		// Create heartbeater
 		heartbeaterPrefix := db.MetadataKeys.HeartbeaterPrefix(db.Options.GroupID)
 		heartbeater, err := base.NewCouchbaseHeartbeater(db.MetadataStore, heartbeaterPrefix, db.UUID)
@@ -2309,6 +2308,16 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		}
 
 	}
+
+	// create a background task to keep track of the number of active replication connections the database has each second
+	bgtSyncTime, err := NewBackgroundTask(ctx, "TotalSyncTimeStat", func(ctx context.Context) error {
+		db.UpdateTotalSyncTimeStat()
+		return nil
+	}, 1*time.Second, db.terminator)
+	if err != nil {
+		return err
+	}
+	db.backgroundTasks = append(db.backgroundTasks, bgtSyncTime)
 
 	if err := base.RequireNoBucketTTL(db.Bucket); err != nil {
 		return err

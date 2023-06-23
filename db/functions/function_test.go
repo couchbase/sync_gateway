@@ -684,12 +684,13 @@ func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptio
 
 // createPrimaryIndex returns true if there was no index created before
 func createPrimaryIndex(t *testing.T, n1qlStore base.N1QLStore) bool {
-	hasPrimary, _, err := base.GetIndexMeta(n1qlStore, base.PrimaryIndexName)
+	ctx := base.TestCtx(t)
+	hasPrimary, _, err := base.GetIndexMeta(ctx, n1qlStore, base.PrimaryIndexName)
 	assert.NoError(t, err)
 	if hasPrimary {
 		return false
 	}
-	err = n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+	err = n1qlStore.CreatePrimaryIndex(ctx, base.PrimaryIndexName, nil)
 	assert.NoError(t, err)
 	return true
 }

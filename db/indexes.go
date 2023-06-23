@@ -271,11 +271,11 @@ func (i *SGIndex) shouldCreate(options InitializeIndexOptions) bool {
 
 // Creates index associated with specified SGIndex if not already present.  Always defers build - a subsequent BUILD INDEX
 // will need to be invoked for any created indexes.
-func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, options InitializeIndexOptions) (isDeferred bool, err error) {
+func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, options InitializeIndexOptions) (isDeferred bool, err error) {
 
 	indexName := i.fullIndexName(options.UseXattrs)
 
-	exists, indexMeta, metaErr := bucket.GetIndexMeta(indexName)
+	exists, indexMeta, metaErr := bucket.GetIndexMeta(ctx, indexName)
 	if metaErr != nil {
 		return false, metaErr
 	}
@@ -291,9 +291,9 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, options InitializeIndexO
 			//  2. SG previously crashed between index creation and index build.
 			// GSI doesn't like concurrent build requests, so wait and recheck index state before treating as option 2.
 			// (see known issue documented https://developer.couchbase.com/documentation/server/current/n1ql/n1ql-language-reference/build-index.html)
-			base.InfofCtx(context.TODO(), base.KeyQuery, "Index %s already in deferred state - waiting 10s to re-evaluate before issuing build to avoid concurrent build requests.", indexName)
+			base.InfofCtx(ctx, base.KeyQuery, "Index %s already in deferred state - waiting 10s to re-evaluate before issuing build to avoid concurrent build requests.", indexName)
 			time.Sleep(10 * time.Second)
-			_, indexMeta, metaErr = bucket.GetIndexMeta(indexName)
+			_, indexMeta, metaErr = bucket.GetIndexMeta(ctx, indexName)
 			if metaErr != nil || indexMeta == nil {
 				return false, fmt.Errorf("Error retrieving index metadata after defer wait. IndexMeta: %v Error:%v", indexMeta, metaErr)
 			}
@@ -304,10 +304,8 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, options InitializeIndexO
 		return false, nil
 	}
 
-	logCtx := context.TODO()
-
 	// Create index
-	base.InfofCtx(logCtx, base.KeyQuery, "Index %s doesn't exist, creating...", indexName)
+	base.InfofCtx(ctx, base.KeyQuery, "Index %s doesn't exist, creating...", indexName)
 	isDeferred = true
 	indexExpression := replaceSyncTokensIndex(i.expression, options.UseXattrs)
 	filterExpression := replaceSyncTokensIndex(i.filterExpression, options.UseXattrs)
@@ -323,7 +321,7 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, options InitializeIndexO
 
 	// start a retry loop to create index,
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		err = bucket.CreateIndex(indexName, indexExpression, filterExpression, n1qlOptions)
+		err = bucket.CreateIndex(ctx, indexName, indexExpression, filterExpression, n1qlOptions)
 		if err != nil {
 			// If index has already been created (race w/ other SG node), return without error
 			if err == base.ErrAlreadyExists {
@@ -333,7 +331,7 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, options InitializeIndexO
 			if strings.Contains(err.Error(), "not enough indexer nodes") {
 				return false, fmt.Errorf("Unable to create indexes with the specified number of replicas (%d).  Increase the number of index nodes, or modify 'num_index_replicas' in your Sync Gateway database config.", options.NumReplicas), nil
 			}
-			base.WarnfCtx(logCtx, "Error creating index %s: %v - will retry.", indexName, err)
+			base.WarnfCtx(ctx, "Error creating index %s: %v - will retry.", indexName, err)
 		}
 		return err != nil, err, nil
 	}
@@ -345,7 +343,7 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, options InitializeIndexO
 		return false, pkgerrors.Wrapf(err, "Error installing Couchbase index: %v", indexName)
 	}
 
-	base.InfofCtx(logCtx, base.KeyQuery, "Index %s created successfully", indexName)
+	base.InfofCtx(ctx, base.KeyQuery, "Index %s created successfully", indexName)
 	return isDeferred, nil
 }
 
@@ -383,7 +381,7 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 
 		fullIndexName := sgIndex.fullIndexName(options.UseXattrs)
 
-		isDeferred, err := sgIndex.createIfNeeded(n1QLStore, options)
+		isDeferred, err := sgIndex.createIfNeeded(ctx, n1QLStore, options)
 		if err != nil {
 			return base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
 		}
@@ -395,7 +393,7 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 
 	// Issue BUILD INDEX for any deferred indexes.
 	if len(deferredIndexes) > 0 {
-		buildErr := base.BuildDeferredIndexes(n1QLStore, deferredIndexes)
+		buildErr := base.BuildDeferredIndexes(ctx, n1QLStore, deferredIndexes)
 		if buildErr != nil {
 			base.InfofCtx(ctx, base.KeyQuery, "Error building deferred indexes.  Error: %v", buildErr)
 			return buildErr
@@ -419,7 +417,7 @@ func waitForIndexes(ctx context.Context, bucket base.N1QLStore, options Initiali
 		indexes = append(indexes, fullIndexName)
 	}
 
-	err := bucket.WaitForIndexesOnline(indexes, options.FailFast)
+	err := bucket.WaitForIndexesOnline(ctx, indexes, options.FailFast)
 	if err != nil {
 		return err
 	}
@@ -437,7 +435,7 @@ func isIndexerError(err error) bool {
 // Iterates over the index set, removing obsolete indexes:
 //   - indexes based on the inverse value of xattrs being used by the database
 //   - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
-func removeObsoleteIndexes(bucket base.N1QLStore, previewOnly bool, useXattrs bool, useViews bool, indexMap map[SGIndexType]SGIndex) (removedIndexes []string, err error) {
+func removeObsoleteIndexes(ctx context.Context, bucket base.N1QLStore, previewOnly bool, useXattrs bool, useViews bool, indexMap map[SGIndexType]SGIndex) (removedIndexes []string, err error) {
 	removedIndexes = make([]string, 0)
 
 	// Build set of candidates for cleanup
@@ -458,9 +456,9 @@ func removeObsoleteIndexes(bucket base.N1QLStore, previewOnly bool, useXattrs bo
 
 	// Attempt removal of candidates, adding to set of removedIndexes when found
 	for _, indexName := range removalCandidates {
-		removed, err := removeObsoleteIndex(bucket, indexName, previewOnly)
+		removed, err := removeObsoleteIndex(ctx, bucket, indexName, previewOnly)
 		if err != nil {
-			base.WarnfCtx(context.TODO(), "Unexpected error when removing index %q: %s", indexName, err)
+			base.WarnfCtx(ctx, "Unexpected error when removing index %q: %s", indexName, err)
 		}
 		if removed {
 			removedIndexes = append(removedIndexes, indexName)
@@ -471,16 +469,16 @@ func removeObsoleteIndexes(bucket base.N1QLStore, previewOnly bool, useXattrs bo
 }
 
 // Removes an obsolete index from the database.  In preview mode, checks for existence of the index only.
-func removeObsoleteIndex(bucket base.N1QLStore, indexName string, previewOnly bool) (removed bool, err error) {
+func removeObsoleteIndex(ctx context.Context, bucket base.N1QLStore, indexName string, previewOnly bool) (removed bool, err error) {
 	if previewOnly {
 		// Check for index existence
-		exists, _, getMetaErr := bucket.GetIndexMeta(indexName)
+		exists, _, getMetaErr := bucket.GetIndexMeta(ctx, indexName)
 		if getMetaErr != nil {
 			return false, getMetaErr
 		}
 		return exists, nil
 	} else {
-		err = bucket.DropIndex(indexName)
+		err = bucket.DropIndex(ctx, indexName)
 		// If no error, add to set of removed indexes and return
 		if err == nil {
 			return true, nil
