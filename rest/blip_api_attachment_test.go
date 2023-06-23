@@ -689,3 +689,45 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 		require.Equal(t, keyValueErr.DocumentID, v2Key)
 	}
 }
+
+// TestAttachmentComputeStat:
+//   - Setup blip test client
+//   - Start pull replication
+//   - add doc with attachment
+//   - wait for doc to replicate and assert on attachment stat
+func TestAttachmentComputeStat(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	rtConfig := RestTesterConfig{
+		GuestEnabled: true,
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	rt.GetDatabase().Options.BlipStatsReportingInterval = 1
+
+	opts := &BlipTesterClientOpts{}
+	opts.SupportedBLIPProtocols = []string{db.BlipCBMobileReplicationV2}
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, opts)
+	require.NoError(t, err)
+	defer btc.Close()
+	attachmentWriteCompute := btc.rt.GetDatabase().DbStats.DatabaseStats.WriteAttachmentComputeUnit.Value()
+
+	err = btc.StartPull()
+	assert.NoError(t, err)
+	const docID = "doc1"
+
+	// Create doc revision with attachment on SG.
+	bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, bodyText)
+	assert.Equal(t, http.StatusCreated, response.Code)
+
+	// Wait for the document to be replicated to client.
+	revId := RespRevID(t, response)
+	data, ok := btc.WaitForRev(docID, revId)
+	assert.True(t, ok)
+	bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
+	require.JSONEq(t, bodyTextExpected, string(data))
+
+	// assert the attachment read compute stat is incremented
+	require.Greater(t, btc.rt.GetDatabase().DbStats.DatabaseStats.WriteAttachmentComputeUnit.Value(), attachmentWriteCompute)
+
+}

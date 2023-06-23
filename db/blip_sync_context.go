@@ -50,6 +50,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		bsc.replicationStats = NewBlipSyncStats()
 	}
 	bsc.stats.lastReportTime.Store(time.Now().UnixMilli())
+	bsc.reportTotalSyncTimeStats()
 
 	if u := db.User(); u != nil {
 		bsc.userName = u.Name()
@@ -118,6 +119,8 @@ type BlipSyncContext struct {
 	collections *blipCollections // all collections handled by blipSyncContext, implicit or via GetCollections
 
 	stats blipSyncStats // internal structure to store stats
+
+	persistedComputeStats syncComputeStats
 }
 
 // blipSyncStats has support structures to support reporting stats at regular interval
@@ -126,6 +129,15 @@ type blipSyncStats struct {
 	bytesReceived  atomic.Uint64 // Total bytes received from client
 	lastReportTime atomic.Int64  // last time reported by time.Time     // Last time blip stats were reported
 	lock           sync.Mutex
+}
+
+type syncComputeStats struct {
+	docCheckComputeUnit        atomic.Int64
+	docReadComputeUnit         atomic.Int64
+	docWriteComputeUnit        atomic.Int64
+	readAttachmentComputeUnit  atomic.Int64
+	writeAttachmentComputeUnit atomic.Int64
+	lock                       sync.Mutex
 }
 
 // AllowedAttachment contains the metadata for handling allowed attachments
@@ -396,8 +408,6 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, collectionIdx *int,
 	bodyBytes []byte, attMeta []AttachmentStorageMeta, properties blip.Properties, seq SequenceID, resendFullRevisionFunc func() error) error {
 
-	var docSent bool
-	startTime := time.Now()
 	outrq := NewRevMessage()
 	outrq.SetID(docID)
 	outrq.SetRev(revID)
@@ -410,20 +420,6 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	outrq.SetProperties(properties)
 
 	outrq.SetJSONBodyAsBytes(bodyBytes)
-	defer func() {
-		// if no doc was sent we don't want to calculate this stat
-		if !docSent {
-			return
-		}
-		functionTime := time.Since(startTime).Milliseconds()
-		messBody, err := outrq.Body()
-		if err != nil {
-			return
-		}
-		bytes := len(messBody)
-		stat := CalculateComputeStat(int64(bytes), functionTime)
-		bsc.replicationStats.DocWriteComputeUnit.Add(stat)
-	}()
 
 	// Update read stats
 	if messageBody, err := outrq.Body(); err == nil {
@@ -444,7 +440,6 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 		// Allow client to download attachments in 'atts', but only while pulling this rev
 		bsc.addAllowedAttachments(docID, attMeta, activeSubprotocol)
 	} else {
-		docSent = true
 		bsc.replicationStats.SendRevCount.Add(1)
 		outrq.SetNoReply(true)
 	}
@@ -502,7 +497,6 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 					}
 				}
 			} else {
-				docSent = true
 				bsc.replicationStats.SendRevCount.Add(1)
 			}
 
@@ -723,5 +717,57 @@ func (bsc *BlipSyncContext) reportStats(updateImmediately bool) {
 	newBytesReceived := totalBytesReceived - bsc.stats.bytesReceived.Swap(totalBytesReceived)
 	dbStats.ReplicationBytesReceived.Add(int64(newBytesReceived))
 	bsc.stats.lastReportTime.Store(currentTime)
+
+}
+
+// loadStats loads persisted compute stats from the dbstats to struct on BlipSyncContext for use in reportTotalSyncTimeStats
+func (bsc *BlipSyncContext) loadStats() {
+	bsc.persistedComputeStats.docReadComputeUnit.Store(bsc.blipContextDb.DbStats.Database().DocReadComputeUnit.Value())
+	bsc.persistedComputeStats.docWriteComputeUnit.Store(bsc.blipContextDb.DbStats.Database().DocWriteComputeUnit.Value())
+	bsc.persistedComputeStats.docCheckComputeUnit.Store(bsc.blipContextDb.DbStats.Database().DocCheckComputeUnit.Value())
+	bsc.persistedComputeStats.readAttachmentComputeUnit.Store(bsc.blipContextDb.DbStats.Database().ReadAttachmentComputeUnit.Value())
+	bsc.persistedComputeStats.writeAttachmentComputeUnit.Store(bsc.blipContextDb.DbStats.Database().WriteAttachmentComputeUnit.Value())
+}
+
+// reportTotalSyncTimeStats:
+//   - Will load initial stats from database stats to struct persistedComputeStats on BlipSyncContext
+//   - spawn goroutine on ticket to persist compute stats back to database stats at the BlipStatsReportingInterval
+//   - inside goroutine will workout the diff between the current value of the compute stat vs the database stat value on persistedComputeStats
+//     and add the diff back to database stats
+//   - will then load fresh value of database compute stats back to the persistedComputeStats struct
+func (bsc *BlipSyncContext) reportTotalSyncTimeStats() {
+	if bsc.blipContextDb == nil || bsc.blipContext == nil {
+		return
+	}
+	dbStats := bsc.blipContextDb.DbStats.Database()
+	if dbStats == nil {
+		return
+	}
+	bsc.loadStats()
+	go func() {
+		interval := time.Duration(bsc.blipContextDb.Options.BlipStatsReportingInterval)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				docComputeDiff := bsc.replicationStats.DocCheckComputeUnit.Value() - bsc.persistedComputeStats.docCheckComputeUnit.Load()
+				dbStats.DocCheckComputeUnit.Add(docComputeDiff)
+				docWriteDiff := bsc.replicationStats.DocWriteComputeUnit.Value() - bsc.persistedComputeStats.docWriteComputeUnit.Load()
+				dbStats.DocWriteComputeUnit.Add(docWriteDiff)
+				docReadDiff := bsc.replicationStats.DocReadComputeUnit.Value() - bsc.persistedComputeStats.docReadComputeUnit.Load()
+				dbStats.DocReadComputeUnit.Add(docReadDiff)
+				docReadAttachDiff := bsc.replicationStats.ReadAttachmentComputeUnit.Value() - bsc.persistedComputeStats.readAttachmentComputeUnit.Load()
+				dbStats.ReadAttachmentComputeUnit.Add(docReadAttachDiff)
+				docWriteAttachdiff := bsc.replicationStats.WriteAttachmentComputeUnit.Value() - bsc.persistedComputeStats.writeAttachmentComputeUnit.Load()
+				dbStats.WriteAttachmentComputeUnit.Add(docWriteAttachdiff)
+				// reload updated stats to BlipSyncContext for next interval
+				bsc.loadStats()
+			case <-bsc.terminator:
+				base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Terminating total sync time stat reporting")
+				return
+			}
+		}
+	}()
 
 }

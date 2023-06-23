@@ -534,6 +534,7 @@ func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string) []inte
 }
 
 func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}, ignoreNoConflicts bool) error {
+	startTime := time.Now()
 	outrq := blip.NewRequest()
 	outrq.SetProfile("changes")
 	if ignoreNoConflicts {
@@ -546,6 +547,21 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 	if err != nil {
 		base.InfofCtx(bh.loggingCtx, base.KeyAll, "Error setting changes: %v", err)
 	}
+	// defer function to calculate the DocWriteComputeUnit stat
+	defer func() {
+		functionTime := time.Since(startTime).Milliseconds()
+		messBody, err := outrq.Body()
+		if err != nil {
+			return
+		}
+		bytes := len(messBody)
+		// if 0 bytes don't calculate stat
+		if bytes == 0 {
+			return
+		}
+		stat := CalculateComputeStat(int64(bytes), functionTime)
+		bh.replicationStats.DocWriteComputeUnit.Add(stat)
+	}()
 
 	if len(changeArray) > 0 {
 		// Check for user updates before creating the db copy for handleChangesResponse
@@ -638,7 +654,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 	// Include changes messages w/ proposeChanges stats, although CBL should only be using proposeChanges
 	startTime := time.Now()
-	// defer function for calculating the doc check compute unit stat
+	// defer function for calculating the doc check compute unit stat avoid calculation if bytes == 0 or error getting message body
 	defer func() {
 		functionTime := time.Since(startTime).Milliseconds()
 		messageBody, err := rq.Body()
@@ -646,6 +662,9 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			return
 		}
 		bytes := len(messageBody)
+		if bytes == 0 {
+			return
+		}
 		stat := CalculateComputeStat(int64(bytes), functionTime)
 		bh.replicationStats.DocCheckComputeUnit.Add(stat)
 	}()
@@ -775,7 +794,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 	// proposeChanges stats
 	startTime := time.Now()
-	// defer function for calculating the doc check compute unit stat
+	// defer function for calculating the doc check compute unit stat avoid calculation if bytes == 0 or error getting message body
 	defer func() {
 		functionTime := time.Since(startTime).Milliseconds()
 		messageBody, err := rq.Body()
@@ -783,6 +802,9 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 			return
 		}
 		bytes := len(messageBody)
+		if bytes == 0 {
+			return
+		}
 		stat := CalculateComputeStat(int64(bytes), functionTime)
 		bh.replicationStats.DocCheckComputeUnit.Add(stat)
 	}()
@@ -1276,23 +1298,17 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 // Received a "getAttachment" request
 func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	var gotAttachment bool
+	var attachmentBytes int
 	startTime := time.Now()
+	// calculate compute unit for WriteAttachmentComputeUnit
 	defer func() {
+		// if failed to get attachment no calculation is needed
 		if !gotAttachment {
 			return
 		}
 		functionTime := time.Since(startTime).Milliseconds()
-		messagesBytes, err := rq.Body()
-		if err != nil || messagesBytes == nil {
-			return
-		}
-		bytes := len(messagesBytes)
-		stat := CalculateComputeStat(int64(bytes), functionTime)
-		if rq.Outgoing {
-			bh.replicationStats.WriteAttachmentComputeUnit.Add(stat)
-		} else {
-			bh.replicationStats.ReadAttachmentComputeUnit.Add(stat)
-		}
+		stat := CalculateComputeStat(int64(attachmentBytes), functionTime)
+		bh.replicationStats.WriteAttachmentComputeUnit.Add(stat)
 	}()
 
 	getAttachmentParams := newGetAttachmentParams(rq)
@@ -1334,6 +1350,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	response.SetCompressed(rq.Properties[BlipCompress] == trueProperty)
 	bh.replicationStats.HandleGetAttachment.Add(1)
 	gotAttachment = true
+	attachmentBytes = len(attachment)
 	bh.replicationStats.HandleGetAttachmentBytes.Add(int64(len(attachment)))
 
 	return nil
@@ -1344,6 +1361,8 @@ var errNoBlipHandler = fmt.Errorf("404 - No handler for BLIP request")
 // sendGetAttachment requests the full attachment from the peer.
 func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name string, digest string, meta map[string]interface{}) ([]byte, error) {
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Asking for attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
+	var lenAttachment int
+	startTime := time.Now()
 	outrq := blip.NewRequest()
 	outrq.SetProfile(MessageGetAttachment)
 	outrq.Properties[GetAttachmentDigest] = digest
@@ -1357,6 +1376,16 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 	if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
 		outrq.Properties[GetAttachmentID] = docID
 	}
+	// calculate compute done for getting an attachment for ReadAttachmentComputeUnit
+	defer func() {
+		// if attachment is 0 bytes don't do calculation
+		if lenAttachment == 0 {
+			return
+		}
+		functionTime := time.Since(startTime).Milliseconds()
+		stat := CalculateComputeStat(int64(lenAttachment), functionTime)
+		bh.replicationStats.ReadAttachmentComputeUnit.Add(stat)
+	}()
 
 	if !bh.sendBLIPMessage(sender, outrq) {
 		return nil, ErrClosedBLIPSender
@@ -1385,6 +1414,7 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 
 	bh.replicationStats.GetAttachment.Add(1)
 	bh.replicationStats.GetAttachmentBytes.Add(metaLength)
+	lenAttachment = len(respBody)
 
 	return respBody, nil
 }
