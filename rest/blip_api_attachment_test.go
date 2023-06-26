@@ -702,7 +702,6 @@ func TestAttachmentComputeStat(t *testing.T) {
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	rt.GetDatabase().Options.BlipStatsReportingInterval = 1
 
 	opts := &BlipTesterClientOpts{}
 	opts.SupportedBLIPProtocols = []string{db.BlipCBMobileReplicationV2}

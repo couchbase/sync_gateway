@@ -560,7 +560,10 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			return
 		}
 		stat := CalculateComputeStat(int64(bytes), functionTime)
+		// increment associated blip stat
 		bh.replicationStats.DocWriteComputeUnit.Add(stat)
+		// increment stat on the database stats
+		bh.blipContextDb.DbStats.DatabaseStats.DocWriteComputeUnit.Add(stat)
 	}()
 
 	if len(changeArray) > 0 {
@@ -666,7 +669,10 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			return
 		}
 		stat := CalculateComputeStat(int64(bytes), functionTime)
+		// increment associated blip stat
 		bh.replicationStats.DocCheckComputeUnit.Add(stat)
+		// increment stat on the database stats
+		bh.blipContextDb.DbStats.DatabaseStats.DocCheckComputeUnit.Add(stat)
 	}()
 	bh.replicationStats.HandleChangesCount.Add(int64(len(changeList)))
 	defer func() {
@@ -806,7 +812,10 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 			return
 		}
 		stat := CalculateComputeStat(int64(bytes), functionTime)
+		// increment associated blip stat
 		bh.replicationStats.DocCheckComputeUnit.Add(stat)
+		// increment stat on the database stats
+		bh.blipContextDb.DbStats.DatabaseStats.DocCheckComputeUnit.Add(stat)
 	}()
 	bh.replicationStats.HandleChangesCount.Add(int64(len(changeList)))
 	defer func() {
@@ -969,7 +978,10 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 		functionTime := time.Since(startTime).Milliseconds()
 		stat := CalculateComputeStat(int64(bytes), functionTime)
+		// increment associated blip stat
 		bh.replicationStats.DocReadComputeUnit.Add(stat)
+		// increment stat on the database stats
+		bh.blipContextDb.DbStats.DatabaseStats.DocReadComputeUnit.Add(stat)
 	}()
 
 	// addRevisionParams := newAddRevisionParams(rq)
@@ -1312,7 +1324,10 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 		}
 		functionTime := time.Since(startTime).Milliseconds()
 		stat := CalculateComputeStat(int64(attachmentBytes), functionTime)
+		// increment associated blip stat
 		bh.replicationStats.WriteAttachmentComputeUnit.Add(stat)
+		// increment stat on the database stats
+		bh.blipContextDb.DbStats.DatabaseStats.WriteAttachmentComputeUnit.Add(stat)
 	}()
 
 	getAttachmentParams := newGetAttachmentParams(rq)
@@ -1388,7 +1403,10 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 		}
 		functionTime := time.Since(startTime).Milliseconds()
 		stat := CalculateComputeStat(int64(lenAttachment), functionTime)
+		// increment associated blip stat
 		bh.replicationStats.ReadAttachmentComputeUnit.Add(stat)
+		// increment stat on the database stats
+		bh.blipContextDb.DbStats.DatabaseStats.ReadAttachmentComputeUnit.Add(stat)
 	}()
 
 	if !bh.sendBLIPMessage(sender, outrq) {

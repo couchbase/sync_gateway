@@ -111,8 +111,6 @@ func TestBlipStatsISGRComputePush(t *testing.T) {
 	activeRT, passiveRT, remoteURL, teardown := SetupSGRPeers(t)
 	defer teardown()
 	const repName = "replication1"
-	activeRT.GetDatabase().Options.BlipStatsReportingInterval = 1
-	passiveRT.GetDatabase().Options.BlipStatsReportingInterval = 1
 	var resp *TestResponse
 
 	docWriteCompute := activeRT.GetDatabase().DbStats.DatabaseStats.DocWriteComputeUnit.Value()
@@ -155,8 +153,6 @@ func TestBlipStatsISGRComputePull(t *testing.T) {
 	activeRT, passiveRT, remoteURL, teardown := SetupSGRPeers(t)
 	defer teardown()
 	const repName = "replication1"
-	activeRT.GetDatabase().Options.BlipStatsReportingInterval = 1
-	passiveRT.GetDatabase().Options.BlipStatsReportingInterval = 1
 	var resp *TestResponse
 
 	docWriteCompute := passiveRT.GetDatabase().DbStats.DatabaseStats.DocWriteComputeUnit.Value()
@@ -214,8 +210,6 @@ func TestBlipStatAttachmentComputeISGR(t *testing.T) {
 			activeRT, passiveRT, remoteURL, teardown := SetupSGRPeers(t)
 			defer teardown()
 			const repName = "replication1"
-			activeRT.GetDatabase().Options.BlipStatsReportingInterval = 1
-			passiveRT.GetDatabase().Options.BlipStatsReportingInterval = 1
 			var resp *TestResponse
 
 			if test.direction == "push" {
@@ -278,7 +272,6 @@ func TestBlipStatsChangesComputation(t *testing.T) {
 	bt, err := NewBlipTester(t)
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
-	bt.restTester.GetDatabase().Options.BlipStatsReportingInterval = 1
 
 	// test changes request increments the DocCheckComputeStat
 	changesRequest := bt.newRequest()
@@ -339,8 +332,6 @@ func TestComputeStatAfterContextTeardown(t *testing.T) {
 	activeRT, passiveRT, remoteURL, teardown := SetupSGRPeers(t)
 	defer teardown()
 	const repName = "replication1"
-	activeRT.GetDatabase().Options.BlipStatsReportingInterval = 1
-	passiveRT.GetDatabase().Options.BlipStatsReportingInterval = 1
 
 	resp := passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"source": "activeRT"}`)
 	RequireStatus(t, resp, http.StatusCreated)
