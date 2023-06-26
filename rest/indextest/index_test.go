@@ -166,6 +166,7 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
 	dbConfig.StartOffline = base.BoolPtr(true)
 	dbConfigPayload, err := json.Marshal(dbConfig)
+	require.NoError(t, err)
 	dbName := "db"
 
 	keyspace := dbName
@@ -173,7 +174,6 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 		keyspaces := getRESTKeyspaces(dbName, dbConfig.Scopes)
 		keyspace = keyspaces[0]
 	}
-	require.NoError(t, err)
 
 	// Persist config
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/"+dbName+"/", string(dbConfigPayload))
@@ -407,6 +407,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
 	dbConfig.StartOffline = base.BoolPtr(true)
 	dbConfigPayload, err := json.Marshal(dbConfig)
+	require.NoError(t, err)
 	dbName := "db"
 
 	keyspace := dbName
@@ -416,7 +417,6 @@ func TestAsyncOnlineOffline(t *testing.T) {
 		keyspace = keyspaces[0]
 		expectedCollectionCount += len(keyspaces)
 	}
-	require.NoError(t, err)
 
 	// Create database with offline=true
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/"+dbName+"/", string(dbConfigPayload))
@@ -460,7 +460,6 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	waitAndRequireDBState(t, dbName, db.DBStarting)
 
 	// Unblock initialization, verify status goes to Online
-	log.Printf("closing unblockInit")
 	close(unblockInit)
 	waitAndRequireDBState(t, dbName, db.DBOnline)
 
@@ -478,6 +477,124 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 	waitAndRequireDBState(t, dbName, db.DBOnline)
 
+}
+
+// TestAsyncCreateThenDelete verifies that async initialization of a database will be terminated
+// if the database is deleted.  Also verifies that recreating the database succeeds as expected.
+func TestAsyncCreateThenDelete(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	base.TestRequiresCollections(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP)
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
+	ctx := base.TestCtx(t)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
+	require.NoError(t, err)
+	defer func() {
+		sc.Close(ctx)
+		require.NoError(t, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- rest.StartServer(ctx, &config, sc)
+	}()
+	require.NoError(t, sc.WaitForRESTAPIs())
+
+	// Set testing callbacks for async initialization
+	collectionCount := int64(0)
+	initStarted := make(chan error)
+	unblockInit := make(chan error)
+	collectionCompleteCallback := func(dbName, collectionName string) {
+		count := atomic.AddInt64(&collectionCount, 1)
+		// On first collection, close initStarted channel
+		log.Printf("collection callback count: %v", count)
+		if count == 1 {
+			log.Printf("closing initStarted")
+			close(initStarted)
+		}
+		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
+	}
+	firstDatabaseComplete := make(chan error)
+	databaseCompleteCount := int64(0)
+	databaseCompleteCallback := func(dbName string) {
+		count := atomic.AddInt64(&databaseCompleteCount, 1)
+		// on first complete, close test channel
+		if count == 1 {
+			close(firstDatabaseComplete)
+		}
+	}
+	sc.DatabaseInitManager.SetCallbacks(collectionCompleteCallback, databaseCompleteCallback)
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() { tb.Close() }()
+
+	importFilter := "function(doc) { return true }"
+	syncFunc := "function(doc){ channel(doc.channels); }"
+
+	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
+	dbConfig.StartOffline = base.BoolPtr(true)
+	dbConfigPayload, err := json.Marshal(dbConfig)
+	require.NoError(t, err)
+	dbName := "db"
+	expectedCollectionCount := 1 // metadata store
+	if len(dbConfig.Scopes) > 0 {
+		keyspaces := getRESTKeyspaces(dbName, dbConfig.Scopes)
+		expectedCollectionCount += len(keyspaces)
+	}
+
+	// Set up payloads for upserting db state
+	onlineConfigUpsert := rest.DbConfig{
+		StartOffline: base.BoolPtr(false),
+	}
+	dbOnlineConfigPayload, err := json.Marshal(onlineConfigUpsert)
+	require.NoError(t, err)
+
+	// Create database with offline=true
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/"+dbName+"/", string(dbConfigPayload))
+	resp.RequireStatus(http.StatusCreated)
+
+	// Wait for init to start before interacting with the db, validate db state is offline
+	rest.WaitForChannel(t, initStarted, "waiting for initialization to start")
+	waitAndRequireDBState(t, dbName, db.DBOffline)
+
+	// Take the database online while async init is still in progress, verify state goes to Starting
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
+	resp.RequireStatus(http.StatusCreated)
+	waitAndRequireDBState(t, dbName, db.DBStarting)
+
+	// Delete the database before unblocking init
+	resp = rest.BootstrapAdminRequest(t, http.MethodDelete, "/"+dbName+"/", "")
+	resp.RequireStatus(http.StatusOK)
+
+	// verify not found
+	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/"+dbName+"/", "")
+	resp.RequireStatus(http.StatusNotFound)
+
+	close(unblockInit)
+
+	rest.WaitForChannel(t, firstDatabaseComplete, "waiting for database complete callback")
+
+	// Verify only one collection was initialized asynchronously (in-progress when database was deleted)
+	totalCount := atomic.LoadInt64(&collectionCount)
+	require.Equal(t, int64(1), totalCount)
+
+	// Recreate the database, then bring online
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/"+dbName+"/", string(dbConfigPayload))
+	resp.RequireStatus(http.StatusCreated)
+	waitAndRequireDBState(t, dbName, db.DBOffline)
+
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
+	resp.RequireStatus(http.StatusCreated)
+	waitAndRequireDBState(t, dbName, db.DBOnline)
+
+	// Verify all collections are initialized (1 from deleted run, plus full expected set)
+	totalCount = atomic.LoadInt64(&collectionCount)
+	require.Equal(t, int64(expectedCollectionCount+1), totalCount)
 }
 
 // TestSyncOnline verifies that a database that is created with startOffline=false doesn't trigger async initialization
@@ -524,14 +641,8 @@ func TestSyncOnline(t *testing.T) {
 	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
 	dbConfig.StartOffline = base.BoolPtr(false)
 	dbConfigPayload, err := json.Marshal(dbConfig)
-	dbName := "db"
-
-	expectedCollectionCount := 1 // metadata store
-	if len(dbConfig.Scopes) > 0 {
-		keyspaces := getRESTKeyspaces(dbName, dbConfig.Scopes)
-		expectedCollectionCount += len(keyspaces)
-	}
 	require.NoError(t, err)
+	dbName := "db"
 
 	// Create database with offline=false
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/"+dbName+"/", string(dbConfigPayload))

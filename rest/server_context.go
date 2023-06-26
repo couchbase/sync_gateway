@@ -1382,9 +1382,16 @@ func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, event
 	return nil
 }
 
+// RemoveDatabase is called when an external request is made to delete the database
 func (sc *ServerContext) RemoveDatabase(ctx context.Context, dbName string) bool {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
+
+	// If async init is running for the database, cancel it for an external remove.  (cannot be
+	// done in _removeDatabase, as this is called during reload)
+	if sc.DatabaseInitManager != nil && sc.DatabaseInitManager.HasActiveInitialization(dbName) {
+		sc.DatabaseInitManager.Cancel(dbName)
+	}
 
 	return sc._removeDatabase(ctx, dbName)
 }
@@ -1407,6 +1414,7 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 	if dbCtx == nil {
 		return false
 	}
+
 	if ok := sc._unloadDatabase(ctx, dbName); !ok {
 		return ok
 	}
