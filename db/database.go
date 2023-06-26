@@ -1734,9 +1734,21 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 }
 
 func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
+	startTime := time.Now()
 	var updatedDoc *Document
 	var shouldUpdate bool
 	var updatedExpiry *uint32
+	defer func() {
+		functionTime := time.Since(startTime).Milliseconds()
+		var bytes int
+		if updatedDoc != nil {
+			bytes = len(updatedDoc._rawBody)
+		} else {
+			return
+		}
+		stat := CalculateComputeStat(int64(bytes), functionTime)
+		db.dbStats().DatabaseStats.ImportProcessCompute.Add(stat)
+	}()
 	if db.UseXattrs() {
 		writeUpdateFunc := func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (
 			raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
