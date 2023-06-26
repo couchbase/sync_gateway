@@ -368,3 +368,43 @@ func TestComputeStatAfterContextTeardown(t *testing.T) {
 	require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.DocCheckComputeUnit.Value(), docCheckActive)
 
 }
+
+// TestPerReplicationComputationStats:
+//   - Add doc to remote node
+//   - Create continuous replication
+//   - Wait for work to be done over that replication
+//   - Create a new replication and scope it to a channel so doc won't get replicated
+//   - assert that the blip stats for that particular replication start from 0 again (shows isolation between blip contexts for compute units)
+func TestPerReplicationComputationStats(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync)
+	activeRT, passiveRT, remoteURL, teardown := SetupSGRPeers(t)
+	defer teardown()
+	const repName = "replication1"
+	const repName2 = "replication2"
+
+	resp := passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"source": "activeRT"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
+
+	// wait for replication to do some work so compute stats won't all be 0 for this particular replication
+	_, err := activeRT.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+
+	// Create new replication and assert that the stats for this replication are all 0 showing isolation between each replication in terms of compute stats
+	activeRT.CreateReplication(repName2, remoteURL, db.ActiveReplicatorTypePull, []string{"ABC"}, true, db.ConflictResolverDefault)
+	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
+	activeRT.WaitForActiveReplicatorInitialization(2)
+
+	// get the active replicator and assert blip stats are 0 for new replication
+	ar := activeRT.GetDatabase().SGReplicateMgr.GetActiveReplicator(repName2)
+	blipStats := ar.Pull.GetStats()
+	require.Equal(t, int64(0), blipStats.ReadAttachmentComputeUnit.Value())
+	require.Equal(t, int64(0), blipStats.WriteAttachmentComputeUnit.Value())
+	require.Equal(t, int64(0), blipStats.DocWriteComputeUnit.Value())
+	require.Equal(t, int64(0), blipStats.DocReadComputeUnit.Value())
+	require.Equal(t, int64(0), blipStats.DocCheckComputeUnit.Value())
+
+}

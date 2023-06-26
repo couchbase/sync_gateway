@@ -141,12 +141,6 @@ func BlipSyncStatsForCBL(dbStats *base.DbStats) *BlipSyncStats {
 	blipStats.SendRevCount = dbStats.Database().NumDocReadsBlip
 	blipStats.SendRevErrorTotal = dbStats.CBLReplicationPull().RevErrorCount
 
-	blipStats.DocCheckComputeUnit = dbStats.Database().DocCheckComputeUnit
-	blipStats.DocReadComputeUnit = dbStats.Database().DocReadComputeUnit
-	blipStats.DocWriteComputeUnit = dbStats.Database().DocWriteComputeUnit
-	blipStats.ReadAttachmentComputeUnit = dbStats.Database().ReadAttachmentComputeUnit
-	blipStats.WriteAttachmentComputeUnit = dbStats.Database().WriteAttachmentComputeUnit
-
 	blipStats.HandleRevBytes = dbStats.Database().DocWritesBytesBlip
 	blipStats.HandleRevProcessingTime = dbStats.CBLReplicationPush().WriteProcessingTime
 
