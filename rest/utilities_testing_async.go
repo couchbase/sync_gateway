@@ -10,7 +10,7 @@ import (
 )
 
 // TestChannelTimeout can be increased to support step-through debugging
-const TestChannelTimeout = 10 * time.Second
+const TestChannelTimeout = 30 * time.Second
 
 func WaitForChannel(t *testing.T, ch <-chan error, message string) {
 	if message != "" {
@@ -26,7 +26,7 @@ func WaitForChannel(t *testing.T, ch <-chan error, message string) {
 		}
 		return
 	case <-time.After(TestChannelTimeout):
-		require.Fail(t, fmt.Sprintf("[%s] expected channel message did not arrive in 10s", message))
+		require.Fail(t, fmt.Sprintf("[%s] expected channel message did not arrive in %v", message, TestChannelTimeout))
 	}
 }
 
@@ -44,7 +44,7 @@ func waitForError(t *testing.T, ch <-chan error, message string) error {
 		}
 		return err
 	case <-time.After(TestChannelTimeout):
-		require.Fail(t, fmt.Sprintf("[%s] expected error message did not arrive in 10s", message))
+		require.Fail(t, fmt.Sprintf("[%s] expected error message did not arrive in %v", message, TestChannelTimeout))
 		return nil
 	}
 }

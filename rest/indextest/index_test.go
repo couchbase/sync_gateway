@@ -709,6 +709,7 @@ func waitAndRequireDBState(t *testing.T, dbName string, targetState uint32) {
 		if stateCurr == db.RunStateString[targetState] {
 			break
 		}
+		log.Printf("Waiting for state %s, current state %s", db.RunStateString[targetState], stateCurr)
 		time.Sleep(500 * time.Millisecond)
 	}
 	require.Equal(t, db.RunStateString[targetState], stateCurr)
