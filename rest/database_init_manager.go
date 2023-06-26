@@ -60,7 +60,7 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 	dbInitWorker, ok := m.workers[dbConfig.Name]
 	collectionSet := m.buildCollectionIndexData(dbConfig)
 	if ok {
-		// If worker exists for the database and the collection sets match,
+		// If worker exists for the database and the collection sets match, add watcher to the existing worker
 		if dbInitWorker.collectionsEqual(collectionSet) {
 			base.InfofCtx(ctx, base.KeyAll, "Found existing database initialization for database %s ...",
 				base.MD(dbConfig.Name))
@@ -199,9 +199,9 @@ type DatabaseInitWorker struct {
 	lastError   error      // Set for when processing does not complete successfully.  Synchronized with watcherLock
 }
 
-// TODO: remove unless we find another option that's needed
+// DatabaseInitOptions specifies the options used for database initialization
 type DatabaseInitOptions struct {
-	indexOptions db.InitializeIndexOptions
+	indexOptions db.InitializeIndexOptions // Options used for index initialization
 }
 
 func NewDatabaseInitWorker(ctx context.Context, dbName string, n1qlStore *base.ClusterOnlyN1QLStore, collections CollectionInitData, indexOptions db.InitializeIndexOptions, callback collectionCallbackFunc) *DatabaseInitWorker {
@@ -226,14 +226,14 @@ func (w *DatabaseInitWorker) Run() {
 		}
 	}()
 
-	// TODO: future refactoring of initialize indexes to reduce number of system:indexes calls
+	// TODO: CBG-2838 refactor initialize indexes to reduce number of system:indexes calls
 	var indexErr error
 	for scName, indexSet := range w.collections {
 		// Add the index set to the common indexOptions
 		collectionIndexOptions := w.options.indexOptions
 		collectionIndexOptions.MetadataIndexes = indexSet
 
-		// TODO: Future refactor of InitializeIndexes API to move scope, collection to parameters on system:indexes calls
+		// TODO: CBG-2838 Refactor InitializeIndexes API to move scope, collection to parameters on system:indexes calls
 		// Set the scope and collection name on the cluster n1ql store for use by initializeIndexes
 		w.n1qlStore.SetScopeAndCollection(scName)
 		indexErr = db.InitializeIndexes(w.ctx, w.n1qlStore, collectionIndexOptions)

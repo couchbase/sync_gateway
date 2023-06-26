@@ -99,6 +99,7 @@ type getOrAddDatabaseConfigOptions struct {
 	useExisting       bool            //  if true, return an existing DatabaseContext vs return an error
 	connectToBucketFn db.OpenBucketFn // supply a custom function for buckets, used for testing only
 	forceOnline       bool            // force the database to come online, even if startOffline is set
+	asyncOnline       bool            // Whether getOrAddDatabaseConfig should block until database is ready, when startOffline=false
 }
 
 func (sc *ServerContext) CreateLocalDatabase(ctx context.Context, dbs DbConfigMap) error {
@@ -389,17 +390,18 @@ func (sc *ServerContext) ReloadDatabase(ctx context.Context, reloadDbName string
 	return dbContext, err
 }
 
-func (sc *ServerContext) ReloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
+func (sc *ServerContext) ReloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig, asyncOnline bool) error {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true)
+	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, asyncOnline)
 }
 
-func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool) error {
+func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool, asyncOnline bool) error {
 	sc._removeDatabase(ctx, config.Name)
 	_, err := sc._getOrAddDatabaseFromConfig(ctx, config, getOrAddDatabaseConfigOptions{
 		useExisting: false,
 		failFast:    failFast,
+		asyncOnline: asyncOnline,
 	})
 	return err
 }
@@ -866,21 +868,74 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		return dbcontext, nil
 	}
 
-	// If not starting offline, block until initialization is complete
-	if dbInitDoneChan != nil {
-		initError := <-dbInitDoneChan
+	// If asyncOnline wasn't specified, block until db init is completed, then start online processes
+	if !options.asyncOnline {
+		base.DebugfCtx(ctx, base.KeyConfig, "Waiting for database init to complete...")
+		if dbInitDoneChan != nil {
+			initError := <-dbInitDoneChan
+			if initError != nil {
+				return nil, initError
+			}
+		}
+		base.DebugfCtx(ctx, base.KeyConfig, "Database init completed, starting online processes")
+		if err := dbcontext.StartOnlineProcesses(ctx); err != nil {
+			return nil, err
+		}
+		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
+		return dbcontext, nil
+	} else {
+		// If asyncOnline is requested, set state to Starting and spawn a separate goroutine to wait for init completion
+		// before going online
+		base.DebugfCtx(ctx, base.KeyConfig, "Waiting for database init to complete asynchonously...")
+		atomic.StoreUint32(&dbcontext.State, db.DBStarting)
+		nonCancelCtx := base.NewNonCancelCtxForDatabase(dbName)
+		go sc.asyncDatabaseOnline(nonCancelCtx, dbcontext, dbInitDoneChan, config.Version)
+		return dbcontext, nil
+	}
+}
+
+// asyncDatabaseOnline waits for async initialization to complete (based on doneChan).  On successful completion, brings the database online.
+// Checks to ensure the database config hasn't been updated while waiting for init to complete - if that happens, doesn't attempt to bring
+// db online (it may have been set to offline=true)
+func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableContext, dbc *db.DatabaseContext, doneChan chan error, version string) {
+
+	ctx := nonCancelCtx.Ctx
+	if doneChan != nil {
+		initError := <-doneChan
 		if initError != nil {
-			return nil, initError
+			base.WarnfCtx(ctx, "Async database init returned error: %v", initError)
+			return
 		}
 	}
-	atomic.StoreUint32(&dbcontext.State, db.DBOnline)
-	_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
 
-	if err := dbcontext.StartOnlineProcesses(ctx); err != nil {
-		return nil, err
+	// Before bringing the database online, ensure that the database hasn't been modified while we waited for initialization to complete
+	currentDbVersion := sc.GetDbVersion(dbc.Name)
+	if currentDbVersion != version {
+		base.InfofCtx(ctx, base.KeyConfig, "Database version changed while waiting for aync init - cancelling obsolete online request. Old version: %s New version: %s", version, currentDbVersion)
+		return
 	}
 
-	return dbcontext, nil
+	base.DebugfCtx(ctx, base.KeyConfig, "Async database initialization complete, starting online processes...")
+	err := dbc.StartOnlineProcesses(ctx)
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyAll, "Error starting online processes after async initialization: %v", err)
+	}
+
+	stateChangeMsg := "DB loaded from config"
+	atomic.StoreUint32(&dbc.State, db.DBOnline)
+	_ = dbc.EventMgr.RaiseDBStateChangeEvent(dbc.Name, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
+
+}
+
+func (sc *ServerContext) GetDbVersion(dbName string) string {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	currentDbConfig, ok := sc.dbConfigs[dbName]
+	if !ok {
+		return ""
+	}
+	return currentDbConfig.Version
 }
 
 // getJavascriptTimeout returns the duration javascript functions can run.
