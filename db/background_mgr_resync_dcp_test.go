@@ -336,6 +336,43 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	wg.Wait()
 }
 
+func TestResyncImportComputeStat(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server for DCP")
+	}
+	const docsToCreate = 100
+	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
+	defer db.Close(ctx)
+
+	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
+	require.NotNil(t, resycMgr)
+	db.ResyncManager = resycMgr
+
+	options := map[string]interface{}{
+		"database":            db,
+		"regenerateSequences": false,
+		"collections":         ResyncCollections{},
+	}
+
+	computeStat := db.DbStats.DatabaseStats.ImportProcessCompute.Value()
+	require.Equal(t, int64(0), computeStat)
+
+	err := resycMgr.Start(ctx, options)
+	require.NoError(t, err)
+
+	err = WaitForConditionWithOptions(t, func() bool {
+		var status BackgroundManagerStatus
+		rawStatus, _ := resycMgr.GetStatus(ctx)
+		_ = json.Unmarshal(rawStatus, &status)
+		return status.State == BackgroundProcessStateCompleted
+	}, 200, 200)
+	require.NoError(t, err)
+
+	computeStat1 := db.DbStats.DatabaseStats.ImportProcessCompute.Value()
+	require.Greater(t, computeStat1, computeStat)
+
+}
+
 func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")

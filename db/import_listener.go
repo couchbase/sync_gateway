@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -167,6 +168,19 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 }
 
 func (il *importListener) ImportFeedEvent(ctx context.Context, collection *DatabaseCollectionWithUser, event sgbucket.FeedEvent) {
+	var importAttempt bool
+	startTime := time.Now()
+	defer func() {
+		// if we aren't attempting to import a doc we don't want a calculation to happen
+		if !importAttempt {
+			return
+		}
+		functionTime := time.Since(startTime).Milliseconds()
+		bytes := len(event.Value)
+		stat := CalculateComputeStat(int64(bytes), functionTime)
+		il.dbStats.ImportProcessCompute.Add(stat)
+	}()
+
 	syncData, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.userXattrKey(), false)
 	if err != nil {
 		if err == base.ErrEmptyMetadata {
@@ -189,6 +203,7 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 
 	// If syncData is nil, or if this was not an SG write, attempt to import
 	if syncData == nil || !isSGWrite {
+		importAttempt = true
 		isDelete := event.Opcode == sgbucket.FeedOpDeletion
 		if isDelete {
 			rawBody = nil

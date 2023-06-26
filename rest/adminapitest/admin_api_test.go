@@ -622,18 +622,52 @@ func TestDBOfflinePostResyncUsingDCPStream(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Offline")
 
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 200)
-	err := rt.WaitForCondition(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncManagerResponse
-		err := json.Unmarshal(response.BodyBytes(), &status)
-		assert.NoError(t, err)
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+}
 
-		var val interface{}
-		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+// Take DB offline and ensure only one _resync can be in progress
+func TestDBOfflineSingleResync(t *testing.T) {
 
-		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
-	})
-	assert.NoError(t, err)
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: syncFn})
+	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
+	if !ok {
+		t.Skip("This test only works when ResyncManager is used")
+	}
+	// create documents in DB to cause resync to take a few seconds
+	for i := 0; i < 1000; i++ {
+		rt.CreateTestDoc(fmt.Sprintf("doc%v", i))
+	}
+	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	log.Printf("Taking DB offline")
+	response := rt.SendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.True(t, body["state"].(string) == "Online")
+
+	response = rt.SendAdminRequest("POST", "/db/_offline", "")
+	rest.RequireStatus(t, response, 200)
+
+	response = rt.SendAdminRequest("GET", "/db/", "")
+	body = nil
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.True(t, body["state"].(string) == "Offline")
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
+	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
+
+	_ = rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
+
+	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
 
 func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
@@ -675,18 +709,7 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
 
-	err := rt.WaitForConditionWithOptions(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncManagerResponse
-		err := json.Unmarshal(response.BodyBytes(), &status)
-		assert.NoError(t, err)
-
-		var val interface{}
-		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
-	}, 200, 200)
-	assert.NoError(t, err)
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
@@ -770,23 +793,7 @@ func TestResyncQueryBased(t *testing.T) {
 			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 
-			var resyncManagerStatus db.ResyncManagerResponseDCP
-			err = rt.WaitForCondition(func() bool {
-				response := rt.SendAdminRequest("GET", "/db/_resync", "")
-				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
-				assert.NoError(t, err)
-
-				var val interface{}
-				_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-				if resyncManagerStatus.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err) {
-					return true
-				} else {
-					t.Logf("resyncManagerStatus.State != %v: %v - err:%v", db.BackgroundProcessStateCompleted, resyncManagerStatus.State, err)
-					return false
-				}
-			})
-			assert.NoError(t, err)
+			resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 			assert.Equal(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
 
@@ -855,23 +862,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 
-			var resyncManagerStatus db.ResyncManagerResponseDCP
-			err = rt.WaitForConditionWithOptions(func() bool {
-				response := rt.SendAdminRequest("GET", "/db/_resync", "")
-				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
-				assert.NoError(t, err)
-
-				var val interface{}
-				_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-				if resyncManagerStatus.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err) {
-					return true
-				} else {
-					t.Logf("resyncManagerStatus.State != %v: %v - err:%v", db.BackgroundProcessStateCompleted, resyncManagerStatus.State, err)
-					return false
-				}
-			}, 200, 200)
-			assert.NoError(t, err)
+			resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 			assert.Equal(t, testCase.docsCreated, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
 
