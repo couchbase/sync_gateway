@@ -633,6 +633,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 
 		// If database has been requested to start offline, or there's an active async initialization, use async initialization
+		// DatabaseInitManager will be nil if persistent config is not being used.
 		if sc.DatabaseInitManager != nil && (startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)) {
 			// Initialize indexes asynchronously using DatabaseInitManager.
 			dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)

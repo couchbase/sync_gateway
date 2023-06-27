@@ -64,8 +64,8 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 		if dbInitWorker.collectionsEqual(collectionSet) {
 			base.InfofCtx(ctx, base.KeyAll, "Found existing database initialization for database %s ...",
 				base.MD(dbConfig.Name))
-			doneChan, err := dbInitWorker.addWatcher()
-			return doneChan, err
+			doneChan := dbInitWorker.addWatcher()
+			return doneChan, nil
 		}
 		// For a mismatch in collections, stop and remove the existing worker, then continue through to creation of new worker
 		dbInitWorker.Stop()
@@ -96,10 +96,7 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 	// Create new worker and add this caller as a watcher
 	worker := NewDatabaseInitWorker(ctx, dbConfig.Name, n1qlStore, collectionSet, indexOptions, m.collectionCompleteCallback)
 	m.workers[dbConfig.Name] = worker
-	doneChan, err = worker.addWatcher()
-	if err != nil {
-		return nil, err
-	}
+	doneChan = worker.addWatcher()
 
 	// Start a goroutine to perform the initialization
 	go func() {
@@ -236,7 +233,8 @@ func (w *DatabaseInitWorker) Run() {
 		// TODO: CBG-2838 Refactor InitializeIndexes API to move scope, collection to parameters on system:indexes calls
 		// Set the scope and collection name on the cluster n1ql store for use by initializeIndexes
 		w.n1qlStore.SetScopeAndCollection(scName)
-		indexErr = db.InitializeIndexes(w.ctx, w.n1qlStore, collectionIndexOptions)
+		keyspaceCtx := base.KeyspaceLogCtx(w.ctx, w.n1qlStore.BucketName(), scName.ScopeName(), scName.CollectionName())
+		indexErr = db.InitializeIndexes(keyspaceCtx, w.n1qlStore, collectionIndexOptions)
 		if indexErr != nil {
 			break
 		}
@@ -259,6 +257,7 @@ func (w *DatabaseInitWorker) Run() {
 
 	// On completion (success or error), notify watchers
 	w.watcherLock.Lock()
+	defer w.watcherLock.Unlock()
 	w.lastError = indexErr
 	for _, doneChan := range w.watchers {
 		if indexErr != nil {
@@ -267,12 +266,11 @@ func (w *DatabaseInitWorker) Run() {
 		close(doneChan)
 	}
 	w.completed = true
-	w.watcherLock.Unlock()
 }
 
 // Adds a watcher for the current worker.  Creates a new notification channel for completion and adds
 // to watcher set.
-func (w *DatabaseInitWorker) addWatcher() (doneChan chan error, err error) {
+func (w *DatabaseInitWorker) addWatcher() (doneChan chan error) {
 	w.watcherLock.Lock()
 	defer w.watcherLock.Unlock()
 	if w.completed {
@@ -282,11 +280,11 @@ func (w *DatabaseInitWorker) addWatcher() (doneChan chan error, err error) {
 			doneChan <- w.lastError
 		}
 		close(doneChan)
-		return doneChan, nil
+		return doneChan
 	}
 	doneChan = make(chan error, 1)
 	w.watchers = append(w.watchers, doneChan)
-	return doneChan, nil
+	return doneChan
 }
 
 // Compare collections checks whether the provided CollectionInitData matches the set being

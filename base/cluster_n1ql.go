@@ -60,6 +60,10 @@ func (cl *ClusterOnlyN1QLStore) GetName() string {
 	return cl.bucketName
 }
 
+func (cl *ClusterOnlyN1QLStore) BucketName() string {
+	return cl.bucketName
+}
+
 func (cl *ClusterOnlyN1QLStore) BuildDeferredIndexes(ctx context.Context, indexSet []string) error {
 	return BuildDeferredIndexes(ctx, cl, indexSet)
 }

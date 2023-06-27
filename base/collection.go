@@ -32,8 +32,64 @@ import (
 // GetGoCBv2Bucket opens a connection to the Couchbase cluster and returns a *GocbV2Bucket for the specified BucketSpec.
 func GetGoCBv2Bucket(spec BucketSpec) (*GocbV2Bucket, error) {
 
-	cluster, err := GetGocbCluster(spec)
+	logCtx := context.TODO()
+	connString, err := spec.GetGoCBConnString(nil)
 	if err != nil {
+		WarnfCtx(logCtx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
+		return nil, err
+	}
+
+	securityConfig, err := GoCBv2SecurityConfig(&spec.TLSSkipVerify, spec.CACertPath)
+	if err != nil {
+		return nil, err
+	}
+
+	authenticator, err := spec.GocbAuthenticator()
+	if err != nil {
+		return nil, err
+	}
+
+	if _, ok := authenticator.(gocb.CertificateAuthenticator); ok {
+		InfofCtx(logCtx, KeyAuth, "Using cert authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
+	} else {
+		InfofCtx(logCtx, KeyAuth, "Using credential authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
+	}
+
+	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, StdlibDurationPtr(spec.GetViewQueryTimeout()))
+	InfofCtx(logCtx, KeyAll, "Setting query timeouts for bucket %s to %v", spec.BucketName, timeoutsConfig.QueryTimeout)
+
+	clusterOptions := gocb.ClusterOptions{
+		Authenticator:  authenticator,
+		SecurityConfig: securityConfig,
+		TimeoutsConfig: timeoutsConfig,
+		RetryStrategy:  gocb.NewBestEffortRetryStrategy(nil),
+	}
+
+	if spec.KvPoolSize > 0 {
+		// TODO: Equivalent of kvPoolSize in gocb v2?
+	}
+
+	cluster, err := gocb.Connect(connString, clusterOptions)
+	if err != nil {
+		InfofCtx(logCtx, KeyAuth, "Unable to connect to cluster: %v", err)
+		return nil, err
+	}
+
+	err = cluster.WaitUntilReady(time.Second*5, &gocb.WaitUntilReadyOptions{
+		DesiredState:  gocb.ClusterStateOnline,
+		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeManagement},
+		RetryStrategy: &goCBv2FailFastRetryStrategy{},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err != nil {
+		_ = cluster.Close(nil)
+		if errors.Is(err, gocb.ErrAuthenticationFailure) {
+			return nil, ErrAuthError
+		}
+		WarnfCtx(context.TODO(), "Error waiting for cluster to be ready: %v", err)
 		return nil, err
 	}
 
@@ -122,68 +178,6 @@ func GetGocbV2BucketFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUnti
 	gocbv2Bucket.kvOps = make(chan struct{}, MaxConcurrentSingleOps*nodeCount*numPools)
 
 	return gocbv2Bucket, nil
-}
-
-// GetGocbCluster opens a connection to the Couchbase cluster and returns a *gocb.Cluster for the specified BucketSpec.
-func GetGocbCluster(spec BucketSpec) (*gocb.Cluster, error) {
-
-	logCtx := context.TODO()
-	connString, err := spec.GetGoCBConnString(nil)
-	if err != nil {
-		WarnfCtx(logCtx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
-		return nil, err
-	}
-
-	securityConfig, err := GoCBv2SecurityConfig(&spec.TLSSkipVerify, spec.CACertPath)
-	if err != nil {
-		return nil, err
-	}
-
-	authenticator, err := spec.GocbAuthenticator()
-	if err != nil {
-		return nil, err
-	}
-
-	if _, ok := authenticator.(gocb.CertificateAuthenticator); ok {
-		InfofCtx(logCtx, KeyAuth, "Using cert authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
-	} else {
-		InfofCtx(logCtx, KeyAuth, "Using credential authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
-	}
-
-	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, StdlibDurationPtr(spec.GetViewQueryTimeout()))
-	InfofCtx(logCtx, KeyAll, "Setting query timeouts for bucket %s to %v", spec.BucketName, timeoutsConfig.QueryTimeout)
-
-	clusterOptions := gocb.ClusterOptions{
-		Authenticator:  authenticator,
-		SecurityConfig: securityConfig,
-		TimeoutsConfig: timeoutsConfig,
-		RetryStrategy:  gocb.NewBestEffortRetryStrategy(nil),
-	}
-
-	if spec.KvPoolSize > 0 {
-		// TODO: Equivalent of kvPoolSize in gocb v2?
-	}
-
-	cluster, err := gocb.Connect(connString, clusterOptions)
-	if err != nil {
-		InfofCtx(logCtx, KeyAuth, "Unable to connect to cluster: %v", err)
-		return nil, err
-	}
-
-	err = cluster.WaitUntilReady(time.Second*5, &gocb.WaitUntilReadyOptions{
-		DesiredState:  gocb.ClusterStateOnline,
-		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeManagement},
-		RetryStrategy: &goCBv2FailFastRetryStrategy{},
-	})
-	if err != nil {
-		_ = cluster.Close(nil)
-		if errors.Is(err, gocb.ErrAuthenticationFailure) {
-			return nil, ErrAuthError
-		}
-		WarnfCtx(context.TODO(), "Error waiting for cluster to be ready: %v", err)
-		return nil, err
-	}
-	return cluster, nil
 }
 
 type GocbV2Bucket struct {
