@@ -416,7 +416,13 @@ func (waiter *ChangeWaiter) UpdateChannels(collectionID uint32, timedSet channel
 	initialCapacity := len(waiter.userKeys)
 	updatedKeys := make([]string, 0, initialCapacity)
 	for channelName, _ := range timedSet {
-		updatedKeys = append(updatedKeys, channels.NewID(channelName, collectionID).String())
+		var channelKey string
+		if channelName == unusedSeqKey {
+			channelKey = channels.NewID(unusedSeqKey, unusedSeqCollectionID).String()
+		} else {
+			channelKey = channels.NewID(channelName, collectionID).String()
+		}
+		updatedKeys = append(updatedKeys, channelKey)
 	}
 	if len(waiter.userKeys) > 0 {
 		updatedKeys = append(updatedKeys, waiter.userKeys...)

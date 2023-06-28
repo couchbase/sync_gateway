@@ -672,6 +672,11 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			channelsSince = channels.AtSequence(chans, 0)
 		}
 
+		if options.RequestPlusSeq > 0 {
+			// QUESTION: why can't I use 0 for AtSequence here?
+			channelsSince.Add(channels.AtSequence(base.SetOf(unusedSeqKey), currentCachedSequence))
+		}
+
 		// Mark channel set as active, schedule defer
 		col.activeChannels().IncrChannels(collectionID, channelsSince)
 		defer col.activeChannels().DecrChannels(collectionID, channelsSince)
@@ -1037,7 +1042,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			}
 			if userChanged && col.user != nil {
 				newChannelsSince, _ := col.user.FilterToAvailableCollectionChannels(col.ScopeName, col.Name, chans)
-
+				// QUESTION: updating channels here again will cause test to hang
 				changedChannels = newChannelsSince.CompareKeys(channelsSince)
 
 				if len(changedChannels) > 0 {
