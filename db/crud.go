@@ -77,6 +77,9 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 			if importErr != nil {
 				return nil, nil, importErr
 			}
+			if doc == nil {
+				return nil, nil, base.ErrNotFound
+			}
 		}
 		if !doc.HasValidSyncData() {
 			return nil, nil, base.HTTPErrorf(404, "Not imported")
