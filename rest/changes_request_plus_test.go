@@ -45,5 +45,5 @@ func TestRequestPlusSkippedSequence(t *testing.T) {
 	var changesResp ChangesResults
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &changesResp))
 	// QUESTION: this returns alice doc, which makes sense because we did a channel grant?, but why didn't it catch up with `WaitForPendingChanges`
-	require.Len(t, changesResp, 1)
+	require.Len(t, changesResp.Results, 0)
 }
