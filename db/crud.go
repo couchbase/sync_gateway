@@ -77,6 +77,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 			if importErr != nil {
 				return nil, nil, importErr
 			}
+			// nil, nil returned when ErrImportCancelled is swallowed by importDoc switch
 			if doc == nil {
 				return nil, nil, base.ErrNotFound
 			}
