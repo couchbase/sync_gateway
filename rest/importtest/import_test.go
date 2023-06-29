@@ -1395,8 +1395,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 
 }
 
-// Verify that an on-demand import of a null document during write doesn't block
-// the incoming write
+// Verify that an on-demand import of a null document during write doesn't block the incoming write
 func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
@@ -1413,12 +1412,55 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
-	key := "TestXattrOnDemandImportNullBody"
+	key := t.Name()
 
-	// Write directly to bucket with an null body
+	// Write json doc directly to bucket with a null body
 	nullBody := []byte("null")
 	_, err := dataStore.AddRaw(key, 0, nullBody)
 	require.NoError(t, err, "Error writing SDK doc")
+
+	// Attempt to get the doc via Sync Gateway, triggering a cancelled on-demand import of the null document
+	response := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+key, "")
+	rest.RequireStatus(t, response, http.StatusBadRequest) // import attempted with empty body
+
+	// Attempt to update the doc via Sync Gateway, triggering on-demand import of the null document - should ignore empty body error and proceed with write
+	mobileBody := make(map[string]interface{})
+	mobileBody["type"] = "mobile"
+	mobileBody["channels"] = "ABC"
+	mobileBody["foo"] = "bar"
+	mobileBodyMarshalled, err := base.JSONMarshal(mobileBody)
+	assert.NoError(t, err, "Error marshalling body")
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+key, string(mobileBodyMarshalled))
+	rest.RequireStatus(t, response, 201)
+}
+
+// Verify that an on-demand import of a nil document during write doesn't block the incoming write
+func TestOnDemandWriteImportReplacingNilDoc(t *testing.T) {
+
+	base.SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := rest.RestTesterConfig{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: false,
+		}},
+	}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
+
+	key := t.Name()
+
+	// Write binary doc directly to bucket with a nil body
+	var nilBody []byte
+	_, err := dataStore.AddRaw(key, 0, nilBody)
+	require.NoError(t, err, "Error writing SDK doc")
+
+	// Attempt to get the doc via Sync Gateway, triggering a cancelled on-demand import of the null document
+	response := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+key, "")
+	rest.RequireStatus(t, response, 404)
 
 	// Attempt to update the doc via Sync Gateway, triggering on-demand import of the null document
 	mobileBody := make(map[string]interface{})
@@ -1427,9 +1469,8 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 	mobileBody["foo"] = "bar"
 	mobileBodyMarshalled, err := base.JSONMarshal(mobileBody)
 	assert.NoError(t, err, "Error marshalling body")
-	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+key, string(mobileBodyMarshalled))
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+key, string(mobileBodyMarshalled))
 	rest.RequireStatus(t, response, 201)
-
 }
 
 // Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is imported via on-demand
