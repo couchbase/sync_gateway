@@ -906,6 +906,7 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 		initError := <-doneChan
 		if initError != nil {
 			base.WarnfCtx(ctx, "Async database init returned error: %v", initError)
+			atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
 			return
 		}
 	}
@@ -913,7 +914,8 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 	// Before bringing the database online, ensure that the database hasn't been modified while we waited for initialization to complete
 	currentDbVersion := sc.GetDbVersion(dbc.Name)
 	if currentDbVersion != version {
-		base.InfofCtx(ctx, base.KeyConfig, "Database version changed while waiting for aync init - cancelling obsolete online request. Old version: %s New version: %s", version, currentDbVersion)
+		base.InfofCtx(ctx, base.KeyConfig, "Database version changed while waiting for async init - cancelling obsolete online request. Old version: %s New version: %s", version, currentDbVersion)
+		atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
 		return
 	}
 
@@ -921,6 +923,7 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 	err := dbc.StartOnlineProcesses(ctx)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyAll, "Error starting online processes after async initialization: %v", err)
+		atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
 	}
 
 	stateChangeMsg := "DB loaded from config"
