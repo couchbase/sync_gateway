@@ -554,10 +554,10 @@ func (c *changeCache) releaseUnusedSequence(sequence uint64, timeReceived time.T
 	} else {
 		changedChannels.Add(unusedSeq)
 	}
+	c.channelCache.AddSkippedSequence(change)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
 		c.notifyChange(changedChannels)
 	}
-	c.channelCache.AddSkippedSequence(change)
 }
 
 // Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
