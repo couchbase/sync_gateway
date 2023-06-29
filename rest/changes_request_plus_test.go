@@ -15,10 +15,11 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/require"
 )
 
-// TestRequirePlusSkippedSequence
+// TestRequirePlusSkippedSequence makes sure that a final skipped sequence in a request_plus request will not hang the request
 func TestRequestPlusSkippedSequence(t *testing.T) {
 
 	restTesterConfig := RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction}
@@ -40,10 +41,19 @@ func TestRequestPlusSkippedSequence(t *testing.T) {
 
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	resp = rt.SendUserRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&request_plus=true", docSeq), "", username)
-	RequireStatus(t, resp, http.StatusOK)
+	unusedSeq, err := db.AllocateTestSequence(rt.GetDatabase())
+	require.NoError(t, err)
+
+	requestFinished := make(chan struct{})
+	go func() {
+		resp = rt.SendUserRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&request_plus=true", docSeq), "", username)
+		RequireStatus(t, resp, http.StatusOK)
+		close(requestFinished)
+	}()
+	err = db.ReleaseTestSequence(rt.GetDatabase(), unusedSeq)
+	require.NoError(t, err)
+	<-requestFinished
 	var changesResp ChangesResults
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &changesResp))
-	// QUESTION: this returns alice doc, which makes sense because we did a channel grant?, but why didn't it catch up with `WaitForPendingChanges`
 	require.Len(t, changesResp.Results, 0)
 }
