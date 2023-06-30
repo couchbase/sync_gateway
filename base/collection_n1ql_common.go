@@ -48,6 +48,7 @@ type N1QLStore interface {
 	IndexMetaBucketID() string
 	IndexMetaScopeID() string
 	IndexMetaKeyspaceID() string
+	BucketName() string
 	WaitForIndexesOnline(indexNames []string, failfast bool) error
 
 	// executeQuery performs the specified query without any built-in retry handling and returns the resultset
