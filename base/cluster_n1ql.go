@@ -31,9 +31,9 @@ var _ N1QLStore = &ClusterOnlyN1QLStore{}
 // collection-scoped and non-collection-scoped operations.
 type ClusterOnlyN1QLStore struct {
 	cluster             *gocb.Cluster
-	bucketName          string
-	scopeName           string
-	collectionName      string
+	bucketName          string // User to build keyspace for query when not otherwise set
+	scopeName           string // Used to build keyspace for query when not otherwise set
+	collectionName      string // Used to build keyspace for query when not otherwise set
 	supportsCollections bool
 }
 
@@ -57,6 +57,10 @@ func NewClusterOnlyN1QLStore(cluster *gocb.Cluster, bucketName, scopeName, colle
 }
 
 func (cl *ClusterOnlyN1QLStore) GetName() string {
+	return cl.bucketName
+}
+
+func (cl *ClusterOnlyN1QLStore) BucketName() string {
 	return cl.bucketName
 }
 
@@ -228,4 +232,10 @@ func (cl *ClusterOnlyN1QLStore) waitUntilQueryServiceReady(timeout time.Duration
 	return cl.cluster.WaitUntilReady(timeout,
 		&gocb.WaitUntilReadyOptions{ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeQuery}},
 	)
+}
+
+// ClusterOnlyN1QLStore allows callers to set the scope and collection per operation
+func (cl *ClusterOnlyN1QLStore) SetScopeAndCollection(scName ScopeAndCollectionName) {
+	cl.scopeName = scName.Scope
+	cl.collectionName = scName.Collection
 }

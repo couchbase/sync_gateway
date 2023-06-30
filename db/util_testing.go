@@ -557,7 +557,7 @@ func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, 
 	return db, ctx
 }
 
-// GetScopesOptions sets up a ScopesOptions from a TestBucket. This will set up default or non default collections depending on the test harness use of SG_TEST_USE_NAMED_COLLECTIONS and whether the backing store supports collections.
+// GetScopesOptions sets up a ScopesOptions from a TestBucket. This will set up default or non default collections depending on the test harness use of SG_TEST_USE_DEFAULT_COLLECTION and whether the backing store supports collections.
 func GetScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesOptions {
 	if !base.TestsUseNamedCollections() {
 		if numCollections != 1 {

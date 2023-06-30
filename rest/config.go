@@ -1690,7 +1690,7 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	}
 
 	// TODO: Dynamic update instead of reload
-	if err := sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, cnf, failFast); err != nil {
+	if err := sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, cnf, failFast, false); err != nil {
 		// remove these entries we just created above if the database hasn't loaded properly
 		return false, fmt.Errorf("couldn't reload database: %w", err)
 	}
@@ -1708,7 +1708,7 @@ func (sc *ServerContext) addLegacyPrincipals(ctx context.Context, legacyDbUsers,
 			base.ErrorfCtx(ctx, "Couldn't get database context to install user principles: %v", err)
 			continue
 		}
-		err = sc.installPrincipals(ctx, dbCtx, dbUser, "user")
+		err = dbCtx.InstallPrincipals(ctx, dbUser, "user")
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't install user principles: %v", err)
 		}
@@ -1720,7 +1720,7 @@ func (sc *ServerContext) addLegacyPrincipals(ctx context.Context, legacyDbUsers,
 			base.ErrorfCtx(ctx, "Couldn't get database context to install role principles: %v", err)
 			continue
 		}
-		err = sc.installPrincipals(ctx, dbCtx, dbRole, "role")
+		err = dbCtx.InstallPrincipals(ctx, dbRole, "role")
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't install role principles: %v", err)
 		}

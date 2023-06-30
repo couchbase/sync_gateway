@@ -64,15 +64,16 @@ type ServerContext struct {
 	statsContext                  *statsContext
 	BootstrapContext              *bootstrapContext
 	HTTPClient                    *http.Client
-	cpuPprofFileMutex             sync.Mutex      // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
-	cpuPprofFile                  *os.File        // An open file descriptor holds the reference during CPU profiling
-	_httpServers                  []*http.Server  // A list of HTTP servers running under the ServerContext
-	GoCBAgent                     *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
-	NoX509HTTPClient              *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
-	hasStarted                    chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
-	LogContextID                  string          // ID to differentiate log messages from different server context
-	fetchConfigsLastUpdate        time.Time       // The last time fetchConfigsWithTTL() updated dbConfigs
-	allowScopesInPersistentConfig bool            // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
+	cpuPprofFileMutex             sync.Mutex           // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
+	cpuPprofFile                  *os.File             // An open file descriptor holds the reference during CPU profiling
+	_httpServers                  []*http.Server       // A list of HTTP servers running under the ServerContext
+	GoCBAgent                     *gocbcore.Agent      // GoCB Agent to use when obtaining management endpoints
+	NoX509HTTPClient              *http.Client         // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
+	hasStarted                    chan struct{}        // A channel that is closed via PostStartup once the ServerContext has fully started
+	LogContextID                  string               // ID to differentiate log messages from different server context
+	fetchConfigsLastUpdate        time.Time            // The last time fetchConfigsWithTTL() updated dbConfigs
+	allowScopesInPersistentConfig bool                 // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
+	DatabaseInitManager           *DatabaseInitManager // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
 }
 
@@ -98,6 +99,7 @@ type getOrAddDatabaseConfigOptions struct {
 	useExisting       bool            //  if true, return an existing DatabaseContext vs return an error
 	connectToBucketFn db.OpenBucketFn // supply a custom function for buckets, used for testing only
 	forceOnline       bool            // force the database to come online, even if startOffline is set
+	asyncOnline       bool            // Whether getOrAddDatabaseConfig should block until database is ready, when startOffline=false
 }
 
 func (sc *ServerContext) CreateLocalDatabase(ctx context.Context, dbs DbConfigMap) error {
@@ -155,6 +157,10 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 	}
 	if config.Replicator.MaxConcurrentReplications != 0 {
 		sc.ActiveReplicationsCounter.activeReplicatorLimit = config.Replicator.MaxConcurrentReplications
+	}
+
+	if sc.persistentConfig {
+		sc.DatabaseInitManager = &DatabaseInitManager{}
 	}
 
 	sc.startStatsLogger(ctx)
@@ -384,17 +390,18 @@ func (sc *ServerContext) ReloadDatabase(ctx context.Context, reloadDbName string
 	return dbContext, err
 }
 
-func (sc *ServerContext) ReloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
+func (sc *ServerContext) ReloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig, asyncOnline bool) error {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true)
+	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, asyncOnline)
 }
 
-func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool) error {
+func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool, asyncOnline bool) error {
 	sc._removeDatabase(ctx, config.Name)
 	_, err := sc._getOrAddDatabaseFromConfig(ctx, config, getOrAddDatabaseConfigOptions{
 		useExisting: false,
 		failFast:    failFast,
+		asyncOnline: asyncOnline,
 	})
 	return err
 }
@@ -518,8 +525,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		useViews = true
 	}
 
+	type indexInitData struct {
+		scopeAndCollection base.ScopeAndCollectionName
+		indexSet           db.CollectionIndexesType
+		datastore          base.DataStore
+	}
+
+	collectionsRequiringIndexes := make([]indexInitData, 0)
+
 	// initDataStore is a function to initialize Views or GSI indexes for a datastore
-	initDataStore := func(ds base.DataStore, metadataIndexes db.CollectionIndexesType) (err error) {
+	initDataStore := func(ds base.DataStore, metadataIndexes db.CollectionIndexesType, name base.ScopeAndCollectionName) (err error) {
 		if useViews {
 			viewErr := db.InitializeViews(ctx, ds)
 			if viewErr != nil {
@@ -528,37 +543,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return nil
 		}
 
-		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
-		if !gsiSupported {
-			return errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
+		indexInit := indexInitData{
+			scopeAndCollection: name,
+			indexSet:           metadataIndexes,
+			datastore:          ds,
 		}
-
-		numReplicas := DefaultNumIndexReplicas
-		if config.NumIndexReplicas != nil {
-			numReplicas = *config.NumIndexReplicas
-		}
-		n1qlStore, ok := base.AsN1QLStore(ds)
-		if !ok {
-			return errors.New("Cannot create indexes on non-Couchbase data store.")
-
-		}
-		options := db.InitializeIndexOptions{
-			FailFast:        false,
-			NumReplicas:     numReplicas,
-			Serverless:      sc.Config.IsServerless(),
-			MetadataIndexes: metadataIndexes,
-			UseXattrs:       config.UseXattrs(),
-		}
-		dsName, ok := base.AsDataStoreName(ds)
-		if !ok {
-			return fmt.Errorf("Could not get datastore name from %s", base.MD(ds.GetName()))
-		}
-		ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), dsName.ScopeName(), dsName.CollectionName())
-		indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
-		if indexErr != nil {
-			return indexErr
-		}
-
+		collectionsRequiringIndexes = append(collectionsRequiringIndexes, indexInit)
 		return nil
 	}
 
@@ -605,17 +595,17 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				if err != nil {
 					return nil, err
 				}
+				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
 				if resyncRequired {
-					collectionsRequiringResync = append(collectionsRequiringResync, base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+					collectionsRequiringResync = append(collectionsRequiringResync, scName)
 				}
-
-				if err := initDataStore(dataStore, metadataIndexOption); err != nil {
+				if err := initDataStore(dataStore, metadataIndexOption, scName); err != nil {
 					return nil, err
 				}
 			}
 		}
 		if !hasDefaultCollection {
-			if err := initDataStore(bucket.DefaultDataStore(), db.IndexesMetadataOnly); err != nil {
+			if err := initDataStore(bucket.DefaultDataStore(), db.IndexesMetadataOnly, base.DefaultScopeAndCollectionName()); err != nil {
 				return nil, err
 			}
 		}
@@ -628,8 +618,58 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if resyncRequired {
 			collectionsRequiringResync = append(collectionsRequiringResync, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: base.DefaultCollection})
 		}
-		if err := initDataStore(bucket.DefaultDataStore(), db.IndexesAll); err != nil {
+		if err := initDataStore(bucket.DefaultDataStore(), db.IndexesAll, base.DefaultScopeAndCollectionName()); err != nil {
 			return nil, err
+		}
+	}
+
+	startOffline := base.BoolDefault(config.StartOffline, false)
+	var dbInitDoneChan chan error
+	// Initialize any required indexes
+	if len(collectionsRequiringIndexes) > 0 {
+		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
+		if !gsiSupported {
+			return nil, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
+		}
+
+		// If database has been requested to start offline, or there's an active async initialization, use async initialization
+		// DatabaseInitManager will be nil if persistent config is not being used.
+		if sc.DatabaseInitManager != nil && (startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)) {
+			// Initialize indexes asynchronously using DatabaseInitManager.
+			dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			// Initialize indexes as a blocking, synchronous operation using per-collection N1QL store
+			numReplicas := DefaultNumIndexReplicas
+			if config.NumIndexReplicas != nil {
+				numReplicas = *config.NumIndexReplicas
+			}
+
+			for _, indexInfo := range collectionsRequiringIndexes {
+				ds := indexInfo.datastore
+				n1qlStore, ok := base.AsN1QLStore(ds)
+				if !ok {
+					return nil, errors.New("Cannot create indexes on non-Couchbase data store.")
+				}
+				options := db.InitializeIndexOptions{
+					FailFast:        false,
+					NumReplicas:     numReplicas,
+					Serverless:      sc.Config.IsServerless(),
+					MetadataIndexes: indexInfo.indexSet,
+					UseXattrs:       config.UseXattrs(),
+				}
+				dsName, ok := base.AsDataStoreName(ds)
+				if !ok {
+					return nil, fmt.Errorf("Could not get datastore name from %s", base.MD(ds.GetName()))
+				}
+				ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), dsName.ScopeName(), dsName.CollectionName())
+				indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
+				if indexErr != nil {
+					return nil, indexErr
+				}
+			}
 		}
 	}
 
@@ -789,19 +829,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.AllowEmptyPassword = base.BoolDefault(config.AllowEmptyPassword, false)
 	dbcontext.ServeInsecureAttachmentTypes = base.BoolDefault(config.ServeInsecureAttachmentTypes, false)
 
-	// Create default users & roles:
-	if err := sc.installPrincipals(ctx, dbcontext, config.Roles, "role"); err != nil {
-		return nil, err
-	}
-	if err := sc.installPrincipals(ctx, dbcontext, config.Users, "user"); err != nil {
-		return nil, err
-	}
-
-	if config.Guest != nil {
-		guest := map[string]*auth.PrincipalConfig{base.GuestUsername: config.Guest}
-		if err := sc.installPrincipals(ctx, dbcontext, guest, "user"); err != nil {
-			return nil, err
-		}
+	dbcontext.Options.ConfigPrincipals = &db.ConfigPrincipals{
+		Users: config.Users,
+		Roles: config.Roles,
+		Guest: config.Guest,
 	}
 
 	// Initialize event handlers
@@ -825,7 +856,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	stateChangeMsg := "DB loaded from config"
 
-	startOffline := base.BoolDefault(config.StartOffline, false)
 	needsResync := len(dbcontext.RequireResync) > 0
 
 	if needsResync || (startOffline && !options.forceOnline) {
@@ -839,14 +869,77 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		return dbcontext, nil
 	}
 
-	atomic.StoreUint32(&dbcontext.State, db.DBOnline)
-	_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
+	// If asyncOnline wasn't specified, block until db init is completed, then start online processes
+	if !options.asyncOnline || dbInitDoneChan == nil {
+		base.DebugfCtx(ctx, base.KeyConfig, "Waiting for database init to complete...")
+		if dbInitDoneChan != nil {
+			initError := <-dbInitDoneChan
+			if initError != nil {
+				return nil, initError
+			}
+		}
+		base.DebugfCtx(ctx, base.KeyConfig, "Database init completed, starting online processes")
+		if err := dbcontext.StartOnlineProcesses(ctx); err != nil {
+			return nil, err
+		}
+		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
+		return dbcontext, nil
+	} else {
+		// If asyncOnline is requested, set state to Starting and spawn a separate goroutine to wait for init completion
+		// before going online
+		base.DebugfCtx(ctx, base.KeyConfig, "Waiting for database init to complete asynchonously...")
+		atomic.StoreUint32(&dbcontext.State, db.DBStarting)
+		nonCancelCtx := base.NewNonCancelCtxForDatabase(dbName)
+		go sc.asyncDatabaseOnline(nonCancelCtx, dbcontext, dbInitDoneChan, config.Version)
+		return dbcontext, nil
+	}
+}
 
-	if err := dbcontext.StartOnlineProcesses(ctx); err != nil {
-		return nil, err
+// asyncDatabaseOnline waits for async initialization to complete (based on doneChan).  On successful completion, brings the database online.
+// Checks to ensure the database config hasn't been updated while waiting for init to complete - if that happens, doesn't attempt to bring
+// db online (it may have been set to offline=true)
+func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableContext, dbc *db.DatabaseContext, doneChan chan error, version string) {
+
+	ctx := nonCancelCtx.Ctx
+	if doneChan != nil {
+		initError := <-doneChan
+		if initError != nil {
+			base.WarnfCtx(ctx, "Async database init returned error: %v", initError)
+			atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
+			return
+		}
 	}
 
-	return dbcontext, nil
+	// Before bringing the database online, ensure that the database hasn't been modified while we waited for initialization to complete
+	currentDbVersion := sc.GetDbVersion(dbc.Name)
+	if currentDbVersion != version {
+		base.InfofCtx(ctx, base.KeyConfig, "Database version changed while waiting for async init - cancelling obsolete online request. Old version: %s New version: %s", version, currentDbVersion)
+		atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
+		return
+	}
+
+	base.DebugfCtx(ctx, base.KeyConfig, "Async database initialization complete, starting online processes...")
+	err := dbc.StartOnlineProcesses(ctx)
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyAll, "Error starting online processes after async initialization: %v", err)
+		atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
+	}
+
+	stateChangeMsg := "DB loaded from config"
+	atomic.StoreUint32(&dbc.State, db.DBOnline)
+	_ = dbc.EventMgr.RaiseDBStateChangeEvent(dbc.Name, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
+
+}
+
+func (sc *ServerContext) GetDbVersion(dbName string) string {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	currentDbConfig, ok := sc.dbConfigs[dbName]
+	if !ok {
+		return ""
+	}
+	return currentDbConfig.Version
 }
 
 // getJavascriptTimeout returns the duration javascript functions can run.
@@ -1293,9 +1386,16 @@ func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, event
 	return nil
 }
 
+// RemoveDatabase is called when an external request is made to delete the database
 func (sc *ServerContext) RemoveDatabase(ctx context.Context, dbName string) bool {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
+
+	// If async init is running for the database, cancel it for an external remove.  (cannot be
+	// done in _removeDatabase, as this is called during reload)
+	if sc.DatabaseInitManager != nil && sc.DatabaseInitManager.HasActiveInitialization(dbName) {
+		sc.DatabaseInitManager.Cancel(dbName)
+	}
 
 	return sc._removeDatabase(ctx, dbName)
 }
@@ -1318,6 +1418,7 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 	if dbCtx == nil {
 		return false
 	}
+
 	if ok := sc._unloadDatabase(ctx, dbName); !ok {
 		return ok
 	}
@@ -1411,58 +1512,6 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 	return nil, base.ErrNotFound
 }
 
-func (sc *ServerContext) installPrincipals(ctx context.Context, dbc *db.DatabaseContext, spec map[string]*auth.PrincipalConfig, what string) error {
-	for name, princ := range spec {
-		isGuest := name == base.GuestUsername
-		if isGuest {
-			internalName := ""
-			princ.Name = &internalName
-		} else {
-			n := name
-			princ.Name = &n
-		}
-
-		createdPrincipal := true
-		worker := func() (shouldRetry bool, err error, value interface{}) {
-			_, err = dbc.UpdatePrincipal(ctx, princ, (what == "user"), isGuest)
-			if err != nil {
-				if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
-					// Ignore and absorb this error if it's a conflict error, which just means that updatePrincipal didn't overwrite an existing user.
-					// Since if there's an existing user it's "mission accomplished", this can be treated as a success case.
-					createdPrincipal = false
-					return false, nil, nil
-				}
-
-				if err == base.ErrViewTimeoutError {
-					// Timeout error, possibly due to view re-indexing, so retry
-					base.InfofCtx(ctx, base.KeyAuth, "Error calling UpdatePrincipal(): %v.  Will retry in case this is a temporary error", err)
-					return true, err, nil
-				}
-
-				// Unexpected error, return error don't retry
-				return false, err, nil
-			}
-
-			// No errors, assume it worked
-			return false, nil, nil
-
-		}
-
-		err, _ := base.RetryLoop("installPrincipals", worker, base.CreateDoublingSleeperFunc(16, 10))
-		if err != nil {
-			return err
-		}
-
-		if isGuest {
-			base.InfofCtx(ctx, base.KeyAll, "Reset guest user to config")
-		} else if createdPrincipal {
-			base.InfofCtx(ctx, base.KeyAll, "Created %s %q", what, base.UD(name))
-		}
-
-	}
-	return nil
-}
-
 // ////// STATS LOGGING
 
 type statsWrapper struct {
@@ -1551,7 +1600,10 @@ func (sc *ServerContext) updateCalculatedStats() {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
 	for _, dbContext := range sc.databases_ {
-		dbContext.UpdateCalculatedStats()
+		dbState := atomic.LoadUint32(&dbContext.State)
+		if dbState == db.DBOnline {
+			dbContext.UpdateCalculatedStats()
+		}
 	}
 
 }
@@ -1906,6 +1958,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 		return err
 	}
 	sc.GoCBAgent = goCBAgent
+	//sc.DatabaseInitManager.cluster = goCBAgent.
 
 	sc.NoX509HTTPClient, err = sc.initializeNoX509HttpClient()
 	if err != nil {
