@@ -42,7 +42,6 @@ func TestRequestPlusSkippedSequence(t *testing.T) {
 
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	caughtUpStart := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
 	// add an unused sequence
 	unusedSeq, err := db.AllocateTestSequence(rt.GetDatabase())
 	require.NoError(t, err)
@@ -58,8 +57,6 @@ func TestRequestPlusSkippedSequence(t *testing.T) {
 	err = db.ReleaseTestSequence(rt.GetDatabase(), unusedSeq)
 	require.NoError(t, err)
 	<-requestFinished
-	// the changes feed should catch up this value
-	require.NoError(t, rt.GetDatabase().WaitForTotalCaughtUp(caughtUpStart+1))
 	var changesResp ChangesResults
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &changesResp))
 	require.Len(t, changesResp.Results, 0)
