@@ -48,6 +48,7 @@ type N1QLStore interface {
 	IndexMetaBucketID() string
 	IndexMetaScopeID() string
 	IndexMetaKeyspaceID() string
+	BucketName() string
 	WaitForIndexesOnline(indexNames []string, failfast bool) error
 
 	// executeQuery performs the specified query without any built-in retry handling and returns the resultset
@@ -505,4 +506,82 @@ func (i *gocbRawIterator) Close() error {
 	}
 	resultErr := i.rawResult.Err()
 	return resultErr
+}
+
+func IndexMetaKeyspaceID(bucketName, scopeName, collectionName string) string {
+	if IsDefaultCollection(scopeName, collectionName) {
+		return bucketName
+	}
+	return collectionName
+}
+
+// WaitForIndexesOnline takes set of indexes and watches them till they're online.
+func WaitForIndexesOnline(cluster *gocb.Cluster, bucketName, scopeName, collectionName string, indexNames []string, failfast bool) error {
+	logCtx := context.TODO()
+	mgr := cluster.QueryIndexes()
+	maxNumAttempts := 180
+	if failfast {
+		maxNumAttempts = 1
+	}
+	retrySleeper := CreateMaxDoublingSleeperFunc(maxNumAttempts, 100, 5000)
+	retryCount := 0
+
+	onlineIndexes := make(map[string]bool)
+
+	indexOption := gocb.GetAllQueryIndexesOptions{
+		ScopeName:      scopeName,
+		CollectionName: collectionName,
+		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
+	}
+
+	for {
+		watchedOnlineIndexCount := 0
+		currIndexes, err := mgr.GetAllIndexes(bucketName, &indexOption)
+		if err != nil {
+			return err
+		}
+		// check each of the current indexes state, add to map once finished to make sure each index online is only being logged once
+		for i := 0; i < len(currIndexes); i++ {
+			if currIndexes[i].State == IndexStateOnline {
+				if !onlineIndexes[currIndexes[i].Name] {
+					InfofCtx(logCtx, KeyAll, "Index %s is online", MD(currIndexes[i].Name))
+					onlineIndexes[currIndexes[i].Name] = true
+				}
+			}
+		}
+		// check online index against indexes we watch to have online, increase counter as each comes online
+		for _, listVal := range indexNames {
+			if onlineIndexes[listVal] {
+				watchedOnlineIndexCount++
+			}
+		}
+
+		if watchedOnlineIndexCount == len(indexNames) {
+			return nil
+		}
+		retryCount++
+		shouldContinue, sleepMs := retrySleeper(retryCount)
+		if !shouldContinue {
+			return fmt.Errorf("error waiting for indexes for bucket %s....", MD(bucketName))
+		}
+		InfofCtx(logCtx, KeyAll, "Indexes for bucket %s not ready - retrying...", MD(bucketName))
+		time.Sleep(time.Millisecond * time.Duration(sleepMs))
+	}
+}
+
+func GetAllIndexes(cluster *gocb.Cluster, bucketName, scopeName, collectionName string) (indexes []string, err error) {
+	indexes = []string{}
+	opts := &gocb.GetAllQueryIndexesOptions{
+		ScopeName:      scopeName,
+		CollectionName: collectionName,
+	}
+	indexInfo, err := cluster.QueryIndexes().GetAllIndexes(bucketName, opts)
+	if err != nil {
+		return indexes, err
+	}
+
+	for _, indexInfo := range indexInfo {
+		indexes = append(indexes, indexInfo.Name)
+	}
+	return indexes, nil
 }

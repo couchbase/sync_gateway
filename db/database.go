@@ -175,6 +175,13 @@ type DatabaseContextOptions struct {
 	MetadataID                    string         // MetadataID used for metadata storage
 	BlipStatsReportingInterval    int64          // interval to report blip stats in milliseconds
 	ChangesRequestPlus            bool           // Sets the default value for request_plus, for non-continuous changes feeds
+	ConfigPrincipals              *ConfigPrincipals
+}
+
+type ConfigPrincipals struct {
+	Users map[string]*auth.PrincipalConfig
+	Roles map[string]*auth.PrincipalConfig
+	Guest *auth.PrincipalConfig
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -2113,6 +2120,24 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		}
 	}()
 
+	// Create config-based principals
+	// Create default users & roles:
+	if db.Options.ConfigPrincipals != nil {
+		if err := db.InstallPrincipals(ctx, db.Options.ConfigPrincipals.Roles, "role"); err != nil {
+			return err
+		}
+		if err := db.InstallPrincipals(ctx, db.Options.ConfigPrincipals.Users, "user"); err != nil {
+			return err
+		}
+
+		if db.Options.ConfigPrincipals.Guest != nil {
+			guest := map[string]*auth.PrincipalConfig{base.GuestUsername: db.Options.ConfigPrincipals.Guest}
+			if err := db.InstallPrincipals(ctx, guest, "user"); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
 	notifyChange := func(changedChannels channels.Set) {
 		db.mutationListener.Notify(changedChannels)
@@ -2323,5 +2348,57 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.startReplications(ctx)
 
+	return nil
+}
+
+func (dbc *DatabaseContext) InstallPrincipals(ctx context.Context, spec map[string]*auth.PrincipalConfig, what string) error {
+	for name, princ := range spec {
+		isGuest := name == base.GuestUsername
+		if isGuest {
+			internalName := ""
+			princ.Name = &internalName
+		} else {
+			n := name
+			princ.Name = &n
+		}
+
+		createdPrincipal := true
+		worker := func() (shouldRetry bool, err error, value interface{}) {
+			_, err = dbc.UpdatePrincipal(ctx, princ, (what == "user"), isGuest)
+			if err != nil {
+				if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
+					// Ignore and absorb this error if it's a conflict error, which just means that updatePrincipal didn't overwrite an existing user.
+					// Since if there's an existing user it's "mission accomplished", this can be treated as a success case.
+					createdPrincipal = false
+					return false, nil, nil
+				}
+
+				if err == base.ErrViewTimeoutError {
+					// Timeout error, possibly due to view re-indexing, so retry
+					base.InfofCtx(ctx, base.KeyAuth, "Error calling UpdatePrincipal(): %v.  Will retry in case this is a temporary error", err)
+					return true, err, nil
+				}
+
+				// Unexpected error, return error don't retry
+				return false, err, nil
+			}
+
+			// No errors, assume it worked
+			return false, nil, nil
+
+		}
+
+		err, _ := base.RetryLoop("installPrincipals", worker, base.CreateDoublingSleeperFunc(16, 10))
+		if err != nil {
+			return err
+		}
+
+		if isGuest {
+			base.InfofCtx(ctx, base.KeyAll, "Reset guest user to config")
+		} else if createdPrincipal {
+			base.InfofCtx(ctx, base.KeyAll, "Created %s %q", what, base.UD(name))
+		}
+
+	}
 	return nil
 }

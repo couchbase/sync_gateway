@@ -80,6 +80,7 @@ func GetGoCBv2Bucket(spec BucketSpec) (*GocbV2Bucket, error) {
 		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeManagement},
 		RetryStrategy: &goCBv2FailFastRetryStrategy{},
 	})
+
 	if err != nil {
 		_ = cluster.Close(nil)
 		if errors.Is(err, gocb.ErrAuthenticationFailure) {
