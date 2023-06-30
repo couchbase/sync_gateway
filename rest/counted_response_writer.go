@@ -27,11 +27,11 @@ type CountableResponseWriter interface {
 
 // CountedResponseWriter is an http.ResponseWriter wrapper that counts the number of bytes written in a response. This ignores the bytes written in headers.
 type CountedResponseWriter struct {
-	writer              http.ResponseWriter
-	lastBytesWritten    int64
-	statsUpdateInterval time.Duration
-	lastReportTime      time.Time
-	bytesWrittenStat    *base.SgwIntStat
+	writer              http.ResponseWriter // underly
+	lastReportTime      time.Time           // last time stats were reported
+	bytesWrittenStat    *base.SgwIntStat    // stat for reporting stats, this can be not nil if there are no stats
+	lastBytesWritten    int64               // number of bytes written since the last reporting of stats
+	statsUpdateInterval time.Duration       // how often to report stats
 }
 
 // NewCountedResponseWriter returns a new CountedResponseWriter that wraps the given ResponseWriter.
@@ -67,7 +67,7 @@ func (w *CountedResponseWriter) WriteHeader(statusCode int) {
 	w.writer.WriteHeader(statusCode)
 }
 
-// ReportStats reports bytes written since the last time this function was called. This is not locked, so is only safe to call while no one is calling Write from multiple goroutines.
+// reportStats reports bytes written by this response writer, since the last report. This will only report stats if the stat is defined. This is not locked, so is only safe to call while no one is calling EncodedResponseWriter.Write. If updateImmediately is set, the stats are reported immediately, otherwise they are reported if enough time has elapsed since last reporting.
 func (w *CountedResponseWriter) reportStats(updateImmediately bool) {
 	currentTime := time.Now()
 	if !updateImmediately && time.Since(currentTime) < w.statsUpdateInterval {

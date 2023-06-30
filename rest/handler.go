@@ -251,7 +251,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	if h.server.Config.API.CompressResponses == nil || *h.server.Config.API.CompressResponses {
 		var stat *base.SgwIntStat
 		if h.shouldUpdateBytesTransferredStats() {
-			stat = h.db.DbStats.Database().HTTPBytesWritten
+			stat = h.db.DbStats.Database().PublicRestBytesWritten
 		}
 		if encoded := NewEncodedResponseWriter(h.response, h.rq, stat, defaultBytesStatsReportingInterval); encoded != nil {
 			h.response = encoded
@@ -612,7 +612,7 @@ func (h *handler) updateResponseWriter() {
 		return
 	}
 	h.response = NewCountedResponseWriter(h.response,
-		h.db.DbStats.Database().HTTPBytesWritten,
+		h.db.DbStats.Database().PublicRestBytesWritten,
 		defaultBytesStatsReportingInterval)
 }
 

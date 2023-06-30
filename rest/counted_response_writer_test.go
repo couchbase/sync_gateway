@@ -82,16 +82,16 @@ func TestCountableResponseWriterRestTester(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	stats := rt.GetDatabase().DbStats.Database()
-	require.Equal(t, int64(0), stats.HTTPBytesWritten.Value())
+	require.Equal(t, int64(0), stats.PublicRestBytesWritten.Value())
 
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", alice)
 	RequireStatus(t, resp, http.StatusOK)
-	require.Greater(t, stats.HTTPBytesWritten.Value(), int64(0))
-	stats.HTTPBytesWritten.Set(0)
+	require.Greater(t, stats.PublicRestBytesWritten.Value(), int64(0))
+	stats.PublicRestBytesWritten.Set(0)
 
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", "")
 	RequireStatus(t, resp, http.StatusOK)
-	require.Greater(t, stats.HTTPBytesWritten.Value(), int64(0))
+	require.Greater(t, stats.PublicRestBytesWritten.Value(), int64(0))
 }
 
 // TestCountableResponseWriterNoDelay tests that the stats are immediately updated if there is no delay set

@@ -461,8 +461,6 @@ type DatabaseStats struct {
 	DocWritesXattrBytes *SgwIntStat `json:"doc_writes_xattr_bytes"`
 	// Highest sequence number seen on the caching DCP feed.
 	HighSeqFeed *SgwIntStat `json:"high_seq_feed"`
-	// Number of bytes written over public interface for REST api
-	HTTPBytesWritten *SgwIntStat `json:"http_bytes_written"`
 	// The number of attachments compacted
 	NumAttachmentsCompacted *SgwIntStat `json:"num_attachments_compacted"`
 	// The total number of documents read via Couchbase Lite 2.x replication since Sync Gateway node startup.
@@ -478,6 +476,8 @@ type DatabaseStats struct {
 	// The total number of replications created since Sync Gateway node startup.
 	NumReplicationsTotal   *SgwIntStat `json:"num_replications_total"`
 	NumTombstonesCompacted *SgwIntStat `json:"num_tombstones_compacted"`
+	// Number of bytes written over public interface for REST api
+	PublicRestBytesWritten *SgwIntStat `json:"public_rest_bytes_written"`
 	// The total number of sequence numbers assigned.
 	SequenceAssignedCount *SgwIntStat `json:"sequence_assigned_count"`
 	// The total number of high sequence lookups.
@@ -1364,7 +1364,7 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.HTTPBytesWritten, err = NewIntStat(SubsystemDatabaseKey, "http_bytes_written", labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.PublicRestBytesWritten, err = NewIntStat(SubsystemDatabaseKey, "http_bytes_written", labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
@@ -1484,7 +1484,6 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.DocWritesBytes)
 	prometheus.Unregister(d.DatabaseStats.DocWritesXattrBytes)
 	prometheus.Unregister(d.DatabaseStats.HighSeqFeed)
-	prometheus.Unregister(d.DatabaseStats.HTTPBytesWritten)
 	prometheus.Unregister(d.DatabaseStats.DocWritesBytesBlip)
 	prometheus.Unregister(d.DatabaseStats.NumAttachmentsCompacted)
 	prometheus.Unregister(d.DatabaseStats.NumDocReadsBlip)
@@ -1493,6 +1492,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.NumReplicationsActive)
 	prometheus.Unregister(d.DatabaseStats.NumReplicationsTotal)
 	prometheus.Unregister(d.DatabaseStats.NumTombstonesCompacted)
+	prometheus.Unregister(d.DatabaseStats.PublicRestBytesWritten)
 	prometheus.Unregister(d.DatabaseStats.SequenceAssignedCount)
 	prometheus.Unregister(d.DatabaseStats.SequenceGetCount)
 	prometheus.Unregister(d.DatabaseStats.SequenceIncrCount)
