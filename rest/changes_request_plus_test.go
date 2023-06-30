@@ -46,6 +46,8 @@ func TestRequestPlusSkippedSequence(t *testing.T) {
 	unusedSeq, err := db.AllocateTestSequence(rt.GetDatabase())
 	require.NoError(t, err)
 
+	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
+
 	requestFinished := make(chan struct{})
 	// make sure this request doesn't hang
 	go func() {
@@ -53,6 +55,7 @@ func TestRequestPlusSkippedSequence(t *testing.T) {
 		RequireStatus(t, resp, http.StatusOK)
 		close(requestFinished)
 	}()
+	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
 	// the request should finish once the sequence is released
 	err = db.ReleaseTestSequence(rt.GetDatabase(), unusedSeq)
 	require.NoError(t, err)
