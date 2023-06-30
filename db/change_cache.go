@@ -33,6 +33,8 @@ const (
 	DefaultCachePendingSeqMaxWait = 5 * time.Second  // Max time we'll wait for a pending sequence before sending to missed queue
 	DefaultSkippedSeqMaxWait      = 60 * time.Minute // Max time we'll wait for an entry in the missing before purging
 	QueryTombstoneBatch           = 250              // Max number of tombstones checked per query during Compact
+	unusedSeqKey                  = "_unusedSeqKey"  // Key used by ChangeWaiter to mark unused sequences
+	unusedSeqCollectionID         = 0                // Collection ID used by ChangeWaiter to mark unused sequences
 )
 
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
@@ -548,6 +550,13 @@ func (c *changeCache) releaseUnusedSequence(sequence uint64, timeReceived time.T
 	// Since processEntry may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
 	changedChannels := c.processEntry(change)
+	unusedSeq := channels.NewID(unusedSeqKey, unusedSeqCollectionID)
+	if changedChannels == nil {
+		changedChannels = channels.SetOfNoValidate(unusedSeq)
+	} else {
+		changedChannels.Add(unusedSeq)
+	}
+	c.channelCache.AddSkippedSequence(change)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
 		c.notifyChange(changedChannels)
 	}

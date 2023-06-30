@@ -548,8 +548,8 @@ func (db *DatabaseCollectionWithUser) MultiChangesFeed(ctx context.Context, chan
 
 }
 
-func (db *DatabaseCollectionWithUser) startChangeWaiter() *ChangeWaiter {
-	return db.mutationListener().NewWaiterWithChannels(channels.Set{}, db.user)
+func (db *DatabaseCollectionWithUser) startChangeWaiter(trackUnusedSequences bool) *ChangeWaiter {
+	return db.mutationListener().NewWaiterWithChannels(channels.Set{}, db.user, trackUnusedSequences)
 }
 
 func (db *DatabaseCollectionWithUser) appendUserFeed(feeds []<-chan *ChangeEntry, options ChangesOptions) []<-chan *ChangeEntry {
@@ -643,7 +643,8 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 
 		// If changes feed requires more than one ChangesLoop iteration, initialize changeWaiter
 		if options.Wait || options.RequestPlusSeq > currentCachedSequence {
-			changeWaiter = col.startChangeWaiter() // Waiter is updated with the actual channel set (post-user reload) at the start of the outer changes loop
+			trackUnusedSequences := options.RequestPlusSeq > 0
+			changeWaiter = col.startChangeWaiter(trackUnusedSequences) // Waiter is updated with the actual channel set (post-user reload) at the start of the outer changes loop
 			userCounter = changeWaiter.CurrentUserCount()
 			// Reload user to pick up user changes that happened between auth and the change waiter
 			// initialization.  Without this, notification for user doc changes in that window (a) won't be
@@ -1037,7 +1038,6 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			}
 			if userChanged && col.user != nil {
 				newChannelsSince, _ := col.user.FilterToAvailableCollectionChannels(col.ScopeName, col.Name, chans)
-
 				changedChannels = newChannelsSince.CompareKeys(channelsSince)
 
 				if len(changedChannels) > 0 {
@@ -1058,7 +1058,6 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 
 		}
 	}()
-
 	return output, nil
 }
 
