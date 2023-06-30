@@ -334,8 +334,9 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		base.DebugfCtx(ctx, base.KeyImport, "Imported %s (delete=%v) as rev %s", base.UD(newDoc.ID), isDelete, newRev)
 	case base.ErrImportCancelled:
 		// Import was cancelled (SG purge) - don't return error.
+		base.DebugfCtx(ctx, base.KeyImport, "Import cancelled for purged doc %s\n", base.UD(newDoc.ID))
 	case base.ErrImportCancelledFilter:
-		// Import was cancelled based on import filter.  Return error (required for on-demand write import logic), but don't log as error/warning.
+		// Import was cancelled based on import filter.  Return error (required for on-demand write import logic), but don't log as error/warning. Already logged above.
 		return nil, err
 	case base.ErrImportCasFailure:
 		// Import was cancelled due to CAS failure.
