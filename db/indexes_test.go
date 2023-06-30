@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestInitializeIndexes ensures all of SG's indexes can be built using both values of xattrs
+// TestInitializeIndexes ensures all of SG's indexes can be built using both values of xattrs, with all N1QLStore implementations
 func TestInitializeIndexes(t *testing.T) {
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
@@ -32,17 +32,22 @@ func TestInitializeIndexes(t *testing.T) {
 	base.LongRunningTest(t)
 
 	tests := []struct {
-		xattrs      bool
-		collections bool
+		xattrs           bool
+		collections      bool
+		clusterN1QLStore bool
 	}{
-		{true, false},
-		{false, false},
-		{true, true},
-		{false, true},
+		{true, false, false},
+		{false, false, false},
+		{true, true, false},
+		{false, true, false},
+		{true, false, true},
+		{false, false, true},
+		{true, true, true},
+		{false, true, true},
 	}
 
 	for _, test := range tests {
-		t.Run(fmt.Sprintf("xattrs=%v collections=%v", test.xattrs, test.collections), func(t *testing.T) {
+		t.Run(fmt.Sprintf("xattrs=%v collections=%v clusterN1QL=%v", test.xattrs, test.collections, test.clusterN1QLStore), func(t *testing.T) {
 			var db *Database
 			var ctx context.Context
 
@@ -56,8 +61,16 @@ func TestInitializeIndexes(t *testing.T) {
 			defer db.Close(ctx)
 			collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
-			n1qlStore, isGoCBBucket := base.AsN1QLStore(collection.dataStore)
-			require.True(t, isGoCBBucket)
+			gocbBucket, err := base.AsGocbV2Bucket(db.Bucket)
+			require.NoError(t, err)
+
+			n1qlStore, ok := base.AsN1QLStore(collection.dataStore)
+			require.True(t, ok)
+
+			if test.clusterN1QLStore {
+				n1qlStore, err = base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), collection.ScopeName, collection.Name)
+				require.NoError(t, err)
+			}
 
 			// drop and restore indexes between tests, to the way the bucket pool would
 			defer func() {
