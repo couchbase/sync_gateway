@@ -554,7 +554,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 2)
 
 	// Start wait for doc in ABC
-	waiter := db.mutationListener.NewWaiterWithChannels(channels.SetOf(t, "ABC"), nil)
+	waiter := db.mutationListener.NewWaiterWithChannels(channels.SetOf(t, "ABC"), nil, false)
 
 	successChan := make(chan bool)
 	go func() {
