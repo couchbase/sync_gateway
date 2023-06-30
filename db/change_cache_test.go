@@ -576,7 +576,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	// Start wait for doc in ABC
 	chans := channels.SetOfNoValidate(
 		channels.NewID("ABC", collectionID))
-	waiter := db.mutationListener.NewWaiterWithChannels(chans, nil)
+	waiter := db.mutationListener.NewWaiterWithChannels(chans, nil, false)
 
 	successChan := make(chan bool)
 	go func() {
