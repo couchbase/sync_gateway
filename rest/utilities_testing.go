@@ -2506,6 +2506,6 @@ func dropAllNonPrimaryIndexes(t *testing.T, dataStore base.DataStore) {
 	ctx := base.TestCtx(t)
 	dropErr := base.DropAllIndexes(ctx, n1qlStore)
 	require.NoError(t, dropErr)
-	err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+	err := n1qlStore.CreatePrimaryIndex(ctx, base.PrimaryIndexName, nil)
 	require.NoError(t, err, "Unable to recreate primary index")
 }

@@ -454,7 +454,7 @@ var clearIndexes resetN1QLStoreFn = func(n1QLStores []base.N1QLStore, isServerle
 	var err error
 	for _, n1QLStore := range n1QLStores {
 		for _, index := range indexes {
-			newErr := n1QLStore.DropIndex(index)
+			newErr := n1QLStore.DropIndex(context.TODO(), index)
 			if newErr != nil && strings.Contains(newErr.Error(), "Index not exist") {
 				err = errors.Wrap(err, newErr.Error())
 			}

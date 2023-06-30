@@ -117,31 +117,30 @@ func (c *Collection) ExplainQuery(statement string, params map[string]interface{
 	return ExplainQuery(c, statement, params)
 }
 
-func (c *Collection) CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
-	return CreateIndex(c, indexName, expression, filterExpression, options)
+func (c *Collection) CreateIndex(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+	return CreateIndex(ctx, c, indexName, expression, filterExpression, options)
 }
 
-func (c *Collection) CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error {
-	return CreatePrimaryIndex(c, indexName, options)
+func (c *Collection) CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error {
+	return CreatePrimaryIndex(ctx, c, indexName, options)
 }
 
-// WaitForIndexesOnline takes set of indexes and watches them till they're online.
-func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) error {
-	return WaitForIndexesOnline(c.Bucket.cluster, c.BucketName(), c.ScopeName(), c.CollectionName(), indexNames, failfast)
+func (c *Collection) WaitForIndexesOnline(ctx context.Context, indexNames []string, failfast bool) error {
+	return WaitForIndexesOnline(ctx, c.Bucket.cluster, c.BucketName(), c.ScopeName(), c.CollectionName(), indexNames, failfast)
 }
 
-func (c *Collection) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {
-	return GetIndexMeta(c, indexName)
+func (c *Collection) GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error) {
+	return GetIndexMeta(ctx, c, indexName)
 }
 
 // DropIndex drops the specified index from the current bucket.
-func (c *Collection) DropIndex(indexName string) error {
-	return DropIndex(c, indexName)
+func (c *Collection) DropIndex(ctx context.Context, indexName string) error {
+	return DropIndex(ctx, c, indexName)
 }
 
 // Issues a build command for any deferred sync gateway indexes associated with the bucket.
-func (c *Collection) BuildDeferredIndexes(indexSet []string) error {
-	return BuildDeferredIndexes(c, indexSet)
+func (c *Collection) BuildDeferredIndexes(ctx context.Context, indexSet []string) error {
+	return BuildDeferredIndexes(ctx, c, indexSet)
 }
 
 func (b *GocbV2Bucket) runQuery(statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {
