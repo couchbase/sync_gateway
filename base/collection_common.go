@@ -38,6 +38,10 @@ func (s ScopeAndCollectionName) String() string {
 	return s.Scope + ScopeCollectionSeparator + s.Collection
 }
 
+func DefaultScopeAndCollectionName() ScopeAndCollectionName {
+	return ScopeAndCollectionName{Scope: DefaultScope, Collection: DefaultCollection}
+}
+
 type ScopeAndCollectionNames []ScopeAndCollectionName
 
 // ScopeAndCollectionNames returns a dot-separated formatted slice of scope and collection names.

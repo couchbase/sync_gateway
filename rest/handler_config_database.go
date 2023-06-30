@@ -84,7 +84,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 		defer h.server.lock.Unlock()
 
 		// TODO: Dynamic update instead of reload
-		if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
+		if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
 			return err
 		}
 		h.setEtag(updatedDbConfig.Version)

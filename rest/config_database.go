@@ -60,6 +60,16 @@ func (dbc *DatabaseConfig) Redacted() (*DatabaseConfig, error) {
 	return &config, nil
 }
 
+func (dbc *DatabaseConfig) GetCollectionNames() base.ScopeAndCollectionNames {
+	collections := make(base.ScopeAndCollectionNames, 0)
+	for scopeName, scopeConfig := range dbc.Scopes {
+		for collectionName, _ := range scopeConfig.Collections {
+			collections = append(collections, base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+		}
+	}
+	return collections
+}
+
 func GenerateDatabaseConfigVersionID(previousRevID string, dbConfig *DbConfig) (string, error) {
 	encodedBody, err := base.JSONMarshalCanonical(dbConfig)
 	if err != nil {

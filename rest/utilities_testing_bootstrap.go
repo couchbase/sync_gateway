@@ -79,6 +79,11 @@ func (r *bootstrapAdminResponse) RequireResponse(status int, body string) {
 	require.Equal(r.t, body, r.Body, "unexpected body")
 }
 
+func (r *bootstrapAdminResponse) Unmarshal(v interface{}) {
+	err := base.JSONUnmarshal([]byte(r.Body), &v)
+	require.NoError(r.t, err, "Error unmarshalling bootstrap response body")
+}
+
 func BootstrapAdminRequest(t *testing.T, method, path, body string) bootstrapAdminResponse {
 	return doBootstrapAdminRequest(t, method, "", path, body, nil)
 }
