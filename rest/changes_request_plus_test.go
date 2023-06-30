@@ -22,6 +22,7 @@ import (
 // TestRequirePlusSkippedSequence makes sure that a final skipped sequence in a request_plus request will not hang the request
 func TestRequestPlusSkippedSequence(t *testing.T) {
 
+	defer db.SuspendSequenceBatching()()
 	restTesterConfig := RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction}
 
 	// JWT claim based grants do not support named collections
@@ -34,7 +35,7 @@ func TestRequestPlusSkippedSequence(t *testing.T) {
 	)
 	rt.CreateUser(username, []string{channel})
 
-	// try directly using bearer token in a keyspace request
+	// add a single document for the user
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", fmt.Sprintf(`{"channels":"%s"}`, channel))
 	RequireStatus(t, resp, http.StatusCreated)
 	docSeq := rt.GetDocumentSequence("doc1")
@@ -42,19 +43,23 @@ func TestRequestPlusSkippedSequence(t *testing.T) {
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	caughtUpStart := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
+	// add an unused sequence
 	unusedSeq, err := db.AllocateTestSequence(rt.GetDatabase())
 	require.NoError(t, err)
 
 	requestFinished := make(chan struct{})
+	// make sure this request doesn't hang
 	go func() {
 		resp = rt.SendUserRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&request_plus=true", docSeq), "", username)
 		RequireStatus(t, resp, http.StatusOK)
 		close(requestFinished)
 	}()
-	require.NoError(t, rt.GetDatabase().WaitForTotalCaughtUp(caughtUpStart+1))
+	// the request should finish once the sequence is released
 	err = db.ReleaseTestSequence(rt.GetDatabase(), unusedSeq)
 	require.NoError(t, err)
 	<-requestFinished
+	// the changes feed should catch up this value
+	require.NoError(t, rt.GetDatabase().WaitForTotalCaughtUp(caughtUpStart+1))
 	var changesResp ChangesResults
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &changesResp))
 	require.Len(t, changesResp.Results, 0)
