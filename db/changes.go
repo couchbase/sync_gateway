@@ -1004,7 +1004,9 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				}
 
 				col.dbStats().CBLReplicationPull().NumPullReplCaughtUp.Add(1)
+				base.DebugfCtx(ctx, base.KeyChanges, "change waiter waiting")
 				waitResponse := changeWaiter.Wait()
+				base.DebugfCtx(ctx, base.KeyChanges, "change waiter woken up")
 				col.dbStats().CBLReplicationPull().NumPullReplCaughtUp.Add(-1)
 
 				if waitResponse == WaiterClosed {
