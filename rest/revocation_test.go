@@ -1750,6 +1750,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	// Revoke C and ensure docC gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", GetRolePayload(t, "", "", rt2_collection, []string{"A", "B"}))
 	RequireStatus(t, resp, http.StatusOK)
+	rt2.WaitForPendingChanges()
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docC", "")
@@ -1760,6 +1761,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	// Revoke B and ensure docB gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", GetRolePayload(t, "", "", rt2_collection, []string{"A"}))
 	RequireStatus(t, resp, http.StatusOK)
+	rt2.WaitForPendingChanges()
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docB", "")
@@ -1770,6 +1772,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	// Revoke A and ensure docA, docAB, docABC gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", GetRolePayload(t, "", "", rt2_collection, []string{}))
 	RequireStatus(t, resp, http.StatusOK)
+	rt2.WaitForPendingChanges()
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
