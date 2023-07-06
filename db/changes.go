@@ -578,6 +578,7 @@ func (col *DatabaseCollectionWithUser) checkForUserUpdates(ctx context.Context, 
 	newCount = changeWaiter.CurrentUserCount()
 	// If not continuous, we force user reload as a workaround for https://github.com/couchbase/sync_gateway/issues/2068.  For continuous, #2068 is handled by changedChannels check, and
 	// we can reload only when there's been a user change notification
+	base.DebugfCtx(ctx, base.KeyChanges, "Checking for user reload newCount=%d, userCount=%d, isContinuous=%v", newCount, userChangeCount, isContinuous)
 	if newCount > userChangeCount || !isContinuous {
 		var previousChannels channels.TimedSet
 		base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed reloading user %+v", base.UD(col.user))
