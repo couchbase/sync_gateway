@@ -1739,7 +1739,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	// Wait for docs to turn up on local / rt1
 	changesResults, err := rt1.WaitForChanges(5, "/{{.keyspace}}/_changes?since=0", "", true)
 	require.NoError(t, err)
-	assert.Len(t, changesResults.Results, 5)
+	require.Len(t, changesResults.Results, 5)
 
 	// Revoke C and ensure docC gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", GetRolePayload(t, "", "", rt2_collection, []string{"A", "B"}))
@@ -1749,7 +1749,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docC", "")
 		return resp.Code == http.StatusNotFound
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Revoke B and ensure docB gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", GetRolePayload(t, "", "", rt2_collection, []string{"A"}))
@@ -1759,7 +1759,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docB", "")
 		return resp.Code == http.StatusNotFound
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Revoke A and ensure docA, docAB, docABC gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", GetRolePayload(t, "", "", rt2_collection, []string{}))
@@ -1769,19 +1769,19 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
 		return resp.Code == http.StatusNotFound
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docAB", "")
 		return resp.Code == http.StatusNotFound
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docABC", "")
 		return resp.Code == http.StatusNotFound
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 }
 
