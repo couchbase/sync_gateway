@@ -1684,6 +1684,11 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	// Active
 	rt1 := NewRestTester(t,
 		&RestTesterConfig{
+			DatabaseConfig: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Name: "active",
+				},
+			},
 			CustomTestBucket: base.GetTestBucket(t),
 			SyncFn:           channels.DocChannelsSyncFunction,
 		})
