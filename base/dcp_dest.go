@@ -113,7 +113,7 @@ func (d *DCPDest) DataUpdate(partition string, key []byte, seq uint64,
 		return nil
 	}
 	event := makeFeedEventForDest(key, val, cas, partitionToVbNo(partition), collectionIDFromExtras(extras), 0, 0, sgbucket.FeedOpMutation)
-	d.dataUpdate(seq, event)
+	d.dataUpdate(d.loggingCtx, seq, event)
 	return nil
 }
 
@@ -140,7 +140,7 @@ func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []b
 
 	}
 
-	d.dataUpdate(seq, event)
+	d.dataUpdate(d.loggingCtx, seq, event)
 	return nil
 }
 
@@ -152,7 +152,7 @@ func (d *DCPDest) DataDelete(partition string, key []byte, seq uint64,
 	}
 
 	event := makeFeedEventForDest(key, nil, cas, partitionToVbNo(partition), collectionIDFromExtras(extras), 0, 0, sgbucket.FeedOpDeletion)
-	d.dataUpdate(seq, event)
+	d.dataUpdate(d.loggingCtx, seq, event)
 	return nil
 }
 
@@ -177,7 +177,7 @@ func (d *DCPDest) DataDeleteEx(partition string, key []byte, seq uint64,
 		event = makeFeedEventForDest(key, dcpExtras.Value, cas, partitionToVbNo(partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, sgbucket.FeedOpDeletion)
 
 	}
-	d.dataUpdate(seq, event)
+	d.dataUpdate(d.loggingCtx, seq, event)
 	return nil
 }
 

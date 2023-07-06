@@ -108,7 +108,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	cbStore, ok := base.AsCouchbaseBucketStore(il.bucket)
 	if !ok {
 		// walrus is not a couchbasestore
-		return il.bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
+		return il.bucket.StartDCPFeed(il.loggingCtx, feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	}
 
 	if !base.IsEnterpriseEdition() {
@@ -117,7 +117,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 		if err != nil {
 			return err
 		}
-		return base.StartGocbDCPFeed(gocbv2Bucket, il.bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
+		return base.StartGocbDCPFeed(il.loggingCtx, gocbv2Bucket, il.bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
 
 	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
@@ -128,7 +128,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 // ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed.  It may be
 // executed concurrently for multiple events from different vbuckets.  Filters out
 // internal documents based on key, then checks sync metadata to determine whether document needs to be imported
-func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPersistCheckpoint bool) {
+func (il *importListener) ProcessFeedEvent(ctx context.Context, event sgbucket.FeedEvent) (shouldPersistCheckpoint bool) {
 
 	// Ignore non-mutation/deletion events
 	if event.Opcode != sgbucket.FeedOpMutation && event.Opcode != sgbucket.FeedOpDeletion {

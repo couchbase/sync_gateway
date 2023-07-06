@@ -244,7 +244,7 @@ func (dc *DCPClient) configureOneShot() error {
 }
 
 // Start returns an error and a channel to indicate when the DCPClient is done. If Start returns an error, DCPClient.Close() needs to be called.
-func (dc *DCPClient) Start() (doneChan chan error, err error) {
+func (dc *DCPClient) Start(ctx context.Context) (doneChan chan error, err error) {
 	err = dc.initAgent(dc.spec)
 	if err != nil {
 		return dc.doneChannel, err
@@ -255,7 +255,7 @@ func (dc *DCPClient) Start() (doneChan chan error, err error) {
 			return dc.doneChannel, err
 		}
 	}
-	dc.startWorkers()
+	dc.startWorkers(ctx)
 
 	for i := uint16(0); i < dc.numVbuckets; i++ {
 		openErr := dc.openStream(i, openRetryCount)
@@ -400,7 +400,7 @@ func (dc *DCPClient) workerForVbno(vbNo uint16) *DCPWorker {
 }
 
 // startWorkers initializes the DCP workers to receive stream events from eventFeed
-func (dc *DCPClient) startWorkers() {
+func (dc *DCPClient) startWorkers(ctx context.Context) {
 
 	// vbuckets are assigned to workers as vbNo % NumWorkers.  Create set of assigned vbuckets
 	assignedVbs := make(map[int][]uint16)
@@ -419,7 +419,7 @@ func (dc *DCPClient) startWorkers() {
 			metaPersistFrequency: dc.checkpointPersistFrequency,
 		}
 		dc.workers[index] = NewDCPWorker(index, dc.metadata, dc.callback, dc.onStreamEnd, dc.terminator, nil, dc.checkpointPrefix, assignedVbs[index], options)
-		dc.workers[index].Start(&dc.workersWg)
+		dc.workers[index].Start(ctx, &dc.workersWg)
 	}
 }
 

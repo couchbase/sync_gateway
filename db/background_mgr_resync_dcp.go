@@ -105,7 +105,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 
 	defer atomic.CompareAndSwapUint32(&db.State, DBResyncing, DBOffline)
 
-	callback := func(event sgbucket.FeedEvent) bool {
+	callback := func(ctx context.Context, event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
 		key := realDocID(docID)
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", resyncLoggingID, event.Opcode, base.UD(docID))
@@ -167,7 +167,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	}
 
 	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for resync", resyncLoggingID, dcpFeedKey)
-	doneChan, err := dcpClient.Start()
+	doneChan, err := dcpClient.Start(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start resync DCP feed! %v", resyncLoggingID, err)
 		_ = dcpClient.Close()

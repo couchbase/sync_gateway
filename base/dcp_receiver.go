@@ -83,7 +83,7 @@ func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 		return nil
 	}
 	event := makeFeedEventForMCRequest(req, sgbucket.FeedOpMutation)
-	r.dataUpdate(seq, event)
+	r.dataUpdate(r.loggingCtx, seq, event)
 	return nil
 }
 
@@ -93,7 +93,7 @@ func (r *DCPReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 		return nil
 	}
 	event := makeFeedEventForMCRequest(req, sgbucket.FeedOpDeletion)
-	r.dataUpdate(seq, event)
+	r.dataUpdate(r.loggingCtx, seq, event)
 	return nil
 }
 
