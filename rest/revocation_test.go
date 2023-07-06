@@ -1735,6 +1735,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 
 	revocationTester.addRole("user", "foo")
 
+	rt2.WaitForPendingChanges()
 	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
 	_ = rt2.CreateDocReturnRev(t, "docAB", "", map[string][]string{"channels": []string{"A", "B"}})
 	_ = rt2.CreateDocReturnRev(t, "docB", "", map[string][]string{"channels": []string{"B"}})
