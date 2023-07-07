@@ -1734,7 +1734,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	revocationTester.addRole("user", "foo")
-
+	time.Sleep(1 * time.Second)
 	rt2.WaitForPendingChanges()
 	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
 	_ = rt2.CreateDocReturnRev(t, "docAB", "", map[string][]string{"channels": []string{"A", "B"}})
