@@ -15,6 +15,8 @@ import (
 	"expvar"
 	"fmt"
 	"math"
+	"os"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"time"
@@ -239,6 +241,7 @@ func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
 	for key := range keys {
 		listener.keyCounts[key.String()] = listener.counter
 	}
+	pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
 		base.MD(listener.bucketName), base.UD(keys), listener.counter)
 	listener.tapNotifier.Broadcast()
@@ -250,6 +253,7 @@ func (listener *changeListener) notifyKey(ctx context.Context, key string) {
 	listener.tapNotifier.L.Lock()
 	listener.counter++
 	listener.keyCounts[key] = listener.counter
+	pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that %q changed (key=%q) count=%d",
 		base.MD(listener.bucketName), base.UD(key), listener.counter)
 	listener.tapNotifier.Broadcast()
