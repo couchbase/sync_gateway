@@ -416,6 +416,7 @@ func (waiter *ChangeWaiter) RefreshUserCount() bool {
 
 // Updates the set of channel keys in the ChangeWaiter (maintains the existing set of user keys)
 func (waiter *ChangeWaiter) UpdateChannels(collectionID uint32, timedSet channels.TimedSet) {
+	fmt.Println("UpdateChannels called with timedSet=", timedSet)
 	// This capacity is not right can not accomodate channels without iteration.
 	initialCapacity := len(waiter.userKeys)
 	updatedKeys := make([]string, 0, initialCapacity)
@@ -429,6 +430,7 @@ func (waiter *ChangeWaiter) UpdateChannels(collectionID uint32, timedSet channel
 		updatedKeys = append(updatedKeys, waiter.userKeys...)
 	}
 	waiter.keys = updatedKeys
+	fmt.Println("UpdateChannels now has keys=", waiter.keys)
 
 }
 
@@ -447,6 +449,7 @@ func (waiter *ChangeWaiter) RefreshUserKeys(user auth.User, metaKeys *base.Metad
 		for role := range user.RoleNames() {
 			waiter.userKeys = append(waiter.userKeys, metaKeys.RoleKey(role))
 		}
+		fmt.Println("RefreshUserKeys now=", waiter.userKeys)
 		waiter.lastUserCount = waiter.listener.CurrentCount(waiter.userKeys)
 
 	}
