@@ -23,7 +23,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	v8 "github.com/snej/v8go"
+	v8 "github.com/couchbasedeps/v8go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

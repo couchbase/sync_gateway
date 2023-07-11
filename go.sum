@@ -80,10 +80,12 @@ github.com/couchbase/gomemcached v0.2.1 h1:lDONROGbklo8pOt4Sr4eV436PVEaKDr3o9gUl
 github.com/couchbase/gomemcached v0.2.1/go.mod h1:mxliKQxOv84gQ0bJWbI+w9Wxdpt9HjDvgW9MjCym5Vo=
 github.com/couchbase/goutils v0.1.2 h1:gWr8B6XNWPIhfalHNog3qQKfGiYyh4K4VhO3P2o9BCs=
 github.com/couchbase/goutils v0.1.2/go.mod h1:h89Ek/tiOxxqjz30nPPlwZdQbdB8BwgnuBxeoUe/ViE=
-github.com/couchbase/sg-bucket v0.0.0-20230621232623-5ee386619ff4 h1:bhHYbAwHOjRSh1+MD4df1YjohwvrVftc9xhhDgB6u7U=
-github.com/couchbase/sg-bucket v0.0.0-20230621232623-5ee386619ff4/go.mod h1:8iG7ky5o1c/KaGeviobWSOz7t0oBXyyfjKc3CjYSGTU=
+github.com/couchbase/sg-bucket v0.0.0-20230711212925-3779b871a912 h1:zN5Ma98kV3Wo1hrkuypdHhxhSDu2d/eNj1gu3IBgGo4=
+github.com/couchbase/sg-bucket v0.0.0-20230711212925-3779b871a912/go.mod h1:CXPMAE15hLVqPTjWdRyf8OMvAe/U83BiAOrEmpl+Aqg=
 github.com/couchbase/tools-common v0.0.0-20220810163003-4c3c185822d4 h1:Ub0gZWccoNL+ag59v8S23tbHDknfN1l3CVl7Kb+hFO0=
 github.com/couchbase/tools-common v0.0.0-20220810163003-4c3c185822d4/go.mod h1:lW0Em1mo5xqQ0mRMzJlg013/6ruyISupTfW7nbLaa1E=
+github.com/couchbasedeps/v8go v1.7.5-0.20230711212500-516f3127f59a h1:eAnRt+HIzIEN9wOjtIdVcWxKl87gWwRMqUErcmu92Eo=
+github.com/couchbasedeps/v8go v1.7.5-0.20230711212500-516f3127f59a/go.mod h1:idYCHzuZs5u+Yv9mYwhOBheFP82+7arI2Y8xVeU2Ttk=
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f h1:al5DxXEBAUmINnP5dR950gL47424WzncuRpNdg0TWR0=
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f/go.mod h1:daOs69VstinwoALl3wwWxjBf1nD4lIe3wwYhKHKDapY=
 github.com/couchbaselabs/gocaves/client v0.0.0-20230307083111-cc3960c624b1 h1:H7OK4q4WsDxqNIB/Ba8BQBXBHFilZnyItHrLr3qmsKA=
@@ -291,8 +293,6 @@ github.com/shirou/gopsutil v3.21.11+incompatible/go.mod h1:5b4v6he4MtMOwMlS0TUMT
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
 github.com/sirupsen/logrus v1.4.2/go.mod h1:tLMulIdttU9McNUspp0xgXVQah82FyeX6MwdIuYE2rE=
 github.com/sirupsen/logrus v1.6.0/go.mod h1:7uNnSEd1DgxDLC74fIahvMZmmYsHGZGEOFrfsX/uA88=
-github.com/snej/v8go v1.7.4-0.20230515215226-089c213628c9 h1:/EWbIEixlHDQmafVRf/hnlRytOea760pPKNR0epnJYg=
-github.com/snej/v8go v1.7.4-0.20230515215226-089c213628c9/go.mod h1:s7IVrqyNoVfwYhndECq3XJ+/y0uq/JUH0/ECsC3k/UQ=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.1.1/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSSt89Yw=
@@ -637,8 +637,6 @@ honnef.co/go/tools v0.0.1-2020.1.3/go.mod h1:X/FiERA/W4tHapMX5mGpAtMSVEeEUOyHaw9
 honnef.co/go/tools v0.0.1-2020.1.4/go.mod h1:X/FiERA/W4tHapMX5mGpAtMSVEeEUOyHaw9vFzvIQ3k=
 nhooyr.io/websocket v1.8.7 h1:usjR2uOr/zjjkVMy0lW+PPohFok7PCow5sDjLgX4P4g=
 nhooyr.io/websocket v1.8.7/go.mod h1:B70DZP8IakI65RVQ51MsWP/8jndNma26DVA/nFSCgW0=
-rogchap.com/v8go v0.8.0 h1:/crDEiga68kOtbIqw3K9Rt9OztYz0LhAPHm2e3wK7Q4=
-rogchap.com/v8go v0.8.0/go.mod h1:MxgP3pL2MW4dpme/72QRs8sgNMmM0pRc8DPhcuLWPAs=
 rsc.io/binaryregexp v0.2.0/go.mod h1:qTv7/COck+e2FymRvadv62gMdZztPaShugOCi3I+8D8=
 rsc.io/quote/v3 v3.1.0/go.mod h1:yEA65RcK8LyAZtP9Kv3t0HmxON59tX3rD+tICJqUlj0=
 rsc.io/sampler v1.3.0/go.mod h1:T1hPZKmBbMNahiBKFy5HrXp6adAjACjK9JXDnKaTXpA=

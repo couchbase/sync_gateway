@@ -12,7 +12,8 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.2.4-0.20230511103754-8dd1a95f5f33
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20230621232623-5ee386619ff4
+	github.com/couchbase/sg-bucket v0.0.0-20230711212925-3779b871a912
+	github.com/couchbasedeps/v8go v1.7.5-0.20230711212500-516f3127f59a
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
 	github.com/couchbaselabs/walrus v0.0.0-20230118190455-97ce18d0c47d
 	github.com/elastic/gosigar v0.14.2
@@ -27,7 +28,6 @@ require (
 	github.com/prometheus/client_golang v1.11.1
 	github.com/samuel/go-metrics v0.0.0-20150819231912-7ccf3e0e1fb1
 	github.com/shirou/gopsutil v3.21.11+incompatible
-	github.com/snej/v8go v1.7.4-0.20230515215226-089c213628c9
 	github.com/stretchr/testify v1.8.2
 	golang.org/x/crypto v0.7.0
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e
@@ -76,5 +76,4 @@ require (
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
-	rogchap.com/v8go v0.8.0 // indirect
 )

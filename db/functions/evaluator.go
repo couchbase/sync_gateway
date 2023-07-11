@@ -25,7 +25,7 @@ import (
 	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	v8 "github.com/snej/v8go" // Docs: https://pkg.go.dev/github.com/snej/v8go
+	v8 "github.com/couchbasedeps/v8go" // Docs: https://pkg.go.dev/github.com/couchbasedeps/v8go
 )
 
 // The JavaScript code run in a context, that defines the API, embedded in a string constant.
