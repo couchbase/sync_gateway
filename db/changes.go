@@ -1032,7 +1032,9 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 
 			// Check whether user channel access has changed while waiting:
 			var err error
+			fmt.Println("Calling check for user updates")
 			userChanged, userCounter, changedChannels, err = col.checkForUserUpdates(ctx, userCounter, changeWaiter, options.Continuous)
+			fmt.Println("Finished check for user updates")
 			if err != nil {
 				change := makeErrorEntry("User not found during reload - terminating changes feed")
 				base.DebugfCtx(ctx, base.KeyChanges, "User not found during reload - terminating changes feed with entry %+v", base.UD(change))
