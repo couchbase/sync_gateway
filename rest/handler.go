@@ -275,6 +275,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			h.logRequestLine()
 		}
 		h.logRESTCount()
+		h.logBytesRead()
 	}()
 
 	defer func() {
@@ -652,6 +653,26 @@ func (h *handler) logRESTCount() {
 		return
 	}
 	h.db.DbStats.DatabaseStats.NumPublicRestRequests.Add(1)
+}
+
+func (h *handler) logBytesRead() {
+	if h.db == nil {
+		return
+	}
+	if h.privs != publicPrivs && h.privs != regularPrivs {
+		return
+	}
+	if h.isBlipSync() {
+		return
+	}
+	bodyBytes, err := h.readBody()
+	if err != nil {
+		return
+	}
+	// The above readBody() will end up clearing the body which the later handler will require. Re-populate this
+	// for the later handler.
+	h.requestBody = io.NopCloser(bytes.NewReader(bodyBytes))
+	h.db.DbStats.DatabaseStats.PublicRestBytesRead.Add(int64(len(bodyBytes)))
 }
 
 // logStatusWithDuration will log the request status and the duration of the request.

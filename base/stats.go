@@ -478,6 +478,8 @@ type DatabaseStats struct {
 	NumTombstonesCompacted *SgwIntStat `json:"num_tombstones_compacted"`
 	// Number of bytes written over public interface for REST api
 	PublicRestBytesWritten *SgwIntStat `json:"public_rest_bytes_written"`
+	// The total amount of bytes read over the public REST api
+	PublicRestBytesRead *SgwIntStat `json:"public_rest_bytes_read"`
 	// The total number of sequence numbers assigned.
 	SequenceAssignedCount *SgwIntStat `json:"sequence_assigned_count"`
 	// The total number of high sequence lookups.
@@ -1405,6 +1407,10 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.PublicRestBytesRead, err = NewIntStat(SubsystemDatabaseKey, "public_rest_bytes_read", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.SequenceAssignedCount, err = NewIntStat(SubsystemDatabaseKey, "sequence_assigned_count", labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1521,6 +1527,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.NumPublicRestRequests)
 	prometheus.Unregister(d.DatabaseStats.TotalSyncTime)
 	prometheus.Unregister(d.DatabaseStats.ImportProcessCompute)
+	prometheus.Unregister(d.DatabaseStats.PublicRestBytesRead)
 	prometheus.Unregister(d.DatabaseStats.SyncProcessCompute)
 }
 
