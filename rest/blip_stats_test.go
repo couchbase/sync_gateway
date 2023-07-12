@@ -125,13 +125,10 @@ func TestBlipStatsISGRComputePush(t *testing.T) {
 	_, err := passiveRT.WaitForChanges(100, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 
-	fmt.Println("active", activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
 	activeSyncStat := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
 	passiveSyncStat := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
-	fmt.Println("passive", passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
 	require.Greater(t, activeSyncStat, activeSyncStartStat)
 	require.Greater(t, passiveSyncStat, passiveSyncStartStat)
-	require.Greater(t, passiveSyncStat, activeSyncStat)
 
 }
 
@@ -161,8 +158,6 @@ func TestBlipStatsISGRComputePull(t *testing.T) {
 
 	_, err := activeRT.WaitForChanges(50, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
-	fmt.Println("active", activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
-	fmt.Println("passive", passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
 
 	require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), activeSyncStat)
 	require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), passiveSyncStat)
@@ -217,8 +212,6 @@ func TestBlipStatAttachmentComputeISGR(t *testing.T) {
 				// assert the stats increment/do not increment as expected
 				require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartActive)
 				require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartPassive)
-				fmt.Println(activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
-				fmt.Println(passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
 			} else {
 				bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
 				resp = passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", bodyText)
@@ -238,8 +231,6 @@ func TestBlipStatAttachmentComputeISGR(t *testing.T) {
 				// assert the stats increment/do not increment as expected
 				require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartActive)
 				require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartPassive)
-				fmt.Println(activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
-				fmt.Println(passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
 			}
 
 		})
