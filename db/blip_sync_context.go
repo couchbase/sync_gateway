@@ -118,7 +118,6 @@ type BlipSyncContext struct {
 	collections *blipCollections // all collections handled by blipSyncContext, implicit or via GetCollections
 
 	stats blipSyncStats // internal structure to store stats
-
 }
 
 // blipSyncStats has support structures to support reporting stats at regular interval
@@ -145,6 +144,7 @@ func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) 
 // Includes the outer handler as a nested function.
 func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler, *blip.Message) error) {
 
+	startTime := time.Now()
 	// Wrap the handler function with a function that adds handling needed by all handlers
 	handlerFnWrapper := func(rq *blip.Message) {
 
@@ -167,9 +167,15 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 				base.WarnfCtx(bsc.loggingCtx, "PANIC handling BLIP request %v: %v\n%s", rq, err, debug.Stack())
 				panic(err)
 			}
+			messageCPUtime := time.Since(startTime).Milliseconds()
+			messBody, err := rq.Body()
+			if err == nil && bsc.blipContextDb != nil {
+				bytes := len(messBody)
+				stat := CalculateComputeStat(int64(bytes), messageCPUtime)
+				bsc.blipContextDb.DbStats.DatabaseStats.SyncProcessCompute.Add(stat)
+			}
 		}()
 
-		startTime := time.Now()
 		handler := blipHandler{
 			BlipSyncContext: bsc,
 			db:              bsc.copyContextDatabase(),
@@ -397,6 +403,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, collectionIdx *int,
 	bodyBytes []byte, attMeta []AttachmentStorageMeta, properties blip.Properties, seq SequenceID, resendFullRevisionFunc func() error) error {
 
+	startTime := time.Now()
 	outrq := NewRevMessage()
 	outrq.SetID(docID)
 	outrq.SetRev(revID)
@@ -437,6 +444,13 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	if !bsc.sendBLIPMessage(sender, outrq.Message) {
 		bsc.removeAllowedAttachments(docID, attMeta, activeSubprotocol)
 		return ErrClosedBLIPSender
+	}
+	messageCPUtime := time.Since(startTime).Milliseconds()
+	messBytes, err := outrq.Body()
+	if err == nil && bsc.blipContextDb != nil {
+		bytes := len(messBytes)
+		stat := CalculateComputeStat(int64(bytes), messageCPUtime)
+		bsc.blipContextDb.DbStats.Database().SyncProcessCompute.Add(stat)
 	}
 
 	if awaitResponse {
@@ -566,6 +580,7 @@ func (bsc *BlipSyncContext) sendBLIPMessage(sender *blip.Sender, msg *blip.Messa
 func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, collectionIdx *int, seq SequenceID, err error) error {
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
 
+	startTime := time.Now()
 	noRevRq := NewNoRevMessage()
 	noRevRq.SetId(docID)
 	noRevRq.SetRev(revID)
@@ -585,6 +600,13 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 	noRevRq.SetNoReply(true)
 	if !bsc.sendBLIPMessage(sender, noRevRq.Message) {
 		return ErrClosedBLIPSender
+	}
+	messageCPUtime := time.Since(startTime).Milliseconds()
+	messBytes, err := noRevRq.Body()
+	if err == nil && bsc.blipContextDb != nil {
+		bytes := len(messBytes)
+		stat := CalculateComputeStat(int64(bytes), messageCPUtime)
+		bsc.blipContextDb.DbStats.Database().SyncProcessCompute.Add(stat)
 	}
 
 	collectionCtx, err := bsc.collections.get(collectionIdx)

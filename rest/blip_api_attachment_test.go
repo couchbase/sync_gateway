@@ -708,7 +708,7 @@ func TestAttachmentComputeStat(t *testing.T) {
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, opts)
 	require.NoError(t, err)
 	defer btc.Close()
-	attachmentWriteCompute := btc.rt.GetDatabase().DbStats.DatabaseStats.WriteAttachmentComputeUnit.Value()
+	syncProcessCompute := btc.rt.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
 
 	err = btc.StartPull()
 	assert.NoError(t, err)
@@ -727,6 +727,6 @@ func TestAttachmentComputeStat(t *testing.T) {
 	require.JSONEq(t, bodyTextExpected, string(data))
 
 	// assert the attachment read compute stat is incremented
-	require.Greater(t, btc.rt.GetDatabase().DbStats.DatabaseStats.WriteAttachmentComputeUnit.Value(), attachmentWriteCompute)
+	require.Greater(t, btc.rt.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncProcessCompute)
 
 }

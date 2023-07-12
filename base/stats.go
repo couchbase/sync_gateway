@@ -505,18 +505,10 @@ type DatabaseStats struct {
 	SyncFunctionExceptionCount *SgwIntStat `json:"sync_function_exception_count"`
 	// The total number of times a replication connection is rejected due ot it being over the threshold
 	NumReplicationsRejectedLimit *SgwIntStat `json:"num_replications_rejected_limit"`
-	// The compute unit used relating to reading attachments over blip
-	ReadAttachmentComputeUnit *SgwIntStat `json:"read_attachment_compute_unit"`
-	// The compute unit used relating to writing attachments over blip
-	WriteAttachmentComputeUnit *SgwIntStat `json:"write_attachment_compute_unit"`
-	// The compute unit used relating to reading docs over blip
-	DocReadComputeUnit *SgwIntStat `json:"doc_read_compute_unit"`
-	// The compute unit used relating to writing docs over blip
-	DocWriteComputeUnit *SgwIntStat `json:"doc_write_compute_unit"`
-	// The compute unit used relating to changes, proposeChanges over blip
-	DocCheckComputeUnit *SgwIntStat `json:"doc_check_compute_unit"`
 	// Represents the compute unit for import processes on the database
 	ImportProcessCompute *SgwIntStat `json:"import_process_compute"`
+	// SyncProcessCompute the comopute unit for syncing with clients
+	SyncProcessCompute *SgwIntStat `json:"sync_process_compute"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
@@ -1466,27 +1458,11 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.ReadAttachmentComputeUnit, err = NewIntStat(SubsystemDatabaseKey, "read_attachment_compute_unit", labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.ImportProcessCompute, err = NewIntStat(SubsystemDatabaseKey, "import_process_compute", labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.WriteAttachmentComputeUnit, err = NewIntStat(SubsystemDatabaseKey, "write_attachment_compute_unit", labelKeys, labelVals, prometheus.CounterValue, 0)
-	if err != nil {
-		return err
-	}
-	resUtil.DocReadComputeUnit, err = NewIntStat(SubsystemDatabaseKey, "doc_read_compute_unit", labelKeys, labelVals, prometheus.CounterValue, 0)
-	if err != nil {
-		return err
-	}
-	resUtil.DocWriteComputeUnit, err = NewIntStat(SubsystemDatabaseKey, "doc_write_compute_unit", labelKeys, labelVals, prometheus.CounterValue, 0)
-	if err != nil {
-		return err
-	}
-	resUtil.DocCheckComputeUnit, err = NewIntStat(SubsystemDatabaseKey, "doc_check_compute_unit", labelKeys, labelVals, prometheus.CounterValue, 0)
-	if err != nil {
-		return err
-	}
-	resUtil.ImportProcessCompute, err = NewIntStat(SubsystemSharedBucketImport, "import_process_compute", labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.SyncProcessCompute, err = NewIntStat(SubsystemDatabaseKey, "sync_process_compute", labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
@@ -1536,12 +1512,8 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.NumReplicationsRejectedLimit)
 	prometheus.Unregister(d.DatabaseStats.NumPublicRestRequests)
 	prometheus.Unregister(d.DatabaseStats.TotalSyncTime)
-	prometheus.Unregister(d.DatabaseStats.ReadAttachmentComputeUnit)
-	prometheus.Unregister(d.DatabaseStats.WriteAttachmentComputeUnit)
-	prometheus.Unregister(d.DatabaseStats.DocReadComputeUnit)
-	prometheus.Unregister(d.DatabaseStats.DocWriteComputeUnit)
-	prometheus.Unregister(d.DatabaseStats.DocCheckComputeUnit)
 	prometheus.Unregister(d.DatabaseStats.ImportProcessCompute)
+	prometheus.Unregister(d.DatabaseStats.SyncProcessCompute)
 }
 
 func (d *DbStats) CollectionStat(scopeName, collectionName string) (*CollectionStats, error) {

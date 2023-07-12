@@ -13,10 +13,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -113,9 +111,8 @@ func TestBlipStatsISGRComputePush(t *testing.T) {
 	const repName = "replication1"
 	var resp *TestResponse
 
-	docWriteCompute := activeRT.GetDatabase().DbStats.DatabaseStats.DocWriteComputeUnit.Value()
-	docReadCompute := passiveRT.GetDatabase().DbStats.DatabaseStats.DocReadComputeUnit.Value()
-	docCheckPassive := passiveRT.GetDatabase().DbStats.DatabaseStats.DocCheckComputeUnit.Value()
+	activeSyncStartStat := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+	passiveSyncStartStat := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
 
 	for i := 0; i < 100; i++ {
 		resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"source": "activeRT"}`)
@@ -128,17 +125,13 @@ func TestBlipStatsISGRComputePush(t *testing.T) {
 	_, err := passiveRT.WaitForChanges(100, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 
-	// assert active has written docs
-	require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.DocWriteComputeUnit.Value(), docWriteCompute)
-	// assert that active has niot read docs along replicatiuon
-	require.Equal(t, int64(0), activeRT.GetDatabase().DbStats.DatabaseStats.DocReadComputeUnit.Value())
-	// assert passtive has read docs along replication
-	require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.DocReadComputeUnit.Value(), docReadCompute)
-	// assert passtive has not wrotten docs alongbg replication
-	require.Equal(t, int64(0), passiveRT.GetDatabase().DbStats.DatabaseStats.DocWriteComputeUnit.Value())
-
-	// for handling the set of changes sent by active
-	require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.DocCheckComputeUnit.Value(), docCheckPassive)
+	fmt.Println("active", activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
+	activeSyncStat := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+	passiveSyncStat := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+	fmt.Println("passive", passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
+	require.Greater(t, activeSyncStat, activeSyncStartStat)
+	require.Greater(t, passiveSyncStat, passiveSyncStartStat)
+	require.Greater(t, passiveSyncStat, activeSyncStat)
 
 }
 
@@ -155,9 +148,8 @@ func TestBlipStatsISGRComputePull(t *testing.T) {
 	const repName = "replication1"
 	var resp *TestResponse
 
-	docWriteCompute := passiveRT.GetDatabase().DbStats.DatabaseStats.DocWriteComputeUnit.Value()
-	docReadCompute := activeRT.GetDatabase().DbStats.DatabaseStats.DocReadComputeUnit.Value()
-	docCheckActive := activeRT.GetDatabase().DbStats.DatabaseStats.DocCheckComputeUnit.Value()
+	activeSyncStat := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+	passiveSyncStat := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
 
 	for i := 0; i < 50; i++ {
 		resp = passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"source": "activeRT"}`)
@@ -169,17 +161,11 @@ func TestBlipStatsISGRComputePull(t *testing.T) {
 
 	_, err := activeRT.WaitForChanges(50, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
+	fmt.Println("active", activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
+	fmt.Println("passive", passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
 
-	// assert that passive peer wrote
-	require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.DocWriteComputeUnit.Value(), docWriteCompute)
-	// assert passive peer doc read compute stat is still 0
-	require.Equal(t, int64(0), passiveRT.GetDatabase().DbStats.DatabaseStats.DocReadComputeUnit.Value())
-	// assert active peer doc read compute stat increased
-	require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.DocReadComputeUnit.Value(), docReadCompute)
-	// assert that active peer doc write compute stat is still 0
-	require.Equal(t, int64(0), activeRT.GetDatabase().DbStats.DatabaseStats.DocWriteComputeUnit.Value())
-	// assert active peer doc check compute stat incremented
-	require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.DocCheckComputeUnit.Value(), docCheckActive)
+	require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), activeSyncStat)
+	require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), passiveSyncStat)
 
 }
 
@@ -217,8 +203,8 @@ func TestBlipStatAttachmentComputeISGR(t *testing.T) {
 				resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", bodyText)
 				RequireStatus(t, resp, http.StatusCreated)
 				// grab stats values before replication takes place
-				computeWriteAttachment := activeRT.GetDatabase().DbStats.DatabaseStats.WriteAttachmentComputeUnit.Value()
-				computeReadAttachment := activeRT.GetDatabase().DbStats.DatabaseStats.ReadAttachmentComputeUnit.Value()
+				syncComputeStartActive := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+				syncComputeStartPassive := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
 
 				// create replication
 				activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
@@ -229,17 +215,17 @@ func TestBlipStatAttachmentComputeISGR(t *testing.T) {
 				require.NoError(t, err)
 
 				// assert the stats increment/do not increment as expected
-				require.Equal(t, int64(0), activeRT.GetDatabase().DbStats.DatabaseStats.ReadAttachmentComputeUnit.Value())
-				require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.WriteAttachmentComputeUnit.Value(), computeWriteAttachment)
-				require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.ReadAttachmentComputeUnit.Value(), computeReadAttachment)
-				require.Equal(t, int64(0), passiveRT.GetDatabase().DbStats.DatabaseStats.WriteAttachmentComputeUnit.Value())
+				require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartActive)
+				require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartPassive)
+				fmt.Println(activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
+				fmt.Println(passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
 			} else {
 				bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
 				resp = passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", bodyText)
 				RequireStatus(t, resp, http.StatusCreated)
 				// grab stats values before replication takes place
-				computeWriteAttachment := activeRT.GetDatabase().DbStats.DatabaseStats.WriteAttachmentComputeUnit.Value()
-				computeReadAttachment := activeRT.GetDatabase().DbStats.DatabaseStats.ReadAttachmentComputeUnit.Value()
+				syncComputeStartActive := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+				syncComputeStartPassive := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
 
 				// create replication
 				activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
@@ -250,71 +236,14 @@ func TestBlipStatAttachmentComputeISGR(t *testing.T) {
 				require.NoError(t, err)
 
 				// assert the stats increment/do not increment as expected
-				require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.ReadAttachmentComputeUnit.Value(), computeReadAttachment)
-				require.Equal(t, int64(0), activeRT.GetDatabase().DbStats.DatabaseStats.WriteAttachmentComputeUnit.Value())
-				require.Equal(t, int64(0), passiveRT.GetDatabase().DbStats.DatabaseStats.ReadAttachmentComputeUnit.Value())
-				require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.WriteAttachmentComputeUnit.Value(), computeWriteAttachment)
+				require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartActive)
+				require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartPassive)
+				fmt.Println(activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
+				fmt.Println(passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value())
 			}
 
 		})
 	}
-
-}
-
-// TestBlipStatsChangesComputation:
-//   - Create Blip tester
-//   - Send blip changes request
-//   - assert on DocCheckedCompute stat
-//   - send rev assert stat increased
-//   - send proposeChanges request and assert the DocCheckedCompute stat increased
-func TestBlipStatsChangesComputation(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync)
-	bt, err := NewBlipTester(t)
-	assert.NoError(t, err, "Error creating BlipTester")
-	defer bt.Close()
-
-	// test changes request increments the DocCheckComputeStat
-	changesRequest := bt.newRequest()
-	changesRequest.SetProfile("changes")
-	changesBody := `[["1", "foo", "1-abc", false]]`
-	changesRequest.SetBody([]byte(changesBody))
-	sent := bt.sender.Send(changesRequest)
-	assert.True(t, sent)
-	changesResponse := changesRequest.Response()
-	assert.Equal(t, changesRequest.SerialNumber(), changesResponse.SerialNumber())
-
-	require.Greater(t, bt.restTester.GetDatabase().DbStats.DatabaseStats.DocCheckComputeUnit.Value(), int64(0))
-	changesCompute := bt.restTester.GetDatabase().DbStats.DatabaseStats.DocCheckComputeUnit.Value()
-
-	// put a rev to increment the read compute stat
-	_, _, revResponse, err := bt.SendRev(
-		"foo",
-		"1-abc",
-		[]byte(`{"key": "val"}`),
-		blip.Properties{},
-	)
-	assert.NoError(t, err)
-
-	_, err = revResponse.Body()
-	assert.NoError(t, err, "Error unmarshalling response body")
-	require.Greater(t, bt.restTester.GetDatabase().DbStats.DatabaseStats.DocReadComputeUnit.Value(), int64(0))
-
-	// test proposeChanges increments the DocCheckCompute stat
-	proposeChangesRequest := bt.newRequest()
-	proposeChangesRequest.SetProfile("proposeChanges")
-	proposeChangesRequest.SetCompressed(true)
-
-	// define changes body
-	changesBody = `[["foo", "1-abc"],["foo2", "1-abc"]]`
-	proposeChangesRequest.SetBody([]byte(changesBody))
-	sent = bt.sender.Send(proposeChangesRequest)
-	assert.True(t, sent)
-	proposeChangesResponse := proposeChangesRequest.Response()
-	_, err = proposeChangesResponse.Body()
-	assert.NoError(t, err, "Error getting changes response body")
-
-	// assert the doc check compute stat has increased
-	require.Greater(t, bt.restTester.GetDatabase().DbStats.DatabaseStats.DocCheckComputeUnit.Value(), changesCompute)
 
 }
 
@@ -341,16 +270,15 @@ func TestComputeStatAfterContextTeardown(t *testing.T) {
 	_, err := activeRT.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 
+	// wait for replication teardown
 	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateStopped)
 
-	docWriteCompute := passiveRT.GetDatabase().DbStats.DatabaseStats.DocWriteComputeUnit.Value()
-	docReadCompute := activeRT.GetDatabase().DbStats.DatabaseStats.DocReadComputeUnit.Value()
-	docCheckActive := activeRT.GetDatabase().DbStats.DatabaseStats.DocCheckComputeUnit.Value()
+	syncProcessComputeActive := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+	syncProcessComputePassive := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
 
-	// assert that expected stats are greater than 0
-	require.Greater(t, docWriteCompute, int64(0))
-	require.Greater(t, docReadCompute, int64(0))
-	require.Greater(t, docCheckActive, int64(0))
+	// assert that sync compute stats are greater than 0
+	require.Greater(t, syncProcessComputeActive, int64(0))
+	require.Greater(t, syncProcessComputePassive, int64(0))
 
 	// add new doc and start replication again
 	resp = passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"source": "activeRT"}`)
@@ -360,51 +288,11 @@ func TestComputeStatAfterContextTeardown(t *testing.T) {
 
 	_, err = activeRT.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
+	// wait for replication teardown
 	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateStopped)
 
-	// assert that the stats have increased from what they were before
-	require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.DocWriteComputeUnit.Value(), docReadCompute)
-	require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.DocReadComputeUnit.Value(), docReadCompute)
-	require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.DocCheckComputeUnit.Value(), docCheckActive)
-
-}
-
-// TestPerReplicationComputationStats:
-//   - Add doc to remote node
-//   - Create continuous replication
-//   - Wait for work to be done over that replication
-//   - Create a new replication and scope it to a channel so doc won't get replicated
-//   - assert that the blip stats for that particular replication start from 0 again (shows isolation between blip contexts for compute units)
-func TestPerReplicationComputationStats(t *testing.T) {
-	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync)
-	activeRT, passiveRT, remoteURL, teardown := SetupSGRPeers(t)
-	defer teardown()
-	const repName = "replication1"
-	const repName2 = "replication2"
-
-	resp := passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"source": "activeRT"}`)
-	RequireStatus(t, resp, http.StatusCreated)
-
-	activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
-	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
-
-	// wait for replication to do some work so compute stats won't all be 0 for this particular replication
-	_, err := activeRT.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
-	require.NoError(t, err)
-
-	// Create new replication and assert that the stats for this replication are all 0 showing isolation between each replication in terms of compute stats
-	activeRT.CreateReplication(repName2, remoteURL, db.ActiveReplicatorTypePull, []string{"ABC"}, true, db.ConflictResolverDefault)
-	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
-	activeRT.WaitForActiveReplicatorInitialization(2)
-
-	// get the active replicator and assert blip stats are 0 for new replication
-	ar := activeRT.GetDatabase().SGReplicateMgr.GetActiveReplicator(repName2)
-	blipStats := ar.Pull.GetStats()
-	require.Equal(t, int64(0), blipStats.ReadAttachmentComputeUnit.Value())
-	require.Equal(t, int64(0), blipStats.WriteAttachmentComputeUnit.Value())
-	require.Equal(t, int64(0), blipStats.DocWriteComputeUnit.Value())
-	require.Equal(t, int64(0), blipStats.DocReadComputeUnit.Value())
-	require.Equal(t, int64(0), blipStats.DocCheckComputeUnit.Value())
+	// assert that the stats have increased from what they were before showing stats don't start from 0 again after replication teardown
+	require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncProcessComputePassive)
+	require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncProcessComputeActive)
 
 }
