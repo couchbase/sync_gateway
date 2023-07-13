@@ -132,7 +132,7 @@ func TestBytesReadPutAttachment(t *testing.T) {
 
 	rt.CreateUser("alice", []string{"ABC"})
 
-	response := rt.SendUserRequest(http.MethodPut, fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), "doc1"), `{"channels":["ABC"]}`, "alice")
+	response := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), "doc1"), `{"channels":["ABC"]}`)
 	RequireStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
