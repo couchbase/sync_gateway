@@ -16,20 +16,27 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
-// An implementation of http.ResponseWriter that wraps another instance and transparently applies
+// EncodedResponseWriter implements of http.ResponseWriter that wraps another instance and transparently applies
 // GZip compression when appropriate.
 type EncodedResponseWriter struct {
 	http.ResponseWriter
-	gz            *gzip.Writer
-	status        int
-	sniffDone     bool
-	headerWritten bool
+	lastReportTime      time.Time // last time stats were reported
+	gz                  *gzip.Writer
+	bytesWrittenStat    *base.SgwIntStat // stat for reporting stats, this can be not nil if there are no stats
+	lastBytesWritten    int64            // number of bytes written since the last reporting of stats
+	statsUpdateInterval time.Duration    // how often to report stats
+	status              int
+	sniffDone           bool
+	headerWritten       bool
 }
 
-// Creates a new EncodedResponseWriter, or returns nil if the request doesn't allow encoded responses.
-func NewEncodedResponseWriter(response http.ResponseWriter, rq *http.Request) *EncodedResponseWriter {
+// NewEncodedResponseWriter creates a new EncodedResponseWriter, or returns nil if the request doesn't allow encoded responses.
+func NewEncodedResponseWriter(response http.ResponseWriter, rq *http.Request, stat *base.SgwIntStat, statsUpdateInterval time.Duration) *EncodedResponseWriter {
 	isWebSocketRequest := strings.ToLower(rq.Header.Get("Upgrade")) == "websocket" &&
 		strings.Contains(strings.ToLower(rq.Header.Get("Connection")), "upgrade")
 
@@ -49,9 +56,14 @@ func NewEncodedResponseWriter(response http.ResponseWriter, rq *http.Request) *E
 		}
 	}
 
-	return &EncodedResponseWriter{ResponseWriter: response}
+	return &EncodedResponseWriter{
+		ResponseWriter:      response,
+		bytesWrittenStat:    stat,
+		statsUpdateInterval: statsUpdateInterval,
+	}
 }
 
+// WriteHeader uses underlying http.ResponseWriter WriteHeader method
 func (w *EncodedResponseWriter) WriteHeader(status int) {
 	w.status = status
 	w.sniff(nil) // Must do it now because headers can't be changed after WriteHeader call
@@ -63,13 +75,33 @@ func (w *EncodedResponseWriter) WriteHeader(status int) {
 
 }
 
+// WriteHeader uses underlying http.ResponseWriter Write if gzip is disabled, otherwise uses underlying http.ResponseWriter
 func (w *EncodedResponseWriter) Write(b []byte) (int, error) {
 	w.sniff(b)
 	if w.gz != nil {
-		return w.gz.Write(b)
-	} else {
-		return w.ResponseWriter.Write(b)
+		n, err := w.gz.Write(b)
+		w.lastBytesWritten += int64(n)
+		w.reportStats(false)
+		return n, err
 	}
+	n, err := w.ResponseWriter.Write(b)
+	w.lastBytesWritten += int64(n)
+	w.reportStats(false)
+	return n, err
+}
+
+// reportStats reports bytes written by this response writer, since the last report. This will only report stats if the stat is defined. This is not locked, so is only safe to call while no one is calling EncodedResponseWriter.Write. If updateImmediately is set, the stats are reported immediately, otherwise they are reported if enough time has elapsed since last reporting.
+func (w *EncodedResponseWriter) reportStats(updateImmediately bool) {
+	if w.bytesWrittenStat == nil {
+		return
+	}
+	currentTime := time.Now()
+	if !updateImmediately && time.Since(currentTime) < w.statsUpdateInterval {
+		return
+	}
+	w.bytesWrittenStat.Add(w.lastBytesWritten)
+	w.lastBytesWritten = 0
+	w.lastReportTime = currentTime
 }
 
 func (w *EncodedResponseWriter) disableCompression() {
@@ -119,6 +151,11 @@ func (w *EncodedResponseWriter) Close() {
 		ReturnGZipWriter(w.gz)
 		w.gz = nil
 	}
+}
+
+// isHijackable is always false since we won't create a NewEncodedResponseWriter if the request contains the Upgrade header.
+func (w *EncodedResponseWriter) isHijackable() bool {
+	return false
 }
 
 //////// GZIP WRITER CACHE:

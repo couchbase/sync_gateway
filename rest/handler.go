@@ -87,7 +87,7 @@ var ClusterScopedEndpointRolesWrite = []RouteRole{ClusterAdminRole, FullAdminRol
 type handler struct {
 	server                *ServerContext
 	rq                    *http.Request
-	response              http.ResponseWriter
+	response              CountableResponseWriter
 	status                int
 	statusMessage         string
 	requestBody           io.ReadCloser
@@ -127,7 +127,9 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 		h := newHandler(server, privs, r, rq, handlerOptions{})
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
+		h.response.reportStats(true)
 		h.logDuration(true)
+
 	})
 }
 
@@ -140,6 +142,7 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermiss
 		h := newHandler(server, privs, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
+		h.response.reportStats(true)
 		h.logDuration(true)
 	})
 }
@@ -154,7 +157,7 @@ func makeMetadataDBOfflineHandler(server *ServerContext, privs handlerPrivs, acc
 		h := newHandler(server, privs, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
-		h.logDuration(true)
+		h.response.reportStats(true)
 	})
 }
 
@@ -166,6 +169,7 @@ func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, acc
 		h.authScopeFunc = dbAuthStringFunc
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
+		h.response.reportStats(true)
 		h.logDuration(true)
 	})
 }
@@ -180,7 +184,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		server:            server,
 		privs:             privs,
 		rq:                rq,
-		response:          r,
+		response:          NewNonCountedResponseWriter(r),
 		status:            http.StatusOK,
 		serialNumber:      atomic.AddUint64(&lastSerialNum, 1),
 		startTime:         time.Now(),
@@ -245,13 +249,18 @@ func ParseKeyspace(ks string) (db string, scope, collection *string, err error) 
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
 	if h.server.Config.API.CompressResponses == nil || *h.server.Config.API.CompressResponses {
-		if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
+		var stat *base.SgwIntStat
+		if h.shouldUpdateBytesTransferredStats() {
+			stat = h.db.DbStats.Database().PublicRestBytesWritten
+		}
+		if encoded := NewEncodedResponseWriter(h.response, h.rq, stat, defaultBytesStatsReportingInterval); encoded != nil {
 			h.response = encoded
 			defer encoded.Close()
 		}
 	}
 
 	err := h.validateAndWriteHeaders(method, accessPermissions, responsePermissions)
+
 	if err != nil {
 		return err
 	}
@@ -374,7 +383,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			// any other call
 
 			// defer releasing the dbContext until after the handler method returns, unless it's a blipsync request
-			if !h.pathTemplateContains("_blipsync") {
+			if !h.isBlipSync() {
 				dbContext.AccessLock.RLock()
 				defer dbContext.AccessLock.RUnlock()
 			}
@@ -402,7 +411,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			// Prevent read-only guest access to any endpoint requiring write permissions except
 			// blipsync.  Read-only guest handling for websocket replication (blipsync) is evaluated
 			// at the blip message level to support read-only pull replications.
-			if requiresWritePermission(accessPermissions) && !h.pathTemplateContains("_blipsync") {
+			if requiresWritePermission(accessPermissions) && !h.isBlipSync() {
 				return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
 			}
 		}
@@ -564,6 +573,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			}
 		}
 	}
+	h.updateResponseWriter()
 	return nil
 }
 
@@ -580,6 +590,30 @@ func (h *handler) logRequestLine() {
 
 	queryValues := h.getQueryValues()
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "%s %s%s%s", h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formattedEffectiveUserName())
+}
+
+// shouldUpdateBytesTransferredStats returns true if we want to log the bytes transferred. The criteria is if this is db scoped over the public port. Blip is skipped since those stats are tracked separately.
+func (h *handler) shouldUpdateBytesTransferredStats() bool {
+	if h.db == nil {
+		return false
+	}
+	if h.privs != publicPrivs && h.privs != regularPrivs {
+		return false
+	}
+	if h.isBlipSync() {
+		return false
+	}
+	return true
+}
+
+// updateResponseWriter will create an updated Response Writer if we need to log db stats.
+func (h *handler) updateResponseWriter() {
+	if !h.shouldUpdateBytesTransferredStats() {
+		return
+	}
+	h.response = NewCountedResponseWriter(h.response,
+		h.db.DbStats.Database().PublicRestBytesWritten,
+		defaultBytesStatsReportingInterval)
 }
 
 func (h *handler) logDuration(realTime bool) {
