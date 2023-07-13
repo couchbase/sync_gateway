@@ -245,6 +245,9 @@ func (h *handler) handleChanges() error {
 			return err
 		}
 		feed, options, filter, channelsArray, docIdsArray, _, err = h.readChangesOptionsFromJSON(body)
+		if err != nil {
+			return err
+		}
 		// no byte array of the body available
 		err = h.logBytesRead(body)
 		if err != nil {
