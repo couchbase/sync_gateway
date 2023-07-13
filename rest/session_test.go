@@ -478,7 +478,6 @@ func TestSessionAPI(t *testing.T) {
 }
 
 func TestSessionPasswordInvalidation(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	testCases := []struct {
 		name     string
 		password string
