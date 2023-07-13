@@ -275,7 +275,6 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			h.logRequestLine()
 		}
 		h.logRESTCount()
-		h.logBytesRead()
 	}()
 
 	defer func() {
@@ -655,24 +654,33 @@ func (h *handler) logRESTCount() {
 	h.db.DbStats.DatabaseStats.NumPublicRestRequests.Add(1)
 }
 
-func (h *handler) logBytesRead() {
+// logBytesRead will increment the public REST bytes read stat for public requests. If the passed in byte array is empty it will
+// read the body off the handler calculate the length and write the body back to the handler for use later.
+func (h *handler) logBytesRead(bodyByteArray []byte) error {
 	if h.db == nil {
-		return
+		return nil
 	}
 	if h.privs != publicPrivs && h.privs != regularPrivs {
-		return
+		return nil
 	}
 	if h.isBlipSync() {
-		return
+		return nil
 	}
-	bodyBytes, err := h.readBody()
-	if err != nil {
-		return
+	if bodyByteArray == nil {
+		// if passed in byte array is nil we need to read the body to get the body bytes
+		readBodyBytes, err := h.readBody()
+		if err != nil {
+			return err
+		}
+		// The above readBody() will end up clearing the body which the later handler will require. Re-populate this
+		// for the later handler.
+		h.requestBody = io.NopCloser(bytes.NewReader(readBodyBytes))
+		bodyByteArray = readBodyBytes
 	}
-	// The above readBody() will end up clearing the body which the later handler will require. Re-populate this
-	// for the later handler.
-	h.requestBody = io.NopCloser(bytes.NewReader(bodyBytes))
-	h.db.DbStats.DatabaseStats.PublicRestBytesRead.Add(int64(len(bodyBytes)))
+
+	// increment stat, if we get to this point stat needs to be incremented
+	h.db.DbStats.DatabaseStats.PublicRestBytesRead.Add(int64(len(bodyByteArray)))
+	return nil
 }
 
 // logStatusWithDuration will log the request status and the duration of the request.

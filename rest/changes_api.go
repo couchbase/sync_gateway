@@ -45,7 +45,12 @@ const feedTypeWebsocket = "websocket"
 
 func (h *handler) handleRevsDiff() error {
 	var input map[string][]string
-	err := h.readJSONInto(&input)
+	// no byte array of the body available
+	err := h.logBytesRead(nil)
+	if err != nil {
+		return err
+	}
+	err = h.readJSONInto(&input)
 	if err != nil {
 		return err
 	}
@@ -240,6 +245,11 @@ func (h *handler) handleChanges() error {
 			return err
 		}
 		feed, options, filter, channelsArray, docIdsArray, _, err = h.readChangesOptionsFromJSON(body)
+		// no byte array of the body available
+		err = h.logBytesRead(body)
+		if err != nil {
+			return err
+		}
 
 		if err != nil {
 			return err

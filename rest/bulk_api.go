@@ -37,6 +37,11 @@ func (h *handler) handleAllDocs() error {
 	// Get the doc IDs if this is a POST request:
 	var explicitDocIDs []string
 	if h.rq.Method == "POST" {
+		// no byte array of the body available
+		err := h.logBytesRead(nil)
+		if err != nil {
+			return err
+		}
 		input, err := h.readJSON()
 		if err == nil {
 			if explicitDocIDs, _ = db.GetStringArrayProperty(input, "keys"); explicitDocIDs == nil {
@@ -372,6 +377,11 @@ func (h *handler) handleBulkGet() error {
 		canCompressParts = true
 	}
 
+	// no byte array of the body available
+	err := h.logBytesRead(nil)
+	if err != nil {
+		return err
+	}
 	body, err := h.readJSON()
 	if err != nil {
 		return err
@@ -459,6 +469,11 @@ func (h *handler) handleBulkDocs() error {
 		h.db.DbStats.CBLReplicationPush().WriteProcessingTime.Add(time.Since(startTime).Nanoseconds())
 	}()
 
+	// no byte array of the body available
+	err := h.logBytesRead(nil)
+	if err != nil {
+		return err
+	}
 	body, err := h.readJSON()
 	if err != nil {
 		return err
