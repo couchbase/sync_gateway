@@ -253,10 +253,6 @@ func (h *handler) handleChanges() error {
 		if err != nil {
 			return err
 		}
-
-		if err != nil {
-			return err
-		}
 		channelsArray, docIdsArray, err = h.updateChangesOptionsFromQuery(&feed, &options, &filter, channelsArray, docIdsArray)
 		if err != nil {
 			return err
