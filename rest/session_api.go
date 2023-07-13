@@ -58,9 +58,6 @@ func (h *handler) handleSessionPOST() error {
 		return err
 	}
 	user, err := h.getUserFromSessionRequestBody()
-	if err != nil {
-		return err
-	}
 
 	// If we fail to get a user from the body and we've got a non-GUEST authenticated user, create the session based on that user
 	if user == nil && h.user != nil && h.user.Name() != "" {
