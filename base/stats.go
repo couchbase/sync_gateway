@@ -744,6 +744,9 @@ func newSGWStat(subsystem string, key string, description string, labelKeys []st
 }
 
 func NewIntStat(subsystem string, key string, description string, labelKeys []string, labelVals []string, statValueType prometheus.ValueType, initialValue int64) (*SgwIntStat, error) {
+	if description == "" {
+		return nil, fmt.Errorf("attempting to register stat with no description")
+	}
 	stat := &SgwIntStat{
 		SgwStat: *newSGWStat(subsystem, key, description, labelKeys, labelVals, statValueType),
 	}
@@ -777,6 +780,9 @@ func (s *SgwIntStat) String() string {
 }
 
 func NewFloatStat(subsystem string, key string, description string, labelKeys []string, labelVals []string, statValueType prometheus.ValueType, initialValue float64) (*SgwFloatStat, error) {
+	if description == "" {
+		return nil, fmt.Errorf("attempting to register stat with no description")
+	}
 	stat := &SgwFloatStat{
 		SgwStat: *newSGWStat(subsystem, key, description, labelKeys, labelVals, statValueType),
 		Val:     math.Float64bits(initialValue),
@@ -854,6 +860,9 @@ type SgwDurStat struct {
 // Prometheus's DefaultRegisterer and returns the collector. It panics if any error
 // occurs while registering the collector on Prometheus registry.
 func NewDurStat(subsystem string, key string, description string, labelKeys []string, labelVals []string, statValueType prometheus.ValueType, initialValue time.Time) (*SgwDurStat, error) {
+	if description == "" {
+		return nil, fmt.Errorf("attempting to register stat with no description")
+	}
 	stat := &SgwDurStat{
 		SgwStat:   *newSGWStat(subsystem, key, description, labelKeys, labelVals, statValueType),
 		StartTime: initialValue,
