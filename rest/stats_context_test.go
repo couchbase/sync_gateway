@@ -11,9 +11,14 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNetworkInterfaceStatsForHostnamePort(t *testing.T) {
@@ -30,4 +35,28 @@ func TestNetworkInterfaceStatsForHostnamePort(t *testing.T) {
 	_, err = networkInterfaceStatsForHostnamePort(":4984")
 	assert.NoError(t, err, "Unexpected Error")
 
+}
+
+func TestDescriptionPopulation(t *testing.T) {
+	base.SkipPrometheusStatsRegistration = false
+	defer func() {
+		base.SkipPrometheusStatsRegistration = true
+	}()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	srv := httptest.NewServer(rt.TestMetricsHandler())
+	defer srv.Close()
+
+	httpClient := http.DefaultClient
+
+	// Ensure metrics endpoint is accessible and that db database has entries
+	resp, err := httpClient.Get(srv.URL + "/_metrics")
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	bodyString, err := io.ReadAll(resp.Body)
+	// assert on a HELP description
+	assert.Contains(t, string(bodyString), `HELP sgw_cache_high_seq_stable The highest contiguous sequence number that has been cached.`)
 }
