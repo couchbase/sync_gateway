@@ -94,7 +94,7 @@ func NewSyncGatewayStats() (*SgwStats, error) {
 
 	// This provides a stat for sgw_up where the value will be fixed to one. This is to allow backwards compatibility
 	// where the standalone exporter would export a value of 1 if it has contact with SGW.
-	_, err = NewIntStat("", "up", "", nil, nil, prometheus.GaugeValue, 1)
+	_, err = NewIntStat("", "up", SGWUpDesc, nil, nil, prometheus.GaugeValue, 1)
 	if err != nil {
 		return nil, err
 	}

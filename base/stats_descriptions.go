@@ -8,6 +8,8 @@
 
 package base
 
+const SGWUpDesc = "This provides a stat for sgw_up where the value will be fixed to one."
+
 // ResourceUtilization descriptions
 const (
 	AdminNetBytesRecDesc = "The total number of bytes received (since node start-up) on the network interface to which the Sync Gateway api.admin_interface is bound. " +
