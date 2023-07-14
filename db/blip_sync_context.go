@@ -144,9 +144,9 @@ func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) 
 // Includes the outer handler as a nested function.
 func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler, *blip.Message) error) {
 
-	startTime := time.Now()
 	// Wrap the handler function with a function that adds handling needed by all handlers
 	handlerFnWrapper := func(rq *blip.Message) {
+		startTime := time.Now()
 
 		// Recover to log panic from handlers and repanic for go-blip response handling
 		defer func() {
@@ -167,13 +167,7 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 				base.WarnfCtx(bsc.loggingCtx, "PANIC handling BLIP request %v: %v\n%s", rq, err, debug.Stack())
 				panic(err)
 			}
-			messageCPUtime := time.Since(startTime).Milliseconds()
-			messBody, err := rq.Body()
-			if err == nil && bsc.blipContextDb != nil {
-				bytes := len(messBody)
-				stat := CalculateComputeStat(int64(bytes), messageCPUtime)
-				bsc.blipContextDb.DbStats.DatabaseStats.SyncProcessCompute.Add(stat)
-			}
+			bsc.reportComputeStat(rq, startTime)
 		}()
 
 		handler := blipHandler{
@@ -445,13 +439,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 		bsc.removeAllowedAttachments(docID, attMeta, activeSubprotocol)
 		return ErrClosedBLIPSender
 	}
-	messageCPUtime := time.Since(startTime).Milliseconds()
-	messBytes, err := outrq.Body()
-	if err == nil && bsc.blipContextDb != nil {
-		bytes := len(messBytes)
-		stat := CalculateComputeStat(int64(bytes), messageCPUtime)
-		bsc.blipContextDb.DbStats.Database().SyncProcessCompute.Add(stat)
-	}
+	bsc.reportComputeStat(outrq.Message, startTime)
 
 	if awaitResponse {
 		go func(activeSubprotocol string) {
@@ -601,13 +589,7 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 	if !bsc.sendBLIPMessage(sender, noRevRq.Message) {
 		return ErrClosedBLIPSender
 	}
-	messageCPUtime := time.Since(startTime).Milliseconds()
-	messBytes, err := noRevRq.Body()
-	if err == nil && bsc.blipContextDb != nil {
-		bytes := len(messBytes)
-		stat := CalculateComputeStat(int64(bytes), messageCPUtime)
-		bsc.blipContextDb.DbStats.Database().SyncProcessCompute.Add(stat)
-	}
+	bsc.reportComputeStat(noRevRq.Message, startTime)
 
 	collectionCtx, err := bsc.collections.get(collectionIdx)
 	if err != nil {
@@ -729,4 +711,14 @@ func (bsc *BlipSyncContext) reportStats(updateImmediately bool) {
 	dbStats.ReplicationBytesReceived.Add(int64(newBytesReceived))
 	bsc.stats.lastReportTime.Store(currentTime)
 
+}
+
+func (bsc *BlipSyncContext) reportComputeStat(rq *blip.Message, startTime time.Time) {
+	messageCPUtime := time.Since(startTime).Milliseconds()
+	messBody, err := rq.Body()
+	if err == nil && bsc.blipContextDb != nil {
+		bytes := len(messBody)
+		stat := CalculateComputeStat(int64(bytes), messageCPUtime)
+		bsc.blipContextDb.DbStats.DatabaseStats.SyncProcessCompute.Add(stat)
+	}
 }

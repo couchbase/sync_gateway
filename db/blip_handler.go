@@ -563,13 +563,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		if !bh.sendBLIPMessage(sender, outrq) {
 			return ErrClosedBLIPSender
 		}
-		messageCPUtime := time.Since(startTime).Milliseconds()
-		messBytes, err := outrq.Body()
-		if err == nil && bh.blipContextDb != nil {
-			bytes := len(messBytes)
-			stat := CalculateComputeStat(int64(bytes), messageCPUtime)
-			bh.blipContextDb.DbStats.Database().SyncProcessCompute.Add(stat)
-		}
+		bh.reportComputeStat(outrq, startTime)
 
 		bh.inFlightChangesThrottle <- struct{}{}
 		atomic.AddInt64(&bh.changesPendingResponseCount, 1)
@@ -597,13 +591,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		if !bh.sendBLIPMessage(sender, outrq) {
 			return ErrClosedBLIPSender
 		}
-		messageCPUtime := time.Since(startTime).Milliseconds()
-		messBytes, err := outrq.Body()
-		if err == nil && bh.blipContextDb != nil {
-			bytes := len(messBytes)
-			stat := CalculateComputeStat(int64(bytes), messageCPUtime)
-			bh.blipContextDb.DbStats.Database().SyncProcessCompute.Add(stat)
-		}
+		bh.reportComputeStat(outrq, startTime)
 	}
 
 	if len(changeArray) > 0 {
@@ -1327,13 +1315,10 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 	if !bh.sendBLIPMessage(sender, outrq) {
 		return nil, ErrClosedBLIPSender
 	}
-	messageCPUtime := time.Since(startTime).Milliseconds()
-	messBytes, err := outrq.Body()
-	if err == nil && bh.blipContextDb != nil {
-		bytes := len(messBytes)
-		stat := CalculateComputeStat(int64(bytes), messageCPUtime)
-		bh.blipContextDb.DbStats.Database().SyncProcessCompute.Add(stat)
-	}
+	// We get here from processRev which is has its own sync compute calculation associated with it
+	// We still need to have a sync compute calculation here since we are sending a message along blip
+	// that needs accounting for
+	bh.reportComputeStat(outrq, startTime)
 
 	resp := outrq.Response()
 
@@ -1381,13 +1366,10 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 	if !bh.sendBLIPMessage(sender, outrq) {
 		return ErrClosedBLIPSender
 	}
-	messageCPUtime := time.Since(startTime).Milliseconds()
-	messBytes, err := outrq.Body()
-	if err == nil && bh.blipContextDb != nil {
-		bytes := len(messBytes)
-		stat := CalculateComputeStat(int64(bytes), messageCPUtime)
-		bh.blipContextDb.DbStats.Database().SyncProcessCompute.Add(stat)
-	}
+	// We get here from processRev which is has its own sync compute calculation associated with it
+	// We still need to have a sync compute calculation here since we are sending a message along blip
+	// that needs accounting for
+	bh.reportComputeStat(outrq, startTime)
 
 	resp := outrq.Response()
 
