@@ -41,6 +41,12 @@ type ChannelRevocationTester struct {
 	userChannels ChannelsTemp
 }
 
+const (
+	revocationTestRole     = "foo"
+	revocationTestUser     = "user"
+	revocationTestPassword = "test"
+)
+
 func (tester *ChannelRevocationTester) addRole(user, role string) {
 	if tester.roles.Roles == nil {
 		tester.roles.Roles = map[string][]string{}
@@ -160,22 +166,22 @@ func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTe
 
 	defaultSyncFn := `
 			function (doc, oldDoc){
-				if (doc._id === 'userRoles'){				
+				if (doc._id === 'userRoles'){
 					for (var key in doc.roles){
 						role(key, doc.roles[key]);
 					}
 				}
-				if (doc._id === 'roleChannels'){				
+				if (doc._id === 'roleChannels'){
 					for (var key in doc.channels){
 						access(key, doc.channels[key]);
 					}
 				}
-				if (doc._id === 'userChannels'){				
+				if (doc._id === 'userChannels'){
 					for (var key in doc.channels){
 						access(key, doc.channels[key]);
 					}
 				}
-				if (doc._id.indexOf("doc") >= 0){				
+				if (doc._id.indexOf("doc") >= 0){
 					channel(doc.channels);
 				}
 			}`
@@ -195,10 +201,10 @@ func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTe
 		restTester: rt,
 	}
 
-	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.db}}/_user/user", fmt.Sprintf(`{"name": "%s", "password": "%s"}`, revocationTestUser, revocationTestPassword))
 	RequireStatus(t, resp, http.StatusCreated)
 
-	resp = rt.SendAdminRequest("PUT", "/db/_role/foo", `{}`)
+	resp = rt.SendAdminRequest("PUT", "/{{.db}}/_role/foo", `{}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	return revocationTester, rt
@@ -1482,7 +1488,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 						access(key, meta.xattrs.channelInfo.userChannels[key]);
 					}
 				}
-				if (doc._id.indexOf("doc") >= 0){				
+				if (doc._id.indexOf("doc") >= 0){
 					channel(doc.channels);
 				}
 			}`,
@@ -1724,6 +1730,11 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	// Active
 	rt1 := NewRestTester(t,
 		&RestTesterConfig{
+			DatabaseConfig: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Name: "active",
+				},
+			},
 			CustomTestBucket: base.GetTestBucket(t),
 			SyncFn:           channels.DocChannelsSyncFunction,
 		})
@@ -1734,14 +1745,17 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
 
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	passiveDBURL, err := url.Parse(srv.URL + "/" + rt2.GetDatabase().Name)
 	require.NoError(t, err)
 
-	passiveDBURL.User = url.UserPassword("user", "test")
+	passiveDBURL.User = url.UserPassword(revocationTestUser, revocationTestPassword)
 	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
+
+	revocationTester.addRole(revocationTestUser, revocationTestRole)
+	require.NoError(t, rt2.WaitForPendingChanges())
 
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
@@ -1762,66 +1776,67 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 		assert.NoError(t, ar.Stop())
 	}()
 
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein"}`)
+	// perform role grant to allow for all channels
+	resp := rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", "", rt2_collection, []string{"A", "B", "C"}))
+
+	_ = rt2.PutDoc("docA", `{"channels": ["A"]}`)
 	RequireStatus(t, resp, http.StatusOK)
-
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", GetRolePayload(t, "", "", rt2_collection, []string{"A", "B", "C"}))
+	_ = rt2.PutDoc("docAB", `{"channels": ["A", "B"]}`)
 	RequireStatus(t, resp, http.StatusOK)
-
-	revocationTester.addRole("user", "foo")
-
-	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
-	_ = rt2.CreateDocReturnRev(t, "docAB", "", map[string][]string{"channels": []string{"A", "B"}})
-	_ = rt2.CreateDocReturnRev(t, "docB", "", map[string][]string{"channels": []string{"B"}})
-	_ = rt2.CreateDocReturnRev(t, "docABC", "", map[string][]string{"channels": []string{"A", "B", "C"}})
-	_ = rt2.CreateDocReturnRev(t, "docC", "", map[string][]string{"channels": []string{"C"}})
+	_ = rt2.PutDoc("docB", `{"channels": ["B"]}`)
+	RequireStatus(t, resp, http.StatusOK)
+	_ = rt2.PutDoc("docABC", `{"channels": ["A", "B", "C"]}`)
+	RequireStatus(t, resp, http.StatusOK)
+	_ = rt2.PutDoc("docC", `{"channels": ["C"]}`)
+	RequireStatus(t, resp, http.StatusOK)
 
 	// Wait for docs to turn up on local / rt1
 	changesResults, err := rt1.WaitForChanges(5, "/{{.keyspace}}/_changes?since=0", "", true)
 	require.NoError(t, err)
-	assert.Len(t, changesResults.Results, 5)
+	require.Len(t, changesResults.Results, 5)
 
 	// Revoke C and ensure docC gets purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", GetRolePayload(t, "", "", rt2_collection, []string{"A", "B"}))
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", "", rt2_collection, []string{"A", "B"}))
 	RequireStatus(t, resp, http.StatusOK)
+	require.NoError(t, rt2.WaitForPendingChanges())
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docC", "")
 		return resp.Code == http.StatusNotFound
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Revoke B and ensure docB gets purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", GetRolePayload(t, "", "", rt2_collection, []string{"A"}))
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", "", rt2_collection, []string{"A"}))
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docB", "")
 		return resp.Code == http.StatusNotFound
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Revoke A and ensure docA, docAB, docABC gets purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", GetRolePayload(t, "", "", rt2_collection, []string{}))
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", "", rt2_collection, []string{}))
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
 		return resp.Code == http.StatusNotFound
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docAB", "")
 		return resp.Code == http.StatusNotFound
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docABC", "")
 		return resp.Code == http.StatusNotFound
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 }
 
