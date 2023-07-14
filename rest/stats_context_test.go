@@ -57,6 +57,7 @@ func TestDescriptionPopulation(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	bodyString, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	// assert on a HELP description
 	assert.Contains(t, string(bodyString), `HELP sgw_cache_high_seq_stable The highest contiguous sequence number that has been cached.`)
 }
