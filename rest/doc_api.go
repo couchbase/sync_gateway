@@ -313,12 +313,6 @@ func (h *handler) handlePutAttachment() error {
 	if err != nil {
 		return err
 	}
-	// increment bytes read stat for public requests, pass byte array of body in as its available above,
-	// this avoids unnecessary processing
-	err = h.logBytesRead(attachmentData)
-	if err != nil {
-		return err
-	}
 
 	body, err := h.collection.Get1xRevBody(h.ctx(), docid, revid, false, nil)
 	if err != nil {
@@ -436,11 +430,6 @@ func (h *handler) handlePutDoc() error {
 
 	if replicator2, _ := h.getOptBoolQuery("replicator2", false); replicator2 {
 		return h.handlePutDocReplicator2(docid, roundTrip)
-	}
-
-	err := h.logBytesRead(nil)
-	if err != nil {
-		return err
 	}
 	body, err := h.readDocument()
 	if err != nil {
@@ -581,10 +570,7 @@ func (h *handler) handlePostDoc() error {
 	}
 
 	roundTrip := h.getBoolQuery("roundtrip")
-	err := h.logBytesRead(nil)
-	if err != nil {
-		return err
-	}
+
 	body, err := h.readDocument()
 	if err != nil {
 		return err
@@ -646,10 +632,7 @@ func (h *handler) handleGetLocalDoc() error {
 // HTTP handler for a PUT of a _local document
 func (h *handler) handlePutLocalDoc() error {
 	docid := h.PathVar("docid")
-	err := h.logBytesRead(nil)
-	if err != nil {
-		return err
-	}
+
 	body, err := h.readJSON()
 	if err == nil {
 		var revid string

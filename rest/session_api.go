@@ -53,10 +53,13 @@ func (h *handler) handleSessionPOST() error {
 	if h.db.Options.DisablePasswordAuthentication && (h.user == nil || h.user.Name() == "") {
 		return ErrLoginRequired
 	}
-	err := h.logBytesRead(nil)
-	if err != nil {
-		return err
-	}
+	/*
+		err := h.logBytesRead(nil)
+		if err != nil {
+			return err
+		}
+
+	*/
 	user, err := h.getUserFromSessionRequestBody()
 
 	// If we fail to get a user from the body and we've got a non-GUEST authenticated user, create the session based on that user

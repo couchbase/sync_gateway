@@ -28,12 +28,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/mux"
-	"github.com/pkg/errors"
-
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/gorilla/mux"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -275,6 +274,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			h.logRequestLine()
 		}
 		h.logRESTCount()
+		h.logBytesRead()
 	}()
 
 	defer func() {
@@ -405,6 +405,11 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	if h.privs != adminPrivs {
 		var err error
 		if err = h.checkAuth(dbContext); err != nil {
+			// ContentLength on the request can be -1 if the length is 'unknown'. Add check to protect against decrementing the stat
+			// In the eventuality auth fails on the request we need to still increment stat for the size of the body in bytes
+			if h.rq.ContentLength >= 0 {
+				dbContext.DbStats.DatabaseStats.PublicRestBytesRead.Add(h.rq.ContentLength)
+			}
 			return err
 		}
 		if h.user != nil && h.user.Name() == "" && dbContext != nil && dbContext.IsGuestReadOnly() {
@@ -654,33 +659,22 @@ func (h *handler) logRESTCount() {
 	h.db.DbStats.DatabaseStats.NumPublicRestRequests.Add(1)
 }
 
-// logBytesRead will increment the public REST bytes read stat for public requests. If the passed in byte array is empty it will
-// read the body off the handler calculate the length and write the body back to the handler for use later.
-func (h *handler) logBytesRead(bodyByteArray []byte) error {
+// logBytesRead will increment the public REST bytes read stat for public requests. It will take the request length off the http.Request
+// in the handler struct. In the eventuality of failed out the db is nil on the handler avoiding a double count for the stat.
+func (h *handler) logBytesRead() {
 	if h.db == nil {
-		return nil
+		return
 	}
 	if h.privs != publicPrivs && h.privs != regularPrivs {
-		return nil
+		return
 	}
 	if h.isBlipSync() {
-		return nil
+		return
 	}
-	if bodyByteArray == nil {
-		// if passed in byte array is nil we need to read the body to get the body bytes
-		readBodyBytes, err := h.readBody()
-		if err != nil {
-			return err
-		}
-		// The above readBody() will end up clearing the body which the later handler will require. Re-populate this
-		// for the later handler.
-		h.requestBody = io.NopCloser(bytes.NewReader(readBodyBytes))
-		bodyByteArray = readBodyBytes
+	// ContentLength on the request can be -1 if the length is 'unknown'. Add check to protect against decrementing the stat
+	if h.rq.ContentLength >= 0 {
+		h.db.DbStats.DatabaseStats.PublicRestBytesRead.Add(h.rq.ContentLength)
 	}
-
-	// increment stat, if we get to this point stat needs to be incremented
-	h.db.DbStats.DatabaseStats.PublicRestBytesRead.Add(int64(len(bodyByteArray)))
-	return nil
 }
 
 // logStatusWithDuration will log the request status and the duration of the request.
