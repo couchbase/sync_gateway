@@ -43,7 +43,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 		return false
 	}
 
-	callback := func(ctx context.Context, event sgbucket.FeedEvent) bool {
+	callback := func(event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", compactionLoggingID, event.Opcode, base.UD(docID))
 
@@ -150,7 +150,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 	}
 	metadataKeyPrefix := dcpClient.GetMetadataKeyPrefix()
 
-	doneChan, err := dcpClient.Start(ctx)
+	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		_ = dcpClient.Close()
@@ -299,7 +299,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 	// Iterate over v1 attachments and if not marked with supplied compactionID we can purge the attachments.
 	// In the event of an error we can return but continue - Worst case is an attachment which should be deleted won't
 	// be deleted.
-	callback := func(ctx context.Context, event sgbucket.FeedEvent) bool {
+	callback := func(event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", compactionLoggingID, event.Opcode, base.UD(docID))
 
@@ -375,7 +375,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 		return 0, err
 	}
 
-	doneChan, err := dcpClient.Start(ctx)
+	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		_ = dcpClient.Close()
@@ -410,7 +410,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 	base.InfofCtx(ctx, base.KeyAll, "Starting third phase of attachment compaction (cleanup phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Cleanup: " + compactionID
 
-	callback := func(ctx context.Context, event sgbucket.FeedEvent) bool {
+	callback := func(event sgbucket.FeedEvent) bool {
 
 		docID := string(event.Key)
 
@@ -513,7 +513,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 	}
 	metadataKeyPrefix := dcpClient.GetMetadataKeyPrefix()
 
-	doneChan, err := dcpClient.Start(ctx)
+	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		// simplify close in CBG-2234

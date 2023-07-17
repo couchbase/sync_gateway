@@ -128,7 +128,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 // ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed.  It may be
 // executed concurrently for multiple events from different vbuckets.  Filters out
 // internal documents based on key, then checks sync metadata to determine whether document needs to be imported
-func (il *importListener) ProcessFeedEvent(ctx context.Context, event sgbucket.FeedEvent) (shouldPersistCheckpoint bool) {
+func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPersistCheckpoint bool) {
 
 	// Ignore non-mutation/deletion events
 	if event.Opcode != sgbucket.FeedOpMutation && event.Opcode != sgbucket.FeedOpDeletion {

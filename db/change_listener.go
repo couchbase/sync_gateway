@@ -28,6 +28,7 @@ import (
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
 // changes.
 type changeListener struct {
+	ctx                   context.Context
 	bucket                base.Bucket
 	bucketName            string                 // Used for logging
 	tapFeed               base.TapFeed           // Observes changes to bucket
@@ -138,7 +139,7 @@ func (listener *changeListener) StartMutationFeed(ctx context.Context, bucket ba
 			defer listener.notifyStopping()
 			for event := range listener.tapFeed.Events() {
 				event.TimeReceived = time.Now()
-				listener.ProcessFeedEvent(ctx, event)
+				listener.ProcessFeedEvent(event)
 			}
 		}()
 		return nil
@@ -152,7 +153,7 @@ func (listener *changeListener) StartMutationFeed(ctx context.Context, bucket ba
 
 // ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed (TAP or DCP).  Uses document
 // key to determine handling, based on whether the incoming mutation is an internal Sync Gateway document.
-func (listener *changeListener) ProcessFeedEvent(ctx context.Context, event sgbucket.FeedEvent) bool {
+func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
 	requiresCheckpointPersistence := true
 	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
 		key := string(event.Key)
@@ -164,7 +165,7 @@ func (listener *changeListener) ProcessFeedEvent(ctx context.Context, event sgbu
 			if event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
-			listener.notifyKey(ctx, key)
+			listener.notifyKey(listener.ctx, key)
 		} else if strings.HasPrefix(key, listener.metaKeys.UnusedSeqPrefix()) || strings.HasPrefix(key, listener.metaKeys.UnusedSeqRangePrefix()) { // SG unused sequence marker docs
 			if event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
@@ -293,7 +294,6 @@ func (listener *changeListener) Wait(keys []string, counter uint64, terminateChe
 		base.MD(listener.bucketName), counter)
 
 	for {
-		fmt.Println("Wait picking up changes for keys=", keys)
 		curCounter := listener._currentCount(keys)
 
 		if curCounter != counter || listener.terminateCheckCounter != terminateCheckCounter {
@@ -416,7 +416,6 @@ func (waiter *ChangeWaiter) RefreshUserCount() bool {
 
 // Updates the set of channel keys in the ChangeWaiter (maintains the existing set of user keys)
 func (waiter *ChangeWaiter) UpdateChannels(collectionID uint32, timedSet channels.TimedSet) {
-	fmt.Println("UpdateChannels called with timedSet=", timedSet)
 	// This capacity is not right can not accomodate channels without iteration.
 	initialCapacity := len(waiter.userKeys)
 	updatedKeys := make([]string, 0, initialCapacity)
@@ -430,7 +429,6 @@ func (waiter *ChangeWaiter) UpdateChannels(collectionID uint32, timedSet channel
 		updatedKeys = append(updatedKeys, waiter.userKeys...)
 	}
 	waiter.keys = updatedKeys
-	fmt.Println("UpdateChannels now has keys=", waiter.keys)
 
 }
 
@@ -449,7 +447,6 @@ func (waiter *ChangeWaiter) RefreshUserKeys(user auth.User, metaKeys *base.Metad
 		for role := range user.RoleNames() {
 			waiter.userKeys = append(waiter.userKeys, metaKeys.RoleKey(role))
 		}
-		fmt.Println("RefreshUserKeys now=", waiter.userKeys)
 		waiter.lastUserCount = waiter.listener.CurrentCount(waiter.userKeys)
 
 	}

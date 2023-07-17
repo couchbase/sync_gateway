@@ -578,7 +578,6 @@ func (col *DatabaseCollectionWithUser) checkForUserUpdates(ctx context.Context, 
 	newCount = changeWaiter.CurrentUserCount()
 	// If not continuous, we force user reload as a workaround for https://github.com/couchbase/sync_gateway/issues/2068.  For continuous, #2068 is handled by changedChannels check, and
 	// we can reload only when there's been a user change notification
-	base.DebugfCtx(ctx, base.KeyChanges, "Checking for user reload newCount=%d, userCount=%d, isContinuous=%v", newCount, userChangeCount, isContinuous)
 	if newCount > userChangeCount || !isContinuous {
 		var previousChannels channels.TimedSet
 		base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed reloading user %+v", base.UD(col.user))
@@ -1004,9 +1003,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				}
 
 				col.dbStats().CBLReplicationPull().NumPullReplCaughtUp.Add(1)
-				base.DebugfCtx(ctx, base.KeyChanges, "change waiter waiting")
 				waitResponse := changeWaiter.Wait()
-				base.DebugfCtx(ctx, base.KeyChanges, "change waiter woken up")
 				col.dbStats().CBLReplicationPull().NumPullReplCaughtUp.Add(-1)
 
 				if waitResponse == WaiterClosed {
@@ -1032,9 +1029,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 
 			// Check whether user channel access has changed while waiting:
 			var err error
-			fmt.Println("Calling check for user updates")
 			userChanged, userCounter, changedChannels, err = col.checkForUserUpdates(ctx, userCounter, changeWaiter, options.Continuous)
-			fmt.Println("Finished check for user updates")
 			if err != nil {
 				change := makeErrorEntry("User not found during reload - terminating changes feed")
 				base.DebugfCtx(ctx, base.KeyChanges, "User not found during reload - terminating changes feed with entry %+v", base.UD(change))

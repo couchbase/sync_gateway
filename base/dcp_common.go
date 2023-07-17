@@ -118,9 +118,9 @@ func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, 
 	return c, nil
 }
 
-func (c *DCPCommon) dataUpdate(ctx context.Context, seq uint64, event sgbucket.FeedEvent) {
+func (c *DCPCommon) dataUpdate(seq uint64, event sgbucket.FeedEvent) {
 	c.updateSeq(event.VbNo, seq, true)
-	shouldPersistCheckpoint := c.callback(ctx, event)
+	shouldPersistCheckpoint := c.callback(event)
 	if c.persistCheckpoints && shouldPersistCheckpoint {
 		c.incrementCheckpointCount(event.VbNo)
 	}

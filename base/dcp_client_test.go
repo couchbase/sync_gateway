@@ -10,7 +10,6 @@ package base
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"log"
 	"sync"
@@ -49,7 +48,7 @@ func TestOneShotDCP(t *testing.T) {
 
 	// create callback
 	mutationCount := uint64(0)
-	counterCallback := func(ctx context.Context, event sgbucket.FeedEvent) bool {
+	counterCallback := func(event sgbucket.FeedEvent) bool {
 		atomic.AddUint64(&mutationCount, 1)
 		return false
 	}
@@ -75,7 +74,7 @@ func TestOneShotDCP(t *testing.T) {
 	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, gocbv2Bucket)
 	require.NoError(t, err)
 
-	doneChan, startErr := dcpClient.Start(TestCtx(t))
+	doneChan, startErr := dcpClient.Start()
 	require.NoError(t, startErr)
 
 	defer func() {
@@ -123,7 +122,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 
 	// create callback
 	mutationCount := uint64(0)
-	counterCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	counterCallback := func(event sgbucket.FeedEvent) bool {
 		atomic.AddUint64(&mutationCount, 1)
 		return false
 	}
@@ -156,7 +155,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 		}
 	}()
 
-	doneChan, startErr := dcpClient.Start(TestCtx(t))
+	doneChan, startErr := dcpClient.Start()
 	require.NoError(t, startErr)
 
 	// Wait for some processing to complete, then close the feed
@@ -212,7 +211,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			// create callback
 			mutationCount := uint64(0)
 			vbucketZeroCount := uint64(0)
-			counterCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+			counterCallback := func(event sgbucket.FeedEvent) bool {
 				if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 					atomic.AddUint64(&mutationCount, 1)
 					if event.VbNo == 0 {
@@ -251,7 +250,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
 
-			doneChan, startErr := dcpClient.Start(TestCtx(t))
+			doneChan, startErr := dcpClient.Start()
 			require.NoError(t, startErr)
 
 			// Wait for first feed to complete
@@ -285,7 +284,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
 
-			doneChan2, startErr2 := dcpClient2.Start(TestCtx(t))
+			doneChan2, startErr2 := dcpClient2.Start()
 			require.Error(t, startErr2)
 
 			require.NoError(t, dcpClient2.Close())
@@ -304,7 +303,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
 
-			doneChan3, startErr3 := dcpClient3.Start(TestCtx(t))
+			doneChan3, startErr3 := dcpClient3.Start()
 			require.NoError(t, startErr3)
 
 			// Wait for third feed to complete
@@ -339,7 +338,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 
 	// create callback
 	mutationCount := uint64(0)
-	counterCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	counterCallback := func(event sgbucket.FeedEvent) bool {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			atomic.AddUint64(&mutationCount, 1)
 			if atomic.LoadUint64(&mutationCount) == uint64(10000) {
@@ -375,7 +374,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 	dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
-	_, startErr := dcpClient.Start(TestCtx(t))
+	_, startErr := dcpClient.Start()
 	require.NoError(t, startErr)
 
 	// Add documents
@@ -412,7 +411,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 	// function to force the rollback of some vBuckets
 	dcpClient1.forceRollbackvBucket(vbUUID)
 
-	_, startErr = dcpClient1.Start(TestCtx(t))
+	_, startErr = dcpClient1.Start()
 	require.NoError(t, startErr)
 
 	// Assert that the number of vBuckets active are the same as the total number of vBuckets on the client.
@@ -458,7 +457,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 
 	// create callback
 	mutationCount := uint64(0)
-	counterCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	counterCallback := func(event sgbucket.FeedEvent) bool {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			count := atomic.AddUint64(&mutationCount, 1)
 			if count > 5000 {
@@ -504,7 +503,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	dcpClient, err = NewDCPClient(feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
-	doneChan, startErr := dcpClient.Start(TestCtx(t))
+	doneChan, startErr := dcpClient.Start()
 	require.NoError(t, startErr)
 
 	// Wait for first feed to complete
@@ -519,7 +518,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	}
 
 	var secondFeedCount uint64
-	secondCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	secondCallback := func(event sgbucket.FeedEvent) bool {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			atomic.AddUint64(&mutationCount, 1)
 			atomic.AddUint64(&secondFeedCount, 1)
@@ -538,7 +537,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	dcpClient2, err := NewDCPClient(feedID, secondCallback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
-	doneChan2, startErr2 := dcpClient2.Start(TestCtx(t))
+	doneChan2, startErr2 := dcpClient2.Start()
 	require.NoError(t, startErr2)
 
 	// Wait for second feed to complete
@@ -567,7 +566,7 @@ func TestBadAgentPriority(t *testing.T) {
 	defer bucket.Close()
 
 	feedID := "fakeID"
-	panicCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	panicCallback := func(event sgbucket.FeedEvent) bool {
 		t.Error(t, "Should not hit this callback")
 		return false
 	}
@@ -593,7 +592,7 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 	defer bucket.Close()
 
 	// create callback
-	callback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	callback := func(event sgbucket.FeedEvent) bool {
 		t.Fatalf("Unexpected callback: %+v", event)
 		return false
 	}
@@ -616,7 +615,7 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 	dcpClient, err := NewDCPClient(feedID, callback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
-	doneChan, startErr := dcpClient.Start(TestCtx(t))
+	doneChan, startErr := dcpClient.Start()
 	require.NoError(t, startErr)
 	defer func() {
 		assert.NoError(t, dcpClient.Close())
@@ -643,7 +642,7 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 	dcpClient, err = NewDCPClient(feedID, callback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
-	_, startErr = dcpClient.Start(TestCtx(t))
+	_, startErr = dcpClient.Start()
 	require.Error(t, startErr)
 	require.Contains(t, startErr.Error(), "out of range")
 

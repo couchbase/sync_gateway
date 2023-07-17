@@ -106,7 +106,7 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 		return err
 	}
 
-	doneChan, err := dcpClient.Start(ctx)
+	doneChan, err := dcpClient.Start()
 	if err != nil {
 		ErrorfCtx(ctx, "Failed to start DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), err)
 		// simplify in CBG-2234

@@ -1,0 +1,41 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included in
+# the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+# file, in accordance with the Business Source License, use of this software
+# will be governed by the Apache License, Version 2.0, included in the file
+# licenses/APL2.txt.
+
+name: openapi
+
+on:
+  push:
+    # Only run when we change an API spec
+    paths:
+      - 'docs/api/**'
+    branches: 
+      - 'master'
+      - 'release/*'
+      - 'CBG*'
+      - 'ci-*'
+      - 'api-ci-*'
+  pull_request:
+    # Only run when we change an API spec
+    paths:
+      - 'docs/api/**'
+    branches:
+      - 'master'
+      - 'release/*'
+
+jobs:
+  api_validation:
+    runs-on: ubuntu-latest
+    name: OpenAPI Validation
+    steps:
+      - uses: actions/checkout@v2
+      - uses: r7kamura/redocly-problem-matchers@v1
+      - uses: mhiew/redoc-lint-github-action@v3
+        with:
+          args: '--format stylish'
+        env:
+          NO_COLOR: '1'
