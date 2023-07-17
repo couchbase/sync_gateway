@@ -556,7 +556,7 @@ func (c *changeCache) releaseUnusedSequence(sequence uint64, timeReceived time.T
 	} else {
 		changedChannels.Add(unusedSeq)
 	}
-	//c.channelCache.AddSkippedSequence(change)
+	c.channelCache.AddSkippedSequence(change)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
 		c.notifyChange(c.logCtx, changedChannels)
 	}

@@ -13,9 +13,9 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.2.4-0.20230511103754-8dd1a95f5f33
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20230710153939-10dc42aab0d7
+	github.com/couchbase/sg-bucket v0.0.0-20230717201310-6e360028b2c1
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
-	github.com/couchbaselabs/walrus v0.0.0-20230710154131-2b305325f848
+	github.com/couchbaselabs/walrus v0.0.0-20230717201422-d5d6dd81efea
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
 	github.com/google/uuid v1.3.0
@@ -80,7 +80,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
 )
-
-replace github.com/couchbase/sg-bucket => ../sg-bucket
-
-replace github.com/couchbaselabs/walrus => ../walrus
