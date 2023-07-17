@@ -45,7 +45,6 @@ const feedTypeWebsocket = "websocket"
 
 func (h *handler) handleRevsDiff() error {
 	var input map[string][]string
-
 	err := h.readJSONInto(&input)
 	if err != nil {
 		return err

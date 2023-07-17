@@ -570,7 +570,6 @@ func (h *handler) handlePostDoc() error {
 	}
 
 	roundTrip := h.getBoolQuery("roundtrip")
-
 	body, err := h.readDocument()
 	if err != nil {
 		return err
@@ -632,7 +631,6 @@ func (h *handler) handleGetLocalDoc() error {
 // HTTP handler for a PUT of a _local document
 func (h *handler) handlePutLocalDoc() error {
 	docid := h.PathVar("docid")
-
 	body, err := h.readJSON()
 	if err == nil {
 		var revid string
