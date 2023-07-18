@@ -9,9 +9,12 @@
 package rest
 
 import (
+	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/require"
 )
 
@@ -93,4 +96,194 @@ func TestBlipStatsFastReport(t *testing.T) {
 	sendRequest()
 	require.Less(t, int64(0), dbStats.ReplicationBytesReceived.Value())
 	require.Less(t, int64(0), dbStats.ReplicationBytesSent.Value())
+}
+
+// TestBlipStatsISGRComputePush:
+//   - Put docs on activeRT
+//   - Create push replication
+//   - Wait for docs to replicate
+//   - assert on stats after docs replicated
+func TestBlipStatsISGRComputePush(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeySync)
+	activeRT, passiveRT, remoteURL, teardown := SetupSGRPeers(t)
+	defer teardown()
+	const repName = "replication1"
+	var resp *TestResponse
+
+	activeSyncStartStat := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+	passiveSyncStartStat := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+
+	for i := 0; i < 100; i++ {
+		resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"source": "activeRT"}`)
+		RequireStatus(t, resp, http.StatusCreated)
+	}
+
+	activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
+
+	_, err := passiveRT.WaitForChanges(100, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+
+	activeSyncStat := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+	passiveSyncStat := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+	require.Greater(t, activeSyncStat, activeSyncStartStat)
+	require.Greater(t, passiveSyncStat, passiveSyncStartStat)
+
+}
+
+// TestBlipStatsISGRComputePull:
+//   - Put docs on passiveRT
+//   - Create pull replication
+//   - Wait for docs to replicate
+//   - assert on stats after docs replicated
+func TestBlipStatsISGRComputePull(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync)
+	activeRT, passiveRT, remoteURL, teardown := SetupSGRPeers(t)
+	defer teardown()
+	const repName = "replication1"
+	var resp *TestResponse
+
+	activeSyncStat := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+	passiveSyncStat := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+
+	for i := 0; i < 50; i++ {
+		resp = passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"source": "activeRT"}`)
+		RequireStatus(t, resp, http.StatusCreated)
+	}
+
+	activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
+
+	_, err := activeRT.WaitForChanges(50, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+
+	require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), activeSyncStat)
+	require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), passiveSyncStat)
+
+}
+
+// TestBlipStatAttachmentComputeISGR:
+//   - Two test cases (one with push replication and one with pull replication)
+//   - Creat doc with attachment
+//   - Create replication
+//   - Wait for doc to be replicated
+//   - Assert on expected value for stats
+func TestBlipStatAttachmentComputeISGR(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync)
+	testCases := []struct {
+		name      string
+		direction string
+	}{
+		{
+			name:      "pushISGR",
+			direction: "push",
+		},
+		{
+			name:      "pullISGR",
+			direction: "pull",
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			activeRT, passiveRT, remoteURL, teardown := SetupSGRPeers(t)
+			defer teardown()
+			const repName = "replication1"
+			var resp *TestResponse
+
+			if test.direction == "push" {
+				bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
+				resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", bodyText)
+				RequireStatus(t, resp, http.StatusCreated)
+				// grab stats values before replication takes place
+				syncComputeStartActive := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+				syncComputeStartPassive := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+
+				// create replication
+				activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+				activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
+
+				// wait for changes
+				_, err := passiveRT.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+				require.NoError(t, err)
+
+				// assert the stats increment/do not increment as expected
+				require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartActive)
+				require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartPassive)
+			} else {
+				bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
+				resp = passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", bodyText)
+				RequireStatus(t, resp, http.StatusCreated)
+				// grab stats values before replication takes place
+				syncComputeStartActive := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+				syncComputeStartPassive := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+
+				// create replication
+				activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+				activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
+
+				// wait for changes
+				_, err := activeRT.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+				require.NoError(t, err)
+
+				// assert the stats increment/do not increment as expected
+				require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartActive)
+				require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartPassive)
+			}
+
+		})
+	}
+
+}
+
+// TestComputeStatAfterContextTeardown:
+//   - Add doc to passiveRT
+//   - Create replication oneshot to pull this doc
+//   - Assert that the stats are incremented
+//   - Add another doc and start the replication again
+//   - Assert the starts are incremented from their last value
+//
+// Objective of test is to test stats resume from correct value after a blipContext cancellation
+func TestComputeStatAfterContextTeardown(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync)
+	activeRT, passiveRT, remoteURL, teardown := SetupSGRPeers(t)
+	defer teardown()
+	const repName = "replication1"
+
+	resp := passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"source": "activeRT"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault)
+
+	_, err := activeRT.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+
+	// wait for replication teardown
+	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateStopped)
+
+	syncProcessComputeActive := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+	syncProcessComputePassive := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+
+	// assert that sync compute stats are greater than 0
+	require.Greater(t, syncProcessComputeActive, int64(0))
+	require.Greater(t, syncProcessComputePassive, int64(0))
+
+	// add new doc and start replication again
+	resp = passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"source": "activeRT"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/"+repName+"?action=start", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	_, err = activeRT.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+	// wait for replication teardown
+	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateStopped)
+
+	// assert that the stats have increased from what they were before showing stats don't start from 0 again after replication teardown
+	require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncProcessComputePassive)
+	require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncProcessComputeActive)
+
 }

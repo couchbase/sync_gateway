@@ -1822,7 +1822,7 @@ func TestAutoImportComputeStat(t *testing.T) {
 	require.NoError(t, err, fmt.Sprintf("Unable to insert doc %s", key))
 
 	// wait for import to process
-	_, ok := base.WaitForStat(func() int64 {
+	_, ok := base.WaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
 	}, 1)
 	require.True(t, ok)
