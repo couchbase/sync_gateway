@@ -713,11 +713,15 @@ func (bsc *BlipSyncContext) reportStats(updateImmediately bool) {
 
 }
 
+// reportComputeStat will report the amount of data transferred for a blip Message. This message can be a request or a response.
 func (bsc *BlipSyncContext) reportComputeStat(rq *blip.Message, startTime time.Time) {
 	messageCPUtime := time.Since(startTime).Milliseconds()
 	messBody, err := rq.Body()
 	if err == nil && bsc.blipContextDb != nil {
 		bytes := len(messBody)
+		if bytes == 0 {
+			return
+		}
 		stat := CalculateComputeStat(int64(bytes), messageCPUtime)
 		bsc.blipContextDb.DbStats.DatabaseStats.SyncProcessCompute.Add(stat)
 	}
