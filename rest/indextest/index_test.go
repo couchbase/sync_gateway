@@ -232,7 +232,9 @@ func TestAsyncInitWithResync(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-
+	if !base.TestUseXattrs() {
+		t.Skip("this test uses xattrs for verification of sync metadata")
+	}
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP)
 
