@@ -509,6 +509,8 @@ type DatabaseStats struct {
 	NumReplicationsRejectedLimit *SgwIntStat `json:"num_replications_rejected_limit"`
 	// Represents the compute unit for import processes on the database
 	ImportProcessCompute *SgwIntStat `json:"import_process_compute"`
+	// SyncProcessCompute the comopute unit for syncing with clients
+	SyncProcessCompute *SgwIntStat `json:"sync_process_compute"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
@@ -1463,11 +1465,14 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.ImportProcessCompute, err = NewIntStat(SubsystemSharedBucketImport, "import_process_compute", labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.ImportProcessCompute, err = NewIntStat(SubsystemDatabaseKey, "import_process_compute", labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-
+	resUtil.SyncProcessCompute, err = NewIntStat(SubsystemDatabaseKey, "sync_process_compute", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ImportFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
 
 	resUtil.CacheFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
@@ -1516,6 +1521,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.NumPublicRestRequests)
 	prometheus.Unregister(d.DatabaseStats.TotalSyncTime)
 	prometheus.Unregister(d.DatabaseStats.ImportProcessCompute)
+	prometheus.Unregister(d.DatabaseStats.SyncProcessCompute)
 }
 
 func (d *DbStats) CollectionStat(scopeName, collectionName string) (*CollectionStats, error) {

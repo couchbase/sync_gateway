@@ -146,6 +146,7 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 
 	// Wrap the handler function with a function that adds handling needed by all handlers
 	handlerFnWrapper := func(rq *blip.Message) {
+		startTime := time.Now()
 
 		// Recover to log panic from handlers and repanic for go-blip response handling
 		defer func() {
@@ -166,9 +167,9 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 				base.WarnfCtx(bsc.loggingCtx, "PANIC handling BLIP request %v: %v\n%s", rq, err, debug.Stack())
 				panic(err)
 			}
+			bsc.reportComputeStat(rq, startTime)
 		}()
 
-		startTime := time.Now()
 		handler := blipHandler{
 			BlipSyncContext: bsc,
 			db:              bsc.copyContextDatabase(),
@@ -396,6 +397,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, collectionIdx *int,
 	bodyBytes []byte, attMeta []AttachmentStorageMeta, properties blip.Properties, seq SequenceID, resendFullRevisionFunc func() error) error {
 
+	startTime := time.Now()
 	outrq := NewRevMessage()
 	outrq.SetID(docID)
 	outrq.SetRev(revID)
@@ -437,6 +439,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 		bsc.removeAllowedAttachments(docID, attMeta, activeSubprotocol)
 		return ErrClosedBLIPSender
 	}
+	bsc.reportComputeStat(outrq.Message, startTime)
 
 	if awaitResponse {
 		go func(activeSubprotocol string) {
@@ -565,6 +568,7 @@ func (bsc *BlipSyncContext) sendBLIPMessage(sender *blip.Sender, msg *blip.Messa
 func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, collectionIdx *int, seq SequenceID, err error) error {
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
 
+	startTime := time.Now()
 	noRevRq := NewNoRevMessage()
 	noRevRq.SetId(docID)
 	noRevRq.SetRev(revID)
@@ -585,6 +589,7 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 	if !bsc.sendBLIPMessage(sender, noRevRq.Message) {
 		return ErrClosedBLIPSender
 	}
+	bsc.reportComputeStat(noRevRq.Message, startTime)
 
 	collectionCtx, err := bsc.collections.get(collectionIdx)
 	if err != nil {
@@ -706,4 +711,18 @@ func (bsc *BlipSyncContext) reportStats(updateImmediately bool) {
 	dbStats.ReplicationBytesReceived.Add(int64(newBytesReceived))
 	bsc.stats.lastReportTime.Store(currentTime)
 
+}
+
+// reportComputeStat will report the amount of data transferred for a blip Message. This message can be a request or a response.
+func (bsc *BlipSyncContext) reportComputeStat(rq *blip.Message, startTime time.Time) {
+	messageCPUtime := time.Since(startTime).Milliseconds()
+	messBody, err := rq.Body()
+	if err == nil && bsc.blipContextDb != nil {
+		bytes := len(messBody)
+		if bytes == 0 {
+			return
+		}
+		stat := CalculateComputeStat(int64(bytes), messageCPUtime)
+		bsc.blipContextDb.DbStats.DatabaseStats.SyncProcessCompute.Add(stat)
+	}
 }
