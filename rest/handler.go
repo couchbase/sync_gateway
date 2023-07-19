@@ -89,7 +89,7 @@ type handler struct {
 	response              CountableResponseWriter
 	status                int
 	statusMessage         string
-	requestBody           io.ReadCloser
+	requestBody           *CountedRequestReader
 	db                    *db.Database
 	collection            *db.DatabaseCollectionWithUser
 	user                  auth.User
@@ -128,7 +128,7 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 		h.writeError(err)
 		h.response.reportStats(true)
 		h.logDuration(true)
-
+		h.logBytesRead()
 	})
 }
 
@@ -143,6 +143,7 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermiss
 		h.writeError(err)
 		h.response.reportStats(true)
 		h.logDuration(true)
+		h.logBytesRead()
 	})
 }
 
@@ -157,6 +158,7 @@ func makeMetadataDBOfflineHandler(server *ServerContext, privs handlerPrivs, acc
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.response.reportStats(true)
+		h.logBytesRead()
 	})
 }
 
@@ -170,6 +172,7 @@ func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, acc
 		h.writeError(err)
 		h.response.reportStats(true)
 		h.logDuration(true)
+		h.logBytesRead()
 	})
 }
 
@@ -274,7 +277,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			h.logRequestLine()
 		}
 		h.logRESTCount()
-		h.logBytesRead()
+		//h.logBytesRead()
 	}()
 
 	defer func() {
@@ -290,14 +293,18 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		}
 	}()
 
+	h.requestBody = NewReaderCounter(h.rq.Body)
+
 	switch h.rq.Header.Get("Content-Encoding") {
 	case "":
-		h.requestBody = h.rq.Body
+		h.requestBody = NewReaderCounter(h.rq.Body)
 	case "gzip":
+		var gzipRequestReader *gzip.Reader
 		var err error
-		if h.requestBody, err = gzip.NewReader(h.rq.Body); err != nil {
+		if gzipRequestReader, err = gzip.NewReader(h.rq.Body); err != nil {
 			return err
 		}
+		h.requestBody = NewReaderCounter(gzipRequestReader)
 		h.rq.Header.Del("Content-Encoding") // to prevent double decoding later on
 	default:
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
@@ -478,7 +485,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			}
 			// The above readBody() will end up clearing the body which the later handler will require. Re-populate this
 			// for the later handler.
-			h.requestBody = io.NopCloser(bytes.NewReader(body))
+			h.requestBody.reader = io.NopCloser(bytes.NewReader(body))
 			authScope, err = h.authScopeFunc(body)
 			if err != nil {
 				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
@@ -659,21 +666,17 @@ func (h *handler) logRESTCount() {
 	h.db.DbStats.DatabaseStats.NumPublicRestRequests.Add(1)
 }
 
-// logBytesRead will increment the public REST bytes read stat for public requests. It will take the request length off the http.Request
-// in the handler struct. In the eventuality of failed out the db is nil on the handler avoiding a double count for the stat.
+// logBytesRead will increment the public REST bytes read stat for public requests. As the body is read from request
+// the number of bytes is stored on the CountedRequestReader struct
 func (h *handler) logBytesRead() {
-	if h.db == nil {
+	if !h.shouldUpdateBytesTransferredStats() {
 		return
 	}
-	if h.privs != publicPrivs && h.privs != regularPrivs {
-		return
-	}
-	if h.isBlipSync() {
-		return
-	}
-	// ContentLength on the request can be -1 if the length is 'unknown'. Add check to protect against decrementing the stat
-	if h.rq.ContentLength >= 0 {
-		h.db.DbStats.DatabaseStats.PublicRestBytesRead.Add(h.rq.ContentLength)
+	// atomically load the number of bytes read on the request
+	stat := h.requestBody.LoadCount()
+	// as this is int64 lets protect against a situation where a negative is returned from LoadCount() function and thus decrementing the stat
+	if stat >= 0 {
+		h.db.DbStats.DatabaseStats.PublicRestBytesRead.Add(stat)
 	}
 }
 
