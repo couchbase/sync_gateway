@@ -53,7 +53,7 @@ func TestBytesReadDocOperations(t *testing.T) {
 	}, int64(len(inputBytes)))
 	require.True(t, ok)
 
-	// send user request that has empty body, asser the stat doesn't increase
+	// send user request that has empty body, assert the stat doesn't increase
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc1", "", "greg")
 	RequireStatus(t, resp, http.StatusOK)
 	_, ok = base.WaitForStat(func() int64 {
@@ -140,14 +140,14 @@ func TestBytesReadPutAttachment(t *testing.T) {
 
 	// add a doc for an attachment to be added to
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), "doc1"), `{"channels":["ABC"]}`)
-	RequireStatus(t, resp, 201)
+	RequireStatus(t, resp, http.StatusCreated)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &body))
 	require.Equal(t, true, body["ok"])
 	revid := body["rev"].(string)
 
 	resp = rt.SendUserRequest(http.MethodGet, fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), "doc1"), ``, "alice")
-	RequireStatus(t, resp, 200)
+	RequireStatus(t, resp, http.StatusOK)
 
 	attachmentBody := "this is the body of attachment"
 	attachmentContentType := "content/type"
@@ -158,12 +158,23 @@ func TestBytesReadPutAttachment(t *testing.T) {
 
 	// attach to existing document created above
 	resp = rt.SendUserRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+revid, attachmentBody, reqHeaders, "alice", "letmein")
-	RequireStatus(t, resp, 201)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// assert the stat has increased by the attachment endpoint input
 	_, ok := base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(byteArrayAttachmentBody)))
+	require.True(t, ok)
+
+	// test incorrect user still increments count
+	resp = rt.SendUserRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+revid, attachmentBody, reqHeaders, "bob", "letmein")
+	RequireStatus(t, resp, http.StatusUnauthorized)
+
+	newStatNum := len(byteArrayAttachmentBody) * 2
+
+	_, ok = base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+	}, int64(newStatNum))
 	require.True(t, ok)
 
 }
@@ -182,7 +193,7 @@ func TestBytesReadRevDiff(t *testing.T) {
                      "_revisions": {"start": 34, "ids": ["def", "three", "two", "one"]}}
               ]}`
 	resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
-	RequireStatus(t, resp, 201)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// Now call _revs_diff as the user and take the bytes length of the endpoint input
 	input = `{"rd1": ["13-def", "12-xyz"],
@@ -192,13 +203,24 @@ func TestBytesReadRevDiff(t *testing.T) {
              }`
 	inputBytes := []byte(input)
 	resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_revs_diff", input, "alice")
-	RequireStatus(t, resp, 200)
+	RequireStatus(t, resp, http.StatusOK)
 
 	// assert the stat has increased by the bytes above
 	_, ok := base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 	require.True(t, ok)
+
+	newStat := len(inputBytes) * 2
+	// now try failed auth
+	resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_revs_diff", input, "bob")
+	RequireStatus(t, resp, http.StatusUnauthorized)
+
+	_, ok = base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+	}, int64(newStat))
+	require.True(t, ok)
+
 }
 
 func TestBytesReadAllDocs(t *testing.T) {
@@ -223,12 +245,22 @@ func TestBytesReadAllDocs(t *testing.T) {
 	input := `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
 	inputBytes := []byte(input)
 	resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_all_docs", input, "alice")
-	RequireStatus(t, resp, 200)
+	RequireStatus(t, resp, http.StatusOK)
 
 	// assert the stat has increased by the bytes length
 	_, ok := base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
+	require.True(t, ok)
+
+	newStat := len(inputBytes) * 2
+	// now try failed auth
+	resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_all_docs", input, "bob")
+	RequireStatus(t, resp, http.StatusUnauthorized)
+
+	_, ok = base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+	}, int64(newStat))
 	require.True(t, ok)
 
 }
@@ -243,11 +275,21 @@ func TestBytesReadBulkDocs(t *testing.T) {
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2}, {"_id": "_local/bulk3", "n": 3}]}`
 	inputBytes := []byte(input)
 	resp := rt.SendUserRequest("POST", "/{{.keyspace}}/_bulk_docs", input, "alice")
-	RequireStatus(t, resp, 201)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	_, ok := base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
+	require.True(t, ok)
+
+	newStat := len(inputBytes) * 2
+	// now try failed auth
+	resp = rt.SendUserRequest("POST", "/{{.keyspace}}/_bulk_docs", input, "bob")
+	RequireStatus(t, resp, http.StatusUnauthorized)
+
+	_, ok = base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+	}, int64(newStat))
 	require.True(t, ok)
 
 }
@@ -260,7 +302,7 @@ func TestBytesReadBulkGet(t *testing.T) {
 
 	// add single doc
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/testdoc", `{"bulk":"docs"}`)
-	RequireStatus(t, resp, 201)
+	RequireStatus(t, resp, http.StatusCreated)
 	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &body))
 	revId := body["rev"].(string)
@@ -269,12 +311,22 @@ func TestBytesReadBulkGet(t *testing.T) {
 	input := fmt.Sprintf(`{"docs": [{"id": "testdoc", "rev": "%s"}]}`, revId)
 	inputBytes := []byte(input)
 	resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_bulk_get", input, "alice")
-	RequireStatus(t, resp, 200)
+	RequireStatus(t, resp, http.StatusOK)
 
 	// assert the stat has increased by the length of byte array
 	_, ok := base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
+	require.True(t, ok)
+
+	newStat := len(inputBytes) * 2
+	// now try failed auth
+	resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_bulk_get", input, "bob")
+	RequireStatus(t, resp, http.StatusUnauthorized)
+
+	_, ok = base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+	}, int64(newStat))
 	require.True(t, ok)
 
 }
@@ -289,12 +341,22 @@ func TestBytesReadLocalDocPut(t *testing.T) {
 	input := `{"local": "doc"}`
 	inputBytes := []byte(input)
 	resp := rt.SendUserRequest(http.MethodPut, "/{{.keyspace}}/_local/doc1", input, "alice")
-	RequireStatus(t, resp, 201)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// assert the stat is increased by the correct amount
 	_, ok := base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
+	require.True(t, ok)
+
+	newStat := len(inputBytes) * 2
+	// now try failed auth
+	resp = rt.SendUserRequest(http.MethodPut, "/{{.keyspace}}/_local/doc1", input, "bob")
+	RequireStatus(t, resp, http.StatusUnauthorized)
+
+	_, ok = base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+	}, int64(newStat))
 	require.True(t, ok)
 }
 
@@ -314,6 +376,16 @@ func TestBytesReadPOSTSession(t *testing.T) {
 	_, ok := base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
+	require.True(t, ok)
+
+	newStat := len(inputBytes) * 2
+	// now try failed auth
+	resp = rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", input, "bob")
+	RequireStatus(t, resp, http.StatusUnauthorized)
+
+	_, ok = base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+	}, int64(newStat))
 	require.True(t, ok)
 }
 
@@ -366,7 +438,36 @@ func TestBytesReadGzipRequest(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	_, ok := base.WaitForStat(func() int64 {
-		fmt.Println(rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value())
+		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+	}, int64(len(inputBytes)))
+	require.True(t, ok)
+
+}
+
+func TestOfflineDBBytesRead(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	rt.CreateUser("alice", []string{"ABC"})
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", "alice")
+	RequireStatus(t, resp, http.StatusOK)
+
+	_, ok := base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+	}, 0)
+	require.True(t, ok)
+
+	// try adding body to get request
+	input := `{"random": "body"}`
+	inputBytes := []byte(input)
+	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", input, "alice")
+	RequireStatus(t, resp, http.StatusOK)
+
+	_, ok = base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 	require.True(t, ok)

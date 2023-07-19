@@ -126,9 +126,8 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 		h := newHandler(server, privs, r, rq, handlerOptions{})
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
-		h.response.reportStats(true)
 		h.logDuration(true)
-		h.logBytesRead()
+		h.reportDbStats()
 	})
 }
 
@@ -141,9 +140,8 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermiss
 		h := newHandler(server, privs, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
-		h.response.reportStats(true)
 		h.logDuration(true)
-		h.logBytesRead()
+		h.reportDbStats()
 	})
 }
 
@@ -157,8 +155,7 @@ func makeMetadataDBOfflineHandler(server *ServerContext, privs handlerPrivs, acc
 		h := newHandler(server, privs, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
-		h.response.reportStats(true)
-		h.logBytesRead()
+		h.reportDbStats()
 	})
 }
 
@@ -170,9 +167,8 @@ func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, acc
 		h.authScopeFunc = dbAuthStringFunc
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
-		h.response.reportStats(true)
 		h.logDuration(true)
-		h.logBytesRead()
+		h.reportDbStats()
 	})
 }
 
@@ -277,7 +273,6 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			h.logRequestLine()
 		}
 		h.logRESTCount()
-		//h.logBytesRead()
 	}()
 
 	defer func() {
@@ -412,11 +407,10 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	if h.privs != adminPrivs {
 		var err error
 		if err = h.checkAuth(dbContext); err != nil {
-			// ContentLength on the request can be -1 if the length is 'unknown'. Add check to protect against decrementing the stat
-			// In the eventuality auth fails on the request we need to still increment stat for the size of the body in bytes
-			if h.rq.ContentLength >= 0 {
-				dbContext.DbStats.DatabaseStats.PublicRestBytesRead.Add(h.rq.ContentLength)
-			}
+			// if auth fails we still need to record bytes read over the rest api for the stat, to do this we need to read
+			// the body to populate the bytes count on the CountedRequestReader struct
+			_, _ = h.readBody()
+			dbContext.DbStats.DatabaseStats.PublicRestBytesRead.Add(h.requestBody.LoadCount())
 			return err
 		}
 		if h.user != nil && h.user.Name() == "" && dbContext != nil && dbContext.IsGuestReadOnly() {
@@ -666,17 +660,26 @@ func (h *handler) logRESTCount() {
 	h.db.DbStats.DatabaseStats.NumPublicRestRequests.Add(1)
 }
 
-// logBytesRead will increment the public REST bytes read stat for public requests. As the body is read from request
-// the number of bytes is stored on the CountedRequestReader struct
-func (h *handler) logBytesRead() {
+// reportDbStats will report the public rest request specific stats back to the database
+func (h *handler) reportDbStats() {
+	var bytesReadStat int64
 	if !h.shouldUpdateBytesTransferredStats() {
 		return
 	}
-	// atomically load the number of bytes read on the request
-	stat := h.requestBody.LoadCount()
+	h.response.reportStats(true)
+	// load the number of bytes read on the request
+	bytesReadStat = h.requestBody.LoadCount()
+	// if stat is 0 we may not have read the body
+	if bytesReadStat == 0 {
+		// nil body can be supplied
+		if h.requestBody.reader != nil {
+			_, _ = h.readBody()
+			bytesReadStat = h.requestBody.LoadCount()
+		}
+	}
 	// as this is int64 lets protect against a situation where a negative is returned from LoadCount() function and thus decrementing the stat
-	if stat >= 0 {
-		h.db.DbStats.DatabaseStats.PublicRestBytesRead.Add(stat)
+	if bytesReadStat >= 0 {
+		h.db.DbStats.DatabaseStats.PublicRestBytesRead.Add(bytesReadStat)
 	}
 }
 

@@ -10,7 +10,6 @@ package rest
 
 import (
 	"io"
-	"sync/atomic"
 )
 
 type CountedRequestReader struct {
@@ -30,15 +29,13 @@ func NewReaderCounter(reader io.Reader) *CountedRequestReader {
 func (c *CountedRequestReader) Read(buf []byte) (int, error) {
 	numBytesRead, err := c.reader.Read(buf)
 
-	if numBytesRead >= 0 {
-		atomic.AddInt64(&c.numBytes, int64(numBytesRead))
-	}
+	c.numBytes += int64(numBytesRead)
 	return numBytesRead, err
 }
 
-// LoadCount will atomically load the number of bytes read for teh request from the CountedRequestReader struct
+// LoadCount will load the number of bytes read for the request from the CountedRequestReader struct
 func (c *CountedRequestReader) LoadCount() int64 {
-	return atomic.LoadInt64(&c.numBytes)
+	return c.numBytes
 }
 
 // Close to satisfy the interface
