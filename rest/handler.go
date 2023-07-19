@@ -662,10 +662,10 @@ func (h *handler) logRESTCount() {
 
 // reportDbStats will report the public rest request specific stats back to the database
 func (h *handler) reportDbStats() {
-	var bytesReadStat int64
 	if !h.shouldUpdateBytesTransferredStats() {
 		return
 	}
+	var bytesReadStat int64
 	h.response.reportStats(true)
 	// load the number of bytes read on the request
 	bytesReadStat = h.requestBody.LoadCount()

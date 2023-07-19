@@ -431,6 +431,7 @@ func (h *handler) handlePutDoc() error {
 	if replicator2, _ := h.getOptBoolQuery("replicator2", false); replicator2 {
 		return h.handlePutDocReplicator2(docid, roundTrip)
 	}
+
 	body, err := h.readDocument()
 	if err != nil {
 		return err
