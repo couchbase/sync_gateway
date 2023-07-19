@@ -2698,7 +2698,7 @@ func TestRequestPlusPull(t *testing.T) {
 	require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+1))
 
 	// Release the slow sequence
-	releaseErr := db.ReleaseTestSequence(database, slowSequence)
+	releaseErr := db.ReleaseTestSequence(base.TestCtx(t), database, slowSequence)
 	require.NoError(t, releaseErr)
 
 	// The one-shot pull should unblock and replicate the document in the granted channel
@@ -2760,7 +2760,7 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 	require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+1))
 
 	// Release the slow sequence
-	releaseErr := db.ReleaseTestSequence(database, slowSequence)
+	releaseErr := db.ReleaseTestSequence(base.TestCtx(t), database, slowSequence)
 	require.NoError(t, releaseErr)
 
 	// The one-shot pull should unblock and replicate the document in the granted channel
