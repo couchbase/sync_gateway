@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -646,12 +647,15 @@ func TestIsCfgChanged(t *testing.T) {
 	testCfg, err := base.NewCfgSG(testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
-	mgr, err := NewSGReplicateManager(base.TestCtx(t), &DatabaseContext{Name: "test"}, testCfg)
+	ctx := base.TestCtx(t)
+	dbctx := DatabaseContext{Name: "test"}
+	dbctx.JS.Init(ctx, js.EngineNamed(DefaultJavaScriptEngine), 4)
+	mgr, err := NewSGReplicateManager(ctx, &dbctx, testCfg)
 	require.NoError(t, err)
 	defer mgr.Stop()
 
 	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			replicationCfg := getInitialCfg()
 			replicatorConfig, err := mgr.NewActiveReplicatorConfig(replicationCfg)
 			require.NoError(t, err)

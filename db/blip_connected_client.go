@@ -92,7 +92,7 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'name'")
 	}
 
-	requestParams, err := bh.parseJsonBody(rq, bh.db.Options.UserFunctions.MaxRequestSize)
+	requestParams, err := bh.parseJsonBody(rq, bh.db.UserFunctions.MaxRequestSize)
 	if err != nil {
 		return err
 	}
@@ -137,13 +137,13 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 
 		} else {
 			// Write the single result to the response:
-			result, err := fn.Run()
+			result, err := fn.RunAsJSON()
 			if err != nil {
 				return err
 			}
 			response := rq.Response()
 			response.SetCompressed(true)
-			_ = response.SetJSONBody(result)
+			response.SetBody(result)
 			return nil
 		}
 	})
@@ -163,7 +163,7 @@ func (bh *blipHandler) handleGraphQL(rq *blip.Message) error {
 	}
 	operationName := rq.Properties[GraphQLOperationName]
 
-	variables, err := bh.parseJsonBody(rq, bh.db.Options.GraphQL.MaxRequestSize())
+	variables, err := bh.parseJsonBody(rq, bh.db.GraphQL.MaxRequestSize())
 	if err != nil {
 		return err
 	}
@@ -186,7 +186,7 @@ func (bh *blipHandler) parseJsonBody(rq *blip.Message, maxSize *int) (map[string
 	if err != nil {
 		return nil, err
 	}
-	if err := CheckRequestSize(len(bodyBytes), bh.db.Options.UserFunctions.MaxRequestSize); err != nil {
+	if err := CheckRequestSize(len(bodyBytes), bh.db.UserFunctions.MaxRequestSize); err != nil {
 		return nil, err
 	}
 	var parsedBody map[string]any

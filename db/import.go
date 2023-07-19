@@ -12,15 +12,14 @@ package db
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/robertkrimen/otto"
 )
 
 type ImportMode uint8
@@ -235,13 +234,13 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 			if isDelete && body == nil {
 				deleteBody := Body{BodyDeleted: true}
-				shouldImport, importErr = importFilter.EvaluateFunction(ctx, deleteBody)
+				shouldImport, importErr = importFilter(ctx, deleteBody)
 			} else if isDelete && body != nil {
 				deleteBody := body.ShallowCopy()
 				deleteBody[BodyDeleted] = true
-				shouldImport, importErr = importFilter.EvaluateFunction(ctx, deleteBody)
+				shouldImport, importErr = importFilter(ctx, deleteBody)
 			} else {
-				shouldImport, importErr = importFilter.EvaluateFunction(ctx, body)
+				shouldImport, importErr = importFilter(ctx, body)
 			}
 
 			if importErr != nil {
@@ -444,68 +443,32 @@ func (db *DatabaseCollectionWithUser) backupPreImportRevision(ctx context.Contex
 	return nil
 }
 
-// ////// Import Filter Function
+//////// Import Filter Function
 
-// A compiled JavaScript event function.
-type jsImportFilterRunner struct {
-	sgbucket.JSRunner
-	response bool
-}
+type ImportFilterFunction func(context.Context, Body) (bool, error)
 
-// Compiles a JavaScript event function to a jsImportFilterRunner object.
-func newImportFilterRunner(funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-	importFilterRunner := &jsEventTask{}
-	err := importFilterRunner.InitWithLogging(funcSource, timeout,
-		func(s string) {
-			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": Import %s", base.UD(s))
-		},
-		func(s string) { base.InfofCtx(context.Background(), base.KeyJavascript, "Import %s", base.UD(s)) })
-	if err != nil {
-		return nil, err
-	}
+func NewImportFilterFunction(vms *js.VMPool, fnSource string, timeout time.Duration) ImportFilterFunction {
+	// Create the import service with its JS script:
+	service := js.NewService(vms, "import", fnSource)
 
-	importFilterRunner.After = func(result otto.Value, err error) (interface{}, error) {
-		nativeValue, _ := result.Export()
-		return nativeValue, err
-	}
+	// Return a function that calls the function on a document:
+	return func(ctx context.Context, doc Body) (bool, error) {
+		if timeout > 0 {
+			var cancelFn context.CancelFunc
+			ctx, cancelFn = context.WithTimeout(ctx, timeout)
+			defer cancelFn()
+		}
 
-	return importFilterRunner, nil
-}
-
-type ImportFilterFunction struct {
-	*sgbucket.JSServer
-}
-
-func NewImportFilterFunction(fnSource string, timeout time.Duration) *ImportFilterFunction {
-
-	base.DebugfCtx(context.Background(), base.KeyImport, "Creating new ImportFilterFunction")
-	return &ImportFilterFunction{
-		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize,
-			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-				return newImportFilterRunner(fnSource, timeout)
-			}),
-	}
-}
-
-// Calls a jsEventFunction returning an interface{}
-func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body) (bool, error) {
-
-	result, err := i.Call(doc)
-	if err != nil {
-		base.WarnfCtx(ctx, "Unexpected error invoking import filter for document %s - processing aborted, document will not be imported.  Error: %v", base.UD(doc), err)
-		return false, err
-	}
-	switch result := result.(type) {
-	case bool:
-		return result, nil
-	case string:
-		boolResult, err := strconv.ParseBool(result)
+		result, err := service.Run(ctx, doc)
 		if err != nil {
 			return false, err
 		}
-		return boolResult, nil
-	default:
-		base.WarnfCtx(ctx, "Import filter function returned non-boolean result %v Type: %T", result, result)
-		return false, errors.New("Import filter function returned non-boolean value.")
+		switch result := result.(type) {
+		case bool:
+			return result, nil
+		case string:
+			return strconv.ParseBool(result)
+		}
+		return false, fmt.Errorf("import filter function returned non-boolean type %T: %+v", result, result)
 	}
 }

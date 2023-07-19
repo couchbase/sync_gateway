@@ -20,8 +20,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/stretchr/testify/assert"
 )
+
+func init() {
+	// Redirect JS package's logging to SG logs:
+	js.LoggingCallback = func(ctx context.Context, level js.LogLevel, fmt string, args ...any) {
+		logTo(ctx, LogLevel(level), KeyJavascript, fmt, args...)
+	}
+}
 
 // GetLogKeys returns log keys in a map
 func GetLogKeys() map[string]bool {
@@ -175,6 +183,11 @@ func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...interf
 	logTo(ctx, LevelTrace, logKey, format, args...)
 }
 
+// LogfTo logs a message at a caller-selectable level.
+func LogfTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+	logTo(ctx, logLevel, logKey, format, args...)
+}
+
 // RecordStats writes the given stats JSON content to a stats log file, if enabled.
 // The content passed in is expected to be a JSON dictionary.
 func RecordStats(statsJson string) {
@@ -214,7 +227,11 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 
 	// Error, warn and trace logs also append caller name/line numbers.
 	if logLevel <= LevelWarn || logLevel == LevelTrace {
-		format += " -- " + GetCallersName(2, true)
+		stackDepth := 2
+		if logKey == KeyJavascript {
+			stackDepth++ // js logs go through another layer of fn call (js.LoggingCallback)
+		}
+		format += " -- " + GetCallersName(stackDepth, true)
 	}
 
 	// Perform log redaction, if necessary.

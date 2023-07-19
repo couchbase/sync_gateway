@@ -1443,7 +1443,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 		}},
 		SyncFn: `
 			function (doc, oldDoc, meta){
-				if (doc._id === 'accessDoc' && meta.xattrs.channelInfo !== undefined){
+				if (doc._id === 'accessDoc' && meta.xattrs.channelInfo){
 					for (var key in meta.xattrs.channelInfo.userChannels){
 						access(key, meta.xattrs.channelInfo.userChannels[key]);
 					}

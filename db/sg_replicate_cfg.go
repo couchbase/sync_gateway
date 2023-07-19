@@ -606,10 +606,10 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	// Set conflict resolver for pull replications
 	if rc.Direction == ActiveReplicatorTypePull || rc.Direction == ActiveReplicatorTypePushAndPull {
 		if config.ConflictResolutionType == "" {
-			rc.ConflictResolverFunc, err = NewConflictResolverFunc(ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
+			rc.ConflictResolverFunc, err = NewConflictResolverFunc(m.dbContext, ConflictResolverDefault, "")
 
 		} else {
-			rc.ConflictResolverFunc, err = NewConflictResolverFunc(config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
+			rc.ConflictResolverFunc, err = NewConflictResolverFunc(m.dbContext, config.ConflictResolutionType, config.ConflictResolutionFn)
 			rc.ConflictResolverFuncSrc = config.ConflictResolutionFn
 		}
 		if err != nil {

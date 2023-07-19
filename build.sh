@@ -15,21 +15,21 @@
 set -e
 
 BLDPARS=${@:2}
-SRCPATH=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+SRCPATH=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 OUTPATH=${SRCPATH}/bin
 mkdir -p ${OUTPATH}
 
 # Build both editions by default
 # Limit via the $SG_EDITION env var
-build_editions=( "CE" "EE" )
+build_editions=("CE" "EE")
 if [ "${SG_EDITION}" = "CE" -o "${SG_EDITION}" = "EE" ]; then
     echo "Building only ${SG_EDITION}"
-    build_editions=( ${SG_EDITION} )
+    build_editions=(${SG_EDITION})
 else
     echo "Building all editions ... Limit with 'SG_EDITION=CE $0'"
 fi
 
-doBuild () {
+doBuild() {
     cd ${SRCPATH}
     ./set-version-stamp.sh || true
     privRepos=""
@@ -37,11 +37,19 @@ doBuild () {
     binarySuffix="_ce"
     if [ "$1" = "EE" ]; then
         buildTags="-tags cb_sg_enterprise"
+        if [ -n "${SG_V8:-}" ]; then
+            buildTags="${buildTags},cb_sg_v8"
+        fi
         binarySuffix=""
-        githubSshConfig=$( ( git config --global --list ; git config --system --list ) | grep -i "url.git@github.com:" | cat )
+        githubSshConfig=$( (
+            git config --global --list
+            git config --system --list
+        ) | grep -i "url.git@github.com:" | cat)
         if [ -z "${githubSshConfig}" ]; then
             git config --global url.git@github.com:couchbaselabs/go-fleecedelta.insteadOf https://github.com/couchbaselabs/go-fleecedelta
         fi
+    elif [ "${SG_V8:-}" = "CE" ]; then
+        buildTags="-tags cb_sg_v8"
     fi
 
     ## Go Install Sync Gateway
@@ -59,6 +67,16 @@ doBuild () {
 }
 
 for edition in "${build_editions[@]}"; do
-    echo "  Building edition: ${edition}"
+    if [[ -z "${SG_V8:-}" ]]; then
+        echo "  Building edition: ${edition} without V8"
+    else
+        echo "  Building edition: ${edition} with V8"
+    fi
     (doBuild $edition "$@")
+    if [[ -z "${SG_V8:-}" ]]; then
+        echo "  Building edition: ${edition} with V8"
+        SG_V8=1
+        (doBuild $edition "$@" -tags cb_sg_v8)
+        unset SG_V8
+    fi
 done

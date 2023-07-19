@@ -6,6 +6,8 @@
 //  software will be governed by the Apache License, Version 2.0, included in
 //  the file licenses/APL2.txt.
 
+//go:build cb_sg_v8
+
 package functionsapitest
 
 import (
@@ -15,9 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/graphql-go/graphql"
-
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
@@ -76,7 +77,7 @@ func TestGraphQLQueryAdminOnly(t *testing.T) {
 		t.Run("POST request", func(t *testing.T) {
 			requestBody := fmt.Sprintf(`{
 				"query": "%s",
-				"variables": %s, 
+				"variables": %s,
 				"operationName": "%s"
 			}`, queryParam, variableParam, operationParam)
 			response := rt.SendAdminRequest("POST", "/db/_graphql", requestBody)
@@ -188,7 +189,7 @@ func TestGraphQLMutationsAdminOnly(t *testing.T) {
 		expectedResponse := `{"data":{"addEmail":{"Emails":["xyz@gmail.com","def@gmail.com","newEmail@gmail.com"],"id":"2","name":"user2"},"updateName":{"id":"1","name":"newUser"}}}`
 		requestBody := fmt.Sprintf(`{
 			"query": "%s",
-			"variables": %s, 
+			"variables": %s,
 			"operationName": "%s"
 		}`, queryParam, variableParam, operationParam)
 
@@ -227,7 +228,7 @@ func TestGraphQLMutationsCustomUser(t *testing.T) {
 
 		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", `{"query": "mutation($id:ID!, $email: String!){ addEmail(id:$id, email:$email) {id,name,Emails} }" , "variables": {"id": 2, "email":"pqr@gmail.com"}}`, nil, "jinesh", "password")
 		assert.Equal(t, 200, response.Result().StatusCode)
-		testErrorMessage(t, response, "403 you are not allowed to call GraphQL resolver")
+		testErrorMessage(t, response, "[403] Access forbidden")
 
 		response = rt.SendAdminRequest("DELETE", "/db/_user/jinesh", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
@@ -290,11 +291,10 @@ func TestContextDeadline(t *testing.T) {
 		requestQuery := fmt.Sprintf(`{"query": "query{ checkContextDeadline(Timeout:%d) }"}`, timeout.Milliseconds()*2)
 		response := rt.SendAdminRequest("POST", "/db/_graphql", requestQuery)
 
-		assert.Equal(t, 200, response.Result().StatusCode)
-		testErrorMessage(t, response, "context deadline exceeded")
+		assert.Equal(t, 500, response.Result().StatusCode)
 	})
 	t.Run("AsAdmin - doNotExceedContextDeadline", func(t *testing.T) {
-		requestQuery := `{"query": "query{ checkContextDeadline(Timeout:1) }"}`
+		requestQuery := fmt.Sprintf(`{"query": "query{ checkContextDeadline(Timeout:%d) }"}`, timeout.Milliseconds()/2)
 		response := rt.SendAdminRequest("POST", "/db/_graphql", requestQuery)
 		assert.Equal(t, 200, response.Result().StatusCode)
 
@@ -303,7 +303,7 @@ func TestContextDeadline(t *testing.T) {
 }
 
 func testErrorMessage(t *testing.T, response *rest.TestResponse, expectedErrorText string) {
-	graphQLResponse := graphql.Result{}
+	var graphQLResponse db.GraphQLResult
 	err := json.Unmarshal(response.BodyBytes(), &graphQLResponse)
 	assert.NoError(t, err)
 	assert.NotZero(t, len(graphQLResponse.Errors), "Expected GraphQL error but got none; data is %s", graphQLResponse.Data)
@@ -312,6 +312,5 @@ func testErrorMessage(t *testing.T, response *rest.TestResponse, expectedErrorTe
 			return
 		}
 	}
-	t.Logf("GraphQL error did not contain expected string %q: actually %#v", expectedErrorText, graphQLResponse.Errors)
-	t.Fail()
+	assert.FailNowf(t, "GraphQL error did not contain expected string", "Expected to find %q: actually %s", expectedErrorText, response.BodyBytes())
 }

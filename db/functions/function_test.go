@@ -1,3 +1,5 @@
+//go:build cb_sg_v8
+
 /*
 Copyright 2022-Present Couchbase, Inc.
 
@@ -14,22 +16,34 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	v8 "github.com/couchbasedeps/v8go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+const kUserFunctionMaxCallDepth = 20
+
 var allowAll = &Allow{Channels: []string{"*"}}
 
-var kUserFunctionConfig = FunctionsConfig{
+var kTestFunctionsConfig = FunctionsConfig{
 	Definitions: FunctionsDefs{
 		"square": &FunctionConfig{
 			Type:  "javascript",
 			Code:  "function(context, args) {return args.numero * args.numero;}",
+			Args:  []string{"numero"},
+			Allow: &Allow{Channels: []string{"wonderland"}},
+		},
+		"cube": &FunctionConfig{
+			Type: "javascript",
+			Code: `function(context, args) {let square = context.user.function("square",args);
+					console.log("cube: square is", square); return square * args.numero;}`,
 			Args:  []string{"numero"},
 			Allow: &Allow{Channels: []string{"wonderland"}},
 		},
@@ -48,6 +62,11 @@ var kUserFunctionConfig = FunctionsConfig{
 			Args: []string{"n"},
 			Code: `function(context, args) {if (args.n <= 1) return 1;
 						else return args.n * context.user.function("factorial", {n: args.n-1});}`,
+			Allow: allowAll,
+		},
+		"endless": &FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {while(true);}`,
 			Allow: allowAll,
 		},
 		"great_and_terrible": &FunctionConfig{
@@ -134,14 +153,31 @@ var kUserFunctionConfig = FunctionsConfig{
 
 		"illegal_putDoc": &FunctionConfig{
 			Type:  "javascript",
-			Code:  `function(context, args) {context.user.function("putDoc", args);}`,
+			Code:  `function(context, args) {return context.user.function("putDoc", args);}`,
 			Args:  []string{"docID", "doc"},
 			Allow: allowAll,
 		},
 
 		"legal_putDoc": &FunctionConfig{
 			Type:  "javascript",
-			Code:  `function(context, args) {context.admin.function("putDoc", args);}`,
+			Code:  `function(context, args) {return context.admin.function("putDoc", args);}`,
+			Args:  []string{"docID", "doc"},
+			Allow: allowAll,
+		},
+
+		// This fn has Mutating but calls one that doesn't
+		"nested_illegal_putDoc": &FunctionConfig{
+			Type:     "javascript",
+			Code:     `function(context, args) {return context.user.function("illegal_putDoc", args);}`,
+			Args:     []string{"docID", "doc"},
+			Allow:    allowAll,
+			Mutating: true,
+		},
+
+		// This fn uses context.admin to call a non-mutating function
+		"admin_illegal_putDoc": &FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {return context.admin.function("illegal_putDoc", args);}`,
 			Args:  []string{"docID", "doc"},
 			Allow: allowAll,
 		},
@@ -173,15 +209,11 @@ func addUserAlice(t *testing.T, db *db.Database) auth.User {
 
 // Unit test for JS user functions.
 func TestUserFunctions(t *testing.T) {
-	// FIXME : this test doesn't work because the access view does not exist on the collection ???
-	t.Skip("Skipping test until access view is available with collections")
-
-	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig, nil)
+	db, ctx := setupTestDBWithFunctions(t, &kTestFunctionsConfig, nil)
 	defer db.Close(ctx)
 
-	assert.NotNil(t, db.Options.UserFunctions)
-	assert.NotNil(t, db.Options.UserFunctions.Definitions["square"])
+	assert.NotNil(t, db.UserFunctions)
+	assert.NotNil(t, db.UserFunctions.Definitions["square"])
 
 	// First run the tests as an admin:
 	t.Run("AsAdmin", func(t *testing.T) { testUserFunctionsAsAdmin(t, ctx, db) })
@@ -222,7 +254,7 @@ func testUserFunctionsCommon(t *testing.T, ctx context.Context, db *db.Database)
 	assert.EqualValues(t, "OK", result)
 
 	// Max call depth:
-	result, err = db.CallUserFunction("factorial", map[string]any{"n": 20}, true, ctx)
+	result, err = db.CallUserFunction("factorial", map[string]any{"n": kUserFunctionMaxCallDepth}, true, ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 2.43290200817664e+18, result)
 
@@ -244,13 +276,19 @@ func testUserFunctionsCommon(t *testing.T, ctx context.Context, db *db.Database)
 	_, err = db.CallUserFunction("exceptional", nil, true, ctx)
 	assert.ErrorContains(t, err, "oops")
 	assert.ErrorContains(t, err, "exceptional")
-	jserr := err.(*jsError)
+	jserr := err.(*v8.JSError)
 	assert.NotNil(t, jserr)
 
 	// Call depth limit:
 	_, err = db.CallUserFunction("factorial", map[string]any{"n": kUserFunctionMaxCallDepth + 1}, true, ctx)
 	assert.ErrorContains(t, err, "User function recursion too deep")
 	assert.ErrorContains(t, err, "factorial")
+
+	// Timeout:
+	briefCtx, cancelFn := context.WithTimeout(ctx, 2*time.Second)
+	defer cancelFn()
+	_, err = db.CallUserFunction("endless", nil, true, briefCtx)
+	assert.ErrorContains(t, err, "context deadline exceeded")
 }
 
 // User-function tests, run as admin:
@@ -283,7 +321,7 @@ func testUserFunctionsAsAdmin(t *testing.T, ctx context.Context, db *db.Database
 	// Checking `context.user.name`:
 	_, err = db.CallUserFunction("user_only", nil, true, ctx)
 	assert.ErrorContains(t, err, "No user")
-	jserr := err.(*jsError)
+	jserr := err.(*v8.JSError)
 	assert.NotNil(t, jserr)
 
 	// No such function:
@@ -333,95 +371,126 @@ func testUserFunctionsAsUser(t *testing.T, ctx context.Context, db *db.Database)
 
 // Test CRUD operations
 func TestUserFunctionsCRUD(t *testing.T) {
-	t.Skip("not collection aware")
-	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig, nil)
+	db, ctx := setupTestDBWithFunctions(t, &kTestFunctionsConfig, nil)
 	defer db.Close(ctx)
 
 	body := map[string]any{"key": "value"}
 
-	// Create a doc with random ID:
-	result, err := db.CallUserFunction("putDoc", map[string]any{"docID": nil, "doc": body}, true, ctx)
-	assert.NoError(t, err)
-	assert.IsType(t, "", result)
-	_, err = db.CallUserFunction("getDoc", map[string]any{"docID": result}, true, ctx)
-	assert.NoError(t, err)
+	t.Run("Create a doc with random ID", func(t *testing.T) {
+		result, err := db.CallUserFunction("putDoc", map[string]any{"docID": nil, "doc": body}, true, ctx)
+		assert.NoError(t, err)
+		assert.IsType(t, "", result)
+		_, err = db.CallUserFunction("getDoc", map[string]any{"docID": result}, true, ctx)
+		assert.NoError(t, err)
+	})
 
 	docID := "foo"
 
-	// Missing document:
-	result, err = db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
-	assert.NoError(t, err)
-	assert.EqualValues(t, nil, result)
+	t.Run("Missing document", func(t *testing.T) {
+		result, err := db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
+		assert.NoError(t, err)
+		assert.EqualValues(t, nil, result)
+	})
 
 	docParams := map[string]any{
 		"docID": docID,
 		"doc":   body,
 	}
 
-	// Illegal mutation (passing mutationAllowed = false):
-	_, err = db.CallUserFunction("putDoc", docParams, false, ctx)
-	assertHTTPError(t, err, 403)
+	t.Run("Illegal mutation", func(t *testing.T) {
+		// Illegal mutation (passing mutationAllowed = false):
+		_, err := db.CallUserFunction("putDoc", docParams, false, ctx)
+		assertHTTPError(t, err, 403)
+	})
 
-	// Successful save (as admin):
-	result, err = db.CallUserFunction("putDoc", docParams, true, ctx)
-	assert.NoError(t, err)
-	assert.EqualValues(t, docID, result) // save() returns docID
+	t.Run("Successful save as admin", func(t *testing.T) {
+		result, err := db.CallUserFunction("putDoc", docParams, true, ctx)
+		assert.NoError(t, err)
+		assert.EqualValues(t, docID, result) // save() returns docID
+	})
 
-	// Existing document:
-	result, err = db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
-	assert.NoError(t, err)
-	revID, ok := result.(map[string]any)["_rev"].(string)
-	assert.True(t, ok)
-	assert.NotEmpty(t, revID)
-	assert.True(t, strings.HasPrefix(revID, "1-"))
-	body["_id"] = docID
-	body["_rev"] = revID
-	assert.EqualValues(t, body, result)
+	t.Run("Existing document", func(t *testing.T) {
+		result, err := db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
+		assert.NoError(t, err)
+		revID, ok := result.(map[string]any)["_rev"].(string)
+		assert.True(t, ok)
+		assert.NotEmpty(t, revID)
+		assert.True(t, strings.HasPrefix(revID, "1-"))
+		body["_id"] = docID
+		body["_rev"] = revID
+		assert.EqualValues(t, body, result)
+	})
 
-	// Update document with revID:
-	body["key2"] = 2
-	_, err = db.CallUserFunction("putDoc", docParams, true, ctx)
-	assert.NoError(t, err)
+	t.Run("Update document with revID", func(t *testing.T) {
+		body["key2"] = 2
+		_, err := db.CallUserFunction("putDoc", docParams, true, ctx)
+		assert.NoError(t, err)
+	})
 
-	// Save fails with conflict:
-	body["key3"] = 3
-	body["_rev"] = "9-9999"
-	result, err = db.CallUserFunction("putDoc", docParams, true, ctx)
-	assert.NoError(t, err)
-	assert.Nil(t, result)
+	t.Run("Save fails with conflict", func(t *testing.T) {
+		body["key3"] = 3
+		body["_rev"] = "9-9999"
+		result, err := db.CallUserFunction("putDoc", docParams, true, ctx)
+		assert.NoError(t, err)
+		assert.Nil(t, result)
+	})
 
-	// Update document without revID:
-	body["key3"] = 4
-	delete(body, "_revid")
-	result, err = db.CallUserFunction("putDoc", docParams, true, ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, docID, result)
+	t.Run("Update document without revID", func(t *testing.T) {
+		body["key3"] = 4
+		delete(body, "_rev")
+		result, err := db.CallUserFunction("putDoc", docParams, true, ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, docID, result)
+	})
 
-	// Get doc again to verify revision:
-	result, err = db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
-	assert.NoError(t, err)
-	revID, ok = result.(map[string]any)["_rev"].(string)
-	assert.True(t, ok)
-	assert.NotEmpty(t, revID)
-	assert.True(t, strings.HasPrefix(revID, "3-"))
+	t.Run("Get doc again to verify revision", func(t *testing.T) {
+		result, err := db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
+		assert.NoError(t, err)
+		revID, ok := result.(map[string]any)["_rev"].(string)
+		assert.True(t, ok)
+		assert.NotEmpty(t, revID)
+		assert.True(t, strings.HasPrefix(revID, "3-"))
+	})
 
-	// Illegal mutation (a non-mutating function calling putDoc)
-	_, err = db.CallUserFunction("illegal_putDoc", docParams, true, ctx)
-	assertHTTPError(t, err, 403)
+	t.Run("illegal_putDoc", func(t *testing.T) {
+		// Illegal mutation (a non-mutating function calling putDoc)
+		_, err := db.CallUserFunction("illegal_putDoc", docParams, true, ctx)
+		assertHTTPError(t, err, 403)
+	})
+	t.Run("nested_illegal_putDoc", func(t *testing.T) {
+		// Illegal mutation (a non-mutating function calling putDoc)
+		_, err := db.CallUserFunction("nested_illegal_putDoc", docParams, true, ctx)
+		assertHTTPError(t, err, 403)
+	})
+	/*  This currently fails; it's ambiguous what should happen. TODO (jens 2-Feb-2023)
+	t.Run("admin_illegal_putDoc", func(t *testing.T) {
+		// Illegal mutation (a non-mutating function calling putDoc)
+		_, err := db.CallUserFunction("admin_illegal_putDoc", docParams, true, ctx)
+		assertHTTPError(t, err, 403)
+	})
+	*/
+	t.Run("legal_putDoc", func(t *testing.T) {
+		// Legal mutation (a non-mutating function calling putDoc, but via 'admin')
+		_, err := db.CallUserFunction("legal_putDoc", docParams, true, ctx)
+		assert.NoError(t, err)
+	})
+	t.Run("delDoc", func(t *testing.T) {
+		// Delete doc:
+		_, err := db.CallUserFunction("delDoc", map[string]any{"docID": docID}, true, ctx)
+		assert.NoError(t, err)
+	})
+}
 
-	// Legal mutation (a non-mutating function calling putDoc, but via 'admin')
-	_, err = db.CallUserFunction("legal_putDoc", docParams, true, ctx)
-	assert.NoError(t, err)
-
-	// Delete doc:
-	_, err = db.CallUserFunction("delDoc", map[string]any{"docID": docID}, true, ctx)
-	assert.NoError(t, err)
+func testValidateFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) error {
+	ctx := base.TestCtx(t)
+	vm := js.V8.NewVM(ctx)
+	defer vm.Close()
+	return ValidateFunctions(ctx, vm, fnConfig, gqConfig)
 }
 
 // Test that JS syntax errors are detected when the db opens.
 func TestUserFunctionSyntaxError(t *testing.T) {
-	var kUserFunctionBadConfig = FunctionsConfig{
+	var functionConfig = FunctionsConfig{
 		Definitions: FunctionsDefs{
 			"square": &FunctionConfig{
 				Code:  "return args.numero * args.numero;",
@@ -435,12 +504,12 @@ func TestUserFunctionSyntaxError(t *testing.T) {
 		},
 	}
 
-	_, err := CompileFunctions(kUserFunctionBadConfig)
+	err := testValidateFunctions(t, &functionConfig, nil)
 	assert.Error(t, err)
 }
 
 func TestUserFunctionsMaxFunctionCount(t *testing.T) {
-	var twoFunctionConfig = FunctionsConfig{
+	var functionConfig = FunctionsConfig{
 		MaxFunctionCount: base.IntPtr(1),
 		Definitions: FunctionsDefs{
 			"square": &FunctionConfig{
@@ -456,8 +525,8 @@ func TestUserFunctionsMaxFunctionCount(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileFunctions(twoFunctionConfig)
-	assert.ErrorContains(t, err, "too many functions declared (> 1)")
+	err := testValidateFunctions(t, &functionConfig, nil)
+	assert.ErrorContains(t, err, "too many functions (> 1)")
 }
 
 func TestUserFunctionsMaxCodeSize(t *testing.T) {
@@ -472,151 +541,8 @@ func TestUserFunctionsMaxCodeSize(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileFunctions(functionConfig)
-	assert.ErrorContains(t, err, "function code too large (> 20 bytes)")
-}
-
-// Low-level test of channel-name parameter expansion for user query/function auth
-func TestUserFunctionAllow(t *testing.T) {
-	// FIXME : this test doesn't work because the access view does not exist on the collection ???
-	t.Skip("Skipping test until access view is available with collections")
-
-	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig, nil)
-	defer db.Close(ctx)
-
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions())
-	user, err := authenticator.NewUser("maurice", "pass", base.SetOf("city-Paris"))
-	assert.NoError(t, err)
-
-	params := map[string]any{
-		"CITY":  "Paris",
-		"BREAD": "Baguette",
-		"YEAR":  2020,
-		"WINE":  map[string]any{"blanc": "Sauterne", "rouge": "Bordeaux"},
-		"WORDS": []string{"ouais", "fromage", "amour", "vachement"},
-	}
-
-	ch, err := expandPattern("someChannel", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, ch, "someChannel")
-
-	ch, err = expandPattern("sales-${args.CITY}-all", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "sales-Paris-all", ch)
-
-	ch, err = expandPattern("sales${args.CITY}All", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "salesParisAll", ch)
-
-	ch, err = expandPattern("sales${args.CITY}-${args.BREAD}", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "salesParis-Baguette", ch)
-
-	ch, err = expandPattern("sales-upTo-${args.YEAR}", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "sales-upTo-2020", ch)
-
-	ch, err = expandPattern("wines-${args.WINE.blanc}", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "wines-Sauterne", ch)
-
-	ch, err = expandPattern("${args.WORDS[2]}", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "amour", ch)
-
-	ch, err = expandPattern("employee-${context.user.name}", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "employee-maurice", ch)
-
-	// Escaped `\$`:
-	ch, err = expandPattern(`expen\$ive`, params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "expen$ive", ch)
-	ch, err = expandPattern(`\$wow`, params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "$wow", ch)
-	ch, err = expandPattern(`\${wow}`, params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "${wow}", ch)
-
-	// error: missing brace
-	_, err = expandPattern("$wow", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("foobar$", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("$w{ow}", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("knows-${args.CITY", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("knows-${args.CITY-${args.CITY}", params, user)
-	assert.NotNil(t, err)
-
-	// error: param value is not a string
-	_, err = expandPattern("knows-${args.WORDS}", params, user)
-	assert.NotNil(t, err)
-
-	// error: undefined parameter
-	_, err = expandPattern("sales-upTo-${}", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("sales-upTo-${args.FOO}", params, user)
-	assert.NotNil(t, err)
-
-	// error: not an arg or user
-	_, err = expandPattern("sales-upTo-${FOO}", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("sales-upTo-${context.user}", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("sales-upTo-${context.bar.FOO}", params, user)
-	assert.NotNil(t, err)
-
-	// error: missing map item
-	_, err = expandPattern("wines-${args.WINE.plonk}", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("wines-${args.WINE.blanc.x}", params, user)
-	assert.NotNil(t, err)
-}
-
-func TestKeyPath(t *testing.T) {
-	args := map[string]any{
-		"CITY":  "Paris",
-		"BREAD": "Baguette",
-		"YEAR":  2020,
-		"WINE": map[string]any{"blanc": "Sauterne", "rouge": "Bordeaux",
-			"nested": map[string]any{"Z": 321}},
-		"WORDS": []any{"ouais", "fromage", "amour", "vachement",
-			map[string]any{"X": 123},
-			[]any{"arrayInArray"}},
-	}
-
-	val, err := evalKeyPath(args, "CITY")
-	if assert.NoError(t, err) {
-		assert.Equal(t, "Paris", val.Interface())
-	}
-	val, err = evalKeyPath(args, "YEAR")
-	if assert.NoError(t, err) {
-		assert.Equal(t, 2020, val.Interface())
-	}
-	val, err = evalKeyPath(args, "WINE.blanc")
-	if assert.NoError(t, err) {
-		assert.Equal(t, "Sauterne", val.Interface())
-	}
-	val, err = evalKeyPath(args, "WINE.nested.Z")
-	if assert.NoError(t, err) {
-		assert.Equal(t, 321, val.Interface())
-	}
-	val, err = evalKeyPath(args, "WORDS[1]")
-	if assert.NoError(t, err) {
-		assert.Equal(t, "fromage", val.Interface())
-	}
-	val, err = evalKeyPath(args, "WORDS[4].X")
-	if assert.NoError(t, err) {
-		assert.Equal(t, 123, val.Interface())
-	}
-	val, err = evalKeyPath(args, "WORDS[5][0]")
-	if assert.NoError(t, err) {
-		assert.Equal(t, "arrayInArray", val.Interface())
-	}
+	err := testValidateFunctions(t, &functionConfig, nil)
+	assert.ErrorContains(t, err, "function square: code is too large (> 20 bytes)")
 }
 
 //////// UTILITY FUNCTIONS:
@@ -636,37 +562,34 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *db.DatabaseContextOptions) {
 func assertHTTPError(t *testing.T, err error, status int) bool {
 	var httpErr *base.HTTPError
 	return assert.Error(t, err) &&
-		assert.ErrorAs(t, err, &httpErr) &&
+		assert.ErrorAs(t, err, &httpErr, "Error is %T, %v", err, err) &&
 		assert.Equal(t, status, httpErr.Status, "Error is: %#v", err)
 }
 
 //////// SETUP FUNCTIONS
 
 func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) (*db.Database, context.Context) {
+	return setupTestDBWithFunctionsAndLogging(t, fnConfig, gqConfig, true)
+}
+
+func setupTestDBWithFunctionsAndLogging(t *testing.T, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, jsDebugLogging bool) (*db.Database, context.Context) {
 	cacheOptions := db.DefaultCacheOptions()
 	options := db.DatabaseContextOptions{
-		CacheOptions: &cacheOptions,
-		Scopes:       db.GetScopesOptionsDefaultCollectionOnly(t),
+		CacheOptions:     &cacheOptions,
+		Scopes:           db.GetScopesOptionsDefaultCollectionOnly(t),
+		FunctionsConfig:  &Config{fnConfig, gqConfig},
+		JavaScriptEngine: base.StringPtr("V8"), // Not compatible with Otto, it's too old
 	}
-	var err error
-	if fnConfig != nil {
-		options.UserFunctions, err = CompileFunctions(*fnConfig)
-		assert.NoError(t, err)
-	}
-	if gqConfig != nil {
-		options.GraphQL, err = CompileGraphQL(gqConfig)
-		assert.NoError(t, err)
-	}
-	return setupTestDBWithOptions(t, options)
+	return setupTestDBWithOptions(t, options, jsDebugLogging)
 }
 
-func setupTestDBWithOptions(t testing.TB, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
+func setupTestDBWithOptions(t testing.TB, dbcOptions db.DatabaseContextOptions, jsDebugLogging bool) (*db.Database, context.Context) {
 
 	tBucket := base.GetTestBucket(t)
-	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
+	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions, jsDebugLogging)
 }
 
-func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
+func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions db.DatabaseContextOptions, jsDebugLogging bool) (*db.Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	dbCtx, err := db.NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
@@ -679,6 +602,9 @@ func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptio
 	require.NoError(t, err, "Couldn't create database 'db'")
 
 	ctx = db.AddDatabaseLogContext(ctx)
+	if jsDebugLogging {
+		base.SetUpTestLogging(t, base.LevelDebug, base.KeyJavascript) // Enable debug JS logging!
+	}
 	return db, ctx
 }
 

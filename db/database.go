@@ -21,6 +21,7 @@ import (
 
 	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -80,6 +81,9 @@ const (
 // completion of all background tasks and background managers before the server is stopped.
 const BGTCompletionMaxWait = 30 * time.Second
 
+// Max number of JavaScript interpreter instances to create (per database)
+const MaxJavaScriptVMs = 8
+
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
@@ -123,9 +127,10 @@ type DatabaseContext struct {
 	ServeInsecureAttachmentTypes bool                           // Attachment content type will bypass the content-disposition handling, default false
 	NoX509HTTPClient             *http.Client                   // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}                  // Closed via PostStartup once the server has fully started
-	userFunctions                *UserFunctions                 // client-callable JavaScript functions
+	UserFunctions                *UserFunctions                 // JS/N1QL functions clients can call
 	UserFunctionTimeout          time.Duration                  // Default timeout for N1QL, JavaScript and GraphQL queries. (Applies to REST and BLIP requests.)
-	graphQL                      *GraphQL                       // GraphQL query evaluator
+	GraphQL                      GraphQL                        // GraphQL query interface
+	JS                           js.VMPool                      // A pool of preconfigured V8 instances
 	Scopes                       map[string]Scope               // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
@@ -148,13 +153,12 @@ type DatabaseContextOptions struct {
 	LocalJWTConfig                auth.LocalJWTConfig
 	DBOnlineCallback              DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions                 ImportOptions
-	EnableXattr                   bool             // Use xattr for _sync
-	LocalDocExpirySecs            uint32           // The _local doc expiry time in seconds
-	SecureCookieOverride          bool             // Pass-through DBConfig.SecureCookieOverride
-	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
-	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
-	UserFunctions                 *UserFunctions   // JS/N1QL functions clients can call
-	GraphQL                       GraphQL          // GraphQL query interface
+	EnableXattr                   bool   // Use xattr for _sync
+	LocalDocExpirySecs            uint32 // The _local doc expiry time in seconds
+	SecureCookieOverride          bool   // Pass-through DBConfig.SecureCookieOverride
+	SessionCookieName             string // Pass-through DbConfig.SessionCookieName
+	SessionCookieHttpOnly         bool   // Pass-through DbConfig.SessionCookieHTTPOnly
+	FunctionsConfig               IFunctionsAndGraphQLConfig
 	AllowConflicts                *bool            // False forbids creating conflicts
 	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
 	DisablePasswordAuthentication bool             // True enforces OIDC/guest only
@@ -168,6 +172,7 @@ type DatabaseContextOptions struct {
 	ClientPartitionWindow         time.Duration
 	BcryptCost                    int
 	GroupID                       string
+	JavaScriptEngine              *string       // Name of JS engine to use
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
 	Serverless                    bool          // If running in serverless mode
 	Scopes                        ScopesOptions
@@ -192,8 +197,8 @@ type ScopeOptions struct {
 }
 
 type CollectionOptions struct {
-	Sync         *string               // Collection sync function
-	ImportFilter *ImportFilterFunction // Opt-in filter for document import
+	Sync         *string // Collection sync function
+	ImportFilter *string // Source code of filter fn for document import
 }
 
 // Check whether the specified ScopesOptions only defines the default collection
@@ -434,6 +439,18 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		base.SyncGatewayStats.ClearDBStats(dbName)
 	})
 
+	// Initialize JavaScript VMPool:
+	jsEngineName := DefaultJavaScriptEngine
+	if options.JavaScriptEngine != nil {
+		jsEngineName = *options.JavaScriptEngine
+	}
+	if engine := js.EngineNamed(jsEngineName); engine != nil {
+		dbContext.JS.Init(ctx, engine, MaxJavaScriptVMs)
+	} else {
+		return nil, fmt.Errorf("%q is not an available JavaScript engine", jsEngineName)
+	}
+	cleanupFunctions = append(cleanupFunctions, dbContext.JS.Close)
+
 	if dbContext.AllowConflicts() {
 		dbContext.RevsLimit = DefaultRevsLimitConflicts
 	} else {
@@ -527,7 +544,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			}
 
 			if collOpts.ImportFilter != nil {
-				dbCollection.importFilterFunction = collOpts.ImportFilter
+				dbCollection.importFilterFunction = NewImportFilterFunction(&dbContext.JS, *collOpts.ImportFilter, options.JavascriptTimeout)
 			}
 
 			dbContext.Scopes[scopeName].Collections[collName] = dbCollection
@@ -553,6 +570,13 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbContext.ResyncManager = NewResyncManager(metadataStore, metaKeys)
 	} else {
 		dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
+	}
+
+	if dbContext.Options.FunctionsConfig != nil {
+		dbContext.UserFunctions, dbContext.GraphQL, err = dbContext.Options.FunctionsConfig.Compile(&dbContext.JS)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return dbContext, nil
@@ -608,6 +632,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 	base.RemovePerDbStats(context.Name)
 
+	context.JS.Close()
 }
 
 // stopBackgroundManagers stops any running BackgroundManager.
@@ -1695,16 +1720,11 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 		if err != nil {
 			base.WarnfCtx(ctx, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
 		}
-		var body Body
-		if err := body.Unmarshal(bodyBytes); err != nil {
-			base.WarnfCtx(ctx, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
-			return
-		}
 		metaMap, err := doc.GetMetaMap(db.userXattrKey())
 		if err != nil {
 			return
 		}
-		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
+		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, bodyBytes, metaMap, rev.ID, rev.Deleted)
 		if err != nil {
 			// Probably the validator rejected the doc
 			base.WarnfCtx(ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)
@@ -1963,15 +1983,8 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 		}
 	}
 
-	if options.UserFunctions != nil {
-		for _, fn := range options.UserFunctions.Definitions {
-			if queryName, ok := fn.N1QLQueryName(); ok {
-				queryNames = append(queryNames, queryName)
-			}
-		}
-	}
-	if options.GraphQL != nil {
-		queryNames = append(queryNames, options.GraphQL.N1QLQueryNames()...)
+	if options.FunctionsConfig != nil {
+		queryNames = append(queryNames, options.FunctionsConfig.N1QLQueryNames()...)
 	}
 
 	var collections []string

@@ -17,6 +17,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1588,7 +1589,7 @@ func TestGetChannelsAndAccess(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			body := Body{}
 			require.NoError(t, body.Unmarshal([]byte(test.body)))
-			result, access, roles, expiry, oldJson, err := collection.getChannelsAndAccess(base.TestCtx(t), doc, body, nil, "")
+			result, access, roles, expiry, oldJson, err := collection.getChannelsAndAccess(base.TestCtx(t), doc, []byte(test.body), channels.MetaMap{}, "", false)
 			require.NoError(t, err)
 			require.Equal(t, "", oldJson)
 			require.Nil(t, expiry)

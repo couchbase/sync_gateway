@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -50,7 +51,7 @@ const (
 )
 
 // Creates a new webhook handler based on the url and filter function.
-func NewWebhook(url string, filterFnString string, timeout *uint64, options map[string]interface{}) (*Webhook, error) {
+func NewWebhook(url string, filterFnString string, host js.ServiceHost, timeout *uint64, options map[string]interface{}) (*Webhook, error) {
 
 	var err error
 
@@ -63,7 +64,7 @@ func NewWebhook(url string, filterFnString string, timeout *uint64, options map[
 		url: url,
 	}
 	if filterFnString != "" {
-		wh.filter = NewJSEventFunction(filterFnString)
+		wh.filter = NewJSEventFunction(host, filterFnString)
 	}
 
 	if timeout != nil {

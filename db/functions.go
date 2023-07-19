@@ -18,15 +18,24 @@ import (
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/graphql-go/graphql"
 )
 
 /* This is the interface to the functions and GraphQL APIs implemented in the functions package. */
 
 // Timeout for N1QL, JavaScript and GraphQL queries. (Applies to REST and BLIP requests.)
 const defaultUserFunctionTimeout = 60 * time.Second
+
+// Abstract interface for user-functions & GraphQL configuration. (Implemented by functions.Config)
+type IFunctionsAndGraphQLConfig interface {
+	// Compiles the configuration into a live UserFunctions intance.
+	Compile(*js.VMPool) (*UserFunctions, GraphQL, error)
+
+	// Returns the names of all N1QL queries used.
+	N1QLQueryNames() []string
+}
 
 //////// USER FUNCTIONS
 
@@ -58,6 +67,9 @@ type UserFunctionInvocation interface {
 	// Calls a user function, returning the entire result.
 	// (If this is a N1QL query it will return all the result rows in an array, which is less efficient than iterating them, so try calling `Iterate` first.)
 	Run() (interface{}, error)
+
+	// Same as Run() but the result is encoded as JSON.
+	RunAsJSON() ([]byte, error)
 }
 
 //////// GRAPHQL
@@ -69,18 +81,47 @@ type GraphQL interface {
 	MaxRequestSize() *int
 
 	// Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
-	Query(db *Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*graphql.Result, error)
+	// The result is an object with keys `data`, `errors`.
+	// If `jsonEncoded` is true, it will be JSON-encoded and returned as a []byte.
+	Query(db *Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*GraphQLResult, error)
+
+	// Same as Query() but the result is JSON-encoded.
+	QueryAsJSON(db *Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) ([]byte, error)
 
 	// Returns the names of all N1QL queries used.
 	N1QLQueryNames() []string
+}
+
+// Go representation of JSON result of a GraphQL query.
+type GraphQLResult struct {
+	Data       interface{}            `json:"data"`
+	Errors     []*FormattedError      `json:"errors,omitempty"`
+	Extensions map[string]interface{} `json:"extensions,omitempty"`
+}
+
+// Go representation of an error in a GraphQL query result.
+type FormattedError struct {
+	Message    string                 `json:"message"`
+	Locations  []SourceLocation       `json:"locations"`
+	Path       []interface{}          `json:"path,omitempty"`
+	Extensions map[string]interface{} `json:"extensions,omitempty"`
+}
+
+func (err *FormattedError) Error() string {
+	return err.Message
+}
+
+type SourceLocation struct {
+	Line   int `json:"line"`
+	Column int `json:"column"`
 }
 
 //////// DATABASE API FOR USER FUNCTIONS:
 
 // Looks up a UserFunction by name and returns an Invocation.
 func (db *Database) GetUserFunction(name string, args map[string]interface{}, mutationAllowed bool, ctx context.Context) (UserFunctionInvocation, error) {
-	if db.Options.UserFunctions != nil {
-		if fn, found := db.Options.UserFunctions.Definitions[name]; found {
+	if db.UserFunctions != nil {
+		if fn, found := db.UserFunctions.Definitions[name]; found {
 			return fn.Invoke(db, args, mutationAllowed, ctx)
 		}
 	}
@@ -97,8 +138,8 @@ func (db *Database) CallUserFunction(name string, args map[string]interface{}, m
 }
 
 // Top-level public method to run a GraphQL query on a db.Database.
-func (db *Database) UserGraphQLQuery(query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*graphql.Result, error) {
-	if graphql := db.Options.GraphQL; graphql == nil {
+func (db *Database) UserGraphQLQuery(query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*GraphQLResult, error) {
+	if graphql := db.GraphQL; graphql == nil {
 		return nil, base.HTTPErrorf(http.StatusServiceUnavailable, "GraphQL is not configured")
 	} else {
 		return graphql.Query(db, query, operationName, variables, mutationAllowed, ctx)

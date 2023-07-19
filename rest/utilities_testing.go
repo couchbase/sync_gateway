@@ -37,6 +37,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -246,8 +247,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.MutateStartupConfig(&sc)
 	}
 
-	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
-
 	// Allow EE-only config even in CE for testing using group IDs.
 	if err := sc.Validate(true); err != nil {
 		panic("invalid RestTester StartupConfig: " + err.Error())
@@ -329,6 +328,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
 			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
+		}
+
+		if rt.EnableUserQueries {
+			rt.DatabaseConfig.JavaScriptEngine = base.StringPtr("V8")
 		}
 
 		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
@@ -2483,7 +2486,11 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 		}
 		config.Scopes = GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, syncFn, rt.numCollections)
 	}
+	return config
+}
 
+func (rt *RestTester) GetFunctionsConfig() *functions.Config {
+	config, _ := rt.GetDatabase().Options.FunctionsConfig.(*functions.Config)
 	return config
 }
 

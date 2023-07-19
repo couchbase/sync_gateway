@@ -731,8 +731,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 	contextOptions.UseViews = useViews
 
-	javascriptTimeout := getJavascriptTimeout(&config.DbConfig)
-
 	fqCollections := make([]string, 0)
 	if len(config.Scopes) > 0 {
 		if !sc.persistentConfig && !sc.allowScopesInPersistentConfig {
@@ -744,23 +742,18 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				Collections: make(map[string]db.CollectionOptions, len(scopeCfg.Collections)),
 			}
 			for collName, collCfg := range scopeCfg.Collections {
-				var importFilter *db.ImportFilterFunction
-				if collCfg.ImportFilter != nil {
-					importFilter = db.NewImportFilterFunction(*collCfg.ImportFilter, javascriptTimeout)
-				}
-
 				contextOptions.Scopes[scopeName].Collections[collName] = db.CollectionOptions{
 					Sync:         collCfg.SyncFn,
-					ImportFilter: importFilter,
+					ImportFilter: collCfg.ImportFilter,
 				}
 				fqCollections = append(fqCollections, base.FullyQualifiedCollectionName(spec.BucketName, scopeName, collName))
 			}
 		}
 	} else {
 		// Set up default import filter
-		var importFilter *db.ImportFilterFunction
+		var importFilter *string
 		if config.ImportFilter != nil {
-			importFilter = db.NewImportFilterFunction(*config.ImportFilter, javascriptTimeout)
+			importFilter = config.ImportFilter
 		}
 
 		contextOptions.Scopes = map[string]db.ScopeOptions{
@@ -1186,27 +1179,17 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		ClientPartitionWindow:     clientPartitionWindow,
 		BcryptCost:                bcryptCost,
 		GroupID:                   groupID,
+		JavaScriptEngine:          config.JavaScriptEngine,
 		JavascriptTimeout:         javascriptTimeout,
 		Serverless:                sc.Config.IsServerless(),
 		ChangesRequestPlus:        base.BoolDefault(config.ChangesRequestPlus, false),
-		// UserQueries:               config.UserQueries,   // behind feature flag (see below)
-		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
-		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)
+		// FunctionsConfig:            // behind feature flag (see below)
 	}
 
 	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {
-		var err error
-		if config.UserFunctions != nil {
-			contextOptions.UserFunctions, err = functions.CompileFunctions(*config.UserFunctions)
-			if err != nil {
-				return contextOptions, err
-			}
-		}
-		if config.GraphQL != nil {
-			contextOptions.GraphQL, err = functions.CompileGraphQL(config.GraphQL)
-			if err != nil {
-				return contextOptions, err
-			}
+		contextOptions.FunctionsConfig = &functions.Config{
+			Functions: config.UserFunctions,
+			GraphQL:   config.GraphQL,
 		}
 	} else if config.UserFunctions != nil || config.GraphQL != nil {
 		base.WarnfCtx(context.TODO(), `Database config options "functions" and "graphql" ignored because unsupported.user_queries feature flag is not enabled`)
@@ -1372,7 +1355,7 @@ func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, event
 	for _, event := range events {
 		switch event.HandlerType {
 		case "webhook":
-			wh, err := db.NewWebhook(event.Url, event.Filter, event.Timeout, event.Options)
+			wh, err := db.NewWebhook(event.Url, event.Filter, &dbcontext.JS, event.Timeout, event.Options)
 			if err != nil {
 				base.WarnfCtx(ctx, "Error creating webhook %v", err)
 				return err

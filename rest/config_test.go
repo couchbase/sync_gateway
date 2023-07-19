@@ -34,6 +34,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/square/go-jose.v2"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -2117,8 +2118,10 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			terminator := make(chan bool)
 			defer close(terminator)
 			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager(terminator)}
+			testCtx := base.TestCtx(t)
+			ctx.JS.Init(testCtx, js.EngineNamed(db.DefaultJavaScriptEngine), 4)
 			sc := &ServerContext{}
-			err := sc.initEventHandlers(base.TestCtx(t), ctx, &dbConfig)
+			err := sc.initEventHandlers(testCtx, ctx, &dbConfig)
 			if test.errExpected != nil {
 				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
@@ -2191,19 +2194,19 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		},
 		{
 			"Valid Sync Fn No Import",
-			base.StringPtr(`function(){}`),
+			base.StringPtr(`function(doc){}`),
 			nil,
 			0,
-			base.StringPtr(`function(){}`),
+			base.StringPtr(`function(doc){}`),
 			nil,
 		},
 		{
 			"Valid Import Fn No Sync",
 			nil,
-			base.StringPtr(`function(){}`),
+			base.StringPtr(`function(doc){}`),
 			0,
 			nil,
-			base.StringPtr(`function(){}`),
+			base.StringPtr(`function(doc){}`),
 		},
 		{
 			"Both empty",
@@ -2223,7 +2226,7 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		},
 		{
 			"Invalid Sync Fn No Import",
-			base.StringPtr(`function(){`),
+			base.StringPtr(`function(doc){`),
 			nil,
 			1,
 			nil,
@@ -2242,15 +2245,15 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		{
 			"Invalid Import Fn No Sync",
 			nil,
-			base.StringPtr(`function(){`),
+			base.StringPtr(`function(doc){`),
 			1,
 			nil,
 			nil,
 		},
 		{
 			"Both invalid",
-			base.StringPtr(`function(){`),
-			base.StringPtr(`function(){`),
+			base.StringPtr(`function(doc){`),
+			base.StringPtr(`function(doc){`),
 			2,
 			nil,
 			nil,
@@ -2384,15 +2387,17 @@ func Test_validateJavascriptFunction(t *testing.T) {
 			wantErr:     assert.NoError,
 		},
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			gotIsEmpty, err := validateJavascriptFunction(test.jsFunc)
-			if !test.wantErr(t, err, fmt.Sprintf("validateJavascriptFunction(%v)", test.jsFunc)) {
-				return
-			}
-			assert.Equalf(t, test.wantIsEmpty, gotIsEmpty, "validateJavascriptFunction(%v)", test.jsFunc)
-		})
-	}
+	js.TestWithVMs(t, func(t *testing.T, vm js.VM) {
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				gotIsEmpty, err := validateJavascriptFunction(vm, test.jsFunc, 0, 0)
+				if !test.wantErr(t, err, fmt.Sprintf("validateJavascriptFunction(%v)", test.jsFunc)) {
+					return
+				}
+				assert.Equalf(t, test.wantIsEmpty, gotIsEmpty, "validateJavascriptFunction(%v)", test.jsFunc)
+			})
+		}
+	})
 }
 
 func TestBucketCredentialsValidation(t *testing.T) {

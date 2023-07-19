@@ -13,6 +13,7 @@ package db
 import (
 	"testing"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -96,7 +97,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "merge",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				var mergedDoc = new Object();
 				mergedDoc.prop = conflict.LocalDocument.prop + conflict.RemoteDocument.prop;
 				return mergedDoc;
@@ -107,7 +108,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "mergeDelete",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return null;
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
@@ -115,8 +116,35 @@ func TestCustomConflictResolver(t *testing.T) {
 			expectedWinner: Body{BodyDeleted: true},
 		},
 		{
+			name: "invokeDefault local wins",
+			resolverSource: `function(conflict) {
+				return defaultPolicy(conflict);
+			}`,
+			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
+			remoteDocument: Body{"_rev": "1-def", "prop": "bar"},
+			expectedWinner: Body{"_rev": "2-abc", "prop": "foo"},
+		},
+		{
+			name: "invokeDefault local wins again",
+			resolverSource: `function(conflict) {
+				return defaultPolicy(conflict);
+			}`,
+			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
+			remoteDocument: Body{"_rev": "2-abb", "prop": "bar"},
+			expectedWinner: Body{"_rev": "2-abc", "prop": "foo"},
+		},
+		{
+			name: "invokeDefault remote wins",
+			resolverSource: `function(conflict) {
+				return defaultPolicy(conflict);
+			}`,
+			localDocument:  Body{"_rev": "9-xyz", "prop": "foo"},
+			remoteDocument: Body{"_rev": "10-abc", "prop": "bar"},
+			expectedWinner: Body{"_rev": "10-abc", "prop": "bar"},
+		},
+		{
 			name: "invokeDefault",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return defaultPolicy(conflict);
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
@@ -125,7 +153,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "invokeDefaultWithInvalidValue",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return defaultPolicy(conflict.LocalDocument);
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
@@ -134,7 +162,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "invokeDefaultWithNoValue",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return defaultPolicy();
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
@@ -143,7 +171,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "invokeDefaultWithNullValue",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return defaultPolicy(null);
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
@@ -154,19 +182,21 @@ func TestCustomConflictResolver(t *testing.T) {
 
 	for _, test := range defaultConflictResolverTests {
 		t.Run(test.name, func(tt *testing.T) {
-			conflict := Conflict{
-				LocalDocument:  test.localDocument,
-				RemoteDocument: test.remoteDocument,
-			}
-			customConflictResolverFunc, err := NewCustomConflictResolver(test.resolverSource, 0)
-			require.NoError(tt, err)
-			result, err := customConflictResolverFunc(conflict)
-			if test.expectError {
-				assert.Error(t, err)
-				return
-			}
-			assert.NoError(tt, err)
-			assert.Equal(tt, test.expectedWinner, result)
+			js.TestWithVMPools(tt, 4, func(ttt *testing.T, pool *js.VMPool) {
+				conflict := Conflict{
+					LocalDocument:  test.localDocument,
+					RemoteDocument: test.remoteDocument,
+				}
+				customConflictResolverFunc, err := NewCustomConflictResolver(test.resolverSource, 0, pool)
+				require.NoError(ttt, err)
+				result, err := customConflictResolverFunc(conflict)
+				if test.expectError {
+					assert.Error(ttt, err)
+					return
+				}
+				assert.NoError(ttt, err)
+				assert.Equal(ttt, test.expectedWinner, result)
+			})
 		})
 	}
 }

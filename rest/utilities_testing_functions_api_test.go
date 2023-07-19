@@ -6,10 +6,14 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
+//go:build cb_sg_v8
+
 package rest
 
 import (
+	"context"
 	"log"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -50,64 +54,61 @@ var kGraphQLTestConfig = &DatabaseConfig{DbConfig: DbConfig{
 			},
 		},
 	},
+	JavaScriptEngine: base.StringPtr("V8"),
 }}
+
+func runSequentially(rt *RestTester, testFunc func() bool, numTasks int) time.Duration {
+	startTime := time.Now()
+	for i := 0; i < numTasks; i++ {
+		testFunc()
+	}
+	return time.Since(startTime)
+}
+
+func runConcurrently(rt *RestTester, testFunc func() bool, numTasks int, numThreads int) time.Duration {
+	tasksPerThread := numTasks / numThreads
+	var wg sync.WaitGroup
+	startTime := time.Now()
+	for i := 0; i < numThreads; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < tasksPerThread; i++ {
+				testFunc()
+			}
+		}()
+	}
+	wg.Wait()
+	return time.Since(startTime)
+}
 
 // Asserts that running testFunc in 100 concurrent goroutines is no more than 10% slower
 // than running it 100 times in succession. A low bar indeed, but can detect some serious
 // bottlenecks, or of course deadlocks.
 func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
-	const numTasks = 100
+	const numTasks = 10000
+	const numThreads = 4
 
-	// Run testFunc once to prime the pump:
-	if !testFunc() {
-		return false
-	}
+	assert.GreaterOrEqual(t, runtime.GOMAXPROCS(0), 2, "Not enough OS threads available")
 
-	// 100 sequential calls:
-	startTime := time.Now()
-	for i := 0; i < numTasks; i++ {
-		if !testFunc() {
-			return false
-		}
-	}
-	sequentialDuration := time.Since(startTime)
+	// prime the pump:
+	runSequentially(rt, testFunc, 5)
 
-	// Now run 100 concurrent calls:
-	var wg sync.WaitGroup
-	startTime = time.Now()
-	for i := 0; i < numTasks; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			testFunc()
-		}()
-	}
-	wg.Wait()
-	concurrentDuration := time.Since(startTime)
+	base.WarnfCtx(context.TODO(), "---- Starting sequential tasks ----")
+	sequentialDuration := runSequentially(rt, testFunc, numTasks)
+	base.WarnfCtx(context.TODO(), "---- Starting concurrent tasks ----")
+	concurrentDuration := runConcurrently(rt, testFunc, numTasks, numThreads)
+	base.WarnfCtx(context.TODO(), "---- End ----")
 
 	log.Printf("---- %d sequential took %v, concurrent took %v ... speedup is %f",
 		numTasks, sequentialDuration, concurrentDuration,
 		float64(sequentialDuration)/float64(concurrentDuration))
-	return assert.LessOrEqual(t, concurrentDuration, 1.1*numTasks*sequentialDuration)
-}
-
-func TestFunctions(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
-	defer rt.Close()
-
-	t.Run("GraphQL with variables", func(t *testing.T) {
-		testConcurrently(t, rt, func() bool {
-			response := rt.SendRequest("POST", "/{{.db}}/_graphql",
-				`{"query": "query($number:Int!){ square(n:$number) }",
-				  "variables": {"number": 13}}`)
-			return assert.Equal(t, 200, response.Result().StatusCode) &&
-				assert.Equal(t, "{\"data\":{\"square\":169}}", string(response.BodyBytes()))
-		})
-	})
+	return assert.LessOrEqual(t, float64(concurrentDuration), 1.1*float64(sequentialDuration))
 }
 
 func TestFunctionsConcurrently(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
+	//TODO: Switch back to NewRestTester()
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
 	defer rt.Close()
 
 	t.Run("Function", func(t *testing.T) {
@@ -126,6 +127,16 @@ func TestFunctionsConcurrently(t *testing.T) {
 		})
 	})
 
+	t.Run("GraphQL with variables", func(t *testing.T) {
+		testConcurrently(t, rt, func() bool {
+			response := rt.SendRequest("POST", "/{{.db}}/_graphql",
+				`{"query": "query($number:Int!){ square(n:$number) }",
+				  "variables": {"number": 13}}`)
+			return assert.Equal(t, 200, response.Result().StatusCode) &&
+				assert.Equal(t, "{\"data\":{\"square\":169}}", string(response.BodyBytes()))
+		})
+	})
+
 	t.Run("Query", func(t *testing.T) {
 		if base.UnitTestUrlIsWalrus() {
 			t.Skip("Skipping query subtest")
@@ -133,7 +144,7 @@ func TestFunctionsConcurrently(t *testing.T) {
 			testConcurrently(t, rt, func() bool {
 				response := rt.SendRequest("GET", "/{{.db}}/_function/squareN1QL?n=13", "")
 				return assert.Equal(t, 200, response.Result().StatusCode) &&
-					assert.Equal(t, "[{\"square\":169}\n]\n", string(response.BodyBytes()))
+					assert.Equal(t, "[{\"square\":169}]", string(response.BodyBytes()))
 			})
 		}
 	})

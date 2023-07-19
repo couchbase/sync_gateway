@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 )
@@ -432,91 +433,93 @@ func InitWebhookTest() (*httptest.Server, *WebhookRequest) {
 }
 
 func TestWebhookBasic(t *testing.T) {
-	base.LongRunningTest(t)
+	js.TestWithVMPools(t, 4, func(t *testing.T, host *js.VMPool) {
+		base.LongRunningTest(t)
 
-	terminator := make(chan bool)
-	defer close(terminator)
+		terminator := make(chan bool)
+		defer close(terminator)
 
-	ts, wr := InitWebhookTest()
-	defer ts.Close()
-	url := ts.URL
+		ts, wr := InitWebhookTest()
+		defer ts.Close()
+		url := ts.URL
 
-	ids := make([]string, 200)
-	for i := 0; i < 200; i++ {
-		ids[i] = fmt.Sprintf("%d", i)
-	}
-
-	eventForTest := func(i int) (Body, string, base.Set) {
-		testBody := Body{
-			BodyId:  ids[i],
-			"value": i,
+		ids := make([]string, 200)
+		for i := 0; i < 200; i++ {
+			ids[i] = fmt.Sprintf("%d", i)
 		}
-		var channelSet base.Set
-		if i%2 == 0 {
-			channelSet = base.SetFromArray([]string{"Even"})
-		} else {
-			channelSet = base.SetFromArray([]string{"Odd"})
-		}
-		return testBody, ids[i], channelSet
-	}
 
-	// Test basic webhook
-	log.Println("Test basic webhook")
-	em := NewEventManager(terminator)
-	em.Start(0, -1)
-	webhookHandler, _ := NewWebhook(fmt.Sprintf("%s/echo", url), "", nil, nil)
-	em.RegisterEventHandler(webhookHandler, DocumentChange)
-	for i := 0; i < 10; i++ {
-		body, docId, channels := eventForTest(i)
-		bodyBytes, _ := base.JSONMarshal(body)
-		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
+		eventForTest := func(i int) (Body, string, base.Set) {
+			testBody := Body{
+				BodyId:  ids[i],
+				"value": i,
+			}
+			var channelSet base.Set
+			if i%2 == 0 {
+				channelSet = base.SetFromArray([]string{"Even"})
+			} else {
+				channelSet = base.SetFromArray([]string{"Odd"})
+			}
+			return testBody, ids[i], channelSet
+		}
+
+		// Test basic webhook
+		log.Println("Test basic webhook")
+		em := NewEventManager(terminator)
+		em.Start(0, -1)
+		webhookHandler, _ := NewWebhook(fmt.Sprintf("%s/echo", url), "", nil, nil, nil)
+		em.RegisterEventHandler(webhookHandler, DocumentChange)
+		for i := 0; i < 10; i++ {
+			body, docId, channels := eventForTest(i)
+			bodyBytes, _ := base.JSONMarshal(body)
+			err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
+			assert.NoError(t, err)
+		}
+		err := em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
 		assert.NoError(t, err)
-	}
-	err := em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
-	assert.NoError(t, err)
-	assert.Equal(t, int64(10), em.GetEventsProcessedSuccess())
+		assert.Equal(t, int64(10), em.GetEventsProcessedSuccess())
 
-	// Test webhook filter function
-	log.Println("Test filter function")
-	wr.Clear()
-	em = NewEventManager(terminator)
-	em.Start(0, -1)
-	filterFunction := `function(doc) {
+		// Test webhook filter function
+		log.Println("Test filter function")
+		wr.Clear()
+		em = NewEventManager(terminator)
+		em.Start(0, -1)
+		filterFunction := `function(doc) {
 							if (doc.value < 6) {
 								return false;
 							} else {
 								return true;
 							}
 							}`
-	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/echo", url), filterFunction, nil, nil)
-	em.RegisterEventHandler(webhookHandler, DocumentChange)
-	for i := 0; i < 10; i++ {
-		body, docId, channels := eventForTest(i)
-		bodyBytes, _ := base.JSONMarshal(body)
-		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
+		webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/echo", url), filterFunction, host, nil, nil)
+		em.RegisterEventHandler(webhookHandler, DocumentChange)
+		for i := 0; i < 10; i++ {
+			body, docId, channels := eventForTest(i)
+			bodyBytes, _ := base.JSONMarshal(body)
+			err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
+			assert.NoError(t, err)
+		}
+
+		err = em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
 		assert.NoError(t, err)
-	}
+		assert.Equal(t, int64(4), em.GetEventsProcessedSuccess())
 
-	err = em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
-	assert.NoError(t, err)
-	assert.Equal(t, int64(4), em.GetEventsProcessedSuccess())
-
-	// Validate payload
-	log.Println("Test payload validation")
-	wr.Clear()
-	em = NewEventManager(terminator)
-	em.Start(0, -1)
-	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/echo", url), "", nil, nil)
-	em.RegisterEventHandler(webhookHandler, DocumentChange)
-	body, docId, channels := eventForTest(0)
-	bodyBytes, _ := base.JSONMarshalCanonical(body)
-	err = em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
-	assert.NoError(t, err)
-	err = em.waitForProcessedTotal(base.TestCtx(t), 1, DefaultWaitForWebhook)
-	assert.NoError(t, err)
-	receivedPayload := string((wr.GetPayloads())[0])
-	fmt.Println("payload:", receivedPayload)
-	assert.Equal(t, `{"_id":"0","value":0}`, receivedPayload)
+		// Validate payload
+		log.Println("Test payload validation")
+		wr.Clear()
+		em = NewEventManager(terminator)
+		em.Start(0, -1)
+		webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/echo", url), "", nil, nil, nil)
+		em.RegisterEventHandler(webhookHandler, DocumentChange)
+		body, docId, channels := eventForTest(0)
+		bodyBytes, _ := base.JSONMarshalCanonical(body)
+		err = em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
+		assert.NoError(t, err)
+		err = em.waitForProcessedTotal(base.TestCtx(t), 1, DefaultWaitForWebhook)
+		assert.NoError(t, err)
+		receivedPayload := string((wr.GetPayloads())[0])
+		fmt.Println("payload:", receivedPayload)
+		assert.Equal(t, `{"_id":"0","value":0}`, receivedPayload)
+	})
 }
 
 func TestWebhookOverflows(t *testing.T) {
@@ -557,7 +560,7 @@ func TestWebhookOverflows(t *testing.T) {
 	em := NewEventManager(terminator)
 	em.Start(5, -1)
 	timeout := uint64(60)
-	webhookHandler, _ := NewWebhook(fmt.Sprintf("%s/echo", url), "", &timeout, nil)
+	webhookHandler, _ := NewWebhook(fmt.Sprintf("%s/echo", url), "", nil, &timeout, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
 		body, docId, channels := eventForTest(i % 10)
@@ -577,7 +580,7 @@ func TestWebhookOverflows(t *testing.T) {
 	errCount := 0
 	em = NewEventManager(terminator)
 	em.Start(5, 1)
-	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", nil, nil)
+	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", nil, nil, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
 		body, docId, channels := eventForTest(i)
@@ -600,7 +603,7 @@ func TestWebhookOverflows(t *testing.T) {
 	wr.Clear()
 	em = NewEventManager(terminator)
 	em.Start(5, 1500)
-	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", nil, nil)
+	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", nil, nil, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
 		body, docId, channels := eventForTest(i % 10)
@@ -616,143 +619,144 @@ func TestWebhookOverflows(t *testing.T) {
 // Test Webhook where there is an old doc revision and where the filter
 // function is expecting an old doc revision.
 func TestWebhookOldDoc(t *testing.T) {
-	terminator := make(chan bool)
-	defer close(terminator)
+	js.TestWithVMPools(t, 4, func(t *testing.T, host *js.VMPool) {
+		terminator := make(chan bool)
+		defer close(terminator)
 
-	ts, wr := InitWebhookTest()
-	defer ts.Close()
-	url := ts.URL
+		ts, wr := InitWebhookTest()
+		defer ts.Close()
+		url := ts.URL
 
-	ids := make([]string, 200)
-	for i := 0; i < 200; i++ {
-		ids[i] = fmt.Sprintf("%d", i)
-	}
-
-	eventForTest := func(k string, v int) (Body, string, base.Set) {
-		testBody := Body{
-			BodyId:  ids[v],
-			"value": k,
+		ids := make([]string, 200)
+		for i := 0; i < 200; i++ {
+			ids[i] = fmt.Sprintf("%d", i)
 		}
-		var channelSet base.Set
-		if v%2 == 0 {
-			channelSet = base.SetFromArray([]string{"Even"})
-		} else {
-			channelSet = base.SetFromArray([]string{"Odd"})
-		}
-		return testBody, ids[v], channelSet
-	}
 
-	// Test basic webhook where an old doc is passed but not filtered
-	log.Println("Test basic webhook where an old doc is passed but not filtered")
-	em := NewEventManager(terminator)
-	em.Start(0, -1)
-	webhookHandler, _ := NewWebhook(fmt.Sprintf("%s/echo", url), "", nil, nil)
-	em.RegisterEventHandler(webhookHandler, DocumentChange)
-	for i := 0; i < 10; i++ {
-		oldBody, oldDocId, _ := eventForTest(strconv.Itoa(-i), i)
-		oldBody[BodyId] = oldDocId
-		oldBodyBytes, _ := base.JSONMarshal(oldBody)
-		body, docId, channels := eventForTest(strconv.Itoa(i), i)
-		bodyBytes, _ := base.JSONMarshal(body)
-		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels, false)
+		eventForTest := func(k string, v int) (Body, string, base.Set) {
+			testBody := Body{
+				BodyId:  ids[v],
+				"value": k,
+			}
+			var channelSet base.Set
+			if v%2 == 0 {
+				channelSet = base.SetFromArray([]string{"Even"})
+			} else {
+				channelSet = base.SetFromArray([]string{"Odd"})
+			}
+			return testBody, ids[v], channelSet
+		}
+
+		// Test basic webhook where an old doc is passed but not filtered
+		log.Println("Test basic webhook where an old doc is passed but not filtered")
+		em := NewEventManager(terminator)
+		em.Start(0, -1)
+		webhookHandler, _ := NewWebhook(fmt.Sprintf("%s/echo", url), "", nil, nil, nil)
+		em.RegisterEventHandler(webhookHandler, DocumentChange)
+		for i := 0; i < 10; i++ {
+			oldBody, oldDocId, _ := eventForTest(strconv.Itoa(-i), i)
+			oldBody[BodyId] = oldDocId
+			oldBodyBytes, _ := base.JSONMarshal(oldBody)
+			body, docId, channels := eventForTest(strconv.Itoa(i), i)
+			bodyBytes, _ := base.JSONMarshal(body)
+			err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels, false)
+			assert.NoError(t, err)
+
+		}
+		err := em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
 		assert.NoError(t, err)
+		assert.Equal(t, int64(10), em.eventsProcessedSuccess)
+		log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 10)
 
-	}
-	err := em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
-	assert.NoError(t, err)
-	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
-	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 10)
-
-	// Test webhook where an old doc is passed and is not used by the filter
-	log.Println("Test filter function with old doc which is not referenced")
-	wr.Clear()
-	em = NewEventManager(terminator)
-	em.Start(0, -1)
-	filterFunction := `function(doc) {
+		// Test webhook where an old doc is passed and is not used by the filter
+		log.Println("Test filter function with old doc which is not referenced")
+		wr.Clear()
+		em = NewEventManager(terminator)
+		em.Start(0, -1)
+		filterFunction := `function(doc) {
 							if (doc.value < 6) {
 								return false;
 							} else {
 								return true;
 							}
 							}`
-	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/echo", url), filterFunction, nil, nil)
-	em.RegisterEventHandler(webhookHandler, DocumentChange)
-	for i := 0; i < 10; i++ {
-		oldBody, oldDocId, _ := eventForTest(strconv.Itoa(-i), i)
-		oldBody[BodyId] = oldDocId
-		oldBodyBytes, _ := base.JSONMarshal(oldBody)
-		body, docId, channels := eventForTest(strconv.Itoa(i), i)
-		bodyBytes, _ := base.JSONMarshal(body)
-		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels, false)
+		webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/echo", url), filterFunction, host, nil, nil)
+		em.RegisterEventHandler(webhookHandler, DocumentChange)
+		for i := 0; i < 10; i++ {
+			oldBody, oldDocId, _ := eventForTest(strconv.Itoa(-i), i)
+			oldBody[BodyId] = oldDocId
+			oldBodyBytes, _ := base.JSONMarshal(oldBody)
+			body, docId, channels := eventForTest(strconv.Itoa(i), i)
+			bodyBytes, _ := base.JSONMarshal(body)
+			err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels, false)
+			assert.NoError(t, err)
+		}
+		err = em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
 		assert.NoError(t, err)
-	}
-	err = em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
-	assert.NoError(t, err)
-	assert.Equal(t, int64(4), em.eventsProcessedSuccess)
-	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 4)
+		assert.Equal(t, int64(4), em.eventsProcessedSuccess)
+		log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 4)
 
-	// Test webhook where an old doc is passed and is validated by the filter
-	log.Println("Test filter function with old doc")
-	wr.Clear()
-	em = NewEventManager(terminator)
-	em.Start(0, -1)
-	filterFunction = `function(doc, oldDoc) {
+		// Test webhook where an old doc is passed and is validated by the filter
+		log.Println("Test filter function with old doc")
+		wr.Clear()
+		em = NewEventManager(terminator)
+		em.Start(0, -1)
+		filterFunction = `function(doc, oldDoc) {
 							if (doc.value < 6 && doc.value == -oldDoc.value) {
 								return false;
 							} else {
 								return true;
 							}
 							}`
-	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/echo", url), filterFunction, nil, nil)
-	em.RegisterEventHandler(webhookHandler, DocumentChange)
-	for i := 0; i < 10; i++ {
-		oldBody, oldDocId, _ := eventForTest(strconv.Itoa(-i), i)
-		oldBody[BodyId] = oldDocId
-		oldBodyBytes, _ := base.JSONMarshal(oldBody)
-		body, docId, channels := eventForTest(strconv.Itoa(i), i)
-		bodyBytes, _ := base.JSONMarshal(body)
-		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels, false)
+		webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/echo", url), filterFunction, host, nil, nil)
+		em.RegisterEventHandler(webhookHandler, DocumentChange)
+		for i := 0; i < 10; i++ {
+			oldBody, oldDocId, _ := eventForTest(strconv.Itoa(-i), i)
+			oldBody[BodyId] = oldDocId
+			oldBodyBytes, _ := base.JSONMarshal(oldBody)
+			body, docId, channels := eventForTest(strconv.Itoa(i), i)
+			bodyBytes, _ := base.JSONMarshal(body)
+			err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels, false)
+			assert.NoError(t, err)
+		}
+		err = em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
 		assert.NoError(t, err)
-	}
-	err = em.waitForProcessedTotal(base.TestCtx(t), 10, DefaultWaitForWebhook)
-	assert.NoError(t, err)
-	assert.Equal(t, int64(4), em.eventsProcessedSuccess)
-	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 4)
+		assert.Equal(t, int64(4), em.eventsProcessedSuccess)
+		log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 4)
 
-	// Test webhook where an old doc is not passed but is referenced in the filter function args
-	log.Println("Test filter function with old doc")
-	wr.Clear()
-	em = NewEventManager(terminator)
-	em.Start(0, -1)
-	filterFunction = `function(doc, oldDoc) {
+		// Test webhook where an old doc is not passed but is referenced in the filter function args
+		log.Println("Test filter function with old doc")
+		wr.Clear()
+		em = NewEventManager(terminator)
+		em.Start(0, -1)
+		filterFunction = `function(doc, oldDoc) {
 							if (oldDoc) {
 								return true;
 							} else {
 								return false;
 							}
 							}`
-	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/echo", url), filterFunction, nil, nil)
-	em.RegisterEventHandler(webhookHandler, DocumentChange)
-	for i := 0; i < 10; i++ {
-		body, docId, channels := eventForTest(strconv.Itoa(i), i)
-		bodyBytes, _ := base.JSONMarshal(body)
-		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
+		webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/echo", url), filterFunction, host, nil, nil)
+		em.RegisterEventHandler(webhookHandler, DocumentChange)
+		for i := 0; i < 10; i++ {
+			body, docId, channels := eventForTest(strconv.Itoa(i), i)
+			bodyBytes, _ := base.JSONMarshal(body)
+			err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
+			assert.NoError(t, err)
+		}
+		for i := 10; i < 20; i++ {
+			oldBody, oldDocId, _ := eventForTest(strconv.Itoa(-i), i)
+			oldBody[BodyId] = oldDocId
+			oldBodyBytes, _ := base.JSONMarshal(oldBody)
+			body, docId, channels := eventForTest(strconv.Itoa(i), i)
+			bodyBytes, _ := base.JSONMarshal(body)
+			err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels, false)
+			assert.NoError(t, err)
+		}
+		err = em.waitForProcessedTotal(base.TestCtx(t), 20, DefaultWaitForWebhook)
 		assert.NoError(t, err)
-	}
-	for i := 10; i < 20; i++ {
-		oldBody, oldDocId, _ := eventForTest(strconv.Itoa(-i), i)
-		oldBody[BodyId] = oldDocId
-		oldBodyBytes, _ := base.JSONMarshal(oldBody)
-		body, docId, channels := eventForTest(strconv.Itoa(i), i)
-		bodyBytes, _ := base.JSONMarshal(body)
-		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels, false)
-		assert.NoError(t, err)
-	}
-	err = em.waitForProcessedTotal(base.TestCtx(t), 20, DefaultWaitForWebhook)
-	assert.NoError(t, err)
-	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
-	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 10)
-
+		assert.Equal(t, int64(10), em.eventsProcessedSuccess)
+		log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 10)
+	})
 }
 
 func TestWebhookTimeout(t *testing.T) {
@@ -790,7 +794,7 @@ func TestWebhookTimeout(t *testing.T) {
 	em := NewEventManager(terminator)
 	em.Start(0, -1)
 	timeout := uint64(2)
-	webhookHandler, _ := NewWebhook(fmt.Sprintf("%s/echo", url), "", &timeout, nil)
+	webhookHandler, _ := NewWebhook(fmt.Sprintf("%s/echo", url), "", nil, &timeout, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, docid, channels := eventForTest(strconv.Itoa(i), i)
@@ -812,7 +816,7 @@ func TestWebhookTimeout(t *testing.T) {
 	em = NewEventManager(terminator)
 	em.Start(1, 1500)
 	timeout = uint64(1)
-	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow_2s", url), "", &timeout, nil)
+	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow_2s", url), "", nil, &timeout, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, docid, channels := eventForTest(strconv.Itoa(i), i)
@@ -837,7 +841,7 @@ func TestWebhookTimeout(t *testing.T) {
 	em = NewEventManager(terminator)
 	em.Start(1, 100)
 	timeout = uint64(9)
-	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow_5s", url), "", &timeout, nil)
+	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow_5s", url), "", nil, &timeout, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, docid, channels := eventForTest(strconv.Itoa(i), i)
@@ -860,7 +864,7 @@ func TestWebhookTimeout(t *testing.T) {
 	em = NewEventManager(terminator)
 	em.Start(1, 1500)
 	timeout = uint64(0)
-	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", &timeout, nil)
+	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", nil, &timeout, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, docid, channels := eventForTest(strconv.Itoa(i), i)
@@ -908,7 +912,7 @@ func TestUnavailableWebhook(t *testing.T) {
 
 	em := NewEventManager(terminator)
 	em.Start(0, -1)
-	webhookHandler, _ := NewWebhook("http://badhost:1000/echo", "", nil, nil)
+	webhookHandler, _ := NewWebhook("http://badhost:1000/echo", "", nil, nil, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, docId, channels := eventForTest(strconv.Itoa(-i), i)
@@ -978,14 +982,16 @@ func TestWebhookHandleUnsupportedEventType(t *testing.T) {
 
 // Simulate the filter function processing abort scenario.
 func TestWebhookHandleEventDBStateChangeFilterFuncError(t *testing.T) {
-	ts, _ := InitWebhookTest()
-	defer ts.Close()
-	wh := &Webhook{url: ts.URL}
-	event := mockDBStateChangeEvent("db", "online", "Index service is listening", "127.0.0.1:4985")
-	source := `function (doc) { invalidKeyword if (doc.state == "online") { return true; } else { return false; } }`
-	wh.filter = NewJSEventFunction(source)
-	success := wh.HandleEvent(event)
-	assert.False(t, success, "Filter function processing should be aborted and warnings should be logged")
+	js.TestWithVMPools(t, 4, func(t *testing.T, host *js.VMPool) {
+		ts, _ := InitWebhookTest()
+		defer ts.Close()
+		wh := &Webhook{url: ts.URL}
+		event := mockDBStateChangeEvent("db", "online", "Index service is listening", "127.0.0.1:4985")
+		source := `function (doc) { invalidKeyword if (doc.state == "online") { return true; } else { return false; } }`
+		wh.filter = NewJSEventFunction(host, source)
+		success := wh.HandleEvent(event)
+		assert.False(t, success, "Filter function processing should be aborted and warnings should be logged")
+	})
 }
 
 // Simulate marshalling doc error for webhook post against DBStateChangeEvent

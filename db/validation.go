@@ -59,7 +59,7 @@ func validateImportBody(body Body) error {
 	}
 
 	// Prevent disallowed internal properties from being used
-	disallowed := []string{BodyId, BodyRev, BodyExpiry, BodyRevisions}
+	disallowed := []string{BodyId, BodyRev, BodyExpiry, BodyRevisions, BodyPurged}
 	for _, prop := range disallowed {
 		if _, ok := body[prop]; ok {
 			return base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+prop+"' is a reserved internal property therefore cannot be imported")

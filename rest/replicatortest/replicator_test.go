@@ -2163,8 +2163,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body := doc.Body()
 	assert.Equal(t, "rt2", body["source"])
 
 	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
@@ -2652,8 +2651,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body := doc.Body()
 	assert.Equal(t, "rt2", body["source"])
 
 	assert.Equal(t, int64(1), ar.Pull.GetStats().GetAttachment.Value())
@@ -2674,8 +2672,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 
 	assert.Equal(t, revID, doc2.SyncData.CurrentRev)
 
-	body, err = doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body = doc.Body()
 	assert.Equal(t, "rt2", body["source"])
 
 	// When targeting a Hydrogen node that supports proveAttachments, we typically end up sending
@@ -2975,8 +2972,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		doc, err := rt1.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
-		body, err := doc.GetDeepMutableBody()
-		require.NoError(t, err)
+		body := doc.Body()
 		assert.Equal(t, "rt2", body["source"])
 	}
 
@@ -3035,8 +3031,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		doc, err := rt1.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
-		body, err := doc.GetDeepMutableBody()
-		require.NoError(t, err)
+		body := doc.Body()
 		assert.Equal(t, "rt2", body["source"])
 	}
 
@@ -3307,8 +3302,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body := doc.Body()
 	assert.Equal(t, "rt2", body["source"])
 	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
 	*/
@@ -3388,8 +3382,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body := doc.Body()
 	assert.Equal(t, "rt1", body["source"])
 
 	assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus().LastSeqPush)
@@ -3471,8 +3464,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body := doc.Body()
 	assert.Equal(t, "rt1", body["source"])
 
 	assert.Equal(t, int64(1), ar.Push.GetStats().HandleGetAttachment.Value())
@@ -3493,8 +3485,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 
 	assert.Equal(t, revID, doc2.SyncData.CurrentRev)
 
-	body, err = doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body = doc.Body()
 	assert.Equal(t, "rt1", body["source"])
 
 	// When targeting a Hydrogen node that supports proveAttachments, we typically end up sending
@@ -3591,8 +3582,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		doc, err := rt1.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
-		body, err := doc.GetDeepMutableBody()
-		require.NoError(t, err)
+		body := doc.Body()
 		assert.Equal(t, "rt1", body["source"])
 	}
 
@@ -3652,8 +3642,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		doc, err := rt2.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
-		body, err := doc.GetDeepMutableBody()
-		require.NoError(t, err)
+		body := doc.Body()
 		assert.Equal(t, "rt1", body["source"])
 	}
 
@@ -3767,8 +3756,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		doc, err := edge1.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
-		body, err := doc.GetDeepMutableBody()
-		require.NoError(t, err)
+		body := doc.Body()
 		assert.Equal(t, "rt1", body["source"])
 	}
 
@@ -3947,8 +3935,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body := doc.Body()
 	assert.Equal(t, "rt1", body["source"])
 
 	assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus().LastSeqPush)
@@ -4034,8 +4021,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body := doc.Body()
 	assert.Equal(t, "rt2", body["source"])
 
 	// Tombstone the doc in rt2
@@ -4135,8 +4121,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body := doc.Body()
 	assert.Equal(t, "rt2", body["source"])
 
 	resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+revID, `{"source":"rt2","channels":["bob"]}`)
@@ -4281,7 +4266,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			rt1revID := rest.RespRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
 
-			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
+			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout, &rt1.GetDatabase().JS)
 			require.NoError(t, err)
 			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 			require.NoError(t, err)
@@ -4515,7 +4500,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			localDoc, err := rt1.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalSync)
 			require.NoError(t, err)
 
-			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
+			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout, &rt1.GetDatabase().JS)
 			require.NoError(t, err)
 
 			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
@@ -4699,8 +4684,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body := doc.Body()
 	assert.Equal(t, "rt1", body["source"])
 }
 
@@ -4838,8 +4822,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	doc, err := rt1.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body := doc.Body()
 	assert.Equal(t, "rt2", body["source"])
 
 	// one _changes from seq:0 with initial number of docs sent
@@ -4897,8 +4880,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	doc, err = rt1.GetSingleTestDatabaseCollectionWithUser().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
-	body, err = doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body = doc.Body()
 	assert.Equal(t, "rt2", body["source"])
 
 	// one _changes from seq:0 with initial number of docs sent
@@ -4999,8 +4981,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	doc, err := rt2.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body := doc.Body()
 	assert.Equal(t, "rt1", body["source"])
 
 	// one _changes from seq:0 with initial number of docs sent
@@ -5066,8 +5047,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	doc, err = rt2.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
-	body, err = doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body = doc.Body()
 	assert.Equal(t, "rt1", body["source"])
 
 	// one _changes from seq:0 with initial number of docs sent
@@ -5176,8 +5156,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	doc, err := rt1.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body := doc.Body()
 	assert.Equal(t, "rt1", body["source"])
 
 	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
@@ -5211,8 +5190,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	doc, err = rt2.GetSingleTestDatabaseCollection().GetDocument(ctx2, docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
-	body, err = doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body = doc.Body()
 	assert.Equal(t, "rt1", body["source"])
 
 	assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
@@ -5245,8 +5223,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	doc, err = rt2collection.GetDocument(ctx2, docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
-	body, err = doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body = doc.Body()
 	assert.Equal(t, "rt1", body["source"])
 
 	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
@@ -5446,8 +5423,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 
 	assert.Equal(t, rt1revID, doc.SyncData.CurrentRev)
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body := doc.Body()
 	assert.Equal(t, "rt1", body["source"])
 
 	// write a doc on rt2 ...
@@ -5468,8 +5444,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 
 	assert.Equal(t, rt2revID, doc.SyncData.CurrentRev)
 
-	body, err = doc.GetDeepMutableBody()
-	require.NoError(t, err)
+	body = doc.Body()
 	assert.Equal(t, "rt2", body["source"])
 }
 
@@ -5626,8 +5601,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 		doc, err := rt1.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
-		body, err := doc.GetDeepMutableBody()
-		require.NoError(t, err)
+		body := doc.Body()
 		assert.Equal(t, "rt2", body["source"])
 	}
 
@@ -6204,7 +6178,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			rt1revID := rest.RespRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
 
-			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
+			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout, &rt1.GetDatabase().JS)
 			require.NoError(t, err)
 			dbstats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 			require.NoError(t, err)
@@ -6665,7 +6639,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			ctx1 := rt1.Context()
 
 			defaultConflictResolver, err := db.NewCustomConflictResolver(
-				`function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout)
+				`function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout, &rt1.GetDatabase().JS)
 			require.NoError(t, err, "Error creating custom conflict resolver")
 			sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 			require.NoError(t, err)
@@ -6820,7 +6794,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			ctx1 := rt1.Context()
 
 			defaultConflictResolver, err := db.NewCustomConflictResolver(
-				`function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout)
+				`function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout, &rt1.GetDatabase().JS)
 			require.NoError(t, err, "Error creating custom conflict resolver")
 			sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 			require.NoError(t, err)
@@ -7324,7 +7298,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 			mutatedLocal["_deleted"] = true;
 			mutatedLocal["_rev"] = "";
 			return mutatedLocal;
-		}`, rt1.GetDatabase().Options.JavascriptTimeout)
+		}`, rt1.GetDatabase().Options.JavascriptTimeout, &rt1.GetDatabase().JS)
 	require.NoError(t, err)
 
 	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)

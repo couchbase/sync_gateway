@@ -6,6 +6,8 @@
 //  software will be governed by the Apache License, Version 2.0, included in
 //  the file licenses/APL2.txt.
 
+//go:build cb_sg_v8
+
 package functionsapitest
 
 import (
@@ -99,16 +101,15 @@ func TestJSFunctionAsGuest(t *testing.T) {
 	})
 
 	t.Run("user required", func(t *testing.T) {
-		t.Skip("Does not work with SG_TEST_USE_DEFAULT_COLLECTION=true CBG-2702")
 		response := sendReqFn("POST", "/db/_function/square", `{"numero": 42}`)
 		assert.Equal(t, 401, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required")
+		assert.Contains(t, string(response.BodyBytes()), "Login required")
 	})
 
 	t.Run("admin-only", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/admin_only", "")
 		assert.Equal(t, 401, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required")
+		assert.Contains(t, string(response.BodyBytes()), "Login required")
 	})
 }
 
@@ -243,13 +244,13 @@ func TestN1QLFunctionAsGuest(t *testing.T) {
 		t.Skip("Does not work with SG_TEST_USE_DEFAULT_COLLECTION=true CBG-2702")
 		response := sendReqFn("POST", "/db/_function/square", `{"numero": 16}`)
 		assert.Equal(t, 401, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required")
+		assert.Contains(t, string(response.BodyBytes()), "Login required")
 	})
 
 	t.Run("admin only", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/admin_only", "")
 		assert.Equal(t, 401, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required")
+		assert.Contains(t, string(response.BodyBytes()), "Login required")
 	})
 
 	t.Run("unconfigured query", func(t *testing.T) {
@@ -264,7 +265,7 @@ func testUserQueriesCommon(t *testing.T, rt *rest.RestTester, sendReqFn func(str
 	t.Run("commons/passing a param", func(t *testing.T) {
 		response := sendReqFn("POST", "/db/_function/square", `{"numero": 16}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, "[{\"square\":256}\n]\n", string(response.BodyBytes()))
+		assert.EqualValues(t, "[{\"square\":256}]", string(response.BodyBytes()))
 	})
 }
 
@@ -275,13 +276,13 @@ func testUserQueriesAsAdmin(t *testing.T, rt *rest.RestTester) {
 	t.Run("select user", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_function/user", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, "[{\"user\":{}}\n]\n", string(response.BodyBytes()))
+		assert.EqualValues(t, "[{\"user\":{}}]", string(response.BodyBytes()))
 	})
 
 	t.Run("admin only", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_function/admin_only", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, "[{\"status\":\"ok\"}\n]\n", string(response.BodyBytes()))
+		assert.EqualValues(t, "[{\"status\":\"ok\"}]", string(response.BodyBytes()))
 	})
 
 	//negative cases:
@@ -302,8 +303,7 @@ func testUserQueriesAsUser(t *testing.T, rt *rest.RestTester) {
 	t.Run("select user", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/user", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.True(t, strings.HasPrefix(string(response.BodyBytes()), `[{"user":{"channels":["`))
-		assert.True(t, strings.HasSuffix(string(response.BodyBytes()), "\"],\"email\":\"\",\"name\":\"alice\"}}\n]\n"))
+		assert.True(t, strings.HasPrefix(string(response.BodyBytes()), `[{"user":{"channels":["`) && strings.HasSuffix(string(response.BodyBytes()), "\"],\"name\":\"alice\"}}]"), "Unexpected response: %s", response.BodyBytes())
 	})
 
 	//negative cases:
@@ -401,15 +401,16 @@ func TestFunctionMutability(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
 	})
 
-	//Mutability of the function being called is false. Will fail as once you’ve lost the ability to mutate, you can’t get it back.
+	//Positive Cases
+
+	//Mutability of the function being called is false. Still succeeds because it was called through the 'admin' object.
 	t.Run("context.admin to call a Non-mutating function", func(t *testing.T) {
 		putFuncName = "putDocMutabilityFalse"
 		callerFuncName = "callerOverride"
 		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
-		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+		assert.Equal(t, http.StatusOK, response.Result().StatusCode)
 	})
 
-	//Positive Cases
 	t.Run("Func with mutating True calls another function with a mutating value of True", func(t *testing.T) {
 		putFuncName = "putDocMutabilityTrue"
 		callerFuncName = "callerMutabilityTrue"
@@ -456,15 +457,15 @@ func TestFunctionTimeout(t *testing.T) {
 	timeout := 500 * time.Millisecond
 	rt.GetDatabase().UserFunctionTimeout = timeout
 	// positive case:
+	reqBody := fmt.Sprintf(`{"ms": %d}`, timeout.Milliseconds()/2)
 	t.Run("under time limit", func(t *testing.T) {
-		reqBody := `{"ms": 1}`
 		response := rt.SendAdminRequest("POST", "/db/_function/sleep", reqBody)
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
 
 	// negative case:
+	reqBody = fmt.Sprintf(`{"ms": %d}`, 2*timeout.Milliseconds())
 	t.Run("over time limit", func(t *testing.T) {
-		reqBody := fmt.Sprintf(`{"ms": %d}`, 2*timeout)
 		response := rt.SendAdminRequest("POST", "/db/_function/sleep", reqBody)
 		assert.Equal(t, 500, response.Result().StatusCode)
 	})

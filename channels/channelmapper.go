@@ -9,14 +9,27 @@
 package channels
 
 import (
+	"context"
+	_ "embed"
 	"encoding/json"
-	"strconv"
+	"fmt"
+	"strings"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket/js"
 	"github.com/couchbase/sync_gateway/base"
-	_ "github.com/robertkrimen/otto/underscore"
 )
+
+/** The data given to the channel-mapper function. */
+type ChannelMapperInput struct {
+	DocID   string
+	RevID   string
+	Body    string
+	OldBody string
+	Deleted bool
+	Meta    MetaMap
+	UserCtx map[string]interface{}
+}
 
 /** Result of running a channel-mapper function. */
 type ChannelMapperOutput struct {
@@ -27,27 +40,67 @@ type ChannelMapperOutput struct {
 	Expiry    *uint32   // Expiry value specified by expiry() callback.  Standard CBS expiry format: seconds if less than 30 days, epoch time otherwise
 }
 
+// The object that runs the sync function.
 type ChannelMapper struct {
-	*sgbucket.JSServer // "Superclass"
+	service  *js.Service
+	timeout  time.Duration
+	fnSource string
 }
 
 // Maps user names (or role names prefixed with "role:") to arrays of channel or role names
 type AccessMap map[string]base.Set
 
-// Number of SyncRunner tasks (and Otto contexts) to cache
-// Should be larger than sequence_allocator.maxBatchSize, to avoid pool overflow under some load scenarios (CBG-436)
-const kTaskCacheSize = 16
+// If the provided principal name (in access grant format) is a role, returns the role name without prefix
+func AccessNameToPrincipalName(accessPrincipalName string) (principalName string, isRole bool) {
+	if strings.HasPrefix(accessPrincipalName, RoleAccessPrefix) {
+		return accessPrincipalName[len(RoleAccessPrefix):], true
+	}
+	return accessPrincipalName, false
+}
+
+// Document metadata passed to the sync function
+type MetaMap struct {
+	Key       string // xattr key; "" if none
+	JSONValue []byte // raw JSON value of xattr key; nil if none
+}
+
+func (meta MetaMap) MarshalJSON() ([]byte, error) {
+	var result string
+	if meta.Key == "" {
+		result = `{"xattrs":null}`
+	} else {
+		result = fmt.Sprintf(`{"xattrs":{%q:`, meta.Key)
+		if meta.JSONValue != nil {
+			result += string(meta.JSONValue) + "}}"
+		} else {
+			result += "null}}"
+		}
+	}
+	return []byte(result), nil
+}
+
+// Prefix used to identify roles in access grants
+const RoleAccessPrefix = "role:"
 
 // DocChannelsSyncFunction is the default sync function used prior to collections.
 const DocChannelsSyncFunction = `function(doc){channel(doc.channels);}`
 
+// The JavaScript code run by the SyncRunner; the sync fn is copied into it.
+// See wrappedFuncSource().
+//
+//go:embed sync_fn_wrapper_older.js
+var kSyncFnHostScriptOlder string
+
+//go:embed sync_fn_wrapper_modern.js
+var kSyncFnHostScriptModern string
+
 // NewChannelMapper creates a new channel mapper with a specific javascript function and a timeout. A zero value timeout will never timeout.
-func NewChannelMapper(fnSource string, timeout time.Duration) *ChannelMapper {
+func NewChannelMapper(owner js.ServiceHost, fnSource string, timeout time.Duration) *ChannelMapper {
+	service := js.NewService(owner, "channelMapper", wrappedFuncSource(fnSource, owner))
 	return &ChannelMapper{
-		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize,
-			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-				return NewSyncRunner(fnSource, timeout)
-			}),
+		service:  service,
+		timeout:  timeout,
+		fnSource: fnSource,
 	}
 }
 
@@ -60,79 +113,130 @@ func GetDefaultSyncFunction(scopeName, collectionName string) string {
 
 }
 
-func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
-	numberFixBody := ConvertJSONNumbers(body)
-	numberFixMetaMap := ConvertJSONNumbers(metaMap)
-
-	result1, err := mapper.Call(numberFixBody, sgbucket.JSONString(oldBodyJSON), numberFixMetaMap, userCtx)
-	if err != nil {
-		return nil, err
-	}
-	output := result1.(*ChannelMapperOutput)
-	return output, nil
+func (mapper *ChannelMapper) Function() string {
+	return mapper.fnSource
 }
 
-// Javscript max integer value (https://www.ecma-international.org/ecma-262/5.1/#sec-8.5)
-const JavascriptMaxSafeInt = int64(1<<53 - 1)
-const JavascriptMinSafeInt = -JavascriptMaxSafeInt
-
-// ConvertJSONNumbers converts json.Number values to javascript number objects for use in the sync
-// function.  Integers that would lose precision are left as json.Number, as are floats that can't be
-// converted to float64.
-func ConvertJSONNumbers(value interface{}) interface{} {
-	switch value := value.(type) {
-	case json.Number:
-		if asInt, err := value.Int64(); err == nil {
-			if asInt > JavascriptMaxSafeInt || asInt < JavascriptMinSafeInt {
-				// Integer will lose precision when used in javascript - leave as json.Number
-				return value
-			}
-			return asInt
-		} else {
-			numErr, _ := err.(*strconv.NumError)
-			if numErr.Err == strconv.ErrRange {
-				return value
-			}
-		}
-
-		if asFloat, err := value.Float64(); err == nil {
-			// Can't reliably detect loss of precision in float, due to number of variations in input float format
-			return asFloat
-		}
-		return value
-	case map[string]interface{}:
-		for k, v := range value {
-			value[k] = ConvertJSONNumbers(v)
-		}
-	case []interface{}:
-		for i, v := range value {
-			value[i] = ConvertJSONNumbers(v)
-		}
-	default:
-	}
-	return value
+// This function is DEPRECATED. It's currently used in some tests that can't easily be changed.
+// Its current implementation is a kludge, and it shouldn't be used in production.
+func (mapper *ChannelMapper) SetFunction(fnSource string) error {
+	host := mapper.service.Host()
+	mapper.fnSource = fnSource
+	mapper.service = js.NewService(host, "channelMapper", wrappedFuncSource(fnSource, host))
+	return nil
 }
 
-//////// UTILITY FUNCTIONS:
-
-// Calls the function for each user whose access is different between the two AccessMaps
-func ForChangedUsers(a, b AccessMap, fn func(user string)) {
-	for name, access := range a {
-		if !access.Equals(b[name]) {
-			fn(name)
-		}
+func wrappedFuncSource(funcSource string, host js.ServiceHost) string {
+	// Use different wrapper scripts for modern vs older JS.
+	script := kSyncFnHostScriptOlder
+	if host.Engine().LanguageVersion() >= js.ES2015 {
+		script = kSyncFnHostScriptModern
 	}
-	for name := range b {
-		if _, existed := a[name]; !existed {
-			fn(name)
-		}
-	}
+	return fmt.Sprintf(
+		script,
+		funcSource,
+		base.SyncFnErrorAdminRequired,
+		base.SyncFnErrorWrongUser,
+		base.SyncFnErrorMissingRole,
+		base.SyncFnErrorMissingChannelAccess,
+	)
 }
 
-func (runner *SyncRunner) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
-	result, err := runner.Call(body, sgbucket.JSONString(oldBodyJSON), userCtx)
+// Runs the sync function. Thread-safe.
+func (mapper *ChannelMapper) Run(input ChannelMapperInput) (*ChannelMapperOutput, error) {
+	result, err := mapper.service.WithRunner(func(runner js.Runner) (any, error) {
+		ctx := context.Background()
+		if mapper.timeout > 0 {
+			var cancelFn context.CancelFunc
+			ctx, cancelFn = context.WithTimeout(ctx, mapper.timeout)
+			defer cancelFn()
+		}
+		runner.SetContext(ctx)
+		return callSyncFn(runner, input)
+	})
 	if err != nil {
 		return nil, err
 	}
 	return result.(*ChannelMapperOutput), nil
+}
+
+// Parsed version of the JSON object returned by the sync-fn wrapper.
+type syncFnResult = struct {
+	RejectionStatus  int
+	RejectionMessage string
+	Channels         []string
+	Access           map[string][]string
+	Roles            map[string][]string
+	Expiry           any
+}
+
+func callSyncFn(runner js.Runner, in ChannelMapperInput) (*ChannelMapperOutput, error) {
+	// Call the sync fn:
+	jsResult, err := runner.Run(in.DocID, in.RevID, in.Deleted, js.JSONString(in.Body), in.OldBody, in.Meta.Key, string(in.Meta.JSONValue), in.UserCtx)
+	if err != nil {
+		return nil, fmt.Errorf("unexpected error calling sync fn: %w", err)
+	}
+	var result syncFnResult
+	if err := json.Unmarshal([]byte(jsResult.(string)), &result); err != nil {
+		return nil, fmt.Errorf("unparseable output from sync-fn wrapper: %w", err)
+	}
+
+	// Convert the JSON result to a ChannelMapperOutput:
+	output := &ChannelMapperOutput{}
+	if result.RejectionStatus >= 400 {
+		output.Rejection = base.HTTPErrorf(result.RejectionStatus, result.RejectionMessage)
+		return output, nil
+	}
+	if result.Channels != nil {
+		if output.Channels, err = SetFromArray(result.Channels, ExpandStar); err != nil {
+			return nil, err
+		}
+	}
+	if output.Access, err = compileJSAccessMap(result.Access, ""); err != nil {
+		return nil, err
+	}
+	if output.Roles, err = compileJSAccessMap(result.Roles, RoleAccessPrefix); err != nil {
+		return nil, err
+	}
+	if result.Expiry != nil {
+		if expiry, reflectErr := base.ReflectExpiry(result.Expiry); reflectErr == nil {
+			output.Expiry = expiry
+		} else {
+			base.WarnfCtx(runner.Context(), "sync function set invalid expiry value `%+v` ", result.Expiry)
+		}
+	}
+	return output, nil
+}
+
+//////// UTILITIES:
+
+// Converts the "access" or "roles" property of the result into an AccessMap.
+func compileJSAccessMap(result map[string][]string, prefix string) (AccessMap, error) {
+	var err error
+	access := make(AccessMap)
+	for user, values := range result {
+		if len(values) > 0 {
+			if err = stripMandatoryPrefix(values, prefix); err != nil {
+				return nil, err
+			}
+			if access[user], err = SetFromArray(values, RemoveStar); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return access, nil
+}
+
+// Strips a prefix from every item of an array.
+func stripMandatoryPrefix(values []string, prefix string) error {
+	if prefix != "" {
+		for i, value := range values {
+			if strings.HasPrefix(value, prefix) {
+				values[i] = value[len(prefix):]
+			} else {
+				return base.RedactErrorf("Value %q does not begin with %q", base.UD(value), base.UD(prefix))
+			}
+		}
+	}
+	return nil
 }

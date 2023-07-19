@@ -27,6 +27,7 @@ func NewRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester
 
 	dbConfig := rt.NewDbConfig()
 
+	dbConfig.JavaScriptEngine = base.StringPtr("V8")
 	dbConfig.UserFunctions = queryConfig.UserFunctions
 	dbConfig.GraphQL = queryConfig.GraphQL
 
