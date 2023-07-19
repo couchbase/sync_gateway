@@ -9,6 +9,8 @@
 package rest
 
 import (
+	"bytes"
+	"compress/gzip"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -331,6 +333,40 @@ func TestBytesReadAuthFailed(t *testing.T) {
 
 	// assert the stat has still increased by the bytes of the body passed into request
 	_, ok := base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+	}, int64(len(inputBytes)))
+	require.True(t, ok)
+
+}
+
+func TestBytesReadGzipRequest(t *testing.T) {
+	// Need default collection as request below doesn't work with {{.keyspace}}
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
+		GuestEnabled: true,
+	})
+	defer rt.Close()
+
+	rt.CreateUser("alice", []string{"ABC"})
+	input := `{"channel":["ABC"]}`
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err := gz.Write([]byte(input))
+	require.NoError(t, err)
+	err = gz.Close()
+	require.NoError(t, err)
+
+	inputBytes := []byte(input)
+
+	// {{.keyspace}} isn't supported so use default collection
+	rq, err := http.NewRequest("PUT", "/db/doc", &buf)
+	require.NoError(t, err)
+	rq.Header.Set("Content-Encoding", "gzip")
+	resp := rt.Send(rq)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	_, ok := base.WaitForStat(func() int64 {
+		fmt.Println(rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value())
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 	require.True(t, ok)
