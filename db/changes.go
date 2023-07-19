@@ -650,11 +650,16 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			// initialization.  Without this, notification for user doc changes in that window (a) won't be
 			// included in the initial changes loop iteration, and (b) won't wake up the ChangeWaiter.
 			if col.user != nil {
+				previousRoles := col.user.RoleNames()
 				if err := col.ReloadUser(ctx); err != nil {
 					base.WarnfCtx(ctx, "Error reloading user during changes initialization %q: %v", base.UD(col.user.Name()), err)
 					change := makeErrorEntry("User not found during reload - terminating changes feed")
 					output <- &change
 					return
+				}
+				changedRoles := col.user.RoleNames().CompareKeys(previousRoles)
+				if len(changedRoles) > 0 {
+					changeWaiter.RefreshUserKeys(col.User(), col.dbCtx.MetadataKeys)
 				}
 			}
 
