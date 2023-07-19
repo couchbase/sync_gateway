@@ -2695,7 +2695,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	defer db.Close(ctx)
 	db.Options.QueryPaginationLimit = 100
 
-	sequenceAllocator, err := newSequenceAllocator(db.MetadataStore, db.DbStats.DatabaseStats, db.MetadataKeys)
+	sequenceAllocator, err := newSequenceAllocator(base.DatabaseLogCtx(base.TestCtx(t), db.Name), db.MetadataStore, db.DbStats.DatabaseStats, db.MetadataKeys)
 	assert.NoError(t, err)
 
 	db.sequences = sequenceAllocator

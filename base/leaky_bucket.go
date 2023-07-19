@@ -10,6 +10,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"expvar"
 	"fmt"
 	"math"
@@ -203,8 +204,8 @@ func (b *LeakyBucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.
 
 }
 
-func (b *LeakyBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	return b.bucket.StartDCPFeed(args, callback, dbStats)
+func (b *LeakyBucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+	return b.bucket.StartDCPFeed(ctx, args, callback, dbStats)
 }
 
 type EventUpdateFunc func(event *sgbucket.FeedEvent) bool

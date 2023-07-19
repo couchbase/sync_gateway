@@ -1633,7 +1633,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 	// triggers early termination of the changes loop.  This can only be reproduced if the feed is restarted after the user is created -
 	// otherwise the count for the user pseudo-channel will always be non-zero
 	db, _ := rt.ServerContext().GetDatabase(ctx, "db")
-	err = db.RestartListener()
+	err = db.RestartListener(base.TestCtx(t))
 	assert.True(t, err == nil)
 	// Put a document to increment the counter for the * channel
 	response := rt.Send(Request("PUT", "/{{.keyspace}}/lost", `{"channel":["ABC"]}`))
