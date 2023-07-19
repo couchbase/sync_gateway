@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/require"
@@ -57,7 +58,7 @@ func TestRequestPlusSkippedSequence(t *testing.T) {
 	}()
 	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
 	// the request should finish once the sequence is released
-	err = db.ReleaseTestSequence(rt.GetDatabase(), unusedSeq)
+	err = db.ReleaseTestSequence(base.TestCtx(t), rt.GetDatabase(), unusedSeq)
 	require.NoError(t, err)
 	<-requestFinished
 	var changesResp ChangesResults
