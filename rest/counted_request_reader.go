@@ -42,7 +42,7 @@ func (c *CountedRequestReader) GetBodyBytesCount() int64 {
 	if c.numBytes == 0 {
 		// it's possible for reader to be nil (nil bodies can be supplied) so nil check needed to be panic safe
 		if c.reader != nil {
-			io.Copy(io.Discard, c)
+			_, _ = io.Copy(io.Discard, c)
 		}
 	}
 	return c.numBytes
