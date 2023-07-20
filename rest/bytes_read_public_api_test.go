@@ -438,8 +438,42 @@ func TestBytesReadGzipRequest(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	_, ok := base.WaitForStat(func() int64 {
+		fmt.Println(rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value())
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
+	require.True(t, ok)
+
+}
+
+func TestPutDBBytesRead(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test only works with CBS because of use fo RBAC roles")
+	}
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), AdminInterfaceAuthentication: true})
+	defer rt.Close()
+	SGWorBFArole := MobileSyncGatewayRole.RoleName
+
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	MakeUser(t, httpClient, eps[0], "MobileSyncGatewayUser", "password", []string{fmt.Sprintf("%s[%s]", SGWorBFArole, rt.Bucket().GetName())})
+	defer DeleteUser(t, httpClient, eps[0], "MobileSyncGatewayUser")
+
+	input := fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t,"username": "%s", "password":"%s"}`,
+		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), base.TestClusterUsername(), base.TestClusterPassword(),
+	)
+
+	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/db1/", input, "MobileSyncGatewayUser", "password")
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// assert the stat hasn't increased (admin request doesn't effect count)
+	_, ok := base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+	}, 0)
 	require.True(t, ok)
 
 }

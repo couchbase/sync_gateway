@@ -14,11 +14,12 @@ import (
 
 type CountedRequestReader struct {
 	numBytes int64
-	reader   io.Reader
+	reader   io.ReadCloser
+	bodyRead bool
 }
 
 // NewReaderCounter returns a new CountedRequestReader storing the io.Reader and bytes read off the reader
-func NewReaderCounter(reader io.Reader) *CountedRequestReader {
+func NewReaderCounter(reader io.ReadCloser) *CountedRequestReader {
 	return &CountedRequestReader{
 		reader: reader,
 	}
@@ -29,7 +30,9 @@ func NewReaderCounter(reader io.Reader) *CountedRequestReader {
 func (c *CountedRequestReader) Read(buf []byte) (int, error) {
 	numBytesRead, err := c.reader.Read(buf)
 
-	c.numBytes += int64(numBytesRead)
+	if !c.bodyRead {
+		c.numBytes += int64(numBytesRead)
+	}
 	return numBytesRead, err
 }
 
@@ -39,11 +42,13 @@ func (c *CountedRequestReader) GetBodyBytesCount() int64 {
 	if c.numBytes == 0 {
 		// it's possible for reader to be nil (nil bodies can be supplied) so nil check needed to be panic safe
 		if c.reader != nil {
-			_, _ = io.ReadAll(c)
+			io.Copy(io.Discard, c)
 		}
 	}
 	return c.numBytes
 }
 
 // Close to satisfy the interface
-func (c *CountedRequestReader) Close() error { return nil }
+func (c *CountedRequestReader) Close() error {
+	return c.reader.Close()
+}

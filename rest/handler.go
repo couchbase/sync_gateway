@@ -288,18 +288,18 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		}
 	}()
 
-	h.requestBody = NewReaderCounter(h.rq.Body)
-
 	switch h.rq.Header.Get("Content-Encoding") {
 	case "":
 		h.requestBody = NewReaderCounter(h.rq.Body)
 	case "gzip":
-		var gzipRequestReader *gzip.Reader
+		// gzip encoding will get approximate bytes read stat
 		var err error
-		if gzipRequestReader, err = gzip.NewReader(h.rq.Body); err != nil {
+		h.requestBody = NewReaderCounter(nil)
+		gzipRequestReader, err := gzip.NewReader(h.rq.Body)
+		if err != nil {
 			return err
 		}
-		h.requestBody = NewReaderCounter(gzipRequestReader)
+		h.requestBody.reader = gzipRequestReader
 		h.rq.Header.Del("Content-Encoding") // to prevent double decoding later on
 	default:
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
@@ -407,10 +407,12 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	if h.privs != adminPrivs {
 		var err error
 		if err = h.checkAuth(dbContext); err != nil {
-			// if auth fails we still need to record bytes read over the rest api for the stat, to do this we need to read
+			// if auth fails we still need to record bytes read over the rest api for the stat, to do this we need to call GetBodyBytesCount to read
 			// the body to populate the bytes count on the CountedRequestReader struct
-			_, _ = h.readBody()
-			dbContext.DbStats.DatabaseStats.PublicRestBytesRead.Add(h.requestBody.GetBodyBytesCount())
+			bytesCount := h.requestBody.GetBodyBytesCount()
+			if bytesCount > 0 {
+				dbContext.DbStats.DatabaseStats.PublicRestBytesRead.Add(bytesCount)
+			}
 			return err
 		}
 		if h.user != nil && h.user.Name() == "" && dbContext != nil && dbContext.IsGuestReadOnly() {
@@ -477,6 +479,8 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			if err != nil {
 				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
 			}
+			// mark the body as read so we won't count bytes twice
+			h.requestBody.bodyRead = true
 			// The above readBody() will end up clearing the body which the later handler will require. Re-populate this
 			// for the later handler.
 			h.requestBody.reader = io.NopCloser(bytes.NewReader(body))
@@ -670,7 +674,7 @@ func (h *handler) reportDbStats() {
 	// load the number of bytes read on the request
 	bytesReadStat = h.requestBody.GetBodyBytesCount()
 	// as this is int64 lets protect against a situation where a negative is returned from GetBodyBytesCount() function and thus decrementing the stat
-	if bytesReadStat >= 0 {
+	if bytesReadStat > 0 {
 		h.db.DbStats.DatabaseStats.PublicRestBytesRead.Add(bytesReadStat)
 	}
 }
