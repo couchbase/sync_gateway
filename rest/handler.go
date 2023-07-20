@@ -410,7 +410,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			// if auth fails we still need to record bytes read over the rest api for the stat, to do this we need to read
 			// the body to populate the bytes count on the CountedRequestReader struct
 			_, _ = h.readBody()
-			dbContext.DbStats.DatabaseStats.PublicRestBytesRead.Add(h.requestBody.LoadCount())
+			dbContext.DbStats.DatabaseStats.PublicRestBytesRead.Add(h.requestBody.GetBodyBytesCount())
 			return err
 		}
 		if h.user != nil && h.user.Name() == "" && dbContext != nil && dbContext.IsGuestReadOnly() {
@@ -668,16 +668,8 @@ func (h *handler) reportDbStats() {
 	var bytesReadStat int64
 	h.response.reportStats(true)
 	// load the number of bytes read on the request
-	bytesReadStat = h.requestBody.LoadCount()
-	// if stat is 0 we may not have read the body
-	if bytesReadStat == 0 {
-		// nil body can be supplied
-		if h.requestBody.reader != nil {
-			_, _ = h.readBody()
-			bytesReadStat = h.requestBody.LoadCount()
-		}
-	}
-	// as this is int64 lets protect against a situation where a negative is returned from LoadCount() function and thus decrementing the stat
+	bytesReadStat = h.requestBody.GetBodyBytesCount()
+	// as this is int64 lets protect against a situation where a negative is returned from GetBodyBytesCount() function and thus decrementing the stat
 	if bytesReadStat >= 0 {
 		h.db.DbStats.DatabaseStats.PublicRestBytesRead.Add(bytesReadStat)
 	}

@@ -33,8 +33,15 @@ func (c *CountedRequestReader) Read(buf []byte) (int, error) {
 	return numBytesRead, err
 }
 
-// LoadCount will load the number of bytes read for the request from the CountedRequestReader struct
-func (c *CountedRequestReader) LoadCount() int64 {
+// GetBodyBytesCount will load the number of bytes read for the request from the CountedRequestReader struct. If count
+// is 0 its possible we haven't yet read the body so will do that in the event of 0 count.
+func (c *CountedRequestReader) GetBodyBytesCount() int64 {
+	if c.numBytes == 0 {
+		// it's possible for reader to be nil (nil bodies can be supplied) so nil check needed to be panic safe
+		if c.reader != nil {
+			_, _ = io.ReadAll(c)
+		}
+	}
 	return c.numBytes
 }
 
