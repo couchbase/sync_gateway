@@ -511,7 +511,7 @@ type DatabaseStats struct {
 	NumReplicationsRejectedLimit *SgwIntStat `json:"num_replications_rejected_limit"`
 	// Represents the compute unit for import processes on the database
 	ImportProcessCompute *SgwIntStat `json:"import_process_compute"`
-	// SyncProcessCompute the comopute unit for syncing with clients
+	// SyncProcessCompute the compute unit for syncing with clients
 	SyncProcessCompute *SgwIntStat `json:"sync_process_compute"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
@@ -1378,11 +1378,10 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.PublicRestBytesWritten, err = NewIntStat(SubsystemDatabaseKey, "http_bytes_written", labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.PublicRestBytesWritten, err = NewIntStat(SubsystemDatabaseKey, "http_bytes_written", PublicRestBytesWrittenDesc, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-
 	resUtil.NumAttachmentsCompacted, err = NewIntStat(SubsystemDatabaseKey, "num_attachments_compacted", NumAttachmentsCompactedDesc, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1415,7 +1414,7 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.PublicRestBytesRead, err = NewIntStat(SubsystemDatabaseKey, "public_rest_bytes_read", labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.PublicRestBytesRead, err = NewIntStat(SubsystemDatabaseKey, "public_rest_bytes_read", PublicRestBytesReadDesc, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
@@ -1483,7 +1482,7 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.SyncProcessCompute, err = NewIntStat(SubsystemDatabaseKey, "sync_process_compute", labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.SyncProcessCompute, err = NewIntStat(SubsystemDatabaseKey, "sync_process_compute", SyncProcessComputeDesc, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}

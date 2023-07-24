@@ -278,6 +278,12 @@ const (
 		"This stat represents the continually growing number of connections per sec."
 
 	ImportProcessComputeDesc = "Represents the compute unit for import processes on the database."
+
+	PublicRestBytesWrittenDesc = "Number of bytes written over public interface for REST api"
+
+	PublicRestBytesReadDesc = "The total amount of bytes read over the public REST api"
+
+	SyncProcessComputeDesc = "The compute unit for syncing with clients measured through cpu time and memory used for sync"
 )
 
 // Delta Sync stats descriptions
