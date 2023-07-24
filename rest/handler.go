@@ -28,12 +28,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/mux"
-	"github.com/pkg/errors"
-
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/gorilla/mux"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -90,7 +89,7 @@ type handler struct {
 	response              CountableResponseWriter
 	status                int
 	statusMessage         string
-	requestBody           io.ReadCloser
+	requestBody           *CountedRequestReader
 	db                    *db.Database
 	collection            *db.DatabaseCollectionWithUser
 	user                  auth.User
@@ -127,9 +126,8 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 		h := newHandler(server, privs, r, rq, handlerOptions{})
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
-		h.response.reportStats(true)
 		h.logDuration(true)
-
+		h.reportDbStats()
 	})
 }
 
@@ -142,8 +140,8 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermiss
 		h := newHandler(server, privs, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
-		h.response.reportStats(true)
 		h.logDuration(true)
+		h.reportDbStats()
 	})
 }
 
@@ -157,7 +155,7 @@ func makeMetadataDBOfflineHandler(server *ServerContext, privs handlerPrivs, acc
 		h := newHandler(server, privs, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
-		h.response.reportStats(true)
+		h.reportDbStats()
 	})
 }
 
@@ -169,8 +167,8 @@ func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, acc
 		h.authScopeFunc = dbAuthStringFunc
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
-		h.response.reportStats(true)
 		h.logDuration(true)
+		h.reportDbStats()
 	})
 }
 
@@ -292,12 +290,16 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	switch h.rq.Header.Get("Content-Encoding") {
 	case "":
-		h.requestBody = h.rq.Body
+		h.requestBody = NewReaderCounter(h.rq.Body)
 	case "gzip":
+		// gzip encoding will get approximate bytes read stat
 		var err error
-		if h.requestBody, err = gzip.NewReader(h.rq.Body); err != nil {
+		h.requestBody = NewReaderCounter(nil)
+		gzipRequestReader, err := gzip.NewReader(h.rq.Body)
+		if err != nil {
 			return err
 		}
+		h.requestBody.reader = gzipRequestReader
 		h.rq.Header.Del("Content-Encoding") // to prevent double decoding later on
 	default:
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
@@ -405,6 +407,12 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	if h.privs != adminPrivs {
 		var err error
 		if err = h.checkAuth(dbContext); err != nil {
+			// if auth fails we still need to record bytes read over the rest api for the stat, to do this we need to call GetBodyBytesCount to read
+			// the body to populate the bytes count on the CountedRequestReader struct
+			bytesCount := h.requestBody.GetBodyBytesCount()
+			if bytesCount > 0 {
+				dbContext.DbStats.DatabaseStats.PublicRestBytesRead.Add(bytesCount)
+			}
 			return err
 		}
 		if h.user != nil && h.user.Name() == "" && dbContext != nil && dbContext.IsGuestReadOnly() {
@@ -471,9 +479,11 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			if err != nil {
 				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
 			}
+			// mark the body as read so we won't count bytes twice
+			h.requestBody.bodyRead = true
 			// The above readBody() will end up clearing the body which the later handler will require. Re-populate this
 			// for the later handler.
-			h.requestBody = io.NopCloser(bytes.NewReader(body))
+			h.requestBody.reader = io.NopCloser(bytes.NewReader(body))
 			authScope, err = h.authScopeFunc(body)
 			if err != nil {
 				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
@@ -652,6 +662,21 @@ func (h *handler) logRESTCount() {
 		return
 	}
 	h.db.DbStats.DatabaseStats.NumPublicRestRequests.Add(1)
+}
+
+// reportDbStats will report the public rest request specific stats back to the database
+func (h *handler) reportDbStats() {
+	if !h.shouldUpdateBytesTransferredStats() {
+		return
+	}
+	var bytesReadStat int64
+	h.response.reportStats(true)
+	// load the number of bytes read on the request
+	bytesReadStat = h.requestBody.GetBodyBytesCount()
+	// as this is int64 lets protect against a situation where a negative is returned from GetBodyBytesCount() function and thus decrementing the stat
+	if bytesReadStat > 0 {
+		h.db.DbStats.DatabaseStats.PublicRestBytesRead.Add(bytesReadStat)
+	}
 }
 
 // logStatusWithDuration will log the request status and the duration of the request.

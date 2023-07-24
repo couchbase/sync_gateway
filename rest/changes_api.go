@@ -240,7 +240,6 @@ func (h *handler) handleChanges() error {
 			return err
 		}
 		feed, options, filter, channelsArray, docIdsArray, _, err = h.readChangesOptionsFromJSON(body)
-
 		if err != nil {
 			return err
 		}
