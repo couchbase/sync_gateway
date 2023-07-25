@@ -24,4 +24,4 @@ get:
             type: string
   tags:
     - Prometheus
-  operationId: get__metrics
+  operationId: get_metrics

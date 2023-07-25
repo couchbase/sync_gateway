@@ -31,7 +31,9 @@ paths:
   /_ping:
     $ref: ./paths/common/_ping.yaml
   /_metrics:
-    $ref: ./paths/metric/_metrics.yaml
+    $ref: ./paths/metric/metrics.yaml
+  /metrics:
+    $ref: ./paths/metric/metrics.yaml
   /_expvar:
     $ref: ./paths/metric/_expvar.yaml
 tags:
