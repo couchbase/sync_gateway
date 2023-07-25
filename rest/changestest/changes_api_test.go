@@ -3856,7 +3856,7 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 	longpollWg.Wait()
 }
 
-func TestTombstoneResync(t *testing.T) {
+func TestResyncAllTombstones(t *testing.T) {
 	base.LongRunningTest(t)
 	t.Skip() // skip until CBG-3235 is resolved
 	if base.UnitTestUrlIsWalrus() {
@@ -3867,19 +3867,11 @@ func TestTombstoneResync(t *testing.T) {
 		t.Skip("If running with no xattrs compact acts as a no-op")
 	}
 
-	var rt *rest.RestTester
-	if base.TestsUseNamedCollections() {
-		rt = rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
-			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-				QueryPaginationLimit: base.IntPtr(5),
-				Unsupported:          &db.UnsupportedOptions{UseQueryBasedResyncManager: true}}}}, 2)
-	} else {
-		rt = rest.NewRestTester(t, &rest.RestTesterConfig{
-			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-				QueryPaginationLimit: base.IntPtr(5),
-				Unsupported:          &db.UnsupportedOptions{UseQueryBasedResyncManager: true}}},
-		})
-	}
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			QueryPaginationLimit: base.IntPtr(5),
+			Unsupported:          &db.UnsupportedOptions{UseQueryBasedResyncManager: true}}},
+	})
 	rt.GetDatabase().PurgeInterval = 0
 	defer rt.Close()
 
