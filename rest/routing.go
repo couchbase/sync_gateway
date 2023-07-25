@@ -347,6 +347,7 @@ func CreateMetricRouter(sc *ServerContext) *mux.Router {
 	r := mux.NewRouter()
 	r.StrictSlash(true)
 
+	r.Handle("/metrics", makeHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
 	r.Handle("/_metrics", makeHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
 	r.Handle(kDebugURLPathPrefix, makeHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleExpvar)).Methods("GET")
 
