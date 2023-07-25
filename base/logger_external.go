@@ -19,6 +19,7 @@ import (
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/goutils/logging"
+	"github.com/couchbaselabs/rosmar"
 )
 
 // This file implements wrappers around the loggers of external packages
@@ -29,6 +30,19 @@ func initExternalLoggers() {
 
 	logging.SetLogger(CBGoUtilsLogger{})
 	clog.SetLoggerCallback(ClogCallback)
+
+	// Redirect Walrus logging to SG logs, and set an appropriate level:
+	rosmar.LoggingCallback = rosmarLogger
+
+	updateExternalLoggers()
+}
+
+func updateExternalLoggers() {
+	if consoleLogger != nil && consoleLogger.shouldLog(LevelDebug, KeyWalrus) {
+		rosmar.Logging = rosmar.LevelTrace
+	} else {
+		rosmar.Logging = rosmar.LevelInfo
+	}
 }
 
 // **************************************************
@@ -189,4 +203,11 @@ func (l CBGoUtilsLogger) Fatala(f func() string)  { l.warnNotImplemented("Fatala
 
 func (CBGoUtilsLogger) warnNotImplemented(name string, f func() string) {
 	WarnfCtx(context.Background(), fmt.Sprintf("CBGoUtilsLogger: %s not implemented! %s", name, f()))
+}
+
+// **************************************************************************
+// Log callback for Rosmar
+// **************************************************************************
+func rosmarLogger(level rosmar.LogLevel, fmt string, args ...any) {
+	logTo(context.TODO(), LogLevel(level), KeyWalrus, fmt, args...)
 }

@@ -20,17 +20,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
 )
-
-func init() {
-	// Redirect Walrus logging to SG logs:
-	rosmar.LoggingCallback = func(level rosmar.LogLevel, fmt string, args ...any) {
-		logTo(context.TODO(), LogLevel(level), KeyWalrus, fmt, args...)
-	}
-	rosmar.Logging = rosmar.LevelTrace
-}
 
 // GetLogKeys returns log keys in a map
 func GetLogKeys() map[string]bool {

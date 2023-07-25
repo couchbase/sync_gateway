@@ -664,11 +664,13 @@ func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardo
 
 	consoleLogger.LogLevel.Set(logLevel)
 	consoleLogger.LogKeyMask.Set(logKeyMask(logKeys...))
+	updateExternalLoggers()
 
 	return func() {
 		// Return logging to a default state
 		consoleLogger.LogLevel.Set(initialLogLevel)
 		consoleLogger.LogKeyMask.Set(initialLogKey)
+		updateExternalLoggers()
 		if caller != "" {
 			InfofCtx(context.Background(), KeyAll, "%v: Reset logging", caller)
 		}
