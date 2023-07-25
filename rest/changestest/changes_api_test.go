@@ -3868,13 +3868,11 @@ func TestTombstoneResync(t *testing.T) {
 	}
 
 	var rt *rest.RestTester
-	numCollections := 1
 	if base.TestsUseNamedCollections() {
-		numCollections = 2
 		rt = rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 				QueryPaginationLimit: base.IntPtr(5),
-				Unsupported:          &db.UnsupportedOptions{UseQueryBasedResyncManager: true}}}}, numCollections)
+				Unsupported:          &db.UnsupportedOptions{UseQueryBasedResyncManager: true}}}}, 2)
 	} else {
 		rt = rest.NewRestTester(t, &rest.RestTesterConfig{
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
