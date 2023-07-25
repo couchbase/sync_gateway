@@ -23,22 +23,43 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 1-one -- 2-two -- 3-three
-var testmap = RevTree{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
-	"2-two": {ID: "2-two", Parent: "1-one", Channels: base.SetOf("ABC", "CBS")},
-	"1-one": {ID: "1-one", Channels: base.SetOf("ABC")}}
-
-//	/ 3-three
+// testmap is a revtree with a single branch
 //
-// 1-one -- 2-two
-//
-//	\ 3-drei
-var branchymap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
-	"2-two":  {ID: "2-two", Parent: "1-one"},
-	"1-one":  {ID: "1-one"},
-	"3-drei": {ID: "3-drei", Parent: "2-two"}}
+//	┌────────┐  ┌────────┐  ╔════════╗
+//	│ 1-one  │──│ 2-two  │──║3-three ║
+//	└────────┘  └────────┘  ╚════════╝
+var testmap = RevTree{
+	"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
+	"2-two":   {ID: "2-two", Parent: "1-one"},
+	"1-one":   {ID: "1-one"},
+}
 
-var multiroot = RevTree{"3-a": {ID: "3-a", Parent: "2-a"},
+// branchymap is a branched revtree with two revisions in conflict
+//
+//	                         ┌────────┐
+//	                       ┌─│3-three │
+//	┌────────┐  ┌────────┐ │ └────────┘
+//	│ 1-one  │──│ 2-two  │─┤
+//	└────────┘  └────────┘ │ ╔════════╗
+//	                       └─║ 3-drei ║
+//	                         ╚════════╝
+var branchymap = RevTree{
+	"3-three": {ID: "3-three", Parent: "2-two", Channels: base.SetOf("EN")},
+	"2-two":   {ID: "2-two", Parent: "1-one"},
+	"1-one":   {ID: "1-one"},
+	"3-drei":  {ID: "3-drei", Parent: "2-two", Channels: base.SetOf("DE")}, // winner because lower ASCII value (d vs. t)
+}
+
+// multiroot is a revtree with multiple roots (disconnected branches)
+//
+//	┌────────┐ ┌────────┐ ╔════════╗
+//	│  1-a   │─│  2-a   │─║  3-a   ║
+//	└────────┘ └────────┘ ╚════════╝
+//	┌────────┐ ┌────────┐
+//	│  6-b   │─│  7-b   │
+//	└────────┘ └────────┘
+var multiroot = RevTree{
+	"3-a": {ID: "3-a", Parent: "2-a"},
 	"2-a": {ID: "2-a", Parent: "1-a"},
 	"1-a": {ID: "1-a"},
 	"7-b": {ID: "7-b", Parent: "6-b"},
@@ -51,11 +72,20 @@ type BranchSpec struct {
 	Digest                  string
 }
 
-//	           / 3-a -- 4-a -- 5-a ...... etc (winning branch)
-//	1-a -- 2-a
-//	           \ 3-b -- 4-b ... etc (losing branch #1)
-//	           \ 3-c -- 4-c ... etc (losing branch #2)
-//	           \ 3-d -- 4-d ... etc (losing branch #n)
+// getMultiBranchTestRevtree1 returns a rev tree with the specified number of revisions/branches
+//
+//	┌────────┐ ┌────────┐    ┌────────┐ ┌────────┐ ╔════════╗
+//	│  1-a   │─│  2-a   │─┬──│  3-a   │─│  4-a   │─║  5-a   ║
+//	└────────┘ └────────┘ │  └────────┘ └────────┘ ╚════════╝
+//	                      │  ┌────────┐ ┌────────┐
+//	                      ├──│  3-b   │─│  4-b   │
+//	                      │  └────────┘ └────────┘
+//	                      │  ┌────────┐ ┌────────┐
+//	                      ├──│  3-c   │─│  4-c   │
+//	                      │  └────────┘ └────────┘
+//	                      │  ┌────────┐ ┌────────┐
+//	                      └──│  3-d   │─│  4-d   │
+//	                         └────────┘ └────────┘
 //
 // NOTE: the 1-a -- 2-a unconflicted branch can be longer, depending on value of unconflictedBranchNumRevs
 func getMultiBranchTestRevtree1(ctx context.Context, unconflictedBranchNumRevs, winningBranchNumRevs int, losingBranches []BranchSpec) RevTree {
@@ -188,19 +218,35 @@ func TestGetMultiBranchTestRevtree(t *testing.T) {
 }
 
 func TestRevTreeUnmarshalOldFormat(t *testing.T) {
-	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodies": ["{}", "", ""], "channels": [null, ["ABC", "CBS"], ["ABC"]]}`
+	const testJSON = `{
+	"revs": ["3-three", "2-two", "1-one"],
+	"parents": [1, 2, -1],
+	"bodies": ["{}", "", ""],
+	"channels": [null, ["ABC", "CBS"], ["ABC"]]
+}`
 	gotmap := testUnmarshal(t, testJSON)
 	fmt.Printf("Unmarshaled to %v\n", gotmap)
 }
 
 func TestRevTreeUnmarshal(t *testing.T) {
-	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodymap": {"0":"{}"}, "channels": [null, ["ABC", "CBS"], ["ABC"]]}`
+	// 'channels' is an old revtree property that stored channel history for previous revisions.
+	// we moved non-winning leaf revision channel information into a 'channelMap' property instead to handle the case where documents are in conflict.
+	const testJSON = `{
+	"revs": ["3-three", "2-two", "1-one"],
+	"parents": [1, 2, -1],
+	"bodymap": {"0":"{}"},
+	"channels": [null, ["ABC", "CBS"], ["ABC"]]
+}`
 	gotmap := testUnmarshal(t, testJSON)
 	fmt.Printf("Unmarshaled to %v\n", gotmap)
 }
 
-func TestRevTreeUnmarshalRevChannelCountMismatch(t *testing.T) {
-	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodymap": {"0":"{}"}, "channels": [null, ["ABC", "CBS"]]}`
+func TestRevTreeUnmarshalRevParentCountMismatch(t *testing.T) {
+	const testJSON = `{
+	"revs": ["3-three", "2-two", "1-one"],
+	"parents": [1, -1],
+	"bodymap": {"0":"{}"}
+}`
 	gotmap := RevTree{}
 	err := base.JSONUnmarshal([]byte(testJSON), &gotmap)
 	assert.Errorf(t, err, "revtreelist data is invalid, revs/parents/channels counts are inconsistent")
