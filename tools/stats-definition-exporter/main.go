@@ -17,11 +17,11 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// Substituted by Jenkins build scripts
-const buildPlaceholderVersionBuildNumberString = "@PRODUCT_VERSION@"
+const DefaultFullFilePath = "./metrics_metadata.json"
 
 func main() {
 	outputConsoleOnlyFlag := flag.Bool("no-file", false, "Output stat metadata to console (stdout) only.")
+	outputFileFlag := flag.String("output", DefaultFullFilePath, "Full file path of outputted JSON file if flag 'no-file' is false.")
 	flag.Parse()
 
 	logger := log.New(os.Stderr, "", 0)
@@ -34,7 +34,7 @@ func main() {
 	if *outputConsoleOnlyFlag {
 		err = statsToConsole(logger, stats)
 	} else {
-		err = statsToFile(logger, stats, DefaultFilePath)
+		err = statsToFile(logger, stats, *outputFileFlag)
 	}
 	if err != nil {
 		logger.Fatalf("could not write stats: %v", err)

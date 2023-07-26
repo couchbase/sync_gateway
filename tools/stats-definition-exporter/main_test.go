@@ -25,7 +25,7 @@ func TestRegisterStats(t *testing.T) {
 }
 
 func TestFileOutput(t *testing.T) {
-	tempDir := t.TempDir()
+	outputFile := t.TempDir() + "/" + t.Name() + ".json"
 
 	// Set all logging to buffer
 	var buf bytes.Buffer
@@ -33,19 +33,14 @@ func TestFileOutput(t *testing.T) {
 	stats, err := getStats(logger)
 	assert.NoError(t, err)
 
-	err = statsToFile(logger, stats, tempDir)
+	err = statsToFile(logger, stats, outputFile)
 	assert.NoError(t, err)
 
 	// Make sure no errors where logged
 	assert.Empty(t, buf)
 
 	// Test file outputted
-	testFile := tempDir + DefaultFileName + TarFileExtension + GzipFileExtension
-	assert.FileExists(t, testFile)
-
-	// Test cleanup was successful
-	assert.NoFileExists(t, tempDir+JsonFileName)
-	assert.NoFileExists(t, tempDir+DefaultFileName+TarFileExtension)
+	assert.FileExists(t, outputFile)
 }
 
 func TestStdOutput(t *testing.T) {
