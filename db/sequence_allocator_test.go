@@ -76,7 +76,7 @@ func TestSequenceAllocator(t *testing.T) {
 	assertNewAllocatorStats(t, testStats, 3, 7, 4, 0)
 
 	// Release unused sequences.  Should reduce batch size to 1 (based on 3 unused)
-	a.releaseUnusedSequences()
+	a.releaseUnusedSequences(base.TestCtx(t))
 	assertNewAllocatorStats(t, testStats, 3, 7, 4, 3)
 	assert.Equal(t, 1, int(a.sequenceBatchSize))
 
@@ -104,7 +104,7 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
 	MaxSequenceIncrFrequency = 1000 * time.Millisecond
 
-	a, err := newSequenceAllocator(bucket.GetSingleDataStore(), testStats, base.DefaultMetadataKeys)
+	a, err := newSequenceAllocator(base.TestCtx(t), bucket.GetSingleDataStore(), testStats, base.DefaultMetadataKeys)
 	// Reduce sequence wait for Stop testing
 	a.releaseSequenceWait = 10 * time.Millisecond
 	assert.NoError(t, err, "error creating allocator")
@@ -122,7 +122,7 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 	assertNewAllocatorStats(t, testStats, 2, 3, 2, 0)
 
 	// Stop the allocator
-	a.Stop()
+	a.Stop(base.TestCtx(t))
 
 	releasedCount := 0
 	// Ensure unused sequence is released on Stop
@@ -181,7 +181,7 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
 	MaxSequenceIncrFrequency = 1000 * time.Millisecond
 
-	a, err = newSequenceAllocator(bucket.DefaultDataStore(), testStats, base.DefaultMetadataKeys)
+	a, err = newSequenceAllocator(base.TestCtx(t), bucket.DefaultDataStore(), testStats, base.DefaultMetadataKeys)
 	// Reduce sequence wait for Stop testing
 	a.releaseSequenceWait = 10 * time.Millisecond
 	assert.NoError(t, err, "error creating allocator")
@@ -196,7 +196,7 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 
 	wg.Wait()
 
-	a.Stop()
+	a.Stop(base.TestCtx(t))
 }
 
 func TestReleaseSequenceWait(t *testing.T) {
@@ -209,9 +209,9 @@ func TestReleaseSequenceWait(t *testing.T) {
 	require.NoError(t, err)
 	testStats := dbstats.Database()
 
-	a, err := newSequenceAllocator(bucket.GetSingleDataStore(), testStats, base.DefaultMetadataKeys)
+	a, err := newSequenceAllocator(base.TestCtx(t), bucket.GetSingleDataStore(), testStats, base.DefaultMetadataKeys)
 	require.NoError(t, err)
-	defer a.Stop()
+	defer a.Stop(base.TestCtx(t))
 
 	startTime := time.Now().Add(-1 * time.Second)
 	amountWaited := a.waitForReleasedSequences(startTime)

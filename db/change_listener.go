@@ -28,6 +28,7 @@ import (
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
 // changes.
 type changeListener struct {
+	ctx                   context.Context
 	bucket                base.Bucket
 	bucketName            string                 // Used for logging
 	tapFeed               base.TapFeed           // Observes changes to bucket
@@ -62,7 +63,7 @@ func (listener *changeListener) OnDocChanged(event sgbucket.FeedEvent) {
 }
 
 // Starts a changeListener on a given Bucket.
-func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map, scopes map[string]Scope, metadataStore base.DataStore) error {
+func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, dbStats *expvar.Map, scopes map[string]Scope, metadataStore base.DataStore) error {
 
 	listener.terminator = make(chan bool)
 	listener.bucket = bucket
@@ -107,10 +108,10 @@ func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map, s
 		listener.FeedArgs.Scopes = scopeArgs
 
 	}
-	return listener.StartMutationFeed(bucket, dbStats)
+	return listener.StartMutationFeed(ctx, bucket, dbStats)
 }
 
-func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *expvar.Map) error {
+func (listener *changeListener) StartMutationFeed(ctx context.Context, bucket base.Bucket, dbStats *expvar.Map) error {
 
 	defer func() {
 		listener.started.Set(true)
@@ -145,8 +146,8 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *e
 	default:
 		// DCP Feed
 		//    DCP receiver isn't go-channel based - DCPReceiver calls ProcessEvent directly.
-		base.InfofCtx(context.TODO(), base.KeyDCP, "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.MD(bucket.GetName()))
-		return bucket.StartDCPFeed(listener.FeedArgs, listener.ProcessFeedEvent, dbStats)
+		base.InfofCtx(ctx, base.KeyDCP, "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.MD(bucket.GetName()))
+		return bucket.StartDCPFeed(ctx, listener.FeedArgs, listener.ProcessFeedEvent, dbStats)
 	}
 }
 
@@ -164,7 +165,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			if event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
-			listener.notifyKey(key)
+			listener.notifyKey(listener.ctx, key)
 		} else if strings.HasPrefix(key, listener.metaKeys.UnusedSeqPrefix()) || strings.HasPrefix(key, listener.metaKeys.UnusedSeqRangePrefix()) { // SG unused sequence marker docs
 			if event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
@@ -187,10 +188,14 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 const MutationFeedStopMaxWait = 30 * time.Second
 
 // Stops a changeListener. Any pending Wait() calls will immediately return false.
-func (listener *changeListener) Stop() {
+func (listener *changeListener) Stop(ctx context.Context) {
 
-	logCtx := context.TODO()
-	base.DebugfCtx(logCtx, base.KeyChanges, "changeListener.Stop() called")
+	base.DebugfCtx(ctx, base.KeyChanges, "changeListener.Stop() called")
+
+	if !listener.started.IsTrue() {
+		// not started, nothing to do
+		return
+	}
 
 	if listener.terminator != nil {
 		close(listener.terminator)
@@ -204,7 +209,7 @@ func (listener *changeListener) Stop() {
 	if listener.tapFeed != nil {
 		err := listener.tapFeed.Close()
 		if err != nil {
-			base.DebugfCtx(logCtx, base.KeyChanges, "Error closing listener tap feed: %v", err)
+			base.DebugfCtx(ctx, base.KeyChanges, "Error closing listener tap feed: %v", err)
 		}
 	}
 
@@ -214,7 +219,7 @@ func (listener *changeListener) Stop() {
 	case <-listener.FeedArgs.DoneChan:
 		// Mutation feed worker goroutine is terminated and doneChan is already closed.
 	case <-time.After(waitTime):
-		base.WarnfCtx(logCtx, "Timeout after %v of waiting for mutation feed worker to terminate", waitTime)
+		base.WarnfCtx(ctx, "Timeout after %v of waiting for mutation feed worker to terminate", waitTime)
 	}
 }
 
@@ -225,7 +230,7 @@ func (listener *changeListener) TapFeed() base.TapFeed {
 //////// NOTIFICATIONS:
 
 // Changes the counter, notifying waiting clients.
-func (listener *changeListener) Notify(keys channels.Set) {
+func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
 
 	if len(keys) == 0 {
 		return
@@ -235,18 +240,18 @@ func (listener *changeListener) Notify(keys channels.Set) {
 	for key := range keys {
 		listener.keyCounts[key.String()] = listener.counter
 	}
-	base.DebugfCtx(context.TODO(), base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
+	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
 		base.MD(listener.bucketName), base.UD(keys), listener.counter)
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
 
 // Changes the counter, notifying waiting clients. Only use for a key update.
-func (listener *changeListener) notifyKey(key string) {
+func (listener *changeListener) notifyKey(ctx context.Context, key string) {
 	listener.tapNotifier.L.Lock()
 	listener.counter++
 	listener.keyCounts[key] = listener.counter
-	base.DebugfCtx(context.TODO(), base.KeyChanges, "Notifying that %q changed (key=%q) count=%d",
+	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that %q changed (key=%q) count=%d",
 		base.MD(listener.bucketName), base.UD(key), listener.counter)
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
@@ -336,19 +341,22 @@ type ChangeWaiter struct {
 	lastCounter               uint64
 	lastTerminateCheckCounter uint64
 	lastUserCount             uint64
+	trackUnusedSequences      bool // track unused sequences in Wait functions
 }
 
-// Creates a new ChangeWaiter that will wait for changes for the given document keys.
-func (listener *changeListener) NewWaiter(keys []string) *ChangeWaiter {
+// NewWaiter a new ChangeWaiter that will wait for changes for the given document keys, and will optionally track unused sequences.
+func (listener *changeListener) NewWaiter(keys []string, trackUnusedSequences bool) *ChangeWaiter {
 	return &ChangeWaiter{
 		listener:                  listener,
 		keys:                      keys,
 		lastCounter:               listener.CurrentCount(keys),
 		lastTerminateCheckCounter: listener.terminateCheckCounter,
+		trackUnusedSequences:      trackUnusedSequences,
 	}
 }
 
-func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user auth.User) *ChangeWaiter {
+// NewWaiterWithChannels creates ChangeWaiter for a given channel and user, and will optionally track unused sequences.
+func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user auth.User, trackUnusedSequences bool) *ChangeWaiter {
 	waitKeys := make([]string, 0, 5)
 	for channel := range chans {
 		waitKeys = append(waitKeys, channel.String())
@@ -361,7 +369,8 @@ func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user a
 		}
 		waitKeys = append(waitKeys, userKeys...)
 	}
-	waiter := listener.NewWaiter(waitKeys)
+	waiter := listener.NewWaiter(waitKeys, trackUnusedSequences)
+
 	waiter.userKeys = userKeys
 	if userKeys != nil {
 		waiter.lastUserCount = listener.CurrentCount(userKeys)
@@ -413,6 +422,9 @@ func (waiter *ChangeWaiter) UpdateChannels(collectionID uint32, timedSet channel
 	for channelName, _ := range timedSet {
 		updatedKeys = append(updatedKeys, channels.NewID(channelName, collectionID).String())
 	}
+	if waiter.trackUnusedSequences {
+		updatedKeys = append(updatedKeys, channels.NewID(unusedSeqKey, unusedSeqCollectionID).String())
+	}
 	if len(waiter.userKeys) > 0 {
 		updatedKeys = append(updatedKeys, waiter.userKeys...)
 	}
@@ -440,6 +452,8 @@ func (waiter *ChangeWaiter) RefreshUserKeys(user auth.User, metaKeys *base.Metad
 	}
 }
 
+// NewUserWaiter creates a change waiter with all keys for the matching user.
 func (db *Database) NewUserWaiter() *ChangeWaiter {
-	return db.mutationListener.NewWaiterWithChannels(channels.Set{}, db.User())
+	trackUnusedSequences := false
+	return db.mutationListener.NewWaiterWithChannels(channels.Set{}, db.User(), trackUnusedSequences)
 }

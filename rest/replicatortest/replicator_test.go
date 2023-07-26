@@ -2445,14 +2445,18 @@ func TestReconnectReplicator(t *testing.T) {
 
 			activeRT.WaitForActiveReplicatorInitialization(1)
 			ar := activeRT.GetDatabase().SGReplicateMgr.GetActiveReplicator("replication1")
+			numConnectionAttempts := ar.Pull.GetStats().NumConnectAttempts.Value()
 			// race between stopping the blip sender here and the initialization of it on the replicator so need this assertion in here to avoid panic
 			activeRT.WaitForPullBlipSenderInitialisation(replicationName)
 			ar.Pull.GetBlipSender().Stop()
 
-			activeRT.WaitForReplicationStatus(replicationName, db.ReplicationStateReconnecting)
-
+			// assert on replicator reconnecting and getting back to running state once reconnected
+			// due to race in jenkins we assert on connection stat increasing instead of asserting on replication state hitting reconnecting state
+			ar = activeRT.GetDatabase().SGReplicateMgr.GetActiveReplicator("replication1")
+			assert.Greater(t, ar.Pull.GetStats().NumConnectAttempts.Value(), numConnectionAttempts)
 			activeRT.WaitForReplicationStatus(replicationName, db.ReplicationStateRunning)
 
+			// assert the replicator works and we replicate docs still after replicator reconnects
 			for i := 0; i < 10; i++ {
 				response := remoteRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"source": "remote"}`)
 				rest.RequireStatus(t, response, http.StatusCreated)
@@ -2461,6 +2465,109 @@ func TestReconnectReplicator(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+
+}
+
+// TestTotalSyncTimeStat:
+//   - starts a replicator to simulate a long lived websocket connection on a sync gateway
+//   - wait for this replication connection to be picked up on stats (NumReplicationsActive)
+//   - wait some time for the background task to increment TotalSyncTime stat
+//   - assert on the TotalSyncTime stat being incremented
+func TestTotalSyncTimeStat(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
+
+	activeRT, passiveRT, remoteURL, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+	const repName = "replication1"
+
+	startValue := passiveRT.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
+	require.Equal(t, int64(0), startValue)
+
+	// create a replication to just make a long lived websocket connection between two rest testers
+	activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
+
+	// wait for active replication stat to pick up the replication connection
+	_, ok := base.WaitForStat(func() int64 {
+		return passiveRT.GetDatabase().DbStats.DatabaseStats.NumReplicationsActive.Value()
+	}, 1)
+	require.True(t, ok)
+
+	// wait some time to wait for the stat to increment
+	_, ok = base.WaitForStat(func() int64 {
+		return passiveRT.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
+	}, 2)
+	require.True(t, ok)
+
+	syncTimeStat := passiveRT.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
+	// we can't be certain how long has passed since grabbing the stat so to avoid flake here just assert the stat has incremented
+	require.Greater(t, syncTimeStat, startValue)
+}
+
+// TestChangesEndpointTotalSyncTime:
+//   - add a user to run the changes endpoint as
+//   - start a changes feed request with user (simulating CBL replication)
+//   - wait for CBL stat NumPullReplActiveContinuous to pick up the replication connection
+//   - assert on the TotalSyncTime stat being incremented
+//   - put doc to end changes feed connection
+func TestChangesEndpointTotalSyncTime(t *testing.T) {
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn: `function(doc) {channel(doc.channel);}`,
+	})
+	defer rt.Close()
+
+	// to run changes feed as
+	rt.CreateUser("alice", []string{"ABC"})
+
+	// assert stat is zero value to begin with
+	startValue := rt.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
+	require.Equal(t, int64(0), startValue)
+
+	// Put several documents in channel PBS
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs1", `{"value":1, "channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs2", `{"value":2, "channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3", `{"value":3, "channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+
+	changesJSON := `{"style":"all_docs", 
+					 "heartbeat":300000, 
+					 "feed":"longpoll", 
+					 "limit":50, 
+					 "since":"1",
+					 "filter":"` + base.ByChannelFilter + `",
+					 "channels":"ABC,PBS"}`
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		resp1 := rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_changes", changesJSON, "alice")
+		rest.RequireStatus(t, resp1, http.StatusOK)
+	}()
+
+	// wait for active replication stat for CBL to pick up the replication connection
+	_, ok := base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.CBLReplicationPullStats.NumPullReplActiveContinuous.Value()
+	}, 1)
+	require.True(t, ok)
+
+	// wait some time to wait for the stat to increment
+	_, ok = base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
+	}, 2)
+	require.True(t, ok)
+
+	syncTimeStat := rt.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
+	// we can't be certain how long has passed since grabbing the stat so to avoid flake here just assert the stat has incremented
+	require.Greater(t, syncTimeStat, startValue)
+
+	// put doc to end changes feed
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/abc1", `{"value":3, "channel":["ABC"]}`)
+	rest.RequireStatus(t, response, 201)
+	wg.Wait()
 
 }
 
@@ -7935,6 +8042,8 @@ func TestGroupIDReplications(t *testing.T) {
 			BucketConfig: rest.BucketConfig{
 				Bucket: base.StringPtr(activeBucket.GetName()),
 			},
+			EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+			UseViews:     base.BoolPtr(base.TestsDisableGSI()),
 		}
 		if rt.GetDatabase().OnlyDefaultCollection() {
 			dbConfig.Sync = base.StringPtr(channels.DocChannelsSyncFunction)

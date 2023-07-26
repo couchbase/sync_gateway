@@ -240,6 +240,46 @@ func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.
 	return statuses
 }
 
+func (rt *RestTester) WaitForResyncStatus(status db.BackgroundProcessState) db.ResyncManagerResponse {
+	var resyncStatus db.ResyncManagerResponse
+	successFunc := func() bool {
+		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
+		err := json.Unmarshal(response.BodyBytes(), &resyncStatus)
+		require.NoError(rt.TB, err)
+
+		var val interface{}
+		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(rt.TB), &val)
+
+		if status == db.BackgroundProcessStateCompleted {
+			return resyncStatus.State == status && base.IsDocNotFoundError(err)
+		} else {
+			return resyncStatus.State == status
+		}
+	}
+	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", status, resyncStatus.State)
+	return resyncStatus
+}
+
+func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) db.ResyncManagerResponseDCP {
+	var resyncStatus db.ResyncManagerResponseDCP
+	successFunc := func() bool {
+		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
+		err := json.Unmarshal(response.BodyBytes(), &resyncStatus)
+		require.NoError(rt.TB, err)
+
+		var val interface{}
+		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(rt.TB), &val)
+
+		if status == db.BackgroundProcessStateCompleted {
+			return resyncStatus.State == status && base.IsDocNotFoundError(err)
+		} else {
+			return resyncStatus.State == status
+		}
+	}
+	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", status, resyncStatus.State)
+	return resyncStatus
+}
+
 // setupSGRPeers sets up two rest testers to be used for sg-replicate testing with the following configuration:
 //
 //	activeRT:

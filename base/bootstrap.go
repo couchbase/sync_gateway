@@ -43,6 +43,9 @@ type BootstrapConnection interface {
 	TouchMetadataDocument(bucket, key string, property string, value string, cas uint64) (casOut uint64, err error)
 	// KeyExists checks whether the specified key exists
 	KeyExists(bucket, key string) (exists bool, err error)
+	// Returns the bootstrap connection's cluster connection as N1QLStore for the specified bucket/scope/collection.
+	// Does NOT establish a bucket connection, the bucketName/scopeName/collectionName is for query scoping only
+	GetClusterN1QLStore(bucketName, scopeName, collectionName string) (*ClusterOnlyN1QLStore, error)
 	// Close releases any long-lived connections
 	Close()
 }
@@ -470,6 +473,15 @@ func (cc *CouchbaseCluster) Close() {
 		_ = cc.cachedClusterConnection.Close(nil)
 		cc.cachedClusterConnection = nil
 	}
+}
+
+func (cc *CouchbaseCluster) GetClusterN1QLStore(bucketName, scopeName, collectionName string) (*ClusterOnlyN1QLStore, error) {
+	gocbCluster, err := cc.getClusterConnection()
+	if err != nil {
+		return nil, err
+	}
+
+	return NewClusterOnlyN1QLStore(gocbCluster, bucketName, scopeName, collectionName)
 }
 
 func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {

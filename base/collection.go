@@ -79,6 +79,7 @@ func GetGoCBv2Bucket(spec BucketSpec) (*GocbV2Bucket, error) {
 		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeManagement},
 		RetryStrategy: &goCBv2FailFastRetryStrategy{},
 	})
+
 	if err != nil {
 		_ = cluster.Close(nil)
 		if errors.Is(err, gocb.ErrAuthenticationFailure) {
@@ -245,9 +246,9 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 	}
 }
 
-func (b *GocbV2Bucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+func (b *GocbV2Bucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	groupID := ""
-	return StartGocbDCPFeed(b, b.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
+	return StartGocbDCPFeed(ctx, b, b.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
 }
 
 func (b *GocbV2Bucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {

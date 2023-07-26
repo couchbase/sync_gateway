@@ -670,21 +670,27 @@ func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptio
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	dbCtx, err := db.NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	require.NoError(t, err, "Couldn't create context for database 'db'")
+
+	err = dbCtx.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
 	db, err := db.CreateDatabase(dbCtx)
-	assert.NoError(t, err, "Couldn't create database 'db'")
+	require.NoError(t, err, "Couldn't create database 'db'")
+
 	ctx = db.AddDatabaseLogContext(ctx)
 	return db, ctx
 }
 
 // createPrimaryIndex returns true if there was no index created before
 func createPrimaryIndex(t *testing.T, n1qlStore base.N1QLStore) bool {
-	hasPrimary, _, err := base.GetIndexMeta(n1qlStore, base.PrimaryIndexName)
+	ctx := base.TestCtx(t)
+	hasPrimary, _, err := base.GetIndexMeta(ctx, n1qlStore, base.PrimaryIndexName)
 	assert.NoError(t, err)
 	if hasPrimary {
 		return false
 	}
-	err = n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+	err = n1qlStore.CreatePrimaryIndex(ctx, base.PrimaryIndexName, nil)
 	assert.NoError(t, err)
 	return true
 }

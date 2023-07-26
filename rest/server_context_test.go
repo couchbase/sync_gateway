@@ -21,11 +21,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/sync_gateway/auth"
-
 	"github.com/couchbase/gocbcore/v10/connstr"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -709,7 +709,7 @@ func TestLogFlush(t *testing.T) {
 			config = testCase.EnableFunc(config)
 
 			// Setup logging
-			err := config.SetupAndValidateLogging()
+			err := config.SetupAndValidateLogging(base.TestCtx(t))
 			assert.NoError(t, err)
 
 			// Flush memory loggers
@@ -822,4 +822,52 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestOfflineDatabaseStartup ensures that background processes are not actually running when starting up a database in offline mode.
+func TestOfflineDatabaseStartup(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("TestOfflineDatabaseStartup requires xattrs for document import")
+	}
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				StartOffline: base.BoolPtr(true),
+				AutoImport:   true,
+				EnableXattrs: base.BoolPtr(true),
+			},
+		},
+	})
+	defer rt.Close()
+
+	ds := rt.GetSingleDataStore()
+	_, err := ds.AddRaw("doc1", 0, []byte(`{"type":"doc1"}`))
+	require.NoError(t, err)
+
+	// make sure we actually started offline (try to put a doc through the REST API)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"type":"doc2"}`)
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+
+	// put doc2 bypassing offline checks (this step will begin to fail with Elixir - since we're making offline more comprehensive)
+	_, _, err = rt.GetSingleTestDatabaseCollectionWithUser().Put(base.TestCtx(t), "doc2", db.Body{"type": "doc2"})
+	require.NoError(t, err)
+
+	// wait long enough to be confident that import isn't running...
+	time.Sleep(time.Second * 5)
+
+	// ensure doc1 is not imported - since we started the database offline
+	assert.Equal(t, int64(0), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+
+	rt.ServerContext().TakeDbOnline(base.NewNonCancelCtx(), rt.GetDatabase())
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc3", `{"type":"doc3"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// ensure doc1 is imported now we're online
+	_, err = rt.WaitForChanges(3, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 }

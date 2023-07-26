@@ -77,6 +77,10 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 			if importErr != nil {
 				return nil, nil, importErr
 			}
+			// nil, nil returned when ErrImportCancelled is swallowed by importDoc switch
+			if doc == nil {
+				return nil, nil, base.ErrNotFound
+			}
 		}
 		if !doc.HasValidSyncData() {
 			return nil, nil, base.HTTPErrorf(404, "Not imported")
@@ -231,6 +235,18 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 // OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
 func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, rawXattr []byte, rawUserXattr []byte, cas uint64) (docOut *Document, err error) {
+	startTime := time.Now()
+	defer func() {
+		functionTime := time.Since(startTime).Milliseconds()
+		var bytes int
+		if docOut != nil {
+			bytes = len(docOut._rawBody)
+		} else {
+			return
+		}
+		stat := CalculateComputeStat(int64(bytes), functionTime)
+		c.dbCtx.DbStats.DatabaseStats.ImportProcessCompute.Add(stat)
+	}()
 	isDelete := rawDoc == nil
 	importDb := DatabaseCollectionWithUser{DatabaseCollection: c, user: nil}
 	var importErr error
@@ -819,7 +835,18 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 // ////// UPDATING DOCUMENTS:
 
 func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context, docid string, doc *Document, deleted bool) error {
-
+	startTime := time.Now()
+	defer func() {
+		functionTime := time.Since(startTime).Milliseconds()
+		var bytes int
+		if doc != nil {
+			bytes = len(doc._rawBody)
+		} else {
+			return
+		}
+		stat := CalculateComputeStat(int64(bytes), functionTime)
+		db.dbCtx.DbStats.DatabaseStats.ImportProcessCompute.Add(stat)
+	}()
 	// Check whether the doc requiring import is an SDK delete
 	isDelete := false
 	if doc.Body() == nil {
@@ -1592,7 +1619,7 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 			if docSequence > doc.Sequence {
 				break
 			} else {
-				if err := db.sequences.releaseSequence(docSequence); err != nil {
+				if err := db.sequences.releaseSequence(ctx, docSequence); err != nil {
 					base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
 				}
 			}
@@ -1944,13 +1971,13 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	// If the WriteUpdate didn't succeed, check whether there are unused, allocated sequences that need to be accounted for
 	if err != nil {
 		if docSequence > 0 {
-			if seqErr := db.sequences().releaseSequence(docSequence); seqErr != nil {
+			if seqErr := db.sequences().releaseSequence(ctx, docSequence); seqErr != nil {
 				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, seqErr)
 			}
 
 		}
 		for _, sequence := range unusedSequences {
-			if seqErr := db.sequences().releaseSequence(sequence); seqErr != nil {
+			if seqErr := db.sequences().releaseSequence(ctx, sequence); seqErr != nil {
 				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", sequence, seqErr)
 			}
 		}

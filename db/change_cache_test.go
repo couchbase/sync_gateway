@@ -576,7 +576,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	// Start wait for doc in ABC
 	chans := channels.SetOfNoValidate(
 		channels.NewID("ABC", collectionID))
-	waiter := db.mutationListener.NewWaiterWithChannels(chans, nil)
+	waiter := db.mutationListener.NewWaiterWithChannels(chans, nil, false)
 
 	successChan := make(chan bool)
 	go func() {
@@ -1591,7 +1591,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	//  Detect whether the 2nd was ignored using an notifyChange listener callback and make sure it was not added to the ABC channel
 	waitForOnChangeCallback := sync.WaitGroup{}
 	waitForOnChangeCallback.Add(1)
-	db.changeCache.notifyChange = func(chans channels.Set) {
+	db.changeCache.notifyChange = func(_ context.Context, chans channels.Set) {
 		expectedChan := channels.NewID("ABC", collectionID)
 		for ch := range chans {
 			if ch == expectedChan {
@@ -1786,7 +1786,7 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	// -------- Setup notifyChange callback ----------------
 
 	notifyChannel := make(chan struct{})
-	db.changeCache.notifyChange = func(chans channels.Set) {
+	db.changeCache.notifyChange = func(_ context.Context, chans channels.Set) {
 		expectedChan := channels.NewID("zero", collectionID)
 		if chans.Contains(expectedChan) {
 			notifyChannel <- struct{}{}
@@ -1975,6 +1975,9 @@ func BenchmarkProcessEntry(b *testing.B) {
 			context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 			require.NoError(b, err)
 			defer context.Close(ctx)
+
+			err = context.StartOnlineProcesses(ctx)
+			require.NoError(b, err)
 
 			collection := GetSingleDatabaseCollection(b, context)
 			collectionID := collection.GetCollectionID()
@@ -2207,6 +2210,9 @@ func BenchmarkDocChanged(b *testing.B) {
 			context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 			require.NoError(b, err)
 			defer context.Close(ctx)
+
+			err = context.StartOnlineProcesses(ctx)
+			require.NoError(b, err)
 
 			collection := GetSingleDatabaseCollection(b, context)
 			collectionID := collection.GetCollectionID()

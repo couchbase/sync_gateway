@@ -176,6 +176,13 @@ type DatabaseContextOptions struct {
 	MetadataID                    string         // MetadataID used for metadata storage
 	BlipStatsReportingInterval    int64          // interval to report blip stats in milliseconds
 	ChangesRequestPlus            bool           // Sets the default value for request_plus, for non-continuous changes feeds
+	ConfigPrincipals              *ConfigPrincipals
+}
+
+type ConfigPrincipals struct {
+	Users map[string]*auth.PrincipalConfig
+	Roles map[string]*auth.PrincipalConfig
+	Guest *auth.PrincipalConfig
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -380,6 +387,20 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// in order to pass it to RegisterImportPindexImpl
 	ctx = base.DatabaseLogCtx(ctx, dbName)
 
+	if err := base.RequireNoBucketTTL(bucket); err != nil {
+		return nil, err
+	}
+
+	serverUUID, err := getServerUUID(ctx, bucket)
+	if err != nil {
+		return nil, err
+	}
+
+	dbStats, statsError := initDatabaseStats(dbName, autoImport, options)
+	if statsError != nil {
+		return nil, statsError
+	}
+
 	// options.MetadataStore is always passed via rest._getOrAddDatabase...
 	// but in db package tests this is unlikely to be set. In this case we'll use the existing bucket connection to store metadata.
 	metadataStore := options.MetadataStore
@@ -391,15 +412,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// Register the cbgt pindex type for the configGroup
 	RegisterImportPindexImpl(ctx, options.GroupID)
 
-	dbStats, statsError := initDatabaseStats(dbName, autoImport, options)
-	if statsError != nil {
-		return nil, statsError
-	}
-
-	serverUUID, err := getServerUUID(ctx, bucket)
-	if err != nil {
-		return nil, err
-	}
 	dbContext := &DatabaseContext{
 		Name:                dbName,
 		UUID:                cbgt.NewUUID(),
@@ -432,21 +444,14 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	dbContext.EventMgr = NewEventManager(dbContext.terminator)
 
-	dbContext.sequences, err = newSequenceAllocator(metadataStore, dbContext.DbStats.Database(), metaKeys)
+	dbContext.sequences, err = newSequenceAllocator(ctx, metadataStore, dbContext.DbStats.Database(), metaKeys)
 	if err != nil {
 		return nil, err
 	}
 
 	cleanupFunctions = append(cleanupFunctions, func() {
-		dbContext.sequences.Stop()
+		dbContext.sequences.Stop(ctx)
 	})
-
-	// Get current value of _sync:seq
-	initialSequence, seqErr := dbContext.sequences.lastSequence()
-	if seqErr != nil {
-		return nil, seqErr
-	}
-	initialSequenceTime := time.Now()
 
 	// Initialize the active channel counter
 	dbContext.activeChannels = channels.NewActiveChannels(dbContext.DbStats.Cache().NumActiveChannels)
@@ -538,221 +543,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		base.InfofCtx(ctx, base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbContext.Name))
 	}
 
-	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
-	notifyChange := func(changedChannels channels.Set) {
-		dbContext.mutationListener.Notify(changedChannels)
-	}
-
-	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
-	err = dbContext.changeCache.Init(
-		ctx,
-		dbContext,
-		dbContext.channelCache,
-		notifyChange,
-		dbContext.Options.CacheOptions,
-		metaKeys,
-	)
-	if err != nil {
-		base.DebugfCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)
-		return nil, err
-	}
-	dbContext.mutationListener.OnChangeCallback = dbContext.changeCache.DocChanged
-
-	if base.IsEnterpriseEdition() {
-		cfgSG, ok := dbContext.CfgSG.(*base.CfgSG)
-		if !ok {
-			return nil, fmt.Errorf("Could not cast %V to CfgSG", dbContext.CfgSG)
-		}
-		dbContext.changeCache.cfgEventCallback = cfgSG.FireEvent
-	}
-
 	// Initialize sg-replicate manager
 	dbContext.SGReplicateMgr, err = NewSGReplicateManager(ctx, dbContext, dbContext.CfgSG)
 	if err != nil {
 		return nil, err
-	}
-
-	importEnabled := dbContext.UseXattrs() && dbContext.autoImport
-	sgReplicateEnabled := dbContext.Options.SGReplicateOptions.Enabled
-
-	// Initialize node heartbeater in EE mode if sg-replicate or import enabled on the node.  This node must start
-	// sending heartbeats before registering itself to the cfg, to avoid triggering immediate removal by other active nodes.
-	if base.IsEnterpriseEdition() && (importEnabled || sgReplicateEnabled) {
-		// Create heartbeater
-		heartbeaterPrefix := metaKeys.HeartbeaterPrefix(dbContext.Options.GroupID)
-		heartbeater, err := base.NewCouchbaseHeartbeater(dbContext.MetadataStore, heartbeaterPrefix, dbContext.UUID)
-		if err != nil {
-			return nil, pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", base.MD(bucket.GetName()).Redact())
-		}
-		err = heartbeater.StartSendingHeartbeats()
-		if err != nil {
-			return nil, err
-		}
-		dbContext.Heartbeater = heartbeater
-
-		cleanupFunctions = append(cleanupFunctions, func() {
-			dbContext.Heartbeater.Stop()
-		})
-	}
-
-	// If sgreplicate is enabled on this node, register this node to accept notifications
-	if sgReplicateEnabled {
-		registerNodeErr := dbContext.SGReplicateMgr.StartLocalNode(dbContext.UUID, dbContext.Heartbeater)
-		if registerNodeErr != nil {
-			return nil, registerNodeErr
-		}
-
-		cleanupFunctions = append(cleanupFunctions, func() {
-			dbContext.SGReplicateMgr.Stop()
-		})
-	}
-
-	// Start DCP feed
-	base.InfofCtx(ctx, base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
-	cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
-	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap.Map, dbContext.Scopes, dbContext.MetadataStore)
-
-	// Check if there is an error starting the DCP feed
-	if err != nil {
-		dbContext.channelCache = nil
-		return nil, err
-	}
-
-	cleanupFunctions = append(cleanupFunctions, func() {
-		dbContext.mutationListener.Stop()
-	})
-
-	// Unlock change cache.  Validate that any allocated sequences on other nodes have either been assigned or released
-	// before starting
-	if initialSequence > 0 {
-		_ = dbContext.sequences.waitForReleasedSequences(initialSequenceTime)
-	}
-
-	err = dbContext.changeCache.Start(initialSequence)
-	if err != nil {
-		return nil, err
-	}
-	cleanupFunctions = append(cleanupFunctions, func() {
-		dbContext.changeCache.Stop()
-	})
-
-	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
-	// subscription relies on the caching feed.
-	if importEnabled {
-		dbContext.ImportListener = NewImportListener(ctx, metaKeys.DCPCheckpointPrefix(dbContext.Options.GroupID), dbContext)
-		if importFeedErr := dbContext.ImportListener.StartImportFeed(dbContext); importFeedErr != nil {
-			return nil, importFeedErr
-		}
-
-		cleanupFunctions = append(cleanupFunctions, func() {
-			dbContext.ImportListener.Stop()
-		})
-	}
-
-	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.
-	if options.OIDCOptions != nil {
-		dbContext.OIDCProviders = make(auth.OIDCProviderMap)
-
-		for name, provider := range options.OIDCOptions.Providers {
-			if provider.Issuer == "" || base.StringDefault(provider.ClientID, "") == "" {
-				// TODO: this duplicates a check in DbConfig.validate to avoid a backwards compatibility issue
-				base.WarnfCtx(ctx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
-				continue
-			}
-			provider.Name = name
-
-			// If this is the default provider, or there's only one provider defined, set IsDefault
-			if (options.OIDCOptions.DefaultProvider != nil && name == *options.OIDCOptions.DefaultProvider) || len(options.OIDCOptions.Providers) == 1 {
-				provider.IsDefault = true
-			}
-
-			insecureSkipVerify := false
-			if options.UnsupportedOptions != nil {
-				insecureSkipVerify = options.UnsupportedOptions.OidcTlsSkipVerify
-			}
-			provider.InsecureSkipVerify = insecureSkipVerify
-
-			// If this isn't the default provider, add the provider to the callback URL (needed to identify provider to _oidc_callback)
-			if !provider.IsDefault && provider.CallbackURL != nil {
-				updatedCallback, err := auth.SetURLQueryParam(*provider.CallbackURL, auth.OIDCAuthProvider, name)
-				if err != nil {
-					return nil, base.RedactErrorf("Failed to add provider %q to OIDC callback URL: %v", base.UD(name), err)
-				}
-				provider.CallbackURL = &updatedCallback
-			}
-
-			dbContext.OIDCProviders[name] = provider
-		}
-	}
-
-	dbContext.LocalJWTProviders = make(auth.LocalJWTProviderMap, len(options.LocalJWTConfig))
-	for name, cfg := range options.LocalJWTConfig {
-		dbContext.LocalJWTProviders[name] = cfg.BuildProvider(name)
-	}
-
-	if dbContext.UseXattrs() {
-		// Set the purge interval for tombstone compaction
-		dbContext.PurgeInterval = DefaultPurgeInterval
-		cbStore, ok := base.AsCouchbaseBucketStore(bucket)
-		if ok {
-			serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
-			if err != nil {
-				base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - will use default value. %s", err)
-			} else if serverPurgeInterval > 0 {
-				dbContext.PurgeInterval = serverPurgeInterval
-			}
-		}
-		base.InfofCtx(ctx, base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", dbContext.PurgeInterval.Hours()/24)
-
-		if dbContext.Options.CompactInterval != 0 {
-			if autoImport {
-				db := Database{DatabaseContext: dbContext}
-				// Wrap the dbContext's terminator in a SafeTerminator for the compaction task
-				bgtTerminator := base.NewSafeTerminator()
-				go func() {
-					<-dbContext.terminator
-					bgtTerminator.Close()
-				}()
-				bgt, err := NewBackgroundTask(ctx, "Compact", func(ctx context.Context) error {
-					_, err := db.Compact(ctx, false, func(purgedDocCount *int) {}, bgtTerminator)
-					if err != nil {
-						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
-					}
-					return nil
-				}, time.Duration(dbContext.Options.CompactInterval)*time.Second, dbContext.terminator)
-				if err != nil {
-					return nil, err
-				}
-				db.backgroundTasks = append(db.backgroundTasks, bgt)
-			} else {
-				base.WarnfCtx(ctx, "Automatic compaction can only be enabled on nodes running an Import process")
-			}
-		}
-
-	}
-
-	// Make sure there is no MaxTTL set on the bucket (SG #3314)
-	cbs, ok := base.AsCouchbaseBucketStore(bucket)
-	if ok {
-		maxTTL, err := cbs.MaxTTL()
-		if err != nil {
-			return nil, err
-		}
-		if maxTTL != 0 {
-			return nil, fmt.Errorf("Backing Couchbase Server bucket has a non-zero MaxTTL value: %d.  Please set MaxTTL to 0 in Couchbase Server Admin UI and try again.", maxTTL)
-		}
-	}
-
-	dbContext.ExitChanges = make(chan struct{})
-
-	// Start checking heartbeats for other nodes.  Must be done after caching feed starts, to ensure any removals
-	// are detected and processed by this node.
-	if dbContext.Heartbeater != nil {
-		err = dbContext.Heartbeater.StartCheckingHeartbeats()
-		if err != nil {
-			return nil, err
-		}
-		// No cleanup necessary, stop heartbeater above will take care of it
 	}
 
 	if dbContext.UseQueryBasedResyncManager() {
@@ -760,8 +554,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	} else {
 		dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
 	}
-	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
-	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(metadataStore, metaKeys)
 
 	return dbContext, nil
 }
@@ -796,8 +588,8 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 	// Wait for database background tasks to finish.
 	waitForBGTCompletion(ctx, BGTCompletionMaxWait, context.backgroundTasks, context.Name)
-	context.sequences.Stop()
-	context.mutationListener.Stop()
+	context.sequences.Stop(ctx)
+	context.mutationListener.Stop(ctx)
 	context.changeCache.Stop()
 	// Stop the channel cache and it's background tasks.
 	context.channelCache.Stop()
@@ -918,13 +710,13 @@ func (context *DatabaseContext) IsClosed() bool {
 }
 
 // For testing only!
-func (context *DatabaseContext) RestartListener() error {
-	context.mutationListener.Stop()
+func (context *DatabaseContext) RestartListener(ctx context.Context) error {
+	context.mutationListener.Stop(ctx)
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
 	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID, context.MetadataKeys)
 	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
-	if err := context.mutationListener.Start(context.Bucket, cacheFeedStatsMap.Map, context.Scopes, context.MetadataStore); err != nil {
+	if err := context.mutationListener.Start(ctx, context.Bucket, cacheFeedStatsMap.Map, context.Scopes, context.MetadataStore); err != nil {
 		return err
 	}
 	return nil
@@ -977,7 +769,7 @@ func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, preview
 			errs = errs.Append(errors.New(err))
 			continue
 		}
-		collectionRemovedIndexes, err := removeObsoleteIndexes(n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
+		collectionRemovedIndexes, err := removeObsoleteIndexes(ctx, n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
 		if err != nil {
 			errs = errs.Append(err)
 			continue
@@ -1881,7 +1673,7 @@ func (c *DatabaseCollection) regeneratePrincipalSequences(authr *auth.Authentica
 
 func (c *DatabaseCollection) releaseSequences(ctx context.Context, sequences []uint64) {
 	for _, sequence := range sequences {
-		err := c.sequences().releaseSequence(sequence)
+		err := c.sequences().releaseSequence(ctx, sequence)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error attempting to release sequence %d. Error %v", sequence, err)
 		}
@@ -1951,9 +1743,21 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 }
 
 func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
+	startTime := time.Now()
 	var updatedDoc *Document
 	var shouldUpdate bool
 	var updatedExpiry *uint32
+	defer func() {
+		functionTime := time.Since(startTime).Milliseconds()
+		var bytes int
+		if updatedDoc != nil {
+			bytes = len(updatedDoc._rawBody)
+		} else {
+			return
+		}
+		stat := CalculateComputeStat(int64(bytes), functionTime)
+		db.dbStats().DatabaseStats.ImportProcessCompute.Add(stat)
+	}()
 	if db.UseXattrs() {
 		writeUpdateFunc := func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (
 			raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
@@ -2324,4 +2128,307 @@ func (dbc *DatabaseContext) AuthenticatorOptions() auth.AuthenticatorOptions {
 // across all nodes, while lastSequence is just the latest allocation from this node
 func (dbc *DatabaseContext) GetRequestPlusSequence() (uint64, error) {
 	return dbc.sequences.getSequence()
+}
+
+func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedError error) {
+	cleanupFunctions := make([]func(), 0)
+
+	defer func() {
+		if returnedError != nil {
+			for _, cleanupFunc := range cleanupFunctions {
+				cleanupFunc()
+			}
+		}
+	}()
+
+	// Create config-based principals
+	// Create default users & roles:
+	if db.Options.ConfigPrincipals != nil {
+		if err := db.InstallPrincipals(ctx, db.Options.ConfigPrincipals.Roles, "role"); err != nil {
+			return err
+		}
+		if err := db.InstallPrincipals(ctx, db.Options.ConfigPrincipals.Users, "user"); err != nil {
+			return err
+		}
+
+		if db.Options.ConfigPrincipals.Guest != nil {
+			guest := map[string]*auth.PrincipalConfig{base.GuestUsername: db.Options.ConfigPrincipals.Guest}
+			if err := db.InstallPrincipals(ctx, guest, "user"); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
+	notifyChange := func(ctx context.Context, changedChannels channels.Set) {
+		db.mutationListener.Notify(ctx, changedChannels)
+	}
+
+	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
+	if err := db.changeCache.Init(
+		ctx,
+		db,
+		db.channelCache,
+		notifyChange,
+		db.Options.CacheOptions,
+		db.MetadataKeys,
+	); err != nil {
+		base.DebugfCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)
+		return err
+	}
+
+	db.mutationListener.OnChangeCallback = db.changeCache.DocChanged
+
+	if base.IsEnterpriseEdition() {
+		cfgSG, ok := db.CfgSG.(*base.CfgSG)
+		if !ok {
+			return fmt.Errorf("Could not cast %V to CfgSG", db.CfgSG)
+		}
+		db.changeCache.cfgEventCallback = cfgSG.FireEvent
+	}
+
+	sgReplicateEnabled := db.Options.SGReplicateOptions.Enabled
+
+	// Initialize node heartbeater in EE mode if sg-replicate or import enabled on the node.  This node must start
+	// sending heartbeats before registering itself to the cfg, to avoid triggering immediate removal by other active nodes.
+	if base.IsEnterpriseEdition() && (db.autoImport || sgReplicateEnabled) {
+		// Create heartbeater
+		heartbeaterPrefix := db.MetadataKeys.HeartbeaterPrefix(db.Options.GroupID)
+		heartbeater, err := base.NewCouchbaseHeartbeater(db.MetadataStore, heartbeaterPrefix, db.UUID)
+		if err != nil {
+			return pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", base.MD(db.Bucket.GetName()).Redact())
+		}
+		err = heartbeater.StartSendingHeartbeats()
+		if err != nil {
+			return err
+		}
+		db.Heartbeater = heartbeater
+
+		cleanupFunctions = append(cleanupFunctions, func() {
+			db.Heartbeater.Stop()
+		})
+	}
+
+	// If sgreplicate is enabled on this node, register this node to accept notifications
+	if sgReplicateEnabled {
+		registerNodeErr := db.SGReplicateMgr.StartLocalNode(db.UUID, db.Heartbeater)
+		if registerNodeErr != nil {
+			return registerNodeErr
+		}
+
+		cleanupFunctions = append(cleanupFunctions, func() {
+			db.SGReplicateMgr.Stop()
+		})
+	}
+
+	// Start DCP feed
+	base.InfofCtx(ctx, base.KeyDCP, "Starting mutation feed on bucket %v", base.MD(db.Bucket.GetName()))
+	cacheFeedStatsMap := db.DbStats.Database().CacheFeedMapStats
+	if err := db.mutationListener.Start(ctx, db.Bucket, cacheFeedStatsMap.Map, db.Scopes, db.MetadataStore); err != nil {
+		db.channelCache = nil
+		return err
+	}
+
+	cleanupFunctions = append(cleanupFunctions, func() {
+		db.mutationListener.Stop(ctx)
+	})
+
+	// Get current value of _sync:seq
+	initialSequence, seqErr := db.sequences.lastSequence()
+	if seqErr != nil {
+		return seqErr
+	}
+	initialSequenceTime := time.Now()
+
+	// Unlock change cache.  Validate that any allocated sequences on other nodes have either been assigned or released
+	// before starting
+	if initialSequence > 0 {
+		_ = db.sequences.waitForReleasedSequences(initialSequenceTime)
+	}
+
+	if err := db.changeCache.Start(initialSequence); err != nil {
+		return err
+	}
+	cleanupFunctions = append(cleanupFunctions, func() {
+		db.changeCache.Stop()
+	})
+
+	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
+	// subscription relies on the caching feed.
+	if db.autoImport {
+		db.ImportListener = NewImportListener(ctx, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID), db)
+		if importFeedErr := db.ImportListener.StartImportFeed(db); importFeedErr != nil {
+			return importFeedErr
+		}
+
+		cleanupFunctions = append(cleanupFunctions, func() {
+			db.ImportListener.Stop()
+		})
+	}
+
+	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.
+	if db.Options.OIDCOptions != nil {
+		db.OIDCProviders = make(auth.OIDCProviderMap)
+
+		for name, provider := range db.Options.OIDCOptions.Providers {
+			if provider.Issuer == "" || base.StringDefault(provider.ClientID, "") == "" {
+				// TODO: this duplicates a check in DbConfig.validate to avoid a backwards compatibility issue
+				base.WarnfCtx(ctx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
+				continue
+			}
+			provider.Name = name
+
+			// If this is the default provider, or there's only one provider defined, set IsDefault
+			if (db.Options.OIDCOptions.DefaultProvider != nil && name == *db.Options.OIDCOptions.DefaultProvider) || len(db.Options.OIDCOptions.Providers) == 1 {
+				provider.IsDefault = true
+			}
+
+			insecureSkipVerify := false
+			if db.Options.UnsupportedOptions != nil {
+				insecureSkipVerify = db.Options.UnsupportedOptions.OidcTlsSkipVerify
+			}
+			provider.InsecureSkipVerify = insecureSkipVerify
+
+			// If this isn't the default provider, add the provider to the callback URL (needed to identify provider to _oidc_callback)
+			if !provider.IsDefault && provider.CallbackURL != nil {
+				updatedCallback, err := auth.SetURLQueryParam(*provider.CallbackURL, auth.OIDCAuthProvider, name)
+				if err != nil {
+					return base.RedactErrorf("Failed to add provider %q to OIDC callback URL: %v", base.UD(name), err)
+				}
+				provider.CallbackURL = &updatedCallback
+			}
+
+			db.OIDCProviders[name] = provider
+		}
+	}
+
+	db.LocalJWTProviders = make(auth.LocalJWTProviderMap, len(db.Options.LocalJWTConfig))
+	for name, cfg := range db.Options.LocalJWTConfig {
+		db.LocalJWTProviders[name] = cfg.BuildProvider(name)
+	}
+
+	if db.UseXattrs() {
+		// Set the purge interval for tombstone compaction
+		db.PurgeInterval = DefaultPurgeInterval
+		cbStore, ok := base.AsCouchbaseBucketStore(db.Bucket)
+		if ok {
+			serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
+			if err != nil {
+				base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - will use default value. %s", err)
+			} else if serverPurgeInterval > 0 {
+				db.PurgeInterval = serverPurgeInterval
+			}
+		}
+		base.InfofCtx(ctx, base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", db.PurgeInterval.Hours()/24)
+
+		if db.Options.CompactInterval != 0 {
+			if db.autoImport {
+				db := Database{DatabaseContext: db}
+				// Wrap the dbContext's terminator in a SafeTerminator for the compaction task
+				bgtTerminator := base.NewSafeTerminator()
+				go func() {
+					<-db.terminator
+					bgtTerminator.Close()
+				}()
+				bgt, err := NewBackgroundTask(ctx, "Compact", func(ctx context.Context) error {
+					_, err := db.Compact(ctx, false, func(purgedDocCount *int) {}, bgtTerminator)
+					if err != nil {
+						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", db.Name, err)
+					}
+					return nil
+				}, time.Duration(db.Options.CompactInterval)*time.Second, db.terminator)
+				if err != nil {
+					return err
+				}
+				db.backgroundTasks = append(db.backgroundTasks, bgt)
+			} else {
+				base.WarnfCtx(ctx, "Automatic compaction can only be enabled on nodes running an Import process")
+			}
+		}
+
+	}
+
+	// create a background task to keep track of the number of active replication connections the database has each second
+	bgtSyncTime, err := NewBackgroundTask(ctx, "TotalSyncTimeStat", func(ctx context.Context) error {
+		db.UpdateTotalSyncTimeStat()
+		return nil
+	}, 1*time.Second, db.terminator)
+	if err != nil {
+		return err
+	}
+	db.backgroundTasks = append(db.backgroundTasks, bgtSyncTime)
+
+	if err := base.RequireNoBucketTTL(db.Bucket); err != nil {
+		return err
+	}
+
+	db.ExitChanges = make(chan struct{})
+
+	// Start checking heartbeats for other nodes.  Must be done after caching feed starts, to ensure any removals
+	// are detected and processed by this node.
+	if db.Heartbeater != nil {
+		if err := db.Heartbeater.StartCheckingHeartbeats(); err != nil {
+			return err
+		}
+		// No cleanup necessary, stop heartbeater above will take care of it
+	}
+
+	db.TombstoneCompactionManager = NewTombstoneCompactionManager()
+	db.AttachmentCompactionManager = NewAttachmentCompactionManager(db.MetadataStore, db.MetadataKeys)
+
+	db.startReplications(ctx)
+
+	return nil
+}
+
+func (dbc *DatabaseContext) InstallPrincipals(ctx context.Context, spec map[string]*auth.PrincipalConfig, what string) error {
+	for name, princ := range spec {
+		isGuest := name == base.GuestUsername
+		if isGuest {
+			internalName := ""
+			princ.Name = &internalName
+		} else {
+			n := name
+			princ.Name = &n
+		}
+
+		createdPrincipal := true
+		worker := func() (shouldRetry bool, err error, value interface{}) {
+			_, err = dbc.UpdatePrincipal(ctx, princ, (what == "user"), isGuest)
+			if err != nil {
+				if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
+					// Ignore and absorb this error if it's a conflict error, which just means that updatePrincipal didn't overwrite an existing user.
+					// Since if there's an existing user it's "mission accomplished", this can be treated as a success case.
+					createdPrincipal = false
+					return false, nil, nil
+				}
+
+				if err == base.ErrViewTimeoutError {
+					// Timeout error, possibly due to view re-indexing, so retry
+					base.InfofCtx(ctx, base.KeyAuth, "Error calling UpdatePrincipal(): %v.  Will retry in case this is a temporary error", err)
+					return true, err, nil
+				}
+
+				// Unexpected error, return error don't retry
+				return false, err, nil
+			}
+
+			// No errors, assume it worked
+			return false, nil, nil
+
+		}
+
+		err, _ := base.RetryLoop("installPrincipals", worker, base.CreateDoublingSleeperFunc(16, 10))
+		if err != nil {
+			return err
+		}
+
+		if isGuest {
+			base.InfofCtx(ctx, base.KeyAll, "Reset guest user to config")
+		} else if createdPrincipal {
+			base.InfofCtx(ctx, base.KeyAll, "Created %s %q", what, base.UD(name))
+		}
+
+	}
+	return nil
 }

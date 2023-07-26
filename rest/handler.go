@@ -28,12 +28,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/mux"
-	"github.com/pkg/errors"
-
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/gorilla/mux"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -87,10 +86,10 @@ var ClusterScopedEndpointRolesWrite = []RouteRole{ClusterAdminRole, FullAdminRol
 type handler struct {
 	server                *ServerContext
 	rq                    *http.Request
-	response              http.ResponseWriter
+	response              CountableResponseWriter
 	status                int
 	statusMessage         string
-	requestBody           io.ReadCloser
+	requestBody           *CountedRequestReader
 	db                    *db.Database
 	collection            *db.DatabaseCollectionWithUser
 	user                  auth.User
@@ -128,6 +127,7 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
+		h.reportDbStats()
 	})
 }
 
@@ -141,6 +141,7 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermiss
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
+		h.reportDbStats()
 	})
 }
 
@@ -154,7 +155,7 @@ func makeMetadataDBOfflineHandler(server *ServerContext, privs handlerPrivs, acc
 		h := newHandler(server, privs, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
-		h.logDuration(true)
+		h.reportDbStats()
 	})
 }
 
@@ -167,6 +168,7 @@ func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, acc
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
+		h.reportDbStats()
 	})
 }
 
@@ -180,7 +182,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		server:            server,
 		privs:             privs,
 		rq:                rq,
-		response:          r,
+		response:          NewNonCountedResponseWriter(r),
 		status:            http.StatusOK,
 		serialNumber:      atomic.AddUint64(&lastSerialNum, 1),
 		startTime:         time.Now(),
@@ -245,13 +247,18 @@ func ParseKeyspace(ks string) (db string, scope, collection *string, err error) 
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
 	if h.server.Config.API.CompressResponses == nil || *h.server.Config.API.CompressResponses {
-		if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
+		var stat *base.SgwIntStat
+		if h.shouldUpdateBytesTransferredStats() {
+			stat = h.db.DbStats.Database().PublicRestBytesWritten
+		}
+		if encoded := NewEncodedResponseWriter(h.response, h.rq, stat, defaultBytesStatsReportingInterval); encoded != nil {
 			h.response = encoded
 			defer encoded.Close()
 		}
 	}
 
 	err := h.validateAndWriteHeaders(method, accessPermissions, responsePermissions)
+
 	if err != nil {
 		return err
 	}
@@ -265,6 +272,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		if !isRequestLogged {
 			h.logRequestLine()
 		}
+		h.logRESTCount()
 	}()
 
 	defer func() {
@@ -282,12 +290,16 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	switch h.rq.Header.Get("Content-Encoding") {
 	case "":
-		h.requestBody = h.rq.Body
+		h.requestBody = NewReaderCounter(h.rq.Body)
 	case "gzip":
+		// gzip encoding will get approximate bytes read stat
 		var err error
-		if h.requestBody, err = gzip.NewReader(h.rq.Body); err != nil {
+		h.requestBody = NewReaderCounter(nil)
+		gzipRequestReader, err := gzip.NewReader(h.rq.Body)
+		if err != nil {
 			return err
 		}
+		h.requestBody.reader = gzipRequestReader
 		h.rq.Header.Del("Content-Encoding") // to prevent double decoding later on
 	default:
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
@@ -373,7 +385,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			// any other call
 
 			// defer releasing the dbContext until after the handler method returns, unless it's a blipsync request
-			if !h.pathTemplateContains("_blipsync") {
+			if !h.isBlipSync() {
 				dbContext.AccessLock.RLock()
 				defer dbContext.AccessLock.RUnlock()
 			}
@@ -395,13 +407,19 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	if h.privs != adminPrivs {
 		var err error
 		if err = h.checkAuth(dbContext); err != nil {
+			// if auth fails we still need to record bytes read over the rest api for the stat, to do this we need to call GetBodyBytesCount to read
+			// the body to populate the bytes count on the CountedRequestReader struct
+			bytesCount := h.requestBody.GetBodyBytesCount()
+			if bytesCount > 0 {
+				dbContext.DbStats.DatabaseStats.PublicRestBytesRead.Add(bytesCount)
+			}
 			return err
 		}
 		if h.user != nil && h.user.Name() == "" && dbContext != nil && dbContext.IsGuestReadOnly() {
 			// Prevent read-only guest access to any endpoint requiring write permissions except
 			// blipsync.  Read-only guest handling for websocket replication (blipsync) is evaluated
 			// at the blip message level to support read-only pull replications.
-			if requiresWritePermission(accessPermissions) && !h.pathTemplateContains("_blipsync") {
+			if requiresWritePermission(accessPermissions) && !h.isBlipSync() {
 				return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
 			}
 		}
@@ -461,9 +479,11 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			if err != nil {
 				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
 			}
+			// mark the body as read so we won't count bytes twice
+			h.requestBody.bodyRead = true
 			// The above readBody() will end up clearing the body which the later handler will require. Re-populate this
 			// for the later handler.
-			h.requestBody = io.NopCloser(bytes.NewReader(body))
+			h.requestBody.reader = io.NopCloser(bytes.NewReader(body))
 			authScope, err = h.authScopeFunc(body)
 			if err != nil {
 				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
@@ -563,6 +583,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			}
 		}
 	}
+	h.updateResponseWriter()
 	return nil
 }
 
@@ -579,6 +600,30 @@ func (h *handler) logRequestLine() {
 
 	queryValues := h.getQueryValues()
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "%s %s%s%s", h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formattedEffectiveUserName())
+}
+
+// shouldUpdateBytesTransferredStats returns true if we want to log the bytes transferred. The criteria is if this is db scoped over the public port. Blip is skipped since those stats are tracked separately.
+func (h *handler) shouldUpdateBytesTransferredStats() bool {
+	if h.db == nil {
+		return false
+	}
+	if h.privs != publicPrivs && h.privs != regularPrivs {
+		return false
+	}
+	if h.isBlipSync() {
+		return false
+	}
+	return true
+}
+
+// updateResponseWriter will create an updated Response Writer if we need to log db stats.
+func (h *handler) updateResponseWriter() {
+	if !h.shouldUpdateBytesTransferredStats() {
+		return
+	}
+	h.response = NewCountedResponseWriter(h.response,
+		h.db.DbStats.Database().PublicRestBytesWritten,
+		defaultBytesStatsReportingInterval)
 }
 
 func (h *handler) logDuration(realTime bool) {
@@ -603,6 +648,35 @@ func (h *handler) logDuration(realTime bool) {
 		h.formatSerialNumber(), h.status, h.statusMessage,
 		float64(duration)/float64(time.Millisecond),
 	)
+}
+
+// logRESTCount will increment the number of public REST requests stat for public REST requests excluding _blipsync requests if they are attached to a database.
+func (h *handler) logRESTCount() {
+	if h.db == nil {
+		return
+	}
+	if h.privs != publicPrivs && h.privs != regularPrivs {
+		return
+	}
+	if h.isBlipSync() {
+		return
+	}
+	h.db.DbStats.DatabaseStats.NumPublicRestRequests.Add(1)
+}
+
+// reportDbStats will report the public rest request specific stats back to the database
+func (h *handler) reportDbStats() {
+	if !h.shouldUpdateBytesTransferredStats() {
+		return
+	}
+	var bytesReadStat int64
+	h.response.reportStats(true)
+	// load the number of bytes read on the request
+	bytesReadStat = h.requestBody.GetBodyBytesCount()
+	// as this is int64 lets protect against a situation where a negative is returned from GetBodyBytesCount() function and thus decrementing the stat
+	if bytesReadStat > 0 {
+		h.db.DbStats.DatabaseStats.PublicRestBytesRead.Add(bytesReadStat)
+	}
 }
 
 // logStatusWithDuration will log the request status and the duration of the request.
@@ -1508,6 +1582,10 @@ func requiresWritePermission(accessPermissions []Permission) bool {
 		}
 	}
 	return false
+}
+
+func (h *handler) isBlipSync() bool {
+	return h.pathTemplateContains("_blipsync")
 }
 
 // Checks whether the mux path template for the current route contains the specified pattern

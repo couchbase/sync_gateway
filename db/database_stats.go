@@ -21,9 +21,16 @@ package db
 
 // Update database-specific stats that are more efficiently calculated at stats collection time
 func (db *DatabaseContext) UpdateCalculatedStats() {
+
 	db.changeCache.updateStats()
 	channelCache := db.changeCache.getChannelCache()
 	db.DbStats.Cache().ChannelCacheMaxEntries.Set(int64(channelCache.MaxCacheSize()))
 	db.DbStats.Cache().HighSeqCached.Set(int64(channelCache.GetHighCacheSequence()))
 
+}
+
+// UpdateTotalSyncTimeStat updates the TotalSyncTime to the current value + NumReplicationsActive each time this is called
+func (db *DatabaseContext) UpdateTotalSyncTimeStat() {
+	currentActiveReplications := db.DbStats.DatabaseStats.NumReplicationsActive.Value()
+	db.DbStats.DatabaseStats.TotalSyncTime.Add(currentActiveReplications)
 }

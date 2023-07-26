@@ -240,7 +240,6 @@ func (h *handler) handleChanges() error {
 			return err
 		}
 		feed, options, filter, channelsArray, docIdsArray, _, err = h.readChangesOptionsFromJSON(body)
-
 		if err != nil {
 			return err
 		}
@@ -402,14 +401,6 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			}
 		}
 
-		var closeNotify <-chan bool
-		cn, ok := h.response.(http.CloseNotifier)
-		if ok {
-			closeNotify = cn.CloseNotify()
-		} else {
-			base.InfofCtx(h.ctx(), base.KeyChanges, "simple changes cannot get Close Notifier from ResponseWriter")
-		}
-
 		encoder := base.JSONEncoderCanonical(h.response)
 	loop:
 		for {
@@ -439,7 +430,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 				message = "OK (timeout)"
 				forceClose = true
 				break loop
-			case <-closeNotify:
+			case <-h.rq.Context().Done():
 				base.InfofCtx(h.ctx(), base.KeyChanges, "Connection lost from client")
 				forceClose = true
 				break loop

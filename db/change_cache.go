@@ -33,6 +33,8 @@ const (
 	DefaultCachePendingSeqMaxWait = 5 * time.Second  // Max time we'll wait for a pending sequence before sending to missed queue
 	DefaultSkippedSeqMaxWait      = 60 * time.Minute // Max time we'll wait for an entry in the missing before purging
 	QueryTombstoneBatch           = 250              // Max number of tombstones checked per query during Compact
+	unusedSeqKey                  = "_unusedSeqKey"  // Key used by ChangeWaiter to mark unused sequences
+	unusedSeqCollectionID         = 0                // Collection ID used by ChangeWaiter to mark unused sequences
 )
 
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
@@ -49,25 +51,26 @@ var EnableStarChannelLog = true
 type changeCache struct {
 	db                 *DatabaseContext
 	logCtx             context.Context
-	logsDisabled       bool                    // If true, ignore incoming tap changes
-	nextSequence       uint64                  // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
-	initialSequence    uint64                  // DB's current sequence at startup time. Should use getInitialSequence() rather than accessing directly.
-	receivedSeqs       map[uint64]struct{}     // Set of all sequences received
-	pendingLogs        LogPriorityQueue        // Out-of-sequence entries waiting to be cached
-	notifyChange       func(channels.Set)      // Client callback that notifies of channel changes
-	stopped            bool                    // Set by the Stop method
-	skippedSeqs        *SkippedSequenceList    // Skipped sequences still pending on the TAP feed
-	lock               sync.RWMutex            // Coordinates access to struct fields
-	options            CacheOptions            // Cache config
-	terminator         chan bool               // Signal termination of background goroutines
-	backgroundTasks    []BackgroundTask        // List of background tasks.
-	initTime           time.Time               // Cache init time - used for latency calculations
-	channelCache       ChannelCache            // Underlying channel cache
-	lastAddPendingTime int64                   // The most recent time _addPendingLogs was run, as epoch time
-	internalStats      changeCacheStats        // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
-	cfgEventCallback   base.CfgEventNotifyFunc // Callback for Cfg updates recieved over the caching feed
-	sgCfgPrefix        string                  // Prefix for SG Cfg doc keys
-	metaKeys           *base.MetadataKeys      // Metadata key formatter
+	logsDisabled       bool                                // If true, ignore incoming tap changes
+	nextSequence       uint64                              // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
+	initialSequence    uint64                              // DB's current sequence at startup time. Should use getInitialSequence() rather than accessing directly.
+	receivedSeqs       map[uint64]struct{}                 // Set of all sequences received
+	pendingLogs        LogPriorityQueue                    // Out-of-sequence entries waiting to be cached
+	notifyChange       func(context.Context, channels.Set) // Client callback that notifies of channel changes
+	started            base.AtomicBool                     // Set by the Start method
+	stopped            base.AtomicBool                     // Set by the Stop method
+	skippedSeqs        *SkippedSequenceList                // Skipped sequences still pending on the TAP feed
+	lock               sync.RWMutex                        // Coordinates access to struct fields
+	options            CacheOptions                        // Cache config
+	terminator         chan bool                           // Signal termination of background goroutines
+	backgroundTasks    []BackgroundTask                    // List of background tasks.
+	initTime           time.Time                           // Cache init time - used for latency calculations
+	channelCache       ChannelCache                        // Underlying channel cache
+	lastAddPendingTime int64                               // The most recent time _addPendingLogs was run, as epoch time
+	internalStats      changeCacheStats                    // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
+	cfgEventCallback   base.CfgEventNotifyFunc             // Callback for Cfg updates recieved over the caching feed
+	sgCfgPrefix        string                              // Prefix for SG Cfg doc keys
+	metaKeys           *base.MetadataKeys                  // Metadata key formatter
 }
 
 type changeCacheStats struct {
@@ -79,13 +82,15 @@ type changeCacheStats struct {
 func (c *changeCache) updateStats() {
 
 	c.lock.Lock()
-
+	defer c.lock.Unlock()
+	if c.db == nil {
+		return
+	}
 	c.db.DbStats.Database().HighSeqFeed.SetIfMax(int64(c.internalStats.highSeqFeed))
 	c.db.DbStats.Cache().PendingSeqLen.Set(int64(c.internalStats.pendingSeqLen))
 	c.db.DbStats.CBLReplicationPull().MaxPending.SetIfMax(int64(c.internalStats.maxPending))
 	c.db.DbStats.Cache().HighSeqStable.Set(int64(c._getMaxStableCached()))
 
-	c.lock.Unlock()
 }
 
 type LogEntry channels.LogEntry
@@ -157,7 +162,7 @@ func DefaultCacheOptions() CacheOptions {
 // After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
 
-func (c *changeCache) Init(logCtx context.Context, dbContext *DatabaseContext, channelCache ChannelCache, notifyChange func(channels.Set), options *CacheOptions, metaKeys *base.MetadataKeys) error {
+func (c *changeCache) Init(logCtx context.Context, dbContext *DatabaseContext, channelCache ChannelCache, notifyChange func(context.Context, channels.Set), options *CacheOptions, metaKeys *base.MetadataKeys) error {
 	c.db = dbContext
 	c.logCtx = logCtx
 
@@ -212,13 +217,23 @@ func (c *changeCache) Start(initialSequence uint64) error {
 	// Set initial sequence for cache (validFrom)
 	c.channelCache.Init(initialSequence)
 
+	if !c.started.CompareAndSwap(false, true) {
+		return errors.New("changeCache already started")
+	}
+
 	return nil
 }
 
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
 func (c *changeCache) Stop() {
 
-	if !c.setStopped() {
+	if !c.started.IsTrue() {
+		// changeCache never started - nothing to stop
+		return
+	}
+
+	if !c.stopped.CompareAndSwap(false, true) {
+		base.WarnfCtx(c.logCtx, "changeCache was already stopped")
 		return
 	}
 
@@ -232,22 +247,6 @@ func (c *changeCache) Stop() {
 	c.lock.Lock()
 	c.logsDisabled = true
 	c.lock.Unlock()
-}
-
-func (c *changeCache) setStopped() bool {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if c.stopped {
-		return false
-	}
-	c.stopped = true
-	return true
-}
-
-func (c *changeCache) IsStopped() bool {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.stopped
 }
 
 // Empty out all channel caches.
@@ -292,7 +291,7 @@ func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 	c.lock.Lock()
 	changedChannels := c._addPendingLogs()
 	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChange(changedChannels)
+		c.notifyChange(ctx, changedChannels)
 	}
 	c.lock.Unlock()
 
@@ -507,7 +506,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// Notify change listeners for all of the changed channels
 	if c.notifyChange != nil && len(changedChannelsCombined) > 0 {
-		c.notifyChange(changedChannelsCombined)
+		c.notifyChange(c.logCtx, changedChannelsCombined)
 	}
 
 }
@@ -551,8 +550,15 @@ func (c *changeCache) releaseUnusedSequence(sequence uint64, timeReceived time.T
 	// Since processEntry may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
 	changedChannels := c.processEntry(change)
+	unusedSeq := channels.NewID(unusedSeqKey, unusedSeqCollectionID)
+	if changedChannels == nil {
+		changedChannels = channels.SetOfNoValidate(unusedSeq)
+	} else {
+		changedChannels.Add(unusedSeq)
+	}
+	c.channelCache.AddSkippedSequence(change)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChange(changedChannels)
+		c.notifyChange(c.logCtx, changedChannels)
 	}
 }
 
@@ -614,7 +620,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 	changedChannels := c.processEntry(change)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChange(changedChannels)
+		c.notifyChange(c.logCtx, changedChannels)
 	}
 }
 
@@ -770,7 +776,7 @@ func (c *changeCache) getChannelCache() ChannelCache {
 
 func (c *changeCache) GetChanges(channel channels.ID, options ChangesOptions) ([]*LogEntry, error) {
 
-	if c.IsStopped() {
+	if c.stopped.IsTrue() {
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
 	return c.channelCache.GetChanges(channel, options)

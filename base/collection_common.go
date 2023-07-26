@@ -20,6 +20,10 @@ var ErrCollectionsUnsupported = errors.New("collections not supported")
 
 type ScopeAndCollectionName = sgbucket.DataStoreNameImpl
 
+func DefaultScopeAndCollectionName() ScopeAndCollectionName {
+	return ScopeAndCollectionName{Scope: DefaultScope, Collection: DefaultCollection}
+}
+
 type ScopeAndCollectionNames []ScopeAndCollectionName
 
 // ScopeAndCollectionNames returns a dot-separated formatted slice of scope and collection names.

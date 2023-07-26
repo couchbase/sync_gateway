@@ -70,3 +70,12 @@ type BackgroundTask struct {
 	taskName string        // Name of the background task.
 	doneChan chan struct{} // doneChan is closed when background task is terminated.
 }
+
+// CalculateComputeStat calculates the compute stat for import/sync
+func CalculateComputeStat(bytes, functionTime int64) int64 {
+	if functionTime == 0 {
+		functionTime = 1
+	}
+	stat := functionTime * bytes
+	return stat
+}

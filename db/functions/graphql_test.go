@@ -439,7 +439,7 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 
 	if createdPrimaryIdx {
 		defer func() {
-			err := n1qlStore.DropIndex(base.PrimaryIndexName)
+			err := n1qlStore.DropIndex(base.TestCtx(t), base.PrimaryIndexName)
 			require.NoError(t, err)
 		}()
 

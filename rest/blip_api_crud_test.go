@@ -155,19 +155,24 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	assert.NoError(t, timeoutErr, "Timed out waiting")
 }
 
-// Start subChanges w/ continuous=true, batchsize=20
+// Start subChanges w/ continuous=true, batchsize=10
 // Make several updates
 // Wait until we get the expected updates
 func TestContinuousChangesSubscription(t *testing.T) {
 
-	base.LongRunningTest(t)
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
 
 	bt, err := NewBlipTester(t)
-	assert.NoError(t, err, "Error creating BlipTester")
-	defer bt.Close()
-
+	require.NoError(t, err, "Error creating BlipTester")
+	defer func() {
+		unsubChangesRequest := bt.newRequest()
+		blip.NewRequest()
+		unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
+		assert.True(t, bt.sender.Send(unsubChangesRequest))
+		unsubChangesResponse := unsubChangesRequest.Response()
+		assert.Equal(t, "", unsubChangesResponse.Properties[db.BlipErrorCode])
+		bt.Close()
+	}()
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
 	receivedChangesWg := sync.WaitGroup{}
 
@@ -180,7 +185,6 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 		body, err := request.Body()
 		require.NoError(t, err)
-		log.Printf("got change with body %s, count %d", body, changeCount)
 		if string(body) != "null" {
 
 			atomic.AddInt32(&numbatchesReceived, 1)
@@ -218,9 +222,6 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 		if !request.NoReply() {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
-			// TODO: Sleeping here to avoid race in CBG-462, which appears to be occurring when there's very low latency
-			// between the sendBatchOfChanges request and the response
-			time.Sleep(10 * time.Millisecond)
 			response := request.Response()
 			emptyResponseVal := []interface{}{}
 			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
@@ -258,16 +259,13 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	}
 
 	// Wait until all expected changes are received by change handler
-	// receivedChangesWg.Wait()
-	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*30)
-	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
+	require.NoError(t, WaitWithTimeout(&receivedChangesWg, time.Second*30))
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
 	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
 	assert.True(t, numBatchesReceivedSnapshot >= 2)
 
 	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
-
 }
 
 // Make several updates
@@ -2703,7 +2701,7 @@ func TestRequestPlusPull(t *testing.T) {
 	require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+1))
 
 	// Release the slow sequence
-	releaseErr := db.ReleaseTestSequence(database, slowSequence)
+	releaseErr := db.ReleaseTestSequence(base.TestCtx(t), database, slowSequence)
 	require.NoError(t, releaseErr)
 
 	// The one-shot pull should unblock and replicate the document in the granted channel
@@ -2765,7 +2763,7 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 	require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+1))
 
 	// Release the slow sequence
-	releaseErr := db.ReleaseTestSequence(database, slowSequence)
+	releaseErr := db.ReleaseTestSequence(base.TestCtx(t), database, slowSequence)
 	require.NoError(t, releaseErr)
 
 	// The one-shot pull should unblock and replicate the document in the granted channel

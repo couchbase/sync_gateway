@@ -229,6 +229,10 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	})
 	require.NoError(t, err, "NewDatabaseContext")
 	defer db.Close(ctx)
+
+	err = db.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
 	ctx = db.AddDatabaseLogContext(ctx)
 	collection := GetSingleDatabaseCollection(t, db)
 

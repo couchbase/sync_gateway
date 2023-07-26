@@ -478,6 +478,9 @@ func readFromPath(path string, insecureSkipVerify bool) (rc io.ReadCloser, err e
 
 func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 	if dbConfig.AutoImport == nil {
+		if !dbConfig.UseXattrs() {
+			return false, nil
+		}
 		return base.DefaultAutoImport, nil
 	}
 
@@ -1101,7 +1104,7 @@ func envDefaultExpansion(key string, getEnvFn func(string) string) (value string
 }
 
 // SetupAndValidateLogging validates logging config and initializes all logging.
-func (sc *StartupConfig) SetupAndValidateLogging() (err error) {
+func (sc *StartupConfig) SetupAndValidateLogging(ctx context.Context) (err error) {
 
 	base.SetRedaction(sc.Logging.RedactionLevel)
 
@@ -1109,7 +1112,7 @@ func (sc *StartupConfig) SetupAndValidateLogging() (err error) {
 		sc.Logging.LogFilePath = defaultLogFilePath
 	}
 
-	return base.InitLogging(
+	return base.InitLogging(ctx,
 		sc.Logging.LogFilePath,
 		sc.Logging.Console,
 		sc.Logging.Error,
@@ -1244,7 +1247,7 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 	// Logging config will now have been loaded from command line
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
-	if err := config.SetupAndValidateLogging(); err != nil {
+	if err := config.SetupAndValidateLogging(ctx); err != nil {
 		// If we didn't set up logging correctly, we *probably* can't log via normal means...
 		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
 		log.Printf("[ERR] Error setting up logging: %v", err)
@@ -1687,7 +1690,7 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	}
 
 	// TODO: Dynamic update instead of reload
-	if err := sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, cnf, failFast); err != nil {
+	if err := sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, cnf, failFast, false); err != nil {
 		// remove these entries we just created above if the database hasn't loaded properly
 		return false, fmt.Errorf("couldn't reload database: %w", err)
 	}
@@ -1705,7 +1708,7 @@ func (sc *ServerContext) addLegacyPrincipals(ctx context.Context, legacyDbUsers,
 			base.ErrorfCtx(ctx, "Couldn't get database context to install user principles: %v", err)
 			continue
 		}
-		err = sc.installPrincipals(ctx, dbCtx, dbUser, "user")
+		err = dbCtx.InstallPrincipals(ctx, dbUser, "user")
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't install user principles: %v", err)
 		}
@@ -1717,7 +1720,7 @@ func (sc *ServerContext) addLegacyPrincipals(ctx context.Context, legacyDbUsers,
 			base.ErrorfCtx(ctx, "Couldn't get database context to install role principles: %v", err)
 			continue
 		}
-		err = sc.installPrincipals(ctx, dbCtx, dbRole, "role")
+		err = dbCtx.InstallPrincipals(ctx, dbRole, "role")
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't install role principles: %v", err)
 		}
@@ -1736,21 +1739,21 @@ func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) 
 
 	go sc.PostStartup()
 
-	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
+	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
 	go func() {
 		if err := sc.Serve(config, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
 			base.ErrorfCtx(ctx, "Error serving the Metrics API: %v", err)
 		}
 	}()
 
-	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", config.API.AdminInterface)
+	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting admin server on %s", config.API.AdminInterface)
 	go func() {
 		if err := sc.Serve(config, config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
 			base.ErrorfCtx(ctx, "Error serving the Admin API: %v", err)
 		}
 	}()
 
-	base.Consolef(base.LevelInfo, base.KeyAll, "Starting server on %s ...", config.API.PublicInterface)
+	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting server on %s ...", config.API.PublicInterface)
 	return sc.Serve(config, config.API.PublicInterface, CreatePublicHandler(sc))
 }
 

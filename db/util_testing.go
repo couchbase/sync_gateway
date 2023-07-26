@@ -27,7 +27,7 @@ import (
 
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
 // Uses the star channel index as a proxy to indicate that _all_ indexes are empty (which might not be true)
-func waitForPrimaryIndexEmpty(store base.N1QLStore) error {
+func WaitForPrimaryIndexEmpty(store base.N1QLStore) error {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
 		empty, err := isPrimaryIndexEmpty(store)
@@ -184,8 +184,8 @@ func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
 	return isChanged
 }
 
-// emptyPrimaryIndex deletes all docs from primary index
-func emptyPrimaryIndex(dataStore sgbucket.DataStore) error {
+// EmptyPrimaryIndex deletes all docs from primary index
+func EmptyPrimaryIndex(dataStore sgbucket.DataStore) error {
 	n1qlStore, ok := base.AsN1QLStore(dataStore)
 	if !ok {
 		return fmt.Errorf("bucket was not a n1ql store")
@@ -288,7 +288,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		if _, err := emptyAllDocsIndex(ctx, dataStore, tbp); err != nil {
 			return err
 		}
-		if err := emptyPrimaryIndex(dataStore); err != nil {
+		if err := EmptyPrimaryIndex(dataStore); err != nil {
 			return err
 		}
 		n1qlStore, ok := base.AsN1QLStore(dataStore)
@@ -297,7 +297,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		}
 		tbp.Logf(ctx, "waiting for empty bucket indexes %s.%s.%s", b.GetName(), dsName.ScopeName(), dsName.CollectionName())
 		// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
-		if err := waitForPrimaryIndexEmpty(n1qlStore); err != nil {
+		if err := WaitForPrimaryIndexEmpty(n1qlStore); err != nil {
 			tbp.Logf(ctx, "waitForPrimaryIndexEmpty returned an error: %v", err)
 			return err
 		}
@@ -380,7 +380,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			return err
 		}
 
-		err = n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+		err = n1qlStore.CreatePrimaryIndex(ctx, base.PrimaryIndexName, nil)
 		if err != nil {
 			return err
 		}
@@ -546,13 +546,18 @@ func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, 
 
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
+
+	err = dbCtx.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
 	db, err := CreateDatabase(dbCtx)
 	require.NoError(t, err, "Couldn't create database 'db'")
+
 	ctx = db.AddDatabaseLogContext(ctx)
 	return db, ctx
 }
 
-// GetScopesOptions sets up a ScopesOptions from a TestBucket. This will set up default or non default collections depending on the test harness use of SG_TEST_USE_NAMED_COLLECTIONS and whether the backing store supports collections.
+// GetScopesOptions sets up a ScopesOptions from a TestBucket. This will set up default or non default collections depending on the test harness use of SG_TEST_USE_DEFAULT_COLLECTION and whether the backing store supports collections.
 func GetScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesOptions {
 	if !base.TestsUseNamedCollections() {
 		if numCollections != 1 {
@@ -617,8 +622,8 @@ func AllocateTestSequence(database *DatabaseContext) (uint64, error) {
 }
 
 // ReleaseTestSequence releases a sequence via the sequenceAllocator.  For use by non-db tests
-func ReleaseTestSequence(database *DatabaseContext, sequence uint64) error {
-	return database.sequences.releaseSequence(sequence)
+func ReleaseTestSequence(ctx context.Context, database *DatabaseContext, sequence uint64) error {
+	return database.sequences.releaseSequence(ctx, sequence)
 }
 
 func (a *ActiveReplicator) GetActiveReplicatorConfig() *ActiveReplicatorConfig {

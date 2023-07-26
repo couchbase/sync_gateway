@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestInitializeIndexes ensures all of SG's indexes can be built using both values of xattrs
+// TestInitializeIndexes ensures all of SG's indexes can be built using both values of xattrs, with all N1QLStore implementations
 func TestInitializeIndexes(t *testing.T) {
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
@@ -32,17 +32,22 @@ func TestInitializeIndexes(t *testing.T) {
 	base.LongRunningTest(t)
 
 	tests := []struct {
-		xattrs      bool
-		collections bool
+		xattrs           bool
+		collections      bool
+		clusterN1QLStore bool
 	}{
-		{true, false},
-		{false, false},
-		{true, true},
-		{false, true},
+		{true, false, false},
+		{false, false, false},
+		{true, true, false},
+		{false, true, false},
+		{true, false, true},
+		{false, false, true},
+		{true, true, true},
+		{false, true, true},
 	}
 
 	for _, test := range tests {
-		t.Run(fmt.Sprintf("xattrs=%v collections=%v", test.xattrs, test.collections), func(t *testing.T) {
+		t.Run(fmt.Sprintf("xattrs=%v collections=%v clusterN1QL=%v", test.xattrs, test.collections, test.clusterN1QLStore), func(t *testing.T) {
 			var db *Database
 			var ctx context.Context
 
@@ -56,8 +61,16 @@ func TestInitializeIndexes(t *testing.T) {
 			defer db.Close(ctx)
 			collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
-			n1qlStore, isGoCBBucket := base.AsN1QLStore(collection.dataStore)
-			require.True(t, isGoCBBucket)
+			gocbBucket, err := base.AsGocbV2Bucket(db.Bucket)
+			require.NoError(t, err)
+
+			n1qlStore, ok := base.AsN1QLStore(collection.dataStore)
+			require.True(t, ok)
+
+			if test.clusterN1QLStore {
+				n1qlStore, err = base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), collection.ScopeName, collection.Name)
+				require.NoError(t, err)
+			}
 
 			// drop and restore indexes between tests, to the way the bucket pool would
 			defer func() {
@@ -140,19 +153,19 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	require.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
-	removedIndexes, removeErr := removeObsoleteIndexes(n1qlStore, true, !db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr := removeObsoleteIndexes(ctx, n1qlStore, true, !db.UseXattrs(), db.UseViews(), sgIndexes)
 	sort.Strings(removedIndexes)
 	require.EqualValues(t, expectedRemovedIndexes, removedIndexes)
 	require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
 
 	// Running again w/ preview=false to perform cleanup
-	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
 	sort.Strings(removedIndexes)
 	require.Equal(t, expectedRemovedIndexes, removedIndexes)
 	require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in non-preview mode")
 
 	// One more time to make sure they are actually gone
-	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
 	require.Len(t, removedIndexes, 0)
 	require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
@@ -186,7 +199,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	copiedIndexes := copySGIndexes(sgIndexes)
 
 	// Validate that removeObsoleteIndexes is a no-op for the default case
-	removedIndexes, removeErr := removeObsoleteIndexes(n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
+	removedIndexes, removeErr := removeObsoleteIndexes(ctx, n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.Equal(t, 0, len(removedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
@@ -203,7 +216,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	copiedIndexes[IndexAccess] = accessIndex
 
 	// Validate that removeObsoleteIndexes now triggers removal of one index
-	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.Equal(t, 1, len(removedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
@@ -339,11 +352,11 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 		}
 	}
 
-	removedIndexes, removeErr := removeObsoleteIndexes(n1QLStore, false, db.UseXattrs(), true, copiedIndexes)
+	removedIndexes, removeErr := removeObsoleteIndexes(ctx, n1QLStore, false, db.UseXattrs(), true, copiedIndexes)
 	require.NoError(t, removeErr)
 	require.Len(t, removedIndexes, expectedIndexes)
 
-	removedIndexes, removeErr = removeObsoleteIndexes(n1QLStore, false, db.UseXattrs(), false, copiedIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1QLStore, false, db.UseXattrs(), false, copiedIndexes)
 	require.NoError(t, removeErr)
 	require.Len(t, removedIndexes, 0)
 
@@ -394,7 +407,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	n1qlStore, ok := base.AsN1QLStore(dataStore)
 	require.True(t, ok)
 
-	removedIndex, removeErr := removeObsoleteIndexes(n1qlStore, false, db.UseXattrs(), db.UseViews(), testIndexes)
+	removedIndex, removeErr := removeObsoleteIndexes(ctx, n1qlStore, false, db.UseXattrs(), db.UseViews(), testIndexes)
 	assert.NoError(t, removeErr)
 
 	if base.TestUseXattrs() {
@@ -427,7 +440,7 @@ func dropAndInitializeIndexes(ctx context.Context, n1qlStore base.N1QLStore, opt
 	}
 
 	// Recreate the primary index required by the test bucket pooling framework
-	err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+	err := n1qlStore.CreatePrimaryIndex(ctx, base.PrimaryIndexName, nil)
 	if err != nil {
 		return err
 	}

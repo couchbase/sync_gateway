@@ -42,7 +42,10 @@ if [ "${CBS_ROOT_DIR:-}" != "" ]; then
     DOCKER_CBS_ROOT_DIR="${CBS_ROOT_DIR}"
 fi
 
-if [[ -n "${JENKINS_URL:-}" ]]; then
+set +e
+AMAZON_LINUX_2=$(grep 'Amazon Linux 2"' /etc/os-release)
+set -e
+if [[ -n "${AMAZON_LINUX_2}" ]]; then
     DOCKER_COMPOSE="docker-compose" # use docker-compose v1 for Jenkins AWS Linux 2
 else
     DOCKER_COMPOSE="docker compose"
@@ -72,7 +75,6 @@ docker exec couchbase couchbase-cli cluster-init --cluster-username Administrato
 docker exec couchbase couchbase-cli setting-index --cluster couchbase://localhost --username Administrator --password password --index-threads 4 --index-log-level verbose --index-max-rollback-points 10 --index-storage-setting default --index-memory-snapshot-interval 150 --index-stable-snapshot-interval 40000
 
 curl -u Administrator:password -v -X POST http://127.0.0.1:8091/node/controller/rename -d 'hostname=127.0.0.1'
-
 
 if [ "${MULTI_NODE:-}" == "true" ]; then
     REPLICA1_NAME=couchbase-replica1

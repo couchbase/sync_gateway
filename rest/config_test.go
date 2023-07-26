@@ -678,7 +678,7 @@ func TestSetupAndValidateLogging(t *testing.T) {
 	t.Skip("Skipping TestSetupAndValidateLogging")
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	sc := &StartupConfig{}
-	err := sc.SetupAndValidateLogging()
+	err := sc.SetupAndValidateLogging(base.TestCtx(t))
 	assert.NoError(t, err, "Setup and validate logging should be successful")
 	assert.NotEmpty(t, sc.Logging)
 }
@@ -688,7 +688,7 @@ func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	logFilePath := "/var/log/sync_gateway"
 	sc := &StartupConfig{Logging: base.LoggingConfig{LogFilePath: logFilePath, RedactionLevel: base.RedactFull}}
-	err := sc.SetupAndValidateLogging()
+	err := sc.SetupAndValidateLogging(base.TestCtx(t))
 	assert.NoError(t, err, "Setup and validate logging should be successful")
 	assert.Equal(t, base.RedactFull, sc.Logging.RedactionLevel)
 }
@@ -1328,13 +1328,13 @@ func TestDefaultLogging(t *testing.T) {
 	assert.Equal(t, base.RedactPartial, config.Logging.RedactionLevel)
 	assert.Equal(t, true, base.RedactUserData)
 
-	require.NoError(t, config.SetupAndValidateLogging())
+	require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
 	assert.Equal(t, base.LevelNone, *base.ConsoleLogLevel())
 	assert.Equal(t, []string{"HTTP"}, base.ConsoleLogKey().EnabledLogKeys())
 
 	// setting just a log key should enable logging
 	config.Logging.Console = &base.ConsoleLoggerConfig{LogKeys: []string{"CRUD"}}
-	require.NoError(t, config.SetupAndValidateLogging())
+	require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
 	assert.Equal(t, base.LevelInfo, *base.ConsoleLogLevel())
 	assert.Equal(t, []string{"CRUD", "HTTP"}, base.ConsoleLogKey().EnabledLogKeys())
 }

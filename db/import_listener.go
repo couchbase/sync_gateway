@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -107,7 +108,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	cbStore, ok := base.AsCouchbaseBucketStore(il.bucket)
 	if !ok {
 		// walrus is not a couchbasestore
-		return il.bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
+		return il.bucket.StartDCPFeed(il.loggingCtx, feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	}
 
 	if !base.IsEnterpriseEdition() {
@@ -116,7 +117,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 		if err != nil {
 			return err
 		}
-		return base.StartGocbDCPFeed(gocbv2Bucket, il.bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
+		return base.StartGocbDCPFeed(il.loggingCtx, gocbv2Bucket, il.bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
 
 	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
@@ -157,6 +158,18 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 }
 
 func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
+	var importAttempt bool
+	startTime := time.Now()
+	defer func() {
+		// if we aren't attempting to import a doc we don't want a calculation to happen
+		if !importAttempt {
+			return
+		}
+		functionTime := time.Since(startTime).Milliseconds()
+		bytes := len(event.Value)
+		stat := CalculateComputeStat(int64(bytes), functionTime)
+		il.dbStats.ImportProcessCompute.Add(stat)
+	}()
 	// Unmarshal the doc metadata (if present) to determine if this mutation requires import.
 	collectionCtx, ok := il.collections[event.CollectionID]
 	if !ok {
@@ -184,6 +197,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 
 	// If syncData is nil, or if this was not an SG write, attempt to import
 	if syncData == nil || !isSGWrite {
+		importAttempt = true
 		isDelete := event.Opcode == sgbucket.FeedOpDeletion
 		if isDelete {
 			rawBody = nil

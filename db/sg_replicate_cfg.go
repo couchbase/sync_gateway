@@ -447,7 +447,7 @@ func (ar *ActiveReplicator) alignState(ctx context.Context, targetState string) 
 
 }
 
-func (dbc *DatabaseContext) StartReplications(ctx context.Context) {
+func (dbc *DatabaseContext) startReplications(ctx context.Context) {
 	if dbc.Options.SGReplicateOptions.Enabled {
 		base.DebugfCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Will start Inter-Sync Gateway Replications for database %q", dbc.Name)
 		dbc.SGReplicateMgr.closeWg.Add(1)

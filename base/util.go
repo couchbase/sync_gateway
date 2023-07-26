@@ -26,6 +26,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"reflect"
 	"regexp"
 	"runtime"
 	"runtime/debug"
@@ -58,6 +59,15 @@ type NonCancellableContext struct {
 func NewNonCancelCtx() NonCancellableContext {
 	ctxStruct := NonCancellableContext{
 		Ctx: context.Background(),
+	}
+	return ctxStruct
+}
+
+// NewNonCancelCtx creates a new background context struct for operations that require a fresh context, with database logging context added
+func NewNonCancelCtxForDatabase(dbName string) NonCancellableContext {
+	dbLogContext := DatabaseLogCtx(context.Background(), dbName)
+	ctxStruct := NonCancellableContext{
+		Ctx: dbLogContext,
 	}
 	return ctxStruct
 }
@@ -1650,15 +1660,24 @@ func GetHttpClientForWebSocket(insecureSkipVerify bool) *http.Client {
 // Turns off TCP NODELAY on a TCP connection.
 // On success returns true; on failure logs a warning and returns false.
 // (There's really no reason for a caller to take note of the return value.)
-func turnOffNoDelay(ctx context.Context, conn net.Conn) bool {
-	if tcpConn, ok := conn.(*net.TCPConn); !ok {
-		WarnfCtx(ctx, "Couldn't turn off NODELAY for %v: %T is not type *net.TCPConn", conn, conn)
-	} else if err := tcpConn.SetNoDelay(false); err != nil {
-		WarnfCtx(ctx, "Couldn't turn off NODELAY for %v: %v", conn, err)
-	} else {
-		return true
+func turnOffNoDelay(ctx context.Context, conn net.Conn) {
+	netConnection := conn
+	var tcpConn *net.TCPConn
+
+	if tlsConn, ok := netConnection.(*tls.Conn); ok {
+		netConnection = tlsConn.NetConn()
 	}
-	return false
+
+	if netTCPConn, isTCPConn := netConnection.(*net.TCPConn); isTCPConn {
+		tcpConn = netTCPConn
+	} else {
+		WarnfCtx(ctx, "Couldn't turn off NODELAY for %v: %T is not type *net.TCPConn", conn, conn)
+		return
+	}
+
+	if err := tcpConn.SetNoDelay(false); err != nil {
+		WarnfCtx(ctx, "Couldn't turn off NODELAY for %v: %v", conn, err)
+	}
 }
 
 // IsConnectionRefusedError returns true if the given error is due to a connection being actively refused.
@@ -1793,9 +1812,13 @@ func safeCutAfter(s, sep string) (value, remainder string) {
 func AllOrNoneNil(vals ...interface{}) bool {
 	nonNil := 0
 	for _, val := range vals {
-		if val != nil {
-			nonNil++
+		// slow path reflect for typed nils
+		// see: https://codefibershq.com/blog/golang-why-nil-is-not-always-nil
+		if val == nil || reflect.ValueOf(val).IsNil() {
+			continue
 		}
+		nonNil++
+
 	}
 	return nonNil == 0 || nonNil == len(vals)
 }

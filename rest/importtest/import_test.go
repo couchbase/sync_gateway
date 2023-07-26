@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
@@ -1376,8 +1377,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 
 }
 
-// Verify that an on-demand import of a null document during write doesn't block
-// the incoming write
+// Verify that an on-demand import of a null document during write doesn't block the incoming write
 func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
@@ -1394,12 +1394,55 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
-	key := "TestXattrOnDemandImportNullBody"
+	key := t.Name()
 
-	// Write directly to bucket with an null body
+	// Write json doc directly to bucket with a null body
 	nullBody := []byte("null")
 	_, err := dataStore.AddRaw(key, 0, nullBody)
 	require.NoError(t, err, "Error writing SDK doc")
+
+	// Attempt to get the doc via Sync Gateway, triggering a cancelled on-demand import of the null document
+	response := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+key, "")
+	rest.RequireStatus(t, response, http.StatusBadRequest) // import attempted with empty body
+
+	// Attempt to update the doc via Sync Gateway, triggering on-demand import of the null document - should ignore empty body error and proceed with write
+	mobileBody := make(map[string]interface{})
+	mobileBody["type"] = "mobile"
+	mobileBody["channels"] = "ABC"
+	mobileBody["foo"] = "bar"
+	mobileBodyMarshalled, err := base.JSONMarshal(mobileBody)
+	assert.NoError(t, err, "Error marshalling body")
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+key, string(mobileBodyMarshalled))
+	rest.RequireStatus(t, response, 201)
+}
+
+// Verify that an on-demand import of a nil document during write doesn't block the incoming write
+func TestOnDemandWriteImportReplacingNilDoc(t *testing.T) {
+
+	base.SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := rest.RestTesterConfig{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: false,
+		}},
+	}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
+
+	key := t.Name()
+
+	// Write binary doc directly to bucket with a nil body
+	var nilBody []byte
+	_, err := dataStore.AddRaw(key, 0, nilBody)
+	require.NoError(t, err, "Error writing SDK doc")
+
+	// Attempt to get the doc via Sync Gateway, triggering a cancelled on-demand import of the null document
+	response := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+key, "")
+	rest.RequireStatus(t, response, 404)
 
 	// Attempt to update the doc via Sync Gateway, triggering on-demand import of the null document
 	mobileBody := make(map[string]interface{})
@@ -1408,9 +1451,8 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 	mobileBody["foo"] = "bar"
 	mobileBodyMarshalled, err := base.JSONMarshal(mobileBody)
 	assert.NoError(t, err, "Error marshalling body")
-	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+key, string(mobileBodyMarshalled))
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+key, string(mobileBodyMarshalled))
 	rest.RequireStatus(t, response, 201)
-
 }
 
 // Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is imported via on-demand
@@ -1896,6 +1938,181 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	// 6. Attempt to retrieve previous revision body.  Should return missing, as rev wasn't in rev cache when import occurred.
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
 	assert.Equal(t, 404, response.Code)
+}
+
+func TestImportComputeStatOnDemandGet(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: false,
+		}},
+	}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+
+	key := t.Name()
+	docBody := make(map[string]interface{})
+	docBody["test"] = t.Name()
+	docBody["channels"] = "ABC"
+
+	// assert the stat starts at 0 for a new database
+	computeStat := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	require.Equal(t, int64(0), computeStat)
+
+	// add doc to bucket
+	_, err := dataStore.Add(key, 0, docBody)
+	require.NoError(t, err, fmt.Sprintf("Unable to insert doc %s", key))
+
+	// trigger import via SG retrieval
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	// assert the process compute stat has incremented
+	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	require.Greater(t, computeStat1, int64(0))
+
+	// update doc in bucket
+	updatedBody := make(map[string]interface{})
+	updatedBody["test"] = t.Name() + "Modified"
+	updatedBody["channels"] = "DEF"
+	err = dataStore.Set(key, 0, nil, updatedBody)
+	require.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
+
+	// trigger import via SG retrieval
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
+	rest.RequireStatus(t, response, http.StatusOK)
+	// assert the process compute stat has incremented again after another import
+	computeStat2 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	require.Greater(t, computeStat2, computeStat1)
+
+}
+
+func TestImportComputeStatOnDemandWrite(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	importFilter := `function (doc) { return doc.type == "mobile"}`
+	rtConfig := rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport:   false,
+			ImportFilter: &importFilter,
+		}},
+	}
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+
+	key := t.Name()
+	docBody := make(map[string]interface{})
+	docBody["type"] = "non-mobile"
+	docBody["channels"] = "ABC"
+
+	// assert the stat starts at 0 for a new database
+	computeStat := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	require.Equal(t, int64(0), computeStat)
+
+	// add doc to bucket
+	_, err := dataStore.Add(key, 0, docBody)
+	require.NoError(t, err, fmt.Sprintf("Unable to insert doc %s", key))
+
+	// trigger on demand import of this doc - should be rejected
+	response := rt.SendAdminRequest("GET", "/db/_raw/"+key, "")
+	rest.RequireStatus(t, response, http.StatusNotFound)
+	assertDocProperty(t, response, "reason", "Not imported")
+
+	// assert stat still no incremented as import filter rejects the doc
+	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	require.Equal(t, int64(0), computeStat1)
+
+	// rewrite through SG - should treat as new insert
+	docBodyString := `{"type":"SG client rewrite",
+	                 "channels": "NBC"}`
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), docBodyString)
+	rest.RequireStatus(t, response, http.StatusCreated)
+
+	// assert stat increases as function OnDemandImportForWrite will have been executed
+	computeStat2 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	require.Greater(t, computeStat2, computeStat1)
+}
+
+func TestAutoImportComputeStat(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: true,
+		}},
+	}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+
+	key := t.Name()
+	docBody := make(map[string]interface{})
+	docBody["test"] = t.Name()
+	docBody["channels"] = "ABC"
+
+	// assert the stat starts at 0 for a new database
+	computeStat := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	require.Equal(t, int64(0), computeStat)
+
+	// add doc to bucket
+	_, err := dataStore.Add(key, 0, docBody)
+	require.NoError(t, err, fmt.Sprintf("Unable to insert doc %s", key))
+
+	// wait for import to process
+	_, ok := base.WaitForStat(func() int64 {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
+	}, 1)
+	require.True(t, ok)
+
+	// assert the stat increments for the auto import of the above doc
+	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	require.Greater(t, computeStat1, int64(0))
+}
+
+func TestQueryResyncImportComputeStat(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+
+	rtConfig := rest.RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: false,
+			Unsupported: &db.UnsupportedOptions{
+				UseQueryBasedResyncManager: true,
+			},
+		}},
+	}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	const numDocs = 100
+	var resp *rest.TestResponse
+
+	for i := 0; i < numDocs; i++ {
+		resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"random": "doc"}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+	}
+
+	computeStat := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	require.Equal(t, int64(0), computeStat)
+
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.NoError(t, rt.WaitForDatabaseState(rt.GetDatabase().Name, db.DBOffline))
+
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
+
+	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	require.Greater(t, computeStat1, computeStat)
+
 }
 
 // Verify config flag for import creation of backup revision on import

@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 )
 
 func TestCollectionsSyncImportFunctions(t *testing.T) {
@@ -252,12 +253,14 @@ func TestRequireResync(t *testing.T) {
 	rest.RequireStatus(t, onlineResponse, http.StatusOK)
 	require.NoError(t, rt.WaitForDatabaseState(db2Name, db.DBOffline))
 
-	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	dbRootResponse = rest.DatabaseRoot{}
-	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
-	require.Equal(t, db.RunStateString[db.DBOffline], dbRootResponse.State)
-
+	needsResync := []string{scope + "." + collection1}
+	rest.WaitAndAssertCondition(t, func() bool {
+		resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+		dbRootResponse = rest.DatabaseRoot{}
+		require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
+		return slices.Equal(needsResync, dbRootResponse.RequireResync)
+	}, "expected %+v but got %+v for requireResync", needsResync, dbRootResponse.RequireResync)
 	// Run resync for collection
 	resyncCollections := make(db.ResyncCollections, 0)
 	resyncCollections[scope] = []string{collection1}
@@ -267,18 +270,10 @@ func TestRequireResync(t *testing.T) {
 	resp = rt.SendAdminRequest("POST", "/"+db2Name+"/_resync?action=start&regenerate_sequences=true", string(resyncPayload))
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	err := rt.WaitForConditionWithOptions(func() bool {
-		resyncStatus := db.BackgroundManagerStatus{}
-		response := rt.SendAdminRequest("GET", "/"+db2Name+"/_resync", "")
-		err := base.JSONUnmarshal(response.BodyBytes(), &resyncStatus)
-		assert.NoError(t, err)
-		if resyncStatus.State == db.BackgroundProcessStateCompleted {
-			return true
-		} else {
-			return false
-		}
-	}, 200, 200)
-	require.NoError(t, err)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
 
 	// Attempt online again, should now succeed
 	onlineResponse = rt.SendAdminRequest("POST", "/"+db2Name+"/_online", "")

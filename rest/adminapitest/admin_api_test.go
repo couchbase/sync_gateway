@@ -10,6 +10,7 @@ package adminapitest
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -637,18 +638,7 @@ func TestDBOfflinePostResyncUsingDCPStream(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Offline")
 
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 200)
-	err := rt.WaitForCondition(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncManagerResponse
-		err := json.Unmarshal(response.BodyBytes(), &status)
-		assert.NoError(t, err)
-
-		var val interface{}
-		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
-	})
-	assert.NoError(t, err)
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 }
 
 // Take DB offline and ensure only one _resync can be in progress
@@ -691,18 +681,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
 
-	err := rt.WaitForCondition(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncManagerResponse
-		err := json.Unmarshal(response.BodyBytes(), &status)
-		assert.NoError(t, err)
-
-		var val interface{}
-		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
-	})
-	assert.NoError(t, err)
+	_ = rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
 
 	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
@@ -748,18 +727,7 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
 
-	err := rt.WaitForConditionWithOptions(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncManagerResponse
-		err := json.Unmarshal(response.BodyBytes(), &status)
-		assert.NoError(t, err)
-
-		var val interface{}
-		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
-	}, 200, 200)
-	assert.NoError(t, err)
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
@@ -841,23 +809,7 @@ func TestResync(t *testing.T) {
 			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 
-			var resyncManagerStatus db.ResyncManagerResponseDCP
-			err = rt.WaitForCondition(func() bool {
-				response := rt.SendAdminRequest("GET", "/db/_resync", "")
-				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
-				assert.NoError(t, err)
-
-				var val interface{}
-				_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-				if resyncManagerStatus.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err) {
-					return true
-				} else {
-					t.Logf("resyncManagerStatus.State != %v: %v - err:%v", db.BackgroundProcessStateCompleted, resyncManagerStatus.State, err)
-					return false
-				}
-			})
-			assert.NoError(t, err)
+			resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 			assert.Equal(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
 
@@ -928,23 +880,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 
-			var resyncManagerStatus db.ResyncManagerResponseDCP
-			err = rt.WaitForConditionWithOptions(func() bool {
-				response := rt.SendAdminRequest("GET", "/db/_resync", "")
-				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
-				assert.NoError(t, err)
-
-				var val interface{}
-				_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-				if resyncManagerStatus.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err) {
-					return true
-				} else {
-					t.Logf("resyncManagerStatus.State != %v: %v - err:%v", db.BackgroundProcessStateCompleted, resyncManagerStatus.State, err)
-					return false
-				}
-			}, 200, 200)
-			assert.NoError(t, err)
+			resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 			assert.Equal(t, testCase.docsCreated, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
 
@@ -2672,7 +2608,7 @@ func TestConfigEndpoint(t *testing.T) {
 			base.InitializeMemoryLoggers()
 			tempDir := os.TempDir()
 			test := rest.DefaultStartupConfig(tempDir)
-			err := test.SetupAndValidateLogging()
+			err := test.SetupAndValidateLogging(base.TestCtx(t))
 			assert.NoError(t, err)
 
 			rt := rest.NewRestTester(t, nil)
@@ -2773,7 +2709,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	base.InitializeMemoryLoggers()
 	tempDir := os.TempDir()
 	test := rest.DefaultStartupConfig(tempDir)
-	err := test.SetupAndValidateLogging()
+	err := test.SetupAndValidateLogging(base.TestCtx(t))
 	assert.NoError(t, err)
 
 	rt := rest.NewRestTester(t, nil)
@@ -4021,6 +3957,19 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
 	resp.RequireStatus(http.StatusCreated)
 
+	// because we moved database - resync is required for the default collection before we're able to bring db2 online
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db2/_resync?regenerate_sequences=true", "")
+	resp.RequireStatus(http.StatusOK)
+
+	// after resync is done, state will flip back to offline
+	BootstrapWaitForDatabaseState(t, "db2", db.DBOffline)
+
+	// now bring the db online so we're able to check dest factory
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db2/_online", "")
+	resp.RequireStatus(http.StatusOK)
+
+	BootstrapWaitForDatabaseState(t, "db2", db.DBOnline)
+
 	scopeName := ""
 	collectionNames := []string{}
 	// Validate that deleted database is no longer in dest factory set
@@ -4028,6 +3977,22 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	assert.Equal(t, base.ErrNotFound, fetchDb1DestErr)
 	_, fetchDb2DestErr := base.FetchDestFactory(base.ImportDestKey("db2", scopeName, collectionNames))
 	assert.NoError(t, fetchDb2DestErr)
+}
+
+func BootstrapWaitForDatabaseState(t *testing.T, dbName string, state uint32) {
+	err := base.WaitForNoError(func() error {
+		resp := rest.BootstrapAdminRequest(t, http.MethodGet, "/"+dbName+"/", "")
+		if resp.StatusCode != http.StatusOK {
+			return errors.New("expected 200 status")
+		}
+		var rootResp rest.DatabaseRoot
+		require.NoError(t, json.Unmarshal([]byte(resp.Body), &rootResp))
+		if rootResp.State != db.RunStateString[state] {
+			return errors.New("expected db to be offline")
+		}
+		return nil
+	})
+	require.NoError(t, err)
 }
 
 func TestApiInternalPropertiesHandling(t *testing.T) {

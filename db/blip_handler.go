@@ -534,6 +534,7 @@ func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string) []inte
 }
 
 func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}, ignoreNoConflicts bool) error {
+	startTime := time.Now()
 	outrq := blip.NewRequest()
 	outrq.SetProfile("changes")
 	if ignoreNoConflicts {
@@ -562,6 +563,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		if !bh.sendBLIPMessage(sender, outrq) {
 			return ErrClosedBLIPSender
 		}
+		bh.reportComputeStat(outrq, startTime)
 
 		bh.inFlightChangesThrottle <- struct{}{}
 		atomic.AddInt64(&bh.changesPendingResponseCount, 1)
@@ -589,6 +591,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		if !bh.sendBLIPMessage(sender, outrq) {
 			return ErrClosedBLIPSender
 		}
+		bh.reportComputeStat(outrq, startTime)
 	}
 
 	if len(changeArray) > 0 {
@@ -1294,6 +1297,7 @@ var errNoBlipHandler = fmt.Errorf("404 - No handler for BLIP request")
 // sendGetAttachment requests the full attachment from the peer.
 func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name string, digest string, meta map[string]interface{}) ([]byte, error) {
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Asking for attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
+	startTime := time.Now()
 	outrq := blip.NewRequest()
 	outrq.SetProfile(MessageGetAttachment)
 	outrq.Properties[GetAttachmentDigest] = digest
@@ -1311,6 +1315,10 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 	if !bh.sendBLIPMessage(sender, outrq) {
 		return nil, ErrClosedBLIPSender
 	}
+	// We get here from processRev which is has its own sync compute calculation associated with it
+	// We still need to have a sync compute calculation here since we are sending a message along blip
+	// that needs accounting for
+	bh.reportComputeStat(outrq, startTime)
 
 	resp := outrq.Response()
 
@@ -1347,6 +1355,7 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 	if err != nil {
 		return err
 	}
+	startTime := time.Now()
 	outrq := blip.NewRequest()
 	outrq.SetProfile(MessageProveAttachment)
 	outrq.Properties[ProveAttachmentDigest] = digest
@@ -1357,6 +1366,10 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 	if !bh.sendBLIPMessage(sender, outrq) {
 		return ErrClosedBLIPSender
 	}
+	// We get here from processRev which is has its own sync compute calculation associated with it
+	// We still need to have a sync compute calculation here since we are sending a message along blip
+	// that needs accounting for
+	bh.reportComputeStat(outrq, startTime)
 
 	resp := outrq.Response()
 

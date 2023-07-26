@@ -378,7 +378,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 			ExplicitChannels: base.SetOf("*"),
 		},
 	}
-	err := rt.ServerContext().installPrincipals(ctx, rt.GetDatabase(), existingUsers, "user")
+	err := rt.GetDatabase().InstallPrincipals(ctx, existingUsers, "user")
 	require.NoError(t, err)
 
 	existingRoles := map[string]*auth.PrincipalConfig{
@@ -391,7 +391,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 			ExplicitChannels: base.SetOf("*"),
 		},
 	}
-	err = rt.ServerContext().installPrincipals(ctx, rt.GetDatabase(), existingRoles, "role")
+	err = rt.GetDatabase().InstallPrincipals(ctx, existingRoles, "role")
 	require.NoError(t, err)
 
 	// Config to migrate to persistent config on bucket
