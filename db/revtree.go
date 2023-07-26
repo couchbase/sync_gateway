@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -62,10 +63,15 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	}
 	revIndexes := map[string]int{"": -1}
 
+	// there's no way to lookup leaves by key without doing a full tree iteration, so we'll just do it once the first time we need it
+	var leaves map[string]*RevInfo
+	leavesOnce := sync.Once{}
+
 	i := 0
 	for _, info := range tree {
 		revIndexes[info.ID] = i
 		rep.Revs[i] = info.ID
+
 		if info.Body != nil || info.BodyKey != "" {
 			// Marshal either the BodyKey or the Body, depending on whether a BodyKey is specified
 			if info.BodyKey == "" {
@@ -80,25 +86,37 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 				rep.BodyKeyMap[strconv.FormatInt(int64(i), 10)] = info.BodyKey
 			}
 		}
-		// TODO: Check if leaf revision before storing
+
+		// for leaf revisions we'll store channel information
+		// there's some duplication here for the current rev
+		// (active channels are stored outside the revtree)
+		// but special casing this doesn't seem worthwhile
 		if len(info.Channels) > 0 {
-			if rep.ChannelsMap == nil {
-				rep.ChannelsMap = make(map[string]base.Set, 1)
+			leavesOnce.Do(func() {
+				leaves = tree.Leaves()
+			})
+			if _, isLeaf := leaves[info.ID]; isLeaf {
+				if rep.ChannelsMap == nil {
+					rep.ChannelsMap = make(map[string]base.Set, 1)
+				}
+				rep.ChannelsMap[strconv.FormatInt(int64(i), 10)] = info.Channels
 			}
-			rep.ChannelsMap[strconv.FormatInt(int64(i), 10)] = info.Channels
 		}
+
 		if info.Deleted {
 			if rep.Deleted == nil {
 				rep.Deleted = make([]int, 0, 1)
 			}
 			rep.Deleted = append(rep.Deleted, i)
 		}
+
 		if info.HasAttachments {
 			if rep.HasAttachments == nil {
 				rep.HasAttachments = make([]int, 0, 1)
 			}
 			rep.HasAttachments = append(rep.HasAttachments, i)
 		}
+
 		i++
 	}
 
@@ -154,29 +172,40 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 				info.BodyKey = bodyKey
 			}
 		}
-		if c, ok := rep.ChannelsMap[stringIndex]; ok && c != nil {
-			info.Channels = c
-		}
 		parentIndex := rep.Parents[i]
 		if parentIndex >= 0 {
 			info.Parent = rep.Revs[parentIndex]
 		}
 		(*tree)[revid] = &info
 	}
-	if rep.Deleted != nil {
-		for _, i := range rep.Deleted {
-			info := (*tree)[rep.Revs[i]]
-			info.Deleted = true // because tree[rep.Revs[i]].Deleted=true is a compile error
-			(*tree)[rep.Revs[i]] = info
+
+	for _, i := range rep.Deleted {
+		info := (*tree)[rep.Revs[i]]
+		info.Deleted = true // because tree[rep.Revs[i]].Deleted=true is a compile error
+		(*tree)[rep.Revs[i]] = info
+	}
+
+	for _, i := range rep.HasAttachments {
+		info := (*tree)[rep.Revs[i]]
+		info.HasAttachments = true
+		(*tree)[rep.Revs[i]] = info
+	}
+
+	var leaves map[string]*RevInfo
+	if len(rep.ChannelsMap) > 0 {
+		leaves = tree.Leaves()
+	}
+	for iStr, channels := range rep.ChannelsMap {
+		i, err := strconv.ParseInt(iStr, 10, 64)
+		if err != nil {
+			return err
+		}
+		info := (*tree)[rep.Revs[i]]
+		if _, isLeaf := leaves[info.ID]; isLeaf {
+			info.Channels = channels
 		}
 	}
-	if rep.HasAttachments != nil {
-		for _, i := range rep.HasAttachments {
-			info := (*tree)[rep.Revs[i]]
-			info.HasAttachments = true
-			(*tree)[rep.Revs[i]] = info
-		}
-	}
+
 	return
 }
 
@@ -289,6 +318,15 @@ func (tree RevTree) GetLeavesFiltered(filter func(revId string) bool) []string {
 	}
 	return leaves
 
+}
+
+// Leaves returns a map of revisions that are leaves in the tree.
+func (tree RevTree) Leaves() map[string]*RevInfo {
+	m := make(map[string]*RevInfo)
+	tree.forEachLeaf(func(info *RevInfo) {
+		m[info.ID] = info
+	})
+	return m
 }
 
 func (tree RevTree) forEachLeaf(callback func(*RevInfo)) {
