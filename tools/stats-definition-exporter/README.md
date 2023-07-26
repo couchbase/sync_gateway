@@ -27,11 +27,11 @@ The JSON is an array of objects in the current format:
 ]
 ```
 
-`name` is the fully qualified name of the stat.
-`labels` is a list of label keys that Prometheus uses to uniquely distinguish between the same stat being declared multiple times. For example, `databases`, `collections` etc.
-`help` contains a description of what the stat does.
-`format` is the format of the value the stat stores such as int, float, duration, etc.
-`type` is how Prometheus shows the stat such as it being a such as counter, gauge, etc.
+`name` is the fully qualified name of the stat. \
+`labels` is a list of label keys that Prometheus uses to uniquely distinguish between the same stat being declared multiple times. For example, `databases`, `collections` etc. \
+`help` contains a description of what the stat does. \
+`format` is the format of the value the stat stores such as int, float, duration, etc. \
+`type` is how Prometheus shows the stat such as it being a such as counter, gauge, etc. \
 
 ## Sample output
 ```json
