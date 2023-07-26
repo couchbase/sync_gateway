@@ -1159,6 +1159,8 @@ func (c *DatabaseCollection) ForEachDocID(ctx context.Context, callback ForEachD
 // Iterate over the results of an AllDocs query, performing ForEachDocID handling for each row
 func (c *DatabaseCollection) processForEachDocIDResults(callback ForEachDocIDFunc, limit uint64, results sgbucket.QueryResultIterator) error {
 
+	_, isView := results.(*sgbucket.ViewResult)
+
 	count := uint64(0)
 	for {
 		var queryRow AllDocsIndexQueryRow
@@ -1166,7 +1168,7 @@ func (c *DatabaseCollection) processForEachDocIDResults(callback ForEachDocIDFun
 		var docid, revid string
 		var seq uint64
 		var channels []string
-		if c.useViews() {
+		if isView {
 			var viewRow AllDocsViewQueryRow
 			found = results.Next(&viewRow)
 			if found {
