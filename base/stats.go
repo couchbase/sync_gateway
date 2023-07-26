@@ -702,11 +702,47 @@ type SharedBucketImportStats struct {
 	ImportPartitions *SgwIntStat `json:"import_partitions"`
 }
 
+type SgwStatWrapper interface {
+	FormatString() string
+	Name() string
+	Help() string
+	LabelKeys() []string
+	ValueTypeString() string
+}
+
 type SgwStat struct {
-	statFQN       string
-	statDesc      *prometheus.Desc
-	labelValues   []string
-	statValueType prometheus.ValueType
+	fqn       string
+	help      string
+	labels    map[string]string
+	valueType prometheus.ValueType
+	desc      *prometheus.Desc
+}
+
+func (s SgwStat) Name() string {
+	return s.fqn
+}
+
+func (s SgwStat) Help() string {
+	return s.help
+}
+
+func (s SgwStat) LabelKeys() []string {
+	labelKeys := make([]string, 0, len(s.labels))
+	for labelKey := range s.labels {
+		labelKeys = append(labelKeys, labelKey)
+	}
+
+	return labelKeys
+}
+
+func (s SgwStat) ValueTypeString() string {
+	switch s.valueType {
+	case prometheus.CounterValue:
+		return "counter"
+	case prometheus.GaugeValue:
+		return "gauge"
+	}
+	return ""
 }
 
 type SgwIntStat struct {
@@ -725,21 +761,26 @@ type SgwBoolStat struct {
 	Val bool
 }
 
+func (s *SgwBoolStat) FormatString() string {
+	return "bool"
+}
+
 func newSGWStat(subsystem string, key string, description string, labelKeys []string, labelVals []string, statValueType prometheus.ValueType) *SgwStat {
 	name := prometheus.BuildFQName(NamespaceKey, subsystem, key)
 
-	constLabels := make(prometheus.Labels)
+	labels := make(prometheus.Labels)
 	for i, labelKey := range labelKeys {
-		constLabels[labelKey] = labelVals[i]
+		labels[labelKey] = labelVals[i]
 	}
 
-	desc := prometheus.NewDesc(name, description, nil, constLabels)
+	desc := prometheus.NewDesc(name, description, nil, labels)
 
 	return &SgwStat{
-		statFQN:       name,
-		statDesc:      desc,
-		labelValues:   labelVals,
-		statValueType: statValueType,
+		fqn:       name,
+		help:      description,
+		labels:    labels,
+		valueType: statValueType,
+		desc:      desc,
 	}
 }
 
@@ -763,12 +804,16 @@ func NewIntStat(subsystem string, key string, description string, labelKeys []st
 	return stat, nil
 }
 
+func (s *SgwIntStat) FormatString() string {
+	return "int"
+}
+
 func (s *SgwIntStat) Describe(ch chan<- *prometheus.Desc) {
-	ch <- s.statDesc
+	ch <- s.desc
 }
 
 func (s *SgwIntStat) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(s.Value()))
+	ch <- prometheus.MustNewConstMetric(s.desc, s.valueType, float64(s.Value()))
 }
 
 func (s *SgwIntStat) MarshalJSON() ([]byte, error) {
@@ -798,12 +843,16 @@ func NewFloatStat(subsystem string, key string, description string, labelKeys []
 	return stat, nil
 }
 
+func (s *SgwFloatStat) FormatString() string {
+	return "float"
+}
+
 func (s *SgwFloatStat) Describe(ch chan<- *prometheus.Desc) {
-	ch <- s.statDesc
+	ch <- s.desc
 }
 
 func (s *SgwFloatStat) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, math.Float64frombits(atomic.LoadUint64(&s.Val)))
+	ch <- prometheus.MustNewConstMetric(s.desc, s.valueType, math.Float64frombits(atomic.LoadUint64(&s.Val)))
 }
 
 func (s *SgwFloatStat) Set(newV float64) {
@@ -878,12 +927,16 @@ func NewDurStat(subsystem string, key string, description string, labelKeys []st
 	return stat, nil
 }
 
+func (s *SgwDurStat) FormatString() string {
+	return "duration"
+}
+
 func (s *SgwDurStat) Describe(ch chan<- *prometheus.Desc) {
-	ch <- s.statDesc
+	ch <- s.desc
 }
 
 func (s *SgwDurStat) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(time.Since(s.StartTime)))
+	ch <- prometheus.MustNewConstMetric(s.desc, s.valueType, float64(time.Since(s.StartTime)))
 }
 
 // MarshalJSON returns the JSON encoding of duration - the time elapsed since s.Val.
