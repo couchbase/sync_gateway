@@ -36,15 +36,15 @@ func getOutputFileName() string {
 	return DefaultFileName
 }
 
-func writeToFile(stats []StatDefinition) error {
-	jsonFilePath := DefaultFilePath + JsonFileName
+func writeToFile(stats []StatDefinition, filePath string) error {
+	jsonFilePath := filePath + JsonFileName
 	err := outputJSON(jsonFilePath, stats)
 	if err != nil {
 		return fmt.Errorf("could not write json: %w", err)
 	}
 
 	// Add to archive
-	tarFilePath := DefaultFilePath + getOutputFileName() + TarFileExtension
+	tarFilePath := filePath + getOutputFileName() + TarFileExtension
 	err = outputTar(jsonFilePath, tarFilePath)
 	if err != nil {
 		return fmt.Errorf("could not add to tar: %w", err)
@@ -98,10 +98,8 @@ func outputTar(fileToAdd string, fullOutputPath string) error {
 	if err != nil {
 		return fmt.Errorf("could not create tar file: %w", err)
 	}
-	defer tarFile.Close()
 
 	tarWriter := tar.NewWriter(tarFile)
-	defer tarWriter.Close()
 
 	// Make sure file exists and check if not a directory
 	info, err := os.Stat(fileToAdd)
@@ -126,11 +124,26 @@ func outputTar(fileToAdd string, fullOutputPath string) error {
 	if err != nil {
 		return fmt.Errorf("could not get open file to add: %w", err)
 	}
-	defer file.Close()
 
 	_, err = io.Copy(tarWriter, file)
 	if err != nil {
 		return fmt.Errorf("could not write file to add to tar: %w", err)
+	}
+
+	// Close all the files
+	err = file.Close()
+	if err != nil {
+		return fmt.Errorf("could not close file: %w", err)
+	}
+
+	err = tarWriter.Close()
+	if err != nil {
+		return fmt.Errorf("could not close tar writer: %w", err)
+	}
+
+	err = tarFile.Close()
+	if err != nil {
+		return fmt.Errorf("could not close tar file: %w", err)
 	}
 
 	return nil
@@ -141,21 +154,34 @@ func outputGzip(fileToAdd string, fullOutputPath string) error {
 	if err != nil {
 		return fmt.Errorf("could not open file to add: %w", err)
 	}
-	defer fileToAddReader.Close()
 
 	gzipWriter, err := os.Create(fullOutputPath)
 	if err != nil {
 		return fmt.Errorf("could not create gzip file: %w", err)
 	}
-	defer gzipWriter.Close()
 
 	archiver := gzip.NewWriter(gzipWriter)
 	archiver.Name = filepath.Base(fullOutputPath)
-	defer archiver.Close()
 
 	_, err = io.Copy(archiver, fileToAddReader)
 	if err != nil {
 		return fmt.Errorf("could not copy file to add to gzip file: %w", err)
+	}
+
+	// Close all files and writers
+	err = archiver.Close()
+	if err != nil {
+		return fmt.Errorf("could not close archiver: %w", err)
+	}
+
+	err = gzipWriter.Close()
+	if err != nil {
+		return fmt.Errorf("could not close gzip writer: %w", err)
+	}
+
+	err = fileToAddReader.Close()
+	if err != nil {
+		return fmt.Errorf("could not close file to add reader: %w", err)
 	}
 
 	return nil

@@ -21,41 +21,55 @@ import (
 const buildPlaceholderVersionBuildNumberString = "@PRODUCT_VERSION@"
 
 func main() {
-	outputStdoutOnlyFlag := flag.Bool("no-file", false, "Output stat metadata to stdout only.")
+	outputConsoleOnlyFlag := flag.Bool("no-file", false, "Output stat metadata to console (stdout) only.")
 	flag.Parse()
 
 	logger := log.New(os.Stderr, "", 0)
 
-	err := getStats(logger, *outputStdoutOnlyFlag)
+	stats, err := getStats(logger)
 	if err != nil {
-		logger.Fatal(err)
+		logger.Fatalf("could not get stats: %v", err)
+	}
+
+	if *outputConsoleOnlyFlag {
+		err = statsToConsole(logger, stats)
+	} else {
+		err = statsToFile(logger, stats, DefaultFilePath)
+	}
+	if err != nil {
+		logger.Fatalf("could not write stats: %v", err)
 	}
 }
 
-func getStats(logger *log.Logger, outputStdoutOnly bool) error {
+func getStats(logger *log.Logger) ([]StatDefinition, error) {
 	globalStats, dbStats, err := registerStats()
 	if err != nil {
-		return fmt.Errorf("could not get stats: %w", err)
+		return nil, fmt.Errorf("could not register stats: %w", err)
 	}
 
 	// Append the db stat definitions on to the global stat definitions
 	stats := traverseAndRetrieveStats(logger, globalStats)
 	stats = append(stats, traverseAndRetrieveStats(logger, dbStats)...)
 
-	if outputStdoutOnly {
-		json, err := getJSONBytes(stats)
-		if err != nil {
-			return fmt.Errorf("could not get JSON bytes: %w", err)
-		}
+	return stats, nil
+}
 
-		fmt.Printf("%s", json)
-		return nil
-	}
-
-	err = writeToFile(stats)
+func statsToFile(logger *log.Logger, stats []StatDefinition, filePath string) error {
+	err := writeToFile(stats, filePath)
 	if err != nil {
 		return fmt.Errorf("could not write stat definitions to a file: %w", err)
 	}
+
+	return nil
+}
+
+func statsToConsole(logger *log.Logger, stats []StatDefinition) error {
+	json, err := getJSONBytes(stats)
+	if err != nil {
+		return fmt.Errorf("could not get JSON bytes: %w", err)
+	}
+
+	fmt.Printf("%s", json)
 
 	return nil
 }

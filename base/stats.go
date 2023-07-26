@@ -61,6 +61,16 @@ const (
 
 const StatsGroupKeySyncGateway = "syncgateway"
 
+const (
+	PrometheusValueTypeGauge   = "gauge"
+	PrometheusValueTypeCounter = "counter"
+
+	StatFormatInt      = "int"
+	StatFormatFloat    = "float"
+	StatFormatDuration = "duration"
+	StatFormatBool     = "bool"
+)
+
 type SgwStats struct {
 	GlobalStats     *GlobalStat         `json:"global"`
 	DbStats         map[string]*DbStats `json:"per_db"`
@@ -711,15 +721,15 @@ type SgwStatWrapper interface {
 }
 
 type SgwStat struct {
-	fqn       string
-	help      string
-	labels    map[string]string
-	valueType prometheus.ValueType
-	desc      *prometheus.Desc
+	statFQN       string
+	help          string
+	labels        map[string]string
+	statValueType prometheus.ValueType
+	statDesc      *prometheus.Desc
 }
 
 func (s SgwStat) Name() string {
-	return s.fqn
+	return s.statFQN
 }
 
 func (s SgwStat) Help() string {
@@ -736,11 +746,11 @@ func (s SgwStat) LabelKeys() []string {
 }
 
 func (s SgwStat) ValueTypeString() string {
-	switch s.valueType {
+	switch s.statValueType {
 	case prometheus.CounterValue:
-		return "counter"
+		return PrometheusValueTypeCounter
 	case prometheus.GaugeValue:
-		return "gauge"
+		return PrometheusValueTypeGauge
 	}
 	return ""
 }
@@ -762,25 +772,25 @@ type SgwBoolStat struct {
 }
 
 func (s *SgwBoolStat) FormatString() string {
-	return "bool"
+	return StatFormatBool
 }
 
 func newSGWStat(subsystem string, key string, description string, labelKeys []string, labelVals []string, statValueType prometheus.ValueType) *SgwStat {
 	name := prometheus.BuildFQName(NamespaceKey, subsystem, key)
 
-	labels := make(prometheus.Labels)
+	constLabels := make(prometheus.Labels)
 	for i, labelKey := range labelKeys {
-		labels[labelKey] = labelVals[i]
+		constLabels[labelKey] = labelVals[i]
 	}
 
-	desc := prometheus.NewDesc(name, description, nil, labels)
+	desc := prometheus.NewDesc(name, description, nil, constLabels)
 
 	return &SgwStat{
-		fqn:       name,
-		help:      description,
-		labels:    labels,
-		valueType: statValueType,
-		desc:      desc,
+		statFQN:       name,
+		help:          description,
+		labels:        constLabels,
+		statValueType: statValueType,
+		statDesc:      desc,
 	}
 }
 
@@ -805,15 +815,15 @@ func NewIntStat(subsystem string, key string, description string, labelKeys []st
 }
 
 func (s *SgwIntStat) FormatString() string {
-	return "int"
+	return StatFormatInt
 }
 
 func (s *SgwIntStat) Describe(ch chan<- *prometheus.Desc) {
-	ch <- s.desc
+	ch <- s.statDesc
 }
 
 func (s *SgwIntStat) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(s.desc, s.valueType, float64(s.Value()))
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(s.Value()))
 }
 
 func (s *SgwIntStat) MarshalJSON() ([]byte, error) {
@@ -844,15 +854,15 @@ func NewFloatStat(subsystem string, key string, description string, labelKeys []
 }
 
 func (s *SgwFloatStat) FormatString() string {
-	return "float"
+	return StatFormatFloat
 }
 
 func (s *SgwFloatStat) Describe(ch chan<- *prometheus.Desc) {
-	ch <- s.desc
+	ch <- s.statDesc
 }
 
 func (s *SgwFloatStat) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(s.desc, s.valueType, math.Float64frombits(atomic.LoadUint64(&s.Val)))
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, math.Float64frombits(atomic.LoadUint64(&s.Val)))
 }
 
 func (s *SgwFloatStat) Set(newV float64) {
@@ -928,15 +938,15 @@ func NewDurStat(subsystem string, key string, description string, labelKeys []st
 }
 
 func (s *SgwDurStat) FormatString() string {
-	return "duration"
+	return StatFormatDuration
 }
 
 func (s *SgwDurStat) Describe(ch chan<- *prometheus.Desc) {
-	ch <- s.desc
+	ch <- s.statDesc
 }
 
 func (s *SgwDurStat) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(s.desc, s.valueType, float64(time.Since(s.StartTime)))
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(time.Since(s.StartTime)))
 }
 
 // MarshalJSON returns the JSON encoding of duration - the time elapsed since s.Val.
