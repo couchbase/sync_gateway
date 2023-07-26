@@ -28,8 +28,8 @@ type RevInfo struct {
 	BodyKey        string // Used when revision body stored externally (doc key used for external storage)
 	Deleted        bool
 	depth          uint32
-	Body           []byte // Used when revision body stored inline (stores bodies)
-	Channels       base.Set
+	Body           []byte   // Used when revision body stored inline (stores bodies)
+	Channels       base.Set // Set only if the revision is a leaf revision (we don't store channel history per-revision)
 	HasAttachments bool
 }
 
