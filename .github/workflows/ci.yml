@@ -145,7 +145,7 @@ jobs:
         with:
           go-version: 1.20.3
       - name: Build
-        run: go build -v "./..."
+        run: go build -v "./tools/stats-definition-exporter"
       - name: Run Tests
         run: go test -timeout=5m -count=1 -json -v "./tools/stats-definition-exporter" | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
         shell: bash
