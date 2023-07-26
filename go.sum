@@ -82,8 +82,8 @@ github.com/couchbase/gomemcached v0.2.1 h1:lDONROGbklo8pOt4Sr4eV436PVEaKDr3o9gUl
 github.com/couchbase/gomemcached v0.2.1/go.mod h1:mxliKQxOv84gQ0bJWbI+w9Wxdpt9HjDvgW9MjCym5Vo=
 github.com/couchbase/goutils v0.1.2 h1:gWr8B6XNWPIhfalHNog3qQKfGiYyh4K4VhO3P2o9BCs=
 github.com/couchbase/goutils v0.1.2/go.mod h1:h89Ek/tiOxxqjz30nPPlwZdQbdB8BwgnuBxeoUe/ViE=
-github.com/couchbase/sg-bucket v0.0.0-20230620193828-9d22fb905bd8 h1:Bh2T0nrv1+7cZyrAPfrP7FmHRqRKWJW846fKZu3275U=
-github.com/couchbase/sg-bucket v0.0.0-20230620193828-9d22fb905bd8/go.mod h1:1LT+86k2vAk/puiscgWjGJYAaKxkHUjLg30eG6hzo+k=
+github.com/couchbase/sg-bucket v0.0.0-20230726002412-392d0d8decd4 h1:EkVrt4EM9F4/P6dCbqvWofCH3a+u4MdSbmIVjE/sH0U=
+github.com/couchbase/sg-bucket v0.0.0-20230726002412-392d0d8decd4/go.mod h1:1LT+86k2vAk/puiscgWjGJYAaKxkHUjLg30eG6hzo+k=
 github.com/couchbase/tools-common v0.0.0-20220810163003-4c3c185822d4 h1:Ub0gZWccoNL+ag59v8S23tbHDknfN1l3CVl7Kb+hFO0=
 github.com/couchbase/tools-common v0.0.0-20220810163003-4c3c185822d4/go.mod h1:lW0Em1mo5xqQ0mRMzJlg013/6ruyISupTfW7nbLaa1E=
 github.com/couchbasedeps/graphql-go v0.8.1 h1:NpkpNePwszaRWK82vfCPDt86GT+vkhjZ9ot+X5rSAME=
@@ -92,8 +92,8 @@ github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f h1:al
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f/go.mod h1:daOs69VstinwoALl3wwWxjBf1nD4lIe3wwYhKHKDapY=
 github.com/couchbaselabs/gocaves/client v0.0.0-20230307083111-cc3960c624b1 h1:H7OK4q4WsDxqNIB/Ba8BQBXBHFilZnyItHrLr3qmsKA=
 github.com/couchbaselabs/gocaves/client v0.0.0-20230307083111-cc3960c624b1/go.mod h1:AVekAZwIY2stsJOMWLAS/0uA/+qdp7pjO8EHnl61QkY=
-github.com/couchbaselabs/rosmar v0.0.0-20230726001420-d6bbd6f1c16e h1:HX7TTaJ80HIJ5rjvde3YxmG1FkQVwOXBPIHjCO9kJYs=
-github.com/couchbaselabs/rosmar v0.0.0-20230726001420-d6bbd6f1c16e/go.mod h1:xzuiqhWHUgaW9gkqtQR/OAzn8RHegwMqon2WqJ9977Q=
+github.com/couchbaselabs/rosmar v0.0.0-20230726003206-61fc50d8f6ec h1:MmHsRjBJMME9+BRlNUHdJYGz2Qc7mNiCt3aClnp+pzw=
+github.com/couchbaselabs/rosmar v0.0.0-20230726003206-61fc50d8f6ec/go.mod h1:uuX/4kRCNYEpzD/V9/p4njuAFiUo0jZ+bdtQUR4UAgQ=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
