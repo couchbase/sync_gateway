@@ -141,6 +141,7 @@ func outputGzip(fileToAdd string, fullOutputPath string) error {
 	if err != nil {
 		return fmt.Errorf("could not open file to add: %w", err)
 	}
+	defer fileToAddReader.Close()
 
 	gzipWriter, err := os.Create(fullOutputPath)
 	if err != nil {
