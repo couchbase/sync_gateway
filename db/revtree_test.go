@@ -344,6 +344,37 @@ func TestRevTreeCompareRevIDs(t *testing.T) {
 	assert.Equal(t, 1, compareRevIDs(ctx, "5-bbb", "1-zzz"))
 }
 
+// TestRevTreeChannelMapLeafOnly ensures that only leaf revisions populate channel information from/to channelMap.
+func TestRevTreeChannelMapLeafOnly(t *testing.T) {
+	tree := branchymap.copy()
+	err := tree.addRevision(t.Name(), RevInfo{
+		ID:       "4-four",
+		Parent:   "3-three",
+		Channels: base.SetOf("EN-us", "EN-gb"),
+	})
+	require.NoError(t, err)
+	bytes, err := base.JSONMarshal(tree)
+	require.NoError(t, err)
+	var gotmap RevTree
+	require.NoError(t, base.JSONUnmarshal(bytes, &gotmap))
+	assert.Equal(t, tree, gotmap)
+	t.Logf("bytes: %s", string(bytes))
+	t.Logf("tree: %s", spew.Sprint(tree))
+
+	ri, err := gotmap.getInfo("3-three")
+	require.NoError(t, err)
+	assert.Nil(t, ri.Channels) // no channels on remarshalled RevTree for non-leaf revision
+
+	ri, err = gotmap.getInfo("4-four")
+	require.NoError(t, err)
+	assert.Equal(t, base.SetOf("EN-us", "EN-gb"), ri.Channels)
+
+	ri, err = gotmap.getInfo("3-drei")
+	require.NoError(t, err)
+	assert.Equal(t, base.SetOf("DE"), ri.Channels)
+
+}
+
 func TestRevTreeIsLeaf(t *testing.T) {
 	assert.True(t, branchymap.isLeaf("3-three"), "isLeaf failed on 3-three")
 	assert.True(t, branchymap.isLeaf("3-drei"), "isLeaf failed on 3-drei")
