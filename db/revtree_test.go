@@ -30,7 +30,7 @@ import (
 //	│ 1-one  │──│ 2-two  │──║3-three ║
 //	└────────┘  └────────┘  ╚════════╝
 var testmap = RevTree{
-	"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
+	"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}"), Channels: base.SetOf("ABC", "CBS")},
 	"2-two":   {ID: "2-two", Parent: "1-one"},
 	"1-one":   {ID: "1-one"},
 }
@@ -219,6 +219,10 @@ func TestGetMultiBranchTestRevtree(t *testing.T) {
 }
 
 func TestRevTreeUnmarshalOldFormat(t *testing.T) {
+	// 'channels' is an old revtree property that stored channel history for previous revisions.
+	// we moved non-winning leaf revision channel information into a 'channelMap' property instead to handle the case where documents are in conflict.
+	// bodies is an old revtree property that stored full bodies for previous revisions.
+	// we moved this into bodyMap for inline bodies and bodyKeyMap for externally stored bodies.
 	const testJSON = `{
 	"revs": ["3-three", "2-two", "1-one"],
 	"parents": [1, 2, -1],
@@ -234,8 +238,8 @@ func TestRevTreeUnmarshal(t *testing.T) {
 	const testJSON = `{
 	"revs": ["3-three", "2-two", "1-one"],
 	"parents": [1, 2, -1],
-	"bodymap": {"0":"{}"},
-	"channels": [null, ["ABC", "CBS"], ["ABC"]]
+	"bodymap": {"0":"{\"foo\":\"bar\"}"},
+	"channelsMap": {"0": ["ABC", "CBS"]
 }`
 	assertRevTreeUnmarshal(t, testJSON, testmap)
 }
@@ -364,18 +368,24 @@ func TestRevTreeChannelMapLeafOnly(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// Intentionally keep a non-leaf channelsMap entry to ensure that unmarshalling strips it
+	treeJSON := []byte(`{
+	"revs":["3-three","2-two","1-one","3-drei","4-four"],
+	"parents":[1,2,-1,1,0],
+	"channelsMap":{"0":["EN"],"3":["DE"],"4":["EN-gb","EN-us"]}
+}`)
+
+	// marshal RevTree into storage format
 	bytes, err := base.JSONMarshal(tree)
 	require.NoError(t, err)
-	var gotmap RevTree
-	require.NoError(t, base.JSONUnmarshal(bytes, &gotmap))
-
-	t.Logf("bytes: %s", string(bytes))
-	t.Logf("tree: %s", spew.Sprint(tree))
-
-	// unmarshal again to assert on stored format
+	// unmarshal back into revTreeList to ensure non-leaf channels are stripped on marshal for stored format
 	var storedMap revTreeList
 	require.NoError(t, base.JSONUnmarshal(bytes, &storedMap))
 	assert.Len(t, storedMap.ChannelsMap, 2, "expected only two channelsMap entries (for the leaf revisions)")
+
+	// unmarshal treeJSON into RevTree to ensure non-leaf channels are stripped on unmarshal
+	var gotmap RevTree
+	require.NoError(t, base.JSONUnmarshal(treeJSON, &gotmap))
 
 	ri, err := gotmap.getInfo("3-three")
 	require.NoError(t, err)
