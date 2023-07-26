@@ -37,18 +37,18 @@ var testmap = RevTree{
 
 // branchymap is a branched revtree with two revisions in conflict
 //
-//	                         ┌────────┐
-//	                       ┌─│3-three │
-//	┌────────┐  ┌────────┐ │ └────────┘
+//	                         ╔════════╗
+//	                       ┌─║3-three ║
+//	┌────────┐  ┌────────┐ │ ╚════════╝
 //	│ 1-one  │──│ 2-two  │─┤
-//	└────────┘  └────────┘ │ ╔════════╗
-//	                       └─║ 3-drei ║
-//	                         ╚════════╝
+//	└────────┘  └────────┘ │ ┌────────┐
+//	                       └─│ 3-drei │
+//	                         └────────┘
 var branchymap = RevTree{
-	"3-three": {ID: "3-three", Parent: "2-two", Channels: base.SetOf("EN")},
+	"3-three": {ID: "3-three", Parent: "2-two", Channels: base.SetOf("EN")}, // winner because higher ASCII value (d vs. t)
 	"2-two":   {ID: "2-two", Parent: "1-one"},
 	"1-one":   {ID: "1-one"},
-	"3-drei":  {ID: "3-drei", Parent: "2-two", Channels: base.SetOf("DE")}, // winner because lower ASCII value (d vs. t)
+	"3-drei":  {ID: "3-drei", Parent: "2-two", Channels: base.SetOf("DE")},
 }
 
 // multiroot is a revtree with multiple roots (disconnected branches)
@@ -346,20 +346,36 @@ func TestRevTreeCompareRevIDs(t *testing.T) {
 
 // TestRevTreeChannelMapLeafOnly ensures that only leaf revisions populate channel information from/to channelMap.
 func TestRevTreeChannelMapLeafOnly(t *testing.T) {
+
+	// Add a 4th revision with channels to supersede rev 3-three
+	//	                         ┌─────────────┐  ╔═══════════════════════╗
+	//	                       ┌─│3-three (EN) │──║ 4-four (EN-us, EN-gb) ║
+	//	┌────────┐  ┌────────┐ │ └─────────────┘  ╚═══════════════════════╝
+	//	│ 1-one  │──│ 2-two  │─┤
+	//	└────────┘  └────────┘ │ ┌─────────────┐
+	//	                       └─│ 3-drei (DE) │
+	//	                         └─────────────┘
+	rev4Channels := base.SetOf("EN-us", "EN-gb")
 	tree := branchymap.copy()
 	err := tree.addRevision(t.Name(), RevInfo{
 		ID:       "4-four",
 		Parent:   "3-three",
-		Channels: base.SetOf("EN-us", "EN-gb"),
+		Channels: rev4Channels,
 	})
 	require.NoError(t, err)
+
 	bytes, err := base.JSONMarshal(tree)
 	require.NoError(t, err)
 	var gotmap RevTree
 	require.NoError(t, base.JSONUnmarshal(bytes, &gotmap))
-	assert.Equal(t, tree, gotmap)
+
 	t.Logf("bytes: %s", string(bytes))
 	t.Logf("tree: %s", spew.Sprint(tree))
+
+	// unmarshal again to assert on stored format
+	var storedMap revTreeList
+	require.NoError(t, base.JSONUnmarshal(bytes, &storedMap))
+	assert.Len(t, storedMap.ChannelsMap, 2, "expected only two channelsMap entries (for the leaf revisions)")
 
 	ri, err := gotmap.getInfo("3-three")
 	require.NoError(t, err)
@@ -367,11 +383,11 @@ func TestRevTreeChannelMapLeafOnly(t *testing.T) {
 
 	ri, err = gotmap.getInfo("4-four")
 	require.NoError(t, err)
-	assert.Equal(t, base.SetOf("EN-us", "EN-gb"), ri.Channels)
+	assert.Equal(t, rev4Channels, ri.Channels) // leaf revision channels
 
 	ri, err = gotmap.getInfo("3-drei")
 	require.NoError(t, err)
-	assert.Equal(t, base.SetOf("DE"), ri.Channels)
+	assert.Equal(t, base.SetOf("DE"), ri.Channels) // leaf revision channels
 
 }
 
