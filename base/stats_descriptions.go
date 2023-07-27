@@ -270,7 +270,7 @@ const (
 
 	SyncFunctionExceptionCountDesc = "The total number of times that a sync function encountered an exception (across all collections)."
 
-	NumReplicationsRejectedLimitDesc = "The total number of times a replication connection is rejected due ot it being over the threshold."
+	NumReplicationsRejectedLimitDesc = "The total number of times a replication connection is rejected due to it being over the threshold."
 
 	NumPublicRestRequestsDesc = "The total number of requests sent over the public REST api."
 
