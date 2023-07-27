@@ -544,6 +544,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	// Try with a user who has access to this revision.
 	collection.user = userAlice
 	body, err = collection.Get1xRevBody(ctx, "doc1", rev2ID, true, nil)
+	// FIXME: Returns no error and returns document!
 	assertHTTPError(t, err, 404)
 	require.Nil(t, body)
 

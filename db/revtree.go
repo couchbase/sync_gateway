@@ -48,9 +48,10 @@ type revTreeList struct {
 	Revs           []string            `json:"revs"`                     // The revision IDs
 	Parents        []int               `json:"parents"`                  // Index of parent of each revision (-1 if root)
 	Deleted        []int               `json:"deleted,omitempty"`        // Indexes of revisions that are deletions
-	Bodies_Old     []string            `json:"bodies,omitempty"`         // JSON of each revision (legacy)
+	Bodies_Old     []string            `json:"bodies,omitempty"`         // Deprecated: JSON of each revision (see bodymap)
 	BodyMap        map[string]string   `json:"bodymap,omitempty"`        // JSON of each revision
 	BodyKeyMap     map[string]string   `json:"bodyKeyMap,omitempty"`     // Keys of revision bodies stored in external documents
+	Channels_Old   []base.Set          `json:"channels,omitempty"`       // Deprecated: Channels for revisions (see channelsMap)
 	ChannelsMap    map[string]base.Set `json:"channelsMap,omitempty"`    // Channels for non-winning leaf revisions (current channels stored outside of history, and don't have a use-case for storing non-leaf channels)
 	HasAttachments []int               `json:"hasAttachments,omitempty"` // Indexes of revisions that has attachments
 }
@@ -191,18 +192,29 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 		(*tree)[rep.Revs[i]] = info
 	}
 
-	var leaves map[string]*RevInfo
-	if len(rep.ChannelsMap) > 0 {
-		leaves = tree.Leaves()
-	}
-	for iStr, channels := range rep.ChannelsMap {
-		i, err := strconv.ParseInt(iStr, 10, 64)
-		if err != nil {
-			return err
+	if len(rep.ChannelsMap) > 0 || len(rep.Channels_Old) > 0 {
+		leaves := tree.Leaves()
+		for iStr, channels := range rep.ChannelsMap {
+			i, err := strconv.ParseInt(iStr, 10, 64)
+			if err != nil {
+				return err
+			}
+			info := (*tree)[rep.Revs[i]]
+			if _, isLeaf := leaves[info.ID]; isLeaf {
+				info.Channels = channels
+			}
 		}
-		info := (*tree)[rep.Revs[i]]
-		if _, isLeaf := leaves[info.ID]; isLeaf {
-			info.Channels = channels
+
+		// we shouldn't be in a situation where we have both channels and channelsMap populated, but we still need to handle the old format.
+		for i, channels := range rep.Channels_Old {
+			info := (*tree)[rep.Revs[i]]
+			if _, isLeaf := leaves[info.ID]; isLeaf {
+				// set only if we've not already populated from ChannelsMap (we shouldn't ever have both)
+				if info.Channels != nil {
+					return fmt.Errorf("RevTree leaf %q had channels set already (from channelsMap)", info.ID)
+				}
+				info.Channels = channels
+			}
 		}
 	}
 

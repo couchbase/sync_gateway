@@ -30,7 +30,7 @@ import (
 //	│ 1-one  │──│ 2-two  │──║3-three ║
 //	└────────┘  └────────┘  ╚════════╝
 var testmap = RevTree{
-	"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}"), Channels: base.SetOf("ABC", "CBS")},
+	"3-three": {ID: "3-three", Parent: "2-two", Body: []byte(`{"foo":"bar"}`), Channels: base.SetOf("ABC", "CBS")},
 	"2-two":   {ID: "2-two", Parent: "1-one"},
 	"1-one":   {ID: "1-one"},
 }
@@ -226,8 +226,8 @@ func TestRevTreeUnmarshalOldFormat(t *testing.T) {
 	const testJSON = `{
 	"revs": ["3-three", "2-two", "1-one"],
 	"parents": [1, 2, -1],
-	"bodies": ["{}", "", ""],
-	"channels": [null, ["ABC", "CBS"], ["ABC"]]
+	"bodies": ["{\"foo\":\"bar\"}", "", ""],
+	"channels": [["ABC", "CBS"], null, ["ABC"]]
 }`
 	assertRevTreeUnmarshal(t, testJSON, testmap)
 }
@@ -239,7 +239,7 @@ func TestRevTreeUnmarshal(t *testing.T) {
 	"revs": ["3-three", "2-two", "1-one"],
 	"parents": [1, 2, -1],
 	"bodymap": {"0":"{\"foo\":\"bar\"}"},
-	"channelsMap": {"0": ["ABC", "CBS"]
+	"channelsMap": {"0": ["ABC", "CBS"]}
 }`
 	assertRevTreeUnmarshal(t, testJSON, testmap)
 }
