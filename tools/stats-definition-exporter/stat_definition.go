@@ -17,7 +17,7 @@ type StatDefinition struct {
 	Unit   string   `json:"unit,omitempty"`   // What units the stat value is using such as seconds.
 	Labels []string `json:"labels,omitempty"` // The labels that Prometheus uses to organise some of the stats such as database, collection, etc
 	Help   string   `json:"help,omitempty"`   // A description of what the stat does
-	Format string   `json:"-,omitempty"`      // The format of the value such as int, float, duration
+	Format string   `json:"-"`                // The format of the value such as int, float, duration
 	Type   string   `json:"type,omitempty"`   // The prometheus.ValueType such as counter, gauge, etc
 }
 
