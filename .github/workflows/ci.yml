@@ -138,7 +138,6 @@ jobs:
             name: windows
           - os: ubuntu-latest
             name: ubuntu
-    name: test (${{ matrix.name }})
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
@@ -149,8 +148,3 @@ jobs:
       - name: Run Tests
         run: go test -timeout=5m -count=1 -json -v "./tools/stats-definition-exporter" | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
         shell: bash
-      - name: Annotate Failures
-        if: always()
-        uses: guyarb/golang-test-annotations@v0.6.0
-        with:
-          test-results: test.json
