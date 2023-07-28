@@ -919,6 +919,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 	}()
 
+	ctx := base.KeyspaceLogCtx(bh.loggingCtx, bh.db.Bucket.GetName(), bh.collection.Name, bh.collection.ScopeName)
 	// addRevisionParams := newAddRevisionParams(rq)
 	revMessage := RevMessage{Message: rq}
 
@@ -933,14 +934,14 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		return base.HTTPErrorf(http.StatusForbidden, "Replication context is read-only, docID: %s, revID:%s", docID, revID)
 	}
 
-	base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
+	base.DebugfCtx(ctx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
 
 	bodyBytes, err := rq.Body()
 	if err != nil {
 		return err
 	}
 
-	base.TracefCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Properties:%v  Body:%s", bh.serialNumber, base.UD(revMessage.Properties), base.UD(string(bodyBytes)))
+	base.TracefCtx(ctx, base.KeySyncMsg, "#%d: Properties:%v  Body:%s", bh.serialNumber, base.UD(revMessage.Properties), base.UD(string(bodyBytes)))
 
 	stats.bytes.Add(int64(len(bodyBytes)))
 
@@ -950,8 +951,8 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			return err
 		}
 		if removed, ok := body[BodyRemoved].(bool); ok && removed {
-			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), revID)
-			if err := bh.collection.Purge(bh.loggingCtx, docID); err != nil {
+			base.InfofCtx(ctx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), revID)
+			if err := bh.collection.Purge(ctx, docID); err != nil {
 				return err
 			}
 
@@ -960,7 +961,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				seqStr := rq.Properties[RevMessageSequence]
 				seq, err := ParseJSONSequenceID(seqStr)
 				if err != nil {
-					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqStr, err)
+					base.WarnfCtx(ctx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqStr, err)
 				} else {
 					bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 				}
@@ -991,7 +992,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		//       while retrieving deltaSrcRevID.  Couchbase Lite replication guarantees client has access to deltaSrcRevID,
 		//       due to no-conflict write restriction, but we still need to enforce security here to prevent leaking data about previous
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
-		deltaSrcRev, err := bh.collection.GetRev(bh.loggingCtx, docID, deltaSrcRevID, false, nil)
+		deltaSrcRev, err := bh.collection.GetRev(ctx, docID, deltaSrcRevID, false, nil)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't fetch doc %s for deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
 		}
@@ -1017,12 +1018,12 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		// err should only ever be a FleeceDeltaError here - but to be defensive, handle other errors too (e.g. somehow reaching this code in a CE build)
 		if err != nil {
 			// Something went wrong in the diffing library. We want to know about this!
-			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for doc %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
+			base.WarnfCtx(ctx, "Error patching deltaSrc %s with %s for doc %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error patching deltaSrc with delta: %s", err)
 		}
 
 		newDoc.UpdateBody(deltaSrcMap)
-		base.TracefCtx(bh.loggingCtx, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
+		base.TracefCtx(ctx, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
 		stats.deltaRecvCount.Add(1)
 	}
 
@@ -1071,7 +1072,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		// Look at attachments with revpos > the last common ancestor's
 		minRevpos := 1
 		if len(history) > 0 {
-			currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
+			currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(ctx, docID, DocUnmarshalSync)
 			// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
 			// as we will already have any attachments on the common ancestor so don't need to ask for them.
 			// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
@@ -1148,7 +1149,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 
 		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID, currentDigests); err != nil {
-			base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
+			base.ErrorfCtx(ctx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
 			return err
 		}
 
@@ -1172,9 +1173,10 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
 	forceAllowConflictingTombstone := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
 	if bh.conflictResolver != nil {
-		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc)
+
+		_, _, err = bh.collection.PutExistingRevWithConflictResolution(ctx, newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc)
 	} else {
-		_, _, err = bh.collection.PutExistingRev(bh.loggingCtx, newDoc, history, revNoConflicts, forceAllowConflictingTombstone, rawBucketDoc)
+		_, _, err = bh.collection.PutExistingRev(ctx, newDoc, history, revNoConflicts, forceAllowConflictingTombstone, rawBucketDoc)
 	}
 	if err != nil {
 		return err
@@ -1184,7 +1186,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		seqProperty := rq.Properties[RevMessageSequence]
 		seq, err := ParseJSONSequenceID(seqProperty)
 		if err != nil {
-			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqProperty, err)
+			base.WarnfCtx(ctx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqProperty, err)
 		} else {
 			bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 		}
