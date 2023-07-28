@@ -197,6 +197,7 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 		SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Add(1)
 	}
 
+	shouldLogConsoleDb := shouldLogConsoleDatabase(ctx, logLevel, logKey)
 	shouldLogConsole := consoleLogger.shouldLog(logLevel, logKey)
 	shouldLogError := errorLogger.shouldLog(logLevel)
 	shouldLogWarn := warnLogger.shouldLog(logLevel)
@@ -204,11 +205,8 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	shouldLogDebug := debugLogger.shouldLog(logLevel)
 	shouldLogTrace := traceLogger.shouldLog(logLevel)
 
-	// lookup db-specific logger if one exists before we take the cost to build format string
-	shouldLogDbConsole := shouldLogDatabase(ctx, logLevel, logKey)
-
-	// exit early if we aren't going to log anything anywhere.
-	if !(shouldLogDbConsole || shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug || shouldLogTrace) {
+	// exit before string formatting if no loggers need to log
+	if !(shouldLogConsoleDb || shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug || shouldLogTrace) {
 		return
 	}
 
@@ -228,7 +226,7 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	args = redact(args)
 
 	// If either global console or db console wants to log, allow it
-	if shouldLogConsole || shouldLogDbConsole {
+	if shouldLogConsole || shouldLogConsoleDb {
 		consoleLogger.logf(color(format, logLevel), args...)
 	}
 	if shouldLogError {
@@ -294,7 +292,7 @@ type DbConsoleLogConfig struct {
 	LogKeys  *LogKeyMask
 }
 
-func shouldLogDatabase(ctx context.Context, logLevel LogLevel, logKey LogKey) bool {
+func shouldLogConsoleDatabase(ctx context.Context, logLevel LogLevel, logKey LogKey) bool {
 	if ctx == nil {
 		return false
 	}
