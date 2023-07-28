@@ -23,25 +23,25 @@ import (
 // LogContext stores values which may be useful to include in logs
 type LogContext struct {
 	// CorrelationID is a pre-formatted identifier used to correlate logs.
-	// E.g: Either blip context ID or HTTP Serial number.
+	// E.g: Either blip context ID or HTTP Serial number. (see CorrelationIDLogCtx)
 	CorrelationID string
 
-	// Database is the name of the sync gateway database
+	// Database is the name of the sync gateway database (see DatabaseLogCtx)
 	Database string
 
-	// DbConsoleLogConfig is any database-specific log settings that should be applied
+	// DbConsoleLogConfig is database-specific log settings that should be applied (see DatabaseLogCtx)
 	DbConsoleLogConfig *DbConsoleLogConfig
 
-	// Bucket is the name of the backing bucket
+	// Bucket is the name of the backing bucket (see KeyspaceLogCtx)
 	Bucket string
 
-	// Scope is the name of a scope
+	// Scope is the name of a scope see (KeyspaceLogCtx)
 	Scope string
 
-	// Collection is the name of the collection
+	// Collection is the name of the collection (see KeyspaceLogCtx)
 	Collection string
 
-	// TestName can be a unit test name (from t.Name())
+	// TestName can be a unit test name (see TestCtx)
 	TestName string
 }
 

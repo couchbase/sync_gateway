@@ -292,6 +292,7 @@ type DbConsoleLogConfig struct {
 	LogKeys  *LogKeyMask
 }
 
+// shouldLogConsoleDatabase extracts the database's log settings from the context (if set) to determine whether to log
 func shouldLogConsoleDatabase(ctx context.Context, logLevel LogLevel, logKey LogKey) bool {
 	if ctx == nil {
 		return false
