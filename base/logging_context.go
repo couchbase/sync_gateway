@@ -29,6 +29,9 @@ type LogContext struct {
 	// Database is the name of the sync gateway database
 	Database string
 
+	// DbConsoleLogConfig is any database-specific log settings that should be applied
+	DbConsoleLogConfig *DbConsoleLogConfig
+
 	// Bucket is the name of the backing bucket
 	Bucket string
 
@@ -148,9 +151,10 @@ func CorrelationIDLogCtx(parent context.Context, correlationID string) context.C
 }
 
 // DatabaseLogCtx extends the parent context with a database.
-func DatabaseLogCtx(parent context.Context, databaseName string) context.Context {
+func DatabaseLogCtx(parent context.Context, databaseName string, config *DbConsoleLogConfig) context.Context {
 	newCtx := getLogCtx(parent)
 	newCtx.Database = databaseName
+	newCtx.DbConsoleLogConfig = config
 	return LogContextWith(parent, &newCtx)
 }
 

@@ -111,24 +111,28 @@ func (l *ConsoleLogger) logf(format string, args ...interface{}) {
 	}
 }
 
+// shouldLog returns true if a log at the given logLineLevel/logLineKey should get logged for the given logger levels/keys.
+func shouldLog(loggerLevel *LogLevel, loggerKeys *LogKeyMask, logLineLevel LogLevel, logLineKey LogKey) bool {
+	// Log level disabled
+	if !loggerLevel.Enabled(logLineLevel) {
+		return false
+	}
+
+	// Log key All should always log at this point, unless KeyNone is set
+	if logLineKey == KeyAll && !loggerKeys.Enabled(KeyNone) {
+		return true
+	}
+
+	// Finally, check the specific log key is enabled
+	return loggerKeys.Enabled(logLineKey)
+}
+
 // shouldLog returns true if the given logLevel and logKey should get logged.
 func (l *ConsoleLogger) shouldLog(logLevel LogLevel, logKey LogKey) bool {
 	if l == nil || l.logger == nil {
 		return false
 	}
-
-	// Log level disabled
-	if !l.LogLevel.Enabled(logLevel) {
-		return false
-	}
-
-	// Log key All should always log at this point, unless KeyNone is set
-	if logKey == KeyAll && !l.LogKeyMask.Enabled(KeyNone) {
-		return true
-	}
-
-	// Finally, check the specific log key is enabled
-	return l.LogKeyMask.Enabled(logKey)
+	return shouldLog(l.LogLevel, l.LogKeyMask, logLevel, logKey)
 }
 
 func (l *ConsoleLogger) getConsoleLoggerConfig() *ConsoleLoggerConfig {

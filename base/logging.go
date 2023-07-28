@@ -204,8 +204,11 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	shouldLogDebug := debugLogger.shouldLog(logLevel)
 	shouldLogTrace := traceLogger.shouldLog(logLevel)
 
+	// lookup db-specific logger if one exists before we take the cost to build format string
+	shouldLogDbConsole := shouldLogDatabase(ctx, logLevel, logKey)
+
 	// exit early if we aren't going to log anything anywhere.
-	if !(shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug || shouldLogTrace) {
+	if !(shouldLogDbConsole || shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug || shouldLogTrace) {
 		return
 	}
 
@@ -224,7 +227,8 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	// Perform log redaction, if necessary.
 	args = redact(args)
 
-	if shouldLogConsole {
+	// If either global console or db console wants to log, allow it
+	if shouldLogConsole || shouldLogDbConsole {
 		consoleLogger.logf(color(format, logLevel), args...)
 	}
 	if shouldLogError {
@@ -282,6 +286,30 @@ func LogSyncGatewayVersion(ctx context.Context) {
 	if traceLogger.shouldLog(LevelNone) {
 		traceLogger.logger.Printf(msg)
 	}
+}
+
+// DbConsoleLogConfig can be used to customise the console logging for logs associated with this database.
+type DbConsoleLogConfig struct {
+	LogLevel *LogLevel
+	LogKeys  *LogKeyMask
+}
+
+func shouldLogDatabase(ctx context.Context, logLevel LogLevel, logKey LogKey) bool {
+	if ctx == nil {
+		return false
+	}
+
+	logCtx, ok := ctx.Value(requestContextKey).(*LogContext)
+	if !ok {
+		return false
+	}
+
+	config := logCtx.DbConsoleLogConfig
+	if config == nil {
+		return false
+	}
+
+	return shouldLog(config.LogLevel, config.LogKeys, logLevel, logKey)
 }
 
 // addPrefixes will modify the format string to add timestamps, log level, and other common prefixes.
