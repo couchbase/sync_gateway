@@ -174,6 +174,7 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 			BlipSyncContext: bsc,
 			db:              bsc.copyContextDatabase(),
 			serialNumber:    bsc.incrementSerialNumber(),
+			ctx:             bsc.loggingCtx,
 		}
 
 		// Trace log the full message body and properties
