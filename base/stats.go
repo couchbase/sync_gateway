@@ -1266,7 +1266,7 @@ func (d *DbStats) initCBLReplicationPullStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.AttachmentPullCount, err = NewIntStat(SubsystemReplicationPull, StatUnitNoUnits, "attachment_pull_count", AttachmentPullCountDesc, StatVersionAdded3dot1dot0, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.AttachmentPullCount, err = NewIntStat(SubsystemReplicationPull, "attachment_pull_count", StatUnitNoUnits, AttachmentPullCountDesc, StatVersionAdded3dot1dot0, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
