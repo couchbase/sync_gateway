@@ -58,6 +58,7 @@ func (rt *RestTester) PutNewEditsFalse(docID string, newRevID string, parentRevI
 	return response
 }
 
+// RequireWaitChanges waits for the specified number of changes to be available on the changes feed.
 func (rt *RestTester) RequireWaitChanges(numChangesExpected int, since string) ChangesResults {
 	changesResults, err := rt.WaitForChanges(numChangesExpected, "/{{.keyspace}}/_changes?since="+since, "", true)
 	require.NoError(rt.TB, err)

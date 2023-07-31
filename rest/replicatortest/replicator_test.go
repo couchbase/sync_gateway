@@ -845,7 +845,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 	assert.Equal(t, "remoteRT", docDEF1Body["source"])
 
 	// Add another node to the active cluster
-	activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
+	activeRT2 := addActiveRT(t, "activert2", activeRT.TestBucket)
 	defer activeRT2.Close()
 
 	// Wait for replication to be rebalanced to activeRT2
@@ -952,7 +952,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 	assert.Equal(t, "activeRT", docDEF1Body["source"])
 
 	// Add another node to the active cluster
-	activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
+	activeRT2 := addActiveRT(t, "activert2", activeRT.TestBucket)
 	defer activeRT2.Close()
 
 	// Wait for replication to be rebalanced to activeRT2
@@ -1060,12 +1060,11 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 	assert.Equal(t, int64(docCount), status.DocsRead)
 
 	// Add another node to the active cluster
-	activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
+	activeRT2 := addActiveRT(t, "activert2", activeRT.TestBucket)
 	defer activeRT2.Close()
 
 	// Get replication status for non-local replication
 	remoteStatus := activeRT2.GetReplicationStatus(replicationID)
-	fmt.Println("HONK remoteStatus=", remoteStatus)
 	assert.Equal(t, int64(docCount), remoteStatus.DocsRead)
 
 }
@@ -1775,7 +1774,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	_ = activeRT.GetDoc(docDEF1)
 
 	// Add another node to the active cluster
-	activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
+	activeRT2 := addActiveRT(t, "activert1", activeRT.TestBucket)
 	defer activeRT2.Close()
 
 	// Wait for replication to be rebalanced to activeRT2

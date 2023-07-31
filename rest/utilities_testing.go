@@ -706,23 +706,19 @@ func (rt *RestTester) TestMetricsHandler() http.Handler {
 	return rt.MetricsHandler
 }
 
+// ChangesResults represents the unmarshalled result of a /{{.keyspace}}/_changes request
 type ChangesResults struct {
 	Results  []db.ChangeEntry
 	Last_Seq interface{}
 }
 
+// RequireDocIDs asserts that the given docIDs are present in the ChangesResults in any order
 func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
-	require.Equal(t, len(docIDs), len(cr.Results))
-	for _, docID := range docIDs {
-		var found bool
-		for _, changeEntry := range cr.Results {
-			if changeEntry.ID == docID {
-				found = true
-				break
-			}
-		}
-		require.True(t, found)
+	resultDocIDs := make([]string, len(cr.Results))
+	for i, changeEntry := range cr.Results {
+		resultDocIDs[i] = changeEntry.ID
 	}
+	require.ElementsMatch(t, docIDs, resultDocIDs)
 }
 
 func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, changesURL, username string, useAdminPort bool) (worker base.RetryWorker) {
