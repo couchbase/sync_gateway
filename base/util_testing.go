@@ -755,13 +755,6 @@ func TestRequiresCollections(t testing.TB) {
 	}
 }
 
-// DisableTestWithCollections will skip the current test if using named collections.
-func DisableTestWithCollections(t *testing.T) {
-	if TestsUseNamedCollections() {
-		t.Skip("Skipping test because collections are enabled")
-	}
-}
-
 // SkipImportTestsIfNotEnabled skips test that exercise import features
 func SkipImportTestsIfNotEnabled(t *testing.T) {
 
