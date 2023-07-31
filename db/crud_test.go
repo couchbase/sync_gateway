@@ -939,7 +939,6 @@ func TestOldRevisionStorageError(t *testing.T) {
 func TestLargeSequence(t *testing.T) {
 
 	// Test depends on setting _sync:seq in the default collection location
-	base.DisableTestWithCollections(t)
 	base.LongRunningTest(t)
 
 	db, ctx := setupTestDBWithCustomSyncSeq(t, 9223372036854775807)

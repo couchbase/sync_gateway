@@ -25,8 +25,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// WaitForPrimaryIndexEmpty waits for #primary to be empty.
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
-// Uses the star channel index as a proxy to indicate that _all_ indexes are empty (which might not be true)
 func WaitForPrimaryIndexEmpty(store base.N1QLStore) error {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
@@ -199,7 +199,7 @@ func EmptyPrimaryIndex(dataStore sgbucket.DataStore) error {
 	return results.Close()
 }
 
-// emptyAllDocsIndex ensures the AllDocs index for the given bucket is empty. Works similarly to db.Compact, except on a different index and without a DatabaseContext
+// emptyAllDocsIndex ensures the AllDocs index for the given bucket is empty, including tombstones which aren't found when emptying the primary index.
 func emptyAllDocsIndex(ctx context.Context, dataStore sgbucket.DataStore, tbp *base.TestBucketPool) (numCompacted int, err error) {
 	purgedDocCount := 0
 	purgeBody := Body{"_purged": true}
@@ -212,37 +212,40 @@ func emptyAllDocsIndex(ctx context.Context, dataStore sgbucket.DataStore, tbp *b
 	// A stripped down version of db.Compact() that works on AllDocs instead of tombstones
 	statement := `SELECT META(ks).id AS id
 FROM ` + base.KeyspaceQueryToken + ` AS ks USE INDEX (sg_allDocs_x1)
-WHERE META(ks).xattrs._sync.sequence >= 0
-    AND META(ks).xattrs._sync.sequence < 9223372036854775807
+WHERE META(ks).xattrs._sync.sequence IS NOT MISSING
     AND META(ks).id NOT LIKE '\\_sync:%'`
 	results, err := n1qlStore.Query(statement, nil, base.RequestPlus, true)
 	if err != nil {
 		return 0, err
 	}
 
-	var tombstonesRow QueryIdRow
-	for results.Next(&tombstonesRow) {
+	var purgeErrors *base.MultiError
+	var row QueryIdRow
+	for results.Next(&row) {
 		// First, attempt to purge.
 		var purgeErr error
 		if base.TestUseXattrs() {
-			purgeErr = dataStore.DeleteWithXattr(tombstonesRow.Id, base.SyncXattrName)
+			purgeErr = dataStore.DeleteWithXattr(row.Id, base.SyncXattrName)
 		} else {
-			purgeErr = dataStore.Delete(tombstonesRow.Id)
+			purgeErr = dataStore.Delete(row.Id)
 		}
 		if base.IsKeyNotFoundError(dataStore, purgeErr) {
 			// If key no longer exists, need to add and remove to trigger removal from view
-			_, addErr := dataStore.Add(tombstonesRow.Id, 0, purgeBody)
+			_, addErr := dataStore.Add(row.Id, 0, purgeBody)
 			if addErr != nil {
-				tbp.Logf(ctx, "Error compacting key %s (add) - will not be compacted.  %v", tombstonesRow.Id, addErr)
+				purgeErrors = purgeErrors.Append(addErr)
+				tbp.Logf(ctx, "Error adding key %s to force deletion. %v", row.Id, addErr)
 				continue
 			}
 
-			if delErr := dataStore.Delete(tombstonesRow.Id); delErr != nil {
-				tbp.Logf(ctx, "Error compacting key %s (delete) - will not be compacted.  %v", tombstonesRow.Id, delErr)
+			if delErr := dataStore.Delete(row.Id); delErr != nil {
+				purgeErrors = purgeErrors.Append(delErr)
+				tbp.Logf(ctx, "Error deleting key %s.  %v", row.Id, delErr)
 			}
 			purgedDocCount++
 		} else if purgeErr != nil {
-			tbp.Logf(ctx, "Error compacting key %s (purge) - will not be compacted.  %v", tombstonesRow.Id, purgeErr)
+			purgeErrors = purgeErrors.Append(purgeErr)
+			tbp.Logf(ctx, "Error removing key %s (purge). %v", row.Id, purgeErr)
 		}
 	}
 	err = results.Close()
@@ -250,8 +253,8 @@ WHERE META(ks).xattrs._sync.sequence >= 0
 		return 0, err
 	}
 
-	tbp.Logf(ctx, "Finished compaction ... Total docs purged: %d", purgedDocCount)
-	return purgedDocCount, nil
+	tbp.Logf(ctx, "Finished emptying all docs index ... Total docs purged: %d", purgedDocCount)
+	return purgedDocCount, purgeErrors.ErrorOrNil()
 }
 
 // viewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
