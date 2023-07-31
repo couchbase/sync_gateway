@@ -416,10 +416,9 @@ type Body = db.Body
 
 // Unit test for GraphQL queries.
 func TestUserGraphQLWithN1QL(t *testing.T) {
-	if TestsUseNamedCollections() {
+	if base.TestsUseNamedCollections() {
 		t.Skip("Skipping test because collections are enabled")
 	}
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is Couchbase Server only (requires N1QL)")
 	}
