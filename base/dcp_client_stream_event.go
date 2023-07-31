@@ -47,11 +47,6 @@ type mutationEvent struct {
 	value      []byte
 }
 
-type streamOpenEvent struct {
-	streamEventCommon
-	failoverLogs []gocbcore.FailoverEntry
-}
-
 func (e mutationEvent) asFeedEvent() sgbucket.FeedEvent {
 	return sgbucket.FeedEvent{
 		Opcode:       sgbucket.FeedOpMutation,
