@@ -13,14 +13,15 @@ import (
 )
 
 type StatDefinition struct {
-	Name         string   `json:"name"`                // The fully qualified name of the stat
-	Unit         string   `json:"unit,omitempty"`      // What units the stat value is using such as seconds.
-	Labels       []string `json:"labels,omitempty"`    // The labels that Prometheus uses to organise some of the stats such as database, collection, etc
-	Help         string   `json:"help,omitempty"`      // A description of what the stat does
-	AddedVersion string   `json:"added,omitempty"`     // The SG version this stat was added
-	Stability    string   `json:"stability,omitempty"` // The stability of the stat such as being committed to it
-	Format       string   `json:"-"`                   // The format of the value such as int, float, duration
-	Type         string   `json:"type,omitempty"`      // The prometheus.ValueType such as counter, gauge, etc
+	Name              string   `json:"name"`                 // The fully qualified name of the stat
+	Unit              string   `json:"unit,omitempty"`       // What units the stat value is using such as seconds.
+	Labels            []string `json:"labels,omitempty"`     // The labels that Prometheus uses to organise some of the stats such as database, collection, etc
+	Help              string   `json:"help,omitempty"`       // A description of what the stat does
+	AddedVersion      string   `json:"added,omitempty"`      // The SG version this stat was added
+	DeprecatedVersion string   `json:"deprecated,omitempty"` // The SG version this stat has been deprecated
+	Stability         string   `json:"stability,omitempty"`  // The stability of the stat such as being committed to it
+	Format            string   `json:"-"`                    // The format of the value such as int, float, duration
+	Type              string   `json:"type,omitempty"`       // The prometheus.ValueType such as counter, gauge, etc
 }
 
 func newStatDefinition(stat base.SgwStatWrapper) StatDefinition {

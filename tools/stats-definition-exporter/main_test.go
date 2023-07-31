@@ -30,10 +30,8 @@ func TestFileOutput(t *testing.T) {
 	// Set all logging to buffer
 	var buf bytes.Buffer
 	logger := log.New(&buf, "", 0)
-	stats, err := getStats(logger)
-	assert.NoError(t, err)
 
-	err = statsToFile(logger, stats, outputFile)
+	err := statsToFile(logger, &outputFile)
 	assert.NoError(t, err)
 
 	// Make sure no errors where logged
@@ -47,10 +45,8 @@ func TestStdOutput(t *testing.T) {
 	// Set all logging to buffer
 	var buf bytes.Buffer
 	logger := log.New(&buf, "", 0)
-	stats, err := getStats(logger)
-	assert.NoError(t, err)
 
-	err = statsToConsole(logger, stats)
+	err := statsToFile(logger, nil)
 	assert.NoError(t, err)
 
 	// Make sure no errors where logged

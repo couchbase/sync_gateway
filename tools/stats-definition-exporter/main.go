@@ -9,8 +9,10 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 
@@ -26,18 +28,49 @@ func main() {
 
 	logger := log.New(os.Stderr, "", 0)
 
-	stats, err := getStats(logger)
-	if err != nil {
-		logger.Fatalf("could not get stats: %v", err)
+	outputFile := outputFileFlag
+	if *outputConsoleOnlyFlag {
+		outputFile = nil
 	}
 
-	if *outputConsoleOnlyFlag {
-		err = statsToConsole(logger, stats)
-	} else {
-		err = statsToFile(logger, stats, *outputFileFlag)
-	}
+	err := statsToFile(logger, outputFile)
 	if err != nil {
-		logger.Fatalf("could not write stats: %v", err)
+		logger.Fatalf("%v", err)
+	}
+}
+
+// Write stats to outputFile unless nil, in which case write to stdout
+func statsToFile(logger *log.Logger, outputFile *string) error {
+	stats, err := getStats(logger)
+	if err != nil {
+		return fmt.Errorf("could not get stats: %w", err)
+	}
+
+	// Write to console if outputFile is nil
+	writer := os.Stdout
+	if outputFile != nil {
+		file, err := os.Create(*outputFile)
+		if err != nil {
+			return fmt.Errorf("could not create file: %w", err)
+		}
+
+		defer closeAndLogError(logger, file)
+
+		writer = file
+	}
+
+	err = writeStats(stats, writer)
+	if err != nil {
+		return fmt.Errorf("could not write stats: %w", err)
+	}
+
+	return nil
+}
+
+func closeAndLogError(logger *log.Logger, c io.Closer) {
+	err := c.Close()
+	if err != nil {
+		logger.Fatalf("could not close file: %v", err)
 	}
 }
 
@@ -52,26 +85,6 @@ func getStats(logger *log.Logger) ([]StatDefinition, error) {
 	stats = append(stats, traverseAndRetrieveStats(logger, dbStats)...)
 
 	return stats, nil
-}
-
-func statsToFile(logger *log.Logger, stats []StatDefinition, filePath string) error {
-	err := writeToFile(stats, filePath)
-	if err != nil {
-		return fmt.Errorf("could not write stat definitions to a file: %w", err)
-	}
-
-	return nil
-}
-
-func statsToConsole(logger *log.Logger, stats []StatDefinition) error {
-	json, err := getJSONBytes(stats)
-	if err != nil {
-		return fmt.Errorf("could not get JSON bytes: %w", err)
-	}
-
-	fmt.Printf("%s", json)
-
-	return nil
 }
 
 func registerStats() (*base.GlobalStat, *base.DbStats, error) {
@@ -95,4 +108,16 @@ func registerStats() (*base.GlobalStat, *base.DbStats, error) {
 	}
 
 	return sgStats.GlobalStats, dbStats, nil
+}
+
+func writeStats(stats []StatDefinition, writer io.Writer) error {
+	encoder := json.NewEncoder(writer)
+
+	encoder.SetIndent("", "\t")
+	err := encoder.Encode(stats)
+	if err != nil {
+		return fmt.Errorf("could not encode stats: %w", err)
+	}
+
+	return nil
 }

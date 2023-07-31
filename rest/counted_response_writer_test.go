@@ -101,7 +101,7 @@ func TestCountableResponseWriterNoDelay(t *testing.T) {
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			stat, err := base.NewIntStat(base.SubsystemDatabaseKey, "http_bytes_written", base.StatUnitBytes, base.PublicRestBytesWrittenDesc, base.StatVersionAdded3dot1dot0, base.StatStabilityNoStability, nil, nil, prometheus.CounterValue, 0)
+			stat, err := base.NewIntStat(base.SubsystemDatabaseKey, "http_bytes_written", base.StatUnitBytes, base.PublicRestBytesWrittenDesc, base.StatAddedVersion3dot1dot0, base.StatDeprecatedVersionNotDeprecated, base.StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
 			require.NoError(t, err)
 
 			responseWriter := getResponseWriter(t, stat, test.name, 0)
@@ -134,7 +134,7 @@ func TestCountableResponseWriterWithDelay(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 
-			stat, err := base.NewIntStat(base.SubsystemDatabaseKey, "http_bytes_written", base.StatUnitBytes, base.PublicRestBytesWrittenDesc, base.StatVersionAdded3dot1dot0, base.StatStabilityNoStability, nil, nil, prometheus.CounterValue, 0)
+			stat, err := base.NewIntStat(base.SubsystemDatabaseKey, "http_bytes_written", base.StatUnitBytes, base.PublicRestBytesWrittenDesc, base.StatAddedVersion3dot1dot0, base.StatDeprecatedVersionNotDeprecated, base.StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
 			require.NoError(t, err)
 			responseWriter := getResponseWriter(t, stat, test.name, 30*time.Second)
 			n, err := responseWriter.Write(oneByte)
