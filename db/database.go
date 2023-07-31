@@ -1762,12 +1762,12 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
 			// so deleteDoc is always returned as false.
 			doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
+			if err != nil {
+				return nil, nil, deleteDoc, nil, err
+			}
 			updatedHighSeq = doc.Sequence
 			if currentValue == nil || len(currentValue) == 0 {
 				return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
-			}
-			if err != nil {
-				return nil, nil, deleteDoc, nil, err
 			}
 			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences)
 			if err != nil {
