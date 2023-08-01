@@ -1573,9 +1573,6 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 					break
 				}
 			}
-			if !found {
-				break
-			}
 			select {
 			case <-terminator.Done():
 				base.InfofCtx(ctx, base.KeyAll, "Resync was stopped before the operation could be completed. System "+
