@@ -3846,6 +3846,50 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 	longpollWg.Wait()
 }
 
+func TestResyncAllTombstones(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not support Xattrs")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("If running with no xattrs compact acts as a no-op")
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			QueryPaginationLimit: base.IntPtr(5),
+		}},
+	})
+	rt.GetDatabase().PurgeInterval = 0
+	defer rt.Close()
+
+	TestResyncTombstones := func(numDocs int) {
+
+		count := 0
+
+		for count < numDocs {
+			count++
+			response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/", rt.GetDatabase().Name), `{"foo":"bar"}`)
+			assert.Equal(t, 200, response.Code)
+			var body db.Body
+			err := base.JSONUnmarshal(response.Body.Bytes(), &body)
+			assert.NoError(t, err)
+			revId := body["rev"].(string)
+			docId := body["id"].(string)
+			response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/%s?rev=%s", rt.GetDatabase().Name, docId, revId), "")
+			assert.Equal(t, 200, response.Code)
+		}
+		resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_offline", rt.GetDatabase().Name), "")
+		RequireStatus(t, resp, http.StatusOK)
+		require.NoError(t, rt.waitForDBState(db.RunStateString[db.DBOffline]))
+
+		resp = rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_resync?action=start", rt.GetDatabase().Name), "")
+		RequireStatus(t, resp, http.StatusOK)
+		rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
+	}
+	TestResyncTombstones(5)
+}
+
 func TestTombstoneCompaction(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 

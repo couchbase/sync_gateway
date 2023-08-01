@@ -397,7 +397,7 @@ func (b *BackgroundManager) GetRunState(t *testing.T) BackgroundProcessState {
 
 // For test use only
 // Returns empty string if background process is not cluster aware
-func (b *BackgroundManager) GetHeartbeatDocID(t *testing.T) string {
+func (b *BackgroundManager) GetHeartbeatDocID(t testing.TB) string {
 	if b.isClusterAware() {
 		return b.clusterAwareOptions.HeartbeatDocID()
 	}

@@ -398,6 +398,26 @@ func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.B
 	return response
 }
 
+func (rt *RestTester) WaitForResyncStatus(status db.BackgroundProcessState) db.ResyncManagerResponse {
+	var resyncStatus db.ResyncManagerResponse
+	successFunc := func() bool {
+		response := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_resync", rt.GetDatabase().Name), "")
+		err := base.JSONUnmarshal(response.BodyBytes(), &resyncStatus)
+		require.NoError(rt.tb, err)
+
+		var val interface{}
+		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(rt.tb), &val)
+
+		if status == db.BackgroundProcessStateCompleted {
+			return resyncStatus.State == status && base.IsDocNotFoundError(err)
+		} else {
+			return resyncStatus.State == status
+		}
+	}
+	require.NoError(rt.tb, rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", status, resyncStatus.State)
+	return resyncStatus
+}
+
 func CreateLegacyAttachmentDoc(t *testing.T, testDB *db.Database, docID string, body []byte, attID string, attBody []byte) string {
 	if !base.TestUseXattrs() {
 		t.Skip("Requires xattrs")
