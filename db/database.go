@@ -1545,7 +1545,7 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 	defer callback(&docsProcessed, &docsChanged)
 
 	var unusedSequences []uint64
-
+	highSeq := uint64(0)
 	for {
 		results, err := db.QueryResync(ctx, queryLimit, startSeq, endSeq)
 		if err != nil {
@@ -1553,10 +1553,29 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 		}
 
 		queryRowCount := 0
-		highSeq := uint64(0)
 
 		var importRow QueryIdRow
-		for results.Next(&importRow) {
+		for {
+			var found bool
+			if db.useViews() {
+				var viewRow channelsViewRow
+				found = results.Next(&viewRow)
+				if !found {
+					break
+				}
+				importRow = QueryIdRow{
+					Seq: uint64(viewRow.Key[1].(float64)),
+					Id:  viewRow.ID,
+				}
+			} else {
+				found = results.Next(&importRow)
+				if !found {
+					break
+				}
+			}
+			if !found {
+				break
+			}
 			select {
 			case <-terminator.Done():
 				base.InfofCtx(ctx, base.KeyAll, "Resync was stopped before the operation could be completed. System "+
@@ -1579,6 +1598,7 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 			} else if err != base.ErrUpdateCancel {
 				base.WarnfCtx(ctx, "Error updating doc %q: %v", base.UD(docid), err)
 			}
+			highSeq = importRow.Seq
 		}
 
 		callback(&docsProcessed, &docsChanged)
@@ -1761,13 +1781,12 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
 			// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
 			// so deleteDoc is always returned as false.
+			if currentValue == nil || len(currentValue) == 0 {
+				return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
+			}
 			doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
 			if err != nil {
 				return nil, nil, deleteDoc, nil, err
-			}
-			updatedHighSeq = doc.Sequence
-			if currentValue == nil || len(currentValue) == 0 {
-				return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 			}
 			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences)
 			if err != nil {
