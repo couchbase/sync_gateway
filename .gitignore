@@ -18,3 +18,6 @@ verbose*.xml
 sync_gateway
 *.pb.gz
 __pycache__
+
+### Couchbase Plugin ###
+.cbcache/
