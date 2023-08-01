@@ -242,7 +242,13 @@ func (db *Database) buildRevokedFeed(channelName string, options ChangesOptions,
 				// Otherwise: we need to determine whether a previous revision of the document was in the channel prior
 				// to the since value, and only send a revocation if that was the case
 				if logEntry.Sequence > sinceVal {
-					requiresRevocation, err := db.wasDocInChannelPriorToRevocation(logEntry.DocID, singleChannelCache.ChannelName(), revocationSinceSeq)
+					// Get doc sync data so we can verify the docs grant history
+					syncData, err := db.GetDocSyncData(logEntry.DocID)
+					if err != nil {
+						base.InfofCtx(db.Ctx, base.KeyChanges, "Couldn't get history for doc %q for channel %s, skipping revocation checks: %v", base.UD(logEntry.DocID), base.UD(singleChannelCache.ChannelName()), err)
+						continue
+					}
+					requiresRevocation, err := db.wasDocInChannelPriorToRevocation(syncData, logEntry.DocID, singleChannelCache.ChannelName(), revocationSinceSeq)
 					if err != nil {
 						change := ChangeEntry{
 							Err: base.ErrChannelFeed,
@@ -322,13 +328,7 @@ func UserHasDocAccess(db *Database, docID string) (bool, error) {
 }
 
 // Checks if a document needs to be revoked. This is used in the case where the since < doc sequence
-func (db *Database) wasDocInChannelPriorToRevocation(docID, chanName string, since uint64) (bool, error) {
-	// Get doc sync data so we can verify the docs grant history
-	syncData, err := db.GetDocSyncData(docID)
-	if err != nil {
-		return false, err
-	}
-
+func (db *Database) wasDocInChannelPriorToRevocation(syncData SyncData, docID, chanName string, since uint64) (bool, error) {
 	// Obtain periods where the channel we're interested in was accessible by the user
 	channelAccessPeriods, err := db.user.ChannelGrantedPeriods(chanName)
 	if err != nil {
