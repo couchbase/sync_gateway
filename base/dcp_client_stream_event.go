@@ -15,38 +15,44 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 )
 
+// streamEvent is an interface for events that can be sent on a DCP stream.
 type streamEvent interface {
 	VbID() uint16
 }
 
+// streamEventCommon is a struct that contains common fields for all stream events.
 type streamEventCommon struct {
 	vbID     uint16
 	streamID uint16
 }
 
+// VbID return the vBucket ID for the event.
 func (sec streamEventCommon) VbID() uint16 {
 	return sec.vbID
 }
 
+// snapshotEvent represents a DCP snapshot event (opcode 0x56).
 type snapshotEvent struct {
-	streamEventCommon
 	startSeq     uint64
 	endSeq       uint64
 	snapshotType gocbcore.SnapshotState
+	streamEventCommon
 }
 
+// mutationEvent represents a DCP mutation event (opcode 0x57).
 type mutationEvent struct {
-	streamEventCommon
-	seq        uint64
-	flags      uint32
-	expiry     uint32
-	cas        uint64
-	datatype   uint8
-	collection uint32
 	key        []byte
 	value      []byte
+	seq        uint64
+	cas        uint64
+	flags      uint32
+	expiry     uint32
+	collection uint32
+	streamEventCommon
+	datatype uint8
 }
 
+// asFeedEvent converts a mutationEvent to a sgbucket.FeedEvent.
 func (e mutationEvent) asFeedEvent() sgbucket.FeedEvent {
 	return sgbucket.FeedEvent{
 		Opcode:       sgbucket.FeedOpMutation,
@@ -62,16 +68,18 @@ func (e mutationEvent) asFeedEvent() sgbucket.FeedEvent {
 	}
 }
 
+// deletionEvent represents a DCP deletion event (opcode 0x58).
 type deletionEvent struct {
-	streamEventCommon
-	seq        uint64
-	cas        uint64
-	datatype   uint8
-	collection uint32
 	key        []byte
 	value      []byte
+	seq        uint64
+	cas        uint64
+	collection uint32
+	datatype   uint8
+	streamEventCommon
 }
 
+// asFeedEvent converts a deletionEvent to a sgbucket.FeedEvent.
 func (e deletionEvent) asFeedEvent() sgbucket.FeedEvent {
 	return sgbucket.FeedEvent{
 		Opcode:       sgbucket.FeedOpDeletion,
@@ -85,11 +93,13 @@ func (e deletionEvent) asFeedEvent() sgbucket.FeedEvent {
 	}
 }
 
+// endStreamEvent represents a DCP end stream event, and the error associated with the stream end (opcode 0x55).
 type endStreamEvent struct {
-	streamEventCommon
 	err error
+	streamEventCommon
 }
 
+// seqnoAdvancedEvent represents a DCP Seqno advanced event (opcode 0x64).
 type seqnoAdvancedEvent struct {
 	streamEventCommon
 	seq uint64
