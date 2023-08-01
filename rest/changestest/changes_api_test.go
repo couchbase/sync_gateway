@@ -3858,7 +3858,6 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 
 func TestResyncAllTombstones(t *testing.T) {
 	base.LongRunningTest(t)
-	t.Skip() // skip until CBG-3235 is resolved
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Walrus does not support Xattrs")
 	}
