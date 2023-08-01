@@ -51,7 +51,7 @@ const (
 
 	NumGoroutinesDesc = "The total number of goroutines."
 
-	ProcessCPUPercentUtilDesc = "The CPU’s utilization as percentage value. The CPU usage calculation is performed based on user and system CPU time, but it does not include components such as iowait. The derivation means that the values of " +
+	ProcessCPUPercentUtilDesc = "The CPU's utilization as percentage value. The CPU usage calculation is performed based on user and system CPU time, but it does not include components such as iowait. The derivation means that the values of " +
 		"process_cpu_percent_utilization and %Cpu, returned when running the top command, will differ"
 
 	ProcessMemoryResidentDesc = "The memory utilization (Resident Set Size) for the process, in bytes."
@@ -75,11 +75,11 @@ const (
 
 	ChanCacheBypassCountDesc = "The total number of transient bypass channel caches created to serve requests when the channel cache was at capacity."
 
-	ChanCacheChannelsAddedDesc = "The total number of channel caches added. The metric doesn’t decrease when a channel is removed. That is, it is similar to chan_cache_num_channels but doesn’t track removals."
+	ChanCacheChannelsAddedDesc = "The total number of channel caches added. The metric doesn't decrease when a channel is removed. That is, it is similar to chan_cache_num_channels but doesn't track removals."
 
 	ChanCacheChannelsEvictedInactiveDesc = "The total number of channel cache channels evicted due to inactivity."
 
-	ChanCacheChannelsEvictedNRUDesc = "The total number of active channel cache channels evicted, based on ‘not recently used’ criteria."
+	ChanCacheChannelsEvictedNRUDesc = "The total number of active channel cache channels evicted, based on 'not recently used' criteria."
 
 	ChanCacheCompactCountDesc = "The total number of channel cache compaction runs."
 
@@ -179,7 +179,7 @@ const (
 
 	AttachmentPushCountDesc = "The total number of attachments pushed."
 
-	ConflictWriteCountDesc = "The total number of writes that left the document in a conflicted state. Includes new conflicts, and mutations that don’t resolve existing conflicts."
+	ConflictWriteCountDesc = "The total number of writes that left the document in a conflicted state. Includes new conflicts, and mutations that don't resolve existing conflicts."
 
 	DocPushCountDesc = "The total number of documents pushed."
 
@@ -209,10 +209,10 @@ const (
 
 	Crc32MatchCountDesc = "The total number of instances during import when the document cas had changed, but the document was not imported because the document body had not changed."
 
-	DCPCachingCountDesc = "The total number of DCP mutations added to Sync Gateway’s channel cache. Can be used with dcp_caching_time to monitor cache processing latency. That is, the time between seeing a change on the DCP feed and when it’s available in the channel cache: " +
+	DCPCachingCountDesc = "The total number of DCP mutations added to Sync Gateway's channel cache. Can be used with dcp_caching_time to monitor cache processing latency. That is, the time between seeing a change on the DCP feed and when it's available in the channel cache: " +
 		"DCP cache latency = dcp_caching_time / dcp_caching_count"
 
-	DCPCachingTimeDesc = "The total time between a DCP mutation arriving at Sync Gateway and being added to channel cache. This metric can be used with dcp_caching_count to monitor cache processing latency. That is, the time between seeing a change on the DCP feed and when it’s available in the channel cache: " +
+	DCPCachingTimeDesc = "The total time between a DCP mutation arriving at Sync Gateway and being added to channel cache. This metric can be used with dcp_caching_count to monitor cache processing latency. That is, the time between seeing a change on the DCP feed and when it's available in the channel cache: " +
 		"dcp_cache_latency = dcp_caching_time / dcp_caching_count"
 
 	DCPReceivedCountDesc = "The total number of document mutations received by Sync Gateway over DCP."
