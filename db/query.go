@@ -24,7 +24,8 @@ import (
 
 // Used for queries that only return doc id
 type QueryIdRow struct {
-	Id string
+	Id  string
+	Seq uint64
 }
 
 // Used for queries that only return doc id
