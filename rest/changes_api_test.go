@@ -3846,6 +3846,57 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 	longpollWg.Wait()
 }
 
+func TestResyncAllTombstones(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not support Xattrs")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("If running with no xattrs compact acts as a no-op")
+	}
+
+	const queryPaginationLimit = 5
+	tests := []int{
+		0,
+		queryPaginationLimit - 1,
+		queryPaginationLimit,
+		queryPaginationLimit + 1,
+		(queryPaginationLimit * 2) - 1,
+		(queryPaginationLimit * 2),
+		(queryPaginationLimit * 2) + 1,
+	}
+
+	for _, numTombstones := range tests {
+		t.Run(fmt.Sprintf("limit:%d-numTombstones:%d", queryPaginationLimit, numTombstones), func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+					QueryPaginationLimit: base.IntPtr(queryPaginationLimit),
+				}},
+			})
+			rt.GetDatabase().PurgeInterval = 0
+			defer rt.Close()
+
+			for i := 0; i < numTombstones; i++ {
+				docID := fmt.Sprintf("doc%d", i)
+				resp := rt.putDoc(docID, `{"foo":"bar"}`)
+				require.True(t, resp.Ok)
+				rt.deleteDoc(docID, resp.Rev)
+			}
+
+			resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_offline", rt.GetDatabase().Name), "")
+			RequireStatus(t, resp, http.StatusOK)
+			require.NoError(t, rt.WaitForDBState(db.RunStateString[db.DBOffline]))
+
+			resp = rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_resync?action=start", rt.GetDatabase().Name), "")
+			RequireStatus(t, resp, http.StatusOK)
+
+			status := rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
+			assert.Equal(t, numTombstones, status.DocsProcessed)
+			assert.Equal(t, 0, status.DocsChanged)
+		})
+	}
+}
+
 func TestTombstoneCompaction(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 

@@ -1295,7 +1295,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 	defer callback(&docsProcessed, &docsChanged)
 
 	var unusedSequences []uint64
-
+	highSeq := uint64(0)
 	for {
 		results, err := db.QueryResync(queryLimit, startSeq, endSeq)
 		if err != nil {
@@ -1303,10 +1303,26 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 		}
 
 		queryRowCount := 0
-		highSeq := uint64(0)
 
 		var importRow QueryIdRow
-		for results.Next(&importRow) {
+		for {
+			var found bool
+			if db.UseViews() {
+				var viewRow channelsViewRow
+				found = results.Next(&viewRow)
+				if !found {
+					break
+				}
+				importRow = QueryIdRow{
+					Seq: uint64(viewRow.Key[1].(float64)),
+					Id:  viewRow.ID,
+				}
+			} else {
+				found = results.Next(&importRow)
+				if !found {
+					break
+				}
+			}
 			select {
 			case <-terminator.Done():
 				base.Infof(base.KeyAll, "Resync was stopped before the operation could be completed. System "+
@@ -1324,7 +1340,6 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 			queryRowCount++
 			docsProcessed++
 			documentUpdateFunc := func(doc *Document) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, err error) {
-				highSeq = doc.Sequence
 				forceUpdate := false
 				if !doc.HasValidSyncData() {
 					// This is a document not known to the sync gateway. Ignore it:
@@ -1448,6 +1463,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool, callback upda
 			} else if err != base.ErrUpdateCancel {
 				base.Warnf("Error updating doc %q: %v", base.UD(docid), err)
 			}
+			highSeq = importRow.Seq
 		}
 
 		callback(&docsProcessed, &docsChanged)

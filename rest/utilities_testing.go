@@ -666,10 +666,10 @@ func (rt *RestTester) GetDBState() string {
 }
 
 func (rt *RestTester) WaitForDBOnline() (err error) {
-	return rt.waitForDBState("Online")
+	return rt.WaitForDBState("Online")
 }
 
-func (rt *RestTester) waitForDBState(stateWant string) (err error) {
+func (rt *RestTester) WaitForDBState(stateWant string) (err error) {
 	var stateCurr string
 	maxTries := 20
 
