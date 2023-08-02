@@ -8,6 +8,12 @@
 
 package db
 
+import (
+	"fmt"
+
+	"github.com/couchbase/sync_gateway/base"
+)
+
 type HybridLogicalVector struct {
 	CurrentVersionCAS uint64            // current version cas (or cvCAS) stores the current CAS at the time of replication
 	SourceID          string            // source bucket uuid of where this entry originated from
@@ -22,6 +28,14 @@ type CurrentVersionVector struct {
 	SourceID   string
 }
 
+// NewHybridLogicalVector returns a HybridLogicalVector struct with maps initialised in the struct
+func NewHybridLogicalVector() HybridLogicalVector {
+	return HybridLogicalVector{
+		PreviousVersions: make(map[string]uint64),
+		MergeVersions:    make(map[string]uint64),
+	}
+}
+
 // GetCurrentVersion return the current version vector from the HLV in memory
 func (hlv *HybridLogicalVector) GetCurrentVersion() (string, uint64) {
 	return hlv.SourceID, hlv.Version
@@ -29,56 +43,79 @@ func (hlv *HybridLogicalVector) GetCurrentVersion() (string, uint64) {
 
 // IsInConflict tests to see if in memory HLV is conflicting with another HLV
 func (hlv *HybridLogicalVector) IsInConflict(otherVector HybridLogicalVector) bool {
-	// test if in memory version vector is dominating or if they are equal. If so no conflict is present
-	if hlv.isDominating(otherVector) || hlv.isEqual(otherVector) {
+	// test if either HLV(A) or HLV(B) are dominating over each other. If so they are not in conflict
+	if hlv.isDominating(otherVector) || otherVector.isDominating(*hlv) {
 		return false
 	}
-	// if the version vectors aren't dominating or equal then conflict is present
+	// if the version vectors aren't dominating over one another then conflict is present
 	return true
 }
 
 // AddVersion adds a version vector to the in memory representation of a HLV and moves current version vector to
-// previous versions on the HLV
-func (hlv *HybridLogicalVector) AddVersion(version CurrentVersionVector) {
+// previous versions on the HLV if needed
+func (hlv *HybridLogicalVector) AddVersion(newVersion CurrentVersionVector) error {
+	if newVersion.VersionCAS < hlv.Version {
+		return fmt.Errorf("attempting to add new verison vector entry with a CAS that is less than the current version CAS value")
+	}
+	// if new entry has the same source we simple just update the version
+	if newVersion.SourceID == hlv.SourceID {
+		hlv.Version = newVersion.VersionCAS
+		return nil
+	}
+	// if we get here this is a new version from a different sourceID thus need to move current sourceID to previous versions and update current version
 	hlv.PreviousVersions[hlv.SourceID] = hlv.Version
-	hlv.Version = version.VersionCAS
-	hlv.SourceID = version.SourceID
+	hlv.Version = newVersion.VersionCAS
+	hlv.SourceID = newVersion.SourceID
+	return nil
 }
 
 // Remove removes a vector from previous versions section of in memory HLV
-func (hlv *HybridLogicalVector) Remove(source string) {
+func (hlv *HybridLogicalVector) Remove(source string) error {
+	// if entry is not found in previous versions we return error
+	if hlv.PreviousVersions[source] == 0 {
+		return base.ErrNotFound
+	}
 	delete(hlv.PreviousVersions, source)
+	return nil
 }
 
 // isDominating tests if in memory HLV is dominating over another
 func (hlv *HybridLogicalVector) isDominating(otherVector HybridLogicalVector) bool {
-	// in memory hlv is dominating if source ID matches other sourceID but with in memory CAS greater than other vector
+	// HLV A dominates HLV B if source(A) == source(B) and version(A) > version(B)
 	if hlv.SourceID == otherVector.SourceID && hlv.Version > otherVector.Version {
 		return true
 	}
-	// if im memory CAS is greater than other and other sourceID:CAS pair is inside previous versions or
-	// merge versions then in memory HLV is dominating
-	if hlv.Version > otherVector.Version {
-		if hlv.PreviousVersions[otherVector.SourceID] == otherVector.Version {
-			return true
-		}
-		if hlv.MergeVersions[otherVector.SourceID] == otherVector.Version {
+	// if there is an entry in pv(B) for A's current source and version(A) > B's version for that pv entry then A is dominating
+	if pvEntry := otherVector.PreviousVersions[hlv.SourceID]; pvEntry != 0 {
+		if hlv.Version > pvEntry {
 			return true
 		}
 	}
+	// if there is an entry in mv(B) for A's current source and version(A) > B's version for that pv entry then A is dominating
+	if mvEntry := otherVector.MergeVersions[hlv.SourceID]; mvEntry != 0 {
+		if hlv.Version > mvEntry {
+			return true
+		}
+	}
+	// HLV A is not dominating over HLV B
 	return false
 }
 
 // isEqual tests if in memory HLV is equal to another
 func (hlv *HybridLogicalVector) isEqual(otherVector HybridLogicalVector) bool {
-	// if in memory hlv sourceID the sae as other sourceID and in memory CAS is equal to other CAS then HLV's are equal
+	// if in HLV(A) sourceID the same as HLV(B) sourceID and HLV(A) CAS is equal to HLV(B) CAS then the two HLV's are equal
 	if hlv.SourceID == otherVector.SourceID && hlv.Version == otherVector.Version {
 		return true
 	}
-	// if the in memory HLV merge versions isn't empty and the other HLV merge versions isn't empty AND if
+	// if the HLV(A) merge versions isn't empty and HLV(B) merge versions isn't empty AND if
 	// merge versions between the two HLV's are the same, they are equal
 	if len(hlv.MergeVersions) != 0 && len(otherVector.MergeVersions) != 0 {
 		if hlv.equalMergeVectors(otherVector) {
+			return true
+		}
+	}
+	if len(hlv.PreviousVersions) != 0 && len(otherVector.PreviousVersions) != 0 {
+		if hlv.equalPreviousVectors(otherVector) {
 			return true
 		}
 	}
@@ -88,8 +125,24 @@ func (hlv *HybridLogicalVector) isEqual(otherVector HybridLogicalVector) bool {
 
 // equalMergeVectors tests if two merge vectors between HLV's are equal or not
 func (hlv *HybridLogicalVector) equalMergeVectors(otherVector HybridLogicalVector) bool {
+	if len(hlv.MergeVersions) != len(otherVector.MergeVersions) {
+		return false
+	}
 	for k, v := range hlv.MergeVersions {
 		if v != otherVector.MergeVersions[k] {
+			return false
+		}
+	}
+	return true
+}
+
+// equalPreviousVectors tests if two previous versions vectors between two HLV's are equal or not
+func (hlv *HybridLogicalVector) equalPreviousVectors(otherVector HybridLogicalVector) bool {
+	if len(hlv.PreviousVersions) != len(otherVector.PreviousVersions) {
+		return false
+	}
+	for k, v := range hlv.PreviousVersions {
+		if v != otherVector.PreviousVersions[k] {
 			return false
 		}
 	}
