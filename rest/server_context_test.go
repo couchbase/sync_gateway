@@ -832,7 +832,10 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
+	bucket := base.GetPersistentTestBucket(t)
+	defer bucket.Close()
 	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: bucket.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				StartOffline: base.BoolPtr(true),
