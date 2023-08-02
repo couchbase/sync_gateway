@@ -3881,7 +3881,7 @@ func TestResyncAllTombstones(t *testing.T) {
 			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 					QueryPaginationLimit: base.IntPtr(queryPaginationLimit),
-				}},
+					Unsupported:          &db.UnsupportedOptions{UseQueryBasedResyncManager: true}}},
 			})
 			rt.GetDatabase().PurgeInterval = 0
 			defer rt.Close()
