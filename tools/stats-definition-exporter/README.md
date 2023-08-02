@@ -1,14 +1,51 @@
 # Sync Gateway Prometheus Stat Definition Exporter
 This tool exports all the Prometheus Sync Gateway stats definitions to a JSON file. The JSON is prettified by using tab indents and new lines.
 
+## Building
+To build the tool, run the following command from the root of the Sync Gateway repo:
+```bash
+go build "./tools/stats-definition-exporter"
+```
+This will output the binary `stats-definition-exporter` to the current working directory.
+
+### Change binary output location
+The `-o` flag can be used to specify the output location and name. For example:
+```bash
+go build -o /tmp/stats-definition-exporter "./tools/stats-definition-exporter"
+```
+
+## Usage
+### Default Settings
+To run the tool, run the following command from the root of the Sync Gateway repo:
+```bash
+./stats-definition-exporter
+```
+This will run with the default settings which is to output to a file named `metrics_metadata.json` in the current working directory. 
+
+### Using Flags
+To use a flag, run:
+```bash
+./stats-definition-exporter -[flag] [value]
+```
+
+For example:
+```bash
+./stats-definition-exporter -output /tmp/sgw_metrics_metadata_3.2.0.json
+```
+#### Flag help
+All the available flags can be printed to console by running:
+```bash
+./stats-definition-exporter -help
+```
+
 ## Output
 ### To File
-By default, this tool will output to a file. named `metrics_metadata.json`. This is outputted in the current working directory.
+By default, this tool will output to a file named `metrics_metadata.json` in the current working directory. The output file will be overwritten if it already exists.
 
 Use the `-output` flag to change the output location and name.
 
 ### To Stdout
-To output to stdout only and not to a fail, use the `-no-file` flag. The `-output` flag will be ignored when this is `true`.
+To output to `stdout` only and not to a fail, use the `-no-file` flag. The `-output` flag will be ignored when this is `true`.
 
 ## Logging
 The tool may output to stderr when unexpected problems occur. For example, this maybe due to a stat not being initialized, a stat being nil, or an unexpected problem writing to a file.
