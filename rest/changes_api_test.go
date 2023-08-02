@@ -3855,39 +3855,46 @@ func TestResyncAllTombstones(t *testing.T) {
 		t.Skip("If running with no xattrs compact acts as a no-op")
 	}
 
-	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			QueryPaginationLimit: base.IntPtr(5),
-		}},
-	})
-	rt.GetDatabase().PurgeInterval = 0
-	defer rt.Close()
-
-	TestResyncTombstones := func(numDocs int) {
-
-		count := 0
-
-		for count < numDocs {
-			count++
-			response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/", rt.GetDatabase().Name), `{"foo":"bar"}`)
-			assert.Equal(t, 200, response.Code)
-			var body db.Body
-			err := base.JSONUnmarshal(response.Body.Bytes(), &body)
-			assert.NoError(t, err)
-			revId := body["rev"].(string)
-			docId := body["id"].(string)
-			response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/%s?rev=%s", rt.GetDatabase().Name, docId, revId), "")
-			assert.Equal(t, 200, response.Code)
-		}
-		resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_offline", rt.GetDatabase().Name), "")
-		RequireStatus(t, resp, http.StatusOK)
-		require.NoError(t, rt.waitForDBState(db.RunStateString[db.DBOffline]))
-
-		resp = rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_resync?action=start", rt.GetDatabase().Name), "")
-		RequireStatus(t, resp, http.StatusOK)
-		rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
+	const queryPaginationLimit = 5
+	tests := []int{
+		0,
+		queryPaginationLimit - 1,
+		queryPaginationLimit,
+		queryPaginationLimit + 1,
+		(queryPaginationLimit * 2) - 1,
+		(queryPaginationLimit * 2),
+		(queryPaginationLimit * 2) + 1,
 	}
-	TestResyncTombstones(5)
+
+	for _, numTombstones := range tests {
+		t.Run(fmt.Sprintf("limit:%d-numTombstones:%d", queryPaginationLimit, numTombstones), func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+					QueryPaginationLimit: base.IntPtr(queryPaginationLimit),
+				}},
+			})
+			rt.GetDatabase().PurgeInterval = 0
+			defer rt.Close()
+
+			for i := 0; i < numTombstones; i++ {
+				docID := fmt.Sprintf("doc%d", i)
+				resp := rt.putDoc(docID, `{"foo":"bar"}`)
+				require.True(t, resp.Ok)
+				rt.deleteDoc(docID, resp.Rev)
+			}
+
+			resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_offline", rt.GetDatabase().Name), "")
+			RequireStatus(t, resp, http.StatusOK)
+			require.NoError(t, rt.WaitForDBState(db.RunStateString[db.DBOffline]))
+
+			resp = rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_resync?action=start", rt.GetDatabase().Name), "")
+			RequireStatus(t, resp, http.StatusOK)
+
+			status := rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
+			assert.Equal(t, numTombstones, status.DocsProcessed)
+			assert.Equal(t, 0, status.DocsChanged)
+		})
+	}
 }
 
 func TestTombstoneCompaction(t *testing.T) {
