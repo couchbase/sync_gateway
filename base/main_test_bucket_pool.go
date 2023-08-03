@@ -198,11 +198,14 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	id, err := GenerateRandomID()
 	require.NoError(t, err)
 
-	var walrusBucket Bucket
+	var walrusBucket *rosmar.Bucket
 	var typeName string
 	bucketName := tbpBucketNamePrefix + "rosmar_" + id
 	if url == "walrus:" || url == rosmar.InMemoryURL {
 		walrusBucket, err = rosmar.OpenBucket(url, rosmar.CreateOrOpen)
+		if err == nil {
+			walrusBucket.SetName(bucketName)
+		}
 	} else {
 		walrusBucket, err = rosmar.OpenBucketIn(url, bucketName, rosmar.CreateOrOpen)
 	}
@@ -252,7 +255,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 			b.Close()
 		} else {
 			// Persisted buckets should call close and delete
-			closeErr := walrusBucket.(sgbucket.DeletableBucket).CloseAndDelete()
+			closeErr := walrusBucket.CloseAndDelete()
 			if closeErr != nil {
 				tbp.Logf(ctx, "Unexpected error closing persistent %s bucket: %v", typeName, closeErr)
 			}
