@@ -250,5 +250,10 @@ func (CBGoUtilsLogger) warnNotImplemented(name string, f func() string) {
 // Log callback for Rosmar
 // **************************************************************************
 func rosmarLogger(level rosmar.LogLevel, fmt string, args ...any) {
-	logTo(context.TODO(), LogLevel(level), KeyWalrus, fmt, args...)
+	key := KeyWalrus
+	if level <= rosmar.LevelWarn {
+		key = KeyAll
+		fmt = "Rosmar: " + fmt
+	}
+	logTo(context.TODO(), LogLevel(level), key, fmt, args...)
 }
