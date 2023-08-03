@@ -9,6 +9,7 @@
 package db
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -26,6 +27,18 @@ type HybridLogicalVector struct {
 type CurrentVersionVector struct {
 	VersionCAS uint64
 	SourceID   string
+}
+
+type PersistedHybridLogicalVector struct {
+	CurrentVersionCAS string            `json:"cvCas"` // current version cas (or cvCAS) stores the current CAS at the time of replication
+	SourceID          string            `json:"src"`   // source bucket uuid of where this entry originated from
+	Version           string            `json:"vrs"`   // current cas of the current version on the version vector
+	MergeVersions     map[string]string `json:"mv"`    // map of merge versions for fast efficient lookup
+	PreviousVersions  map[string]string `json:"pv"`
+}
+
+type PersistedVersionVector struct {
+	PersistedHybridLogicalVector `json:"_vv"`
 }
 
 // NewHybridLogicalVector returns a HybridLogicalVector struct with maps initialised in the struct
@@ -156,4 +169,100 @@ func (hlv *HybridLogicalVector) GetVersion(sourceID string) uint64 {
 		latestVersion = mvEntry
 	}
 	return latestVersion
+}
+
+func (hlv *HybridLogicalVector) MarshalJSON() ([]byte, error) {
+	persistedHLV := PersistedVersionVector{}
+	cvCasByteArray := base.Uint64CASToLittleEndianHex(hlv.CurrentVersionCAS)
+	var persistedSRC string
+	// check if it is a server mutation, if not we need to convert to base64 encoding and add the mobile mutation prefix
+	if hlv.SourceID[0:2] != "s_" {
+		encodedValue, err := base.HexToBase64(hlv.SourceID)
+		if err != nil {
+			return nil, err
+		}
+		persistedSRC = string(encodedValue)
+		// as it doesn't have 's_' at start it will be mobile mutation, so we need leading 'm_' to indicate this
+		persistedSRC = "m_" + persistedSRC
+	} else {
+		persistedSRC = hlv.SourceID
+	}
+	vrsCasByteArray := base.Uint64CASToLittleEndianHex(hlv.Version)
+
+	pvPersistedFormat, err := convertMapToPersistedFormat(hlv.PreviousVersions)
+	if err != nil {
+		return nil, err
+	}
+	mvPersistedFormat, err := convertMapToPersistedFormat(hlv.MergeVersions)
+	if err != nil {
+		return nil, err
+	}
+
+	persistedHLV.CurrentVersionCAS = string(cvCasByteArray)
+	persistedHLV.SourceID = persistedSRC
+	persistedHLV.Version = string(vrsCasByteArray)
+	persistedHLV.PreviousVersions = pvPersistedFormat
+	persistedHLV.MergeVersions = mvPersistedFormat
+
+	return json.Marshal(persistedHLV)
+}
+
+func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
+	persistedJSON := PersistedVersionVector{}
+	err := json.Unmarshal(inputjson, &persistedJSON)
+	if err != nil {
+		return err
+	}
+	// convert the hex cas to uint64 cas
+	hlv.CurrentVersionCAS = base.HexCasToUint64(persistedJSON.CurrentVersionCAS)
+	hlv.SourceID = persistedJSON.SourceID
+	// convert the hex cas to uint64 cas
+	hlv.Version = base.HexCasToUint64(persistedJSON.Version)
+	// convert the maps form persisted format to the in memory format
+	hlv.PreviousVersions = convertMapToInMemoryFormat(persistedJSON.PreviousVersions)
+	hlv.MergeVersions = convertMapToInMemoryFormat(persistedJSON.MergeVersions)
+	return nil
+}
+
+// convertMapToPersistedFormat will convert in memory map of previous versions or merge versions into the persisted format map
+func convertMapToPersistedFormat(memoryMap map[string]uint64) (map[string]string, error) {
+	if memoryMap == nil {
+		return nil, nil
+	}
+	returnedMap := make(map[string]string)
+	var persistedSRC string
+	var persistedCAS string
+	for i, v := range memoryMap {
+		// check if it is a server mutation, if not we need to convert to base64 encoding and add the mobile mutation prefix
+		if i[0:2] != "s_" {
+			encodedValue, err := base.HexToBase64(i)
+			if err != nil {
+				return nil, err
+			}
+			persistedSRC = string(encodedValue)
+			// as it doesn't have 's_' at start it will be mobile mutation so we need leading 'm_' to indicate this
+			persistedSRC = "m_" + persistedSRC
+		} else {
+			persistedSRC = i
+		}
+		casByteArray := base.Uint64CASToLittleEndianHex(v)
+		persistedCAS = string(casByteArray)
+		persistedCAS = persistedCAS[2:]
+		returnedMap[persistedSRC] = persistedCAS
+	}
+	return returnedMap, nil
+}
+
+// convertMapToInMemoryFormat will convert the persisted format map to an in memory format of that map.
+// Used for previous versions and merge versions maps on HLV
+func convertMapToInMemoryFormat(persistedMap map[string]string) map[string]uint64 {
+	if persistedMap == nil {
+		return nil
+	}
+	returnedMap := make(map[string]uint64)
+	// convert each CAS entry from little endian hex to Uint64
+	for key, value := range persistedMap {
+		returnedMap[key] = base.HexCasToUint64(value)
+	}
+	return returnedMap
 }

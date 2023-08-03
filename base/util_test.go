@@ -1703,3 +1703,18 @@ func TestAllOrNoneNil(t *testing.T) {
 		})
 	}
 }
+
+func TestCASToLittleEndianHex(t *testing.T) {
+	const casValue = 123456
+	const expHexValue = "0x40e2010000000000"
+	littleEndianHex := Uint64CASToLittleEndianHex(casValue)
+	require.Equal(t, expHexValue, string(littleEndianHex))
+}
+
+func TestHexToBase64Encoding(t *testing.T) {
+	const inputValue = "cb06dc003846116d9b66d2ab23887a96"
+	const expectedValue = "ywbcADhGEW2bZtKrI4h6lg"
+	encodedValue, err := HexToBase64(inputValue)
+	require.NoError(t, err)
+	require.Equal(t, expectedValue, string(encodedValue))
+}
