@@ -219,7 +219,7 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 	// Currently fails against walrus bucket as '_sync' property will exist in doc object if it is emitted in the map function
 	t.Skip("WARNING: TEST DISABLED")
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil)
 	defer rt.Close()
 
 	// Define three views
@@ -632,7 +632,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channel)}`,
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig)
 	defer rt.Close()
 
 	// Cleanup existing design docs
@@ -749,7 +749,7 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 		}},
 	}
 
-	rt := NewRestTester(t, rtConfig)
+	rt := NewRestTesterDefaultCollection(t, rtConfig)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"value":"foo"}`)
