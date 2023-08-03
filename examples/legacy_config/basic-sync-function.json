@@ -12,7 +12,7 @@
       "password": "password",
       "bucket": "default",
       "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
-      "sync": 
+      "sync":
   	`
       function(doc, oldDoc) {
         if (doc.type == "reject_me") {
@@ -29,7 +29,7 @@
 	    channel(doc.channels)
 
       // Expire documents based on document "expiry" property
-      expiry(doc.expiry)    
+      expiry(doc.expiry)
 	}
       }
     `,

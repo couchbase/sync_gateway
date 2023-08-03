@@ -23,9 +23,9 @@ licenses/APL2.txt.
   <remote fetch="https://github.com/rcrowley/" name="rcrowley" />
   <remote fetch="https://github.com/samuel/" name="samuel" />
   <remote fetch="https://github.com/tleyden/" name="tleyden" />
-  
+
   <default remote="couchbase" revision="master" />
-  
+
   <project groups="notdefault,sg-accel" name="blance" path="godeps/src/github.com/couchbase/blance" revision="3d39b57188c372649beedd5c13c9003156d5a055" />
   <project name="build" path="cbbuild" revision="388ec72a70fc0925823d726609a209201052567b">
     <annotation name="RELEASE" value="1.4.0.2" />

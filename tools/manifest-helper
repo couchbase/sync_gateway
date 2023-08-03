@@ -30,7 +30,7 @@ import subprocess
 #
 # To reset all repositories in your GOPATH listed in the manifest to their latest master branch commit (useful if you need to rerun go get -u):
 #
-#   ./manifest-helper -r 
+#   ./manifest-helper -r
 #
 ignored_repos = [
     "build",
@@ -82,7 +82,7 @@ def display_commit_delta(path, manifest_revision, gopath_revision):
         ))
 
 def git_checkout_manifest_commit(path, manifest_revision, gopath_revision):
-    
+
     # first run a git diff to make sure there are no local changes
     output = subprocess.check_output(
         ["git", "diff"],
@@ -98,7 +98,7 @@ def git_checkout_manifest_commit(path, manifest_revision, gopath_revision):
         ["git", "fetch"],
         cwd=path
     )
-    
+
     print("git checkout {} in {}".format(manifest_revision, path))
     output = subprocess.check_output(
         ["git", "checkout", manifest_revision],
@@ -115,7 +115,7 @@ def git_checkout_master(path, manifest_revision, gopath_revision):
     )
     print("git checkout master output: {}".format(output))
 
-    
+
 def process_commit_deltas(tree, callback):
    root = tree.getroot()
    for element in root:
@@ -132,7 +132,7 @@ def process_commit_deltas(tree, callback):
            os.environ["GOPATH"],
            path
        )
-       
+
        gopath_revision = get_gopath_revision(path)
        if gopath_revision is None:
            continue
@@ -142,7 +142,7 @@ def process_commit_deltas(tree, callback):
            gopath_revision
        )
 
-       
+
 def get_gopath_revision(path):
 
     """
@@ -154,7 +154,7 @@ def get_gopath_revision(path):
     if not os.path.exists(path):
         print("WARN: Directory does not exist, skipping: {}".format(path))
         return None
-    
+
     latest_commit = subprocess.check_output(
         ["git", "rev-parse", "HEAD"],
         cwd=path
@@ -178,7 +178,7 @@ def path_to_manifest():
     Discover the path to the manifest XML based on the $GOPATH
     """
     path = os.environ["GOPATH"]
-    
+
     path_components = [
         "src",
         "github.com",
@@ -197,10 +197,10 @@ if __name__=="__main__":
 
     if not "GOPATH" in os.environ:
         raise Exception("You must define a GOPATH environment variable")
-    
+
     # get arguments
     (parser, update_to_manifest_commit, display_deltas, update_to_master_commit) = parse_args()
-   
+
     # fetch manifest content and parse xml
     manifest = path_to_manifest()
     print("Processing manifest: {}".format(manifest))

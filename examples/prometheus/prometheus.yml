@@ -7,7 +7,7 @@
 # licenses/APL2.txt.
 
 global:
-  scrape_interval:     5s
+  scrape_interval: 5s
   evaluation_interval: 5s
 
 rule_files:

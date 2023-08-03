@@ -274,7 +274,7 @@ def make_collect_logs_tasks(zip_dir, sg_url, sg_config_file_path, sg_username, s
             config_str = response.read().decode('utf-8')
     else:
         config_str = ""
-    
+
     # If SG isn't running, load the bootstrap config - it'll have the logging config in it
     if config_str == "" and sg_config_file_path is not None and sg_config_file_path != "":
         try:
@@ -478,7 +478,7 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url, sg_username, sg_password,
                                  log_file="sync_gateway.log",
                                  content_postprocessors=server_config_postprocessors)
     collect_config_tasks.append(runtime_config_task)
-    
+
     # Get persisted dbconfigs
     dbs = get_db_list(sg_url, sg_username, sg_password)
     for db in dbs:
@@ -584,7 +584,7 @@ def make_sg_tasks(zip_dir, sg_url, sg_username, sg_password, sync_gateway_config
         if not os.path.exists(sync_gateway_executable_path):
             raise Exception("Path to sync gateway executable passed in does not exist: {0}".format(sync_gateway_executable_path))
         sg_binary_path = sync_gateway_executable_path
-    
+
     if sg_config_path is None and sync_gateway_config_path_option is not None and len(sync_gateway_config_path_option) > 0:
         sg_config_path = sync_gateway_config_path_option
 

@@ -48,7 +48,7 @@ doTest () {
         SG_TEST_TIMEOUT="20m"
     fi
 
-    # Extend timeout 
+    # Extend timeout
     EXTRA_FLAGS="$EXTRA_FLAGS -timeout=${SG_TEST_TIMEOUT}"
 
     echo "    Running Sync Gateway unit tests:"

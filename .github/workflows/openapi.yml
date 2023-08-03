@@ -13,7 +13,7 @@ on:
     # Only run when we change an API spec
     paths:
       - 'docs/api/**'
-    branches: 
+    branches:
       - 'master'
       - 'release/*'
       - 'CBG*'
@@ -32,10 +32,17 @@ jobs:
     runs-on: ubuntu-latest
     name: OpenAPI Validation
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: r7kamura/redocly-problem-matchers@v1
       - uses: mhiew/redoc-lint-github-action@v3
         with:
           args: '--format stylish'
         env:
           NO_COLOR: '1'
+
+  yamllint:
+    name: 'yamllint'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: karancode/yamllint-github-action@master

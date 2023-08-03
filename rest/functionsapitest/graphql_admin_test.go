@@ -95,7 +95,7 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
-						
+
 						var currentUser = context.user.function("getUserWithID", {id: args.id});
 						if (!currentUser) return undefined;
 						currentUser.name = args.name;
@@ -116,7 +116,7 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 						if (!currentUser) return undefined;
 
 						//case: args.email already present in the Emails array
-						
+
 						for (var i = 0; i < currentUser.Emails.length; i++) {
 							console.log(currentUser.Emails[i]);
 							if(currentUser.Emails[i]==args.email){

@@ -3,7 +3,7 @@
 Discussion on using Couchbase Server's native sequence handling as an alternative to Sync Gateway's current sequence allocation model
 
 ###Overview
-Couchbase Server assigns an internal sequence value to each mutation.  Within a given vbucket, Couchbase Server guarantees monotomically increasing sequence values.  
+Couchbase Server assigns an internal sequence value to each mutation.  Within a given vbucket, Couchbase Server guarantees monotomically increasing sequence values.
 
 Based on this, we can construct a stable timestamp for the entire cluster, as a vector clock of the current high sequence values for each vbucket. This timestamp satisfies the requirements for use in Sync Gateway replication as a sequence.
 

@@ -1,10 +1,10 @@
-The Sync Gateway issue tracker is reserved for bug reports and enhancement 
+The Sync Gateway issue tracker is reserved for bug reports and enhancement
 requests. For general questions, please use the Couchbase forums:
 https://forums.couchbase.com/c/mobile/sync-gateway. Thank you!
 
 ### Sync Gateway version
-Version information is written on startup to the Sync Gateway log, or can 
-be obtained by accessing the root endpoint (`/`) on the Sync Gateway Admin REST API.   
+Version information is written on startup to the Sync Gateway log, or can
+be obtained by accessing the root endpoint (`/`) on the Sync Gateway Admin REST API.
 
 ### Operating system
 The operating system you're running Sync Gateway on.
@@ -27,6 +27,6 @@ What should have happened?
 What actually happened?
 
 ### Steps to reproduce
-1.  
-2.  
-3.  
+1.
+2.
+3.

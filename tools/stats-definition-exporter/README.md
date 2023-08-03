@@ -20,7 +20,7 @@ To run the tool, run the following command from the root of the Sync Gateway rep
 ```bash
 ./stats-definition-exporter
 ```
-This will run with the default settings which is to output to a file named `metrics_metadata.json` in the current working directory. 
+This will run with the default settings which is to output to a file named `metrics_metadata.json` in the current working directory.
 
 ### Using Flags
 To use a flag, run:

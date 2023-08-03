@@ -130,7 +130,7 @@ func TestReadMultipartDocument(t *testing.T) {
 Content-Type: application/json
 
 {"key":"foo","value":"bar","_attachments":{"att.txt": {"type": "text/plain", "length": 35, "follows": true, "digest":"sha1-6RU4WkyC+YYARHkO052YJ/dw1Zk="}}}
---123  
+--123
 Content-Type: application/json
 Content-Disposition: attachment; filename=att.txt
 

@@ -119,14 +119,14 @@ const (
 	// viewWrapper_adminViews adds the rev to metadata, and strips the _sync property from the view result
 	syncViewAdminWrapper = `
 	function(doc, meta) {
-	
+
 		//Skip any internal sync documents
 		if (meta.id.substring(0, 6) == "%[1]s") {
 			return;
 		}
 		var sync;
 		var isXattr;
-	
+
 		//Get sync data from xattrs or from the doc body
 		if (meta.xattrs === undefined || meta.xattrs.%[2]s === undefined) {
 			sync = doc.%[3]s;
@@ -135,22 +135,22 @@ const (
 			sync = meta.xattrs.%[2]s;
 			isXattr = true;
 		}
-	
+
 		//Skip if the document has been deleted or has no sync data defined
 		if (sync === undefined || (sync.flags & 1) || sync.deleted)
 			return;
-	
+
 		//If sync data is in body strip it from the view result
 		if (!isXattr) {
 			delete doc.%[3]s;
 		}
-	
+
 		//Add rev to meta
 		meta.rev = sync.rev;
-	
+
 		//Run view
 		(%[4]s)(doc, meta);
-	
+
 		//Re-add sync data to body
 		if (!isXattr) {
 			doc.%[3]s = sync;
@@ -160,12 +160,12 @@ const (
 	function(doc, meta) {
 		var sync;
 		var isXattr;
-	
+
 		//Skip any internal sync documents
 		if (meta.id.substring(0, 6) == "%[1]s") {
 			return;
 		}
-	
+
 		//Get sync data from xattrs or from the doc body
 		if (meta.xattrs === undefined || meta.xattrs.%[2]s === undefined) {
 			sync = doc.%[3]s;
@@ -174,16 +174,16 @@ const (
 			sync = meta.xattrs.%[2]s;
 			isXattr = true;
 		}
-	
+
 		//Skip if the document has been deleted or has no sync data defined
 		if (sync === undefined || (sync.flags & 1) || sync.deleted)
 			return;
-	
+
 		//If sync data is in body strip it from the view result
 		if (!isXattr) {
 			delete doc.%[3]s;
 		}
-	
+
 		//Update channels
 		var channels = [];
 		var channelMap = sync.channels;
@@ -195,10 +195,10 @@ const (
 			}
 		}
 		meta.channels = channels;
-	
+
 		//Add rev to meta
 		meta.rev = sync.rev;
-	
+
 		//Run view
 		var _emit = emit;
 		(function() {
@@ -207,7 +207,7 @@ const (
 			};
 			(%[4]s)(doc, meta);
 		}());
-	
+
 		//Re-add sync data to body
 		if (!isXattr) {
 			doc.%[3]s = sync;
@@ -456,7 +456,7 @@ func installViews(ctx context.Context, viewStore sgbucket.ViewStore) error {
 		`function (doc, meta) {
 			var prefix = meta.id.substring(0,%d);
 			if (prefix == %q && doc.deleted !== true)
-				emit(meta.id.substring(%d), null); 
+				emit(meta.id.substring(%d), null);
 		}`
 	rolePrefixLen := len(base.RolePrefixRoot)
 	roles_excludeDeleted_map = fmt.Sprintf(roles_excludeDeleted_map, rolePrefixLen, base.RolePrefixRoot, rolePrefixLen)

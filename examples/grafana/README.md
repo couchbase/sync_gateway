@@ -1,6 +1,6 @@
 # Sync Gateway Grafana Dashboard #
 
-The provided dashboard.json is Grafana compatible out-of-the-box and can be imported into a Grafana environment directly. 
+The provided dashboard.json is Grafana compatible out-of-the-box and can be imported into a Grafana environment directly.
 
 In order to aid in the process of setting this up a makefile was made which should make the process easier.
 
