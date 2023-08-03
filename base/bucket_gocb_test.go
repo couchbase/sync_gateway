@@ -626,7 +626,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 	val["sg_field"] = "sg_value_mod"
 	xattrVal["rev"] = "2-1234"
 	_, err = dataStore.WriteCasWithXattr(key, xattrName, 0, getCas, nil, val, xattrVal)
-	assert.True(t, IsCasMismatch(err))
+	assert.True(t, IsCasMismatch(err), "error is %v", err)
 
 	// Retrieve again, ensure we get the SDK value, SG xattr
 	retrievedVal = nil
