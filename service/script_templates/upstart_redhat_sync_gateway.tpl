@@ -2,7 +2,7 @@ description \"Sync Gateway Upstart Script\"
 version \"0.1.0\"
 author \"Andrew Reslan\"
 
-# Upstart env vars 
+# Upstart env vars
 env RUNAS=${RUNAS_TEMPLATE_VAR}
 env RUNBASE=${RUNBASE_TEMPLATE_VAR}
 env PIDFILE=${PIDFILE_TEMPLATE_VAR}
@@ -23,7 +23,7 @@ pre-start script
   mkdir -p \${RUNBASE}/data
   chown -R \${RUNAS}:\${RUNAS} \${RUNBASE}/data
 end script
- 
+
 # Start the Sync Gateway and redirect output streams to log files
 script
   # Keep a pid around
@@ -31,7 +31,7 @@ script
   cd \$RUNBASE
   su --session-command \"\$GATEWAY --defaultLogFilePath \"\$LOGS\" \$CONFIG\" \$RUNAS
 end script
- 
+
 # Remove pid file when we stop the server
 pre-stop script
   rm $PIDFILE

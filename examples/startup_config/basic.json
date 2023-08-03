@@ -11,5 +11,5 @@
       "log_level": "info",
       "log_keys": ["*"]
     }
-  } 
+  }
 }

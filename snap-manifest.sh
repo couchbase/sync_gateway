@@ -52,7 +52,7 @@ This script will:
 
 def repo_sync():
     """
-    Run "repo sync", which will do all of the heavy lifting to get the 
+    Run "repo sync", which will do all of the heavy lifting to get the
     dependencies "snapped" / "syncd" to the versions specified in the manifest xml
     """
     print("Running repo sync -d")
