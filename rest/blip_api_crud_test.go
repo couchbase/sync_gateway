@@ -2571,6 +2571,9 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			leakyDataStore.SetGetRawCallback(func(key string) error {
 				return test.error
 			})
+			leakyDataStore.SetGetWithXattrCallback(func(key string) error {
+				return test.error
+			})
 
 			// Flush cache so document has to be retrieved from the leaky bucket
 			rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()

@@ -458,7 +458,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 			AutoImport: false,
 		}},
 	}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig)
 	defer rt.Close()
 
 	dataStore := rt.GetSingleDataStore()
@@ -501,7 +501,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	// 3.  Delete SG_delete through SG.
 	log.Printf("...............Delete through SG.......................................")
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", key, revId), "")
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, revId), "")
 	assert.Equal(t, 200, response.Code)
 	log.Printf("delete response: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -512,7 +512,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	// Attempt to retrieve via view.  Above operations were all synchronous (on-demand import of SDK delete, SG delete), so
 	// stale=false view results should be immediately updated.
-	results, err := rt.GetDatabase().ChannelViewForTest(t, "ABC", 0, 1000)
+	results, err := rt.GetDatabase().CollectionChannelViewForTest(t, rt.GetSingleTestDatabaseCollection(), "ABC", 0, 1000)
 	require.NoError(t, err, "Error issuing channel view query")
 	for _, entry := range results {
 		log.Printf("Got view result: %v", entry)
@@ -617,6 +617,7 @@ func TestImportFilterLogging(t *testing.T) {
 // should detect and not import/create new revision during read-triggered import
 func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 
+	base.TestRequiresSubdocXattrStore(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -673,6 +674,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 // should detect and not import/create new revision during write-triggered import
 func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 
+	base.TestRequiresSubdocXattrStore(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -731,6 +733,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 // should detect and not import/create new revision during feed-based import
 func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 
+	base.TestRequiresSubdocXattrStore(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -1062,9 +1065,6 @@ func TestCheckForUpgradeOnRead(t *testing.T) {
 	if base.TestUseXattrs() {
 		t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
 	}
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
-	}
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1140,9 +1140,6 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 	// Only run when xattrs are disabled, but requires couchbase server since we're writing an xattr directly to the bucket
 	if base.TestUseXattrs() {
 		t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
-	}
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 
 	rtConfig := rest.RestTesterConfig{
@@ -1225,9 +1222,6 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	// Only run when xattrs are disabled, but requires couchbase server since we're writing an xattr directly to the bucket
 	if base.TestUseXattrs() {
 		t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
-	}
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 
 	rtConfig := rest.RestTesterConfig{
@@ -2255,6 +2249,7 @@ func TestDcpBackfill(t *testing.T) {
 // Validate SG behaviour if there's an unexpected body on a tombstone
 func TestUnexpectedBodyOnTombstone(t *testing.T) {
 
+	base.TestRequiresSubdocXattrStore(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -2626,10 +2621,6 @@ func TestImportTouch(t *testing.T) {
 	require.Equal(t, initialRev, rawUpdateResponse.Sync.Rev)
 }
 func TestImportingPurgedDocument(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
-	}
-
 	if !base.TestUseXattrs() {
 		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
 	}
@@ -2655,11 +2646,6 @@ func TestImportingPurgedDocument(t *testing.T) {
 }
 
 func TestNonImportedDuplicateID(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Skip this test under walrus testing")
-	}
-
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -2674,10 +2660,6 @@ func TestNonImportedDuplicateID(t *testing.T) {
 
 func TestImportOnWriteMigration(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test doesn't work with Walrus")
-	}
-
 	if !base.TestUseXattrs() {
 		t.Skip("Test requires xattrs to be enabled")
 	}
@@ -2702,10 +2684,7 @@ func TestImportOnWriteMigration(t *testing.T) {
 }
 
 func TestUserXattrAutoImport(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	base.TestRequiresSubdocXattrStore(t)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
@@ -2825,10 +2804,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 }
 
 func TestUserXattrOnDemandImportGET(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	base.TestRequiresSubdocXattrStore(t)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
@@ -2927,10 +2903,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 }
 
 func TestUserXattrOnDemandImportWrite(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	base.TestRequiresSubdocXattrStore(t)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
@@ -3016,10 +2989,6 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 }
 
 func TestImportFilterTimeout(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Import not supported by Walrus")
-	}
-
 	importFilter := `function(doc) { while(true) { } }`
 
 	rtConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{ImportFilter: &importFilter, AutoImport: false, JavascriptTimeoutSecs: base.Uint32Ptr(1)}}}

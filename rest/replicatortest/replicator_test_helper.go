@@ -17,7 +17,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/couchbaselabs/walrus"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -58,9 +58,8 @@ func addActiveRT(t *testing.T, dbName string, testBucket *base.TestBucket) (acti
 	leakyBucket, ok := base.AsLeakyBucket(activeRT.GetDatabase().Bucket)
 	if ok {
 		ub := leakyBucket.GetUnderlyingBucket()
-		_, isWalrusBucket := ub.(*walrus.WalrusBucket)
-		_, isWalrusCollectionBucket := ub.(*walrus.CollectionBucket)
-		if isWalrusBucket || isWalrusCollectionBucket {
+		_, isWalrusBucket := ub.(*rosmar.Bucket)
+		if isWalrusBucket {
 			leakyBucket.SetIgnoreClose(true)
 		}
 	}

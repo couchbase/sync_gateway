@@ -13,6 +13,7 @@ package base
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -22,7 +23,7 @@ import (
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbaselabs/walrus"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
@@ -197,16 +198,30 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	id, err := GenerateRandomID()
 	require.NoError(t, err)
 
-	walrusBucket, err := walrus.GetCollectionBucket(url, tbpBucketNamePrefix+"walrus_"+id)
+	var walrusBucket *rosmar.Bucket
+	var typeName string
+	bucketName := tbpBucketNamePrefix + "rosmar_" + id
+	if url == "walrus:" || url == rosmar.InMemoryURL {
+		walrusBucket, err = rosmar.OpenBucket(url, rosmar.CreateOrOpen)
+		if err == nil {
+			err := walrusBucket.SetName(bucketName)
+			if err != nil {
+				tbp.Fatalf(testCtx, "Could not set name %s for rosmar bucket: %s", bucketName, err)
+			}
+		}
+	} else {
+		walrusBucket, err = rosmar.OpenBucketIn(url, bucketName, rosmar.CreateOrOpen)
+	}
+	typeName = "rosmar"
 	if err != nil {
-		tbp.Fatalf(testCtx, "couldn't get walrus bucket: %v", err)
+		tbp.Fatalf(testCtx, "couldn't get %s bucket from <%s>: %v", typeName, url, err)
 	}
 
 	// Wrap Walrus buckets with a leaky bucket to support vbucket IDs on feed.
 	b = &LeakyBucket{bucket: walrusBucket, config: &LeakyBucketConfig{TapFeedVbuckets: true}}
 
 	ctx := bucketCtx(testCtx, b)
-	tbp.Logf(ctx, "Creating new walrus test bucket")
+	tbp.Logf(ctx, "Creating new %s test bucket", typeName)
 
 	tbp.createCollections(ctx, walrusBucket)
 
@@ -235,7 +250,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 			return
 		}
 
-		tbp.Logf(ctx, "Teardown called - Closing walrus test bucket")
+		tbp.Logf(ctx, "Teardown called - Closing %s test bucket", typeName)
 		atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
 		atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(openedStart).Nanoseconds())
 		tbp.markBucketClosed(t, b)
@@ -245,7 +260,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 			// Persisted buckets should call close and delete
 			closeErr := walrusBucket.CloseAndDelete()
 			if closeErr != nil {
-				tbp.Logf(ctx, "Unexpected error closing persistent walrus bucket: %v", closeErr)
+				tbp.Logf(ctx, "Unexpected error closing persistent %s bucket: %v", typeName, closeErr)
 			}
 		}
 
@@ -285,9 +300,15 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, persistentBucket b
 	// Return a new Walrus bucket when tbp has not been initialized
 	if !tbp.integrationMode {
 		tbp.Logf(ctx, "Getting walrus test bucket - tbp.integrationMode is not set")
-		walrusURL := kTestWalrusURL
+		var walrusURL string
 		if persistentBucket {
-			walrusURL = walrusURL + t.TempDir()
+			u := url.URL{
+				Scheme: rosmar.URLScheme,
+				Path:   t.TempDir(),
+			}
+			walrusURL = u.String()
+		} else {
+			walrusURL = kTestWalrusURL
 		}
 		return tbp.GetWalrusTestBucket(t, walrusURL)
 	}

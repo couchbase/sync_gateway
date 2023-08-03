@@ -212,8 +212,8 @@ func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrK
 		res, lookupErr := c.Collection.LookupIn(k, ops, LookupOptsAccessDeleted)
 
 		// There are two 'partial success' error codes:
-		//   ErrSubDocBadMulti - one of the subdoc operations failed.  Occurs when doc exists but xattr does not
-		//   ErrSubDocMultiPathFailureDeleted - one of the subdoc operations failed, and the doc is deleted.  Occurs when xattr exists but doc is deleted (tombstone)
+		//   ErrMemdSubDocBadMulti - one of the subdoc operations failed.  Occurs when doc exists but xattr does not
+		//   ErrMemdSubDocMultiPathFailureDeleted - one of the subdoc operations failed, and the doc is deleted.  Occurs when xattr exists but doc is deleted (tombstone)
 		switch lookupErr {
 		case nil, gocbcore.ErrMemdSubDocBadMulti:
 			// Attempt to retrieve the document body, if present

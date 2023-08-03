@@ -721,7 +721,7 @@ func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
 				break
 			}
 		}
-		require.True(t, found)
+		require.True(t, found, "DocID %q missing from results %v", docID, cr.Results)
 	}
 }
 
