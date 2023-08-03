@@ -1321,7 +1321,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		"Content-Type": attContentType,
 	}
 
-	storeAttachment := func(doc, rev, attName, attBody string) string {
+	storeAttachment := func(t *testing.T, doc, rev, attName, attBody string) string {
 		resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", doc, attName, rev)
 		response := rt.SendRequestWithHeaders(http.MethodPut, resource, attBody, reqHeaders)
 		RequireStatus(t, response, http.StatusCreated)
@@ -1331,14 +1331,14 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		return body["rev"].(string)
 	}
 
-	retrieveAttachment := func(docID, attName string) (attBody string) {
+	retrieveAttachment := func(t *testing.T, docID, attName string) (attBody string) {
 		resource := fmt.Sprintf("/{{.keyspace}}/%s/%s", docID, attName)
 		response := rt.SendRequest(http.MethodGet, resource, "")
 		RequireStatus(t, response, http.StatusOK)
 		return string(response.Body.Bytes())
 	}
 
-	retrieveAttachmentKey := func(docID, attName string) (key string) {
+	retrieveAttachmentKey := func(t *testing.T, docID, attName string) (key string) {
 		resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?meta=true", docID, attName)
 		response := rt.SendRequest(http.MethodGet, resource, "")
 		var meta map[string]interface{}
@@ -1349,13 +1349,13 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		return key
 	}
 
-	requireAttachmentNotFound := func(docID, attName string) {
+	requireAttachmentNotFound := func(t *testing.T, docID, attName string) {
 		resource := fmt.Sprintf("/{{.keyspace}}/%s/%s", docID, attName)
 		response := rt.SendRequest(http.MethodGet, resource, "")
 		RequireStatus(t, response, http.StatusNotFound)
 	}
 
-	retrieveAttachmentMeta := func(docID string) (attMeta map[string]interface{}) {
+	retrieveAttachmentMeta := func(t *testing.T, docID string) (attMeta map[string]interface{}) {
 		body := rt.GetDoc(docID)
 		attachments, ok := body["_attachments"].(map[string]interface{})
 		require.True(t, ok)
@@ -1370,11 +1370,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Equal(t, attBodyExpected, attBodyActual)
 	}
 
-	CreateDocWithLegacyAttachment := func(docID string, rawDoc []byte, attKey string, attBody []byte) {
-		CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
-	}
-
-	t.Run("single attachment removal upon document update", func(t *testing.T) {
+	rt.Run("single attachment removal upon document update", func(t *testing.T) {
 		// Create a document.
 		docID := "foo"
 		revID := rt.CreateDoc(t, docID)
@@ -1383,15 +1379,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Add an attachment to the document.
 		attName := "foo.txt"
 		attBody := "this is the body of attachment foo.txt"
-		revID = storeAttachment(docID, revID, attName, attBody)
+		revID = storeAttachment(t, docID, revID, attName, attBody)
 		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
 
 		// Retrieve the attachment added to the document.
-		actualAttBody := retrieveAttachment(docID, attName)
+		actualAttBody := retrieveAttachment(t, docID, attName)
 		require.Equal(t, attBody, actualAttBody)
 
 		// Get the document and check the attachment metadata.
-		attachments := retrieveAttachmentMeta(docID)
+		attachments := retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok := attachments[attName].(map[string]interface{})
 		require.True(t, ok)
@@ -1403,7 +1399,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
-		attKey := retrieveAttachmentKey(docID, attName)
+		attKey := retrieveAttachmentKey(t, docID, attName)
 		require.NotEmpty(t, attKey)
 
 		// Remove attachment from the bucket via document update.
@@ -1411,14 +1407,14 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, response.Rev)
 
 		// Check whether the attachment is removed from the underlying storage.
-		requireAttachmentNotFound(docID, attName)
+		requireAttachmentNotFound(t, docID, attName)
 		rt.RequireDocNotFound(attKey)
 
 		// Perform cleanup after the test ends.
 		rt.PurgeDoc(docID)
 	})
 
-	t.Run("single attachment removal upon document delete", func(t *testing.T) {
+	rt.Run("single attachment removal upon document delete", func(t *testing.T) {
 		// Create a document.
 		docID := "bar"
 		revID := rt.CreateDoc(t, docID)
@@ -1427,15 +1423,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Add an attachment to the document.
 		attName := "bar.txt"
 		attBody := "this is the body of attachment bar.txt"
-		revID = storeAttachment(docID, revID, attName, attBody)
+		revID = storeAttachment(t, docID, revID, attName, attBody)
 		require.NotEmpty(t, revID)
 
 		// Retrieve the attachment added from the document.
-		actualAttBody := retrieveAttachment(docID, attName)
+		actualAttBody := retrieveAttachment(t, docID, attName)
 		require.Equal(t, attBody, actualAttBody)
 
 		// Get the document and check the attachment metadata.
-		attachments := retrieveAttachmentMeta(docID)
+		attachments := retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok := attachments[attName].(map[string]interface{})
 		require.True(t, ok)
@@ -1447,21 +1443,21 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve attachment key used for internal attachment storage and retrieval.
-		attKey := retrieveAttachmentKey(docID, attName)
+		attKey := retrieveAttachmentKey(t, docID, attName)
 		require.NotEmpty(t, attKey)
 
 		// Delete/tombstone the document.
 		rt.DeleteDoc(docID, revID)
 
 		// Check whether the attachment is removed from the underlying storage.
-		requireAttachmentNotFound(docID, attName)
+		requireAttachmentNotFound(t, docID, attName)
 		rt.RequireDocNotFound(attKey)
 
 		// Perform cleanup after the test ends.
 		rt.PurgeDoc(docID)
 	})
 
-	t.Run("single attachment removal upon document purge", func(t *testing.T) {
+	rt.Run("single attachment removal upon document purge", func(t *testing.T) {
 		// Create a document.
 		docID := "baz"
 		revID := rt.CreateDoc(t, docID)
@@ -1470,15 +1466,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Add an attachment to the document.
 		attName := "baz.txt"
 		attBody := "this is the body of attachment baz.txt"
-		revID = storeAttachment(docID, revID, attName, attBody)
+		revID = storeAttachment(t, docID, revID, attName, attBody)
 		require.NotEmpty(t, revID)
 
 		// Retrieve attachment associated with the document.
-		actualAttBody := retrieveAttachment(docID, attName)
+		actualAttBody := retrieveAttachment(t, docID, attName)
 		require.Equal(t, attBody, actualAttBody)
 
 		// Get the document and check the attachment metadata.
-		attachments := retrieveAttachmentMeta(docID)
+		attachments := retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok := attachments[attName].(map[string]interface{})
 		require.True(t, ok)
@@ -1490,18 +1486,18 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve attachment key used for internal attachment storage and retrieval.
-		attKey := retrieveAttachmentKey(docID, attName)
+		attKey := retrieveAttachmentKey(t, docID, attName)
 		require.NotEmpty(t, attKey)
 
 		// Purge the entire document.
 		rt.PurgeDoc(docID)
 
 		// Check whether the attachment is removed from the underlying storage.
-		requireAttachmentNotFound(docID, attName)
+		requireAttachmentNotFound(t, docID, attName)
 		rt.RequireDocNotFound(attKey)
 	})
 
-	t.Run("single attachment removal upon attachment update", func(t *testing.T) {
+	rt.Run("single attachment removal upon attachment update", func(t *testing.T) {
 		// Create a document.
 		docID := "qux"
 		revID := rt.CreateDoc(t, docID)
@@ -1510,15 +1506,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Add an attachment to the document.
 		attName := "qux.txt"
 		attBody := "this is the body of attachment qux.txt"
-		revID = storeAttachment(docID, revID, attName, attBody)
+		revID = storeAttachment(t, docID, revID, attName, attBody)
 		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
 
 		// Retrieve the attachment added from the document.
-		actualAttBody := retrieveAttachment(docID, attName)
+		actualAttBody := retrieveAttachment(t, docID, attName)
 		require.Equal(t, attBody, actualAttBody)
 
 		// Get the doc and check the attachment meta.
-		attachments := retrieveAttachmentMeta(docID)
+		attachments := retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok := attachments[attName].(map[string]interface{})
 		require.True(t, ok)
@@ -1530,20 +1526,20 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve attachment key used for internal attachment storage and retrieval.
-		attKeyOld := retrieveAttachmentKey(docID, attName)
+		attKeyOld := retrieveAttachmentKey(t, docID, attName)
 		require.Equal(t, "_sync:att2:IfWNJ/gn0pX/zYYMZQRWheO68a1FBsqgFAETsxZkdTQ=:sha1-0naD6SgfLVDr+zakP8RkNlBYORw=", attKeyOld)
 
 		// Update the attachment body bytes.
 		attBodyUpdated := "this is the updated body of attachment qux.txt"
-		revID = storeAttachment(docID, revID, attName, attBodyUpdated)
+		revID = storeAttachment(t, docID, revID, attName, attBodyUpdated)
 		require.Equal(t, "3-9d8d0bf2e87982d97356a181a693291b", revID)
 
 		// Retrieve the updated attachment added from the document.
-		actualAttBody = retrieveAttachment(docID, attName)
+		actualAttBody = retrieveAttachment(t, docID, attName)
 		require.Equal(t, attBodyUpdated, actualAttBody)
 
 		// Get the document and check the attachment metadata.
-		attachments = retrieveAttachmentMeta(docID)
+		attachments = retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok = attachments[attName].(map[string]interface{})
 		require.True(t, ok)
@@ -1558,7 +1554,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rt.RequireDocNotFound(attKeyOld)
 
 		// Retrieve new attachment key used for internal attachment storage and retrieval.
-		attKeyNew := retrieveAttachmentKey(docID, attName)
+		attKeyNew := retrieveAttachmentKey(t, docID, attName)
 		require.Equal(t, "_sync:att2:IfWNJ/gn0pX/zYYMZQRWheO68a1FBsqgFAETsxZkdTQ=:sha1-0naD6SgfLVDr+zakP8RkNlBYORw=", attKeyOld)
 		require.NotEqual(t, attKeyOld, attKeyNew)
 
@@ -1566,7 +1562,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rt.PurgeDoc(docID)
 	})
 
-	t.Run("multiple attachments removal upon document update", func(t *testing.T) {
+	rt.Run("multiple attachments removal upon document update", func(t *testing.T) {
 		// Create a document.
 		docID := "foo1"
 		revID := rt.CreateDoc(t, docID)
@@ -1575,15 +1571,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Add an attachment to the document.
 		att1Name := "alice.txt"
 		att1Body := "this is the body of attachment alice.txt"
-		revID = storeAttachment(docID, revID, att1Name, att1Body)
+		revID = storeAttachment(t, docID, revID, att1Name, att1Body)
 		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
 
 		// Retrieve the attachment added to the document.
-		actualAttBody := retrieveAttachment(docID, att1Name)
+		actualAttBody := retrieveAttachment(t, docID, att1Name)
 		require.Equal(t, att1Body, actualAttBody)
 
 		// Get the document and check the attachment metadata.
-		attachments := retrieveAttachmentMeta(docID)
+		attachments := retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok := attachments[att1Name].(map[string]interface{})
 		require.True(t, ok)
@@ -1595,21 +1591,21 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
-		att1Key := retrieveAttachmentKey(docID, att1Name)
+		att1Key := retrieveAttachmentKey(t, docID, att1Name)
 		require.NotEmpty(t, att1Key)
 
 		// Add another attachment to the same document.
 		att2Name := "bob.txt"
 		att2Body := "this is the body of attachment bob.txt"
-		revID = storeAttachment(docID, revID, att2Name, att2Body)
+		revID = storeAttachment(t, docID, revID, att2Name, att2Body)
 		require.Equal(t, "3-9d8d0bf2e87982d97356a181a693291b", revID)
 
 		// Retrieve the second attachment added to the document.
-		actualAtt2Body := retrieveAttachment(docID, att2Name)
+		actualAtt2Body := retrieveAttachment(t, docID, att2Name)
 		require.Equal(t, att2Body, actualAtt2Body)
 
 		// Get the document and check the attachment metadata.
-		attachments = retrieveAttachmentMeta(docID)
+		attachments = retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 2)
 
 		meta, ok = attachments[att1Name].(map[string]interface{})
@@ -1631,7 +1627,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
-		att2Key := retrieveAttachmentKey(docID, att2Name)
+		att2Key := retrieveAttachmentKey(t, docID, att2Name)
 		require.NotEmpty(t, att2Key)
 		require.NotEqual(t, att1Key, att2Key)
 
@@ -1640,16 +1636,16 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, response.Rev)
 
 		// Check whether both attachments are removed from the underlying storage.
-		requireAttachmentNotFound(docID, att1Name)
+		requireAttachmentNotFound(t, docID, att1Name)
 		rt.RequireDocNotFound(att1Key)
-		requireAttachmentNotFound(docID, att2Name)
+		requireAttachmentNotFound(t, docID, att2Name)
 		rt.RequireDocNotFound(att2Key)
 
 		// Perform cleanup after the test ends.
 		rt.PurgeDoc(docID)
 	})
 
-	t.Run("multiple attachments removal upon document delete", func(t *testing.T) {
+	rt.Run("multiple attachments removal upon document delete", func(t *testing.T) {
 		// Create a document.
 		docID := "foo2"
 		revID := rt.CreateDoc(t, docID)
@@ -1658,15 +1654,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Add an attachment to the document.
 		att1Name := "alice.txt"
 		att1Body := "this is the body of attachment alice.txt"
-		revID = storeAttachment(docID, revID, att1Name, att1Body)
+		revID = storeAttachment(t, docID, revID, att1Name, att1Body)
 		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
 
 		// Retrieve the attachment added to the document.
-		actualAttBody := retrieveAttachment(docID, att1Name)
+		actualAttBody := retrieveAttachment(t, docID, att1Name)
 		require.Equal(t, att1Body, actualAttBody)
 
 		// Get the document and check the attachment metadata.
-		attachments := retrieveAttachmentMeta(docID)
+		attachments := retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok := attachments[att1Name].(map[string]interface{})
 		require.True(t, ok)
@@ -1678,21 +1674,21 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
-		att1Key := retrieveAttachmentKey(docID, att1Name)
+		att1Key := retrieveAttachmentKey(t, docID, att1Name)
 		require.NotEmpty(t, att1Key)
 
 		// Add another attachment to the same document.
 		att2Name := "bob.txt"
 		att2Body := "this is the body of attachment bob.txt"
-		revID = storeAttachment(docID, revID, att2Name, att2Body)
+		revID = storeAttachment(t, docID, revID, att2Name, att2Body)
 		require.Equal(t, "3-9d8d0bf2e87982d97356a181a693291b", revID)
 
 		// Retrieve the second attachment added to the document.
-		actualAtt2Body := retrieveAttachment(docID, att2Name)
+		actualAtt2Body := retrieveAttachment(t, docID, att2Name)
 		require.Equal(t, att2Body, actualAtt2Body)
 
 		// Get the document and check the attachment metadata.
-		attachments = retrieveAttachmentMeta(docID)
+		attachments = retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 2)
 
 		meta, ok = attachments[att1Name].(map[string]interface{})
@@ -1714,7 +1710,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
-		att2Key := retrieveAttachmentKey(docID, att2Name)
+		att2Key := retrieveAttachmentKey(t, docID, att2Name)
 		require.NotEmpty(t, att2Key)
 		require.NotEqual(t, att1Key, att2Key)
 
@@ -1722,16 +1718,16 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rt.DeleteDoc(docID, revID)
 
 		// Check whether both attachments are removed from the underlying storage.
-		requireAttachmentNotFound(docID, att1Name)
+		requireAttachmentNotFound(t, docID, att1Name)
 		rt.RequireDocNotFound(att1Key)
-		requireAttachmentNotFound(docID, att2Name)
+		requireAttachmentNotFound(t, docID, att2Name)
 		rt.RequireDocNotFound(att2Key)
 
 		// Perform cleanup after the test ends.
 		rt.PurgeDoc(docID)
 	})
 
-	t.Run("multiple attachments removal upon document purge", func(t *testing.T) {
+	rt.Run("multiple attachments removal upon document purge", func(t *testing.T) {
 		// Create a document.
 		docID := "foo3"
 		revID := rt.CreateDoc(t, docID)
@@ -1740,15 +1736,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Add an attachment to the document.
 		att1Name := "alice.txt"
 		att1Body := "this is the body of attachment alice.txt"
-		revID = storeAttachment(docID, revID, att1Name, att1Body)
+		revID = storeAttachment(t, docID, revID, att1Name, att1Body)
 		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
 
 		// Retrieve the attachment added to the document.
-		actualAttBody := retrieveAttachment(docID, att1Name)
+		actualAttBody := retrieveAttachment(t, docID, att1Name)
 		require.Equal(t, att1Body, actualAttBody)
 
 		// Get the document and check the attachment metadata.
-		attachments := retrieveAttachmentMeta(docID)
+		attachments := retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok := attachments[att1Name].(map[string]interface{})
 		require.True(t, ok)
@@ -1760,21 +1756,21 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
-		att1Key := retrieveAttachmentKey(docID, att1Name)
+		att1Key := retrieveAttachmentKey(t, docID, att1Name)
 		require.NotEmpty(t, att1Key)
 
 		// Add another attachment to the same document.
 		att2Name := "bob.txt"
 		att2Body := "this is the body of attachment bob.txt"
-		revID = storeAttachment(docID, revID, att2Name, att2Body)
+		revID = storeAttachment(t, docID, revID, att2Name, att2Body)
 		require.Equal(t, "3-9d8d0bf2e87982d97356a181a693291b", revID)
 
 		// Retrieve the second attachment added to the document.
-		actualAtt2Body := retrieveAttachment(docID, att2Name)
+		actualAtt2Body := retrieveAttachment(t, docID, att2Name)
 		require.Equal(t, att2Body, actualAtt2Body)
 
 		// Get the document and check the attachment metadata.
-		attachments = retrieveAttachmentMeta(docID)
+		attachments = retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 2)
 
 		meta, ok = attachments[att1Name].(map[string]interface{})
@@ -1796,7 +1792,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
-		att2Key := retrieveAttachmentKey(docID, att2Name)
+		att2Key := retrieveAttachmentKey(t, docID, att2Name)
 		require.NotEmpty(t, att2Key)
 		require.NotEqual(t, att1Key, att2Key)
 
@@ -1804,13 +1800,13 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rt.PurgeDoc(docID)
 
 		// Check whether both attachments are removed from the underlying storage.
-		requireAttachmentNotFound(docID, att1Name)
+		requireAttachmentNotFound(t, docID, att1Name)
 		rt.RequireDocNotFound(att1Key)
-		requireAttachmentNotFound(docID, att2Name)
+		requireAttachmentNotFound(t, docID, att2Name)
 		rt.RequireDocNotFound(att2Key)
 	})
 
-	t.Run("single inline attachment removal upon document update", func(t *testing.T) {
+	rt.Run("single inline attachment removal upon document update", func(t *testing.T) {
 		// Create a document with inline attachment.
 		docID := "foo8"
 		attName := "foo.txt"
@@ -1822,11 +1818,11 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
 
 		// Retrieve the attachment added to the document.
-		actualAttBody := retrieveAttachment(docID, attName)
+		actualAttBody := retrieveAttachment(t, docID, attName)
 		require.Equal(t, attBody, actualAttBody)
 
 		// Get the document and check the attachment metadata.
-		attachments := retrieveAttachmentMeta(docID)
+		attachments := retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok := attachments[attName].(map[string]interface{})
 		require.True(t, ok)
@@ -1837,7 +1833,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
-		attKey := retrieveAttachmentKey(docID, attName)
+		attKey := retrieveAttachmentKey(t, docID, attName)
 		require.NotEmpty(t, attKey)
 
 		// Remove attachment from the bucket via document update.
@@ -1845,14 +1841,14 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, response.Rev)
 
 		// Check whether the attachment is removed from the underlying storage.
-		requireAttachmentNotFound(docID, attName)
+		requireAttachmentNotFound(t, docID, attName)
 		rt.RequireDocNotFound(attKey)
 
 		// Perform cleanup after the test ends.
 		rt.PurgeDoc(docID)
 	})
 
-	t.Run("single inline attachment removal upon document delete", func(t *testing.T) {
+	rt.Run("single inline attachment removal upon document delete", func(t *testing.T) {
 		// Create a document with inline attachment.
 		docID := "foo9"
 		attName := "foo.txt"
@@ -1864,11 +1860,11 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
 
 		// Retrieve the attachment added to the document.
-		actualAttBody := retrieveAttachment(docID, attName)
+		actualAttBody := retrieveAttachment(t, docID, attName)
 		require.Equal(t, attBody, actualAttBody)
 
 		// Get the document and check the attachment metadata.
-		attachments := retrieveAttachmentMeta(docID)
+		attachments := retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok := attachments[attName].(map[string]interface{})
 		require.True(t, ok)
@@ -1879,21 +1875,21 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
-		attKey := retrieveAttachmentKey(docID, attName)
+		attKey := retrieveAttachmentKey(t, docID, attName)
 		require.NotEmpty(t, attKey)
 
 		// Delete/tombstone the document.
 		rt.DeleteDoc(docID, revID)
 
 		// Check whether the attachment is removed from the underlying storage.
-		requireAttachmentNotFound(docID, attName)
+		requireAttachmentNotFound(t, docID, attName)
 		rt.RequireDocNotFound(attKey)
 
 		// Perform cleanup after the test ends.
 		rt.PurgeDoc(docID)
 	})
 
-	t.Run("single inline attachment removal upon document purge", func(t *testing.T) {
+	rt.Run("single inline attachment removal upon document purge", func(t *testing.T) {
 		// Create a document with inline attachment.
 		docID := "foo10"
 		attName := "foo.txt"
@@ -1905,11 +1901,11 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
 
 		// Retrieve the attachment added to the document.
-		actualAttBody := retrieveAttachment(docID, attName)
+		actualAttBody := retrieveAttachment(t, docID, attName)
 		require.Equal(t, attBody, actualAttBody)
 
 		// Get the document and check the attachment metadata.
-		attachments := retrieveAttachmentMeta(docID)
+		attachments := retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok := attachments[attName].(map[string]interface{})
 		require.True(t, ok)
@@ -1920,18 +1916,18 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
-		attKey := retrieveAttachmentKey(docID, attName)
+		attKey := retrieveAttachmentKey(t, docID, attName)
 		require.Equal(t, "_sync:att2:ccNG7Q7yTHRLEo8vQ3aDuYDnBmZfFu3E2YtCqbg8/dk=:sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", attKey)
 
 		// Purge the entire document.
 		rt.PurgeDoc(docID)
 
 		// Check whether the attachment is removed from the underlying storage.
-		requireAttachmentNotFound(docID, attName)
+		requireAttachmentNotFound(t, docID, attName)
 		rt.RequireDocNotFound(attKey)
 	})
 
-	t.Run("single inline attachment removal upon attachment update", func(t *testing.T) {
+	rt.Run("single inline attachment removal upon attachment update", func(t *testing.T) {
 		// Create a document with inline attachment.
 		docID := "foo11"
 		attName := "foo.txt"
@@ -1943,11 +1939,11 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
 
 		// Retrieve the attachment added from the document.
-		actualAttBody := retrieveAttachment(docID, attName)
+		actualAttBody := retrieveAttachment(t, docID, attName)
 		require.Equal(t, attBody, actualAttBody)
 
 		// Get the doc and check the attachment meta.
-		attachments := retrieveAttachmentMeta(docID)
+		attachments := retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok := attachments[attName].(map[string]interface{})
 		require.True(t, ok)
@@ -1958,20 +1954,20 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve attachment key used for internal attachment storage and retrieval.
-		attKeyOld := retrieveAttachmentKey(docID, attName)
+		attKeyOld := retrieveAttachmentKey(t, docID, attName)
 		require.Equal(t, "_sync:att2:8moUa62DqG+wrhztGWL8Sj9qpCQz7tat6Z5LRt6/DWE=:sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", attKeyOld)
 
 		// Update the attachment body bytes.
 		attBodyUpdated := "this is the updated body of attachment qux.txt"
-		revID = storeAttachment(docID, revID, attName, attBodyUpdated)
+		revID = storeAttachment(t, docID, revID, attName, attBodyUpdated)
 		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
 
 		// Retrieve the updated attachment added from the document.
-		actualAttBody = retrieveAttachment(docID, attName)
+		actualAttBody = retrieveAttachment(t, docID, attName)
 		require.Equal(t, attBodyUpdated, actualAttBody)
 
 		// Get the document and check the attachment metadata.
-		attachments = retrieveAttachmentMeta(docID)
+		attachments = retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok = attachments[attName].(map[string]interface{})
 		require.True(t, ok)
@@ -1985,7 +1981,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rt.RequireDocNotFound(attKeyOld)
 
 		// Retrieve new attachment key used for internal attachment storage and retrieval.
-		attKeyNew := retrieveAttachmentKey(docID, attName)
+		attKeyNew := retrieveAttachmentKey(t, docID, attName)
 		require.Equal(t, "_sync:att2:8moUa62DqG+wrhztGWL8Sj9qpCQz7tat6Z5LRt6/DWE=:sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", attKeyOld)
 		require.NotEqual(t, attKeyOld, attKeyNew)
 
@@ -1993,7 +1989,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rt.PurgeDoc(docID)
 	})
 
-	t.Run("attachment removal upon document delete via SDK", func(t *testing.T) {
+	rt.Run("attachment removal upon document delete via SDK", func(t *testing.T) {
 		if base.UnitTestUrlIsWalrus() {
 			t.Skip("This import test won't work under walrus")
 		}
@@ -2013,11 +2009,11 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
 
 		// Retrieve the attachment added to the document.
-		actualAttBody := retrieveAttachment(docID, attName)
+		actualAttBody := retrieveAttachment(t, docID, attName)
 		require.Equal(t, attBody, actualAttBody)
 
 		// Get the document and check the attachment metadata.
-		attachments := retrieveAttachmentMeta(docID)
+		attachments := retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok := attachments[attName].(map[string]interface{})
 		require.True(t, ok)
@@ -2028,7 +2024,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
-		attKey := retrieveAttachmentKey(docID, attName)
+		attKey := retrieveAttachmentKey(t, docID, attName)
 		require.NotEmpty(t, attKey)
 
 		// Delete/tombstone the document via SDK.
@@ -2042,11 +2038,11 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rt.RequireDocNotFound(docID)
 
 		// Check whether the attachment is removed from the underlying storage.
-		requireAttachmentNotFound(docID, attName)
+		requireAttachmentNotFound(t, docID, attName)
 		rt.RequireDocNotFound(attKey)
 	})
 
-	t.Run("skip attachment removal upon document update via SDK", func(t *testing.T) {
+	rt.Run("skip attachment removal upon document update via SDK", func(t *testing.T) {
 		if base.UnitTestUrlIsWalrus() {
 			t.Skip("This import test won't work under walrus")
 		}
@@ -2066,11 +2062,11 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
 
 		// Retrieve the attachment added to the document.
-		actualAttBody := retrieveAttachment(docID, attName)
+		actualAttBody := retrieveAttachment(t, docID, attName)
 		require.Equal(t, attBody, actualAttBody)
 
 		// Get the document and check the attachment metadata.
-		attachments := retrieveAttachmentMeta(docID)
+		attachments := retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok := attachments[attName].(map[string]interface{})
 		require.True(t, ok)
@@ -2081,7 +2077,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
-		attKey := retrieveAttachmentKey(docID, attName)
+		attKey := retrieveAttachmentKey(t, docID, attName)
 		require.NotEmpty(t, attKey)
 
 		// Update the document via SDK.
@@ -2094,7 +2090,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		log.Printf("changes: %+v", changes)
 
 		// Verify that the attachment is not removed.
-		actualAttBody = retrieveAttachment(docID, attName)
+		actualAttBody = retrieveAttachment(t, docID, attName)
 		require.Equal(t, attBody, actualAttBody)
 
 		// Get the document and check doc body and attachment metadata.
@@ -2115,7 +2111,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 	})
 
-	t.Run("doc with multiple attachments and removal of a single one upon document update", func(t *testing.T) {
+	rt.Run("doc with multiple attachments and removal of a single one upon document update", func(t *testing.T) {
 		// Create a document.
 		docID := "foo12"
 		revID := rt.CreateDoc(t, docID)
@@ -2124,15 +2120,15 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Add an attachment to the document.
 		att1Name := "alice.txt"
 		att1Body := "this is the body of attachment alice.txt"
-		revID = storeAttachment(docID, revID, att1Name, att1Body)
+		revID = storeAttachment(t, docID, revID, att1Name, att1Body)
 		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
 
 		// Retrieve the attachment added to the document.
-		actualAttBody := retrieveAttachment(docID, att1Name)
+		actualAttBody := retrieveAttachment(t, docID, att1Name)
 		require.Equal(t, att1Body, actualAttBody)
 
 		// Get the document and check the attachment metadata.
-		attachments := retrieveAttachmentMeta(docID)
+		attachments := retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok := attachments[att1Name].(map[string]interface{})
 		require.True(t, ok)
@@ -2144,21 +2140,21 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
-		att1Key := retrieveAttachmentKey(docID, att1Name)
+		att1Key := retrieveAttachmentKey(t, docID, att1Name)
 		require.NotEmpty(t, att1Key)
 
 		// Add another attachment to the same document.
 		att2Name := "bob.txt"
 		att2Body := "this is the body of attachment bob.txt"
-		revID = storeAttachment(docID, revID, att2Name, att2Body)
+		revID = storeAttachment(t, docID, revID, att2Name, att2Body)
 		require.Equal(t, "3-9d8d0bf2e87982d97356a181a693291b", revID)
 
 		// Retrieve the second attachment added to the document.
-		actualAtt2Body := retrieveAttachment(docID, att2Name)
+		actualAtt2Body := retrieveAttachment(t, docID, att2Name)
 		require.Equal(t, att2Body, actualAtt2Body)
 
 		// Get the document and check the attachment metadata.
-		attachments = retrieveAttachmentMeta(docID)
+		attachments = retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 2)
 
 		meta, ok = attachments[att1Name].(map[string]interface{})
@@ -2180,7 +2176,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Retrieve the key used for internal attachment storage and retrieval.
-		att2Key := retrieveAttachmentKey(docID, att2Name)
+		att2Key := retrieveAttachmentKey(t, docID, att2Name)
 		require.NotEmpty(t, att2Key)
 		require.NotEqual(t, att1Key, att2Key)
 
@@ -2189,7 +2185,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, response.Rev)
 
 		// Get the document and check the attachment metadata.
-		attachments = retrieveAttachmentMeta(docID)
+		attachments = retrieveAttachmentMeta(t, docID)
 		require.Len(t, attachments, 1)
 		meta, ok = attachments[att2Name].(map[string]interface{})
 		require.False(t, ok)
@@ -2204,18 +2200,18 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		assert.Nil(t, meta["ver"], "Attachment version shouldn't be exposed")
 
 		// Check whether removed attachment is also removed from the underlying storage.
-		requireAttachmentNotFound(docID, att2Name)
+		requireAttachmentNotFound(t, docID, att2Name)
 		rt.RequireDocNotFound(att2Key)
 
 		// Verify that att1Name is still found in the bucket.
-		actualAttBody = retrieveAttachment(docID, att1Name)
+		actualAttBody = retrieveAttachment(t, docID, att1Name)
 		require.Equal(t, att1Body, actualAttBody)
 
 		// Perform cleanup after the test ends.
 		rt.PurgeDoc(docID)
 	})
 
-	t.Run("legacy attachment persistence upon doc delete (single doc referencing an attachment)", func(t *testing.T) {
+	rt.Run("legacy attachment persistence upon doc delete (single doc referencing an attachment)", func(t *testing.T) {
 		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 			t.Skip("Test only works with a Couchbase server and Xattrs")
 		}
@@ -2226,7 +2222,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rawDoc := rawDocWithAttachmentAndSyncMeta()
 
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(docID, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
 
 		// Get the document and grab the revID.
 		responseBody := rt.GetDoc(docID)
@@ -2243,7 +2239,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rt.PurgeDoc(docID)
 	})
 
-	t.Run("legacy attachment persistence upon doc delete (multiple docs referencing same attachment)", func(t *testing.T) {
+	rt.Run("legacy attachment persistence upon doc delete (multiple docs referencing same attachment)", func(t *testing.T) {
 		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 			t.Skip("Test only works with a Couchbase server and Xattrs")
 		}
@@ -2255,10 +2251,10 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rawDoc := rawDocWithAttachmentAndSyncMeta()
 
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(docID1, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID1, rawDoc, attKey, attBody)
 
 		// Create another document referencing the same legacy attachment.
-		CreateDocWithLegacyAttachment(docID2, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID2, rawDoc, attKey, attBody)
 
 		// Get revID of the first document.
 		responseBody := rt.GetDoc(docID1)
@@ -2287,7 +2283,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rt.PurgeDoc(docID2)
 	})
 
-	t.Run("legacy attachment persistence upon doc update (single doc referencing an attachment)", func(t *testing.T) {
+	rt.Run("legacy attachment persistence upon doc update (single doc referencing an attachment)", func(t *testing.T) {
 		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 			t.Skip("Test only works with a Couchbase server and Xattrs")
 		}
@@ -2298,7 +2294,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rawDoc := rawDocWithAttachmentAndSyncMeta()
 
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(docID, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
 
 		// Get the document and grab the revID.
 		responseBody := rt.GetDoc(docID)
@@ -2316,7 +2312,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rt.PurgeDoc(docID)
 	})
 
-	t.Run("legacy attachment persistence upon doc update (multiple docs referencing same attachment)", func(t *testing.T) {
+	rt.Run("legacy attachment persistence upon doc update (multiple docs referencing same attachment)", func(t *testing.T) {
 		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 			t.Skip("Test only works with a Couchbase server and Xattrs")
 		}
@@ -2328,10 +2324,10 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rawDoc := rawDocWithAttachmentAndSyncMeta()
 
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(docID1, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID1, rawDoc, attKey, attBody)
 
 		// Create another document referencing the same legacy attachment.
-		CreateDocWithLegacyAttachment(docID2, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID2, rawDoc, attKey, attBody)
 
 		// Get revID of the first document.
 		responseBody := rt.GetDoc(docID1)
@@ -2362,7 +2358,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rt.PurgeDoc(docID2)
 	})
 
-	t.Run("legacy attachment persistence upon doc purge (single doc referencing an attachment)", func(t *testing.T) {
+	rt.Run("legacy attachment persistence upon doc purge (single doc referencing an attachment)", func(t *testing.T) {
 		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 			t.Skip("Test only works with a Couchbase server and Xattrs")
 		}
@@ -2373,7 +2369,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rawDoc := rawDocWithAttachmentAndSyncMeta()
 
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(docID, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
 
 		// Get the document and grab the revID.
 		responseBody := rt.GetDoc(docID)
@@ -2387,7 +2383,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		requireAttachmentFound(attKey, attBody)
 	})
 
-	t.Run("legacy attachment persistence upon doc purge (multiple docs referencing same attachment)", func(t *testing.T) {
+	rt.Run("legacy attachment persistence upon doc purge (multiple docs referencing same attachment)", func(t *testing.T) {
 		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 			t.Skip("Test only works with a Couchbase server and Xattrs")
 		}
@@ -2399,10 +2395,10 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rawDoc := rawDocWithAttachmentAndSyncMeta()
 
 		// Create a document with legacy attachment.
-		CreateDocWithLegacyAttachment(docID1, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID1, rawDoc, attKey, attBody)
 
 		// Create another document referencing the same legacy attachment.
-		CreateDocWithLegacyAttachment(docID2, rawDoc, attKey, attBody)
+		CreateDocWithLegacyAttachment(t, rt, docID2, rawDoc, attKey, attBody)
 
 		// Get revID of the first document.
 		responseBody := rt.GetDoc(docID1)

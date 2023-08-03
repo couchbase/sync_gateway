@@ -290,10 +290,10 @@ func TestSaveUsers(t *testing.T) {
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("testUser", "password", ch.BaseSetOf(t, "test"))
 	err := auth.Save(user)
-	assert.Equal(t, nil, err)
+	assert.NoError(t, err)
 
 	user2, err := auth.GetUser("testUser")
-	assert.Equal(t, nil, err)
+	assert.NoError(t, err)
 	assert.Equal(t, user, user2)
 }
 
