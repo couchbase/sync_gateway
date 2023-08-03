@@ -13,9 +13,9 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.2.4-0.20230511103754-8dd1a95f5f33
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20230726002412-392d0d8decd4
+	github.com/couchbase/sg-bucket v0.0.0-20230803165811-114defd22a5f
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
-	github.com/couchbaselabs/rosmar v0.0.0-20230726003206-61fc50d8f6ec
+	github.com/couchbaselabs/rosmar v0.0.0-20230803170739-77a02153cee6
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
 	github.com/google/uuid v1.3.0
@@ -32,7 +32,7 @@ require (
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/stretchr/testify v1.8.2
 	golang.org/x/crypto v0.7.0
-	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e
+	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b
 	golang.org/x/net v0.8.0
 	golang.org/x/oauth2 v0.0.0-20220718184931-c8730f7fcb92
 	gopkg.in/couchbaselabs/gocbconnstr.v1 v1.0.4

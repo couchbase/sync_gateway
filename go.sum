@@ -82,8 +82,8 @@ github.com/couchbase/gomemcached v0.2.1 h1:lDONROGbklo8pOt4Sr4eV436PVEaKDr3o9gUl
 github.com/couchbase/gomemcached v0.2.1/go.mod h1:mxliKQxOv84gQ0bJWbI+w9Wxdpt9HjDvgW9MjCym5Vo=
 github.com/couchbase/goutils v0.1.2 h1:gWr8B6XNWPIhfalHNog3qQKfGiYyh4K4VhO3P2o9BCs=
 github.com/couchbase/goutils v0.1.2/go.mod h1:h89Ek/tiOxxqjz30nPPlwZdQbdB8BwgnuBxeoUe/ViE=
-github.com/couchbase/sg-bucket v0.0.0-20230726002412-392d0d8decd4 h1:EkVrt4EM9F4/P6dCbqvWofCH3a+u4MdSbmIVjE/sH0U=
-github.com/couchbase/sg-bucket v0.0.0-20230726002412-392d0d8decd4/go.mod h1:1LT+86k2vAk/puiscgWjGJYAaKxkHUjLg30eG6hzo+k=
+github.com/couchbase/sg-bucket v0.0.0-20230803165811-114defd22a5f h1:Ukg5PuP5qYFqsn/RToerh1S0d8QFqMUza0E4RH0BYiA=
+github.com/couchbase/sg-bucket v0.0.0-20230803165811-114defd22a5f/go.mod h1:1LT+86k2vAk/puiscgWjGJYAaKxkHUjLg30eG6hzo+k=
 github.com/couchbase/tools-common v0.0.0-20220810163003-4c3c185822d4 h1:Ub0gZWccoNL+ag59v8S23tbHDknfN1l3CVl7Kb+hFO0=
 github.com/couchbase/tools-common v0.0.0-20220810163003-4c3c185822d4/go.mod h1:lW0Em1mo5xqQ0mRMzJlg013/6ruyISupTfW7nbLaa1E=
 github.com/couchbasedeps/graphql-go v0.8.1 h1:NpkpNePwszaRWK82vfCPDt86GT+vkhjZ9ot+X5rSAME=
@@ -92,8 +92,8 @@ github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f h1:al
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f/go.mod h1:daOs69VstinwoALl3wwWxjBf1nD4lIe3wwYhKHKDapY=
 github.com/couchbaselabs/gocaves/client v0.0.0-20230307083111-cc3960c624b1 h1:H7OK4q4WsDxqNIB/Ba8BQBXBHFilZnyItHrLr3qmsKA=
 github.com/couchbaselabs/gocaves/client v0.0.0-20230307083111-cc3960c624b1/go.mod h1:AVekAZwIY2stsJOMWLAS/0uA/+qdp7pjO8EHnl61QkY=
-github.com/couchbaselabs/rosmar v0.0.0-20230726003206-61fc50d8f6ec h1:MmHsRjBJMME9+BRlNUHdJYGz2Qc7mNiCt3aClnp+pzw=
-github.com/couchbaselabs/rosmar v0.0.0-20230726003206-61fc50d8f6ec/go.mod h1:uuX/4kRCNYEpzD/V9/p4njuAFiUo0jZ+bdtQUR4UAgQ=
+github.com/couchbaselabs/rosmar v0.0.0-20230803170739-77a02153cee6 h1:BZDzQ9g0MIvEUjlQ7jJMcHrRJfJ1tFAGwRAAtTdF9W8=
+github.com/couchbaselabs/rosmar v0.0.0-20230803170739-77a02153cee6/go.mod h1:2Tu0ukDUOXt2M02m/6bEiCj3TyF1q+oOA/1HdDsNeM0=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -350,8 +350,8 @@ golang.org/x/exp v0.0.0-20191227195350-da58074b4299/go.mod h1:2RIsYlXP63K8oxa1u0
 golang.org/x/exp v0.0.0-20200119233911-0405dc783f0a/go.mod h1:2RIsYlXP63K8oxa1u096TMicItID8zy7Y6sNkU49FU4=
 golang.org/x/exp v0.0.0-20200207192155-f17229e696bd/go.mod h1:J/WKrq2StrnmMY6+EHIKF9dgMWnmCNThgcyBT1FY9mM=
 golang.org/x/exp v0.0.0-20200224162631-6cc2880d07d6/go.mod h1:3jZMyOhIsHpP37uCMkUooju7aAi5cS1Q23tOzKc+0MU=
-golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e h1:+WEEuIdZHnUeJJmEUjyYC2gfUMj69yZXw17EnHg/otA=
-golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e/go.mod h1:Kr81I6Kryrl9sr8s2FK3vxD90NdsKWRuOIl2O4CvYbA=
+golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b h1:r+vk0EmXNmekl0S0BascoeeoHk/L7wmaW2QF90K+kYI=
+golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b/go.mod h1:FXUEEKJgO7OQYeo8N01OfiKP8RXMtf6e8aTskBGqWdc=
 golang.org/x/image v0.0.0-20190227222117-0694c2d4d067/go.mod h1:kZ7UVZpmo3dzQBMxlp+ypCbDeSB+sBbTgSJuh5dn5js=
 golang.org/x/image v0.0.0-20190802002840-cff245a6509b/go.mod h1:FeLwcggjj3mMvU+oOTbSwawSJRM1uh48EjtB4UJZlP0=
 golang.org/x/lint v0.0.0-20181026193005-c67002cb31c3/go.mod h1:UVdnD1Gm6xHRNCYTkRU2/jEulfH38KcIWyp/GAMgvoE=
