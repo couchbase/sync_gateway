@@ -2,7 +2,7 @@ description \"Sync Gateway Upstart Script\"
 version \"0.1.0\"
 author \"Andrew Reslan\"
 
-# Upstart env vars 
+# Upstart env vars
 env RUNAS=${RUNAS_TEMPLATE_VAR}
 env RUNBASE=${RUNBASE_TEMPLATE_VAR}
 env PIDFILE=${PIDFILE_TEMPLATE_VAR}

@@ -268,10 +268,10 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 	defer PurgeDoc(rt, "doc1k")
 
 	// Create target doc for revs_diff:
-	doc1k_bulkDocs_meta := `"_id":"doc1k", 
-	"_rev":"12-abc", 
+	doc1k_bulkDocs_meta := `"_id":"doc1k",
+	"_rev":"12-abc",
 	"_revisions":{
-		"start": 12, 
+		"start": 12,
 		"ids": ["abc", "eleven", "ten", "nine"]
 		},`
 

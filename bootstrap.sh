@@ -29,7 +29,7 @@ EDITION="ce"
 TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
 
 # By default, will run "repo init" followed by "repo sync".
-# If this is set to 1, skips "repo sync" 
+# If this is set to 1, skips "repo sync"
 INIT_ONLY=0
 
 # Parse the options and save into variables
@@ -113,7 +113,7 @@ downloadHelperScripts () {
     if [ ! -f build.sh ]; then
 	echo "Downloading build.sh"
 	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/build.sh" > build.sh
-	chmod +x build.sh    
+	chmod +x build.sh
     fi
 
     if [ ! -f test.sh ]; then
@@ -145,7 +145,7 @@ downloadHelperScripts () {
 	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/snap-manifest.sh" > snap-manifest.sh
 	chmod +x snap-manifest.sh
     fi
-    
+
 }
 
 repoInit () {
@@ -162,7 +162,7 @@ repoInit () {
 	    exit 1
 	    ;;
     esac
-    echo "Done running repo init"    
+    echo "Done running repo init"
 }
 
 
@@ -179,7 +179,7 @@ parseOptions "$@"
 if [ -f "main.go" ]; then
     echo "This script is meant to run outside the clone directory.  See README"
     exit 1
-fi 
+fi
 
 ## If the repo tool is not installed, then download it into current directory
 if ! type "repo" > /dev/null; then

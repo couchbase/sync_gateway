@@ -28,7 +28,7 @@ licenses/APL2.txt.
   <remote fetch="https://github.com/go-sourcemap/" name="go-sourcemap"/>
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
-  
+
   <default remote="couchbase" revision="master"/>
 
   <!-- Build Scripts (required on CI servers) -->
@@ -38,26 +38,26 @@ licenses/APL2.txt.
     <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
   </project>
 
-  
-  <!-- Sync Gateway -->
-  <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/2.1.0"/> 
 
-  
+  <!-- Sync Gateway -->
+  <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/2.1.0"/>
+
+
   <!-- Sync Gateway Accel-->
   <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="b9e59151693215e85b8fd41339d7e152e55f4dd3"/>
 
   <!-- Dependencies specific to Sync Gateway Accel-->
   <project groups="notdefault,sg-accel" name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="97e27ff20421ea35bda1b49c1d12799ba11ef2fe"/>
-  
+
   <project groups="notdefault,sg-accel" name="go-metrics" path="godeps/src/github.com/rcrowley/go-metrics" remote="rcrowley" revision="7aeccdae5c4ea7140b90c8af1dcf9563065cc6dd"/>
 
   <project groups="notdefault,sg-accel" name="cbauth" path="godeps/src/github.com/couchbase/cbauth" remote="couchbase" revision="1323b92ac2619c29d50e588e59d7a6b4839da629"/>
-  
+
   <project groups="notdefault,sg-accel" name="cb-heartbeat" path="godeps/src/github.com/couchbase/cb-heartbeat" remote="couchbase" revision="aedb0776e80d25a79d4b17c1f322a75a2c52a518"/>
 
   <project groups="notdefault,sg-accel" name="blance" path="godeps/src/github.com/couchbase/blance" remote="couchbase" revision="3d39b57188c372649beedd5c13c9003156d5a055"/>
-  
-  
+
+
   <!-- Dependencies for Sync Gateway (and possibly Sync Gateway Accel too) -->
   <project name="go.assert" path="godeps/src/github.com/couchbaselabs/go.assert" remote="couchbaselabs" revision="cfb33e3a0dac05ae1ecbc0e97188c5cf746a1b78"/>
 

@@ -85,7 +85,7 @@ function cb_manage_rbac_users {
             done
             # Trim the trailing comma
             roles=${roles%?}
-            
+
             "$cb_cli_tool" user-manage -c $CB_SERVER_URL --username $CB_ADMIN_USERNAME \
                 --password $CB_ADMIN_PASSWORD --set --rbac-username $bucket \
                 --rbac-password $SG_TEST_BUCKET_PASSWORD --roles=$roles --auth-domain local

@@ -285,7 +285,7 @@ class TestLowerKeys(unittest.TestCase):
               "Zip_Code": 95054
            },
            "Products": [
-              "Couchbase Server",      
+              "Couchbase Server",
               "Sync Gateway",
               "Couchbase Lite"
            ]

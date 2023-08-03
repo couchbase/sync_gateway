@@ -76,7 +76,7 @@ func TestGraphQLQueryAdminOnly(t *testing.T) {
 		t.Run("POST request", func(t *testing.T) {
 			requestBody := fmt.Sprintf(`{
 				"query": "%s",
-				"variables": %s, 
+				"variables": %s,
 				"operationName": "%s"
 			}`, queryParam, variableParam, operationParam)
 			response := rt.SendAdminRequest("POST", "/db/_graphql", requestBody)
@@ -188,7 +188,7 @@ func TestGraphQLMutationsAdminOnly(t *testing.T) {
 		expectedResponse := `{"data":{"addEmail":{"Emails":["xyz@gmail.com","def@gmail.com","newEmail@gmail.com"],"id":"2","name":"user2"},"updateName":{"id":"1","name":"newUser"}}}`
 		requestBody := fmt.Sprintf(`{
 			"query": "%s",
-			"variables": %s, 
+			"variables": %s,
 			"operationName": "%s"
 		}`, queryParam, variableParam, operationParam)
 
