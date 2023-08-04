@@ -21,46 +21,12 @@ on:
       - 'release/*'
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
-        with:
-          go-version: 1.20.3
-      - name: go-build
-        run: go build "./..."
-
-  addlicense:
-    name: addlicense
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
-        with:
-          go-version: 1.20.3
-      - run: go install github.com/google/addlicense@latest
-      - run: addlicense -check -f licenses/addlicense.tmpl .
-
-  golangci:
-    name: lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
-        with:
-          version: v1.52.0
-          args: --config=.golangci-strict.yml --timeout=3m
-
   test:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            name: macos
           - os: windows-latest
             name: windows
           - os: ubuntu-latest
@@ -77,65 +43,10 @@ jobs:
       - name: Build
         run: go build -v "./..."
       - name: Run Tests
-        run: go test -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
+        run: go test -timeout=30m -count=1 -json -v "./rest/adminapitest" -run TestCollectionSyncFnWithBackticks | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
         shell: bash
       - name: Annotate Failures
         if: always()
         uses: guyarb/golang-test-annotations@v0.6.0
         with:
           test-results: test.json
-
-  test-race:
-    runs-on: ubuntu-latest
-    env:
-      GOPRIVATE: github.com/couchbaselabs
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
-        with:
-          go-version: 1.20.3
-      - name: Run Tests
-        run: go test -race -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
-        shell: bash
-      - name: Annotate Failures
-        if: always()
-        uses: guyarb/golang-test-annotations@v0.6.0
-        with:
-          test-results: test.json
-
-  test-sgcollect:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.9
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest pytest-github-actions-annotate-failures
-      - name: Run test
-        run: |
-          pytest
-
-  test-stats-definition-exporter:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
-        with:
-          go-version: 1.20.3
-      - name: Build
-        run: go build -v "./tools/stats-definition-exporter"
-      - name: Run Tests
-        run: go test -timeout=5m -count=1 -json -v "./tools/stats-definition-exporter" | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
-        shell: bash

@@ -210,6 +210,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 			}
 		}
 	} else {
+		tbp.Logf(testCtx, "Opening rosmar bucket url %s", url)
 		walrusBucket, err = rosmar.OpenBucketIn(url, bucketName, rosmar.CreateOrOpen)
 	}
 	typeName = "rosmar"
