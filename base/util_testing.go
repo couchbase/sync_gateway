@@ -210,6 +210,7 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 		extraSlash = "/"
 	}
 	walrusFile := fmt.Sprintf("%s://%s%s", rosmar.URLScheme, extraSlash, strings.ReplaceAll(tempDir, `\`, `/`))
+	fmt.Println("walrus file is %s", walrusFile)
 	bucket, spec, closeFn := GTestBucketPool.GetWalrusTestBucket(t, walrusFile)
 
 	// Return this separate to closeFn as we want to avoid this being removed on database close (/_offline handling)
