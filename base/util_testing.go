@@ -217,7 +217,7 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 	tempDir, err := os.MkdirTemp("", "walrustemp")
 	require.NoError(t, err)
 
-	bucket, spec, closeFn := GTestBucketPool.GetWalrusTestBucket(t, getRosmarUriFromPath(tempDir))
+	bucket, spec, closeFn := GTestBucketPool.GetWalrusTestBucket(t, rosmarUriFromPath(tempDir))
 
 	// Return this separate to closeFn as we want to avoid this being removed on database close (/_offline handling)
 	removeFileFunc := func() {
