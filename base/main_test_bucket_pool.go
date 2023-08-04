@@ -13,7 +13,6 @@ package base
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"runtime/debug"
 	"strconv"
@@ -306,11 +305,8 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, persistentBucket b
 		tbp.Logf(ctx, "Getting walrus test bucket - tbp.integrationMode is not set")
 		var walrusURL string
 		if persistentBucket {
-			u := url.URL{
-				Scheme: rosmar.URLScheme,
-				Path:   t.TempDir(),
-			}
-			walrusURL = u.String()
+			dir := t.TempDir()
+			walrusURL = rosmarUriFromPath(dir)
 		} else {
 			walrusURL = kTestWalrusURL
 		}
