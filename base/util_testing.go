@@ -201,7 +201,7 @@ func (b *TestBucket) DropDataStore(name sgbucket.DataStoreName) error {
 // rosmarUriFromPath works to convert a path to a rosmar uri.
 func rosmarUriFromPath(path string) string {
 	// convert windows paths to unix style paths for rosmar, plus leading /
-	uri := rosmar.URLScheme + "//"
+	uri := rosmar.URLScheme + "://"
 	if runtime.GOOS == "windows" {
 		if filepath.IsAbs(path) {
 			uri += "/"
