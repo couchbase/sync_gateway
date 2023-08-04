@@ -81,21 +81,15 @@ func (hlv *HybridLogicalVector) Remove(source string) error {
 
 // isDominating tests if in memory HLV is dominating over another
 func (hlv *HybridLogicalVector) isDominating(otherVector HybridLogicalVector) bool {
+	// Dominating Criteria:
 	// HLV A dominates HLV B if source(A) == source(B) and version(A) > version(B)
-	if hlv.SourceID == otherVector.SourceID && hlv.Version > otherVector.Version {
-		return true
-	}
-	// if there is an entry in pv(B) for A's current source and version(A) > B's version for that pv entry then A is dominating
-	if pvEntry := otherVector.PreviousVersions[hlv.SourceID]; pvEntry != 0 {
-		if hlv.Version > pvEntry {
-			return true
-		}
-	}
+	// If there is an entry in pv(B) for A's current source and version(A) > B's version for that pv entry then A is dominating
 	// if there is an entry in mv(B) for A's current source and version(A) > B's version for that pv entry then A is dominating
-	if mvEntry := otherVector.MergeVersions[hlv.SourceID]; mvEntry != 0 {
-		if hlv.Version > mvEntry {
-			return true
-		}
+
+	// Grab the latest CAS version for HLV(A)'s sourceID in HLV(B), if HLV(A) version CAS is > HLV(B)'s then it is dominating
+	// If 0 CAS is returned then the sourceID does not exist on HLV(B)
+	if latestCAS := otherVector.GetVersion(hlv.SourceID); latestCAS != 0 && hlv.Version > latestCAS {
+		return true
 	}
 	// HLV A is not dominating over HLV B
 	return false
@@ -147,4 +141,19 @@ func (hlv *HybridLogicalVector) equalPreviousVectors(otherVector HybridLogicalVe
 		}
 	}
 	return true
+}
+
+// GetVersion returns the latest CAS value in the HLV for a given sourceID, if the sourceID is not present in the HLV it will return 0 CAS value
+func (hlv *HybridLogicalVector) GetVersion(sourceID string) uint64 {
+	var latestVersion uint64
+	if sourceID == hlv.SourceID {
+		latestVersion = hlv.Version
+	}
+	if pvEntry := hlv.PreviousVersions[sourceID]; pvEntry > latestVersion {
+		latestVersion = pvEntry
+	}
+	if mvEntry := hlv.MergeVersions[sourceID]; mvEntry > latestVersion {
+		latestVersion = mvEntry
+	}
+	return latestVersion
 }
