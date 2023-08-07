@@ -20,7 +20,6 @@ import (
 	"log"
 	"math/rand"
 	"os"
-	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"sort"
@@ -32,7 +31,6 @@ import (
 
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -198,18 +196,6 @@ func (b *TestBucket) DropDataStore(name sgbucket.DataStoreName) error {
 // 	return b.Bucket.DefaultDataStore()
 // }
 
-// rosmarUriFromPath works to convert a path to a rosmar uri.
-func rosmarUriFromPath(path string) string {
-	// convert windows paths to unix style paths for rosmar, plus leading /
-	uri := rosmar.URLScheme + "://"
-	if runtime.GOOS == "windows" {
-		if filepath.IsAbs(path) {
-			uri += "/"
-		}
-	}
-	return uri + strings.ReplaceAll(path, `\`, `/`)
-}
-
 // Gets a Walrus bucket which will be persisted to a temporary directory
 // Returns both the test bucket which is persisted and a function which can be used to remove the created temporary
 // directory once the test has finished with it.
@@ -217,7 +203,7 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 	tempDir, err := os.MkdirTemp("", "walrustemp")
 	require.NoError(t, err)
 
-	bucket, spec, closeFn := GTestBucketPool.GetWalrusTestBucket(t, rosmarUriFromPath(tempDir))
+	bucket, spec, closeFn := GTestBucketPool.GetWalrusTestBucket(t, tempDir)
 
 	// Return this separate to closeFn as we want to avoid this being removed on database close (/_offline handling)
 	removeFileFunc := func() {
