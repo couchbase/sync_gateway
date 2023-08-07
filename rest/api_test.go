@@ -34,7 +34,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/walrus"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/robertkrimen/otto/underscore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1167,11 +1167,6 @@ func TestLocalDocs(t *testing.T) {
 }
 
 func TestLocalDocExpiry(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket for expiry")
-	}
-
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -1323,9 +1318,9 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 func TestAddingLargeDoc(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	defer func() { walrus.MaxDocSize = 0 }()
+	defer func() { rosmar.MaxDocSize = 0 }()
 
-	walrus.MaxDocSize = 20 * 1024 * 1024
+	rosmar.MaxDocSize = 20 * 1024 * 1024
 
 	docBody := `{"value":"` + base64.StdEncoding.EncodeToString(make([]byte, 22000000)) + `"}`
 
@@ -1620,10 +1615,7 @@ func TestDocSyncFunctionExpiry(t *testing.T) {
 // Repro attempt for SG #3307.  Before fix for #3307, fails when SG_TEST_USE_XATTRS=true and run against an actual couchbase server
 func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
-	}
-
+	base.TestRequiresSubdocXattrStore(t)
 	if !base.TestUseXattrs() {
 		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
 	}
@@ -1668,7 +1660,8 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	}
 
 	// Fetch the xattr and make sure it contains the above value
-	subdocXattrStore, _ := base.AsSubdocXattrStore(rt.GetSingleDataStore())
+	subdocXattrStore, ok := base.AsSubdocXattrStore(rt.GetSingleDataStore())
+	require.True(t, ok)
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	_, err = subdocXattrStore.SubdocGetBodyAndXattr("-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, "", &retrievedVal, &retrievedXattr, nil)

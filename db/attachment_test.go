@@ -731,11 +731,6 @@ func TestStoreAttachments(t *testing.T) {
 
 // TestMigrateBodyAttachments will set up a document with an attachment in pre-2.5 metadata format, and test various upgrade scenarios.
 func TestMigrateBodyAttachments(t *testing.T) {
-
-	if base.TestUseXattrs() && base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket when using xattrs")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	const docKey = "TestAttachmentMigrate"
@@ -1012,11 +1007,6 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 // TestMigrateBodyAttachmentsMerge will set up a document with attachments in both pre-2.5 and post-2.5 metadata, making sure that both attachments are preserved.
 func TestMigrateBodyAttachmentsMerge(t *testing.T) {
-
-	if base.TestUseXattrs() && base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket when using xattrs")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	const docKey = "TestAttachmentMigrate"

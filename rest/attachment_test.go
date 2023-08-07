@@ -26,7 +26,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/walrus"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -615,9 +615,9 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 func TestAddingAttachment(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	defer func() { walrus.MaxDocSize = 0 }()
+	defer func() { rosmar.MaxDocSize = 0 }()
 
-	walrus.MaxDocSize = 20 * 1024 * 1024
+	rosmar.MaxDocSize = 20 * 1024 * 1024
 
 	testCases := []struct {
 		name        string
@@ -1990,10 +1990,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("attachment removal upon document delete via SDK", func(t *testing.T) {
-		if base.UnitTestUrlIsWalrus() {
-			t.Skip("This import test won't work under walrus")
-		}
-
 		if !base.TestUseXattrs() {
 			t.Skip("Test requires xattrs")
 		}
@@ -2043,10 +2039,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("skip attachment removal upon document update via SDK", func(t *testing.T) {
-		if base.UnitTestUrlIsWalrus() {
-			t.Skip("This import test won't work under walrus")
-		}
-
 		if !base.TestUseXattrs() {
 			t.Skip("Test requires xattrs")
 		}
@@ -2212,8 +2204,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc delete (single doc referencing an attachment)", func(t *testing.T) {
-		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
-			t.Skip("Test only works with a Couchbase server and Xattrs")
+		if !base.TestUseXattrs() {
+			t.Skip("Test only works with Xattrs")
 		}
 		docID := "foo15"
 		attBody := []byte(`hi`)
@@ -2240,8 +2232,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc delete (multiple docs referencing same attachment)", func(t *testing.T) {
-		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
-			t.Skip("Test only works with a Couchbase server and Xattrs")
+		if !base.TestUseXattrs() {
+			t.Skip("Test only works with and Xattrs")
 		}
 		docID1 := "foo16"
 		docID2 := "bar16"
@@ -2284,8 +2276,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc update (single doc referencing an attachment)", func(t *testing.T) {
-		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
-			t.Skip("Test only works with a Couchbase server and Xattrs")
+		if !base.TestUseXattrs() {
+			t.Skip("Test only works with with xattrs")
 		}
 		docID := "foo17"
 		attBody := []byte(`hi`)
@@ -2313,8 +2305,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc update (multiple docs referencing same attachment)", func(t *testing.T) {
-		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
-			t.Skip("Test only works with a Couchbase server and Xattrs")
+		if !base.TestUseXattrs() {
+			t.Skip("Test only works with xattrs")
 		}
 		docID1 := "foo18"
 		docID2 := "bar18"
@@ -2359,8 +2351,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc purge (single doc referencing an attachment)", func(t *testing.T) {
-		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
-			t.Skip("Test only works with a Couchbase server and Xattrs")
+		if !base.TestUseXattrs() {
+			t.Skip("Test only works with xattrs")
 		}
 		docID := "foo19"
 		attBody := []byte(`hi`)
@@ -2384,8 +2376,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc purge (multiple docs referencing same attachment)", func(t *testing.T) {
-		if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
-			t.Skip("Test only works with a Couchbase server and Xattrs")
+		if !base.TestUseXattrs() {
+			t.Skip("Test only works with and xattrs")
 		}
 		docID1 := "foo20"
 		docID2 := "bar20"
@@ -2584,9 +2576,6 @@ func TestAttachmentDeleteOnPurge(t *testing.T) {
 }
 
 func TestAttachmentDeleteOnExpiry(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Expiry only supported by Couchbase Server")
-	}
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()

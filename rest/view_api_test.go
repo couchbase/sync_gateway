@@ -86,15 +86,6 @@ func TestViewQuery(t *testing.T) {
 	require.Len(t, result.Rows, 1)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"}, result.Rows[0])
 
-	if base.UnitTestUrlIsWalrus() {
-		// include_docs=true only works with walrus as documented here:
-		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
-		result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?include_docs=true&endkey=9")
-		require.NoError(t, err)
-		require.Len(t, result.Rows, 1)
-		assert.Equal(t, map[string]interface{}{"key": 7.0, "value": "seven"}, *result.Rows[0].Doc)
-	}
-
 }
 
 // Tests #1109, where design doc contains multiple views
@@ -286,19 +277,13 @@ func TestUserViewQuery(t *testing.T) {
 	assert.NoError(t, a.Save(quinn))
 
 	// Have the user query the view:
-	result, err := rt.WaitForNUserViewResults(1, "/db/_design/foo/_view/bar?include_docs=true", quinn, password)
+	result, err := rt.WaitForNUserViewResults(1, "/db/_design/foo/_view/bar", quinn, password)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, result.Rows, 1)
 	assert.Equal(t, 1, result.TotalRows)
 	row := result.Rows[0]
 	assert.Equal(t, float64(7), row.Key)
 	assert.Equal(t, "seven", row.Value)
-
-	if base.UnitTestUrlIsWalrus() {
-		// include_docs=true only works with walrus as documented here:
-		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
-		assert.Equal(t, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"}, *row.Doc)
-	}
 
 	// Admin should see both rows:
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
@@ -308,21 +293,9 @@ func TestUserViewQuery(t *testing.T) {
 	assert.Equal(t, float64(7), row.Key)
 	assert.Equal(t, "seven", row.Value)
 
-	if base.UnitTestUrlIsWalrus() {
-		// include_docs=true only works with walrus as documented here:
-		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
-		assert.Equal(t, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"}, *row.Doc)
-	}
-
 	row = result.Rows[1]
 	assert.Equal(t, float64(10), row.Key)
 	assert.Equal(t, "ten", row.Value)
-
-	if base.UnitTestUrlIsWalrus() {
-		// include_docs=true only works with walrus as documented here:
-		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
-		assert.Equal(t, map[string]interface{}{"key": 10.0, "value": "ten", "channel": "W"}, *row.Doc)
-	}
 
 	// Make sure users are not allowed to query internal views:
 	request, _ := http.NewRequest(http.MethodGet, "/db/_design/sync_gateway/_view/access", nil)
@@ -465,12 +438,8 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 	assert.Equal(t, 99.0, value)
 }
 
-// Reproduces SG #3344.  Original issue only reproducible against Couchbase server (non-walrus)
+// Reproduces SG #3344.
 func TestViewQueryWithKeys(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not support the 'keys' view parameter")
-	}
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")
 	}
@@ -510,10 +479,6 @@ func TestViewQueryWithKeys(t *testing.T) {
 
 func TestViewQueryWithCompositeKeys(t *testing.T) {
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not support the 'keys' view parameter")
-	}
-
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")
 	}
@@ -551,9 +516,6 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 
 func TestViewQueryWithIntKeys(t *testing.T) {
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not support the 'keys' view parameter")
-	}
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")
 	}
@@ -730,10 +692,6 @@ func TestViewQueryWrappers(t *testing.T) {
 }
 
 func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test doesn't work with Walrus")
-	}
 
 	if !base.TestUseXattrs() {
 		t.Skip("Test requires xattrs to be enabled")

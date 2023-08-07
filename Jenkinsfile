@@ -105,7 +105,8 @@ pipeline {
                         }
                     }
                 }
-                stage('CE Windows') {
+                /* can't build windows with cgo
+		stage('CE Windows') {
                     steps {
                         sh "GOOS=windows go build -o sync_gateway_ce-windows -v ${SGW_REPO}"
                     }
@@ -115,6 +116,7 @@ pipeline {
                         sh "GOOS=windows go build -o sync_gateway_ee-windows -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                     }
                 }
+		*/
                 stage('Windows Service') {
                     steps {
                         sh "GOOS=windows go build -o sync_gateway_ce-windows-service -v ${SGW_REPO}/service/sg-windows/sg-service"

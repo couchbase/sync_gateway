@@ -112,15 +112,13 @@ func TestView(t *testing.T) {
 	assert.Equal(t, 1, len(result.Rows))
 	assert.Equal(t, "District", result.Rows[0].Key)
 
-	// Descending (CBS only)
-	if !UnitTestUrlIsWalrus() {
-		viewParams = make(map[string]interface{}) // clear previous
-		viewParams[ViewQueryParamDescending] = true
-		result, viewErr = viewStore.View(ddocName, viewName, viewParams)
-		require.NoError(t, viewErr)
-		require.Equal(t, 3, len(result.Rows))
-		assert.Equal(t, "Northern", result.Rows[0].Key)
-	}
+	// Descending
+	viewParams = make(map[string]interface{}) // clear previous
+	viewParams[ViewQueryParamDescending] = true
+	result, viewErr = viewStore.View(ddocName, viewName, viewParams)
+	require.NoError(t, viewErr)
+	require.Equal(t, 3, len(result.Rows))
+	assert.Equal(t, "Northern", result.Rows[0].Key)
 
 	// ...and skip (CBS only)
 	if !UnitTestUrlIsWalrus() {

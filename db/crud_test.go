@@ -179,9 +179,6 @@ func TestHasAttachmentsFlag(t *testing.T) {
 }
 
 func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
-		t.Skip("Test only works with a Couchbase server and Xattrs")
-	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -937,9 +934,9 @@ func TestOldRevisionStorageError(t *testing.T) {
 
 // Validate JSON number handling for large sequence values
 func TestLargeSequence(t *testing.T) {
-
-	// Test depends on setting _sync:seq in the default collection location
-	base.LongRunningTest(t)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("rosmar does not support writing oversize ints")
+	}
 
 	db, ctx := setupTestDBWithCustomSyncSeq(t, 9223372036854775807)
 	defer db.Close(ctx)
@@ -1605,8 +1602,8 @@ func TestGetChannelsAndAccess(t *testing.T) {
 }
 
 func TestPutStampClusterUUID(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
+	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+		t.Skip("This test only works on Couchbase Server and with XATTRS enabled")
 	}
 
 	db, ctx := setupTestDB(t)

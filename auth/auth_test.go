@@ -704,9 +704,7 @@ func TestConcurrentUserWrites(t *testing.T) {
 
 	// Retrieve user to trigger initial calculation of roles, channels
 	user, getErr := auth.GetUser(username)
-	if getErr != nil {
-		t.Errorf("Error retrieving user: %v", getErr)
-	}
+	require.NoError(t, getErr, "Error retrieving user")
 
 	require.NoError(t, auth.SetBcryptCost(DefaultBcryptCost))
 	// Reset bcryptCostChanged state after test runs
@@ -719,65 +717,41 @@ func TestConcurrentUserWrites(t *testing.T) {
 	// Update user email, password hash, and invalidate user channels, roles concurrently
 	go func() {
 		user, getErr := auth.GetUser(username)
-		if getErr != nil {
-			t.Errorf("Error retrieving user: %v", getErr)
-		}
-		if user == nil {
-			t.Errorf("User is nil prior to invalidate channels, error: %v", getErr)
-		}
+		require.NoError(t, getErr, "Error retrieving user prior to invalidate channels")
+		require.NotNil(t, user, "User is nil prior to invalidate channels")
 
 		invalidateErr := auth.InvalidateDefaultChannels(username, true, 1)
-		if invalidateErr != nil {
-			t.Errorf("Error invalidating user's channels: %v", invalidateErr)
-		}
+		assert.NoError(t, invalidateErr, "Error invalidating user's channels")
 		wg.Done()
 	}()
 
 	go func() {
 		user, getErr := auth.GetUser(username)
-		if getErr != nil {
-			t.Errorf("Error retrieving user: %v", getErr)
-		}
-		if user == nil {
-			t.Errorf("User is nil prior to email update, error: %v", getErr)
-		}
+		require.NoError(t, getErr, "Error retrieving user")
+		require.NotNil(t, user, "User is nil prior to email update")
 
 		updateErr := auth.UpdateUserEmail(user, email)
-		if updateErr != nil {
-			t.Errorf("Error updating user email: %v", updateErr)
-		}
+		assert.NoError(t, updateErr, "Error updating user email")
 		wg.Done()
 	}()
 
 	go func() {
 		user, getErr := auth.GetUser(username)
-		if getErr != nil {
-			t.Errorf("Error retrieving user: %v", getErr)
-		}
-		if user == nil {
-			t.Errorf("User is nil prior to invalidate roles, error: %v", getErr)
-		}
+		require.NoError(t, getErr, "Error retrieving user")
+		require.NotNil(t, user, "User is nil prior to invalidate roles")
 
 		updateErr := auth.InvalidateRoles(username, 1)
-		if updateErr != nil {
-			t.Errorf("Error invalidating roles: %v", updateErr)
-		}
+		assert.NoError(t, updateErr, "Error invalidating role")
 		wg.Done()
 	}()
 
 	go func() {
 		user, getErr := auth.GetUser(username)
-		if getErr != nil {
-			t.Errorf("Error retrieving user: %v", getErr)
-		}
-		if user == nil {
-			t.Errorf("User is nil prior to invalidate roles, error: %v", getErr)
-		}
+		require.NoError(t, getErr, "Error retrieving user")
+		require.NotNil(t, user, "User is nil prior to rehashPassword")
 
 		rehashErr := auth.rehashPassword(user, password)
-		if rehashErr != nil {
-			t.Errorf("Error rehashing password: %v", rehashErr)
-		}
+		assert.NoError(t, rehashErr, "Error rehashing password")
 		wg.Done()
 	}()
 

@@ -66,12 +66,24 @@ func (lds *LeakyDataStore) GetName() string {
 	return lds.dataStore.GetName()
 }
 
+func (lds *LeakyDataStore) GetCollectionID() uint32 {
+	if coll, ok := lds.dataStore.(sgbucket.Collection); ok {
+		return coll.GetCollectionID()
+	} else {
+		return DefaultCollectionID
+	}
+}
+
 func (lds *LeakyDataStore) Get(k string, rv interface{}) (cas uint64, err error) {
 	return lds.dataStore.Get(k, rv)
 }
 
 func (lds *LeakyDataStore) SetGetRawCallback(callback func(string) error) {
 	lds.config.GetRawCallback = callback
+}
+
+func (lds *LeakyDataStore) SetGetWithXattrCallback(callback func(string) error) {
+	lds.config.GetWithXattrCallback = callback
 }
 
 func (lds *LeakyDataStore) GetRaw(k string) (v []byte, cas uint64, err error) {

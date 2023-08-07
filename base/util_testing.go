@@ -20,6 +20,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"sort"
@@ -31,6 +32,7 @@ import (
 
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -196,16 +198,26 @@ func (b *TestBucket) DropDataStore(name sgbucket.DataStoreName) error {
 // 	return b.Bucket.DefaultDataStore()
 // }
 
+// rosmarUriFromPath works to convert a path to a rosmar uri.
+func rosmarUriFromPath(path string) string {
+	// convert windows paths to unix style paths for rosmar, plus leading /
+	uri := rosmar.URLScheme + "://"
+	if runtime.GOOS == "windows" {
+		if filepath.IsAbs(path) {
+			uri += "/"
+		}
+	}
+	return uri + strings.ReplaceAll(path, `\`, `/`)
+}
+
 // Gets a Walrus bucket which will be persisted to a temporary directory
 // Returns both the test bucket which is persisted and a function which can be used to remove the created temporary
 // directory once the test has finished with it.
 func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
-
 	tempDir, err := os.MkdirTemp("", "walrustemp")
 	require.NoError(t, err)
 
-	walrusFile := fmt.Sprintf("walrus:%s", tempDir)
-	bucket, spec, closeFn := GTestBucketPool.GetWalrusTestBucket(t, walrusFile)
+	bucket, spec, closeFn := GTestBucketPool.GetWalrusTestBucket(t, rosmarUriFromPath(tempDir))
 
 	// Return this separate to closeFn as we want to avoid this being removed on database close (/_offline handling)
 	removeFileFunc := func() {
@@ -225,7 +237,7 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 func TestUseXattrs() bool {
 	useXattrs, isSet := os.LookupEnv(TestEnvSyncGatewayUseXattrs)
 	if !isSet {
-		return !UnitTestUrlIsWalrus()
+		return true
 	}
 
 	val, err := strconv.ParseBool(useXattrs)
@@ -314,6 +326,11 @@ func TestsDisableGSI() bool {
 func TestUseCouchbaseServer() bool {
 	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
 	return strings.EqualFold(backingStore, TestEnvBackingStoreCouchbase)
+}
+
+func TestUseWalrus() bool {
+	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
+	return strings.EqualFold(backingStore, TestEnvBackingStoreWalrus)
 }
 
 // Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase
@@ -654,11 +671,13 @@ func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardo
 
 	consoleLogger.LogLevel.Set(logLevel)
 	consoleLogger.LogKeyMask.Set(logKeyMask(logKeys...))
+	updateExternalLoggers()
 
 	return func() {
 		// Return logging to a default state
 		consoleLogger.LogLevel.Set(initialLogLevel)
 		consoleLogger.LogKeyMask.Set(initialLogKey)
+		updateExternalLoggers()
 		if caller != "" {
 			InfofCtx(context.Background(), KeyAll, "%v: Reset logging", caller)
 		}
@@ -745,6 +764,14 @@ func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) 
 	require.Equal(t, expected, val)
 }
 
+// TestRequiresSubdocXattrStore will skip the current test if the backing store doesn't support subdocXattrStore
+func TestRequiresSubdocXattrStore(t testing.TB) {
+	// not yet supported in rosmar
+	if UnitTestUrlIsWalrus() {
+		t.Skip("subdocXattrStore is not yet supported in rosmar")
+	}
+}
+
 // TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not
 // support collections.
 func TestRequiresCollections(t testing.TB) {
@@ -760,10 +787,6 @@ func SkipImportTestsIfNotEnabled(t *testing.T) {
 
 	if !TestUseXattrs() {
 		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
-	}
-
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 }
 

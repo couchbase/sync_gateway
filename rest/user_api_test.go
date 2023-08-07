@@ -1132,10 +1132,6 @@ func TestFunkyUsernames(t *testing.T) {
 	}
 }
 func TestRemovingUserXattr(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
@@ -1180,6 +1176,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			base.TestRequiresSubdocXattrStore(t)
 			docKey := testCase.name
 			xattrKey := "myXattr"
 			channelName := "testChan"
@@ -1250,10 +1247,7 @@ func TestRemovingUserXattr(t *testing.T) {
 	}
 }
 func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	base.TestRequiresSubdocXattrStore(t)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}

@@ -21,7 +21,6 @@ import (
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbaselabs/walrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -98,7 +97,7 @@ func TestErrorAsHTTPStatus(t *testing.T) {
 	assert.Equal(t, http.StatusBadGateway, code)
 	assert.Equal(t, fmt.Sprintf("%s (%s)", string(fakeMCResponse.Body), fakeMCResponse.Status.String()), text)
 
-	fakeDocTooBigErr := walrus.DocTooBigErr{}
+	fakeDocTooBigErr := sgbucket.DocTooBigErr{}
 	code, text = ErrorAsHTTPStatus(fakeDocTooBigErr)
 	assert.Equal(t, http.StatusRequestEntityTooLarge, code)
 	assert.Equal(t, "Document too large!", text)
