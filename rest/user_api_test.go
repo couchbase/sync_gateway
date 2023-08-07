@@ -1247,6 +1247,7 @@ func TestRemovingUserXattr(t *testing.T) {
 	}
 }
 func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
+	base.TestRequiresSubdocXattrStore(t)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
