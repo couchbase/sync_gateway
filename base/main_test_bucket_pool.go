@@ -14,7 +14,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -203,8 +202,12 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	bucketName := tbpBucketNamePrefix + "rosmar_" + id
 	if url == "walrus:" || url == rosmar.InMemoryURL {
 		walrusBucket, err = rosmar.OpenBucket(url, rosmar.CreateOrOpen)
-	} else if filepath.IsAbs(url) {
-		walrusBucket, err = rosmar.OpenBucketFromPath(url, rosmar.CreateOrOpen)
+		if err == nil {
+			err := walrusBucket.SetName(bucketName)
+			if err != nil {
+				tbp.Fatalf(testCtx, "Could not set name %s for rosmar bucket: %s", bucketName, err)
+			}
+		}
 	} else {
 		walrusBucket, err = rosmar.OpenBucketIn(url, bucketName, rosmar.CreateOrOpen)
 	}
@@ -301,13 +304,14 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, persistentBucket b
 	// Return a new Walrus bucket when tbp has not been initialized
 	if !tbp.integrationMode {
 		tbp.Logf(ctx, "Getting walrus test bucket - tbp.integrationMode is not set")
-		var walrusURI string
+		var walrusURL string
 		if persistentBucket {
-			walrusURI = t.TempDir()
+			dir := t.TempDir()
+			walrusURL = rosmarUriFromPath(dir)
 		} else {
-			walrusURI = kTestWalrusURL
+			walrusURL = kTestWalrusURL
 		}
-		return tbp.GetWalrusTestBucket(t, walrusURI)
+		return tbp.GetWalrusTestBucket(t, walrusURL)
 	}
 
 	if tbp.useExistingBucket {
