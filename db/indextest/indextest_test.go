@@ -26,7 +26,7 @@ import (
 )
 
 func TestRoleQuery(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
@@ -89,7 +89,7 @@ func TestRoleQuery(t *testing.T) {
 }
 
 func TestBuildRolesQuery(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
@@ -134,7 +134,7 @@ func TestBuildRolesQuery(t *testing.T) {
 }
 
 func TestBuildUsersQuery(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
@@ -177,7 +177,7 @@ func TestBuildUsersQuery(t *testing.T) {
 }
 
 func TestQueryAllRoles(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
@@ -238,7 +238,7 @@ func TestQueryAllRoles(t *testing.T) {
 }
 
 func TestAllPrincipalIDs(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
@@ -311,7 +311,7 @@ func TestAllPrincipalIDs(t *testing.T) {
 }
 
 func TestGetRoleIDs(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 

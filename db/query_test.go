@@ -77,7 +77,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 // Validate stats for n1ql query
 func TestQueryChannelsStatsN1ql(t *testing.T) {
 
-	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server only")
 	}
 
@@ -126,7 +126,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 
 // Validate that channels queries (channels, starChannel) are covering
 func TestCoveringQueries(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
@@ -181,9 +181,11 @@ func TestCoveringQueries(t *testing.T) {
 
 func TestAllDocsQuery(t *testing.T) {
 
-	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
-		t.Skip("This test is Couchbase Server and UseViews=false only")
-	}
+	// if base.TestsDisableGSI() {
+	// 	t.Skip("This test is Couchbase Server and UseViews=false only")
+	// }
+
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyWalrus)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -253,7 +255,7 @@ func TestAllDocsQuery(t *testing.T) {
 
 func TestAccessQuery(t *testing.T) {
 
-	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
@@ -301,11 +303,6 @@ func TestAccessQuery(t *testing.T) {
 }
 
 func TestRoleAccessQuery(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is Couchbase Server only")
-	}
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
@@ -359,7 +356,7 @@ func countQueryResults(results sgbucket.QueryResultIterator) int {
 }
 
 func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 

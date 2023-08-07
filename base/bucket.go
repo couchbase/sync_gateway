@@ -26,7 +26,7 @@ import (
 	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbaselabs/walrus"
+	"github.com/couchbaselabs/rosmar"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
@@ -347,16 +347,13 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	if spec.IsWalrusBucket() {
 		InfofCtx(context.TODO(), KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
-		bucket, err = walrus.GetCollectionBucket(spec.Server, spec.BucketName)
-		// If feed type is not specified (defaults to DCP) or isn't TAP, wrap with pseudo-vbucket handling for walrus
+		bucket, err = rosmar.OpenBucketIn(spec.Server, spec.BucketName, rosmar.CreateOrOpen)
 		if err != nil {
+			ErrorfCtx(context.TODO(), "Failed to open Walrus database %s on <%s>: %s", MD(spec.BucketName), SD(spec.Server), err)
 			return nil, err
 		}
-		if spec.FeedType != TapFeedType {
-			bucket = &LeakyBucket{bucket: bucket, config: &LeakyBucketConfig{TapFeedVbuckets: true}}
-		}
-	} else {
 
+	} else {
 		username := ""
 		if spec.Auth != nil {
 			username, _, _ = spec.Auth.GetCredentials()
@@ -419,7 +416,12 @@ func IsCasMismatch(err error) bool {
 		return true
 	}
 
-	// GoCouchbase/Walrus handling
+	// sgbucket, Walrus
+	if _, ok := unwrappedErr.(sgbucket.CasMismatchErr); ok {
+		return true
+	}
+
+	// GoCouchbase
 	if strings.Contains(unwrappedErr.Error(), "CAS mismatch") {
 		return true
 	}
@@ -433,14 +435,12 @@ func GetFeedType(bucket Bucket) (feedType string) {
 	switch typedBucket := bucket.(type) {
 	case *GocbV2Bucket:
 		return DcpFeedType
-	case *walrus.CollectionBucket:
-		return DcpFeedType
+	case sgbucket.MutationFeedStore2:
+		return string(typedBucket.GetFeedType())
 	case *LeakyBucket:
 		return GetFeedType(typedBucket.bucket)
 	case *TestBucket:
 		return GetFeedType(typedBucket.Bucket)
-	case *walrus.WalrusBucket:
-		return TapFeedType
 	default:
 		// unknown bucket type?
 		return TapFeedType

@@ -7985,7 +7985,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 // Tests replications to make sure they are namespaced by group ID
 func TestGroupIDReplications(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
-		t.Skip("This test only works against Couchbase Server with xattrs enabled")
+		t.Skip("This test requires xattrs and persistent config")
 	}
 	base.RequireNumTestBuckets(t, 2)
 

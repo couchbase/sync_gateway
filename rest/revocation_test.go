@@ -1420,10 +1420,6 @@ func TestChannelRevocationWithContiguousSequences(t *testing.T) {
 func TestRevocationWithUserXattrs(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}

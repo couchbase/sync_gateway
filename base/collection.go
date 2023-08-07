@@ -25,7 +25,6 @@ import (
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -575,7 +574,7 @@ func (b *GocbV2Bucket) releaseQueryOp() {
 
 func (b *GocbV2Bucket) ListDataStores() ([]sgbucket.DataStoreName, error) {
 	if !b.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		return []sgbucket.DataStoreName{ScopeAndCollectionName{DefaultScope, DefaultCollection}}, nil
+		return []sgbucket.DataStoreName{ScopeAndCollectionName{Scope: DefaultScope, Collection: DefaultCollection}}, nil
 	}
 	scopes, err := b.bucket.Collections().GetAllScopes(nil)
 	if err != nil {
@@ -584,7 +583,7 @@ func (b *GocbV2Bucket) ListDataStores() ([]sgbucket.DataStoreName, error) {
 	collections := make([]sgbucket.DataStoreName, 0)
 	for _, s := range scopes {
 		for _, c := range s.Collections {
-			collections = append(collections, ScopeAndCollectionName{s.Name, c.Name})
+			collections = append(collections, ScopeAndCollectionName{Scope: s.Name, Collection: c.Name})
 		}
 	}
 	return collections, nil
@@ -638,12 +637,10 @@ func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.Dat
 
 func GetCollectionID(dataStore DataStore) uint32 {
 	switch c := dataStore.(type) {
-	case (*Collection):
-		return c.GetCollectionID()
-	case (*walrus.WalrusCollection):
-		return c.CollectionID
 	case WrappingDatastore:
 		return GetCollectionID(c.GetUnderlyingDataStore())
+	case sgbucket.Collection:
+		return c.GetCollectionID()
 	default:
 		return DefaultCollectionID
 	}

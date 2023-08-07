@@ -19,6 +19,7 @@ import (
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/goutils/logging"
+	"github.com/couchbaselabs/rosmar"
 )
 
 // remapGoCBLogLevels controls whether the gocb and gocbcore log levels are remapped to match the verbosity of SG's log levels.
@@ -37,6 +38,19 @@ func initExternalLoggers() {
 
 	logging.SetLogger(CBGoUtilsLogger{})
 	clog.SetLoggerCallback(ClogCallback)
+
+	// Redirect Walrus logging to SG logs, and set an appropriate level:
+	rosmar.LoggingCallback = rosmarLogger
+
+	updateExternalLoggers()
+}
+
+func updateExternalLoggers() {
+	if consoleLogger != nil && consoleLogger.shouldLog(LevelDebug, KeyWalrus) {
+		rosmar.SetLogLevel(rosmar.LevelTrace)
+	} else {
+		rosmar.SetLogLevel(rosmar.LevelInfo)
+	}
 }
 
 // **************************************************
@@ -230,4 +244,16 @@ func (l CBGoUtilsLogger) Fatala(f func() string)  { l.warnNotImplemented("Fatala
 
 func (CBGoUtilsLogger) warnNotImplemented(name string, f func() string) {
 	WarnfCtx(context.Background(), fmt.Sprintf("CBGoUtilsLogger: %s not implemented! %s", name, f()))
+}
+
+// **************************************************************************
+// Log callback for Rosmar
+// **************************************************************************
+func rosmarLogger(level rosmar.LogLevel, fmt string, args ...any) {
+	key := KeyWalrus
+	if level <= rosmar.LevelWarn {
+		key = KeyAll
+		fmt = "Rosmar: " + fmt
+	}
+	logTo(context.TODO(), LogLevel(level), key, fmt, args...)
 }

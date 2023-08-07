@@ -214,7 +214,11 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 
 	// Error, warn and trace logs also append caller name/line numbers.
 	if logLevel <= LevelWarn || logLevel == LevelTrace {
-		format += " -- " + GetCallersName(2, true)
+		stackDepth := 2
+		if logKey == KeyWalrus {
+			stackDepth++ // walrus logs go through another layer of fn call
+		}
+		format += " -- " + GetCallersName(stackDepth, true)
 	}
 
 	// Perform log redaction, if necessary.

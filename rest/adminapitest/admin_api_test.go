@@ -612,7 +612,7 @@ func TestDBOfflinePostResync(t *testing.T) {
 
 func TestDBOfflinePostResyncUsingDCPStream(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't work with walrus")
+		t.Skip("This test requires gocb buckets")
 	}
 
 	rt := rest.NewRestTester(t, nil)
@@ -956,9 +956,6 @@ func TestResyncUsingDCPStream(t *testing.T) {
 }
 
 func TestResyncForNamedCollection(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("DCP client doesn't work with walrus. Waiting on CBG-2661")
-	}
 	base.TestRequiresCollections(t)
 
 	base.RequireNumTestDataStores(t, 2)
@@ -1503,7 +1500,7 @@ func TestResyncStop(t *testing.T) {
 
 func TestResyncStopUsingDCPStream(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		// Walrus doesn't support Collections which is required to create DCP stream
+		// This test requires a gocb bucket
 		t.Skip("This test doesn't works with walrus")
 	}
 
