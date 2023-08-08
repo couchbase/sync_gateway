@@ -208,11 +208,13 @@ func TestHybridLogicalVectorPersistence(t *testing.T) {
 	require.NoError(t, err)
 
 	// convert to string and assert the in memory struct is converted to persisted form correctly
+	// no guarantee the order of the marshaling of the mv part so just assert on the values
 	strHLV := string(byteArray)
 	assert.Contains(t, strHLV, `"cvCas":"0x40e2010000000000`)
 	assert.Contains(t, strHLV, `"src":"cb06dc003846116d9b66d2ab23887a96"`)
 	assert.Contains(t, strHLV, `"vrs":"0x40e2010000000000"`)
-	assert.Contains(t, strHLV, `"mv":{"s_LhRPsa7CpjEvP5zeXTXEBA":"c0ff05d7ac059a16","s_NqiIe0LekFPLeX4JvTO6Iw":"1c008cd6ac059a16"}`)
+	assert.Contains(t, strHLV, `"s_LhRPsa7CpjEvP5zeXTXEBA":"c0ff05d7ac059a16"}`)
+	assert.Contains(t, strHLV, `"s_NqiIe0LekFPLeX4JvTO6Iw":"1c008cd6ac059a16"`)
 	assert.Contains(t, strHLV, `"pv":{"s_YZvBpEaztom9z5V/hDoeIw":"f0ff44d6ac059a16"}`)
 
 	// Unmarshal the in memory constructed HLV above

@@ -9,7 +9,6 @@
 package db
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -30,11 +29,11 @@ type CurrentVersionVector struct {
 }
 
 type PersistedHybridLogicalVector struct {
-	CurrentVersionCAS string            `json:"cvCas"` // current version cas (or cvCAS) stores the current CAS at the time of replication
-	SourceID          string            `json:"src"`   // source bucket uuid of where this entry originated from
-	Version           string            `json:"vrs"`   // current cas of the current version on the version vector
-	MergeVersions     map[string]string `json:"mv"`    // map of merge versions for fast efficient lookup
-	PreviousVersions  map[string]string `json:"pv"`
+	CurrentVersionCAS string            `json:"cvCas,omitempty"` // current version cas (or cvCAS) stores the current CAS at the time of replication
+	SourceID          string            `json:"src,omitempty"`   // source bucket uuid of where this entry originated from
+	Version           string            `json:"vrs,omitempty"`   // current cas of the current version on the version vector
+	MergeVersions     map[string]string `json:"mv,omitempty"`    // map of merge versions for fast efficient lookup
+	PreviousVersions  map[string]string `json:"pv,omitempty"`
 }
 
 type PersistedVersionVector struct {
@@ -191,12 +190,12 @@ func (hlv *HybridLogicalVector) MarshalJSON() ([]byte, error) {
 	persistedHLV.PreviousVersions = pvPersistedFormat
 	persistedHLV.MergeVersions = mvPersistedFormat
 
-	return json.Marshal(persistedHLV)
+	return base.JSONMarshal(persistedHLV)
 }
 
 func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
 	persistedJSON := PersistedVersionVector{}
-	err := json.Unmarshal(inputjson, &persistedJSON)
+	err := base.JSONUnmarshal(inputjson, &persistedJSON)
 	if err != nil {
 		return err
 	}
