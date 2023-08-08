@@ -167,6 +167,8 @@ type DbConfig struct {
 	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
 	ChangesRequestPlus               *bool                            `json:"changes_request_plus,omitempty"`                 // If set, is used as the default value of request_plus for non-continuous replications
 	CORS                             *auth.CORSConfig                 `json:"cors,omitempty"`
+	// MetadataPurgeIntervalOverride will set non default metadata interval
+	MetadataPurgeIntervalOverride *time.Duration
 }
 
 type ScopesConfig map[string]ScopeConfig

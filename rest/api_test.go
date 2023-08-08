@@ -2756,8 +2756,15 @@ func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 }
 
 func TestTombstoneCompactionAPI(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	rt.GetDatabase().PurgeInterval = 0
+	zero := time.Duration(0)
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				MetadataPurgeIntervalOverride: &zero,
+			},
+		},
+	}
+	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
 	for i := 0; i < 100; i++ {

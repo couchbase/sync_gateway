@@ -4213,12 +4213,6 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 			expectedPurgeIntervalAfterCompact: time.Hour * 24,
 		},
 		{
-			name:                              "Ignore server interval",
-			newServerInterval:                 "1",
-			dbPurgeInterval:                   0,
-			expectedPurgeIntervalAfterCompact: 0,
-		},
-		{
 			name:                              "Purge interval updated after db creation",
 			newServerInterval:                 "1",
 			dbPurgeInterval:                   time.Hour,
@@ -4238,7 +4232,6 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			// Set intervals on server and client
-			dbc.PurgeInterval = test.dbPurgeInterval
 			setServerPurgeInterval(t, rt, test.newServerInterval)
 
 			// Start compact to modify purge interval
@@ -4246,13 +4239,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 			_, err = database.Compact(ctx, false, func(purgedDocCount *int) {}, base.NewSafeTerminator())
 			require.NoError(t, err)
 
-			// Check purge interval is as expected
-			if !base.TestUseXattrs() {
-				// Not using xattrs should cause compaction to not run therefore not changing purge interval
-				assert.EqualValues(t, test.dbPurgeInterval, dbc.PurgeInterval)
-				return
-			}
-			assert.EqualValues(t, test.expectedPurgeIntervalAfterCompact, dbc.PurgeInterval)
+			assert.EqualValues(t, test.expectedPurgeIntervalAfterCompact, dbc.GetMetadataPurgeInterval(ctx))
 		})
 	}
 }
