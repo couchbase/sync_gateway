@@ -14,7 +14,6 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/tls"
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -1117,17 +1116,6 @@ func Uint64CASToLittleEndianHex(cas uint64) []byte {
 	encodedArray[0] = '0'
 	encodedArray[1] = 'x'
 	return encodedArray
-}
-
-func HexToBase64(hexStr string) ([]byte, error) {
-	decodedArray := make([]byte, hex.DecodedLen(len(hexStr)))
-	_, err := hex.Decode(decodedArray, []byte(hexStr))
-	if err != nil {
-		return nil, err
-	}
-	base64Encoded := make([]byte, base64.RawStdEncoding.EncodedLen(len(decodedArray)))
-	base64.RawStdEncoding.Encode(base64Encoded, decodedArray)
-	return base64Encoded, nil
 }
 
 func Crc32cHash(input []byte) uint32 {
