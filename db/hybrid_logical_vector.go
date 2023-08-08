@@ -174,19 +174,6 @@ func (hlv *HybridLogicalVector) GetVersion(sourceID string) uint64 {
 func (hlv *HybridLogicalVector) MarshalJSON() ([]byte, error) {
 	persistedHLV := PersistedVersionVector{}
 	cvCasByteArray := base.Uint64CASToLittleEndianHex(hlv.CurrentVersionCAS)
-	var persistedSRC string
-	// check if it is a server mutation, if not we need to convert to base64 encoding and add the mobile mutation prefix
-	if hlv.SourceID[0:2] != "s_" {
-		encodedValue, err := base.HexToBase64(hlv.SourceID)
-		if err != nil {
-			return nil, err
-		}
-		persistedSRC = string(encodedValue)
-		// as it doesn't have 's_' at start it will be mobile mutation, so we need leading 'm_' to indicate this
-		persistedSRC = "m_" + persistedSRC
-	} else {
-		persistedSRC = hlv.SourceID
-	}
 	vrsCasByteArray := base.Uint64CASToLittleEndianHex(hlv.Version)
 
 	pvPersistedFormat, err := convertMapToPersistedFormat(hlv.PreviousVersions)
@@ -199,7 +186,7 @@ func (hlv *HybridLogicalVector) MarshalJSON() ([]byte, error) {
 	}
 
 	persistedHLV.CurrentVersionCAS = string(cvCasByteArray)
-	persistedHLV.SourceID = persistedSRC
+	persistedHLV.SourceID = hlv.SourceID
 	persistedHLV.Version = string(vrsCasByteArray)
 	persistedHLV.PreviousVersions = pvPersistedFormat
 	persistedHLV.MergeVersions = mvPersistedFormat
@@ -230,25 +217,13 @@ func convertMapToPersistedFormat(memoryMap map[string]uint64) (map[string]string
 		return nil, nil
 	}
 	returnedMap := make(map[string]string)
-	var persistedSRC string
 	var persistedCAS string
-	for i, v := range memoryMap {
-		// check if it is a server mutation, if not we need to convert to base64 encoding and add the mobile mutation prefix
-		if i[0:2] != "s_" {
-			encodedValue, err := base.HexToBase64(i)
-			if err != nil {
-				return nil, err
-			}
-			persistedSRC = string(encodedValue)
-			// as it doesn't have 's_' at start it will be mobile mutation so we need leading 'm_' to indicate this
-			persistedSRC = "m_" + persistedSRC
-		} else {
-			persistedSRC = i
-		}
-		casByteArray := base.Uint64CASToLittleEndianHex(v)
+	for source, cas := range memoryMap {
+		casByteArray := base.Uint64CASToLittleEndianHex(cas)
 		persistedCAS = string(casByteArray)
+		// remove the leading '0x' from the CAS value
 		persistedCAS = persistedCAS[2:]
-		returnedMap[persistedSRC] = persistedCAS
+		returnedMap[source] = persistedCAS
 	}
 	return returnedMap, nil
 }

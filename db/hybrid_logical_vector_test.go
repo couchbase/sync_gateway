@@ -14,15 +14,10 @@ import (
 	"strings"
 	"testing"
 
-<<<<<<< HEAD
-=======
-	"github.com/couchbase/sync_gateway/base"
->>>>>>> 21874614 (CBG-3207: Implementation of persisted form of HLV.)
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-<<<<<<< HEAD
 // TestInternalHLVFunctions:
 //   - Tests internal api methods on the HLV work as expected
 //   - Tests methods GetCurrentVersion, AddVersion and Remove
@@ -169,48 +164,6 @@ func TestConflictExample(t *testing.T) {
 
 // createHLVForTest is a helper function to create a HLV for use in a test. Takes a list of strings in the format of <sourceID@version> and assumes
 // first entry is current version. For merge version entries you must specify 'm_' as a prefix to sourceID NOTE: it also sets cvCAS to the current version
-=======
-// TestHybridLogicalVectorPersistence:
-//   - Tests the process of constructing in memory HLV and marshaling it to persisted format
-//   - Asserts on teh format
-//   - Unmarshal the HLV and assert that the process works as expected
-func TestHybridLogicalVectorPersistence(t *testing.T) {
-	// create HLV
-	inputHLV := []string{"cb06dc003846116d9b66d2ab23887a96@123456", "s_YZvBpEaztom9z5V/hDoeIw@1628620455135215600", "m_s_NqiIe0LekFPLeX4JvTO6Iw@1628620455139868700",
-		"m_s_LhRPsa7CpjEvP5zeXTXEBA@1628620455147864000"}
-	inMemoryHLV := createHLVForTest(t, inputHLV)
-
-	// marshal in memory hlv into persisted form
-	byteArray, err := inMemoryHLV.MarshalJSON()
-	require.NoError(t, err)
-
-	// convert to string and assert the in memory struct is converted to persisted form correctly
-	strHLV := string(byteArray)
-	assert.Contains(t, strHLV, `"cvCas":"0x40e2010000000000`)
-	assert.Contains(t, strHLV, `"src":"m_ywbcADhGEW2bZtKrI4h6lg"`)
-	assert.Contains(t, strHLV, `"vrs":"0x40e2010000000000"`)
-	assert.Contains(t, strHLV, `"mv":{"s_LhRPsa7CpjEvP5zeXTXEBA":"c0ff05d7ac059a16","s_NqiIe0LekFPLeX4JvTO6Iw":"1c008cd6ac059a16"}`)
-	assert.Contains(t, strHLV, `"pv":{"s_YZvBpEaztom9z5V/hDoeIw":"f0ff44d6ac059a16"}`)
-
-	// Unmarshal the in memory constructed HLV above
-	hlvFromPersistance := HybridLogicalVector{}
-	err = hlvFromPersistance.UnmarshalJSON(byteArray)
-	require.NoError(t, err)
-	fmt.Println(strHLV, hlvFromPersistance)
-
-	// extract expected sourceID from the in memory HLV by converting the hex to Base64 for assertion below
-	expectedSourceID, err := base.HexToBase64(inMemoryHLV.SourceID)
-	require.NoError(t, err)
-
-	// assertions on values of unmarshaled HLV
-	assert.Equal(t, inMemoryHLV.CurrentVersionCAS, hlvFromPersistance.CurrentVersionCAS)
-	assert.Equal(t, "m_"+string(expectedSourceID), hlvFromPersistance.SourceID)
-	assert.Equal(t, inMemoryHLV.Version, hlvFromPersistance.Version)
-	assert.Equal(t, inMemoryHLV.PreviousVersions, hlvFromPersistance.PreviousVersions)
-	assert.Equal(t, inMemoryHLV.MergeVersions, hlvFromPersistance.MergeVersions)
-}
-
->>>>>>> 21874614 (CBG-3207: Implementation of persisted form of HLV.)
 func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
 	hlvOutput := NewHybridLogicalVector()
 
@@ -242,7 +195,7 @@ func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
 
 // TestHybridLogicalVectorPersistence:
 //   - Tests the process of constructing in memory HLV and marshaling it to persisted format
-//   - Asserts on teh format
+//   - Asserts on the format
 //   - Unmarshal the HLV and assert that the process works as expected
 func TestHybridLogicalVectorPersistence(t *testing.T) {
 	// create HLV
@@ -257,7 +210,7 @@ func TestHybridLogicalVectorPersistence(t *testing.T) {
 	// convert to string and assert the in memory struct is converted to persisted form correctly
 	strHLV := string(byteArray)
 	assert.Contains(t, strHLV, `"cvCas":"0x40e2010000000000`)
-	assert.Contains(t, strHLV, `"src":"m_ywbcADhGEW2bZtKrI4h6lg"`)
+	assert.Contains(t, strHLV, `"src":"cb06dc003846116d9b66d2ab23887a96"`)
 	assert.Contains(t, strHLV, `"vrs":"0x40e2010000000000"`)
 	assert.Contains(t, strHLV, `"mv":{"s_LhRPsa7CpjEvP5zeXTXEBA":"c0ff05d7ac059a16","s_NqiIe0LekFPLeX4JvTO6Iw":"1c008cd6ac059a16"}`)
 	assert.Contains(t, strHLV, `"pv":{"s_YZvBpEaztom9z5V/hDoeIw":"f0ff44d6ac059a16"}`)
@@ -266,47 +219,11 @@ func TestHybridLogicalVectorPersistence(t *testing.T) {
 	hlvFromPersistance := HybridLogicalVector{}
 	err = hlvFromPersistance.UnmarshalJSON(byteArray)
 	require.NoError(t, err)
-	fmt.Println(strHLV, hlvFromPersistance)
-
-	// extract expected sourceID from the in memory HLV by converting the hex to Base64 for assertion below
-	expectedSourceID, err := base.HexToBase64(inMemoryHLV.SourceID)
-	require.NoError(t, err)
 
 	// assertions on values of unmarshaled HLV
 	assert.Equal(t, inMemoryHLV.CurrentVersionCAS, hlvFromPersistance.CurrentVersionCAS)
-	assert.Equal(t, "m_"+string(expectedSourceID), hlvFromPersistance.SourceID)
+	assert.Equal(t, inMemoryHLV.SourceID, hlvFromPersistance.SourceID)
 	assert.Equal(t, inMemoryHLV.Version, hlvFromPersistance.Version)
 	assert.Equal(t, inMemoryHLV.PreviousVersions, hlvFromPersistance.PreviousVersions)
 	assert.Equal(t, inMemoryHLV.MergeVersions, hlvFromPersistance.MergeVersions)
 }
-
-func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
-	hlvOutput := NewHybridLogicalVector()
-
-	// first element will be current version and source pair
-	currentVersionPair := strings.Split(inputList[0], "@")
-	hlvOutput.SourceID = currentVersionPair[0]
-	version, err := strconv.Atoi(currentVersionPair[1])
-	require.NoError(tb, err)
-	hlvOutput.Version = uint64(version)
-	hlvOutput.CurrentVersionCAS = uint64(version)
-
-	// remove current version entry in list now we have parsed it into the HLV
-	inputList = inputList[1:]
-
-	for _, value := range inputList {
-		currentVersionPair = strings.Split(value, "@")
-		version, err = strconv.Atoi(currentVersionPair[1])
-		require.NoError(tb, err)
-		if strings.HasPrefix(currentVersionPair[0], "m_") {
-			// add entry to merge version removing the leading prefix for sourceID
-			hlvOutput.MergeVersions[currentVersionPair[0][2:]] = uint64(version)
-		} else {
-			// if its not got the prefix we assume its a previous version entry
-			hlvOutput.PreviousVersions[currentVersionPair[0]] = uint64(version)
-		}
-
-	}
-	return hlvOutput
-}
-
