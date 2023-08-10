@@ -45,6 +45,12 @@ type LogContext struct {
 	TestName string
 }
 
+// DbConsoleLogConfig can be used to customise the console logging for logs associated with this database.
+type DbConsoleLogConfig struct {
+	LogLevel *LogLevel
+	LogKeys  *LogKeyMask
+}
+
 // addContext returns a string format with additional log context if present.
 func (lc *LogContext) addContext(format string) string {
 	if lc == nil {

@@ -197,8 +197,7 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 		SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Add(1)
 	}
 
-	shouldLogConsoleDb := shouldLogConsoleDatabase(ctx, logLevel, logKey)
-	shouldLogConsole := consoleLogger.shouldLog(logLevel, logKey)
+	shouldLogConsole := consoleLogger.shouldLog(ctx, logLevel, logKey)
 	shouldLogError := errorLogger.shouldLog(logLevel)
 	shouldLogWarn := warnLogger.shouldLog(logLevel)
 	shouldLogInfo := infoLogger.shouldLog(logLevel)
@@ -206,7 +205,7 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	shouldLogTrace := traceLogger.shouldLog(logLevel)
 
 	// exit before string formatting if no loggers need to log
-	if !(shouldLogConsoleDb || shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug || shouldLogTrace) {
+	if !(shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug || shouldLogTrace) {
 		return
 	}
 
@@ -226,7 +225,7 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	args = redact(args)
 
 	// If either global console or db console wants to log, allow it
-	if shouldLogConsole || shouldLogConsoleDb {
+	if shouldLogConsole {
 		consoleLogger.logf(color(format, logLevel), args...)
 	}
 	if shouldLogError {
@@ -284,31 +283,6 @@ func LogSyncGatewayVersion(ctx context.Context) {
 	if traceLogger.shouldLog(LevelNone) {
 		traceLogger.logger.Printf(msg)
 	}
-}
-
-// DbConsoleLogConfig can be used to customise the console logging for logs associated with this database.
-type DbConsoleLogConfig struct {
-	LogLevel *LogLevel
-	LogKeys  *LogKeyMask
-}
-
-// shouldLogConsoleDatabase extracts the database's log settings from the context (if set) to determine whether to log
-func shouldLogConsoleDatabase(ctx context.Context, logLevel LogLevel, logKey LogKey) bool {
-	if ctx == nil {
-		return false
-	}
-
-	logCtx, ok := ctx.Value(requestContextKey).(*LogContext)
-	if !ok {
-		return false
-	}
-
-	config := logCtx.DbConsoleLogConfig
-	if config == nil {
-		return false
-	}
-
-	return shouldLog(config.LogLevel, config.LogKeys, logLevel, logKey)
 }
 
 // addPrefixes will modify the format string to add timestamps, log level, and other common prefixes.
