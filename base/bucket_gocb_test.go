@@ -2511,7 +2511,7 @@ func TestMobileSystemCollectionCRUD(t *testing.T) {
 	}
 	var docID = t.Name()
 
-	ds, err := b.NamedDataStore(ScopeAndCollectionName{SystemScope, SystemCollectionMobile})
+	ds, err := b.NamedDataStore(ScopeAndCollectionName{Scope: SystemScope, Collection: SystemCollectionMobile})
 	require.NoError(t, err)
 
 	field1Key := "field1"
@@ -2529,7 +2529,7 @@ func TestMobileSystemCollectionCRUD(t *testing.T) {
 	newField := KVPair{"field2", "val"}
 	casUpdate, err := ds.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
 		newBody, err := InjectJSONProperties(current, newField)
-		return newBody, nil, false, nil
+		return newBody, nil, false, err
 	})
 	require.NoError(t, err)
 	require.Greater(t, casUpdate, casGet)
@@ -2537,6 +2537,7 @@ func TestMobileSystemCollectionCRUD(t *testing.T) {
 	val = nil
 	casGet, err = ds.Get(docID, &val)
 	require.NoError(t, err)
+	assert.Equal(t, casUpdate, casGet)
 	field1ValGet, ok := val[field1Key]
 	require.True(t, ok)
 	assert.Equal(t, field1Val, field1ValGet)
