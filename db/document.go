@@ -41,6 +41,7 @@ const (
 	DocUnmarshalHistory                                  // Unmarshals history + rev + CAS only
 	DocUnmarshalRev                                      // Unmarshals rev + CAS only
 	DocUnmarshalCAS                                      // Unmarshals CAS (for import check) only
+	DocUnmarshalVV                                       // Unmarshals Version Vector only
 	DocUnmarshalNone                                     // No unmarshalling (skips import/upgrade check)
 )
 
@@ -64,23 +65,24 @@ type ChannelSetEntry struct {
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type SyncData struct {
-	CurrentRev        string              `json:"rev"`
-	NewestRev         string              `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
-	Flags             uint8               `json:"flags,omitempty"`
-	Sequence          uint64              `json:"sequence,omitempty"`
-	UnusedSequences   []uint64            `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
-	RecentSequences   []uint64            `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
-	Channels          channels.ChannelMap `json:"channels,omitempty"`
-	Access            UserAccessMap       `json:"access,omitempty"`
-	RoleAccess        UserAccessMap       `json:"role_access,omitempty"`
-	Expiry            *time.Time          `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
-	Cas               string              `json:"cas"`                               // String representation of a cas value, populated via macro expansion
-	Crc32c            string              `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
-	Crc32cUserXattr   string              `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
-	TombstonedAt      int64               `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
-	Attachments       AttachmentsMeta     `json:"attachments,omitempty"`
-	ChannelSet        []ChannelSetEntry   `json:"channel_set"`
-	ChannelSetHistory []ChannelSetEntry   `json:"channel_set_history"`
+	CurrentRev        string                       `json:"rev"`
+	NewestRev         string                       `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
+	Flags             uint8                        `json:"flags,omitempty"`
+	Sequence          uint64                       `json:"sequence,omitempty"`
+	UnusedSequences   []uint64                     `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
+	RecentSequences   []uint64                     `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
+	Channels          channels.ChannelMap          `json:"channels,omitempty"`
+	Access            UserAccessMap                `json:"access,omitempty"`
+	RoleAccess        UserAccessMap                `json:"role_access,omitempty"`
+	Expiry            *time.Time                   `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
+	Cas               string                       `json:"cas"`                               // String representation of a cas value, populated via macro expansion
+	Crc32c            string                       `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
+	Crc32cUserXattr   string                       `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
+	TombstonedAt      int64                        `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
+	Attachments       AttachmentsMeta              `json:"attachments,omitempty"`
+	ChannelSet        []ChannelSetEntry            `json:"channel_set"`
+	ChannelSetHistory []ChannelSetEntry            `json:"channel_set_history"`
+	HLV               PersistedHybridLogicalVector `json:"_vv,omitempty"`
 
 	// Only used for performance metrics:
 	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
@@ -178,6 +180,7 @@ type Document struct {
 	Deleted        bool
 	DocExpiry      uint32
 	RevID          string
+	VersionVector  HybridLogicalVector
 	DocAttachments AttachmentsMeta
 	inlineSyncData bool
 }
@@ -1148,6 +1151,10 @@ func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata 
 		if unmarshalLevel == DocUnmarshalAll && len(data) > 0 {
 			return doc._body.Unmarshal(data)
 		}
+		hlv := HybridLogicalVector{}
+		persistedJSON := PersistedVersionVector{doc.SyncData.HLV}
+		hlv.convertPersistedHLVToInMemoryHLV(persistedJSON)
+		doc.VersionVector = hlv
 
 	case DocUnmarshalNoHistory:
 		// Unmarshal sync metadata only, excluding history
@@ -1157,6 +1164,10 @@ func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata 
 			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
 		doc._rawBody = data
+		hlv := HybridLogicalVector{}
+		persistedJSON := PersistedVersionVector{doc.SyncData.HLV}
+		hlv.convertPersistedHLVToInMemoryHLV(persistedJSON)
+		doc.VersionVector = hlv
 	case DocUnmarshalHistory:
 		historyOnlyMeta := historyOnlySyncData{History: make(RevTree)}
 		unmarshalErr := base.JSONUnmarshal(xdata, &historyOnlyMeta)
@@ -1191,6 +1202,14 @@ func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata 
 		doc.SyncData = SyncData{
 			Cas: casOnlyMeta.Cas,
 		}
+		doc._rawBody = data
+	case DocUnmarshalVV:
+		hlv := HybridLogicalVector{}
+		err := hlv.UnmarshalJSON(xdata)
+		if err != nil {
+			return err
+		}
+		doc.VersionVector = hlv
 		doc._rawBody = data
 	}
 

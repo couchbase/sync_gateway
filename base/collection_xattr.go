@@ -295,6 +295,11 @@ func (c *Collection) InsertXattr(_ context.Context, k string, xattrKey string, e
 		docFlags = gocb.SubdocDocFlagMkDoc
 	}
 
+	bucketUUID, err := c.Bucket.UUID()
+	if err != nil {
+		return 0, err
+	}
+
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
 	}
@@ -317,6 +322,11 @@ func (c *Collection) InsertXattr(_ context.Context, k string, xattrKey string, e
 func (c *Collection) InsertBodyAndXattr(_ context.Context, k string, xattrKey string, exp uint32, v interface{}, xv interface{}, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
+
+	bucketUUID, err := c.Bucket.UUID()
+	if err != nil {
+		return 0, err
+	}
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
@@ -388,6 +398,11 @@ func (c *Collection) UpdateXattr(_ context.Context, k string, xattrKey string, e
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
+	bucketUUID, err := c.Bucket.UUID()
+	if err != nil {
+		return 0, err
+	}
+
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
 	}
@@ -413,6 +428,11 @@ func (c *Collection) UpdateBodyAndXattr(_ context.Context, k string, xattrKey st
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
+	bucketUUID, err := c.Bucket.UUID()
+	if err != nil {
+		return 0, err
+	}
+
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
 		gocb.ReplaceSpec("", bytesToRawMessage(v), nil),
@@ -437,6 +457,11 @@ func (c *Collection) UpdateBodyAndXattr(_ context.Context, k string, xattrKey st
 func (c *Collection) UpdateXattrDeleteBody(_ context.Context, k, xattrKey string, exp uint32, cas uint64, xv interface{}, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
+
+	bucketUUID, err := c.Bucket.UUID()
+	if err != nil {
+		return 0, err
+	}
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
@@ -520,6 +545,11 @@ func (c *Collection) DeleteBodyAndXattr(_ context.Context, k string, xattrKey st
 func (c *Collection) DeleteBody(_ context.Context, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
+
+	bucketUUID, err := c.Bucket.UUID()
+	if err != nil {
+		return 0, err
+	}
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.RemoveSpec("", nil),

@@ -2745,6 +2745,25 @@ func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 	assert.Contains(t, err.Error(), "null doc body for doc")
 }
 
+// TestPutDocUpdateVersionVector:
+//   - Put a doc and assert that the versions and the source for the hlv is correctly updated
+func TestPutDocUpdateVersionVector(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	bucketUUID, err := rt.GetDatabase().Bucket.UUID()
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"key": "value"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
+}
+
 func TestTombstoneCompactionAPI(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
