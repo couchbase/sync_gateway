@@ -20,7 +20,7 @@ require (
 	github.com/felixge/fgprof v0.9.2
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
-	github.com/graphql-go/graphql v0.8.0
+	github.com/graphql-go/graphql v0.8.1
 	github.com/imdario/mergo v0.3.12
 	github.com/json-iterator/go v1.1.12
 	github.com/kardianos/service v1.2.1
@@ -38,8 +38,6 @@ require (
 	gopkg.in/couchbaselabs/gocbconnstr.v1 v1.0.4
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
-
-replace github.com/graphql-go/graphql v0.8.0 => github.com/couchbasedeps/graphql-go v0.8.1
 
 require (
 	github.com/aws/aws-sdk-go v1.44.77 // indirect
