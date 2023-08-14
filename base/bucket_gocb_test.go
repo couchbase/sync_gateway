@@ -2500,7 +2500,7 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 	}
 }
 
-// TestMobileSystemCollectionCRUD ensures that the mobile system collection (if it exists) is able to perform CRUD on a document.
+// TestMobileSystemCollectionCRUD ensures that if the mobile system collection exists, Sync Gateway is able to perform CRUD on a document in the mobile system collection.
 func TestMobileSystemCollectionCRUD(t *testing.T) {
 	b := getTestBucket(t, false)
 	defer b.Close()
@@ -2513,6 +2513,9 @@ func TestMobileSystemCollectionCRUD(t *testing.T) {
 
 	ds, err := b.NamedDataStore(ScopeAndCollectionName{Scope: SystemScope, Collection: SystemCollectionMobile})
 	require.NoError(t, err)
+
+	_, err = ds.Exists(t.Name())
+	require.NoErrorf(t, err, "Expected %s.%s to exist on server capable of system collections", SystemScope, SystemCollectionMobile)
 
 	field1Key := "field1"
 	field1Val := true
