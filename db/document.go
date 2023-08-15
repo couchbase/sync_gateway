@@ -981,6 +981,7 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 // Set of channels returned from IsChannelRemoval are "Active" channels and NOT "Removed".
 func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBytes []byte, history Revisions, channels base.Set, isRemoval bool, isDelete bool, err error) {
 
+	activeChannels := make(base.Set)
 	removedChannels := make(base.Set)
 
 	// Iterate over the document's channel history, looking for channels that were removed at revID.  If found, also identify whether the removal was a tombstone.
@@ -990,24 +991,14 @@ func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBy
 			if removal.Deleted == true {
 				isDelete = true
 			}
+		} else {
+			activeChannels[channel] = struct{}{}
 		}
 	}
+
 	// If no matches found, return isRemoval=false
 	if len(removedChannels) == 0 {
 		return nil, nil, nil, false, false, nil
-	}
-
-	// Construct removal body
-	// doc ID and rev ID aren't required to be inserted here, as both of those are available in the request.
-	bodyBytes = []byte(RemovedRedactedDocument)
-
-	activeChannels := make(base.Set)
-	// Add active channels to the channel set if the the revision is available in the revision tree.
-	// TODO (bbrks): Should be looking elsewhere in SyncData for non-leaf channel information.
-	if revInfo, ok := doc.History[revID]; ok {
-		for channel, _ := range revInfo.Channels {
-			activeChannels[channel] = struct{}{}
-		}
 	}
 
 	// Build revision history for revID
@@ -1021,6 +1012,10 @@ func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBy
 		revHistory = []string{revID}
 	}
 	history = encodeRevisions(ctx, doc.ID, revHistory)
+
+	// Construct removal body
+	// doc ID and rev ID aren't required to be inserted here, as both of those are available in the request.
+	bodyBytes = []byte(RemovedRedactedDocument)
 
 	return bodyBytes, history, activeChannels, true, isDelete, nil
 }
