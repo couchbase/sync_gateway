@@ -1268,14 +1268,14 @@ func TestUserXattrRevCache(t *testing.T) {
 	docKey := t.Name()
 	xattrKey := "channels"
 	channelName := []string{"ABC", "DEF"}
-	revCacheSize := uint32(0)
+	//revCacheSize := uint32(0)
 
 	// Sync function to set channel access to whatever xattr is
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:   true,
 			UserXattrKey: xattrKey,
-			CacheConfig:  &CacheConfig{RevCacheConfig: &RevCacheConfig{Size: &revCacheSize}},
+			//CacheConfig:  &CacheConfig{RevCacheConfig: &RevCacheConfig{Size: &revCacheSize}},
 		}},
 		SyncFn: `
 			function (doc, oldDoc, meta){
@@ -1297,17 +1297,31 @@ func TestUserXattrRevCache(t *testing.T) {
 	//subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
 	//require.True(t, ok)
 
-	// Initial PUT
-	resp := rt.SendAdminRequest("PUT", "/{{.db}}/_user/userABC", `{"email":"abc@couchbase.com","password":"letmein","admin_channels":["ABC"]}`)
-	RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendAdminRequest("PUT", "/{{.db}}/_user/userDEF", `{"email":"def@couchbase.com","password":"letmein","admin_channels":["DEF"]}`)
-	RequireStatus(t, resp, http.StatusCreated)
+	// Create users with access to channels ABC and DEF
 
-	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	userABC, err := a.NewUser("userABC", "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err)
+	require.NoError(t, a.Save(userABC))
+
+	userDEF, err := a.NewUser("userDEF", "letmein", channels.BaseSetOf(t, "DEF"))
+	require.NoError(t, err)
+	require.NoError(t, a.Save(userDEF))
+
+	/*
+		resp := rt.SendAdminRequest("PUT", "/{{.db}}/_user/userABC", `{"email":"abc@couchbase.com","password":"letmein","admin_channels":["ABC"]}`)
+		RequireStatus(t, resp, http.StatusCreated)
+		resp = rt.SendAdminRequest("PUT", "/{{.db}}/_user/userDEF", `{"email":"def@couchbase.com","password":"letmein","admin_channels":["DEF"]}`)
+		RequireStatus(t, resp, http.StatusCreated)
+
+	*/
+
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	_, err := userXattrStore.WriteUserXattr(docKey, xattrKey, "DEF")
+	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, "DEF")
 	assert.NoError(t, err)
 
 	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
@@ -1315,6 +1329,10 @@ func TestUserXattrRevCache(t *testing.T) {
 
 	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
+
+	// wait for import of the xattr change
+	time.Sleep(2 * time.Second)
+
 	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userABC")
 	RequireStatus(t, resp, http.StatusOK)
 
