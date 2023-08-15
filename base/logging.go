@@ -365,19 +365,19 @@ func ConsoleLogKey() *LogKeyMask {
 // LogInfoEnabled returns true if either the console should log at info level,
 // or if the infoLogger is enabled.
 func LogInfoEnabled(logKey LogKey) bool {
-	return consoleLogger.shouldLog(context.Background(), LevelInfo, logKey) || infoLogger.shouldLog(LevelInfo)
+	return consoleLogger.shouldLog(nil, LevelInfo, logKey) || infoLogger.shouldLog(LevelInfo)
 }
 
 // LogDebugEnabled returns true if either the console should log at debug level,
 // or if the debugLogger is enabled.
 func LogDebugEnabled(logKey LogKey) bool {
-	return consoleLogger.shouldLog(context.Background(), LevelDebug, logKey) || debugLogger.shouldLog(LevelDebug)
+	return consoleLogger.shouldLog(nil, LevelDebug, logKey) || debugLogger.shouldLog(LevelDebug)
 }
 
 // LogTraceEnabled returns true if either the console should log at trace level,
 // or if the traceLogger is enabled.
 func LogTraceEnabled(logKey LogKey) bool {
-	return consoleLogger.shouldLog(context.Background(), LevelTrace, logKey) || traceLogger.shouldLog(LevelTrace)
+	return consoleLogger.shouldLog(nil, LevelTrace, logKey) || traceLogger.shouldLog(LevelTrace)
 }
 
 // AssertLogContains asserts that the logs produced by function f contain string s.
