@@ -544,7 +544,6 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	// Try with a user who has access to this revision.
 	collection.user = userAlice
 	body, err = collection.Get1xRevBody(ctx, "doc1", rev2ID, true, nil)
-	// FIXME (bbrks): Returns removal with no error
 	assertHTTPError(t, err, 404)
 	require.Nil(t, body)
 
@@ -692,7 +691,6 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	require.NoError(t, db.DbStats.InitDeltaSyncStats())
 
 	delta, redactedRev, err = collection.GetDelta(ctx, "doc1", rev1ID, rev2ID)
-	// FIXME (bbrks): Returns no error and returns document!
 	assert.Equal(t, base.HTTPErrorf(404, "missing"), err)
 	assert.Nil(t, delta)
 	assert.Nil(t, redactedRev)
