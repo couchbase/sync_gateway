@@ -13,7 +13,7 @@ licenses/APL2.txt.
 <manifest>
 
   <remote fetch="https://github.com/couchbase/" name="couchbase"/>
-  <default remote="couchbase" revision="per-db-console-log-settings-toybuild"/>
+  <default remote="couchbase" revision="master"/>
 
   <!-- Build Scripts (required on CI servers) -->
   <project name="product-texts" path="product-texts" remote="couchbase"/>
@@ -25,6 +25,6 @@ licenses/APL2.txt.
 
 
   <!-- Sync Gateway -->
-   <project name="sync_gateway" path="sync_gateway" remote="couchbase" />
+   <project name="sync_gateway" path="sync_gateway" remote="couchbase" revision="per-db-console-log-settings-toybuild"/>
 
 </manifest>
