@@ -3,7 +3,7 @@ module github.com/couchbase/sync_gateway
 go 1.19
 
 require (
-	github.com/bhoriuchi/graphql-go-tools v1.0.0
+	github.com/bhoriuchi/graphql-go-tools v1.0.3
 	github.com/coreos/go-oidc v2.2.1+incompatible
 	github.com/couchbase/cbgt v1.3.4
 	github.com/couchbase/clog v0.1.0
