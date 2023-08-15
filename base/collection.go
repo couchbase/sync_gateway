@@ -241,6 +241,8 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 	case sgbucket.BucketStoreFeaturePreserveExpiry, sgbucket.BucketStoreFeatureCollections:
 		// TODO: Change to capability check when GOCBC-1218 merged
 		return isMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 0)
+	case sgbucket.BucketStoreFeatureSystemCollections:
+		return isMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 6)
 	default:
 		return false
 	}
@@ -582,6 +584,11 @@ func (b *GocbV2Bucket) ListDataStores() ([]sgbucket.DataStoreName, error) {
 	}
 	collections := make([]sgbucket.DataStoreName, 0)
 	for _, s := range scopes {
+		// clients using system scopes should know what they're called,
+		// and we don't want to accidentally iterate over other system collections
+		if s.Name == SystemScope {
+			continue
+		}
 		for _, c := range s.Collections {
 			collections = append(collections, ScopeAndCollectionName{Scope: s.Name, Collection: c.Name})
 		}
