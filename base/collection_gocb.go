@@ -25,6 +25,13 @@ import (
 // DefaultCollectionID represents _default._default collection
 const DefaultCollectionID = uint32(0)
 
+const (
+	// SystemScope is the place for system collections to exist in
+	SystemScope = "_system"
+	// SystemCollectionMobile is the place to store Sync Gateway metadata on a system-collections-enabled Couchbase Server (7.6+)
+	SystemCollectionMobile = "_mobile"
+)
+
 type Collection struct {
 	Bucket         *GocbV2Bucket
 	Collection     *gocb.Collection
