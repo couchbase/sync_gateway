@@ -1268,14 +1268,16 @@ func TestUserXattrRevCache(t *testing.T) {
 	docKey := t.Name()
 	xattrKey := "channels"
 	channelName := []string{"ABC", "DEF"}
-	//revCacheSize := uint32(0)
-
+	revCacheSize := uint32(5000)
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
 	// Sync function to set channel access to whatever xattr is
 	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:   true,
 			UserXattrKey: xattrKey,
-			//CacheConfig:  &CacheConfig{RevCacheConfig: &RevCacheConfig{Size: &revCacheSize}},
+			CacheConfig:  &CacheConfig{RevCacheConfig: &RevCacheConfig{Size: &revCacheSize}},
 		}},
 		SyncFn: `
 			function (doc, oldDoc, meta){
@@ -1287,8 +1289,26 @@ func TestUserXattrRevCache(t *testing.T) {
 	})
 
 	defer rt.Close()
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
 
-	dataStore := rt.GetSingleDataStore()
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport:   true,
+			UserXattrKey: xattrKey,
+			CacheConfig:  &CacheConfig{RevCacheConfig: &RevCacheConfig{Size: &revCacheSize}},
+		}},
+		SyncFn: `
+			function (doc, oldDoc, meta){
+				if (meta.xattrs.channels !== undefined){
+					channel(meta.xattrs.channels);
+					console.log(JSON.stringify(meta));
+				}
+			}`,
+	})
+
+	defer rt2.Close()
+
+	dataStore := rt2.GetSingleDataStore()
 	userXattrStore, ok := base.AsUserXattrStore(dataStore)
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
@@ -1299,8 +1319,8 @@ func TestUserXattrRevCache(t *testing.T) {
 
 	// Create users with access to channels ABC and DEF
 
-	ctx := rt.Context()
-	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	ctx := rt2.Context()
+	a := rt2.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	userABC, err := a.NewUser("userABC", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, a.Save(userABC))
@@ -1309,33 +1329,30 @@ func TestUserXattrRevCache(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, a.Save(userDEF))
 
-	/*
-		resp := rt.SendAdminRequest("PUT", "/{{.db}}/_user/userABC", `{"email":"abc@couchbase.com","password":"letmein","admin_channels":["ABC"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		resp = rt.SendAdminRequest("PUT", "/{{.db}}/_user/userDEF", `{"email":"def@couchbase.com","password":"letmein","admin_channels":["DEF"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-
-	*/
-
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
-
+	//resp = rt2.SendAdminRequest("PUT", "/{{.db}}/_user/userABC", `{"email":"abc@couchbase.com","password":"letmein","admin_channels":["ABC"]}`)
+	//RequireStatus(t, resp, http.StatusCreated)
 	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, "DEF")
 	assert.NoError(t, err)
 
-	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
+	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+
+	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
 	RequireStatus(t, resp, http.StatusOK)
 
 	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
 	// wait for import of the xattr change
-	time.Sleep(2 * time.Second)
+	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+	_, err = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
 
+	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userABC")
+	assert.Equal(t, resp.Code, http.StatusOK)
 	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userABC")
-	RequireStatus(t, resp, http.StatusOK)
-
+	assert.Equal(t, resp.Code, http.StatusOK)
 }
 
 func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
