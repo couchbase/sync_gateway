@@ -110,8 +110,6 @@ func (w *DCPWorker) Start(wg *sync.WaitGroup) {
 			case event := <-w.eventFeed:
 				vbID := event.VbID()
 				switch e := event.(type) {
-				case streamOpenEvent:
-					w.metadata.SetFailoverEntries(e.vbID, e.failoverLogs)
 				case snapshotEvent:
 					// Set pending snapshot - don't persist to meta until we receive first sequence in the snapshot,
 					// to avoid attempting to restart with a new snapshot and old sequence value
