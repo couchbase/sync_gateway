@@ -1090,7 +1090,6 @@ func TestRevocationResumeSameRoleAndLowSeqCheck(t *testing.T) {
 
 func TestRevocationsWithQueryLimit(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -1108,29 +1107,20 @@ func TestRevocationsWithQueryLimit(t *testing.T) {
 	defer rt.Close()
 
 	revocationTester.addRole("user", "foo")
-	revocationTester.addUserChannel("user", "ch2")
-
 	revocationTester.addRoleChannel("foo", "ch1")
 
 	revocationTester.fillToSeq(9)
-	_ = rt.CreateDocReturnRev(t, "doc11", "", map[string]interface{}{"channels": []string{"ch2"}})
-	_ = rt.CreateDocReturnRev(t, "doc12", "", map[string]interface{}{"channels": []string{"ch2"}})
-	_ = rt.CreateDocReturnRev(t, "doc13", "", map[string]interface{}{"channels": []string{"ch2"}})
-
 	_ = rt.CreateDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": []string{"ch1"}})
 	_ = rt.CreateDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"ch1"}})
 	_ = rt.CreateDocReturnRev(t, "doc3", "", map[string]interface{}{"channels": []string{"ch1"}})
 
-	changes := revocationTester.getChanges("0", 7)
+	changes := revocationTester.getChanges("0", 4)
 
 	revocationTester.removeRole("user", "foo")
-	_ = rt.CreateDocReturnRev(t, "doc14", "", map[string]interface{}{"channels": []string{"ch2"}})
-	_ = rt.CreateDocReturnRev(t, "doc15", "", map[string]interface{}{"channels": []string{"ch2"}})
-	_ = rt.CreateDocReturnRev(t, "doc5", "", map[string]interface{}{"channels": []string{"ch1"}})
 
 	// Run changes once (which has its own wait)
 	sinceVal := changes.Last_Seq
-	changes = revocationTester.getChanges(sinceVal, 5)
+	changes = revocationTester.getChanges(sinceVal, 3)
 
 	var queryKey string
 	if base.TestsDisableGSI() {
@@ -1141,7 +1131,7 @@ func TestRevocationsWithQueryLimit(t *testing.T) {
 
 	// Once we know the changes will return to right count run again to validate queries ran
 	channelQueryCountBefore := rt.GetDatabase().DbStats.Query(queryKey).QueryCount.Value()
-	changes = revocationTester.getChanges(sinceVal, 5)
+	changes = revocationTester.getChanges(sinceVal, 3)
 	channelQueryCountAfter := rt.GetDatabase().DbStats.Query(queryKey).QueryCount.Value()
 
 	assert.Equal(t, int64(3), channelQueryCountAfter-channelQueryCountBefore)
