@@ -890,7 +890,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// before going online
 		base.DebugfCtx(ctx, base.KeyConfig, "Waiting for database init to complete asynchonously...")
 		atomic.StoreUint32(&dbcontext.State, db.DBStarting)
-		nonCancelCtx := base.NewNonCancelCtxForDatabase(dbName)
+		nonCancelCtx := base.NewNonCancelCtxForDatabase(dbName, dbcontext.Options.LoggingConfig.Console)
 		go sc.asyncDatabaseOnline(nonCancelCtx, dbcontext, dbInitDoneChan, config.Version)
 		return dbcontext, nil
 	}
@@ -1192,6 +1192,15 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		// UserQueries:               config.UserQueries,   // behind feature flag (see below)
 		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
 		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)
+	}
+
+	// Per-database console logging config overrides
+	if config.Logging != nil && config.Logging.Console != nil {
+		logKey := base.ToLogKey(config.Logging.Console.LogKeys)
+		contextOptions.LoggingConfig.Console = &base.DbConsoleLogConfig{
+			LogLevel: config.Logging.Console.LogLevel,
+			LogKeys:  &logKey,
+		}
 	}
 
 	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {

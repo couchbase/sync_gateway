@@ -686,7 +686,7 @@ func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketNam
 }
 
 func (b *bootstrapContext) addDatabaseLogContext(ctx context.Context, dbName string) context.Context {
-	return base.DatabaseLogCtx(ctx, dbName)
+	return base.DatabaseLogCtx(ctx, dbName, nil)
 }
 
 func (b *bootstrapContext) ComputeMetadataIDForDbConfig(ctx context.Context, config *DbConfig) (string, error) {
