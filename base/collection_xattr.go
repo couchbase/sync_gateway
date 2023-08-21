@@ -525,7 +525,7 @@ func (c *Collection) SubdocDeleteBodyAndXattr(k string, xattrKey string) (err er
 	return mutateErr
 }
 
-// SubdocDeleteXattr deletes the document body of an existing document, and updates cas and crc32c in the associated xattr.
+// SubdocDeleteBody deletes the document body of an existing document, and updates cas and crc32c in the associated xattr.
 func (c *Collection) SubdocDeleteBody(k string, xattrKey string, exp uint32, cas uint64) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()

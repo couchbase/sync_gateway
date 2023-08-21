@@ -45,10 +45,7 @@ type SubdocXattrStore interface {
 }
 
 // Utilities for creating/deleting user xattr.  For test use
-type UserXattrStore interface {
-	WriteUserXattr(docKey string, xattrKey string, xattrVal interface{}) (uint64, error)
-	DeleteUserXattr(docKey string, xattrKey string) (uint64, error)
-}
+type UserXattrStore = sgbucket.UserXattrStore
 
 // KvXattrStore is used for xattr_common functions that perform subdoc and standard kv operations
 type KvXattrStore interface {
@@ -375,23 +372,21 @@ func deleteWithXattrInternal(store KvXattrStore, k string, xattrKey string, call
 	// doesn't exist (eg, a tombstoned xattr doc) by just ignoring the "delete body" mutation, rather
 	// than current behavior of returning gocb.ErrKeyNotFound
 	mutateErr := store.SubdocDeleteBodyAndXattr(k, xattrKey)
-	switch {
-	case mutateErr == ErrNotFound:
+	if IsDocNotFoundError(mutateErr) {
 		// Invoke the testing related callback.  This is a no-op in non-test contexts.
 		if callback != nil {
 			callback(k, xattrKey)
 		}
 		// KeyNotFound indicates there is no doc body.  Try to delete only the xattr.
 		return deleteDocXattrOnly(store, k, xattrKey, callback)
-	case mutateErr == ErrXattrNotFound:
+	} else if IsXattrNotFoundError(mutateErr) {
 		// Invoke the testing related callback.  This is a no-op in non-test contexts.
 		if callback != nil {
 			callback(k, xattrKey)
 		}
 		// ErrXattrNotFound indicates there is no XATTR.  Try to delete only the body.
 		return store.Delete(k)
-
-	default:
+	} else {
 		// return error
 		return mutateErr
 	}
@@ -428,20 +423,6 @@ func deleteDocXattrOnly(store SubdocXattrStore, k string, xattrKey string, callb
 	}
 	return nil
 
-}
-
-// AsSubdocXattrStore tries to return the given bucket as a SubdocXattrStore, based on underlying buckets.
-func AsSubdocXattrStore(dataStore DataStore) (SubdocXattrStore, bool) {
-
-	switch typedDataStore := dataStore.(type) {
-	case SubdocXattrStore:
-		return typedDataStore, true
-	case *LeakyDataStore:
-		return AsSubdocXattrStore(typedDataStore.dataStore)
-	default:
-		// bail out for unrecognised/unsupported buckets
-		return nil, false
-	}
 }
 
 func AsUserXattrStore(dataStore DataStore) (UserXattrStore, bool) {

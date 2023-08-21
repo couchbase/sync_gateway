@@ -1219,7 +1219,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Get sync data for doc and ensure user xattr has been used correctly to set channel
 			var syncData db.SyncData
-			subdocStore, ok := base.AsSubdocXattrStore(rt.GetSingleDataStore())
+			subdocStore, ok := rt.GetSingleDataStore().(base.SubdocXattrStore)
 			require.True(t, ok)
 			_, err = subdocStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 			assert.NoError(t, err)
@@ -1471,7 +1471,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
+	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
 	require.True(t, ok)
 
 	// Initial PUT

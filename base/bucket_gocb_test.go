@@ -726,17 +726,13 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	// Write document with xattr
 	cas := uint64(0)
 	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
-	if err != nil {
-		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
-	}
+	assert.NoError(t, err, "WriteCasWithXattr")
 	log.Printf("Post-write, cas is %d", cas)
 
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	getCas, err := dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
-	if err != nil {
-		t.Errorf("Error doing GetWithXattr: %+v", err)
-	}
+	assert.NoError(t, err, "GetWithXattr")
 	// TODO: Cas check fails, pending xattr code to make it to gocb master
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
 	assert.Equal(t, cas, getCas)
@@ -746,9 +742,7 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 
 	// Delete the body (retains xattr)
 	err = dataStore.Delete(key)
-	if err != nil {
-		t.Errorf("Error doing Delete: %+v", err)
-	}
+	assert.NoError(t, err, "Delete")
 
 	// Update the doc and xattr
 	val = make(map[string]interface{})
@@ -757,15 +751,12 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	xattrVal["seq"] = float64(456)
 	xattrVal["rev"] = "2-2345"
 	_, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
-	if err != nil {
-		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
-	}
+	assert.NoError(t, err, "WriteCasWithXattr")
 
 	// Verify retrieval
 	_, err = dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
-	if err != nil {
-		t.Errorf("Error doing GetWithXattr: %+v", err)
-	}
+	assert.NoError(t, err, "GetWithXattr")
+
 	// TODO: Cas check fails, pending xattr code to make it to gocb master
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
 	assert.Equal(t, val["body_field"], retrievedVal["body_field"])
@@ -1187,7 +1178,7 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
 
-	subdocXattrStore, ok := AsSubdocXattrStore(dataStore)
+	subdocXattrStore, ok := dataStore.(SubdocXattrStore)
 	require.True(t, ok)
 
 	_, mutateErr := subdocXattrStore.SubdocUpdateXattrDeleteBody(key, xattrName, 0, cas, xattrVal)
@@ -1278,7 +1269,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 	keys := []string{key1, key2, key3}
 	casValues := []uint64{cas1, cas2, cas3}
 	shouldDeleteBody := []bool{true, true, false}
-	subdocStore, ok := AsSubdocXattrStore(dataStore)
+	subdocStore, ok := dataStore.(SubdocXattrStore)
 	require.True(t, ok)
 	for i, key := range keys {
 
@@ -1420,14 +1411,11 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 
 	}
 
-	// Use AsSubdocXattrStore to do the underlying bucket lookup, then switch to KvXattrStore to pass to
-	// deleteWithXattrInternal
-	subdocStore, ok := AsSubdocXattrStore(dataStore)
-	require.True(t, ok)
-	kvXattrStore, ok := subdocStore.(KvXattrStore)
+	// case to KvXattrStore to pass to deleteWithXattrInternal
+	kvXattrStore, ok := dataStore.(KvXattrStore)
 	require.True(t, ok)
 	deleteErr := deleteWithXattrInternal(kvXattrStore, key, xattrName, callback)
-
+	assert.Equal(t, 1, numTimesCalledBack)
 	assert.True(t, deleteErr != nil, "We expected an error here, because deleteWithXattrInternal should have "+
 		" detected that the doc was resurrected during its execution")
 
@@ -1678,7 +1666,7 @@ func TestGetXattr(t *testing.T) {
 
 	var response map[string]interface{}
 
-	subdocStore, ok := AsSubdocXattrStore(dataStore)
+	subdocStore, ok := dataStore.(SubdocXattrStore)
 
 	// Get Xattr From Existing Doc with Existing Xattr
 	_, err = dataStore.GetXattr(key1, xattrName1, &response)
@@ -1771,7 +1759,7 @@ func TestGetXattrAndBody(t *testing.T) {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
 
-	subdocStore, ok := AsSubdocXattrStore(dataStore)
+	subdocStore, ok := dataStore.(SubdocXattrStore)
 	require.True(t, ok)
 
 	// Get Xattr From Existing Doc with Existing Xattr
@@ -2087,7 +2075,7 @@ func createTombstonedDoc(t *testing.T, dataStore sgbucket.DataStore, key, xattrN
 	cas, err := dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
 	require.NoError(t, err)
 
-	subdocStore, _ := AsSubdocXattrStore(dataStore)
+	subdocStore, _ := dataStore.(SubdocXattrStore)
 	// Create tombstone revision which deletes doc body but preserves XATTR
 	_, mutateErr := subdocStore.SubdocDeleteBody(key, xattrName, 0, cas)
 	/*
@@ -2140,7 +2128,7 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 	defer bucket.Close()
 	dataStore := bucket.GetSingleDataStore()
 
-	subdocXattrStore, ok := AsSubdocXattrStore(dataStore)
+	subdocXattrStore, ok := dataStore.(SubdocXattrStore)
 	require.True(t, ok)
 
 	// Create a document with extended attributes
@@ -2246,7 +2234,7 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 	defer bucket.Close()
 	dataStore := bucket.GetSingleDataStore()
 
-	subdocXattrStore, ok := AsSubdocXattrStore(dataStore)
+	subdocXattrStore, ok := dataStore.(SubdocXattrStore)
 	require.True(t, ok)
 
 	// Create a document with extended attributes

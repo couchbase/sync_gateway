@@ -655,7 +655,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
+	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
 	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
 	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 
@@ -712,7 +712,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
+	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
 	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
 	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
@@ -775,7 +775,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
+	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
 	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
 	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
@@ -2292,7 +2292,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	// Modify the document via the SDK to add the body back
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
+	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
 	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
 	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
@@ -2740,7 +2740,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 
 	// Get Xattr and ensure channel value set correctly
 	var syncData db.SyncData
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
+	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
 	require.True(t, ok)
 	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
@@ -2841,7 +2841,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
 	}
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
+	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
 	require.True(t, ok)
 
 	// Add doc with SDK
@@ -2979,7 +2979,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	// Ensure sync function has ran on import
 	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
+	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
 	require.True(t, ok)
 	var syncData db.SyncData
 	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)

@@ -332,3 +332,84 @@ func (lds *LeakyDataStore) IsError(err error, errorType sgbucket.DataStoreErrorT
 func (lds *LeakyDataStore) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 	return lds.dataStore.IsSupported(feature)
 }
+
+//-------- SubdocXattrStore methods:
+
+func (lds *LeakyDataStore) SubdocGetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
+	return lds.dataStore.GetXattr(k, xattrKey, xv)
+}
+
+func (lds *LeakyDataStore) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
+	return lds.dataStore.GetWithXattr(k, xattrKey, userXattrKey, rv, xv, uxv)
+}
+
+func (lds *LeakyDataStore) SubdocInsertXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
+	return lds.dataStore.(sgbucket.XattrStore2).InsertXattr(k, xattrKey, exp, cas, xv)
+}
+
+func (lds *LeakyDataStore) SubdocInsertBodyAndXattr(k string, xattrKey string, exp uint32, v interface{}, xv interface{}) (casOut uint64, err error) {
+	return lds.dataStore.(sgbucket.XattrStore2).InsertBodyAndXattr(k, xattrKey, exp, v, xv)
+}
+
+func (lds *LeakyDataStore) SubdocSetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
+	raw, err := JSONMarshal(xv)
+	if err == nil {
+		casOut, err = lds.dataStore.SetXattr(k, xattrKey, raw)
+	}
+	return
+}
+
+func (lds *LeakyDataStore) SubdocUpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
+	return lds.dataStore.(sgbucket.XattrStore2).UpdateXattr(k, xattrKey, exp, cas, xv)
+}
+
+func (lds *LeakyDataStore) SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
+	return lds.dataStore.(sgbucket.XattrStore2).UpdateBodyAndXattr(k, xattrKey, exp, cas, opts, v, xv)
+}
+
+func (lds *LeakyDataStore) SubdocUpdateXattrDeleteBody(k, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
+	return lds.dataStore.(sgbucket.XattrStore2).UpdateXattrDeleteBody(k, xattrKey, exp, cas, xv)
+}
+
+func (lds *LeakyDataStore) SubdocDeleteXattr(k string, xattrKey string, cas uint64) error {
+	return lds.dataStore.(sgbucket.XattrStore2).RemoveXattr(k, xattrKey, cas)
+}
+
+func (lds *LeakyDataStore) SubdocDeleteXattrs(k string, xattrKeys ...string) error {
+	return lds.dataStore.DeleteXattrs(k, xattrKeys...)
+}
+
+func (lds *LeakyDataStore) SubdocDeleteBodyAndXattr(k string, xattrKey string) error {
+	return lds.dataStore.(sgbucket.XattrStore2).DeleteBodyAndXattr(k, xattrKey)
+}
+
+func (lds *LeakyDataStore) SubdocDeleteBody(k string, xattrKey string, exp uint32, cas uint64) (casOut uint64, err error) {
+	return lds.dataStore.(sgbucket.XattrStore2).DeleteBody(k, xattrKey, exp, cas)
+}
+
+func (lds *LeakyDataStore) GetSpec() BucketSpec {
+	if b, ok := AsCouchbaseBucketStore(lds.bucket); ok {
+		return b.GetSpec()
+	} else {
+		// Return a minimal struct:
+		return BucketSpec{
+			BucketName:    lds.bucket.GetName(),
+			MaxNumRetries: 1,
+			UseXattrs:     true,
+		}
+	}
+}
+
+func (lds *LeakyDataStore) isRecoverableReadError(err error) bool {
+	return false // Rosmar does not have recoverable errors
+}
+
+func (lds *LeakyDataStore) isRecoverableWriteError(err error) bool {
+	return false // Rosmar does not have recoverable errors
+}
+
+// Assert interface compliance:
+var (
+	_ sgbucket.DataStore = &LeakyDataStore{}
+	_ SubdocXattrStore   = &LeakyDataStore{}
+)

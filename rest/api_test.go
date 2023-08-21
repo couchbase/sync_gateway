@@ -1660,7 +1660,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	}
 
 	// Fetch the xattr and make sure it contains the above value
-	subdocXattrStore, ok := base.AsSubdocXattrStore(rt.GetSingleDataStore())
+	subdocXattrStore, ok := rt.GetSingleDataStore().(base.SubdocXattrStore)
 	require.True(t, ok)
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
