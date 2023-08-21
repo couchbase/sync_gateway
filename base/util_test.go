@@ -1703,3 +1703,10 @@ func TestAllOrNoneNil(t *testing.T) {
 		})
 	}
 }
+
+func TestCASToLittleEndianHex(t *testing.T) {
+	const casValue = 123456
+	const expHexValue = "0x40e2010000000000"
+	littleEndianHex := Uint64CASToLittleEndianHex(casValue)
+	require.Equal(t, expHexValue, string(littleEndianHex))
+}

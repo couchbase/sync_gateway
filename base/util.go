@@ -1108,6 +1108,16 @@ func HexCasToUint64(cas string) uint64 {
 	return binary.LittleEndian.Uint64(casBytes[0:8])
 }
 
+func Uint64CASToLittleEndianHex(cas uint64) []byte {
+	littleEndian := make([]byte, 8)
+	binary.LittleEndian.PutUint64(littleEndian, cas)
+	encodedArray := make([]byte, hex.EncodedLen(8)+2)
+	_ = hex.Encode(encodedArray[2:], littleEndian)
+	encodedArray[0] = '0'
+	encodedArray[1] = 'x'
+	return encodedArray
+}
+
 func Crc32cHash(input []byte) uint32 {
 	// crc32.MakeTable already ensures singleton table creation, so shouldn't need to cache.
 	table := crc32.MakeTable(crc32.Castagnoli)

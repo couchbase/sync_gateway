@@ -28,6 +28,18 @@ type CurrentVersionVector struct {
 	SourceID   string
 }
 
+type PersistedHybridLogicalVector struct {
+	CurrentVersionCAS string            `json:"cvCas,omitempty"`
+	SourceID          string            `json:"src,omitempty"`
+	Version           string            `json:"vrs,omitempty"`
+	MergeVersions     map[string]string `json:"mv,omitempty"`
+	PreviousVersions  map[string]string `json:"pv,omitempty"`
+}
+
+type PersistedVersionVector struct {
+	PersistedHybridLogicalVector `json:"_vv"`
+}
+
 // NewHybridLogicalVector returns a HybridLogicalVector struct with maps initialised in the struct
 func NewHybridLogicalVector() HybridLogicalVector {
 	return HybridLogicalVector{
@@ -156,4 +168,91 @@ func (hlv *HybridLogicalVector) GetVersion(sourceID string) uint64 {
 		latestVersion = mvEntry
 	}
 	return latestVersion
+}
+
+func (hlv *HybridLogicalVector) MarshalJSON() ([]byte, error) {
+
+	persistedHLV, err := hlv.convertHLVToPersistedFormat()
+	if err != nil {
+		return nil, err
+	}
+
+	return base.JSONMarshal(*persistedHLV)
+}
+
+func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
+	persistedJSON := PersistedVersionVector{}
+	err := base.JSONUnmarshal(inputjson, &persistedJSON)
+	if err != nil {
+		return err
+	}
+	// convert the data to in memory format
+	hlv.convertPersistedHLVToInMemoryHLV(persistedJSON)
+	return nil
+}
+
+func (hlv *HybridLogicalVector) convertHLVToPersistedFormat() (*PersistedVersionVector, error) {
+	persistedHLV := PersistedVersionVector{}
+	var cvCasByteArray []byte
+	if hlv.CurrentVersionCAS != 0 {
+		cvCasByteArray = base.Uint64CASToLittleEndianHex(hlv.CurrentVersionCAS)
+	}
+	vrsCasByteArray := base.Uint64CASToLittleEndianHex(hlv.Version)
+
+	pvPersistedFormat, err := convertMapToPersistedFormat(hlv.PreviousVersions)
+	if err != nil {
+		return nil, err
+	}
+	mvPersistedFormat, err := convertMapToPersistedFormat(hlv.MergeVersions)
+	if err != nil {
+		return nil, err
+	}
+
+	persistedHLV.CurrentVersionCAS = string(cvCasByteArray)
+	persistedHLV.SourceID = hlv.SourceID
+	persistedHLV.Version = string(vrsCasByteArray)
+	persistedHLV.PreviousVersions = pvPersistedFormat
+	persistedHLV.MergeVersions = mvPersistedFormat
+	return &persistedHLV, nil
+}
+
+func (hlv *HybridLogicalVector) convertPersistedHLVToInMemoryHLV(persistedJSON PersistedVersionVector) {
+	hlv.CurrentVersionCAS = base.HexCasToUint64(persistedJSON.CurrentVersionCAS)
+	hlv.SourceID = persistedJSON.SourceID
+	// convert the hex cas to uint64 cas
+	hlv.Version = base.HexCasToUint64(persistedJSON.Version)
+	// convert the maps form persisted format to the in memory format
+	hlv.PreviousVersions = convertMapToInMemoryFormat(persistedJSON.PreviousVersions)
+	hlv.MergeVersions = convertMapToInMemoryFormat(persistedJSON.MergeVersions)
+}
+
+// convertMapToPersistedFormat will convert in memory map of previous versions or merge versions into the persisted format map
+func convertMapToPersistedFormat(memoryMap map[string]uint64) (map[string]string, error) {
+	if memoryMap == nil {
+		return nil, nil
+	}
+	returnedMap := make(map[string]string)
+	var persistedCAS string
+	for source, cas := range memoryMap {
+		casByteArray := base.Uint64CASToLittleEndianHex(cas)
+		persistedCAS = string(casByteArray)
+		// remove the leading '0x' from the CAS value
+		persistedCAS = persistedCAS[2:]
+		returnedMap[source] = persistedCAS
+	}
+	return returnedMap, nil
+}
+
+// convertMapToInMemoryFormat will convert the persisted format map to an in memory format of that map.
+// Used for previous versions and merge versions maps on HLV
+func convertMapToInMemoryFormat(persistedMap map[string]string) map[string]uint64 {
+	if persistedMap == nil {
+		return nil
+	}
+	returnedMap := make(map[string]uint64)
+	// convert each CAS entry from little endian hex to Uint64
+	for key, value := range persistedMap {
+		returnedMap[key] = base.HexCasToUint64(value)
+	}
+	return returnedMap
 }
