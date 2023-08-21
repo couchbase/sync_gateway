@@ -3,7 +3,7 @@ module github.com/couchbase/sync_gateway
 go 1.19
 
 require (
-	github.com/bhoriuchi/graphql-go-tools v1.0.0
+	github.com/bhoriuchi/graphql-go-tools v1.0.3
 	github.com/coreos/go-oidc v2.2.1+incompatible
 	github.com/couchbase/cbgt v1.3.4
 	github.com/couchbase/clog v0.1.0
@@ -13,14 +13,14 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.2.4-0.20230511103754-8dd1a95f5f33
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20230803171414-d33c89bb2756
+	github.com/couchbase/sg-bucket v0.0.0-20230814163311-4a700c849d80
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
 	github.com/couchbaselabs/rosmar v0.0.0-20230807222202-f051d1c9b9e8
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
-	github.com/graphql-go/graphql v0.8.0
+	github.com/graphql-go/graphql v0.8.1
 	github.com/imdario/mergo v0.3.12
 	github.com/json-iterator/go v1.1.12
 	github.com/kardianos/service v1.2.1
@@ -38,8 +38,6 @@ require (
 	gopkg.in/couchbaselabs/gocbconnstr.v1 v1.0.4
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
-
-replace github.com/graphql-go/graphql v0.8.0 => github.com/couchbasedeps/graphql-go v0.8.1
 
 require (
 	github.com/aws/aws-sdk-go v1.44.77 // indirect

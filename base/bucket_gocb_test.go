@@ -2499,3 +2499,55 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 		})
 	}
 }
+
+// TestMobileSystemCollectionCRUD ensures that if the mobile system collection exists, Sync Gateway is able to perform CRUD on a document in the mobile system collection.
+func TestMobileSystemCollectionCRUD(t *testing.T) {
+	b := getTestBucket(t, false)
+	defer b.Close()
+
+	if !b.IsSupported(sgbucket.BucketStoreFeatureSystemCollections) {
+		WarnfCtx(TestCtx(t), "Non-fatal test failure: Configured Couchbase Server does not support system collections")
+		t.Skipf("Non-fatal test failure: Configured Couchbase Server does not support system collections")
+	}
+	var docID = t.Name()
+
+	ds, err := b.NamedDataStore(ScopeAndCollectionName{Scope: SystemScope, Collection: SystemCollectionMobile})
+	require.NoError(t, err)
+
+	_, err = ds.Exists(t.Name())
+	require.NoErrorf(t, err, "Expected %s.%s to exist on server capable of system collections", SystemScope, SystemCollectionMobile)
+
+	field1Key := "field1"
+	field1Val := true
+	body := map[string]interface{}{field1Key: true}
+	created, err := ds.Add(docID, 0, body)
+	require.NoError(t, err)
+	require.True(t, created)
+
+	var val map[string]interface{}
+	casGet, err := ds.Get(docID, &val)
+	require.NoError(t, err)
+	assert.Equal(t, body, val)
+
+	newField := KVPair{"field2", "val"}
+	casUpdate, err := ds.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		newBody, err := InjectJSONProperties(current, newField)
+		return newBody, nil, false, err
+	})
+	require.NoError(t, err)
+	require.Greater(t, casUpdate, casGet)
+
+	val = nil
+	casGet, err = ds.Get(docID, &val)
+	require.NoError(t, err)
+	assert.Equal(t, casUpdate, casGet)
+	field1ValGet, ok := val[field1Key]
+	require.True(t, ok)
+	assert.Equal(t, field1Val, field1ValGet)
+	newFieldValGet, ok := val[newField.Key]
+	require.True(t, ok)
+	assert.Equal(t, newField.Val, newFieldValGet)
+
+	err = ds.Delete(docID)
+	require.NoError(t, err)
+}

@@ -504,13 +504,7 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 		if err == nil {
 			err = dc.verifyFailoverLog(vbID, f)
 			if err == nil {
-				e := streamOpenEvent{
-					streamEventCommon: streamEventCommon{
-						vbID: vbID,
-					},
-					failoverLogs: f,
-				}
-				dc.workerForVbno(vbID).Send(e)
+				dc.metadata.SetFailoverEntries(vbID, f)
 			}
 		}
 		openStreamError <- err

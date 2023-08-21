@@ -197,14 +197,14 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 		SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Add(1)
 	}
 
-	shouldLogConsole := consoleLogger.shouldLog(logLevel, logKey)
+	shouldLogConsole := consoleLogger.shouldLog(ctx, logLevel, logKey)
 	shouldLogError := errorLogger.shouldLog(logLevel)
 	shouldLogWarn := warnLogger.shouldLog(logLevel)
 	shouldLogInfo := infoLogger.shouldLog(logLevel)
 	shouldLogDebug := debugLogger.shouldLog(logLevel)
 	shouldLogTrace := traceLogger.shouldLog(logLevel)
 
-	// exit early if we aren't going to log anything anywhere.
+	// exit before string formatting if no loggers need to log
 	if !(shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug || shouldLogTrace) {
 		return
 	}
@@ -224,6 +224,7 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	// Perform log redaction, if necessary.
 	args = redact(args)
 
+	// If either global console or db console wants to log, allow it
 	if shouldLogConsole {
 		consoleLogger.logf(color(format, logLevel), args...)
 	}
@@ -252,7 +253,7 @@ func ConsolefCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format s
 	logTo(ctx, logLevel, logKey, format, args...)
 
 	// If the above logTo didn't already log to stderr, do it directly here
-	if !consoleLogger.isStderr || !consoleLogger.shouldLog(logLevel, logKey) {
+	if !consoleLogger.isStderr || !consoleLogger.shouldLog(ctx, logLevel, logKey) {
 		format = color(addPrefixes(format, ctx, logLevel, logKey), logLevel)
 		_, _ = fmt.Fprintf(consoleFOutput, format+"\n", args...)
 	}
@@ -364,19 +365,19 @@ func ConsoleLogKey() *LogKeyMask {
 // LogInfoEnabled returns true if either the console should log at info level,
 // or if the infoLogger is enabled.
 func LogInfoEnabled(logKey LogKey) bool {
-	return consoleLogger.shouldLog(LevelInfo, logKey) || infoLogger.shouldLog(LevelInfo)
+	return consoleLogger.shouldLog(nil, LevelInfo, logKey) || infoLogger.shouldLog(LevelInfo)
 }
 
 // LogDebugEnabled returns true if either the console should log at debug level,
 // or if the debugLogger is enabled.
 func LogDebugEnabled(logKey LogKey) bool {
-	return consoleLogger.shouldLog(LevelDebug, logKey) || debugLogger.shouldLog(LevelDebug)
+	return consoleLogger.shouldLog(nil, LevelDebug, logKey) || debugLogger.shouldLog(LevelDebug)
 }
 
 // LogTraceEnabled returns true if either the console should log at trace level,
 // or if the traceLogger is enabled.
 func LogTraceEnabled(logKey LogKey) bool {
-	return consoleLogger.shouldLog(LevelTrace, logKey) || traceLogger.shouldLog(LevelTrace)
+	return consoleLogger.shouldLog(nil, LevelTrace, logKey) || traceLogger.shouldLog(LevelTrace)
 }
 
 // AssertLogContains asserts that the logs produced by function f contain string s.

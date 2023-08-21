@@ -177,6 +177,12 @@ type DatabaseContextOptions struct {
 	ChangesRequestPlus            bool           // Sets the default value for request_plus, for non-continuous changes feeds
 	ConfigPrincipals              *ConfigPrincipals
 	PurgeInterval                 *time.Duration // Add a custom purge interval, as a testing seam. If nil, this parameter is filled in by Couchbase Server, with a fallback to a default value SG has.
+	LoggingConfig                 DbLogConfig    // Per-database log configuration
+}
+
+// DbLogConfig can be used to customise the logging for logs associated with this database.
+type DbLogConfig struct {
+	Console *base.DbConsoleLogConfig
 }
 
 type ConfigPrincipals struct {
@@ -385,7 +391,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	// add db info to ctx before having a DatabaseContext (cannot call AddDatabaseLogContext),
 	// in order to pass it to RegisterImportPindexImpl
-	ctx = base.DatabaseLogCtx(ctx, dbName)
+	ctx = base.DatabaseLogCtx(ctx, dbName, options.LoggingConfig.Console)
 
 	if err := base.RequireNoBucketTTL(bucket); err != nil {
 		return nil, err
@@ -2076,7 +2082,8 @@ func CheckTimeout(ctx context.Context) error {
 // AddDatabaseLogContext adds database name to the parent context for logging
 func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context.Context {
 	if dbCtx != nil && dbCtx.Name != "" {
-		return base.DatabaseLogCtx(ctx, dbCtx.Name)
+		dbLogCtx := base.DatabaseLogCtx(ctx, dbCtx.Name, dbCtx.Options.LoggingConfig.Console)
+		return dbLogCtx
 	}
 	return ctx
 }
