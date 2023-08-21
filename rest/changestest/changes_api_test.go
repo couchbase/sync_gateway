@@ -3878,15 +3878,16 @@ func TestResyncAllTombstones(t *testing.T) {
 
 	for _, numTombstones := range tests {
 		t.Run(fmt.Sprintf("limit:%d-numTombstones:%d", queryPaginationLimit, numTombstones), func(t *testing.T) {
-			zero := time.Duration(0)
 			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					QueryPaginationLimit:          base.IntPtr(queryPaginationLimit),
-					Unsupported:                   &db.UnsupportedOptions{UseQueryBasedResyncManager: true},
-					MetadataPurgeIntervalOverride: &zero,
+					QueryPaginationLimit: base.IntPtr(queryPaginationLimit),
+					Unsupported:          &db.UnsupportedOptions{UseQueryBasedResyncManager: true},
 				}},
 			})
 			defer rt.Close()
+
+			zero := time.Duration(0)
+			rt.GetDatabase().Options.PurgeInterval = &zero
 
 			for i := 0; i < numTombstones; i++ {
 				docID := fmt.Sprintf("doc%d", i)
@@ -3919,22 +3920,15 @@ func TestTombstoneCompaction(t *testing.T) {
 	var rt *rest.RestTester
 	numCollections := 1
 
-	zero := time.Duration(0)
-	rtConfig := &rest.RestTesterConfig{
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				MetadataPurgeIntervalOverride: &zero,
-			},
-		},
-	}
-
 	if base.TestsUseNamedCollections() {
 		numCollections = 2
-		rt = rest.NewRestTesterMultipleCollections(t, rtConfig, numCollections)
+		rt = rest.NewRestTesterMultipleCollections(t, nil, numCollections)
 	} else {
-		rt = rest.NewRestTester(t, rtConfig)
+		rt = rest.NewRestTester(t, nil)
 	}
 	defer rt.Close()
+	zero := time.Duration(0)
+	rt.GetDatabase().Options.PurgeInterval = &zero
 
 	compactionTotal := 0
 	expectedBatches := 0

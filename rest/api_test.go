@@ -2756,16 +2756,11 @@ func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 }
 
 func TestTombstoneCompactionAPI(t *testing.T) {
-	zero := time.Duration(0)
-	rtConfig := &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				MetadataPurgeIntervalOverride: &zero,
-			},
-		},
-	}
-	rt := NewRestTester(t, rtConfig)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
+
+	zero := time.Duration(0)
+	rt.GetDatabase().Options.PurgeInterval = &zero
 
 	for i := 0; i < 100; i++ {
 		resp := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/doc%d", i), "{}")

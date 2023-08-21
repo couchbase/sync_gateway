@@ -1192,7 +1192,6 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		// UserQueries:               config.UserQueries,   // behind feature flag (see below)
 		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
 		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)
-		PurgeInterval: config.MetadataPurgeIntervalOverride,
 	}
 
 	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {
