@@ -112,23 +112,48 @@ func (l *ConsoleLogger) logf(format string, args ...interface{}) {
 }
 
 // shouldLog returns true if the given logLevel and logKey should get logged.
-func (l *ConsoleLogger) shouldLog(logLevel LogLevel, logKey LogKey) bool {
+func (l *ConsoleLogger) shouldLog(ctx context.Context, logLevel LogLevel, logKey LogKey) bool {
 	if l == nil || l.logger == nil {
 		return false
 	}
 
+	return shouldLogConsoleDatabase(ctx, logLevel, logKey) ||
+		shouldLog(l.LogLevel, l.LogKeyMask, logLevel, logKey)
+}
+
+// shouldLogConsoleDatabase extracts the database's log settings from the context (if set) to determine whether to log
+func shouldLogConsoleDatabase(ctx context.Context, logLevel LogLevel, logKey LogKey) bool {
+	if ctx == nil {
+		return false
+	}
+
+	logCtx, ok := ctx.Value(requestContextKey).(*LogContext)
+	if !ok {
+		return false
+	}
+
+	config := logCtx.DbConsoleLogConfig
+	if config == nil {
+		return false
+	}
+
+	return shouldLog(config.LogLevel, config.LogKeys, logLevel, logKey)
+}
+
+// shouldLog returns true if a log at the given logLineLevel/logLineKey should get logged for the given logger levels/keys.
+func shouldLog(loggerLevel *LogLevel, loggerKeys *LogKeyMask, logLineLevel LogLevel, logLineKey LogKey) bool {
 	// Log level disabled
-	if !l.LogLevel.Enabled(logLevel) {
+	if !loggerLevel.Enabled(logLineLevel) {
 		return false
 	}
 
 	// Log key All should always log at this point, unless KeyNone is set
-	if logKey == KeyAll && !l.LogKeyMask.Enabled(KeyNone) {
+	if logLineKey == KeyAll && !loggerKeys.Enabled(KeyNone) {
 		return true
 	}
 
 	// Finally, check the specific log key is enabled
-	return l.LogKeyMask.Enabled(logKey)
+	return loggerKeys.Enabled(logLineKey)
 }
 
 func (l *ConsoleLogger) getConsoleLoggerConfig() *ConsoleLoggerConfig {

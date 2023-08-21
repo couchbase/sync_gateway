@@ -1781,6 +1781,31 @@ Database:
           type: array
           items:
             type: string
+    logging:
+      description: Per-database logging configuration.
+      type: object
+      properties:
+        console:
+          description: Console logging configuration.
+          type: object
+          properties:
+            log_level:
+              description: Log Level for the console output
+              type: string
+              enum:
+                - none
+                - error
+                - warn
+                - info
+                - debug
+                - trace
+              example: debug
+            log_keys:
+              description: Log Keys for the console output
+              type: array
+              items:
+                type: string
+              example: ["CRUD", "HTTP", "Query"]
   title: Database-config
 Event-config:
   type: object

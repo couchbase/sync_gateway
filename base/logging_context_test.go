@@ -235,7 +235,7 @@ func TestCtxWorkflow(t *testing.T) {
 	RequireLogMessage(t, correlationCtx, "[INF] t:TestCtxWorkflow c:correlationID foobar\n", standardMessage)
 	RequireLogMessage(t, ctx, "[INF] t:TestCtxWorkflow foobar\n", standardMessage)
 
-	databaseCtx := DatabaseLogCtx(keyspaceCtx, "fooDB")
+	databaseCtx := DatabaseLogCtx(keyspaceCtx, "fooDB", nil)
 	RequireLogMessage(t, databaseCtx, "[INF] t:TestCtxWorkflow c:correlationID db:fooDB col:fooCollection foobar\n", standardMessage)
 	RequireLogMessage(t, keyspaceCtx, "[INF] t:TestCtxWorkflow c:correlationID b:fooBucket.fooScope.fooCollection foobar\n", standardMessage)
 	RequireLogMessage(t, bucketCtx, "[INF] t:TestCtxWorkflow c:correlationID b:fooBucket foobar\n", standardMessage)
