@@ -481,8 +481,9 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 
 	// Now add the entry for the new doc revision:
-	// Invalidate revision cache
-	collection.revisionCache.Invalidate(c.logCtx, docID, syncData.CurrentRev)
+	if len(rawUserXattr) > 0 {
+		collection.revisionCache.Invalidate(c.logCtx, docID, syncData.CurrentRev)
+	}
 	change := &LogEntry{
 		Sequence:     syncData.Sequence,
 		DocID:        docID,

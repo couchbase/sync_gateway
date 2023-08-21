@@ -1340,7 +1340,7 @@ func TestUserXattrRevCache(t *testing.T) {
 	assert.Equal(t, resp.Code, http.StatusOK)
 }
 
-func TestUserXattrDelete(t *testing.T) {
+func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -1424,9 +1424,9 @@ func TestUserXattrDelete(t *testing.T) {
 
 	// GET the doc with userDEF on both nodes to ensure userDEF no longer has access
 	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
-	assert.Equal(t, resp.Code, http.StatusOK)
+	assert.Equal(t, resp.Code, http.StatusForbidden)
 	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
-	assert.Equal(t, resp.Code, http.StatusOK)
+	assert.Equal(t, resp.Code, http.StatusForbidden)
 }
 
 func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
