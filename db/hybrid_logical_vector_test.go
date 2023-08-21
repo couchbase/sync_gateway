@@ -192,3 +192,40 @@ func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
 	}
 	return hlvOutput
 }
+
+// TestHybridLogicalVectorPersistence:
+//   - Tests the process of constructing in memory HLV and marshaling it to persisted format
+//   - Asserts on the format
+//   - Unmarshal the HLV and assert that the process works as expected
+func TestHybridLogicalVectorPersistence(t *testing.T) {
+	// create HLV
+	inputHLV := []string{"cb06dc003846116d9b66d2ab23887a96@123456", "s_YZvBpEaztom9z5V/hDoeIw@1628620455135215600", "m_s_NqiIe0LekFPLeX4JvTO6Iw@1628620455139868700",
+		"m_s_LhRPsa7CpjEvP5zeXTXEBA@1628620455147864000"}
+	inMemoryHLV := createHLVForTest(t, inputHLV)
+
+	// marshal in memory hlv into persisted form
+	byteArray, err := inMemoryHLV.MarshalJSON()
+	require.NoError(t, err)
+
+	// convert to string and assert the in memory struct is converted to persisted form correctly
+	// no guarantee the order of the marshaling of the mv part so just assert on the values
+	strHLV := string(byteArray)
+	assert.Contains(t, strHLV, `"cvCas":"0x40e2010000000000`)
+	assert.Contains(t, strHLV, `"src":"cb06dc003846116d9b66d2ab23887a96"`)
+	assert.Contains(t, strHLV, `"vrs":"0x40e2010000000000"`)
+	assert.Contains(t, strHLV, `"s_LhRPsa7CpjEvP5zeXTXEBA":"c0ff05d7ac059a16"`)
+	assert.Contains(t, strHLV, `"s_NqiIe0LekFPLeX4JvTO6Iw":"1c008cd6ac059a16"`)
+	assert.Contains(t, strHLV, `"pv":{"s_YZvBpEaztom9z5V/hDoeIw":"f0ff44d6ac059a16"}`)
+
+	// Unmarshal the in memory constructed HLV above
+	hlvFromPersistance := HybridLogicalVector{}
+	err = hlvFromPersistance.UnmarshalJSON(byteArray)
+	require.NoError(t, err)
+
+	// assertions on values of unmarshaled HLV
+	assert.Equal(t, inMemoryHLV.CurrentVersionCAS, hlvFromPersistance.CurrentVersionCAS)
+	assert.Equal(t, inMemoryHLV.SourceID, hlvFromPersistance.SourceID)
+	assert.Equal(t, inMemoryHLV.Version, hlvFromPersistance.Version)
+	assert.Equal(t, inMemoryHLV.PreviousVersions, hlvFromPersistance.PreviousVersions)
+	assert.Equal(t, inMemoryHLV.MergeVersions, hlvFromPersistance.MergeVersions)
+}
