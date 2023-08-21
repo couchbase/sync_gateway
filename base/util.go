@@ -64,8 +64,8 @@ func NewNonCancelCtx() NonCancellableContext {
 }
 
 // NewNonCancelCtx creates a new background context struct for operations that require a fresh context, with database logging context added
-func NewNonCancelCtxForDatabase(dbName string) NonCancellableContext {
-	dbLogContext := DatabaseLogCtx(context.Background(), dbName)
+func NewNonCancelCtxForDatabase(dbName string, dbConsoleLogConfig *DbConsoleLogConfig) NonCancellableContext {
+	dbLogContext := DatabaseLogCtx(context.Background(), dbName, dbConsoleLogConfig)
 	ctxStruct := NonCancellableContext{
 		Ctx: dbLogContext,
 	}

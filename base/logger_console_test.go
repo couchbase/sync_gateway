@@ -106,7 +106,7 @@ func TestConsoleShouldLog(t *testing.T) {
 			}})
 
 		t.Run(name, func(ts *testing.T) {
-			got := l.shouldLog(test.logToLevel, test.logToKey)
+			got := l.shouldLog(TestCtx(ts), test.logToLevel, test.logToKey)
 			assert.Equal(ts, test.expected, got)
 		})
 	}
@@ -128,7 +128,7 @@ func BenchmarkConsoleShouldLog(b *testing.B) {
 
 		b.Run(name, func(bb *testing.B) {
 			for i := 0; i < bb.N; i++ {
-				l.shouldLog(test.logToLevel, test.logToKey)
+				l.shouldLog(TestCtx(bb), test.logToLevel, test.logToKey)
 			}
 		})
 	}
