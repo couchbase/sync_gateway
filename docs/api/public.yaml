@@ -36,6 +36,8 @@ paths:
     $ref: './paths/public/db-.yaml'
   /:
     $ref: ./paths/public/-.yaml
+  /_ping:
+    $ref: ./paths/common/_ping.yaml
   '/{keyspace}/':
     $ref: './paths/admin/keyspace-.yaml'
   '/{keyspace}/_all_docs':
