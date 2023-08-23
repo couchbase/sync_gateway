@@ -269,6 +269,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 						return
 					}
 
+					lastSeq = logEntry.Sequence
 					if !requiresRevocation {
 						base.TracefCtx(ctx, base.KeyChanges, "Channel feed processing revocation, seq: %v in channel %s does not require revocation", seqID, base.UD(singleChannelCache.ChannelID().Name))
 						continue
@@ -284,13 +285,13 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 					return
 				}
 
+				lastSeq = logEntry.Sequence
 				if userHasAccessToDoc {
 					paginationOptions.Since.Seq = lastSeq
 					continue
 				}
 
 				change := makeRevocationChangeEntry(logEntry, seqID, singleChannelCache.ChannelID())
-				lastSeq = logEntry.Sequence
 
 				base.DebugfCtx(ctx, base.KeyChanges, "Channel feed processing revocation seq: %v in channel %s ", seqID, base.UD(singleChannelCache.ChannelID().Name))
 
