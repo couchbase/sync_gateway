@@ -42,7 +42,7 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (root, db, keyspa
 
 	// Global operations:
 	root.Handle("/", makeHandler(sc, privs, nil, nil, (*handler).handleRoot)).Methods("GET", "HEAD")
-	root.Handle("/_ping", makeSilentHandler(sc, privs, nil, nil, (*handler).handlePing)).Methods("GET", "HEAD")
+	root.Handle("/_ping", makeSilentHandler(sc, publicPrivs, nil, nil, (*handler).handlePing)).Methods("GET", "HEAD")
 
 	// Operations on databases:
 	root.Handle("/{db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, []Permission{PermDevOps}, nil, (*handler).handleGetDB)).Methods("GET", "HEAD")
@@ -348,6 +348,7 @@ func CreateMetricHandler(sc *ServerContext) http.Handler {
 func CreateMetricRouter(sc *ServerContext) *mux.Router {
 	r := mux.NewRouter()
 	r.StrictSlash(true)
+	r.Handle("/_ping", makeSilentHandler(sc, publicPrivs, nil, nil, (*handler).handlePing)).Methods("GET", "HEAD")
 
 	r.Handle("/metrics", makeHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
 	r.Handle("/_metrics", makeHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
