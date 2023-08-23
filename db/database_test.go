@@ -2557,8 +2557,10 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	}
 
 	bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
-	db, ctx := SetupTestDBForDataStoreWithOptions(t, bucket, DatabaseContextOptions{})
-	db.PurgeInterval = 0
+	zero := time.Duration(0)
+	db, ctx := SetupTestDBForDataStoreWithOptions(t, bucket, DatabaseContextOptions{
+		PurgeInterval: &zero,
+	})
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
@@ -2987,12 +2989,13 @@ func TestImportCompactPanic(t *testing.T) {
 		t.Skip("requires xattrs")
 	}
 
+	zero := time.Duration(0)
 	// Set the compaction and purge interval unrealistically low to reproduce faster
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{
 		CompactInterval: 1,
+		PurgeInterval:   &zero,
 	})
 	defer db.Close(ctx)
-	db.PurgeInterval = 0
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create a document, then delete it, to create a tombstone
