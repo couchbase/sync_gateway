@@ -601,6 +601,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	return nil
 }
 
+// checkDbCorruption checks if the db is present in the corrupt db context map and returns it if so
 func (h *handler) checkDbCorruption(name string) *db.DatabaseContext {
 	h.server.lock.RLock()
 	dbc := h.server.corruptDbContext[name]

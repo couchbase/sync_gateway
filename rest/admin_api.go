@@ -522,9 +522,24 @@ func (h *handler) handlePutDbConfig() (err error) {
 		}
 	}
 
-	bucket := h.db.Bucket.GetName()
+	// if the database is a corrupted database config then we will have no bucket on the db to use (ah teh db context
+	// was previously closed), so nil check needed here to protect against panic
+	// is needed
+	var bucket string
+	if h.db.Bucket != nil {
+		bucket = h.db.Bucket.GetName()
+	}
 	if dbConfig.Bucket != nil {
 		bucket = *dbConfig.Bucket
+	}
+	if bucket == "" {
+		// check if the db config is in corrupt state
+		if h.server.isInCorruptState(h.db.Name) {
+			// database is in corrupt state must provide bucket name to fix
+			return base.HTTPErrorf(http.StatusInternalServerError, "database is in corrupt state must provide bucket name in config update")
+		}
+		// we should never get to this but worth covering off to protect from failure to update config
+		return base.HTTPErrorf(http.StatusInternalServerError, "missing bucket name")
 	}
 
 	// Set dbName based on path value (since db doesn't necessarily exist), and update in incoming config in case of insert

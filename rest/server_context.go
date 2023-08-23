@@ -1453,16 +1453,27 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 	return true
 }
 
+// isInCorruptState returns if a database context is in corrupt state or not
+func (sc *ServerContext) isInCorruptState(dbName string) bool {
+	sc.lock.RLock()
+	_, ok := sc.corruptDbContext[dbName]
+	sc.lock.RUnlock()
+	if ok {
+		// database is in currupt state must provide bucketname to fix
+		return true
+	}
+	return false
+}
+
 func (sc *ServerContext) _addCorruptDatabase(ctx context.Context, dbName string) bool {
 	dbCtx := sc.databases_[dbName]
 	if dbCtx == nil {
 		return false
 	}
-	ctxCopy := *dbCtx
 	base.TracefCtx(ctx, base.KeyConfig, "adding db: %s to corrupt database list", dbName)
 	// acquire exclusive lock to write the context to the corrupt database map on server context
 	sc.lock.Lock()
-	sc.corruptDbContext[dbName] = &ctxCopy
+	sc.corruptDbContext[dbName] = dbCtx
 	sc.lock.Unlock()
 	return true
 }
