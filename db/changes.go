@@ -241,6 +241,8 @@ func (db *Database) buildRevokedFeed(channelName string, options ChangesOptions,
 				// If its less than we can send a standard revocation with Sequence ID as above.
 				// Otherwise: we need to determine whether a previous revision of the document was in the channel prior
 				// to the since value, and only send a revocation if that was the case
+
+				lastSeq = logEntry.Sequence
 				if logEntry.Sequence > sinceVal {
 					// Get doc sync data so we can verify the docs grant history
 					syncData, err := db.GetDocSyncData(logEntry.DocID)
@@ -279,7 +281,6 @@ func (db *Database) buildRevokedFeed(channelName string, options ChangesOptions,
 				}
 
 				change := makeRevocationChangeEntry(logEntry, seqID, singleChannelCache.ChannelName())
-				lastSeq = logEntry.Sequence
 
 				base.DebugfCtx(db.Ctx, base.KeyChanges, "Channel feed processing revocation seq: %v in channel %s ", seqID, base.UD(singleChannelCache.ChannelName()))
 
