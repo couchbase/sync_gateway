@@ -251,6 +251,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 				// Otherwise: we need to determine whether a previous revision of the document was in the channel prior
 				// to the since value, and only send a revocation if that was the case
 
+				lastSeq = logEntry.Sequence
 				if logEntry.Sequence > sinceVal {
 					// Get doc sync data so we can verify the docs grant history
 					syncData, err := db.GetDocSyncData(ctx, logEntry.DocID)
@@ -289,7 +290,6 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 				}
 
 				change := makeRevocationChangeEntry(logEntry, seqID, singleChannelCache.ChannelID())
-				lastSeq = logEntry.Sequence
 
 				base.DebugfCtx(ctx, base.KeyChanges, "Channel feed processing revocation seq: %v in channel %s ", seqID, base.UD(singleChannelCache.ChannelID().Name))
 

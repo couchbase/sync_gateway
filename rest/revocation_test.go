@@ -1132,6 +1132,46 @@ func TestRevocationsWithQueryLimit(t *testing.T) {
 	assert.Equal(t, int64(3), channelQueryCountAfter-channelQueryCountBefore)
 }
 
+func TestRevocationsWithQueryLimit2Channels(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	revocationTester, rt := InitScenario(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport:           false,
+			QueryPaginationLimit: base.IntPtr(2),
+		}},
+	})
+	defer rt.Close()
+
+	revocationTester.addRole("user", "foo")
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.addUserChannel("user", "ch2")
+
+	revocationTester.fillToSeq(9)
+	_ = rt.CreateDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": []string{"ch1", "ch2"}})
+	_ = rt.CreateDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"ch1", "ch2"}})
+	_ = rt.CreateDocReturnRev(t, "doc3", "", map[string]interface{}{"channels": []string{"ch1", "ch2"}})
+
+	changes := revocationTester.getChanges("0", 4)
+
+	revocationTester.removeRole("user", "foo")
+
+	_ = changes.Last_Seq
+	// This changes feed would loop if CBG-3273 was still an issue
+	changes = revocationTester.getChanges(0, 4)
+
+	// Get one of the 3 docs which the user should still have access to
+	resp := rt.SendUserRequestWithHeaders("GET", "/{{.keyspace}}/doc1", "", nil, "user", "test")
+	RequireStatus(t, resp, 200)
+
+	// Revoke access to ch2
+	revocationTester.removeUserChannel("user", "ch2")
+	changes = revocationTester.getChanges(0, 7)
+	// Get a doc to ensure no access
+	resp = rt.SendUserRequestWithHeaders("GET", "/{{.keyspace}}/doc1", "", nil, "user", "test")
+	RequireStatus(t, resp, 403)
+}
+
 func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
