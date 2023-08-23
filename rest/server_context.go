@@ -60,6 +60,7 @@ type ServerContext struct {
 	collectionRegistry            map[string]string                 // map of fully qualified collection name to db name, used for local uniqueness checks
 	dbConfigs                     map[string]*RuntimeDatabaseConfig // dbConfigs is a map of db name to the RuntimeDatabaseConfig
 	databases_                    map[string]*db.DatabaseContext    // databases_ is a map of dbname to db.DatabaseContext
+	corruptDbContext              map[string]*db.DatabaseContext
 	lock                          sync.RWMutex
 	statsContext                  *statsContext
 	BootstrapContext              *bootstrapContext
@@ -139,6 +140,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		collectionRegistry: map[string]string{},
 		dbConfigs:          map[string]*RuntimeDatabaseConfig{},
 		databases_:         map[string]*db.DatabaseContext{},
+		corruptDbContext:   map[string]*db.DatabaseContext{},
 		HTTPClient:         http.DefaultClient,
 		statsContext:       &statsContext{},
 		BootstrapContext:   &bootstrapContext{},
@@ -292,8 +294,18 @@ func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (
 			}
 		}
 	}
+	// handle the correct error message being returned for a corrupt database config
+	var httpErr *base.HTTPError
+	sc.lock.RLock()
+	_, ok := sc.corruptDbContext[name]
+	sc.lock.RUnlock()
+	if !dbConfigFound && ok {
+		httpErr = base.HTTPErrorf(http.StatusNotFound, "Database config corrupt. Database config bucket name not equal to bucket it is persisted in. Must update database config immediately")
+	} else {
+		httpErr = base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
+	}
 
-	return nil, dbConfigFound, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
+	return nil, dbConfigFound, httpErr
 }
 
 func (sc *ServerContext) GetDbConfig(name string) *DbConfig {
@@ -1438,6 +1450,20 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 			delete(sc.collectionRegistry, fqCollection)
 		}
 	}
+	return true
+}
+
+func (sc *ServerContext) _addCorruptDatabase(ctx context.Context, dbName string) bool {
+	dbCtx := sc.databases_[dbName]
+	if dbCtx == nil {
+		return false
+	}
+	ctxCopy := *dbCtx
+	base.TracefCtx(ctx, base.KeyConfig, "adding db: %s to corrupt database list", dbName)
+	// acquire exclusive lock to write the context to the corrupt database map on server context
+	sc.lock.Lock()
+	sc.corruptDbContext[dbName] = &ctxCopy
+	sc.lock.Unlock()
 	return true
 }
 

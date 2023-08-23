@@ -338,7 +338,20 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	// look up the database context:
 	if keyspaceDb != "" {
 		var err error
-		if dbContext, err = h.server.GetActiveDatabase(keyspaceDb); err != nil {
+		dbContext, err = h.server.GetActiveDatabase(keyspaceDb)
+		if dbContext == nil && base.IsDocNotFoundError(err) {
+			// Its possible the database config is corrupt and that is why we can't retrieve database context here
+			// We need to let through requests that are attempting to correct the db config hence check for PUT and POST
+			// request here
+			if h.rq.Method == http.MethodPut || h.rq.Method == http.MethodPost {
+				dbContext = h.checkDbCorruption(keyspaceDb)
+			}
+		}
+		// if we have fetched the db context from corrupt database map we need to nil the error to avoid code below
+		if dbContext != nil {
+			err = nil
+		}
+		if err != nil {
 			h.addDatabaseLogContext(keyspaceDb, nil)
 			if err == base.ErrNotFound {
 				if shouldCheckAdminAuth {
@@ -585,6 +598,20 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		}
 	}
 	h.updateResponseWriter()
+	return nil
+}
+
+func (h *handler) checkDbCorruption(name string) *db.DatabaseContext {
+	h.server.lock.RLock()
+	dbc := h.server.corruptDbContext[name]
+	h.server.lock.RUnlock()
+	if dbc != nil {
+		// acquire exclusive lock to remove the corrupt db context from the map now we are updating the corrupt config
+		h.server.lock.Lock()
+		delete(h.server.corruptDbContext, name)
+		h.server.lock.Unlock()
+		return dbc
+	}
 	return nil
 }
 

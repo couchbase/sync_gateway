@@ -280,6 +280,19 @@ func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) d
 	return resyncStatus
 }
 
+// UpdatePersistedBucketName will update the persisted config bucket name to name specified in parameters
+func (rt *RestTester) UpdatePersistedBucketName(dbConfig *DatabaseConfig, newBucketName *string) (*DatabaseConfig, error) {
+	updatedDbConfig := DatabaseConfig{}
+	_, err := rt.ServerContext().BootstrapContext.UpdateConfig(base.TestCtx(rt.TB), *dbConfig.Bucket, rt.ServerContext().Config.Bootstrap.ConfigGroupID, dbConfig.Name, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+
+		bucketDbConfig = dbConfig
+		bucketDbConfig.Bucket = newBucketName
+
+		return bucketDbConfig, nil
+	})
+	return &updatedDbConfig, err
+}
+
 // setupSGRPeers sets up two rest testers to be used for sg-replicate testing with the following configuration:
 //
 //	activeRT:

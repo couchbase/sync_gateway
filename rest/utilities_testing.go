@@ -2498,6 +2498,12 @@ func DropAllTestIndexes(t *testing.T, tb *base.TestBucket) {
 	}
 }
 
+func (sc *ServerContext) GetCorruptDatabaseMap() map[string]*db.DatabaseContext {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	return sc.corruptDbContext
+}
+
 // Calls DropAllIndexes to remove all indexes, then restores the primary index for TestBucketPool readier requirements
 func dropAllNonPrimaryIndexes(t *testing.T, dataStore base.DataStore) {
 

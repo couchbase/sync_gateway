@@ -1433,6 +1433,94 @@ func TestResyncStop(t *testing.T) {
 	assert.True(t, syncFnCount < 2000, "Expected syncFnCount < 2000 but syncFnCount=%d", syncFnCount)
 }
 
+// TestCorruptDbConfigHandling:
+//   - Create persistent config rest tester
+//   - Create a db with a non-corrupt config
+//   - Grab the persisted config from the bucket for purposes of changing the bucket name on it (this simulates a
+//     dbconfig becoming corrupt)
+//   - Update the persisted config to change the bucket name to a non-existent bucket
+//   - Assert that the db context and config are removed from server context and that operations on the database GET and
+//     DELETE fail with appropriate error message for user
+//   - Test we are able to update the config to correct the corrupted db config
+//   - asser the db returns to the server context and is removed from corrupt database tracking AND that the bucket name
+//     on the config now matches the rest tester bucket name
+func TestCorruptDbConfigHandling(t *testing.T) {
+	base.LongRunningTest(t)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Walrus/Rosmar does not support persistent config")
+	}
+	numCollections := 1
+	base.RequireNumTestDataStores(t, numCollections)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: base.GetPersistentTestBucket(t),
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *rest.StartupConfig) {
+			// configure the interval time to pick up new configs from the bucket to every 2 seconds
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(2)
+		},
+	})
+	defer rt.Close()
+
+	ds := rt.CustomTestBucket.GetSingleDataStore()
+	name, ok := base.AsDataStoreName(ds)
+	require.True(t, ok)
+
+	// create db with correct config
+	resp := rt.SendAdminRequest(http.MethodPut, "/db1/", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes": {"%s": {"collections": {"%s":{}}}}}`,
+		rt.CustomTestBucket.GetName(), base.TestUseXattrs(), name.ScopeName(), name.CollectionName()))
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// wait for db to come online
+	require.NoError(t, rt.WaitForDBOnline())
+
+	// grab the persisted db config from the bucket
+	dbConfig := rest.DatabaseConfig{}
+	_, err := rt.ServerContext().BootstrapContext.GetConfig(rt.CustomTestBucket.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID, "db1", &dbConfig)
+	require.NoError(t, err)
+
+	// update the persisted config to a fake bucket name
+	newBucketName := "fakeBucket"
+	_, err = rt.UpdatePersistedBucketName(&dbConfig, &newBucketName)
+	require.NoError(t, err)
+
+	// wait for some time for interval to remove the db
+	time.Sleep(2 * time.Second)
+
+	// assert that the in memory representation of the db config on the server context is gone now we have broken the config
+	responseConfig := rt.ServerContext().GetDbConfig("db1")
+	assert.Nil(t, responseConfig)
+
+	// assert that fetching config fails with the correct error message to the user
+	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
+	rest.RequireStatus(t, resp, http.StatusNotFound)
+	assert.Contains(t, resp.Body.String(), "Database config corrupt.")
+
+	// assert trying to delete fails with the correct error message to the user
+	resp = rt.SendAdminRequest(http.MethodDelete, "/db1/", "")
+	rest.RequireStatus(t, resp, http.StatusNotFound)
+	assert.Contains(t, resp.Body.String(), "Database config corrupt.")
+
+	// correct the name through update to config
+	resp = rt.SendAdminRequest(http.MethodPut, "/db1/_config", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes": {"%s": {"collections": {"%s":{}}}}}`,
+		rt.CustomTestBucket.GetName(), base.TestUseXattrs(), name.ScopeName(), name.CollectionName()))
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// wait some time for interval to pick up change
+	time.Sleep(2 * time.Second)
+
+	// assert that the config is back in memory even after another interval update pass and asser the persisted config
+	// bucket name matches rest tester bucket name
+	dbCtx, err := rt.ServerContext().GetDatabase(base.TestCtx(t), "db1")
+	require.NoError(t, err)
+	assert.NotNil(t, dbCtx)
+	assert.Equal(t, rt.CustomTestBucket.GetName(), dbCtx.Bucket.GetName())
+	corruptMap := rt.ServerContext().GetCorruptDatabaseMap()
+	assert.Equal(t, 0, len(corruptMap))
+}
+
 func TestResyncStopUsingDCPStream(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		// This test requires a gocb bucket

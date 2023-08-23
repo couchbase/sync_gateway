@@ -1463,8 +1463,24 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 		// inherit properties the bootstrap config
 		cnf.CACertPath = sc.Config.Bootstrap.CACertPath
 
+		// We need to check for corruption in the database config (CC. CBG-3292). If the fetched config doesn't match the
+		// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
+		// in memory representation on the server context.
 		bucketCopy := bucket
-		cnf.Bucket = &bucketCopy
+		if bucket != *cnf.Bucket {
+			base.DebugfCtx(ctx, base.KeyConfig, "Mismatch in database config bucket name: %s and backend bucket: %s You must update database config immediately", *cnf.Bucket, bucket)
+			// track corrupt database context
+			ok := sc._addCorruptDatabase(ctx, dbName)
+			if !ok {
+				base.DebugfCtx(ctx, base.KeyConfig, "Failed ot add sb: %s to corrupt list", cnf.Name)
+			}
+			// don't load config + remove from server context (apart from corrupt database map)
+			sc._removeDatabase(ctx, cnf.Name)
+			return true, fmt.Errorf("mismatch in peristed databse bucket name vs the actual bucketname. Please correct.")
+		} else {
+			// no corruption detected carry on as usual
+			cnf.Bucket = &bucketCopy
+		}
 
 		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
 		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
@@ -1603,8 +1619,24 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			// inherit properties the bootstrap config
 			cnf.CACertPath = sc.Config.Bootstrap.CACertPath
 
+			// We need to check for corruption in the database config (CC. CBG-3292). If the fetched config doesn't match the
+			// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
+			// in memory representation on the server context.
 			bucketCopy := bucket
-			cnf.Bucket = &bucketCopy
+			if bucket != *cnf.Bucket {
+				base.DebugfCtx(ctx, base.KeyConfig, "Mismatch in database config bucket name: %s and backend bucket: %s You must update database config immediately", *cnf.Bucket, bucket)
+				// track corrupt database context
+				ok := sc._addCorruptDatabase(ctx, cnf.Name)
+				if !ok {
+					base.DebugfCtx(ctx, base.KeyConfig, "Failed ot add sb: %s to corrupt list", cnf.Name)
+				}
+				// don't load config + remove from server context (apart from corrupt database map)
+				sc._removeDatabase(ctx, cnf.Name)
+				continue
+			} else {
+				// no corruption detected carry on as usual
+				cnf.Bucket = &bucketCopy
+			}
 
 			// stamp per-database credentials if set
 			if dbCredentials, ok := sc.Config.DatabaseCredentials[cnf.Name]; ok && dbCredentials != nil {
