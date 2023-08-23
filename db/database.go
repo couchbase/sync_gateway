@@ -108,8 +108,7 @@ type DatabaseContext struct {
 	ExitChanges                 chan struct{}        // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders               auth.OIDCProviderMap // OIDC clients
 	LocalJWTProviders           auth.LocalJWTProviderMap
-	PurgeInterval               time.Duration // Metadata purge interval
-	ServerUUID                  string        // UUID of the server, if available
+	ServerUUID                  string // UUID of the server, if available
 
 	DbStats      *base.DbStats // stats that correspond to this database context
 	CompactState uint32        // Status of database compaction
@@ -177,7 +176,8 @@ type DatabaseContextOptions struct {
 	BlipStatsReportingInterval    int64          // interval to report blip stats in milliseconds
 	ChangesRequestPlus            bool           // Sets the default value for request_plus, for non-continuous changes feeds
 	ConfigPrincipals              *ConfigPrincipals
-	LoggingConfig                 DbLogConfig // Per-database log configuration
+	PurgeInterval                 *time.Duration // Add a custom purge interval, as a testing seam. If nil, this parameter is filled in by Couchbase Server, with a fallback to a default value SG has.
+	LoggingConfig                 DbLogConfig    // Per-database log configuration
 }
 
 // DbLogConfig can be used to customise the logging for logs associated with this database.
@@ -1415,29 +1415,18 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 		return 0, nil
 	}
 
+	purgeInterval := db.GetMetadataPurgeInterval(ctx)
+	base.InfofCtx(ctx, base.KeyAll, "Tombstone compaction using the metadata purge interval of %.2f days.", purgeInterval.Hours()/24)
+
 	// Trigger view compaction for all tombstoned documents older than the purge interval
 	startTime := time.Now()
-	purgeOlderThan := startTime.Add(-db.PurgeInterval)
+	purgeOlderThan := startTime.Add(-purgeInterval)
 
 	purgedDocCount := 0
 
 	defer callback(&purgedDocCount)
 
 	base.InfofCtx(ctx, base.KeyAll, "Starting compaction of purged tombstones for %s ...", base.MD(db.Name))
-
-	// Update metadata purge interval if not explicitly set to 0 (used in testing)
-	if db.PurgeInterval > 0 {
-		cbStore, ok := base.AsCouchbaseBucketStore(db.Bucket)
-		if ok {
-			serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
-			if err != nil {
-				base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - using existing purge interval. %s", err)
-			} else if serverPurgeInterval > 0 {
-				db.PurgeInterval = serverPurgeInterval
-			}
-		}
-	}
-	base.InfofCtx(ctx, base.KeyAll, "Tombstone compaction using the metadata purge interval of %.2f days.", db.PurgeInterval.Hours()/24)
 
 	purgeBody := Body{"_purged": true}
 	for _, c := range db.CollectionByID {
@@ -1520,6 +1509,32 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	base.InfofCtx(ctx, base.KeyAll, "Finished compaction of purged tombstones for %s... Total Tombstones Compacted: %d", base.MD(db.Name), purgedDocCount)
 
 	return purgedDocCount, nil
+}
+
+// GetMetadataPurgeInterval returns the current value for the metadata purge interval for the backing bucket.
+func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context) time.Duration {
+	// look for metadata purge interval preferentially:
+	// 1. value specified in DatabaseContextOptions (testing seam)
+	// 2. bucket level
+	// 3. cluster level
+	// 4. default fallback value
+
+	if db.Options.PurgeInterval != nil {
+		return *db.Options.PurgeInterval
+	}
+
+	cbStore, ok := base.AsCouchbaseBucketStore(db.Bucket)
+	if !ok {
+		return DefaultPurgeInterval
+	}
+	serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
+	if err != nil {
+		base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - using default purge interval %.2f days. %s", DefaultPurgeInterval.Hours()/24, err)
+	}
+	if serverPurgeInterval > 0 {
+		return serverPurgeInterval
+	}
+	return DefaultPurgeInterval
 }
 
 // Re-runs the sync function on every current document in the database (if doCurrentDocs==true)
@@ -2313,18 +2328,8 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	}
 
 	if db.UseXattrs() {
-		// Set the purge interval for tombstone compaction
-		db.PurgeInterval = DefaultPurgeInterval
-		cbStore, ok := base.AsCouchbaseBucketStore(db.Bucket)
-		if ok {
-			serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
-			if err != nil {
-				base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - will use default value. %s", err)
-			} else if serverPurgeInterval > 0 {
-				db.PurgeInterval = serverPurgeInterval
-			}
-		}
-		base.InfofCtx(ctx, base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", db.PurgeInterval.Hours()/24)
+		// Log the purge interval for tombstone compaction
+		base.InfofCtx(ctx, base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", db.GetMetadataPurgeInterval(ctx).Hours()/24)
 
 		if db.Options.CompactInterval != 0 {
 			if db.autoImport {

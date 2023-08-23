@@ -3881,10 +3881,13 @@ func TestResyncAllTombstones(t *testing.T) {
 			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 					QueryPaginationLimit: base.IntPtr(queryPaginationLimit),
-					Unsupported:          &db.UnsupportedOptions{UseQueryBasedResyncManager: true}}},
+					Unsupported:          &db.UnsupportedOptions{UseQueryBasedResyncManager: true},
+				}},
 			})
-			rt.GetDatabase().PurgeInterval = 0
 			defer rt.Close()
+
+			zero := time.Duration(0)
+			rt.GetDatabase().Options.PurgeInterval = &zero
 
 			for i := 0; i < numTombstones; i++ {
 				docID := fmt.Sprintf("doc%d", i)
@@ -3916,14 +3919,16 @@ func TestTombstoneCompaction(t *testing.T) {
 
 	var rt *rest.RestTester
 	numCollections := 1
+
 	if base.TestsUseNamedCollections() {
 		numCollections = 2
 		rt = rest.NewRestTesterMultipleCollections(t, nil, numCollections)
 	} else {
 		rt = rest.NewRestTester(t, nil)
 	}
-	rt.GetDatabase().PurgeInterval = 0
 	defer rt.Close()
+	zero := time.Duration(0)
+	rt.GetDatabase().Options.PurgeInterval = &zero
 
 	compactionTotal := 0
 	expectedBatches := 0
