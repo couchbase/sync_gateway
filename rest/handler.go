@@ -651,14 +651,16 @@ func (h *handler) logDuration(realTime bool) {
 	// Log timings/status codes for errors under the HTTP log key
 	// and the HTTPResp log key for everything else.
 	logKey := base.KeyHTTPResp
+	logLevel := base.LevelInfo
+
+	// if error status, log at HTTP/Info
 	if h.status >= 300 {
 		logKey = base.KeyHTTP
-	}
-
-	logLevel := base.LevelInfo
-	if h.httpLogLevel != nil {
+	} else if h.httpLogLevel != nil {
+		// if the handler requested a different log level, and the request was successful, we'll honour that log level.
 		logLevel = *h.httpLogLevel
 	}
+
 	base.LogLevelCtx(h.ctx(), logLevel, logKey, "%s:     --> %d %s  (%.1f ms)",
 		h.formatSerialNumber(), h.status, h.statusMessage,
 		float64(duration)/float64(time.Millisecond),
