@@ -100,7 +100,7 @@ type handler struct {
 	formattedSerialNumber string
 	loggedDuration        bool
 	runOffline            bool       // allows running on an offline database
-	allowNilDBContext     bool       // allow acceess to a database based only on name, looking up in metadata registry
+	allowNilDBContext     bool       // allow access to a database based only on name, looking up in metadata registry
 	queryValues           url.Values // Copy of results of rq.URL.Query()
 	permissionsResults    map[string]bool
 	authScopeFunc         authScopeFunc
@@ -120,61 +120,54 @@ const (
 
 type handlerMethod func(*handler) error
 
-// Creates an http.Handler that will run a handler with the given method
-func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
+// makeHandlerWithOptions creates an http.Handler that will run a handler with the given method handlerOptions
+func makeHandlerWithOptions(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, options handlerOptions) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := newHandler(server, privs, r, rq, handlerOptions{})
+		h := newHandler(server, privs, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
-		h.logDuration(true)
+		if !options.skipLogDuration {
+			h.logDuration(true)
+		}
 		h.reportDbStats()
 	})
+}
+
+// makeHandler creates an http.Handler that will run a handler with the given method
+func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
+	return makeHandlerWithOptions(server, privs, accessPermissions, responsePermissions, method, handlerOptions{})
 }
 
 // Creates an http.Handler that will run a handler with the given method even if the target DB is offline
 func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
-	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		options := handlerOptions{
-			runOffline: true,
-		}
-		h := newHandler(server, privs, r, rq, options)
-		err := h.invoke(method, accessPermissions, responsePermissions)
-		h.writeError(err)
-		h.logDuration(true)
-		h.reportDbStats()
+	return makeHandlerWithOptions(server, privs, accessPermissions, responsePermissions, method, handlerOptions{
+		runOffline: true,
 	})
 }
 
-// makeMetadataDBOfflineHandler creates an http.Handler that will run a handler with the given method even if the target DB is not able to be instantiated
+// makeMetadataDBOfflineHandler creates an http.Handler that will run a handler with the given method even if the target DB couldn't be instantiated
 func makeMetadataDBOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
-	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		options := handlerOptions{
-			runOffline:        true,
-			allowNilDBContext: true,
-		}
-		h := newHandler(server, privs, r, rq, options)
-		err := h.invoke(method, accessPermissions, responsePermissions)
-		h.writeError(err)
-		h.reportDbStats()
+	return makeHandlerWithOptions(server, privs, accessPermissions, responsePermissions, method, handlerOptions{
+		runOffline:        true,
+		allowNilDBContext: true,
+		skipLogDuration:   true,
 	})
 }
 
-// Create an http.Handler that will run a handler with the given method. It also takes in a callback function which when
+// makeHandlerSpecificAuthScope creates an http.Handler that will run a handler with the given method. It also takes in a callback function which when
 // given the endpoint payload returns an auth scope.
-func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, dbAuthStringFunc func([]byte) (string, error)) http.Handler {
-	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := newHandler(server, privs, r, rq, handlerOptions{})
-		h.authScopeFunc = dbAuthStringFunc
-		err := h.invoke(method, accessPermissions, responsePermissions)
-		h.writeError(err)
-		h.logDuration(true)
-		h.reportDbStats()
+func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, authScopeFunc authScopeFunc) http.Handler {
+	return makeHandlerWithOptions(server, privs, accessPermissions, responsePermissions, method, handlerOptions{
+		authScopeFunc: authScopeFunc,
 	})
 }
 
+// handlerOptions defines behaviour for a given handler's initialization and invocation
 type handlerOptions struct {
-	runOffline        bool // if true, allow handler to run when a database is offline
-	allowNilDBContext bool // if true, allow a db-scoped handler to be invoked with a nil dbContext in cases where the database config exists but has an error preventing dbContext initialization"
+	runOffline        bool          // if true, allow handler to run when a database is offline
+	allowNilDBContext bool          // if true, allow a db-scoped handler to be invoked with a nil dbContext in cases where the database config exists but has an error preventing dbContext initialization"
+	skipLogDuration   bool          // if true, will skip logging HTTP response status/duration
+	authScopeFunc     authScopeFunc // if set, this callback function will be used to set the auth scope for a given request body
 }
 
 func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request, options handlerOptions) *handler {
@@ -188,6 +181,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		startTime:         time.Now(),
 		runOffline:        options.runOffline,
 		allowNilDBContext: options.allowNilDBContext,
+		authScopeFunc:     options.authScopeFunc,
 	}
 
 	// initialize h.rqCtx
