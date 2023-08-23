@@ -132,7 +132,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]interf
 			for {
 				select {
 				case <-ticker.C:
-					err = b.UpdateStatusClusterAware()
+					err := b.UpdateStatusClusterAware()
 					if err != nil {
 						base.WarnfCtx(ctx, "Failed to update background manager status: %v", err)
 					}
@@ -164,7 +164,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]interf
 		// Once our background process run has completed we should update the completed status and delete the heartbeat
 		// doc
 		if b.isClusterAware() {
-			err = b.UpdateStatusClusterAware()
+			err := b.UpdateStatusClusterAware()
 			if err != nil {
 				base.WarnfCtx(ctx, "Failed to update background manager status: %v", err)
 			}
@@ -176,7 +176,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]interf
 	}()
 
 	if b.isClusterAware() {
-		err = b.UpdateStatusClusterAware()
+		err := b.UpdateStatusClusterAware()
 		if err != nil {
 			base.ErrorfCtx(ctx, "Failed to update background manager status: %v", err)
 		}
