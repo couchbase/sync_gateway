@@ -1379,7 +1379,10 @@ func (h *handler) writeWithMimetypeStatus(status int, value []byte, mimetype str
 		h.response.WriteHeader(status)
 		h.setStatus(status, http.StatusText(status))
 	}
-	_, _ = h.response.Write(value)
+	// RFC-9110: "HEAD method .. the server MUST NOT send content in the response"
+	if h.rq.Method != http.MethodHead {
+		_, _ = h.response.Write(value)
+	}
 }
 
 func (h *handler) addJSON(value interface{}) error {
