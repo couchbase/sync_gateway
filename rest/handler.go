@@ -100,10 +100,11 @@ type handler struct {
 	formattedSerialNumber string
 	loggedDuration        bool
 	runOffline            bool       // allows running on an offline database
-	allowNilDBContext     bool       // allow acceess to a database based only on name, looking up in metadata registry
+	allowNilDBContext     bool       // allow access to a database based only on name, looking up in metadata registry
 	queryValues           url.Values // Copy of results of rq.URL.Query()
 	permissionsResults    map[string]bool
 	authScopeFunc         authScopeFunc
+	httpLogLevel          *base.LogLevel // if set, always log HTTP information at this level, instead of the default
 	rqCtx                 context.Context
 }
 
@@ -120,61 +121,62 @@ const (
 
 type handlerMethod func(*handler) error
 
-// Creates an http.Handler that will run a handler with the given method
-func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
+// makeHandlerWithOptions creates an http.Handler that will run a handler with the given method handlerOptions
+func makeHandlerWithOptions(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, options handlerOptions) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := newHandler(server, privs, r, rq, handlerOptions{})
+		h := newHandler(server, privs, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
-		h.logDuration(true)
+		if !options.skipLogDuration {
+			h.logDuration(true)
+		}
 		h.reportDbStats()
+	})
+}
+
+// makeHandler creates an http.Handler that will run a handler with the given method
+func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
+	return makeHandlerWithOptions(server, privs, accessPermissions, responsePermissions, method, handlerOptions{})
+}
+
+// makeSilentHandler creates an http.Handler that will run a handler with the given method only logging at debug
+func makeSilentHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
+	return makeHandlerWithOptions(server, privs, accessPermissions, responsePermissions, method, handlerOptions{
+		httpLogLevel: base.LogLevelPtr(base.LevelDebug),
 	})
 }
 
 // Creates an http.Handler that will run a handler with the given method even if the target DB is offline
 func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
-	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		options := handlerOptions{
-			runOffline: true,
-		}
-		h := newHandler(server, privs, r, rq, options)
-		err := h.invoke(method, accessPermissions, responsePermissions)
-		h.writeError(err)
-		h.logDuration(true)
-		h.reportDbStats()
+	return makeHandlerWithOptions(server, privs, accessPermissions, responsePermissions, method, handlerOptions{
+		runOffline: true,
 	})
 }
 
-// makeMetadataDBOfflineHandler creates an http.Handler that will run a handler with the given method even if the target DB is not able to be instantiated
+// makeMetadataDBOfflineHandler creates an http.Handler that will run a handler with the given method even if the target DB couldn't be instantiated
 func makeMetadataDBOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
-	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		options := handlerOptions{
-			runOffline:        true,
-			allowNilDBContext: true,
-		}
-		h := newHandler(server, privs, r, rq, options)
-		err := h.invoke(method, accessPermissions, responsePermissions)
-		h.writeError(err)
-		h.reportDbStats()
+	return makeHandlerWithOptions(server, privs, accessPermissions, responsePermissions, method, handlerOptions{
+		runOffline:        true,
+		allowNilDBContext: true,
+		skipLogDuration:   true,
 	})
 }
 
-// Create an http.Handler that will run a handler with the given method. It also takes in a callback function which when
+// makeHandlerSpecificAuthScope creates an http.Handler that will run a handler with the given method. It also takes in a callback function which when
 // given the endpoint payload returns an auth scope.
-func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, dbAuthStringFunc func([]byte) (string, error)) http.Handler {
-	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := newHandler(server, privs, r, rq, handlerOptions{})
-		h.authScopeFunc = dbAuthStringFunc
-		err := h.invoke(method, accessPermissions, responsePermissions)
-		h.writeError(err)
-		h.logDuration(true)
-		h.reportDbStats()
+func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, authScopeFunc authScopeFunc) http.Handler {
+	return makeHandlerWithOptions(server, privs, accessPermissions, responsePermissions, method, handlerOptions{
+		authScopeFunc: authScopeFunc,
 	})
 }
 
+// handlerOptions defines behaviour for a given handler's initialization and invocation
 type handlerOptions struct {
-	runOffline        bool // if true, allow handler to run when a database is offline
-	allowNilDBContext bool // if true, allow a db-scoped handler to be invoked with a nil dbContext in cases where the database config exists but has an error preventing dbContext initialization"
+	runOffline        bool           // if true, allow handler to run when a database is offline
+	allowNilDBContext bool           // if true, allow a db-scoped handler to be invoked with a nil dbContext in cases where the database config exists but has an error preventing dbContext initialization"
+	skipLogDuration   bool           // if true, will skip logging HTTP response status/duration
+	authScopeFunc     authScopeFunc  // if set, this callback function will be used to set the auth scope for a given request body
+	httpLogLevel      *base.LogLevel // if set, log HTTP requests to this handler at this level, instead of the usual info level
 }
 
 func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request, options handlerOptions) *handler {
@@ -188,6 +190,8 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		startTime:         time.Now(),
 		runOffline:        options.runOffline,
 		allowNilDBContext: options.allowNilDBContext,
+		authScopeFunc:     options.authScopeFunc,
+		httpLogLevel:      options.httpLogLevel,
 	}
 
 	// initialize h.rqCtx
@@ -600,7 +604,13 @@ func (h *handler) logRequestLine() {
 	}
 
 	queryValues := h.getQueryValues()
-	base.InfofCtx(h.ctx(), base.KeyHTTP, "%s %s%s%s", h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formattedEffectiveUserName())
+
+	logLevel := base.LevelInfo
+	if h.httpLogLevel != nil {
+		logLevel = *h.httpLogLevel
+	}
+
+	base.LogLevelCtx(h.ctx(), logLevel, base.KeyHTTP, "%s %s%s%s", h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formattedEffectiveUserName())
 }
 
 // shouldUpdateBytesTransferredStats returns true if we want to log the bytes transferred. The criteria is if this is db scoped over the public port. Blip is skipped since those stats are tracked separately.
@@ -641,11 +651,17 @@ func (h *handler) logDuration(realTime bool) {
 	// Log timings/status codes for errors under the HTTP log key
 	// and the HTTPResp log key for everything else.
 	logKey := base.KeyHTTPResp
+	logLevel := base.LevelInfo
+
+	// if error status, log at HTTP/Info
 	if h.status >= 300 {
 		logKey = base.KeyHTTP
+	} else if h.httpLogLevel != nil {
+		// if the handler requested a different log level, and the request was successful, we'll honour that log level.
+		logLevel = *h.httpLogLevel
 	}
 
-	base.InfofCtx(h.ctx(), logKey, "%s:     --> %d %s  (%.1f ms)",
+	base.LogLevelCtx(h.ctx(), logLevel, logKey, "%s:     --> %d %s  (%.1f ms)",
 		h.formatSerialNumber(), h.status, h.statusMessage,
 		float64(duration)/float64(time.Millisecond),
 	)
@@ -1363,9 +1379,12 @@ func (h *handler) writeWithMimetypeStatus(status int, value []byte, mimetype str
 	h.setHeader("Content-Length", fmt.Sprintf("%d", len(value)))
 	if status > 0 {
 		h.response.WriteHeader(status)
-		h.setStatus(status, "")
+		h.setStatus(status, http.StatusText(status))
 	}
-	_, _ = h.response.Write(value)
+	// RFC-9110: "HEAD method .. the server MUST NOT send content in the response"
+	if h.rq.Method != http.MethodHead {
+		_, _ = h.response.Write(value)
+	}
 }
 
 func (h *handler) addJSON(value interface{}) error {
