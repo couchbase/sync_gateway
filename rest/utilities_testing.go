@@ -680,6 +680,17 @@ func (rt *RestTester) Send(request *http.Request) *TestResponse {
 	return response
 }
 
+func (rt *RestTester) SendMetricsRequest(method, resource, body string) *TestResponse {
+	return rt.sendMetrics(Request(method, rt.mustTemplateResource(resource), body))
+}
+
+func (rt *RestTester) sendMetrics(request *http.Request) *TestResponse {
+	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
+	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
+	rt.TestMetricsHandler().ServeHTTP(response, request)
+	return response
+}
+
 func (rt *RestTester) TestAdminHandlerNoConflictsMode() http.Handler {
 	rt.EnableNoConflictsMode = true
 	return rt.TestAdminHandler()
@@ -811,7 +822,7 @@ func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRe
 	return nil
 }
 
-func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
+func (rt *RestTester) SendAdminRequest(method, resource, body string) *TestResponse {
 	input := bytes.NewBufferString(body)
 	request, err := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)
 	require.NoError(rt.TB, err)
@@ -823,7 +834,7 @@ func (rt *RestTester) SendAdminRequest(method, resource string, body string) *Te
 	return response
 }
 
-func (rt *RestTester) SendUserRequest(method, resource string, body string, username string) *TestResponse {
+func (rt *RestTester) SendUserRequest(method, resource, body, username string) *TestResponse {
 	return rt.Send(RequestByUser(method, rt.mustTemplateResource(resource), body, username))
 }
 
