@@ -130,6 +130,8 @@ paths:
     $ref: ./paths/admin/_expvar.yaml
   /:
     $ref: ./paths/admin/-.yaml
+  /_ping:
+    $ref: ./paths/common/_ping.yaml
   '/{keyspace}/_all_docs':
     $ref: './paths/admin/keyspace-_all_docs.yaml'
   '/{keyspace}/_bulk_docs':

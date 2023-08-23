@@ -28,6 +28,8 @@ servers:
         description: The hostname to use
         default: localhost
 paths:
+  /_ping:
+    $ref: ./paths/common/_ping.yaml
   /_metrics:
     $ref: ./paths/metric/_metrics.yaml
   /_expvar:

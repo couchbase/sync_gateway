@@ -173,6 +173,11 @@ func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...interf
 	logTo(ctx, LevelTrace, logKey, format, args...)
 }
 
+// LogLevelCtx allows logging where the level can be set via parameter.
+func LogLevelCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+	logTo(ctx, logLevel, logKey, format, args...)
+}
+
 // RecordStats writes the given stats JSON content to a stats log file, if enabled.
 // The content passed in is expected to be a JSON dictionary.
 func RecordStats(statsJson string) {

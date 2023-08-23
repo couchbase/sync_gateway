@@ -68,6 +68,12 @@ func (h *handler) handleRoot() error {
 	return nil
 }
 
+// HTTP handler for a simple ping healthcheck
+func (h *handler) handlePing() error {
+	h.writeTextStatus(http.StatusOK, []byte("OK"))
+	return nil
+}
+
 func (h *handler) handleAllDbs() error {
 	h.writeJSON(h.server.AllDatabaseNames())
 	return nil

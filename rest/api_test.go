@@ -2755,3 +2755,50 @@ func assertHTTPErrorReason(t testing.TB, response *TestResponse, expectedStatus 
 
 	assert.Equal(t, expectedReason, httpError.Reason)
 }
+
+// TestPing ensures that /_ping is accessible on all APIs for GET and HEAD without authentication.
+func TestPing(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp)
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	tests := []struct {
+		method         string
+		expectedStatus int
+		expectedBody   string
+	}{
+		{method: http.MethodGet, expectedStatus: http.StatusOK, expectedBody: "OK"},
+		{method: http.MethodHead, expectedStatus: http.StatusOK, expectedBody: ""},
+		{method: http.MethodPost, expectedStatus: http.StatusMethodNotAllowed},
+		{method: http.MethodPut, expectedStatus: http.StatusMethodNotAllowed},
+		{method: http.MethodPatch, expectedStatus: http.StatusMethodNotAllowed},
+		{method: http.MethodDelete, expectedStatus: http.StatusMethodNotAllowed},
+		{method: http.MethodConnect, expectedStatus: http.StatusMethodNotAllowed},
+		{method: http.MethodOptions, expectedStatus: http.StatusNoContent},
+		{method: http.MethodTrace, expectedStatus: http.StatusMethodNotAllowed},
+	}
+
+	testAPIs := []struct {
+		apiName   string
+		requestFn func(string, string, string) *TestResponse
+	}{
+		{"Public", rt.SendRequest},
+		{"Admin", rt.SendAdminRequest},
+		{"Metrics", rt.SendMetricsRequest},
+	}
+
+	for _, test := range tests {
+		for _, api := range testAPIs {
+			t.Run(fmt.Sprintf("%s %s", test.method, api.apiName), func(t *testing.T) {
+				resp := api.requestFn(test.method, "/_ping", "")
+				AssertStatus(t, resp, test.expectedStatus)
+				if test.expectedStatus == http.StatusOK {
+					assert.Containsf(t, resp.Header().Get("Content-Type"), "text/plain", "Should have text/plain Content-Type")
+					assert.Equalf(t, "2", resp.Header().Get("Content-Length"), "Should have a Content-Length")
+					assert.Equalf(t, test.expectedBody, string(resp.BodyBytes()), "Unexpected response body")
+				}
+			})
+		}
+	}
+}
