@@ -1320,7 +1320,7 @@ func TestUserXattrRevCache(t *testing.T) {
 	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, "DEF")
 	assert.NoError(t, err)
 
-	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
 	assert.NoError(t, err)
 
 	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
@@ -1331,9 +1331,9 @@ func TestUserXattrRevCache(t *testing.T) {
 	assert.NoError(t, err)
 
 	// wait for import of the xattr change on both nodes
-	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userABC", false)
 	assert.NoError(t, err)
-	_, err = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+	_, err = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes", "userABC", false)
 	assert.NoError(t, err)
 
 	// GET the doc with userABC to ensure it is accessible on both nodes
@@ -1412,7 +1412,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, "DEF")
 	assert.NoError(t, err)
 
-	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
 	assert.NoError(t, err)
 
 	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
@@ -1423,9 +1423,9 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	assert.NoError(t, err)
 
 	// wait for import of the xattr change on both nodes
-	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
 	assert.NoError(t, err)
-	_, err = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+	_, err = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
 	assert.NoError(t, err)
 
 	// GET the doc with userDEF on both nodes to ensure userDEF no longer has access
