@@ -26,6 +26,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -206,7 +207,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	dbContext, err = serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
 
 	assert.NoError(t, err, "Unexpected error while adding database to server context")
-	assert.Equal(t, server, dbContext.BucketSpec.Server)
+	assert.Equal(t, rosmar.InMemoryURL, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
 
 	dbConfig = DbConfig{
@@ -233,7 +234,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 		})
 
 	assert.NoError(t, err, "No error while trying to get the existing database name")
-	assert.Equal(t, server, dbContext.BucketSpec.Server)
+	assert.Equal(t, rosmar.InMemoryURL, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
 }
 
