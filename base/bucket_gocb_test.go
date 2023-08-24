@@ -1976,7 +1976,7 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 	}
 
 	// Attempt to open the bucket again using invalid creds. We should expect an error.
-	bucket, err := GetBucket(testBucket.BucketSpec)
+	bucket, err := GetBucket(TestCtx(t), testBucket.BucketSpec)
 	assert.Equal(t, ErrAuthError, err)
 	assert.Nil(t, bucket)
 }
@@ -2010,7 +2010,7 @@ func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 	testBucket.BucketSpec.Keypath = keyPath
 
 	// Attempt to open a test bucket with invalid certs
-	bucket, err := GetBucket(testBucket.BucketSpec)
+	bucket, err := GetBucket(TestCtx(t), testBucket.BucketSpec)
 
 	// We no longer need the cert files, so go ahead and clean those up now before any assertions stop the test.
 	x509CleanupFn()

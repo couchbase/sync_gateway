@@ -35,6 +35,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/db/functions"
+	"github.com/couchbaselabs/rosmar"
 )
 
 var (
@@ -88,7 +89,13 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 	tlsPort := 11207
 
 	if bc.Server != nil {
-		server = *bc.Server
+		// treat all walrus: as in memory storage, any persistent storage would have to be converted to rosmar
+		if strings.HasPrefix(*bc.Server, "walrus:") {
+			server = rosmar.InMemoryURL
+		} else {
+			server = *bc.Server
+
+		}
 	}
 	if bc.Bucket != nil {
 		bucketName = *bc.Bucket

@@ -328,14 +328,14 @@ type OpenBucketFn func(context.Context, base.BucketSpec, bool) (base.Bucket, err
 // ConnectToBucket opens a Couchbase connection and return a specific bucket. If failFast is set, fail immediately if the bucket doesn't exist, otherwise retry waiting for bucket to exist.
 func ConnectToBucket(ctx context.Context, spec base.BucketSpec, failFast bool) (base.Bucket, error) {
 	if failFast {
-		bucket, err := base.GetBucket(spec)
+		bucket, err := base.GetBucket(ctx, spec)
 		_, err = connectToBucketErrorHandling(ctx, spec, err)
 		return bucket, err
 	}
 
 	// start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (bool, error, interface{}) {
-		bucket, err := base.GetBucket(spec)
+		bucket, err := base.GetBucket(ctx, spec)
 
 		// Retry if there was a non-fatal error
 		fatalError, newErr := connectToBucketErrorHandling(ctx, spec, err)

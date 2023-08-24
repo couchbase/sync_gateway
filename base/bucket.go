@@ -343,13 +343,13 @@ func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsH
 
 }
 
-func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
+func GetBucket(ctx context.Context, spec BucketSpec) (bucket Bucket, err error) {
 	if spec.IsWalrusBucket() {
-		InfofCtx(context.TODO(), KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
+		InfofCtx(ctx, KeyAll, "Opening rosmar database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
 		bucket, err = rosmar.OpenBucketIn(spec.Server, spec.BucketName, rosmar.CreateOrOpen)
 		if err != nil {
-			ErrorfCtx(context.TODO(), "Failed to open Walrus database %s on <%s>: %s", MD(spec.BucketName), SD(spec.Server), err)
+			ErrorfCtx(ctx, "Failed to open rosmar database %s on <%s>: %s", MD(spec.BucketName), SD(spec.Server), err)
 			return nil, err
 		}
 
@@ -358,7 +358,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		if spec.Auth != nil {
 			username, _, _ = spec.Auth.GetCredentials()
 		}
-		InfofCtx(context.TODO(), KeyAll, "Opening Couchbase database %s on <%s> as user %q", MD(spec.BucketName), SD(spec.Server), UD(username))
+		InfofCtx(ctx, KeyAll, "Opening Couchbase database %s on <%s> as user %q", MD(spec.BucketName), SD(spec.Server), UD(username))
 
 		bucket, err = GetGoCBv2Bucket(spec)
 		if err != nil {
@@ -369,7 +369,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
 		if spec.UseXattrs {
 			if !bucket.IsSupported(sgbucket.BucketStoreFeatureXattrs) {
-				WarnfCtx(context.Background(), "If using XATTRS, Couchbase Server version must be >= 5.0.")
+				WarnfCtx(ctx, "If using XATTRS, Couchbase Server version must be >= 5.0.")
 				return nil, ErrFatalBucketConnection
 			}
 		}
