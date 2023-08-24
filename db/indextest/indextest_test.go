@@ -122,7 +122,7 @@ func TestBuildRolesQuery(t *testing.T) {
 			require.True(t, ok)
 
 			roleStatement, _ := database.BuildRolesQuery("", 0)
-			plan, explainErr := n1QLStore.ExplainQuery(roleStatement, nil)
+			plan, explainErr := n1QLStore.ExplainQuery(ctx, roleStatement, nil)
 			require.NoError(t, explainErr, "Error generating explain for roleAccess query")
 
 			covered := db.IsCovered(plan)
@@ -165,7 +165,7 @@ func TestBuildUsersQuery(t *testing.T) {
 			n1QLStore, ok := base.AsN1QLStore(database.MetadataStore)
 			require.True(t, ok)
 			userStatement, _ := database.BuildUsersQuery("", 0)
-			plan, explainErr := n1QLStore.ExplainQuery(userStatement, nil)
+			plan, explainErr := n1QLStore.ExplainQuery(ctx, userStatement, nil)
 			require.NoError(t, explainErr)
 
 			covered := db.IsCovered(plan)
