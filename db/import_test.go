@@ -442,7 +442,7 @@ func TestEvaluateFunction(t *testing.T) {
 	// Simulate unexpected error invoking import filter for document
 	body := Body{"key": "value", "version": "1a"}
 	source := "illegal function(doc) {}"
-	importFilterFunc := NewImportFilterFunction(source, 0)
+	importFilterFunc := NewImportFilterFunction(base.TestCtx(t), source, 0)
 	result, err := importFilterFunc.EvaluateFunction(base.TestCtx(t), body)
 	assert.Error(t, err, "Unexpected token function error")
 	assert.False(t, result, "Function evaluation result should be false")
@@ -450,7 +450,7 @@ func TestEvaluateFunction(t *testing.T) {
 	// Simulate boolean return value from import filter function
 	body = Body{"key": "value", "version": "2a"}
 	source = `function(doc) { if (doc.version == "2a") { return true; } else { return false; }}`
-	importFilterFunc = NewImportFilterFunction(source, 0)
+	importFilterFunc = NewImportFilterFunction(base.TestCtx(t), source, 0)
 	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body)
 	assert.NoError(t, err, "Import filter function shouldn't throw any error")
 	assert.True(t, result, "Import filter function should return boolean value true")
@@ -458,7 +458,7 @@ func TestEvaluateFunction(t *testing.T) {
 	// Simulate non-boolean return value from import filter function; default switch case
 	body = Body{"key": "value", "version": "2b"}
 	source = `function(doc) { if (doc.version == "2b") { return 1.01; } else { return 0.01; }}`
-	importFilterFunc = NewImportFilterFunction(source, 0)
+	importFilterFunc = NewImportFilterFunction(base.TestCtx(t), source, 0)
 	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body)
 	assert.Error(t, err, "Import filter function returned non-boolean value")
 	assert.False(t, result, "Import filter function evaluation result should be false")
@@ -466,7 +466,7 @@ func TestEvaluateFunction(t *testing.T) {
 	// Simulate string return value true from import filter function
 	body = Body{"key": "value", "version": "1a"}
 	source = `function(doc) { if (doc.version == "1a") { return "true"; } else { return "false"; }}`
-	importFilterFunc = NewImportFilterFunction(source, 0)
+	importFilterFunc = NewImportFilterFunction(base.TestCtx(t), source, 0)
 	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body)
 	assert.NoError(t, err, "Import filter function shouldn't throw any error")
 	assert.True(t, result, "Import filter function should return true")
@@ -474,7 +474,7 @@ func TestEvaluateFunction(t *testing.T) {
 	// Simulate string return value false from import filter function
 	body = Body{"key": "value", "version": "2a"}
 	source = `function(doc) { if (doc.version == "1a") { return "true"; } else { return "false"; }}`
-	importFilterFunc = NewImportFilterFunction(source, 0)
+	importFilterFunc = NewImportFilterFunction(base.TestCtx(t), source, 0)
 	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body)
 	assert.NoError(t, err, "Import filter function shouldn't throw any error")
 	assert.False(t, result, "Import filter function should return false")
@@ -482,7 +482,7 @@ func TestEvaluateFunction(t *testing.T) {
 	// Simulate strconv.ParseBool: parsing "TruE": invalid syntax
 	body = Body{"key": "value", "version": "1a"}
 	source = `function(doc) { if (doc.version == "1a") { return "TruE"; } else { return "FaLsE"; }}`
-	importFilterFunc = NewImportFilterFunction(source, 0)
+	importFilterFunc = NewImportFilterFunction(base.TestCtx(t), source, 0)
 	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body)
 	assert.Error(t, err, `strconv.ParseBool: parsing "TruE": invalid syntax`)
 	assert.False(t, result, "Import filter function should return true")
