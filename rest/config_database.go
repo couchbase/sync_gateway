@@ -85,11 +85,13 @@ func GenerateDatabaseConfigVersionID(previousRevID string, dbConfig *DbConfig) (
 
 func DefaultPerDBLogging(bootstrapLoggingCnf base.LoggingConfig) *DbLoggingConfig {
 	if bootstrapLoggingCnf.Console != nil {
-		return &DbLoggingConfig{
-			Console: &DbConsoleLoggingConfig{
-				LogLevel: bootstrapLoggingCnf.Console.LogLevel,
-				LogKeys:  bootstrapLoggingCnf.Console.LogKeys,
-			},
+		if *bootstrapLoggingCnf.Console.Enabled {
+			return &DbLoggingConfig{
+				Console: &DbConsoleLoggingConfig{
+					LogLevel: bootstrapLoggingCnf.Console.LogLevel,
+					LogKeys:  bootstrapLoggingCnf.Console.LogKeys,
+				},
+			}
 		}
 	}
 	return &DbLoggingConfig{}

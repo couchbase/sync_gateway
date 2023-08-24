@@ -541,7 +541,7 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 
 // Tests that the users returned in the config endpoint have the correct names
 // Reproduces #2223
-func TestDBGetConfigNames(t *testing.T) {
+func TestDBGetConfigNamesAndDefaultLogging(t *testing.T) {
 
 	p := "password"
 	rt := rest.NewRestTester(t,
@@ -563,11 +563,40 @@ func TestDBGetConfigNames(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 
 	assert.Equal(t, len(rt.DatabaseConfig.Users), len(body.Users))
+	emptyCnf := &rest.DbLoggingConfig{}
+	assert.Equal(t, body.Logging, emptyCnf)
 
 	for k, v := range body.Users {
 		assert.Equal(t, k, *v.Name)
 	}
+}
 
+// Tests that the users returned in the config endpoint have the correct names
+// Reproduces #2223
+func TestDBGetConfigCustomLogging(t *testing.T) {
+	logKeys := []string{base.KeyAccess.String(), base.KeyHTTP.String()}
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Logging: &rest.DbLoggingConfig{
+					Console: &rest.DbConsoleLoggingConfig{
+						LogLevel: base.LogLevelPtr(base.LevelError),
+						LogKeys:  logKeys,
+					},
+				},
+			},
+			},
+		},
+	)
+
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("GET", "/db/_config?include_runtime=true", "")
+	var body rest.DbConfig
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+
+	assert.Equal(t, body.Logging.Console.LogLevel, base.LogLevelPtr(base.LevelError))
+	assert.Equal(t, body.Logging.Console.LogKeys, logKeys)
 }
 
 // Take DB offline and ensure can post _resync
