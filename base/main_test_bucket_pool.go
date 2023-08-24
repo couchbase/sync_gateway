@@ -437,7 +437,7 @@ func (tbp *TestBucketPool) emptyPreparedStatements(ctx context.Context, b Bucket
 		}
 
 		// search all statements for those containing a string matching the bucket name (which will also include all scope/collection-based prepared statements)
-		queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+b.GetName()+`%";`, nil, RequestPlus, true)
+		queryRes, err := n1qlStore.Query(ctx, `DELETE FROM system:prepareds WHERE statement LIKE "%`+b.GetName()+`%";`, nil, RequestPlus, true)
 		if err != nil {
 			tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
 		}
@@ -670,7 +670,7 @@ var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Buc
 			// Use N1QL to empty bucket, with the hope that the query service is happier to deal with this than a bucket flush/rollback.
 			// Requires a primary index on the bucket.
 			// TODO: How can we delete xattr only docs from here too? It would avoid needing to call db.emptyAllDocsIndex in ViewsAndGSIBucketReadier
-			res, err := n1qlStore.Query(fmt.Sprintf(`DELETE FROM %s`, KeyspaceQueryToken), nil, RequestPlus, true)
+			res, err := n1qlStore.Query(ctx, fmt.Sprintf(`DELETE FROM %s`, KeyspaceQueryToken), nil, RequestPlus, true)
 			if err != nil {
 				return err
 			}

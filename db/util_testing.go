@@ -56,7 +56,7 @@ func isPrimaryIndexEmpty(store base.N1QLStore) (bool, error) {
 	params[QueryParamEndSeq] = N1QLMaxInt64
 
 	// Execute the query
-	results, err := store.Query(statement, params, base.RequestPlus, true)
+	results, err := store.Query(context.TODO(), statement, params, base.RequestPlus, true)
 
 	// If there was an error, then retry.  Assume it's an "index rollback" error which happens as
 	// the index processes the bucket flush operation
@@ -192,7 +192,7 @@ func EmptyPrimaryIndex(dataStore sgbucket.DataStore) error {
 	}
 
 	statement := `DELETE FROM ` + base.KeyspaceQueryToken
-	results, err := n1qlStore.Query(statement, nil, base.RequestPlus, true)
+	results, err := n1qlStore.Query(context.TODO(), statement, nil, base.RequestPlus, true)
 	if err != nil {
 		return err
 	}
@@ -214,7 +214,7 @@ func emptyAllDocsIndex(ctx context.Context, dataStore sgbucket.DataStore, tbp *b
 FROM ` + base.KeyspaceQueryToken + ` AS ks USE INDEX (sg_allDocs_x1)
 WHERE META(ks).xattrs._sync.sequence IS NOT MISSING
     AND META(ks).id NOT LIKE '\\_sync:%'`
-	results, err := n1qlStore.Query(statement, nil, base.RequestPlus, true)
+	results, err := n1qlStore.Query(ctx, statement, nil, base.RequestPlus, true)
 	if err != nil {
 		return 0, err
 	}
