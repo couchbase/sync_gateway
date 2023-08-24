@@ -292,7 +292,7 @@ func (c *DatabaseCollection) UpdateSyncFun(ctx context.Context, syncFun string) 
 	} else if c.ChannelMapper != nil {
 		_, err = c.ChannelMapper.SetFunction(syncFun)
 	} else {
-		c.ChannelMapper = channels.NewChannelMapper(syncFun, c.dbCtx.Options.JavascriptTimeout)
+		c.ChannelMapper = channels.NewChannelMapper(ctx, syncFun, c.dbCtx.Options.JavascriptTimeout)
 	}
 	if err != nil {
 		base.WarnfCtx(ctx, "Error setting sync function: %s", err)

@@ -321,7 +321,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	rev1body := Body{
 		"key1":     1234,
@@ -430,7 +430,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	auth := db.Authenticator(base.TestCtx(t))
 
@@ -601,7 +601,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create the first revision of doc1.
 	rev1Body := Body{
@@ -832,7 +832,7 @@ func TestAllDocsOnly(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	collectionID := collection.GetCollectionID()
 
@@ -1015,7 +1015,7 @@ func TestConflicts(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Instantiate channel cache for channel 'all'
 	collectionID := collection.GetCollectionID()
@@ -1428,7 +1428,7 @@ func TestInvalidChannel(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	body := Body{"channels": []string{"bad,name"}}
 	_, _, err := collection.Put(ctx, "doc", body)

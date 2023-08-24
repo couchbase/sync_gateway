@@ -1029,7 +1029,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Write a handful of docs/sequences to the bucket
 	_, _, err := collection.Put(ctx, "key1", Body{"channels": "ABC"})
@@ -1669,7 +1669,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 	docCount := 0
@@ -1721,7 +1721,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Writes [docCount] documents.  Use wait group (writesDone)to identify when all docs have been written.
 	// Use another waitGroup (writesInProgress) to trigger getChanges midway through writes
@@ -1777,7 +1777,7 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 	collectionID := collection.GetCollectionID()
 
 	// -------- Setup notifyChange callback ----------------

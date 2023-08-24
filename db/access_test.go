@@ -34,7 +34,7 @@ func TestDynamicChannelGrant(t *testing.T) {
 			channel(doc.channel)
 		}
 	}`
-	dbCollection.ChannelMapper = channels.NewChannelMapper(syncFn, db.Options.JavascriptTimeout)
+	dbCollection.ChannelMapper = channels.NewChannelMapper(ctx, syncFn, db.Options.JavascriptTimeout)
 
 	a := dbCollection.Authenticator(ctx)
 	user, err := a.NewUser("user1", "letmein", nil)

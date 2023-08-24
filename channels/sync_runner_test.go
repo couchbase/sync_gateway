@@ -21,7 +21,7 @@ import (
 
 func TestRequireUser(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireUser(oldDoc._names) }`
-	runner, err := NewSyncRunner(funcSource, 0)
+	runner, err := NewSyncRunner(base.TestCtx(t), funcSource, 0)
 	require.NoError(t, err)
 	var result interface{}
 	result, _ = runner.Call(parse(`{}`), parse(`{"_names": "alpha"}`), emptyMetaMap(), parse(`{"name": "alpha"}`))
@@ -34,7 +34,7 @@ func TestRequireUser(t *testing.T) {
 
 func TestRequireRole(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireRole(oldDoc._roles) }`
-	runner, err := NewSyncRunner(funcSource, 0)
+	runner, err := NewSyncRunner(base.TestCtx(t), funcSource, 0)
 	require.NoError(t, err)
 	var result interface{}
 	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["alpha"]}`), emptyMetaMap(), parse(`{"name": "", "roles": {"alpha":""}}`))
@@ -47,7 +47,7 @@ func TestRequireRole(t *testing.T) {
 
 func TestRequireAccess(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireAccess(oldDoc._access) }`
-	runner, err := NewSyncRunner(funcSource, 0)
+	runner, err := NewSyncRunner(base.TestCtx(t), funcSource, 0)
 	require.NoError(t, err)
 	var result interface{}
 	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["alpha"]}`), emptyMetaMap(), parse(`{"name": "", "channels": ["alpha"]}`))
@@ -60,7 +60,7 @@ func TestRequireAccess(t *testing.T) {
 
 func TestRequireAdmin(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireAdmin() }`
-	runner, err := NewSyncRunner(funcSource, 0)
+	runner, err := NewSyncRunner(base.TestCtx(t), funcSource, 0)
 	require.NoError(t, err)
 	var result interface{}
 	result, _ = runner.Call(parse(`{}`), parse(`{}`), emptyMetaMap(), parse(`{}`))
