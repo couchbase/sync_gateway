@@ -386,6 +386,8 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 
 	feed := make(chan *ChangeEntry, 1)
 
+	options.LoggingCtx = ctx
+
 	queryLimit := db.channelQueryLimit()
 	requestLimit := options.Limit
 

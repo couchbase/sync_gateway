@@ -368,15 +368,16 @@ func (c *singleChannelCacheImpl) _getCachedChanges(sinceSeq uint64, limit int) (
 // nextSequence.
 
 func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
+	ctx := options.LoggingCtx
 
 	// Use the cache, and return if it fulfilled the entire request:
 	cacheValidFrom, resultFromCache := c.GetCachedChanges(options)
 	numFromCache := len(resultFromCache)
 	if numFromCache > 0 {
-		base.InfofCtx(options.LoggingCtx, base.KeyCache, "GetCachedChanges(%q, %s) --> %d changes valid from #%d",
+		base.InfofCtx(ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> %d changes valid from #%d",
 			base.UD(c.channelID), options.Since.String(), numFromCache, cacheValidFrom)
 	} else {
-		base.DebugfCtx(options.LoggingCtx, base.KeyCache, "GetCachedChanges(%q, %s) --> nothing cached",
+		base.DebugfCtx(ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> nothing cached",
 			base.UD(c.channelID), options.Since.String())
 	}
 	startSeq := options.Since.SafeSequence() + 1
@@ -397,7 +398,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	// the cache, so repeat the above:
 	cacheValidFrom, resultFromCache = c.GetCachedChanges(options)
 	if len(resultFromCache) > numFromCache {
-		base.InfofCtx(options.LoggingCtx, base.KeyCache, "2nd GetCachedChanges(%q, %s) got %d more, valid from #%d!",
+		base.InfofCtx(ctx, base.KeyCache, "2nd GetCachedChanges(%q, %s) got %d more, valid from #%d!",
 			base.UD(c.channelID), options.Since.String(), len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
@@ -415,7 +416,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	// overlap, which helps confirm that we've got everything.
 	c.cacheStats.ChannelCacheMisses.Add(1)
 	endSeq := cacheValidFrom
-	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(options.LoggingCtx, c.channelID.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(ctx, c.channelID.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -430,7 +431,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 			resultValidTo = resultFromQuery[numResults-1].Sequence
 		}
 		if len(resultFromCache) < c.options.ChannelCacheMaxLength {
-			c.prependChanges(options.LoggingCtx, resultFromQuery, startSeq, resultValidTo)
+			c.prependChanges(ctx, resultFromQuery, startSeq, resultValidTo)
 		}
 	}
 
@@ -447,7 +448,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 		}
 		result = append(result, resultFromCache[0:n]...)
 	}
-	base.InfofCtx(options.LoggingCtx, base.KeyCache, "GetChangesInChannel(%q) --> %d rows", base.UD(c.channelID), len(result))
+	base.InfofCtx(ctx, base.KeyCache, "GetChangesInChannel(%q) --> %d rows", base.UD(c.channelID), len(result))
 
 	return result, nil
 }
