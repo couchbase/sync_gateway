@@ -116,8 +116,7 @@ type SyncRunner struct {
 	expiry            *uint32             // document expiry (in seconds) specified via expiry() callback
 }
 
-func NewSyncRunner(funcSource string, timeout time.Duration) (*SyncRunner, error) {
-	ctx := context.Background()
+func NewSyncRunner(ctx context.Context, funcSource string, timeout time.Duration) (*SyncRunner, error) {
 	funcSource = wrappedFuncSource(funcSource)
 	runner := &SyncRunner{}
 	err := runner.InitWithLogging(funcSource, timeout,

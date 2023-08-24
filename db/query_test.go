@@ -33,7 +33,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
@@ -85,7 +85,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
@@ -263,7 +263,7 @@ func TestAccessQuery(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(
+	collection.ChannelMapper = channels.NewChannelMapper(ctx,
 		`function(doc, oldDoc) {
 	access(doc.accessUser, doc.accessChannel)
 }`,
@@ -307,7 +307,7 @@ func TestRoleAccessQuery(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(
+	collection.ChannelMapper = channels.NewChannelMapper(ctx,
 		`function(doc, oldDoc) {
 	role(doc.accessUser, "role:" + doc.accessChannel)
 }`, db.Options.JavascriptTimeout)
@@ -363,7 +363,7 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 	docIdFlagMap := make(map[string]uint8)
 	var startSeq, endSeq uint64
 	body := Body{"channels": []string{"ABC"}}

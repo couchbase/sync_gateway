@@ -97,12 +97,13 @@ func (lc *LogContext) getContextKey() LogContextKey {
 
 func (lc *LogContext) getCopy() LogContext {
 	return LogContext{
-		CorrelationID: lc.CorrelationID,
-		Database:      lc.Database,
-		Bucket:        lc.Bucket,
-		Scope:         lc.Scope,
-		Collection:    lc.Collection,
-		TestName:      lc.TestName,
+		CorrelationID:      lc.CorrelationID,
+		Database:           lc.Database,
+		DbConsoleLogConfig: lc.DbConsoleLogConfig,
+		Bucket:             lc.Bucket,
+		Scope:              lc.Scope,
+		Collection:         lc.Collection,
+		TestName:           lc.TestName,
 	}
 }
 
