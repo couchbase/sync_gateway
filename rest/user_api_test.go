@@ -1246,6 +1246,192 @@ func TestRemovingUserXattr(t *testing.T) {
 		})
 	}
 }
+
+func TestUserXattrRevCache(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only - user xattrs")
+	}
+
+	docKey := t.Name()
+	xattrKey := "channels"
+	channelName := []string{"ABC", "DEF"}
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+	syncFn := `function (doc, oldDoc, meta){
+				if (meta.xattrs.channels !== undefined){
+					channel(meta.xattrs.channels);
+					console.log(JSON.stringify(meta));
+				}
+			}`
+
+	// Sync function to set channel access to a channels UserXattrKey
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport:   true,
+			UserXattrKey: xattrKey,
+		}},
+		SyncFn: syncFn,
+	})
+	defer rt.Close()
+
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport:   true,
+			UserXattrKey: xattrKey,
+		}},
+		SyncFn: syncFn,
+	})
+	defer rt2.Close()
+
+	dataStore := rt2.GetSingleDataStore()
+	userXattrStore, ok := base.AsUserXattrStore(dataStore)
+	if !ok {
+		t.Skip("Test requires Couchbase Bucket")
+	}
+
+	ctx := rt2.Context()
+	a := rt2.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	userABC, err := a.NewUser("userABC", "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err)
+	require.NoError(t, a.Save(userABC))
+
+	userDEF, err := a.NewUser("userDEF", "letmein", channels.BaseSetOf(t, "DEF"))
+	require.NoError(t, err)
+	require.NoError(t, a.Save(userDEF))
+
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	require.NoError(t, rt.WaitForPendingChanges())
+	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, "DEF")
+	assert.NoError(t, err)
+
+	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
+	assert.NoError(t, err)
+
+	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
+	RequireStatus(t, resp, http.StatusOK)
+
+	// Add channel ABC to the userXattr
+	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
+	assert.NoError(t, err)
+
+	// wait for import of the xattr change on both nodes
+	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userABC", false)
+	assert.NoError(t, err)
+	_, err = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes", "userABC", false)
+	assert.NoError(t, err)
+
+	// GET the doc with userABC to ensure it is accessible on both nodes
+	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userABC")
+	assert.Equal(t, resp.Code, http.StatusOK)
+	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userABC")
+	assert.Equal(t, resp.Code, http.StatusOK)
+}
+
+func TestUserXattrDeleteWithRevCache(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only - user xattrs")
+	}
+
+	// Sync function to set channel access to a channels UserXattrKey
+	syncFn := `
+			function (doc, oldDoc, meta){
+				if (meta.xattrs.channels !== undefined){
+					channel(meta.xattrs.channels);
+					console.log(JSON.stringify(meta));
+				}
+			}`
+
+	docKey := t.Name()
+	xattrKey := "channels"
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport:   true,
+			UserXattrKey: xattrKey,
+		}},
+		SyncFn: syncFn,
+	})
+	defer rt.Close()
+
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport:   true,
+			UserXattrKey: xattrKey,
+		}},
+		SyncFn: syncFn,
+	})
+	defer rt2.Close()
+
+	dataStore := rt2.GetSingleDataStore()
+	userXattrStore, ok := base.AsUserXattrStore(dataStore)
+	if !ok {
+		t.Skip("Test requires Couchbase Bucket")
+	}
+
+	ctx := rt2.Context()
+	a := rt2.ServerContext().Database(ctx, "db").Authenticator(ctx)
+
+	userDEF, err := a.NewUser("userDEF", "letmein", channels.BaseSetOf(t, "DEF"))
+	require.NoError(t, err)
+	require.NoError(t, a.Save(userDEF))
+
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	// Write DEF to the userXattrStore to give userDEF access
+	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, "DEF")
+	assert.NoError(t, err)
+
+	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
+	assert.NoError(t, err)
+
+	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
+	RequireStatus(t, resp, http.StatusOK)
+
+	// Delete DEF from the userXattr, removing the doc from channel DEF
+	_, err = userXattrStore.DeleteUserXattr(docKey, xattrKey)
+	assert.NoError(t, err)
+
+	// wait for import of the xattr change on both nodes
+	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
+	assert.NoError(t, err)
+	_, err = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
+	assert.NoError(t, err)
+
+	// GET the doc with userDEF on both nodes to ensure userDEF no longer has access
+	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
+	assert.Equal(t, resp.Code, http.StatusForbidden)
+	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
+	assert.Equal(t, resp.Code, http.StatusForbidden)
+}
+
 func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	base.TestRequiresSubdocXattrStore(t)
 	if !base.TestUseXattrs() {
