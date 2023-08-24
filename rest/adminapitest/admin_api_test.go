@@ -571,8 +571,6 @@ func TestDBGetConfigNamesAndDefaultLogging(t *testing.T) {
 	}
 }
 
-// Tests that the users returned in the config endpoint have the correct names
-// Reproduces #2223
 func TestDBGetConfigCustomLogging(t *testing.T) {
 	logKeys := []string{base.KeyAccess.String(), base.KeyHTTP.String()}
 	rt := rest.NewRestTester(t,
