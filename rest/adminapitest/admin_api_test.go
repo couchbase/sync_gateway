@@ -485,7 +485,7 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 
 // Tests that the users returned in the config endpoint have the correct names
 // Reproduces #2223
-func TestDBGetConfigNames(t *testing.T) {
+func TestDBGetConfigNamesAndDefaultLogging(t *testing.T) {
 
 	p := "password"
 	rt := rest.NewRestTester(t,
@@ -507,11 +507,38 @@ func TestDBGetConfigNames(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 
 	assert.Equal(t, len(rt.DatabaseConfig.Users), len(body.Users))
+	emptyCnf := &rest.DbLoggingConfig{}
+	assert.Equal(t, body.Logging, emptyCnf)
 
 	for k, v := range body.Users {
 		assert.Equal(t, k, *v.Name)
 	}
+}
 
+func TestDBGetConfigCustomLogging(t *testing.T) {
+	logKeys := []string{base.KeyAccess.String(), base.KeyHTTP.String()}
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Logging: &rest.DbLoggingConfig{
+					Console: &rest.DbConsoleLoggingConfig{
+						LogLevel: base.LogLevelPtr(base.LevelError),
+						LogKeys:  logKeys,
+					},
+				},
+			},
+			},
+		},
+	)
+
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("GET", "/db/_config?include_runtime=true", "")
+	var body rest.DbConfig
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+
+	assert.Equal(t, body.Logging.Console.LogLevel, base.LogLevelPtr(base.LevelError))
+	assert.Equal(t, body.Logging.Console.LogKeys, logKeys)
 }
 
 // Take DB offline and ensure can post _resync
@@ -3348,6 +3375,8 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	ctx := base.TestCtx(t)
 	config := rest.BootstrapStartupConfigForTest(t)
 	sc, err := rest.SetupServerContext(ctx, &config, true)
+	config.Logging.Console.LogKeys = []string{base.KeyDCP.String()}
+	config.Logging.Console.LogLevel.Set(base.LevelDebug)
 	require.NoError(t, err)
 	defer func() {
 		sc.Close(ctx)
@@ -3379,6 +3408,9 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	assert.Equal(t, base.DefaultOldRevExpirySeconds, *dbConfig.OldRevExpirySeconds)
 	assert.Equal(t, false, *dbConfig.StartOffline)
 	assert.Equal(t, db.DefaultCompactInterval, uint32(*dbConfig.CompactIntervalDays))
+
+	assert.Equal(t, dbConfig.Logging.Console.LogLevel.String(), base.LevelDebug.String())
+	assert.Equal(t, dbConfig.Logging.Console.LogKeys, []string{base.KeyDCP.String()})
 
 	var runtimeServerConfigResponse rest.RunTimeServerConfigResponse
 	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/_config?include_runtime=true", "")

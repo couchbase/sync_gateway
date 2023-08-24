@@ -85,6 +85,20 @@ func GenerateDatabaseConfigVersionID(ctx context.Context, previousRevID string, 
 	return hash, nil
 }
 
+func DefaultPerDBLogging(bootstrapLoggingCnf base.LoggingConfig) *DbLoggingConfig {
+	if bootstrapLoggingCnf.Console != nil {
+		if *bootstrapLoggingCnf.Console.Enabled {
+			return &DbLoggingConfig{
+				Console: &DbConsoleLoggingConfig{
+					LogLevel: bootstrapLoggingCnf.Console.LogLevel,
+					LogKeys:  bootstrapLoggingCnf.Console.LogKeys,
+				},
+			}
+		}
+	}
+	return &DbLoggingConfig{}
+}
+
 // MergeDatabaseConfigWithDefaults merges the passed in config onto a DefaultDbConfig which results in returned value
 // being populated with defaults when not set
 func MergeDatabaseConfigWithDefaults(sc *StartupConfig, dbConfig *DbConfig) (*DbConfig, error) {
@@ -163,6 +177,7 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 		ClientPartitionWindowSecs:        base.IntPtr(int(base.DefaultClientPartitionWindow.Seconds())),
 		JavascriptTimeoutSecs:            base.Uint32Ptr(base.DefaultJavascriptTimeoutSecs),
 		Suspendable:                      base.BoolPtr(sc.IsServerless()),
+		Logging:                          DefaultPerDBLogging(sc.Logging),
 	}
 
 	revsLimit := db.DefaultRevsLimitNoConflicts
