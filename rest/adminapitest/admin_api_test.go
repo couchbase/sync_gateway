@@ -3271,6 +3271,8 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	ctx := base.TestCtx(t)
 	config := rest.BootstrapStartupConfigForTest(t)
 	sc, err := rest.SetupServerContext(ctx, &config, true)
+	config.Logging.Console.LogKeys = []string{base.KeyDCP.String()}
+	config.Logging.Console.LogLevel.Set(base.LevelDebug)
 	require.NoError(t, err)
 	defer func() {
 		sc.Close(ctx)
@@ -3302,6 +3304,9 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	assert.Equal(t, base.DefaultOldRevExpirySeconds, *dbConfig.OldRevExpirySeconds)
 	assert.Equal(t, false, *dbConfig.StartOffline)
 	assert.Equal(t, db.DefaultCompactInterval, uint32(*dbConfig.CompactIntervalDays))
+
+	assert.Equal(t, dbConfig.Logging.Console.LogLevel.String(), base.LevelDebug.String())
+	assert.Equal(t, dbConfig.Logging.Console.LogKeys, []string{base.KeyDCP.String()})
 
 	var runtimeServerConfigResponse rest.RunTimeServerConfigResponse
 	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/_config?include_runtime=true", "")
