@@ -89,9 +89,8 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 	tlsPort := 11207
 
 	if bc.Server != nil {
-		// walrus:data represents in memory data store, convert this to rosmar.InMemoryURL
-		// but do not match walrus:///path/to/db, which is incompatible with rosmar URLs
-		if strings.HasPrefix(*bc.Server, "walrus:") && !strings.HasPrefix(*bc.Server, "walrus:/") {
+		// treat all walrus: as in memory storage, any persistent storage would have to be converted to rosmar
+		if strings.HasPrefix(*bc.Server, "walrus:") {
 			server = rosmar.InMemoryURL
 		} else {
 			server = *bc.Server
