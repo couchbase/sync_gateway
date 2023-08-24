@@ -9,6 +9,7 @@
 package channels
 
 import (
+	"context"
 	"encoding/json"
 	"strconv"
 	"time"
@@ -42,11 +43,11 @@ const kTaskCacheSize = 16
 const DocChannelsSyncFunction = `function(doc){channel(doc.channels);}`
 
 // NewChannelMapper creates a new channel mapper with a specific javascript function and a timeout. A zero value timeout will never timeout.
-func NewChannelMapper(fnSource string, timeout time.Duration) *ChannelMapper {
+func NewChannelMapper(ctx context.Context, fnSource string, timeout time.Duration) *ChannelMapper {
 	return &ChannelMapper{
 		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize,
 			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-				return NewSyncRunner(fnSource, timeout)
+				return NewSyncRunner(ctx, fnSource, timeout)
 			}),
 	}
 }

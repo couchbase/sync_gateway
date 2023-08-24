@@ -215,7 +215,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(
+	collection.ChannelMapper = channels.NewChannelMapper(ctx,
 		`function(doc, oldDoc) {
 		throw({forbidden: "None shall pass!"});
 	}`, db.Options.JavascriptTimeout)
