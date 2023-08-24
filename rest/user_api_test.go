@@ -1176,7 +1176,6 @@ func TestRemovingUserXattr(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			base.TestRequiresSubdocXattrStore(t)
 			docKey := testCase.name
 			xattrKey := "myXattr"
 			channelName := "testChan"
@@ -1433,7 +1432,6 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 }
 
 func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
-	base.TestRequiresSubdocXattrStore(t)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}

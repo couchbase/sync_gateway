@@ -617,7 +617,6 @@ func TestImportFilterLogging(t *testing.T) {
 // should detect and not import/create new revision during read-triggered import
 func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 
-	base.TestRequiresSubdocXattrStore(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -674,7 +673,6 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 // should detect and not import/create new revision during write-triggered import
 func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 
-	base.TestRequiresSubdocXattrStore(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -733,7 +731,6 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 // should detect and not import/create new revision during feed-based import
 func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 
-	base.TestRequiresSubdocXattrStore(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -2249,7 +2246,6 @@ func TestDcpBackfill(t *testing.T) {
 // Validate SG behaviour if there's an unexpected body on a tombstone
 func TestUnexpectedBodyOnTombstone(t *testing.T) {
 
-	base.TestRequiresSubdocXattrStore(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -2684,7 +2680,6 @@ func TestImportOnWriteMigration(t *testing.T) {
 }
 
 func TestUserXattrAutoImport(t *testing.T) {
-	base.TestRequiresSubdocXattrStore(t)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
@@ -2804,7 +2799,6 @@ func TestUserXattrAutoImport(t *testing.T) {
 }
 
 func TestUserXattrOnDemandImportGET(t *testing.T) {
-	base.TestRequiresSubdocXattrStore(t)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
@@ -2903,7 +2897,6 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 }
 
 func TestUserXattrOnDemandImportWrite(t *testing.T) {
-	base.TestRequiresSubdocXattrStore(t)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
