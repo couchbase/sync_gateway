@@ -90,7 +90,7 @@ import (
 // to account for the fact that it's now valid from a lower sequence value.  Entries that violated
 // the guarantees described above would possibly be discarded.
 type SingleChannelCache interface {
-	GetChanges(options ChangesOptions) ([]*LogEntry, error)
+	GetChanges(ctx context.Context, options ChangesOptions) ([]*LogEntry, error)
 	GetCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry)
 	ChannelID() channels.ID
 	SupportsLateFeed() bool
@@ -367,8 +367,7 @@ func (c *singleChannelCacheImpl) _getCachedChanges(sinceSeq uint64, limit int) (
 // view should be queried, because we don't want the view query to outrun the chanceCache's
 // nextSequence.
 
-func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
-	ctx := options.LoggingCtx
+func (c *singleChannelCacheImpl) GetChanges(ctx context.Context, options ChangesOptions) ([]*LogEntry, error) {
 
 	// Use the cache, and return if it fulfilled the entire request:
 	cacheValidFrom, resultFromCache := c.GetCachedChanges(options)
@@ -835,10 +834,10 @@ type bypassChannelCache struct {
 
 // Get Changes uses high sequence value (math.MaxUint64) as the upper bound.  Relies on changes processing
 // to apply HighCachedSequence filtering - same approach used by singleChannelCacheImpl.
-func (b *bypassChannelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
+func (b *bypassChannelCache) GetChanges(ctx context.Context, options ChangesOptions) ([]*LogEntry, error) {
 	startSeq := options.Since.SafeSequence() + 1
 	endSeq := uint64(math.MaxUint64)
-	return b.queryHandler.getChangesInChannelFromQuery(options.LoggingCtx, b.channel.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	return b.queryHandler.getChangesInChannelFromQuery(ctx, b.channel.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
 }
 
 // No cached changes for bypassChannelCache

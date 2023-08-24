@@ -51,7 +51,7 @@ type ChannelCache interface {
 	Remove(collectionID uint32, docIDs []string, startTime time.Time) (count int)
 
 	// Returns set of changes for a given channel, within the bounds specified in options
-	GetChanges(ch channels.ID, options ChangesOptions) ([]*LogEntry, error)
+	GetChanges(ctx context.Context, ch channels.ID, options ChangesOptions) ([]*LogEntry, error)
 
 	// Returns the set of all cached data for a given channel (intended for diagnostic usage)
 	GetCachedChanges(ch channels.ID) ([]*LogEntry, error)
@@ -278,13 +278,13 @@ func (c *channelCacheImpl) Remove(collectionID uint32, docIDs []string, startTim
 	return count
 }
 
-func (c *channelCacheImpl) GetChanges(ch channels.ID, options ChangesOptions) ([]*LogEntry, error) {
+func (c *channelCacheImpl) GetChanges(ctx context.Context, ch channels.ID, options ChangesOptions) ([]*LogEntry, error) {
 
 	cache, err := c.getChannelCache(ch)
 	if err != nil {
 		return nil, err
 	}
-	return cache.GetChanges(options)
+	return cache.GetChanges(ctx, options)
 }
 
 func (c *channelCacheImpl) GetCachedChanges(channel channels.ID) ([]*LogEntry, error) {

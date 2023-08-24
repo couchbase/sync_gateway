@@ -661,7 +661,7 @@ var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Buc
 			return fmt.Errorf("bucket does not have primary index, so can't empty bucket using N1QL")
 		}
 
-		if itemCount, err := QueryBucketItemCount(n1qlStore); err != nil {
+		if itemCount, err := QueryBucketItemCount(ctx, n1qlStore); err != nil {
 			return err
 		} else if itemCount == 0 {
 			tbp.Logf(ctx, "Bucket already empty - skipping")
