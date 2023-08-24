@@ -505,7 +505,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		}
 		collectionNameMap := make(map[string]struct{}, len(scope.Collections))
 		for collName, collOpts := range scope.Collections {
-			ctx := base.CollectionLogCtx(ctx, collName)
+			// intentional shadow - we want each collection to have its own context inside this loop body
+			ctx := ctx
+			if !base.IsDefaultCollection(scopeName, collName) {
+				ctx = base.CollectionLogCtx(ctx, collName)
+			}
 			dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 			if err != nil {
 				return nil, err
