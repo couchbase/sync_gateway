@@ -453,13 +453,11 @@ type jsImportFilterRunner struct {
 }
 
 // Compiles a JavaScript event function to a jsImportFilterRunner object.
-func newImportFilterRunner(funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
+func newImportFilterRunner(ctx context.Context, funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
 	importFilterRunner := &jsEventTask{}
 	err := importFilterRunner.InitWithLogging(funcSource, timeout,
-		func(s string) {
-			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": Import %s", base.UD(s))
-		},
-		func(s string) { base.InfofCtx(context.Background(), base.KeyJavascript, "Import %s", base.UD(s)) })
+		func(s string) { base.ErrorfCtx(ctx, base.KeyJavascript.String()+": Import %s", base.UD(s)) },
+		func(s string) { base.InfofCtx(ctx, base.KeyJavascript, "Import %s", base.UD(s)) })
 	if err != nil {
 		return nil, err
 	}
@@ -476,13 +474,13 @@ type ImportFilterFunction struct {
 	*sgbucket.JSServer
 }
 
-func NewImportFilterFunction(fnSource string, timeout time.Duration) *ImportFilterFunction {
+func NewImportFilterFunction(ctx context.Context, fnSource string, timeout time.Duration) *ImportFilterFunction {
 
 	base.DebugfCtx(context.Background(), base.KeyImport, "Creating new ImportFilterFunction")
 	return &ImportFilterFunction{
 		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize,
 			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-				return newImportFilterRunner(fnSource, timeout)
+				return newImportFilterRunner(ctx, fnSource, timeout)
 			}),
 	}
 }

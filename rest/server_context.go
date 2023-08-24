@@ -710,6 +710,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if err != nil {
 		return nil, err
 	}
+
+	ctx = base.DatabaseLogCtx(ctx, dbName, contextOptions.LoggingConfig.Console)
+
 	contextOptions.UseViews = useViews
 
 	javascriptTimeout := getJavascriptTimeout(&config.DbConfig)
@@ -725,9 +728,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				Collections: make(map[string]db.CollectionOptions, len(scopeCfg.Collections)),
 			}
 			for collName, collCfg := range scopeCfg.Collections {
+				ctx := base.CollectionLogCtx(ctx, collName)
+
 				var importFilter *db.ImportFilterFunction
 				if collCfg.ImportFilter != nil {
-					importFilter = db.NewImportFilterFunction(*collCfg.ImportFilter, javascriptTimeout)
+					importFilter = db.NewImportFilterFunction(ctx, *collCfg.ImportFilter, javascriptTimeout)
 				}
 
 				contextOptions.Scopes[scopeName].Collections[collName] = db.CollectionOptions{
@@ -741,7 +746,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// Set up default import filter
 		var importFilter *db.ImportFilterFunction
 		if config.ImportFilter != nil {
-			importFilter = db.NewImportFilterFunction(*config.ImportFilter, javascriptTimeout)
+			importFilter = db.NewImportFilterFunction(ctx, *config.ImportFilter, javascriptTimeout)
 		}
 
 		contextOptions.Scopes = map[string]db.ScopeOptions{
