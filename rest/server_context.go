@@ -747,6 +747,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				Collections: make(map[string]db.CollectionOptions, len(scopeCfg.Collections)),
 			}
 			for collName, collCfg := range scopeCfg.Collections {
+				ctx := base.CollectionLogCtx(ctx, collName)
+
 				var importFilter *db.ImportFilterFunction
 				if collCfg.ImportFilter != nil {
 					importFilter = db.NewImportFilterFunction(ctx, *collCfg.ImportFilter, javascriptTimeout)
