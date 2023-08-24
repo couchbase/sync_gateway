@@ -83,13 +83,16 @@ func GenerateDatabaseConfigVersionID(previousRevID string, dbConfig *DbConfig) (
 	return hash, nil
 }
 
-func DefaultPerDBLogging(bootstrapCnf base.LoggingConfig) *DbLoggingConfig {
-	return &DbLoggingConfig{
-		Console: &DbConsoleLoggingConfig{
-			LogLevel: bootstrapCnf.Console.LogLevel,
-			LogKeys:  bootstrapCnf.Console.LogKeys,
-		},
+func DefaultPerDBLogging(bootstrapLoggingCnf base.LoggingConfig) *DbLoggingConfig {
+	if bootstrapLoggingCnf.Console != nil {
+		return &DbLoggingConfig{
+			Console: &DbConsoleLoggingConfig{
+				LogLevel: bootstrapLoggingCnf.Console.LogLevel,
+				LogKeys:  bootstrapLoggingCnf.Console.LogKeys,
+			},
+		}
 	}
+	return &DbLoggingConfig{}
 }
 
 // MergeDatabaseConfigWithDefaults merges the passed in config onto a DefaultDbConfig which results in returned value
