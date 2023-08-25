@@ -632,11 +632,11 @@ type TBPBucketReadierFunc func(ctx context.Context, b Bucket, tbp *TestBucketPoo
 // FlushBucketEmptierFunc ensures the bucket is empty by flushing. It is not recommended to use with GSI.
 var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
 
-	flushableBucket, ok := b.(sgbucket.FlushableStore)
-	if !ok {
-		return errors.New("FlushBucketEmptierFunc used with non-flushable bucket")
+	bucket, err := AsGocbV2Bucket(b)
+	if err != nil {
+		return err
 	}
-	return flushableBucket.Flush()
+	return bucket.Flush(ctx)
 }
 
 // N1QLBucketEmptierFunc ensures the Bucket and all of its DataStore are empty by using N1QL deletes. This is the preferred approach when using GSI.
