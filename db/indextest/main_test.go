@@ -88,7 +88,7 @@ var primaryIndexReadier base.TBPBucketReadierFunc = func(ctx context.Context, b 
 		}
 		tbp.Logf(ctx, "dropping existing bucket indexes")
 
-		if err := db.EmptyPrimaryIndex(dataStore); err != nil {
+		if err := db.EmptyPrimaryIndex(ctx, dataStore); err != nil {
 			return err
 		}
 		n1qlStore, ok := base.AsN1QLStore(dataStore)
@@ -105,7 +105,7 @@ var primaryIndexReadier base.TBPBucketReadierFunc = func(ctx context.Context, b 
 		}
 		tbp.Logf(ctx, "waiting for empty bucket indexes %s.%s.%s", b.GetName(), dsName.ScopeName(), dsName.CollectionName())
 		// wait for primary index to be empty
-		if err := db.WaitForPrimaryIndexEmpty(n1qlStore); err != nil {
+		if err := db.WaitForPrimaryIndexEmpty(ctx, n1qlStore); err != nil {
 			tbp.Logf(ctx, "waitForPrimaryIndexEmpty returned an error: %v", err)
 			return err
 		}

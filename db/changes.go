@@ -38,7 +38,6 @@ type ChangesOptions struct {
 	ActiveOnly     bool            // If true, only return information on non-deleted, non-removed revisions
 	Revocations    bool            // Specifies whether revocation messages should be sent on the changes feed
 	clientType     clientType      // Can be used to determine if the replication is being started from a CBL 2.x or SGR2 client
-	LoggingCtx     context.Context // Used for adding context to logs
 	ChangesCtx     context.Context // Used for cancelling checking the changes feed should stop
 }
 
@@ -229,7 +228,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 
 			// Get changes from 0 to latest seq
 			base.TracefCtx(ctx, base.KeyChanges, "Querying channel %q for revocation with options: %+v", base.UD(singleChannelCache.ChannelID().Name), paginationOptions)
-			changes, err := singleChannelCache.GetChanges(paginationOptions)
+			changes, err := singleChannelCache.GetChanges(ctx, paginationOptions)
 			if err != nil {
 				base.WarnfCtx(ctx, "Error retrieving changes for channel %q: %v", base.UD(singleChannelCache.ChannelID()), err)
 				change := ChangeEntry{
@@ -414,9 +413,8 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 				paginationOptions.Limit = base.Min(remainingLimit, queryLimit)
 			}
 
-			// TODO: pass db.Ctx down to changeCache?
 			base.TracefCtx(ctx, base.KeyChanges, "Querying channel %q with options: %+v", base.UD(singleChannelCache.ChannelID().Name), paginationOptions)
-			changes, err := singleChannelCache.GetChanges(paginationOptions)
+			changes, err := singleChannelCache.GetChanges(ctx, paginationOptions)
 			if err != nil {
 				base.WarnfCtx(ctx, "Error retrieving changes for channel %q: %v", base.UD(singleChannelCache.ChannelID().Name), err)
 				change := ChangeEntry{

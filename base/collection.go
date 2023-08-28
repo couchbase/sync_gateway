@@ -346,7 +346,7 @@ func (b *GocbV2Bucket) GetSpec() BucketSpec {
 }
 
 // This flushes the *entire* bucket associated with the collection (not just the collection).  Intended for test usage only.
-func (b *GocbV2Bucket) Flush() error {
+func (b *GocbV2Bucket) Flush(ctx context.Context) error {
 
 	bucketManager := b.cluster.Buckets()
 
@@ -366,7 +366,7 @@ func (b *GocbV2Bucket) Flush() error {
 
 	// Wait until the bucket item count is 0, since flush is asynchronous
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		itemCount, err := b.BucketItemCount()
+		itemCount, err := b.BucketItemCount(ctx)
 		if err != nil {
 			return false, err, nil
 		}
@@ -393,7 +393,7 @@ func (b *GocbV2Bucket) Flush() error {
 
 // BucketItemCount first tries to retrieve an accurate bucket count via N1QL,
 // but falls back to the REST API if that cannot be done (when there's no index to count all items in a bucket)
-func (b *GocbV2Bucket) BucketItemCount() (itemCount int, err error) {
+func (b *GocbV2Bucket) BucketItemCount(ctx context.Context) (itemCount int, err error) {
 	dataStoreNames, err := b.ListDataStores()
 	if err != nil {
 		return 0, err
@@ -408,7 +408,7 @@ func (b *GocbV2Bucket) BucketItemCount() (itemCount int, err error) {
 		if !ok {
 			return 0, fmt.Errorf("DataStore %v %T is not a N1QLStore", ds.GetName(), ds)
 		}
-		itemCount, err = QueryBucketItemCount(ns)
+		itemCount, err = QueryBucketItemCount(ctx, ns)
 		if err == nil {
 			return itemCount, nil
 		}
