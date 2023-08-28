@@ -141,7 +141,7 @@ func TestCoveringQueries(t *testing.T) {
 
 	// channels
 	channelsStatement, params := collection.buildChannelsQuery("ABC", 0, 10, 100, false)
-	plan, explainErr := n1QLStore.ExplainQuery(channelsStatement, params)
+	plan, explainErr := n1QLStore.ExplainQuery(ctx, channelsStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for channels query")
 	covered := IsCovered(plan)
 	planJSON, err := base.JSONMarshal(plan)
@@ -150,7 +150,7 @@ func TestCoveringQueries(t *testing.T) {
 
 	// star channel
 	channelStarStatement, params := collection.buildChannelsQuery("*", 0, 10, 100, false)
-	plan, explainErr = n1QLStore.ExplainQuery(channelStarStatement, params)
+	plan, explainErr = n1QLStore.ExplainQuery(ctx, channelStarStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for star channel query")
 	covered = IsCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
@@ -161,7 +161,7 @@ func TestCoveringQueries(t *testing.T) {
 	// in the SELECT.
 	// Including here for ease-of-conversion when we get an indexing enhancement to support covered queries.
 	accessStatement := collection.buildAccessQuery("user1")
-	plan, explainErr = n1QLStore.ExplainQuery(accessStatement, nil)
+	plan, explainErr = n1QLStore.ExplainQuery(ctx, accessStatement, nil)
 	assert.NoError(t, explainErr, "Error generating explain for access query")
 	covered = IsCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
@@ -170,7 +170,7 @@ func TestCoveringQueries(t *testing.T) {
 
 	// roleAccess
 	roleAccessStatement := collection.buildRoleAccessQuery("user1")
-	plan, explainErr = n1QLStore.ExplainQuery(roleAccessStatement, nil)
+	plan, explainErr = n1QLStore.ExplainQuery(ctx, roleAccessStatement, nil)
 	assert.NoError(t, explainErr, "Error generating explain for roleAccess query")
 	covered = IsCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
