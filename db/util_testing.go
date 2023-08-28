@@ -25,12 +25,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// WaitForPrimaryIndexEmpty waits for #primary to be empty.
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
-// Uses the star channel index as a proxy to indicate that _all_ indexes are empty (which might not be true)
-func waitForPrimaryIndexEmpty(store base.N1QLStore) error {
+func WaitForPrimaryIndexEmpty(ctx context.Context, store base.N1QLStore) error {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
-		empty, err := isPrimaryIndexEmpty(store)
+		empty, err := isPrimaryIndexEmpty(ctx, store)
 		if err != nil {
 			return true, err, nil
 		}
@@ -48,7 +48,7 @@ func waitForPrimaryIndexEmpty(store base.N1QLStore) error {
 }
 
 // isPrimaryIndexEmpty returs true if there are no documents in the primary index
-func isPrimaryIndexEmpty(store base.N1QLStore) (bool, error) {
+func isPrimaryIndexEmpty(ctx context.Context, store base.N1QLStore) (bool, error) {
 	// Create the star channel query
 	statement := fmt.Sprintf("SELECT * FROM %s LIMIT 1", base.KeyspaceQueryToken)
 	params := map[string]interface{}{}
@@ -56,7 +56,7 @@ func isPrimaryIndexEmpty(store base.N1QLStore) (bool, error) {
 	params[QueryParamEndSeq] = N1QLMaxInt64
 
 	// Execute the query
-	results, err := store.Query(statement, params, base.RequestPlus, true)
+	results, err := store.Query(ctx, statement, params, base.RequestPlus, true)
 
 	// If there was an error, then retry.  Assume it's an "index rollback" error which happens as
 	// the index processes the bucket flush operation
@@ -184,15 +184,15 @@ func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
 	return isChanged
 }
 
-// emptyPrimaryIndex deletes all docs from primary index
-func emptyPrimaryIndex(dataStore sgbucket.DataStore) error {
+// EmptyPrimaryIndex deletes all docs from primary index
+func EmptyPrimaryIndex(ctx context.Context, dataStore sgbucket.DataStore) error {
 	n1qlStore, ok := base.AsN1QLStore(dataStore)
 	if !ok {
 		return fmt.Errorf("bucket was not a n1ql store")
 	}
 
 	statement := `DELETE FROM ` + base.KeyspaceQueryToken
-	results, err := n1qlStore.Query(statement, nil, base.RequestPlus, true)
+	results, err := n1qlStore.Query(ctx, statement, nil, base.RequestPlus, true)
 	if err != nil {
 		return err
 	}
@@ -215,7 +215,7 @@ FROM ` + base.KeyspaceQueryToken + ` AS ks USE INDEX (sg_allDocs_x1)
 WHERE META(ks).xattrs._sync.sequence >= 0
     AND META(ks).xattrs._sync.sequence < 9223372036854775807
     AND META(ks).id NOT LIKE '\\_sync:%'`
-	results, err := n1qlStore.Query(statement, nil, base.RequestPlus, true)
+	results, err := n1qlStore.Query(ctx, statement, nil, base.RequestPlus, true)
 	if err != nil {
 		return 0, err
 	}
@@ -288,7 +288,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		if _, err := emptyAllDocsIndex(ctx, dataStore, tbp); err != nil {
 			return err
 		}
-		if err := emptyPrimaryIndex(dataStore); err != nil {
+		if err := EmptyPrimaryIndex(ctx, dataStore); err != nil {
 			return err
 		}
 		n1qlStore, ok := base.AsN1QLStore(dataStore)
@@ -297,7 +297,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		}
 		tbp.Logf(ctx, "waiting for empty bucket indexes %s.%s.%s", b.GetName(), dsName.ScopeName(), dsName.CollectionName())
 		// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
-		if err := waitForPrimaryIndexEmpty(n1qlStore); err != nil {
+		if err := WaitForPrimaryIndexEmpty(ctx, n1qlStore); err != nil {
 			tbp.Logf(ctx, "waitForPrimaryIndexEmpty returned an error: %v", err)
 			return err
 		}

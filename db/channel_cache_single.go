@@ -90,7 +90,7 @@ import (
 // to account for the fact that it's now valid from a lower sequence value.  Entries that violated
 // the guarantees described above would possibly be discarded.
 type SingleChannelCache interface {
-	GetChanges(options ChangesOptions) ([]*LogEntry, error)
+	GetChanges(ctx context.Context, options ChangesOptions) ([]*LogEntry, error)
 	GetCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry)
 	ChannelID() channels.ID
 	SupportsLateFeed() bool
@@ -365,16 +365,16 @@ func (c *singleChannelCacheImpl) _getCachedChanges(sinceSeq uint64, limit int) (
 // view should be queried, because we don't want the view query to outrun the chanceCache's
 // nextSequence.
 
-func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
+func (c *singleChannelCacheImpl) GetChanges(ctx context.Context, options ChangesOptions) ([]*LogEntry, error) {
 
 	// Use the cache, and return if it fulfilled the entire request:
 	cacheValidFrom, resultFromCache := c.GetCachedChanges(options)
 	numFromCache := len(resultFromCache)
 	if numFromCache > 0 {
-		base.InfofCtx(options.LoggingCtx, base.KeyCache, "GetCachedChanges(%q, %s) --> %d changes valid from #%d",
+		base.InfofCtx(ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> %d changes valid from #%d",
 			base.UD(c.channelID), options.Since.String(), numFromCache, cacheValidFrom)
 	} else {
-		base.DebugfCtx(options.LoggingCtx, base.KeyCache, "GetCachedChanges(%q, %s) --> nothing cached",
+		base.DebugfCtx(ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> nothing cached",
 			base.UD(c.channelID), options.Since.String())
 	}
 	startSeq := options.Since.SafeSequence() + 1
@@ -395,7 +395,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	// the cache, so repeat the above:
 	cacheValidFrom, resultFromCache = c.GetCachedChanges(options)
 	if len(resultFromCache) > numFromCache {
-		base.InfofCtx(options.LoggingCtx, base.KeyCache, "2nd GetCachedChanges(%q, %s) got %d more, valid from #%d!",
+		base.InfofCtx(ctx, base.KeyCache, "2nd GetCachedChanges(%q, %s) got %d more, valid from #%d!",
 			base.UD(c.channelID), options.Since.String(), len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
@@ -413,7 +413,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	// overlap, which helps confirm that we've got everything.
 	c.cacheStats.ChannelCacheMisses.Add(1)
 	endSeq := cacheValidFrom
-	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(options.LoggingCtx, c.channelID.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(ctx, c.channelID.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +428,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 			resultValidTo = resultFromQuery[numResults-1].Sequence
 		}
 		if len(resultFromCache) < c.options.ChannelCacheMaxLength {
-			c.prependChanges(options.LoggingCtx, resultFromQuery, startSeq, resultValidTo)
+			c.prependChanges(ctx, resultFromQuery, startSeq, resultValidTo)
 		}
 	}
 
@@ -445,7 +445,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 		}
 		result = append(result, resultFromCache[0:n]...)
 	}
-	base.InfofCtx(options.LoggingCtx, base.KeyCache, "GetChangesInChannel(%q) --> %d rows", base.UD(c.channelID), len(result))
+	base.InfofCtx(ctx, base.KeyCache, "GetChangesInChannel(%q) --> %d rows", base.UD(c.channelID), len(result))
 
 	return result, nil
 }
@@ -832,10 +832,10 @@ type bypassChannelCache struct {
 
 // Get Changes uses high sequence value (math.MaxUint64) as the upper bound.  Relies on changes processing
 // to apply HighCachedSequence filtering - same approach used by singleChannelCacheImpl.
-func (b *bypassChannelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
+func (b *bypassChannelCache) GetChanges(ctx context.Context, options ChangesOptions) ([]*LogEntry, error) {
 	startSeq := options.Since.SafeSequence() + 1
 	endSeq := uint64(math.MaxUint64)
-	return b.queryHandler.getChangesInChannelFromQuery(options.LoggingCtx, b.channel.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	return b.queryHandler.getChangesInChannelFromQuery(ctx, b.channel.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
 }
 
 // No cached changes for bypassChannelCache

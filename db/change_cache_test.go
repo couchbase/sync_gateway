@@ -1996,7 +1996,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
 					channel := channels.NewID(fmt.Sprintf("channel_%d", i), collectionID)
-					_, err := changeCache.GetChanges(channel, getChangesOptionsWithZeroSeq())
+					_, err := changeCache.GetChanges(ctx, channel, getChangesOptionsWithZeroSeq())
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()
@@ -2230,7 +2230,7 @@ func BenchmarkDocChanged(b *testing.B) {
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
 					channel := channels.NewID(fmt.Sprintf("channel_%d", i), collectionID)
-					_, err := changeCache.GetChanges(channel, getChangesOptionsWithZeroSeq())
+					_, err := changeCache.GetChanges(ctx, channel, getChangesOptionsWithZeroSeq())
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()

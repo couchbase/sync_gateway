@@ -773,12 +773,12 @@ func (c *changeCache) getChannelCache() ChannelCache {
 
 // ////// CHANGE ACCESS:
 
-func (c *changeCache) GetChanges(channel channels.ID, options ChangesOptions) ([]*LogEntry, error) {
+func (c *changeCache) GetChanges(ctx context.Context, channel channels.ID, options ChangesOptions) ([]*LogEntry, error) {
 
 	if c.stopped.IsTrue() {
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
-	return c.channelCache.GetChanges(channel, options)
+	return c.channelCache.GetChanges(ctx, channel, options)
 }
 
 // Returns the sequence number the cache is up-to-date with.

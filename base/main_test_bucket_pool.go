@@ -415,7 +415,7 @@ func (tbp *TestBucketPool) emptyPreparedStatements(ctx context.Context, b Bucket
 		}
 
 		// search all statements for those containing a string matching the bucket name (which will also include all scope/collection-based prepared statements)
-		queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+b.GetName()+`%";`, nil, RequestPlus, true)
+		queryRes, err := n1qlStore.Query(ctx, `DELETE FROM system:prepareds WHERE statement LIKE "%`+b.GetName()+`%";`, nil, RequestPlus, true)
 		if err != nil {
 			tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
 		}
@@ -610,11 +610,11 @@ type TBPBucketReadierFunc func(ctx context.Context, b Bucket, tbp *TestBucketPoo
 // FlushBucketEmptierFunc ensures the bucket is empty by flushing. It is not recommended to use with GSI.
 var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
 
-	flushableBucket, ok := b.(sgbucket.FlushableStore)
-	if !ok {
-		return errors.New("FlushBucketEmptierFunc used with non-flushable bucket")
+	bucket, err := AsGocbV2Bucket(b)
+	if err != nil {
+		return err
 	}
-	return flushableBucket.Flush()
+	return bucket.Flush(ctx)
 }
 
 // N1QLBucketEmptierFunc ensures the Bucket and all of its DataStore are empty by using N1QL deletes. This is the preferred approach when using GSI.
@@ -639,7 +639,7 @@ var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Buc
 			return fmt.Errorf("bucket does not have primary index, so can't empty bucket using N1QL")
 		}
 
-		if itemCount, err := QueryBucketItemCount(n1qlStore); err != nil {
+		if itemCount, err := QueryBucketItemCount(ctx, n1qlStore); err != nil {
 			return err
 		} else if itemCount == 0 {
 			tbp.Logf(ctx, "Bucket already empty - skipping")
@@ -648,7 +648,7 @@ var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Buc
 			// Use N1QL to empty bucket, with the hope that the query service is happier to deal with this than a bucket flush/rollback.
 			// Requires a primary index on the bucket.
 			// TODO: How can we delete xattr only docs from here too? It would avoid needing to call db.emptyAllDocsIndex in ViewsAndGSIBucketReadier
-			res, err := n1qlStore.Query(fmt.Sprintf(`DELETE FROM %s`, KeyspaceQueryToken), nil, RequestPlus, true)
+			res, err := n1qlStore.Query(ctx, fmt.Sprintf(`DELETE FROM %s`, KeyspaceQueryToken), nil, RequestPlus, true)
 			if err != nil {
 				return err
 			}

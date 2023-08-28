@@ -520,7 +520,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	require.NoError(t, n1qlStore.CreatePrimaryIndex(ctx, idxName, nil))
 	require.NoError(t, n1qlStore.WaitForIndexesOnline(ctx, []string{idxName}, false))
 
-	res, err := n1qlStore.Query("SELECT keyspace_id, bucket_id, scope_id from system:indexes WHERE name = $idxName",
+	res, err := n1qlStore.Query(ctx, "SELECT keyspace_id, bucket_id, scope_id from system:indexes WHERE name = $idxName",
 		map[string]interface{}{"idxName": idxName}, base.RequestPlus, true)
 	require.NoError(t, err)
 
@@ -544,7 +544,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	assert.Equal(t, collection.Name, *indexMetaResult.KeyspaceID)
 
 	// try and query the document that we wrote via SG
-	res, err = n1qlStore.Query("SELECT test FROM "+base.KeyspaceQueryToken+" WHERE test = true", nil, base.RequestPlus, true)
+	res, err = n1qlStore.Query(ctx, "SELECT test FROM "+base.KeyspaceQueryToken+" WHERE test = true", nil, base.RequestPlus, true)
 	require.NoError(t, err)
 
 	var primaryQueryResult struct {
