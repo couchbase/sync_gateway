@@ -326,6 +326,10 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	// cbgt uses this parameter to run in mixed mode - non-TLS for CCCP but TLS for memcached. Sync Gateway does not need to set this parameter.
 	options["feedInitialBootstrapNonTLS"] = "false"
 
+	// Since cbgt initializes a buffer per CBS node per partition in most cases (vbuckets in partitions can't be grouped by CBS node),
+	// setting the small buffer size used in cbgt 1.3.2.  (see CBG-3341 for potential optimization of this value)
+	options["kvConnectionBufferSize"] = "16384"
+
 	// Disable collections if unsupported
 	if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		options["disableCollectionsSupport"] = "true"
