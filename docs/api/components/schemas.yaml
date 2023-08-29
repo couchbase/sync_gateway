@@ -2268,15 +2268,18 @@ Log-rotation-config-readonly:
     max_size:
       description: The maximum size in MB of the log file before it gets rotated.
       type: integer
+      default: 100
     max_age:
-      description: The maximum number of days to retain old log files.
+      description: The maximum number of days to retain old log files. The defaults for this value are 360 days for error, 180 days for warn, 6 days for info, 2 days for debug, and 2 days for trace logs.
       type: integer
     localtime:
       description: 'If true, it uses the computer''s local time to format the backup timestamp.'
       type: boolean
-    rotated_logs_size:
+      default: false
+    rotated_logs_size_limit:
       description: Max Size (in mb) of log files before deletion
       type: integer
+      default: 1024
   readOnly: true
   title: Log-rotation-config
 Console-logging-config:
