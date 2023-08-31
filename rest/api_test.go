@@ -1615,7 +1615,6 @@ func TestDocSyncFunctionExpiry(t *testing.T) {
 // Repro attempt for SG #3307.  Before fix for #3307, fails when SG_TEST_USE_XATTRS=true and run against an actual couchbase server
 func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 
-	base.TestRequiresSubdocXattrStore(t)
 	if !base.TestUseXattrs() {
 		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
 	}
@@ -1660,7 +1659,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	}
 
 	// Fetch the xattr and make sure it contains the above value
-	subdocXattrStore, ok := base.AsSubdocXattrStore(rt.GetSingleDataStore())
+	subdocXattrStore, ok := rt.GetSingleDataStore().(base.SubdocXattrStore)
 	require.True(t, ok)
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}

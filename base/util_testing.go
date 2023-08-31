@@ -764,14 +764,6 @@ func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) 
 	require.Equal(t, expected, val)
 }
 
-// TestRequiresSubdocXattrStore will skip the current test if the backing store doesn't support subdocXattrStore
-func TestRequiresSubdocXattrStore(t testing.TB) {
-	// not yet supported in rosmar
-	if UnitTestUrlIsWalrus() {
-		t.Skip("subdocXattrStore is not yet supported in rosmar")
-	}
-}
-
 // TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not
 // support collections.
 func TestRequiresCollections(t testing.TB) {
