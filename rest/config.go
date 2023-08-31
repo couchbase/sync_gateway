@@ -24,6 +24,8 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -264,6 +266,46 @@ func GetTLSVersionFromString(stringV *string) uint16 {
 		}
 	}
 	return uint16(DefaultMinimumTLSVersionConst)
+}
+
+type invalidConfigInfo struct {
+	lastLogTime         atomic.Int64
+	configBucketName    string
+	persistedBucketName string
+}
+
+type invalidDatabaseConfigs struct {
+	dbNames    map[string]*invalidConfigInfo
+	loggingCtx context.Context
+	m          sync.RWMutex
+}
+
+// addInvalidDatabase adds a db to invalid dbconfig map if it doesn't exist in there yet and will log for it at warning level
+// if the db already exists there we will calculate if we need to log again according to the config update interval
+func (d *invalidDatabaseConfigs) addInvalidDatabase(dbname string, refreshInterval *base.ConfigDuration, cnf DatabaseConfig, bucket string) {
+	interval := DefaultMinConfigFetchInterval
+	if refreshInterval != nil {
+		interval = refreshInterval.Value()
+	}
+	configInfo := invalidConfigInfo{
+		configBucketName:    *cnf.Bucket,
+		persistedBucketName: bucket,
+	}
+	d.m.Lock()
+	defer d.m.Unlock()
+	currTime := time.Now().UnixMilli()
+	if d.dbNames[dbname] == nil {
+		// db hasn't been tracked as invalid config yet so add it
+		d.dbNames[dbname] = &configInfo
+		d.dbNames[dbname].lastLogTime.Store(currTime)
+		base.WarnfCtx(d.loggingCtx, "Mismatch in database config for database %s bucket name: %s and backend bucket: %s You must update database config immediately", dbname, d.dbNames[dbname].configBucketName, d.dbNames[dbname].persistedBucketName)
+		return
+	}
+	// if we get here we already have the db logged as an invalid config, so now we need to work out iof we should log for it now
+	if (currTime - d.dbNames[dbname].lastLogTime.Load()) > interval.Milliseconds() {
+		// we need to log if we get here
+		base.WarnfCtx(d.loggingCtx, "Mismatch in database config for database %s bucket name: %s and backend bucket: %s You must update database config immediately", dbname, d.dbNames[dbname].configBucketName, d.dbNames[dbname].persistedBucketName)
+	}
 }
 
 // inheritFromBootstrap sets any empty Couchbase Server values from the given bootstrap config.
@@ -1468,14 +1510,7 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 		// in memory representation on the server context.
 		bucketCopy := bucket
 		if bucket != *cnf.Bucket {
-			base.DebugfCtx(ctx, base.KeyConfig, "Mismatch in database config bucket name: %s and backend bucket: %s You must update database config immediately", *cnf.Bucket, bucket)
-			// track corrupt database context
-			ok := sc._addCorruptDatabase(ctx, dbName)
-			if !ok {
-				base.DebugfCtx(ctx, base.KeyConfig, "Failed ot add sb: %s to corrupt list", cnf.Name)
-			}
-			// don't load config + remove from server context (apart from corrupt database map)
-			sc._removeDatabase(ctx, cnf.Name)
+			sc.handleInvalidDatabaseConfig(ctx, bucket, cnf)
 			return true, fmt.Errorf("mismatch in peristed databse bucket name vs the actual bucketname. Please correct.")
 		} else {
 			// no corruption detected carry on as usual
@@ -1500,6 +1535,13 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	}
 
 	return true, &cnf, nil
+}
+
+func (sc *ServerContext) handleInvalidDatabaseConfig(ctx context.Context, bucket string, cnf DatabaseConfig) {
+	// track corrupt database context
+	sc.invalidDatabaseConfigTracking.addInvalidDatabase(cnf.Name, sc.Config.Unsupported.Serverless.MinConfigFetchInterval, cnf, bucket)
+	// don't load config + remove from server context (apart from corrupt database map)
+	sc._removeDatabase(ctx, cnf.Name)
 }
 
 func (sc *ServerContext) bucketNameFromDbName(dbName string) (bucketName string, found bool) {
@@ -1624,14 +1666,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			// in memory representation on the server context.
 			bucketCopy := bucket
 			if bucket != *cnf.Bucket {
-				base.DebugfCtx(ctx, base.KeyConfig, "Mismatch in database config bucket name: %s and backend bucket: %s You must update database config immediately", *cnf.Bucket, bucket)
-				// track corrupt database context
-				ok := sc._addCorruptDatabase(ctx, cnf.Name)
-				if !ok {
-					base.DebugfCtx(ctx, base.KeyConfig, "Failed ot add sb: %s to corrupt list", cnf.Name)
-				}
-				// don't load config + remove from server context (apart from corrupt database map)
-				sc._removeDatabase(ctx, cnf.Name)
+				sc.handleInvalidDatabaseConfig(ctx, bucket, *cnf)
 				continue
 			} else {
 				// no corruption detected carry on as usual

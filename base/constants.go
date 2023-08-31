@@ -230,6 +230,13 @@ func UnitTestUrlIsWalrus() bool {
 	return ServerIsWalrus(UnitTestUrl())
 }
 
+func TestsRequireBootstrapConnection() bool {
+	if !TestUseCouchbaseServer() && UnitTestUrlIsWalrus() {
+		return true
+	}
+	return false
+}
+
 // ServerIsTLS returns true if the server URL is using an accepted secure protocol as it's prefix
 // Prefix checked: couchbases:
 func ServerIsTLS(server string) bool {

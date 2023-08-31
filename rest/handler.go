@@ -338,20 +338,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	// look up the database context:
 	if keyspaceDb != "" {
 		var err error
-		dbContext, err = h.server.GetActiveDatabase(keyspaceDb)
-		if dbContext == nil && base.IsDocNotFoundError(err) {
-			// Its possible the database config is corrupt and that is why we can't retrieve database context here
-			// We need to let through requests that are attempting to correct the db config hence check for PUT and POST
-			// request here
-			if h.rq.Method == http.MethodPut || h.rq.Method == http.MethodPost {
-				dbContext = h.checkDbCorruption(keyspaceDb)
-			}
-		}
-		// if we have fetched the db context from corrupt database map we need to nil the error to avoid code below
-		if dbContext != nil {
-			err = nil
-		}
-		if err != nil {
+		if dbContext, err = h.server.GetActiveDatabase(keyspaceDb); err != nil {
 			h.addDatabaseLogContext(keyspaceDb, nil)
 			if err == base.ErrNotFound {
 				if shouldCheckAdminAuth {
@@ -601,17 +588,20 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	return nil
 }
 
-// checkDbCorruption checks if the db is present in the corrupt db context map and returns it if so
-func (h *handler) checkDbCorruption(name string) *db.DatabaseContext {
-	h.server.lock.RLock()
-	dbc := h.server.corruptDbContext[name]
-	h.server.lock.RUnlock()
-	if dbc != nil {
-		// acquire exclusive lock to remove the corrupt db context from the map now we are updating the corrupt config
-		h.server.lock.Lock()
-		delete(h.server.corruptDbContext, name)
-		h.server.lock.Unlock()
-		return dbc
+// fixCorruptDatabaseConfig will remove the config from the bucket and remove it from the map if it exists on the invalid database config map
+func (h *handler) fixCorruptDatabaseConfig(ctx context.Context, bucket, configGroupID, dbName string) error {
+	h.server.invalidDatabaseConfigTracking.m.Lock()
+	defer h.server.invalidDatabaseConfigTracking.m.Unlock()
+
+	_, ok := h.server.invalidDatabaseConfigTracking.dbNames[dbName]
+	if ok {
+		// remove the bad config from the bucket
+		err := h.server.BootstrapContext.DeleteConfig(ctx, bucket, configGroupID, dbName)
+		if err != nil {
+			return err
+		}
+		// delete the database name form the invalid database map on server context
+		delete(h.server.invalidDatabaseConfigTracking.dbNames, dbName)
 	}
 	return nil
 }

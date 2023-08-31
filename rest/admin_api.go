@@ -126,7 +126,12 @@ func (h *handler) handleCreateDB() error {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
 		}
 
-		// now we've started the db successfully, we can persist it to the cluster
+		// now we've started the db successfully, we can persist it to the cluster first checking if this db used to be a corrupt db
+		// if it used to be corrupt we need to remove it from the invalid database map on server context and remove the old corrupt config from the bucket
+		err = h.fixCorruptDatabaseConfig(contextNoCancel.Ctx, bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName)
+		if err != nil {
+			return err
+		}
 		cas, err := h.server.BootstrapContext.InsertConfig(contextNoCancel.Ctx, bucket, h.server.Config.Bootstrap.ConfigGroupID, &persistedConfig)
 		if err != nil {
 			// unload the requested database config to prevent the cluster being in an inconsistent state
@@ -522,24 +527,9 @@ func (h *handler) handlePutDbConfig() (err error) {
 		}
 	}
 
-	// if the database is a corrupted database config then we will have no bucket on the db to use (ah teh db context
-	// was previously closed), so nil check needed here to protect against panic
-	// is needed
-	var bucket string
-	if h.db.Bucket != nil {
-		bucket = h.db.Bucket.GetName()
-	}
+	bucket := h.db.Bucket.GetName()
 	if dbConfig.Bucket != nil {
 		bucket = *dbConfig.Bucket
-	}
-	if bucket == "" {
-		// check if the db config is in corrupt state
-		if h.server.isInCorruptState(h.db.Name) {
-			// database is in corrupt state must provide bucket name to fix
-			return base.HTTPErrorf(http.StatusInternalServerError, "database is in corrupt state must provide bucket name in config update")
-		}
-		// we should never get to this but worth covering off to protect from failure to update config
-		return base.HTTPErrorf(http.StatusInternalServerError, "missing bucket name")
 	}
 
 	// Set dbName based on path value (since db doesn't necessarily exist), and update in incoming config in case of insert

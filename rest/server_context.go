@@ -60,7 +60,6 @@ type ServerContext struct {
 	collectionRegistry            map[string]string                 // map of fully qualified collection name to db name, used for local uniqueness checks
 	dbConfigs                     map[string]*RuntimeDatabaseConfig // dbConfigs is a map of db name to the RuntimeDatabaseConfig
 	databases_                    map[string]*db.DatabaseContext    // databases_ is a map of dbname to db.DatabaseContext
-	corruptDbContext              map[string]*db.DatabaseContext
 	lock                          sync.RWMutex
 	statsContext                  *statsContext
 	BootstrapContext              *bootstrapContext
@@ -76,6 +75,7 @@ type ServerContext struct {
 	allowScopesInPersistentConfig bool                 // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
 	DatabaseInitManager           *DatabaseInitManager // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
+	invalidDatabaseConfigTracking invalidDatabaseConfigs
 }
 
 type ActiveReplicationsCounter struct {
@@ -140,11 +140,14 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		collectionRegistry: map[string]string{},
 		dbConfigs:          map[string]*RuntimeDatabaseConfig{},
 		databases_:         map[string]*db.DatabaseContext{},
-		corruptDbContext:   map[string]*db.DatabaseContext{},
 		HTTPClient:         http.DefaultClient,
 		statsContext:       &statsContext{},
 		BootstrapContext:   &bootstrapContext{},
 		hasStarted:         make(chan struct{}),
+	}
+	sc.invalidDatabaseConfigTracking = invalidDatabaseConfigs{
+		loggingCtx: ctx,
+		dbNames:    map[string]*invalidConfigInfo{},
 	}
 
 	if base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
@@ -225,6 +228,7 @@ func (sc *ServerContext) Close(ctx context.Context) {
 		_ = db.EventMgr.RaiseDBStateChangeEvent(db.Name, "offline", "Database context closed", &sc.Config.API.AdminInterface)
 	}
 	sc.databases_ = nil
+	sc.invalidDatabaseConfigTracking.dbNames = nil
 
 	for _, s := range sc._httpServers {
 		base.InfofCtx(ctx, base.KeyHTTP, "Closing HTTP Server: %v", s.Addr)
@@ -296,11 +300,11 @@ func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (
 	}
 	// handle the correct error message being returned for a corrupt database config
 	var httpErr *base.HTTPError
-	sc.lock.RLock()
-	_, ok := sc.corruptDbContext[name]
-	sc.lock.RUnlock()
+	sc.invalidDatabaseConfigTracking.m.RLock()
+	invalidConfig, ok := sc.invalidDatabaseConfigTracking.dbNames[name]
+	sc.invalidDatabaseConfigTracking.m.RUnlock()
 	if !dbConfigFound && ok {
-		httpErr = base.HTTPErrorf(http.StatusNotFound, "Database config corrupt. Database config bucket name not equal to bucket it is persisted in. Must update database config immediately")
+		httpErr = base.HTTPErrorf(http.StatusNotFound, "Database %s config corrupt. Database config bucket name: %s not equal to bucket it is persisted in: %s. Must update database config immediately", name, invalidConfig.configBucketName, invalidConfig.persistedBucketName)
 	} else {
 		httpErr = base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 	}
@@ -1450,31 +1454,6 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 			delete(sc.collectionRegistry, fqCollection)
 		}
 	}
-	return true
-}
-
-// isInCorruptState returns if a database context is in corrupt state or not
-func (sc *ServerContext) isInCorruptState(dbName string) bool {
-	sc.lock.RLock()
-	_, ok := sc.corruptDbContext[dbName]
-	sc.lock.RUnlock()
-	if ok {
-		// database is in currupt state must provide bucketname to fix
-		return true
-	}
-	return false
-}
-
-func (sc *ServerContext) _addCorruptDatabase(ctx context.Context, dbName string) bool {
-	dbCtx := sc.databases_[dbName]
-	if dbCtx == nil {
-		return false
-	}
-	base.TracefCtx(ctx, base.KeyConfig, "adding db: %s to corrupt database list", dbName)
-	// acquire exclusive lock to write the context to the corrupt database map on server context
-	sc.lock.Lock()
-	sc.corruptDbContext[dbName] = dbCtx
-	sc.lock.Unlock()
 	return true
 }
 

@@ -1446,7 +1446,7 @@ func TestResyncStop(t *testing.T) {
 //     on the config now matches the rest tester bucket name
 func TestCorruptDbConfigHandling(t *testing.T) {
 	base.LongRunningTest(t)
-	if base.UnitTestUrlIsWalrus() {
+	if base.TestsRequireBootstrapConnection() {
 		t.Skip("Walrus/Rosmar does not support persistent config")
 	}
 	numCollections := 1
@@ -1466,23 +1466,36 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	name, ok := base.AsDataStoreName(ds)
 	require.True(t, ok)
 
+	scopesMap := make(map[string]rest.ScopeConfig)
+	collectionMap := make(map[string]rest.CollectionConfig)
+	collectionMap[name.CollectionName()] = rest.CollectionConfig{}
+	scopesMap[name.ScopeName()] = rest.ScopeConfig{
+		Collections: collectionMap,
+	}
+
 	// create db with correct config
-	resp := rt.SendAdminRequest(http.MethodPut, "/db1/", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes": {"%s": {"collections": {"%s":{}}}}}`,
-		rt.CustomTestBucket.GetName(), base.TestUseXattrs(), name.ScopeName(), name.CollectionName()))
+	dbConfig := rest.DbConfig{
+		BucketConfig: rest.BucketConfig{
+			Bucket: base.StringPtr(rt.CustomTestBucket.GetName()),
+		},
+		NumIndexReplicas: base.UintPtr(0),
+		EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+		Scopes:           scopesMap,
+	}
+	resp := rt.CreateDatabase("db1", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// wait for db to come online
 	require.NoError(t, rt.WaitForDBOnline())
 
 	// grab the persisted db config from the bucket
-	dbConfig := rest.DatabaseConfig{}
-	_, err := rt.ServerContext().BootstrapContext.GetConfig(rt.CustomTestBucket.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID, "db1", &dbConfig)
+	databaseConfig := rest.DatabaseConfig{}
+	_, err := rt.ServerContext().BootstrapContext.GetConfig(rt.CustomTestBucket.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID, "db1", &databaseConfig)
 	require.NoError(t, err)
 
 	// update the persisted config to a fake bucket name
 	newBucketName := "fakeBucket"
-	_, err = rt.UpdatePersistedBucketName(&dbConfig, &newBucketName)
+	_, err = rt.UpdatePersistedBucketName(&databaseConfig, &newBucketName)
 	require.NoError(t, err)
 
 	// wait for some time for interval to remove the db
@@ -1495,17 +1508,20 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	// assert that fetching config fails with the correct error message to the user
 	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
 	rest.RequireStatus(t, resp, http.StatusNotFound)
-	assert.Contains(t, resp.Body.String(), "Database config corrupt.")
+	assert.Contains(t, resp.Body.String(), "Must update database config immediately")
 
 	// assert trying to delete fails with the correct error message to the user
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db1/", "")
 	rest.RequireStatus(t, resp, http.StatusNotFound)
-	assert.Contains(t, resp.Body.String(), "Database config corrupt.")
+	assert.Contains(t, resp.Body.String(), "Must update database config immediately")
 
 	// correct the name through update to config
-	resp = rt.SendAdminRequest(http.MethodPut, "/db1/_config", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes": {"%s": {"collections": {"%s":{}}}}}`,
-		rt.CustomTestBucket.GetName(), base.TestUseXattrs(), name.ScopeName(), name.CollectionName()))
+	resp = rt.ReplaceDbConfig("db1", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusNotFound)
+	assert.Contains(t, resp.Body.String(), "Must update database config immediately")
+
+	// create db of same name with correct db config to correct the corrupt db config
+	resp = rt.CreateDatabase("db1", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// wait some time for interval to pick up change
