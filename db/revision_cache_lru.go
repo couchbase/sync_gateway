@@ -392,7 +392,8 @@ func (value *revCacheValue) updateBody(ctx context.Context) (err error) {
 // asDocumentRevision copies the rev cache value into a DocumentRevision.  Should only be called for non-empty
 // revCacheValues - copies all immutable revCacheValue properties, and adds the provided body/delta.
 func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) (DocumentRevision, error) {
-
+	value.lock.RLock()
+	defer value.lock.RUnlock()
 	docRev := DocumentRevision{
 		DocID:       value.key.DocID,
 		RevID:       value.key.RevID,
