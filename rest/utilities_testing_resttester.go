@@ -293,6 +293,28 @@ func (rt *RestTester) UpdatePersistedBucketName(dbConfig *DatabaseConfig, newBuc
 	return &updatedDbConfig, err
 }
 
+func (rt *RestTester) InsertDbConfigToBucket(config *DatabaseConfig, bucketName string) {
+	_, insertErr := rt.ServerContext().BootstrapContext.InsertConfig(base.TestCtx(rt.TB), bucketName, rt.ServerContext().Config.Bootstrap.ConfigGroupID, config)
+	require.NoError(rt.TB, insertErr)
+}
+
+func (rt *RestTester) PersistDbConfigToBucket(dbConfig DbConfig, bucketName string) {
+	version, err := GenerateDatabaseConfigVersionID("", &dbConfig)
+	require.NoError(rt.TB, err)
+
+	metadataID, metadataIDError := rt.ServerContext().BootstrapContext.ComputeMetadataIDForDbConfig(base.TestCtx(rt.TB), &dbConfig)
+	require.NoError(rt.TB, metadataIDError)
+
+	dbConfig.Bucket = &bucketName
+	persistedConfig := DatabaseConfig{
+		Version:    version,
+		MetadataID: metadataID,
+		DbConfig:   dbConfig,
+		SGVersion:  base.ProductVersion.String(),
+	}
+	rt.InsertDbConfigToBucket(&persistedConfig, rt.CustomTestBucket.GetName())
+}
+
 // setupSGRPeers sets up two rest testers to be used for sg-replicate testing with the following configuration:
 //
 //	activeRT:

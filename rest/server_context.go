@@ -300,9 +300,7 @@ func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (
 	}
 	// handle the correct error message being returned for a corrupt database config
 	var httpErr *base.HTTPError
-	sc.invalidDatabaseConfigTracking.m.RLock()
-	invalidConfig, ok := sc.invalidDatabaseConfigTracking.dbNames[name]
-	sc.invalidDatabaseConfigTracking.m.RUnlock()
+	invalidConfig, ok := sc.invalidDatabaseConfigTracking.exists(name)
 	if !dbConfigFound && ok {
 		httpErr = base.HTTPErrorf(http.StatusNotFound, "Database %s config corrupt. Database config bucket name: %s not equal to bucket it is persisted in: %s. Must update database config immediately", name, invalidConfig.configBucketName, invalidConfig.persistedBucketName)
 	} else {
@@ -351,6 +349,12 @@ func (sc *ServerContext) AllDatabases() map[string]*db.DatabaseContext {
 		databases[name] = database
 	}
 	return databases
+}
+
+func (sc *ServerContext) AllInvalidDatabases() map[string]*invalidConfigInfo {
+	sc.invalidDatabaseConfigTracking.m.RLock()
+	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
+	return sc.invalidDatabaseConfigTracking.dbNames
 }
 
 type PostUpgradeResult map[string]PostUpgradeDatabaseResult

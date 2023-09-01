@@ -2498,10 +2498,13 @@ func DropAllTestIndexes(t *testing.T, tb *base.TestBucket) {
 	}
 }
 
-func (sc *ServerContext) GetCorruptDatabaseMap() map[string]*invalidConfigInfo {
+func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, dbNames []string) {
 	sc.invalidDatabaseConfigTracking.m.RLock()
 	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
-	return sc.invalidDatabaseConfigTracking.dbNames
+	require.Equal(t, len(dbNames), len(sc.invalidDatabaseConfigTracking.dbNames))
+	for _, v := range dbNames {
+		require.NotNil(t, sc.invalidDatabaseConfigTracking.dbNames[v])
+	}
 }
 
 // Calls DropAllIndexes to remove all indexes, then restores the primary index for TestBucketPool readier requirements

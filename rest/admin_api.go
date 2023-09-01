@@ -128,7 +128,7 @@ func (h *handler) handleCreateDB() error {
 
 		// now we've started the db successfully, we can persist it to the cluster first checking if this db used to be a corrupt db
 		// if it used to be corrupt we need to remove it from the invalid database map on server context and remove the old corrupt config from the bucket
-		err = h.fixCorruptDatabaseConfig(contextNoCancel.Ctx, bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName)
+		err = h.removeCorruptConfigIfExists(contextNoCancel.Ctx, bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName)
 		if err != nil {
 			return err
 		}

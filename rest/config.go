@@ -308,6 +308,19 @@ func (d *invalidDatabaseConfigs) addInvalidDatabase(dbname string, refreshInterv
 	}
 }
 
+func (d *invalidDatabaseConfigs) exists(dbname string) (*invalidConfigInfo, bool) {
+	d.m.RLock()
+	defer d.m.RUnlock()
+	config, ok := d.dbNames[dbname]
+	return config, ok
+}
+
+func (d *invalidDatabaseConfigs) remove(dbname string) {
+	d.m.Lock()
+	defer d.m.Unlock()
+	delete(d.dbNames, dbname)
+}
+
 // inheritFromBootstrap sets any empty Couchbase Server values from the given bootstrap config.
 func (dbc *DbConfig) inheritFromBootstrap(b BootstrapConfig) {
 	if dbc.Username == "" {
@@ -1511,11 +1524,10 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 		bucketCopy := bucket
 		if bucket != *cnf.Bucket {
 			sc.handleInvalidDatabaseConfig(ctx, bucket, cnf)
-			return true, fmt.Errorf("mismatch in peristed databse bucket name vs the actual bucketname. Please correct.")
-		} else {
-			// no corruption detected carry on as usual
-			cnf.Bucket = &bucketCopy
+			return true, fmt.Errorf("mismatch in persisted database bucket name %q vs the actual bucket name %q. Please correct.", cnf.Name, bucket)
 		}
+		// no corruption detected carry on as usual
+		cnf.Bucket = &bucketCopy
 
 		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
 		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
@@ -1668,10 +1680,9 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			if bucket != *cnf.Bucket {
 				sc.handleInvalidDatabaseConfig(ctx, bucket, *cnf)
 				continue
-			} else {
-				// no corruption detected carry on as usual
-				cnf.Bucket = &bucketCopy
 			}
+			// no corruption detected carry on as usual
+			cnf.Bucket = &bucketCopy
 
 			// stamp per-database credentials if set
 			if dbCredentials, ok := sc.Config.DatabaseCredentials[cnf.Name]; ok && dbCredentials != nil {

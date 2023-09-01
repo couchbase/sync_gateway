@@ -588,12 +588,9 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	return nil
 }
 
-// fixCorruptDatabaseConfig will remove the config from the bucket and remove it from the map if it exists on the invalid database config map
-func (h *handler) fixCorruptDatabaseConfig(ctx context.Context, bucket, configGroupID, dbName string) error {
-	h.server.invalidDatabaseConfigTracking.m.Lock()
-	defer h.server.invalidDatabaseConfigTracking.m.Unlock()
-
-	_, ok := h.server.invalidDatabaseConfigTracking.dbNames[dbName]
+// removeCorruptConfigIfExists will remove the config from the bucket and remove it from the map if it exists on the invalid database config map
+func (h *handler) removeCorruptConfigIfExists(ctx context.Context, bucket, configGroupID, dbName string) error {
+	_, ok := h.server.invalidDatabaseConfigTracking.exists(dbName)
 	if ok {
 		// remove the bad config from the bucket
 		err := h.server.BootstrapContext.DeleteConfig(ctx, bucket, configGroupID, dbName)
@@ -601,7 +598,7 @@ func (h *handler) fixCorruptDatabaseConfig(ctx context.Context, bucket, configGr
 			return err
 		}
 		// delete the database name form the invalid database map on server context
-		delete(h.server.invalidDatabaseConfigTracking.dbNames, dbName)
+		h.server.invalidDatabaseConfigTracking.remove(dbName)
 	}
 	return nil
 }
