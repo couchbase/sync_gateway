@@ -1525,8 +1525,8 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 }
 
 // TestBadConfigInsertionToBucket:
-//	 - start a rest tester
-//	 - insert an invalid db config to the bucket while rest tester is running
+//   - start a rest tester
+//   - insert an invalid db config to the bucket while rest tester is running
 //   - assert that the db config is picked up as an invalid db config
 //   - assert that a call to the db endpoint will fail with correct error message
 func TestBadConfigInsertionToBucket(t *testing.T) {
