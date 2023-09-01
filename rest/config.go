@@ -25,7 +25,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -269,7 +268,7 @@ func GetTLSVersionFromString(stringV *string) uint16 {
 }
 
 type invalidConfigInfo struct {
-	lastLogTime         atomic.Int64
+	logged              bool
 	configBucketName    string
 	persistedBucketName string
 }
@@ -283,28 +282,24 @@ type invalidDatabaseConfigs struct {
 // addInvalidDatabase adds a db to invalid dbconfig map if it doesn't exist in there yet and will log for it at warning level
 // if the db already exists there we will calculate if we need to log again according to the config update interval
 func (d *invalidDatabaseConfigs) addInvalidDatabase(dbname string, refreshInterval *base.ConfigDuration, cnf DatabaseConfig, bucket string) {
-	interval := DefaultMinConfigFetchInterval
-	if refreshInterval != nil {
-		interval = refreshInterval.Value()
-	}
 	configInfo := invalidConfigInfo{
 		configBucketName:    *cnf.Bucket,
 		persistedBucketName: bucket,
 	}
 	d.m.Lock()
 	defer d.m.Unlock()
-	currTime := time.Now().UnixMilli()
 	if d.dbNames[dbname] == nil {
 		// db hasn't been tracked as invalid config yet so add it
 		d.dbNames[dbname] = &configInfo
-		d.dbNames[dbname].lastLogTime.Store(currTime)
-		base.WarnfCtx(d.loggingCtx, "Mismatch in database config for database %s bucket name: %s and backend bucket: %s You must update database config immediately", dbname, d.dbNames[dbname].configBucketName, d.dbNames[dbname].persistedBucketName)
-		return
 	}
 	// if we get here we already have the db logged as an invalid config, so now we need to work out iof we should log for it now
-	if (currTime - d.dbNames[dbname].lastLogTime.Load()) > interval.Milliseconds() {
-		// we need to log if we get here
+	if !d.dbNames[dbname].logged {
+		// we need to log at warning if we get here
 		base.WarnfCtx(d.loggingCtx, "Mismatch in database config for database %s bucket name: %s and backend bucket: %s You must update database config immediately", dbname, d.dbNames[dbname].configBucketName, d.dbNames[dbname].persistedBucketName)
+		d.dbNames[dbname].logged = true
+	} else {
+		// already logged this entry at warning so need to log at info now
+		base.InfofCtx(d.loggingCtx, base.KeyConfig, "Mismatch in database config for database %s bucket name: %s and backend bucket: %s You must update database config immediately", dbname, d.dbNames[dbname].configBucketName, d.dbNames[dbname].persistedBucketName)
 	}
 }
 

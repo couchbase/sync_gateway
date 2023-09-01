@@ -1449,6 +1449,7 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	if base.TestsRequireBootstrapConnection() {
 		t.Skip("Walrus/Rosmar does not support persistent config")
 	}
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyConfig)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: base.GetPersistentTestBucket(t),
