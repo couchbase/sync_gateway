@@ -75,29 +75,29 @@ func (sc *ShardedLRURevisionCache) Invalidate(ctx context.Context, docID, revID 
 
 // An LRU cache of document revision bodies, together with their channel access.
 type LRURevisionCache struct {
-	cache        map[IDAndRev]*list.Element // Fast lookup of list element by doc/rev ID
-	lruList      *list.List                 // List ordered by most recent access (Front is newest)
-	capacity     uint32                     // Max number of revisions to cache
-	backingStore RevisionCacheBackingStore  // provides the methods used by the RevisionCacheLoaderFunc
-	lock         sync.Mutex                 // For thread-safety
+	backingStore RevisionCacheBackingStore
+	cache        map[IDAndRev]*list.Element
+	lruList      *list.List
 	cacheHits    *base.SgwIntStat
 	cacheMisses  *base.SgwIntStat
+	lock         sync.Mutex
+	capacity     uint32
 }
 
 // The cache payload data. Stored as the Value of a list Element.
 type revCacheValue struct {
-	key         IDAndRev        // doc/rev IDs
-	bodyBytes   []byte          // Revision body (with no special properties)
-	history     Revisions       // Rev history encoded like a "_revisions" property
-	channels    base.Set        // Set of channels that have access
-	expiry      *time.Time      // Document expiry
-	attachments AttachmentsMeta // Document _attachments property
-	delta       *RevisionDelta  // Available delta *from* this revision
-	deleted     bool            // True if revision is a tombstone
-	err         error           // Error from loaderFunc if it failed
-	lock        sync.RWMutex    // Synchronizes access to this struct
-	body        Body            // unmarshalled body (if available)
-	removed     bool            // True if revision is a removal
+	err         error
+	history     Revisions
+	channels    base.Set
+	expiry      *time.Time
+	attachments AttachmentsMeta
+	delta       *RevisionDelta
+	body        Body
+	key         IDAndRev
+	bodyBytes   []byte
+	lock        sync.RWMutex
+	deleted     bool
+	removed     bool
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
