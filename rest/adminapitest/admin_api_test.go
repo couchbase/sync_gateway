@@ -1491,17 +1491,17 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	// assert that fetching config fails with the correct error message to the user
 	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
 	rest.RequireStatus(t, resp, http.StatusNotFound)
-	assert.Contains(t, resp.Body.String(), "Must update database config immediately")
+	assert.Contains(t, resp.Body.String(), "You must update database config immediately")
 
 	// assert trying to delete fails with the correct error message to the user
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db1/", "")
 	rest.RequireStatus(t, resp, http.StatusNotFound)
-	assert.Contains(t, resp.Body.String(), "Must update database config immediately")
+	assert.Contains(t, resp.Body.String(), "You must update database config immediately")
 
 	// correct the name through update to config
 	resp = rt.ReplaceDbConfig("db1", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusNotFound)
-	assert.Contains(t, resp.Body.String(), "Must update database config immediately")
+	assert.Contains(t, resp.Body.String(), "You must update database config immediately")
 
 	// create db of same name with correct db config to correct the corrupt db config
 	resp = rt.CreateDatabase("db1", dbConfig)
