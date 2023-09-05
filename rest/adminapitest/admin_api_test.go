@@ -1446,9 +1446,7 @@ func TestResyncStop(t *testing.T) {
 //     on the config now matches the rest tester bucket name
 func TestCorruptDbConfigHandling(t *testing.T) {
 	base.LongRunningTest(t)
-	if base.TestsRequireBootstrapConnection() {
-		t.Skip("Walrus/Rosmar does not support persistent config")
-	}
+	base.TestsRequireBootstrapConnection(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyConfig)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
@@ -1456,7 +1454,7 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure the interval time to pick up new configs from the bucket to every 1 seconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1000000000)
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1 * time.Second)
 		},
 	})
 	defer rt.Close()
@@ -1531,16 +1529,14 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 //   - assert that the db config is picked up as an invalid db config
 //   - assert that a call to the db endpoint will fail with correct error message
 func TestBadConfigInsertionToBucket(t *testing.T) {
-	if base.TestsRequireBootstrapConnection() {
-		t.Skip("Walrus/Rosmar does not support persistent config")
-	}
+	base.TestsRequireBootstrapConnection(t)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: base.GetPersistentTestBucket(t),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure the interval time to pick up new configs from the bucket to every 1 seconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1000000000)
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1 * time.Second)
 		},
 		DatabaseConfig: nil,
 	})
@@ -1584,9 +1580,7 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 //   - attempt to update the config to change the bucket name on the config to a mismatched bucket name
 //   - assert the request fails
 func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
-	if base.TestsRequireBootstrapConnection() {
-		t.Skip("Walrus/Rosmar does not support persistent config")
-	}
+	base.TestsRequireBootstrapConnection(t)
 	base.RequireNumTestBuckets(t, 2)
 	tb1 := base.GetPersistentTestBucket(t)
 	defer tb1.Close()
@@ -1596,7 +1590,7 @@ func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure the interval time to pick up new configs from the bucket to every 1 seconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1000000000)
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1 * time.Second)
 		},
 	})
 	defer rt.Close()
@@ -1620,9 +1614,7 @@ func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
 //   - in bucketA and bucketB, write two db configs with bucket name as bucketC
 //   - Start new rest tester and ensure they aren't picked up as valid configs
 func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
-	if base.TestsRequireBootstrapConnection() {
-		t.Skip("Walrus/Rosmar does not support persistent config")
-	}
+	base.TestsRequireBootstrapConnection(t)
 	base.RequireNumTestBuckets(t, 3)
 	tb1 := base.GetPersistentTestBucket(t)
 	defer tb1.Close()
@@ -1631,12 +1623,14 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 	tb3 := base.GetPersistentTestBucket(t)
 	defer tb3.Close()
 
+	const groupID = "60ce5544-c368-4b08-b0ed-4ca3b37973f9"
+
 	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb1,
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
-			// configure same config groupID
-			config.Bootstrap.ConfigGroupID = "60ce5544-c368-4b08-b0ed-4ca3b37973f9"
+			// all RestTesters all this test must use the same config ID
+			config.Bootstrap.ConfigGroupID = groupID
 		},
 	})
 	defer rt1.Close()
@@ -1651,7 +1645,7 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure same config groupID
-			config.Bootstrap.ConfigGroupID = "60ce5544-c368-4b08-b0ed-4ca3b37973f9"
+			config.Bootstrap.ConfigGroupID = groupID
 		},
 	})
 	defer rt2.Close()
@@ -1666,9 +1660,9 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 		CustomTestBucket: tb3,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure the interval time to pick up new configs from the bucket to every 1 seconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1000000000)
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1 * time.Second)
 			// configure same config groupID
-			config.Bootstrap.ConfigGroupID = "60ce5544-c368-4b08-b0ed-4ca3b37973f9"
+			config.Bootstrap.ConfigGroupID = groupID
 		},
 	})
 	defer rt3.Close()
@@ -1697,9 +1691,7 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 //   - create bucketA and bucketB with db configs that that both list bucket name as bucketA
 //   - start a new rest tester and assert that invalid db config is picked up and the valid one is also picked up
 func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
-	if base.TestsRequireBootstrapConnection() {
-		t.Skip("Walrus/Rosmar does not support persistent config")
-	}
+	base.TestsRequireBootstrapConnection(t)
 
 	base.RequireNumTestBuckets(t, 3)
 	tb1 := base.GetPersistentTestBucket(t)
@@ -1740,7 +1732,7 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure the interval time to pick up new configs from the bucket to every 1 seconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1000000000)
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1 * time.Second)
 			// configure same config groupID
 			config.Bootstrap.ConfigGroupID = "60ce5544-c368-4b08-b0ed-4ca3b37973f9"
 		},
@@ -1768,9 +1760,7 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 //   - persist that db config to another bucket
 //   - assert that is picked up as an invalid db config
 func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
-	if base.TestsRequireBootstrapConnection() {
-		t.Skip("Walrus/Rosmar does not support persistent config")
-	}
+	base.TestsRequireBootstrapConnection(t)
 
 	tb1 := base.GetPersistentTestBucket(t)
 	defer tb1.Close()
@@ -1782,7 +1772,7 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure the interval time to pick up new configs from the bucket to every 1 seconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1000000000)
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1 * time.Second)
 		},
 	})
 	defer rt.Close()

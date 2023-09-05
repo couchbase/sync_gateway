@@ -146,8 +146,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		hasStarted:         make(chan struct{}),
 	}
 	sc.invalidDatabaseConfigTracking = invalidDatabaseConfigs{
-		loggingCtx: ctx,
-		dbNames:    map[string]*invalidConfigInfo{},
+		dbNames: map[string]*invalidConfigInfo{},
 	}
 
 	if base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
@@ -302,7 +301,7 @@ func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (
 	var httpErr *base.HTTPError
 	invalidConfig, ok := sc.invalidDatabaseConfigTracking.exists(name)
 	if !dbConfigFound && ok {
-		httpErr = base.HTTPErrorf(http.StatusNotFound, "Database %s config corrupt. Database config bucket name: %s not equal to bucket it is persisted in: %s. Must update database config immediately", name, invalidConfig.configBucketName, invalidConfig.persistedBucketName)
+		httpErr = base.HTTPErrorf(http.StatusNotFound, "Mismatch in database config for database %s bucket name: %s and backend bucket: %s groupID: %s You must update database config immediately", base.MD(name), base.MD(invalidConfig.configBucketName), base.MD(invalidConfig.persistedBucketName), base.MD(sc.Config.Bootstrap.ConfigGroupID))
 	} else {
 		httpErr = base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 	}
