@@ -98,7 +98,6 @@ type revCacheValue struct {
 	lock        sync.RWMutex    // Synchronizes access to this struct
 	body        Body            // unmarshalled body (if available)
 	removed     bool            // True if revision is a removal
-	invalid     bool            // Marks a revision as invalid meaning it won't be used
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -147,10 +146,6 @@ func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID strin
 		return DocumentRevision{}, nil
 	}
 
-	if value.invalid {
-		return rc.LoadInvalidRevFromBackingStore(ctx, value.key, nil, includeBody, includeDelta)
-	}
-
 	docRev, statEvent, err := value.load(ctx, rc.backingStore, includeBody, includeDelta)
 	rc.statsRecorderFunc(statEvent)
 
@@ -167,8 +162,7 @@ func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(ctx context.Context, 
 	var docRevBody Body
 
 	value := revCacheValue{
-		key:     key,
-		invalid: true,
+		key: key,
 	}
 
 	// If doc has been passed in use this to grab values. Otherwise run revCacheLoader which will grab the Document
@@ -215,10 +209,6 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, include
 
 	// Retrieve from or add to rev cache
 	value := rc.getValue(docID, bucketDoc.CurrentRev, true)
-
-	if value.invalid {
-		return rc.LoadInvalidRevFromBackingStore(ctx, value.key, bucketDoc, includeBody, false)
-	}
 
 	docRev, statEvent, err := value.loadForDoc(ctx, rc.backingStore, bucketDoc, includeBody)
 	rc.statsRecorderFunc(statEvent)
@@ -273,9 +263,10 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision)
 
 func (rc *LRURevisionCache) Invalidate(ctx context.Context, docID, revID string) {
 	value := rc.getValue(docID, revID, false)
-	if value != nil {
-		value.setInvalidFlag()
+	if value == nil {
+		return
 	}
+	rc.removeValue(value)
 }
 
 func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *revCacheValue) {
@@ -403,7 +394,6 @@ func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) 
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 		Deleted:     value.deleted,
 		Removed:     value.removed,
-		Invalid:     value.invalid,
 	}
 	if body != nil {
 		docRev._shallowCopyBody = body.ShallowCopy()
@@ -482,11 +472,5 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 func (value *revCacheValue) updateDelta(toDelta RevisionDelta) {
 	value.lock.Lock()
 	value.delta = &toDelta
-	value.lock.Unlock()
-}
-
-func (value *revCacheValue) setInvalidFlag() {
-	value.lock.Lock()
-	value.invalid = true
 	value.lock.Unlock()
 }
