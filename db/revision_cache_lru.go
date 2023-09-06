@@ -75,30 +75,29 @@ func (sc *ShardedLRURevisionCache) Invalidate(ctx context.Context, docID, revID 
 
 // An LRU cache of document revision bodies, together with their channel access.
 type LRURevisionCache struct {
-	cache        map[IDAndRev]*list.Element // Fast lookup of list element by doc/rev ID
-	lruList      *list.List                 // List ordered by most recent access (Front is newest)
-	capacity     uint32                     // Max number of revisions to cache
-	backingStore RevisionCacheBackingStore  // provides the methods used by the RevisionCacheLoaderFunc
-	lock         sync.Mutex                 // For thread-safety
+	backingStore RevisionCacheBackingStore
+	cache        map[IDAndRev]*list.Element
+	lruList      *list.List
 	cacheHits    *base.SgwIntStat
 	cacheMisses  *base.SgwIntStat
+	lock         sync.Mutex
+	capacity     uint32
 }
 
 // The cache payload data. Stored as the Value of a list Element.
 type revCacheValue struct {
-	key         IDAndRev        // doc/rev IDs
-	bodyBytes   []byte          // Revision body (with no special properties)
-	history     Revisions       // Rev history encoded like a "_revisions" property
-	channels    base.Set        // Set of channels that have access
-	expiry      *time.Time      // Document expiry
-	attachments AttachmentsMeta // Document _attachments property
-	delta       *RevisionDelta  // Available delta *from* this revision
-	deleted     bool            // True if revision is a tombstone
-	err         error           // Error from loaderFunc if it failed
-	lock        sync.RWMutex    // Synchronizes access to this struct
-	body        Body            // unmarshalled body (if available)
-	removed     bool            // True if revision is a removal
-	invalid     bool            // Marks a revision as invalid meaning it won't be used
+	err         error
+	history     Revisions
+	channels    base.Set
+	expiry      *time.Time
+	attachments AttachmentsMeta
+	delta       *RevisionDelta
+	body        Body
+	key         IDAndRev
+	bodyBytes   []byte
+	lock        sync.RWMutex
+	deleted     bool
+	removed     bool
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -147,10 +146,6 @@ func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID strin
 		return DocumentRevision{}, nil
 	}
 
-	if value.invalid {
-		return rc.LoadInvalidRevFromBackingStore(ctx, value.key, nil, includeBody, includeDelta)
-	}
-
 	docRev, statEvent, err := value.load(ctx, rc.backingStore, includeBody, includeDelta)
 	rc.statsRecorderFunc(statEvent)
 
@@ -167,8 +162,7 @@ func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(ctx context.Context, 
 	var docRevBody Body
 
 	value := revCacheValue{
-		key:     key,
-		invalid: true,
+		key: key,
 	}
 
 	// If doc has been passed in use this to grab values. Otherwise run revCacheLoader which will grab the Document
@@ -215,10 +209,6 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, include
 
 	// Retrieve from or add to rev cache
 	value := rc.getValue(docID, bucketDoc.CurrentRev, true)
-
-	if value.invalid {
-		return rc.LoadInvalidRevFromBackingStore(ctx, value.key, bucketDoc, includeBody, false)
-	}
 
 	docRev, statEvent, err := value.loadForDoc(ctx, rc.backingStore, bucketDoc, includeBody)
 	rc.statsRecorderFunc(statEvent)
@@ -273,9 +263,10 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision)
 
 func (rc *LRURevisionCache) Invalidate(ctx context.Context, docID, revID string) {
 	value := rc.getValue(docID, revID, false)
-	if value != nil {
-		value.setInvalidFlag()
+	if value == nil {
+		return
 	}
+	rc.removeValue(value)
 }
 
 func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *revCacheValue) {
@@ -403,7 +394,6 @@ func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) 
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 		Deleted:     value.deleted,
 		Removed:     value.removed,
-		Invalid:     value.invalid,
 	}
 	if body != nil {
 		docRev._shallowCopyBody = body.ShallowCopy()
@@ -482,11 +472,5 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 func (value *revCacheValue) updateDelta(toDelta RevisionDelta) {
 	value.lock.Lock()
 	value.delta = &toDelta
-	value.lock.Unlock()
-}
-
-func (value *revCacheValue) setInvalidFlag() {
-	value.lock.Lock()
-	value.invalid = true
 	value.lock.Unlock()
 }
