@@ -209,7 +209,12 @@ func (lcc *ConsoleLoggerConfig) init() error {
 	if lcc.CollationBufferSize == nil {
 		bufferSize := 0
 		if *lcc.LogLevel >= LevelInfo {
-			bufferSize = defaultConsoleLoggerCollateBufferSize
+			if lcc.FileOutput != "" {
+				// increase buffer size for file output
+				bufferSize = defaultFileLoggerCollateBufferSize
+			} else {
+				bufferSize = defaultConsoleLoggerCollateBufferSize
+			}
 		}
 		lcc.CollationBufferSize = &bufferSize
 	}
