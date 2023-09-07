@@ -495,7 +495,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
 
-		base.InfofCtx(h.ctx(), base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
+		base.DebugfCtx(h.ctx(), base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
 	} else {
 		// If admin auth is not enabled we should set any responsePermissions to true so that any handlers checking for
 		// these still pass
