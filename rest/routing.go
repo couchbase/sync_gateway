@@ -350,6 +350,7 @@ func CreateMetricRouter(sc *ServerContext) *mux.Router {
 	r.StrictSlash(true)
 	r.Handle("/_ping", makeSilentHandler(sc, publicPrivs, nil, nil, (*handler).handlePing)).Methods("GET", "HEAD")
 
+	r.Handle("/metrics", makeSilentHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
 	r.Handle("/_metrics", makeSilentHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
 	r.Handle(kDebugURLPathPrefix, makeSilentHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleExpvar)).Methods("GET")
 
