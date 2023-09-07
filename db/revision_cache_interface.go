@@ -46,10 +46,8 @@ type RevisionCache interface {
 	// Update will remove existing value and re-create new one
 	Upsert(ctx context.Context, docRev DocumentRevision)
 
-	// Invalidate marks a revision in the cache as invalid. This is used to call into LoadInvalidRevFromBackingStore in LRU.
-	// Marked revision denotes that this value should not be used and should be replaced. Used in the event of an user
-	// xattr only update where there is no revision change.
-	Invalidate(ctx context.Context, docID, revID string)
+	// Remove eliminates a revision in the cache.
+	Remove(docID, revID string)
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
 	UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta)

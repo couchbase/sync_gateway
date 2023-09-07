@@ -446,7 +446,7 @@ func TestConcurrentLoad(t *testing.T) {
 
 }
 
-func TestInvalidate(t *testing.T) {
+func TestRevisionCacheRemove(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
@@ -459,7 +459,7 @@ func TestInvalidate(t *testing.T) {
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.Equal(t, int64(0), db.DbStats.Cache().RevisionCacheMisses.Value())
 
-	collection.revisionCache.Invalidate(base.TestCtx(t), "doc", rev1id)
+	collection.revisionCache.Remove("doc", rev1id)
 
 	docRev, err = collection.revisionCache.Get(base.TestCtx(t), "doc", rev1id, true, true)
 	assert.NoError(t, err)
