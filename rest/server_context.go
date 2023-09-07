@@ -711,7 +711,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		return nil, err
 	}
 
-	ctx = base.DatabaseLogCtx(ctx, dbName)
+	ctx = base.DatabaseLogCtx(ctx, dbName, contextOptions.LoggingConfig.Console)
 
 	contextOptions.UseViews = useViews
 
