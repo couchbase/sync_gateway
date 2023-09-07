@@ -406,7 +406,6 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		Continuous:     opts.continuous,
 		ActiveOnly:     opts.activeOnly,
 		Revocations:    opts.revocations,
-		LoggingCtx:     bh.loggingCtx,
 		clientType:     opts.clientType,
 		ChangesCtx:     opts.changesCtx,
 		RequestPlusSeq: opts.requestPlusSeq,

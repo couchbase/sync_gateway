@@ -710,6 +710,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if err != nil {
 		return nil, err
 	}
+
+	ctx = base.DatabaseLogCtx(ctx, dbName)
+
 	contextOptions.UseViews = useViews
 
 	javascriptTimeout := getJavascriptTimeout(&config.DbConfig)
@@ -725,9 +728,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				Collections: make(map[string]db.CollectionOptions, len(scopeCfg.Collections)),
 			}
 			for collName, collCfg := range scopeCfg.Collections {
+				ctx := base.CollectionLogCtx(ctx, collName)
+
 				var importFilter *db.ImportFilterFunction
 				if collCfg.ImportFilter != nil {
-					importFilter = db.NewImportFilterFunction(*collCfg.ImportFilter, javascriptTimeout)
+					importFilter = db.NewImportFilterFunction(ctx, *collCfg.ImportFilter, javascriptTimeout)
 				}
 
 				contextOptions.Scopes[scopeName].Collections[collName] = db.CollectionOptions{
@@ -741,7 +746,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// Set up default import filter
 		var importFilter *db.ImportFilterFunction
 		if config.ImportFilter != nil {
-			importFilter = db.NewImportFilterFunction(*config.ImportFilter, javascriptTimeout)
+			importFilter = db.NewImportFilterFunction(ctx, *config.ImportFilter, javascriptTimeout)
 		}
 
 		contextOptions.Scopes = map[string]db.ScopeOptions{
@@ -1661,13 +1666,16 @@ func (sc *ServerContext) initializeGoCBAgent(ctx context.Context) (*gocbcore.Age
 			sc.Config.Bootstrap.Server, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password,
 			sc.Config.Bootstrap.X509CertPath, sc.Config.Bootstrap.X509KeyPath, sc.Config.Bootstrap.CACertPath, sc.Config.Bootstrap.ServerTLSSkipVerify)
 		if err != nil {
-			base.InfofCtx(ctx, base.KeyConfig, "Couldn't initialize cluster agent: %v - will retry...", err)
+			// since we're starting up - let's be verbose (on console) about these retries happening ... otherwise it looks like nothing is happening ...
+			base.ConsolefCtx(ctx, base.LevelInfo, base.KeyConfig, "Couldn't initialize cluster agent: %v - will retry...", err)
 			return true, err, nil
 		}
 
 		return false, nil, agent
 	}, base.CreateSleeperFunc(27, 1000)) // ~2 mins total - 5 second gocb WaitUntilReady timeout and 1 second interval
 	if err != nil {
+		// warn and bubble up error for further handling
+		base.ConsolefCtx(ctx, base.LevelWarn, base.KeyConfig, "Giving up initializing cluster agent after retry: %v", err)
 		return nil, err
 	}
 
@@ -1921,10 +1929,8 @@ func (sc *ServerContext) Database(ctx context.Context, name string) *db.Database
 }
 
 func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Context) error {
-	base.InfofCtx(ctx, base.KeyAll, "initializing server connections")
-	defer func() {
-		base.InfofCtx(ctx, base.KeyAll, "finished initializing server connections")
-	}()
+	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Initializing server connections...")
+
 	goCBAgent, err := sc.initializeGoCBAgent(ctx)
 	if err != nil {
 		return err
@@ -2001,6 +2007,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 		}
 	}
 
+	base.InfofCtx(ctx, base.KeyAll, "Finished initializing server connections")
 	return nil
 }
 

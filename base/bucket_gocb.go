@@ -107,9 +107,9 @@ func putDDocForTombstones(name string, payload []byte, capiEps []string, client 
 
 // QueryBucketItemCount uses a request plus query to get the number of items in a bucket, as the REST API can be slow to update its value.
 // Requires a primary index on the bucket.
-func QueryBucketItemCount(n1qlStore N1QLStore) (itemCount int, err error) {
+func QueryBucketItemCount(ctx context.Context, n1qlStore N1QLStore) (itemCount int, err error) {
 	statement := fmt.Sprintf("SELECT COUNT(1) AS count FROM %s", KeyspaceQueryToken)
-	r, err := n1qlStore.Query(statement, nil, RequestPlus, true)
+	r, err := n1qlStore.Query(ctx, statement, nil, RequestPlus, true)
 	if err != nil {
 		return -1, err
 	}

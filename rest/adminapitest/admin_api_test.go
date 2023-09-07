@@ -2620,7 +2620,7 @@ func TestConfigEndpoint(t *testing.T) {
 			base.InitializeMemoryLoggers()
 			tempDir := os.TempDir()
 			test := rest.DefaultStartupConfig(tempDir)
-			err := test.SetupAndValidateLogging()
+			err := test.SetupAndValidateLogging(base.TestCtx(t))
 			assert.NoError(t, err)
 
 			rt := rest.NewRestTester(t, nil)
@@ -2721,7 +2721,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	base.InitializeMemoryLoggers()
 	tempDir := os.TempDir()
 	test := rest.DefaultStartupConfig(tempDir)
-	err := test.SetupAndValidateLogging()
+	err := test.SetupAndValidateLogging(base.TestCtx(t))
 	assert.NoError(t, err)
 
 	rt := rest.NewRestTester(t, nil)

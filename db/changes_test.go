@@ -56,7 +56,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 			db, ctx := setupTestDB(t)
 			defer db.Close(ctx)
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
-			collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+			collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 			auth := db.Authenticator(base.TestCtx(t))
 			user, err := auth.NewUser("test", "pass", testCase.userChans)
@@ -102,7 +102,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(base.TestCtx(t))
@@ -212,7 +212,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator(base.TestCtx(t))
@@ -298,7 +298,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator(base.TestCtx(t))

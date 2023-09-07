@@ -76,8 +76,8 @@ func (cl *ClusterOnlyN1QLStore) CreatePrimaryIndex(ctx context.Context, indexNam
 	return CreatePrimaryIndex(ctx, cl, indexName, options)
 }
 
-func (cl *ClusterOnlyN1QLStore) ExplainQuery(statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
-	return ExplainQuery(cl, statement, params)
+func (cl *ClusterOnlyN1QLStore) ExplainQuery(ctx context.Context, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
+	return ExplainQuery(ctx, cl, statement, params)
 }
 
 func (cl *ClusterOnlyN1QLStore) DropIndex(ctx context.Context, indexName string) error {
@@ -105,9 +105,7 @@ func (cl *ClusterOnlyN1QLStore) IndexMetaScopeID() string {
 	return cl.scopeName
 }
 
-func (cl *ClusterOnlyN1QLStore) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
-	logCtx := context.TODO()
-
+func (cl *ClusterOnlyN1QLStore) Query(ctx context.Context, statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
 	keyspaceStatement := strings.Replace(statement, KeyspaceQueryToken, cl.EscapedKeyspace(), -1)
 
 	n1qlOptions := &gocb.QueryOptions{
@@ -118,7 +116,7 @@ func (cl *ClusterOnlyN1QLStore) Query(statement string, params map[string]interf
 
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
-		TracefCtx(logCtx, KeyQuery, "Executing N1QL query: %v - %+v", UD(keyspaceStatement), UD(params))
+		TracefCtx(ctx, KeyQuery, "Executing N1QL query: %v - %+v", UD(keyspaceStatement), UD(params))
 		queryResults, queryErr := cl.runQuery(keyspaceStatement, n1qlOptions)
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{
@@ -135,19 +133,19 @@ func (cl *ClusterOnlyN1QLStore) Query(statement string, params map[string]interf
 
 		// Non-retry error - return
 		if !isTransientIndexerError(queryErr) {
-			WarnfCtx(logCtx, "Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(keyspaceStatement), UD(params), queryErr)
+			WarnfCtx(ctx, "Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(keyspaceStatement), UD(params), queryErr)
 			return resultsIterator, pkgerrors.WithStack(queryErr)
 		}
 
 		// Indexer error - wait then retry
 		err = queryErr
-		WarnfCtx(logCtx, "Indexer error during query - retry %d/%d after %v.  Error: %v", i, MaxQueryRetries, waitTime, queryErr)
+		WarnfCtx(ctx, "Indexer error during query - retry %d/%d after %v.  Error: %v", i, MaxQueryRetries, waitTime, queryErr)
 		time.Sleep(waitTime)
 
 		waitTime = waitTime * 2
 	}
 
-	WarnfCtx(logCtx, "Exceeded max retries for query when querying index using statement: [%s] parameters: [%+v], err:%v", UD(keyspaceStatement), UD(params), err)
+	WarnfCtx(ctx, "Exceeded max retries for query when querying index using statement: [%s] parameters: [%+v], err:%v", UD(keyspaceStatement), UD(params), err)
 	return nil, err
 }
 

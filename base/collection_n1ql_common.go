@@ -42,9 +42,9 @@ type N1QLStore interface {
 	CreateIndex(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error
 	CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error
 	DropIndex(ctx context.Context, indexName string) error
-	ExplainQuery(statement string, params map[string]interface{}) (plan map[string]interface{}, err error)
+	ExplainQuery(ctx context.Context, statement string, params map[string]interface{}) (plan map[string]interface{}, err error)
 	GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error)
-	Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error)
+	Query(ctx context.Context, statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error)
 	IsErrNoResults(error) bool
 	EscapedKeyspace() string
 	IndexMetaBucketID() string
@@ -66,9 +66,9 @@ type N1QLStore interface {
 	waitUntilQueryServiceReady(timeout time.Duration) error
 }
 
-func ExplainQuery(store N1QLStore, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
+func ExplainQuery(ctx context.Context, store N1QLStore, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
 	explainStatement := fmt.Sprintf("EXPLAIN %s", statement)
-	explainResults, explainErr := store.Query(explainStatement, params, RequestPlus, true)
+	explainResults, explainErr := store.Query(ctx, explainStatement, params, RequestPlus, true)
 
 	if explainErr != nil {
 		return nil, explainErr

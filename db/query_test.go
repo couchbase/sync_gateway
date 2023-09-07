@@ -33,7 +33,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
@@ -85,7 +85,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
@@ -141,7 +141,7 @@ func TestCoveringQueries(t *testing.T) {
 
 	// channels
 	channelsStatement, params := collection.buildChannelsQuery("ABC", 0, 10, 100, false)
-	plan, explainErr := n1QLStore.ExplainQuery(channelsStatement, params)
+	plan, explainErr := n1QLStore.ExplainQuery(ctx, channelsStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for channels query")
 	covered := IsCovered(plan)
 	planJSON, err := base.JSONMarshal(plan)
@@ -150,7 +150,7 @@ func TestCoveringQueries(t *testing.T) {
 
 	// star channel
 	channelStarStatement, params := collection.buildChannelsQuery("*", 0, 10, 100, false)
-	plan, explainErr = n1QLStore.ExplainQuery(channelStarStatement, params)
+	plan, explainErr = n1QLStore.ExplainQuery(ctx, channelStarStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for star channel query")
 	covered = IsCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
@@ -161,7 +161,7 @@ func TestCoveringQueries(t *testing.T) {
 	// in the SELECT.
 	// Including here for ease-of-conversion when we get an indexing enhancement to support covered queries.
 	accessStatement := collection.buildAccessQuery("user1")
-	plan, explainErr = n1QLStore.ExplainQuery(accessStatement, nil)
+	plan, explainErr = n1QLStore.ExplainQuery(ctx, accessStatement, nil)
 	assert.NoError(t, explainErr, "Error generating explain for access query")
 	covered = IsCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
@@ -170,7 +170,7 @@ func TestCoveringQueries(t *testing.T) {
 
 	// roleAccess
 	roleAccessStatement := collection.buildRoleAccessQuery("user1")
-	plan, explainErr = n1QLStore.ExplainQuery(roleAccessStatement, nil)
+	plan, explainErr = n1QLStore.ExplainQuery(ctx, roleAccessStatement, nil)
 	assert.NoError(t, explainErr, "Error generating explain for roleAccess query")
 	covered = IsCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
@@ -261,7 +261,7 @@ func TestAccessQuery(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(
+	collection.ChannelMapper = channels.NewChannelMapper(ctx,
 		`function(doc, oldDoc) {
 	access(doc.accessUser, doc.accessChannel)
 }`,
@@ -310,7 +310,7 @@ func TestRoleAccessQuery(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(
+	collection.ChannelMapper = channels.NewChannelMapper(ctx,
 		`function(doc, oldDoc) {
 	role(doc.accessUser, "role:" + doc.accessChannel)
 }`, db.Options.JavascriptTimeout)
@@ -366,7 +366,7 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 	docIdFlagMap := make(map[string]uint8)
 	var startSeq, endSeq uint64
 	body := Body{"channels": []string{"ABC"}}

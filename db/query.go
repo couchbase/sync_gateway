@@ -381,7 +381,7 @@ func N1QLQueryWithStats(ctx context.Context, dataStore base.DataStore, queryName
 		return nil, errors.New("Cannot perform N1QL query on non-Couchbase bucket.")
 	}
 
-	results, err = n1QLStore.Query(statement, params, consistency, adhoc)
+	results, err = n1QLStore.Query(ctx, statement, params, consistency, adhoc)
 
 	if len(queryName) > 0 {
 		queryStat := dbStats.Query(queryName)

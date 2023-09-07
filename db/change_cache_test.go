@@ -1029,7 +1029,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Write a handful of docs/sequences to the bucket
 	_, _, err := collection.Put(ctx, "key1", Body{"channels": "ABC"})
@@ -1588,7 +1588,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	//  Detect whether the 2nd was ignored using an notifyChange listener callback and make sure it was not added to the ABC channel
 	waitForOnChangeCallback := sync.WaitGroup{}
 	waitForOnChangeCallback.Add(1)
-	db.changeCache.notifyChange = func(chans channels.Set) {
+	db.changeCache.notifyChange = func(_ context.Context, chans channels.Set) {
 		expectedChan := channels.NewID("ABC", collectionID)
 		for ch := range chans {
 			if ch == expectedChan {
@@ -1669,7 +1669,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 	docCount := 0
@@ -1721,7 +1721,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Writes [docCount] documents.  Use wait group (writesDone)to identify when all docs have been written.
 	// Use another waitGroup (writesInProgress) to trigger getChanges midway through writes
@@ -1777,13 +1777,13 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 	collectionID := collection.GetCollectionID()
 
 	// -------- Setup notifyChange callback ----------------
 
 	notifyChannel := make(chan struct{})
-	db.changeCache.notifyChange = func(chans channels.Set) {
+	db.changeCache.notifyChange = func(_ context.Context, chans channels.Set) {
 		expectedChan := channels.NewID("zero", collectionID)
 		if chans.Contains(expectedChan) {
 			notifyChannel <- struct{}{}
@@ -1996,7 +1996,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
 					channel := channels.NewID(fmt.Sprintf("channel_%d", i), collectionID)
-					_, err := changeCache.GetChanges(channel, getChangesOptionsWithZeroSeq())
+					_, err := changeCache.GetChanges(ctx, channel, getChangesOptionsWithZeroSeq())
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()
@@ -2230,7 +2230,7 @@ func BenchmarkDocChanged(b *testing.B) {
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
 					channel := channels.NewID(fmt.Sprintf("channel_%d", i), collectionID)
-					_, err := changeCache.GetChanges(channel, getChangesOptionsWithZeroSeq())
+					_, err := changeCache.GetChanges(ctx, channel, getChangesOptionsWithZeroSeq())
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()

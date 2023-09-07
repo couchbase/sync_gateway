@@ -32,13 +32,13 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	collectionID := GetSingleDatabaseCollection(t, db.DatabaseContext).GetCollectionID()
 
 	// Make channels active
-	_, err := cache.GetChanges(channels.NewID("TestA", collectionID), getChangesOptionsWithCtxOnly())
+	_, err := cache.GetChanges(ctx, channels.NewID("TestA", collectionID), getChangesOptionsWithCtxOnly())
 	require.NoError(t, err)
-	_, err = cache.GetChanges(channels.NewID("TestB", collectionID), getChangesOptionsWithCtxOnly())
+	_, err = cache.GetChanges(ctx, channels.NewID("TestB", collectionID), getChangesOptionsWithCtxOnly())
 	require.NoError(t, err)
-	_, err = cache.GetChanges(channels.NewID("TestC", collectionID), getChangesOptionsWithCtxOnly())
+	_, err = cache.GetChanges(ctx, channels.NewID("TestC", collectionID), getChangesOptionsWithCtxOnly())
 	require.NoError(t, err)
-	_, err = cache.GetChanges(channels.NewID("TestD", collectionID), getChangesOptionsWithCtxOnly())
+	_, err = cache.GetChanges(ctx, channels.NewID("TestD", collectionID), getChangesOptionsWithCtxOnly())
 	require.NoError(t, err)
 
 	// Add some entries to caches, leaving some empty caches
@@ -312,7 +312,7 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 				channelNumber := rand.Intn(channelCount) + 1
 				channel := channels.NewID(fmt.Sprintf("chan_%d", channelNumber), base.DefaultCollectionID)
 				options := getChangesOptionsWithCtxOnly()
-				changes, err := cache.GetChanges(channel, options)
+				changes, err := cache.GetChanges(base.TestCtx(t), channel, options)
 				if len(changes) == 1 {
 					changesSuccessCount++
 				}
@@ -386,7 +386,7 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 				channelNumber := rand.Intn(channelCount) + 1
 				channel := channels.NewID(fmt.Sprintf("chan_%d", channelNumber), base.DefaultCollectionID)
 				options := getChangesOptionsWithCtxOnly()
-				changes, err := cache.GetChanges(channel, options)
+				changes, err := cache.GetChanges(base.TestCtx(t), channel, options)
 				if len(changes) == 1 {
 					changesSuccessCount++
 				}
@@ -446,7 +446,7 @@ func TestChannelCacheBypass(t *testing.T) {
 	for c := 1; c <= channelCount; c++ {
 		channel := channels.NewID(fmt.Sprintf("chan_%d", c), base.DefaultCollectionID)
 		options := getChangesOptionsWithCtxOnly()
-		changes, err := cache.GetChanges(channel, options)
+		changes, err := cache.GetChanges(base.TestCtx(t), channel, options)
 		assert.NoError(t, err, fmt.Sprintf("Error getting changes for channel %q", channel))
 		assert.True(t, len(changes) == 1, "Expected one change per channel")
 	}

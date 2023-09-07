@@ -442,13 +442,13 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	dbContext.EventMgr = NewEventManager(dbContext.terminator)
 
-	dbContext.sequences, err = newSequenceAllocator(metadataStore, dbContext.DbStats.Database(), metaKeys)
+	dbContext.sequences, err = newSequenceAllocator(ctx, metadataStore, dbContext.DbStats.Database(), metaKeys)
 	if err != nil {
 		return nil, err
 	}
 
 	cleanupFunctions = append(cleanupFunctions, func() {
-		dbContext.sequences.Stop()
+		dbContext.sequences.Stop(ctx)
 	})
 
 	// Initialize the active channel counter
@@ -497,7 +497,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		}
 		collectionNameMap := make(map[string]struct{}, len(scope.Collections))
 		for collName, collOpts := range scope.Collections {
-			ctx := base.CollectionLogCtx(ctx, collName)
+			// intentional shadow - we want each collection to have its own context inside this loop body
+			ctx := ctx
+			if !base.IsDefaultCollection(scopeName, collName) {
+				ctx = base.CollectionLogCtx(ctx, collName)
+			}
 			dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 			if err != nil {
 				return nil, err
@@ -586,8 +590,8 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 	// Wait for database background tasks to finish.
 	waitForBGTCompletion(ctx, BGTCompletionMaxWait, context.backgroundTasks, context.Name)
-	context.sequences.Stop()
-	context.mutationListener.Stop()
+	context.sequences.Stop(ctx)
+	context.mutationListener.Stop(ctx)
 	context.changeCache.Stop()
 	// Stop the channel cache and it's background tasks.
 	context.channelCache.Stop()
@@ -708,13 +712,13 @@ func (context *DatabaseContext) IsClosed() bool {
 }
 
 // For testing only!
-func (context *DatabaseContext) RestartListener() error {
-	context.mutationListener.Stop()
+func (context *DatabaseContext) RestartListener(ctx context.Context) error {
+	context.mutationListener.Stop(ctx)
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
 	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID, context.MetadataKeys)
 	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
-	if err := context.mutationListener.Start(context.Bucket, cacheFeedStatsMap.Map, context.Scopes, context.MetadataStore); err != nil {
+	if err := context.mutationListener.Start(ctx, context.Bucket, cacheFeedStatsMap.Map, context.Scopes, context.MetadataStore); err != nil {
 		return err
 	}
 	return nil
@@ -1664,7 +1668,7 @@ func (c *DatabaseCollection) regeneratePrincipalSequences(authr *auth.Authentica
 
 func (c *DatabaseCollection) releaseSequences(ctx context.Context, sequences []uint64) {
 	for _, sequence := range sequences {
-		err := c.sequences().releaseSequence(sequence)
+		err := c.sequences().releaseSequence(ctx, sequence)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error attempting to release sequence %d. Error %v", sequence, err)
 		}
@@ -2139,8 +2143,8 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	}
 
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
-	notifyChange := func(changedChannels channels.Set) {
-		db.mutationListener.Notify(changedChannels)
+	notifyChange := func(ctx context.Context, changedChannels channels.Set) {
+		db.mutationListener.Notify(ctx, changedChannels)
 	}
 
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
@@ -2204,13 +2208,13 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	// Start DCP feed
 	base.InfofCtx(ctx, base.KeyDCP, "Starting mutation feed on bucket %v", base.MD(db.Bucket.GetName()))
 	cacheFeedStatsMap := db.DbStats.Database().CacheFeedMapStats
-	if err := db.mutationListener.Start(db.Bucket, cacheFeedStatsMap.Map, db.Scopes, db.MetadataStore); err != nil {
+	if err := db.mutationListener.Start(ctx, db.Bucket, cacheFeedStatsMap.Map, db.Scopes, db.MetadataStore); err != nil {
 		db.channelCache = nil
 		return err
 	}
 
 	cleanupFunctions = append(cleanupFunctions, func() {
-		db.mutationListener.Stop()
+		db.mutationListener.Stop(ctx)
 	})
 
 	// Get current value of _sync:seq

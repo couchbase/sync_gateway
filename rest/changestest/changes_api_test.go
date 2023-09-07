@@ -3997,7 +3997,7 @@ func TestOneShotGrantTiming(t *testing.T) {
 	require.Len(t, changes.Results, 0)
 
 	// Release the slow sequence and wait for it to be processed over DCP
-	releaseErr := db.ReleaseTestSequence(database, slowSequence)
+	releaseErr := db.ReleaseTestSequence(base.DatabaseLogCtx(base.TestCtx(t), database.Name), database, slowSequence)
 	require.NoError(t, releaseErr)
 	require.NoError(t, rt.WaitForPendingChanges())
 
@@ -4095,7 +4095,7 @@ func TestOneShotGrantRequestPlus(t *testing.T) {
 	require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+2))
 
 	// Release the slow sequence and wait for it to be processed over DCP
-	releaseErr := db.ReleaseTestSequence(database, slowSequence)
+	releaseErr := db.ReleaseTestSequence(base.DatabaseLogCtx(base.TestCtx(t), database.Name), database, slowSequence)
 	require.NoError(t, releaseErr)
 	require.NoError(t, rt.WaitForPendingChanges())
 
@@ -4213,7 +4213,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 	require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+2))
 
 	// Release the slow sequence and wait for it to be processed over DCP
-	releaseErr := db.ReleaseTestSequence(database, slowSequence)
+	releaseErr := db.ReleaseTestSequence(base.DatabaseLogCtx(base.TestCtx(t), database.Name), database, slowSequence)
 	require.NoError(t, releaseErr)
 	require.NoError(t, rt.WaitForPendingChanges())
 

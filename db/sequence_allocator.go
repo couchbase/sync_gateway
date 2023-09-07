@@ -55,7 +55,7 @@ type sequenceAllocator struct {
 	metaKeys                *base.MetadataKeys  // Key generator for sequence and unused sequence documents
 }
 
-func newSequenceAllocator(datastore base.DataStore, dbStatsMap *base.DatabaseStats, metaKeys *base.MetadataKeys) (*sequenceAllocator, error) {
+func newSequenceAllocator(ctx context.Context, datastore base.DataStore, dbStatsMap *base.DatabaseStats, metaKeys *base.MetadataKeys) (*sequenceAllocator, error) {
 	if dbStatsMap == nil {
 		return nil, fmt.Errorf("dbStatsMap parameter must be non-nil")
 	}
@@ -73,22 +73,22 @@ func newSequenceAllocator(datastore base.DataStore, dbStatsMap *base.DatabaseSta
 	s.reserveNotify = make(chan struct{}, 1)
 	go func() {
 		defer base.FatalPanicHandler()
-		s.releaseSequenceMonitor()
+		s.releaseSequenceMonitor(ctx)
 	}()
 	_, err := s.lastSequence() // just reads latest sequence from bucket
 	return s, err
 }
 
-func (s *sequenceAllocator) Stop() {
+func (s *sequenceAllocator) Stop(ctx context.Context) {
 
 	// Trigger stop and release of unused sequences
 	close(s.terminator)
-	s.releaseUnusedSequences()
+	s.releaseUnusedSequences(ctx)
 }
 
 // Release sequence monitor runs in its own goroutine, and releases allocated sequences
 // that aren't used within 'releaseSequenceTimeout'.
-func (s *sequenceAllocator) releaseSequenceMonitor() {
+func (s *sequenceAllocator) releaseSequenceMonitor(ctx context.Context) {
 
 	// Terminator is only checked while in idle state - ensures sequence allocation drains and
 	// unused sequences are released before exiting.
@@ -102,25 +102,25 @@ func (s *sequenceAllocator) releaseSequenceMonitor() {
 			// On timeout, release sequences and return to idle state
 			_ = timer.Reset(s.releaseSequenceWait)
 		case <-timer.C:
-			s.releaseUnusedSequences()
+			s.releaseUnusedSequences(ctx)
 		case <-s.terminator:
-			s.releaseUnusedSequences()
+			s.releaseUnusedSequences(ctx)
 			return
 		}
 	}
 }
 
 // Releases any currently reserved, non-allocated sequences.
-func (s *sequenceAllocator) releaseUnusedSequences() {
+func (s *sequenceAllocator) releaseUnusedSequences(ctx context.Context) {
 	s.mutex.Lock()
 	if s.last == s.max {
 		s.mutex.Unlock()
 		return
 	}
 	if s.last < s.max {
-		err := s.releaseSequenceRange(s.last+1, s.max)
+		err := s.releaseSequenceRange(ctx, s.last+1, s.max)
 		if err != nil {
-			base.WarnfCtx(context.TODO(), "Error returned when releasing sequence range [%d-%d]. Falling back to skipped sequence handling.  Error:%v", s.last+1, s.max, err)
+			base.WarnfCtx(ctx, "Error returned when releasing sequence range [%d-%d]. Falling back to skipped sequence handling.  Error:%v", s.last+1, s.max, err)
 		}
 	}
 	// Reduce batch size for next incr by the unused amount
@@ -231,7 +231,7 @@ func (s *sequenceAllocator) incrementSequence(numToReserve uint64) (max uint64, 
 
 // ReleaseSequence writes an unused sequence document, used to notify sequence buffering that a sequence has been allocated and not used.
 // Sequence is stored as the document body to avoid null doc issues.
-func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
+func (s *sequenceAllocator) releaseSequence(ctx context.Context, sequence uint64) error {
 	key := fmt.Sprintf("%s%d", s.metaKeys.UnusedSeqPrefix(), sequence)
 	body := make([]byte, 8)
 	binary.LittleEndian.PutUint64(body, sequence)
@@ -240,14 +240,14 @@ func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
 		return err
 	}
 	s.dbStats.SequenceReleasedCount.Add(1)
-	base.DebugfCtx(context.TODO(), base.KeyCRUD, "Released unused sequence #%d", sequence)
+	base.DebugfCtx(ctx, base.KeyCRUD, "Released unused sequence #%d", sequence)
 	return nil
 }
 
 // releaseSequenceRange writes a binary document with the key _sync:unusedSeqs:fromSeq:toSeq.
 // fromSeq and toSeq are inclusive (i.e. both fromSeq and toSeq are unused).
 // From and to seq are stored as the document contents to avoid null doc issues.
-func (s *sequenceAllocator) releaseSequenceRange(fromSequence, toSequence uint64) error {
+func (s *sequenceAllocator) releaseSequenceRange(ctx context.Context, fromSequence, toSequence uint64) error {
 	key := s.metaKeys.UnusedSeqRangeKey(fromSequence, toSequence)
 	body := make([]byte, 16)
 	binary.LittleEndian.PutUint64(body[:8], fromSequence)
@@ -257,7 +257,7 @@ func (s *sequenceAllocator) releaseSequenceRange(fromSequence, toSequence uint64
 		return err
 	}
 	s.dbStats.SequenceReleasedCount.Add(int64(toSequence - fromSequence + 1))
-	base.DebugfCtx(context.TODO(), base.KeyCRUD, "Released unused sequences #%d-#%d", fromSequence, toSequence)
+	base.DebugfCtx(ctx, base.KeyCRUD, "Released unused sequences #%d-#%d", fromSequence, toSequence)
 	return nil
 }
 
