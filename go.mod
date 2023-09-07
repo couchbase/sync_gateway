@@ -31,7 +31,7 @@ require (
 	github.com/samuel/go-metrics v0.0.0-20150819231912-7ccf3e0e1fb1
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/stretchr/testify v1.8.4
-	golang.org/x/crypto v0.11.0
+	golang.org/x/crypto v0.13.0
 	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b
 	golang.org/x/net v0.13.0
 	golang.org/x/oauth2 v0.0.0-20220718184931-c8730f7fcb92
@@ -70,8 +70,8 @@ require (
 	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/sys v0.10.0 // indirect
-	golang.org/x/text v0.11.0 // indirect
+	golang.org/x/sys v0.12.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/couchbase/gocb.v1 v1.6.7 // indirect
