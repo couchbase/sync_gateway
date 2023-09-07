@@ -150,7 +150,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 
 	// If this is a binary document we can ignore, but update checkpoint to avoid reprocessing upon restart
 	if event.DataType == base.MemcachedDataTypeRaw {
-		base.DebugfCtx(il.loggingCtx, base.KeyImport, "Ignoring binary mutation event for %s.", base.UD(event.Key))
+		base.InfofCtx(il.loggingCtx, base.KeyImport, "Ignoring binary mutation event for %s.", base.UD(event.Key))
 		return true
 	}
 

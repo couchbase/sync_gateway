@@ -557,5 +557,29 @@ func TestImportNonZeroStart(t *testing.T) {
 	doc, err := collection.GetDocument(base.TestCtx(t), doc1, DocUnmarshalAll)
 	require.NoError(t, err)
 	require.Equal(t, revID1, doc.SyncData.CurrentRev)
+}
 
+// TestImportInvalidMetadata tests triggering an import error if the metadata is unmarshalable
+func TestImportInvalidMetadata(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+
+	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	// make sure no documents are imported
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+
+	// write a document with inline sync metadata that is unmarshalable, triggering an import error
+	// can't write a document with invalid sync metadata as an xattr, so rely on legacy behavior
+	_, err := bucket.GetSingleDataStore().Add("doc1", 0, `{"foo" : "bar", "_sync" : 1 }`)
+	require.NoError(t, err)
+
+	_, ok := base.WaitForStat(func() int64 {
+		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
+	}, 1)
+	require.True(t, ok)
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
 }
