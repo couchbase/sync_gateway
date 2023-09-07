@@ -101,7 +101,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 
 	// If this is a binary document we can ignore, but update checkpoint to avoid reprocessing upon restart
 	if event.DataType == base.MemcachedDataTypeRaw {
-		base.InfofCtx(il.loggingCtx, base.KeyImport, "Ignoring binary mutation event for %s.", base.UD(event.Key))
+		base.Infof(base.KeyImport, "Ignoring binary mutation event for %s.", base.UD(event.Key))
 		return true
 	}
 
@@ -119,7 +119,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 		} else {
 			base.Warnf("Found sync metadata, but unable to unmarshal for feed document %q.  Will not be imported.  Error: %v", base.UD(event.Key), err)
 		}
-		il.stats.SharedBucketImport().ImportErrorCount.Add(1)
+		il.database.DbStats.SharedBucketImport().ImportErrorCount.Add(1)
 		return
 	}
 

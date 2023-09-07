@@ -480,11 +480,8 @@ func TestImportInvalidMetadata(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled and in integration mode")
 	}
 
-	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
-
-	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
-	defer db.Close(ctx)
+	db := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{})
+	defer db.Close()
 
 	// make sure no documents are imported
 	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
@@ -492,7 +489,7 @@ func TestImportInvalidMetadata(t *testing.T) {
 
 	// write a document with inline sync metadata that is unmarshalable, triggering an import error
 	// can't write a document with invalid sync metadata as an xattr, so rely on legacy behavior
-	_, err := bucket.GetSingleDataStore().Add("doc1", 0, `{"foo" : "bar", "_sync" : 1 }`)
+	_, err := db.Bucket.Add("doc1", 0, `{"foo" : "bar", "_sync" : 1 }`)
 	require.NoError(t, err)
 
 	_, ok := base.WaitForStat(func() int64 {
