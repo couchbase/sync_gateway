@@ -934,7 +934,7 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 
 	if !atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOnline) {
 		// 2nd atomic might end up being Starting here if there's a legitimate race, but it's the most we can do for CAS
-		panic(fmt.Sprintf("database state wasn't Starting during asyncDatabaseOnline Online transition... now %q", db.RunStateString[atomic.LoadUint32(&dbc.State)]))
+		base.PanicfCtx(ctx, "database state wasn't Starting during asyncDatabaseOnline Online transition... now %q", db.RunStateString[atomic.LoadUint32(&dbc.State)])
 	}
 
 	stateChangeMsg := "DB loaded from config"
