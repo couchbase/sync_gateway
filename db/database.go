@@ -402,7 +402,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
-	dbStats, statsError := initDatabaseStats(dbName, autoImport, options)
+	dbStats, statsError := initDatabaseStats(ctx, dbName, autoImport, options)
 	if statsError != nil {
 		return nil, statsError
 	}
@@ -411,7 +411,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// but in db package tests this is unlikely to be set. In this case we'll use the existing bucket connection to store metadata.
 	metadataStore := options.MetadataStore
 	if metadataStore == nil {
-		base.DebugfCtx(ctx, base.KeyConfig, "MetadataStore was nil - falling back to use existing bucket connection %q for database %q", bucket.GetName(), dbName)
+		base.DebugfCtx(ctx, base.KeyAll, "MetadataStore was nil - falling back to use existing bucket connection %q for database %q", bucket.GetName(), dbName)
 		metadataStore = bucket.DefaultDataStore()
 	}
 
@@ -1966,7 +1966,7 @@ func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
 	context.Options.UnsupportedOptions.UserViews.Enabled = &value
 }
 
-func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOptions) (*base.DbStats, error) {
+func initDatabaseStats(ctx context.Context, dbName string, autoImport bool, options DatabaseContextOptions) (*base.DbStats, error) {
 
 	enabledDeltaSync := options.DeltaSyncOptions.Enabled
 	enabledImport := autoImport || options.EnableXattr
@@ -2018,7 +2018,7 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 
 	var collections []string
 	if len(options.Scopes) == 0 {
-		base.DebugfCtx(context.TODO(), base.KeyConfig, "No named collections defined for database %q, using default collection for stats", base.MD(dbName))
+		base.DebugfCtx(ctx, base.KeyAll, "No named collections defined for database %q, using default collection for stats", base.MD(dbName))
 		collections = append(collections, base.DefaultScope+"."+base.DefaultCollection)
 	} else {
 		for scopeName, scope := range options.Scopes {
