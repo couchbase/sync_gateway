@@ -136,7 +136,7 @@ func (listener *changeListener) StartMutationFeed(ctx context.Context, bucket ba
 				}
 			}()
 			defer base.FatalPanicHandler()
-			defer listener.notifyStopping()
+			defer listener.notifyStopping(ctx)
 			for event := range listener.tapFeed.Events() {
 				event.TimeReceived = time.Now()
 				listener.ProcessFeedEvent(event)
@@ -258,7 +258,7 @@ func (listener *changeListener) notifyKey(ctx context.Context, key string) {
 }
 
 // Changes the counter, notifying waiting clients.
-func (listener *changeListener) NotifyCheckForTermination(keys base.Set) {
+func (listener *changeListener) NotifyCheckForTermination(ctx context.Context, keys base.Set) {
 	if len(keys) == 0 {
 		return
 	}
@@ -272,25 +272,25 @@ func (listener *changeListener) NotifyCheckForTermination(keys base.Set) {
 		listener.terminateCheckCounter = 0
 	}
 
-	base.DebugfCtx(context.TODO(), base.KeyChanges, "Notifying to check for _changes feed termination")
+	base.DebugfCtx(ctx, base.KeyChanges, "Notifying to check for _changes feed termination")
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
 
-func (listener *changeListener) notifyStopping() {
+func (listener *changeListener) notifyStopping(ctx context.Context) {
 	listener.tapNotifier.L.Lock()
 	listener.counter = 0
 	listener.keyCounts = map[string]uint64{}
-	base.DebugfCtx(context.TODO(), base.KeyChanges, "Notifying that changeListener is stopping")
+	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that changeListener is stopping")
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
 
 // Waits until either the counter, or terminateCheckCounter exceeds the given value. Returns the new counters.
-func (listener *changeListener) Wait(keys []string, counter uint64, terminateCheckCounter uint64) (uint64, uint64) {
+func (listener *changeListener) Wait(ctx context.Context, keys []string, counter uint64, terminateCheckCounter uint64) (uint64, uint64) {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
-	base.DebugfCtx(context.TODO(), base.KeyChanges, "No new changes to send to change listener.  Waiting for %q's count to pass %d",
+	base.DebugfCtx(ctx, base.KeyChanges, "No new changes to send to change listener.  Waiting for %q's count to pass %d",
 		base.MD(listener.bucketName), counter)
 
 	for {
@@ -379,11 +379,11 @@ func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user a
 }
 
 // Waits for the changeListener's counter to change from the last time Wait() was called.
-func (waiter *ChangeWaiter) Wait() uint32 {
+func (waiter *ChangeWaiter) Wait(ctx context.Context) uint32 {
 
 	lastTerminateCheckCounter := waiter.lastTerminateCheckCounter
 	lastCounter := waiter.lastCounter
-	waiter.lastCounter, waiter.lastTerminateCheckCounter = waiter.listener.Wait(waiter.keys, waiter.lastCounter, waiter.lastTerminateCheckCounter)
+	waiter.lastCounter, waiter.lastTerminateCheckCounter = waiter.listener.Wait(ctx, waiter.keys, waiter.lastCounter, waiter.lastTerminateCheckCounter)
 	if waiter.userKeys != nil {
 		waiter.lastUserCount = waiter.listener.CurrentCount(waiter.userKeys)
 	}

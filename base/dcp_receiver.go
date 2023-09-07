@@ -10,16 +10,11 @@ package base
 
 import (
 	"context"
-	"crypto/tls"
-	"errors"
 	"expvar"
 
-	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
-	pkgerrors "github.com/pkg/errors"
-	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
 // Memcached binary protocol datatype bit flags (https://github.com/couchbase/memcached/blob/master/docs/BinaryProtocol.md#data-types),
@@ -40,10 +35,10 @@ type DCPReceiver struct {
 	*DCPCommon
 }
 
-func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, checkpointPrefix string, metaKeys *MetadataKeys) (cbdatasource.Receiver, context.Context, error) {
+func NewDCPReceiver(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, checkpointPrefix string, metaKeys *MetadataKeys) (cbdatasource.Receiver, context.Context, error) {
 
 	metadataStore := bucket.DefaultDataStore()
-	dcpCommon, err := NewDCPCommon(context.TODO(), callback, bucket, metadataStore, maxVbNo, persistCheckpoints, dbStats, feedID, checkpointPrefix, metaKeys)
+	dcpCommon, err := NewDCPCommon(ctx, callback, bucket, metadataStore, maxVbNo, persistCheckpoints, dbStats, feedID, checkpointPrefix, metaKeys)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -209,169 +204,4 @@ func (nph NoPasswordAuthHandler) GetCredentials() (username string, password str
 	_, _, bucketname = nph.Handler.GetCredentials()
 
 	return "", "", bucketname
-}
-
-// This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
-// bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
-func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metaKeys *MetadataKeys) error {
-
-	connSpec, err := gocbconnstr.Parse(spec.Server)
-	if err != nil {
-		return err
-	}
-
-	// Recommended usage of cbdatasource is to let it manage it's own dedicated connection, so we're not
-	// reusing the bucket connection we've already established.
-	urls, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server, &connSpec)
-
-	if errConvertServerSpec != nil {
-		return errConvertServerSpec
-	}
-
-	poolName := DefaultPool
-	bucketName := spec.BucketName
-
-	vbucketIdsArr := []uint16(nil) // nil means get all the vbuckets.
-
-	maxVbno, err := bucket.GetMaxVbno()
-	if err != nil {
-		return err
-	}
-
-	persistCheckpoints := false
-	if args.Backfill == sgbucket.FeedResume {
-		persistCheckpoints = true
-	}
-
-	feedID := args.ID
-	if feedID == "" {
-		InfofCtx(context.TODO(), KeyDCP, "DCP feed started without feedID specified - defaulting to %s", DCPCachingFeedID)
-		feedID = DCPCachingFeedID
-	}
-	receiver, loggingCtx, err := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, dbStats, feedID, args.CheckpointPrefix, metaKeys)
-	if err != nil {
-		return err
-	}
-
-	var dcpReceiver *DCPReceiver
-	switch v := receiver.(type) {
-	case *DCPReceiver:
-		dcpReceiver = v
-	case *DCPLoggingReceiver:
-		dcpReceiver = v.rec
-	default:
-		return errors.New("NewDCPReceiver returned unexpected receiver implementation")
-	}
-
-	// Initialize the feed based on the backfill type
-	_, feedInitErr := dcpReceiver.initFeed(args.Backfill)
-	if feedInitErr != nil {
-		return feedInitErr
-	}
-
-	dataSourceOptions := CopyDefaultBucketDatasourceOptions()
-	if spec.UseXattrs {
-		dataSourceOptions.IncludeXAttrs = true
-	}
-
-	dataSourceOptions.Logf = func(fmt string, v ...interface{}) {
-		DebugfCtx(loggingCtx, KeyDCP, fmt, v...)
-	}
-
-	dataSourceOptions.Name, err = GenerateDcpStreamName(feedID)
-	InfofCtx(loggingCtx, KeyDCP, "DCP feed starting with name %s", dataSourceOptions.Name)
-	if err != nil {
-		return pkgerrors.Wrap(err, "unable to generate DCP stream name")
-	}
-
-	auth := spec.Auth
-
-	// If using client certificate for authentication, configure go-couchbase for cbdatasource's initial
-	// connection to retrieve cluster configuration.  go-couchbase doesn't support handling
-	// x509 auth and root ca verification as separate concerns.
-	if spec.Certpath != "" && spec.Keypath != "" {
-		couchbase.SetCertFile(spec.Certpath)
-		couchbase.SetKeyFile(spec.Keypath)
-		auth = NoPasswordAuthHandler{Handler: spec.Auth}
-		couchbase.SetRootFile(spec.CACertPath)
-		couchbase.SetSkipVerify(false)
-	}
-
-	if spec.IsTLS() {
-		dataSourceOptions.TLSConfig = func() *tls.Config {
-			return spec.TLSConfig()
-		}
-	}
-
-	networkType := getNetworkTypeFromConnSpec(connSpec)
-	InfofCtx(loggingCtx, KeyDCP, "Using network type: %s", networkType)
-
-	// default (aka internal) networking is handled by cbdatasource, so we can avoid the shims altogether in this case, for all other cases we need shims to remap hosts.
-	if networkType != clusterNetworkDefault {
-		// A lookup of host dest to external alternate address hostnames
-		dataSourceOptions.ConnectBucket, dataSourceOptions.Connect, dataSourceOptions.ConnectTLS = alternateAddressShims(loggingCtx, spec.IsTLS(), connSpec.Addresses, networkType)
-	}
-
-	DebugfCtx(loggingCtx, KeyDCP, "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", MD(urls), MD(poolName), MD(bucketName))
-
-	bds, err := cbdatasource.NewBucketDataSource(
-		urls,
-		poolName,
-		bucketName,
-		"",
-		vbucketIdsArr,
-		auth,
-		dcpReceiver,
-		dataSourceOptions,
-	)
-
-	if err != nil {
-		return pkgerrors.WithStack(RedactErrorf("Error connecting to new bucket cbdatasource.  FeedID:%s URLs:%s, pool:%s, bucket:%s.  Error: %v", feedID, MD(urls), MD(poolName), MD(bucketName), err))
-	}
-
-	if err = bds.Start(); err != nil {
-		return pkgerrors.WithStack(RedactErrorf("Error starting bucket cbdatasource.  FeedID:%s URLs:%s, pool:%s, bucket:%s.  Error: %v", feedID, MD(urls), MD(poolName), MD(bucketName), err))
-	}
-
-	// Close the data source if feed terminator is closed
-	if args.Terminator != nil {
-		go func() {
-			<-args.Terminator
-			TracefCtx(loggingCtx, KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(bucketName), feedID)
-			if err := bds.Close(); err != nil {
-				DebugfCtx(loggingCtx, KeyDCP, "Error closing DCP Feed [%s-%s] based on termination notification, Error: %v", MD(bucketName), feedID, err)
-			}
-			if args.DoneChan != nil {
-				close(args.DoneChan)
-			}
-		}()
-	}
-
-	return nil
-
-}
-
-// CopyDefaultBucketDatasourceOptions makes a copy of cbdatasource.DefaultBucketDataSourceOptions.
-// DeepCopyInefficient can't be used here due to function definitions present on BucketDataSourceOptions (ConnectBucket, etc)
-func CopyDefaultBucketDatasourceOptions() *cbdatasource.BucketDataSourceOptions {
-	return &cbdatasource.BucketDataSourceOptions{
-		ClusterManagerBackoffFactor: cbdatasource.DefaultBucketDataSourceOptions.ClusterManagerBackoffFactor,
-		ClusterManagerSleepInitMS:   cbdatasource.DefaultBucketDataSourceOptions.ClusterManagerSleepInitMS,
-		ClusterManagerSleepMaxMS:    cbdatasource.DefaultBucketDataSourceOptions.ClusterManagerSleepMaxMS,
-
-		DataManagerBackoffFactor: cbdatasource.DefaultBucketDataSourceOptions.DataManagerBackoffFactor,
-		DataManagerSleepInitMS:   cbdatasource.DefaultBucketDataSourceOptions.DataManagerSleepInitMS,
-		DataManagerSleepMaxMS:    cbdatasource.DefaultBucketDataSourceOptions.DataManagerSleepMaxMS,
-
-		FeedBufferSizeBytes:    cbdatasource.DefaultBucketDataSourceOptions.FeedBufferSizeBytes,
-		FeedBufferAckThreshold: cbdatasource.DefaultBucketDataSourceOptions.FeedBufferAckThreshold,
-
-		NoopTimeIntervalSecs: cbdatasource.DefaultBucketDataSourceOptions.NoopTimeIntervalSecs,
-
-		TraceCapacity: cbdatasource.DefaultBucketDataSourceOptions.TraceCapacity,
-
-		PingTimeoutMS: cbdatasource.DefaultBucketDataSourceOptions.PingTimeoutMS,
-
-		IncludeXAttrs: cbdatasource.DefaultBucketDataSourceOptions.IncludeXAttrs,
-	}
 }

@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -63,7 +64,7 @@ func (h *handler) handleCreateDB() error {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
-		version, err := GenerateDatabaseConfigVersionID("", config)
+		version, err := GenerateDatabaseConfigVersionID(h.ctx(), "", config)
 		if err != nil {
 			return err
 		}
@@ -87,7 +88,7 @@ func (h *handler) handleCreateDB() error {
 
 		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 		bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
-		if err := config.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+		if err := config.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 			return err
 		}
 
@@ -151,7 +152,7 @@ func (h *handler) handleCreateDB() error {
 		h.server.dbConfigs[dbName].cfgCas = cas
 	} else {
 		// Intentionally pass in an empty BootstrapConfig to avoid inheriting any credentials or server when running with a legacy config (CBG-1764)
-		if err := config.setup(dbName, BootstrapConfig{}, nil, nil, false); err != nil {
+		if err := config.setup(h.ctx(), dbName, BootstrapConfig{}, nil, nil, false); err != nil {
 			return err
 		}
 
@@ -169,12 +170,12 @@ func (h *handler) handleCreateDB() error {
 
 // getAuthScopeHandleCreateDB is used in the router to supply an auth scope for the admin api auth. Takes the JSON body
 // from the payload, pulls out bucket and returns this as the auth scope.
-func getAuthScopeHandleCreateDB(bodyJSON []byte) (string, error) {
+func getAuthScopeHandleCreateDB(ctx context.Context, bodyJSON []byte) (string, error) {
 	var body struct {
 		Bucket string `json:"bucket"`
 	}
 	reader := bytes.NewReader(bodyJSON)
-	err := DecodeAndSanitiseConfig(reader, &body, false)
+	err := DecodeAndSanitiseConfig(ctx, reader, &body, false)
 	if err != nil {
 		return "", err
 	}
@@ -291,7 +292,7 @@ func (h *handler) handleGetDbConfig() error {
 	}
 
 	var err error
-	responseConfig, err = responseConfig.Redacted()
+	responseConfig, err = responseConfig.Redacted(h.ctx())
 	if err != nil {
 		return err
 	}
@@ -350,7 +351,7 @@ func (h *handler) handleGetConfig() error {
 				return err
 			}
 
-			databaseMap[dbName], err = dbConfig.Redacted()
+			databaseMap[dbName], err = dbConfig.Redacted(h.ctx())
 			if err != nil {
 				return err
 			}
@@ -370,7 +371,7 @@ func (h *handler) handleGetConfig() error {
 			dbConfig.Replications = make(map[string]*db.ReplicationConfig, len(replications))
 
 			for replicationName, replicationConfig := range replications {
-				dbConfig.Replications[replicationName] = replicationConfig.ReplicationConfig.Redacted()
+				dbConfig.Replications[replicationName] = replicationConfig.ReplicationConfig.Redacted(h.ctx())
 			}
 		}
 
@@ -435,7 +436,7 @@ func (h *handler) handlePutConfig() error {
 				testMap[key] = true
 			}
 
-			base.UpdateLogKeys(testMap, true)
+			base.UpdateLogKeys(h.ctx(), testMap, true)
 		}
 	}
 
@@ -554,7 +555,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		}
 
 		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
-		if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
+		if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
 			return err
 		}
 		if err := h.server.ReloadDatabaseWithConfig(contextNoCancel, *updatedDbConfig, false); err != nil {
@@ -587,7 +588,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
-		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -603,7 +604,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		tmpConfig.cfgCas = bucketDbConfig.cfgCas
 		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 		bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
-		if err := tmpConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+		if err := tmpConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 			return nil, err
 		}
 
@@ -693,7 +694,7 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 			bucketDbConfig.Sync = nil
 		}
 
-		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -711,7 +712,7 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 	dbName := h.db.Name
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
-	if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+	if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 		return err
 	}
 
@@ -759,7 +760,7 @@ func (h *handler) handlePutCollectionConfigSync() error {
 			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
-		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -775,7 +776,7 @@ func (h *handler) handlePutCollectionConfigSync() error {
 
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
-	if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+	if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 		return err
 	}
 
@@ -854,7 +855,7 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 			bucketDbConfig.ImportFilter = nil
 		}
 
-		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -870,7 +871,7 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
-	if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+	if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 		return err
 	}
 
@@ -919,7 +920,7 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
-		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -935,7 +936,7 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
-	if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+	if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 		return err
 	}
 
@@ -959,7 +960,7 @@ func (h *handler) handleDeleteDB() error {
 	var bucket string
 
 	if h.server.persistentConfig {
-		bucket, _ = h.server.bucketNameFromDbName(dbName)
+		bucket, _ = h.server.bucketNameFromDbName(h.ctx(), dbName)
 		err := h.server.BootstrapContext.DeleteConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't remove database %q from bucket %q: %s", base.MD(dbName), base.MD(bucket), err.Error())
@@ -1005,7 +1006,7 @@ func (h *handler) handleGetRawDoc() error {
 		if doc.IsDeleted() {
 			rawBytes = []byte(db.DeletedDocument)
 		} else {
-			docRawBodyBytes, err := doc.BodyBytes()
+			docRawBodyBytes, err := doc.BodyBytes(h.ctx())
 			if err != nil {
 				return err
 			}
@@ -1095,10 +1096,10 @@ func (h *handler) handleGetStatus() error {
 
 		// Don't bother trying to lookup LastSequence() if offline
 		if runState != db.RunStateString[db.DBOffline] {
-			lastSeq, _ = database.LastSequence()
+			lastSeq, _ = database.LastSequence(h.ctx())
 		}
 
-		replicationsStatus, err := database.SGReplicateMgr.GetReplicationStatusAll(db.DefaultReplicationStatusOptions())
+		replicationsStatus, err := database.SGReplicateMgr.GetReplicationStatusAll(h.ctx(), db.DefaultReplicationStatusOptions())
 		if err != nil {
 			return err
 		}
@@ -1107,7 +1108,7 @@ func (h *handler) handleGetStatus() error {
 			return err
 		}
 		for _, replication := range cluster.Replications {
-			replication.ReplicationConfig = *replication.Redacted()
+			replication.ReplicationConfig = *replication.Redacted(h.ctx())
 		}
 
 		status.Databases[database.Name] = DatabaseStatus{
@@ -1177,7 +1178,7 @@ func (h *handler) handleSetLogging() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid JSON or non-boolean values for log key map")
 	}
 
-	base.UpdateLogKeys(keys, h.rq.Method == "PUT")
+	base.UpdateLogKeys(h.ctx(), keys, h.rq.Method == "PUT")
 	return nil
 }
 
@@ -1568,7 +1569,7 @@ func (h *handler) handlePurge() error {
 	}
 
 	if len(docIDs) > 0 {
-		count := h.collection.RemoveFromChangeCache(docIDs, startTime)
+		count := h.collection.RemoveFromChangeCache(h.ctx(), docIDs, startTime)
 		base.DebugfCtx(h.ctx(), base.KeyCache, "Purged %d items from caches", count)
 	}
 
@@ -1591,7 +1592,7 @@ func (h *handler) getReplications() error {
 		} else {
 			replication.AssignedNode = replication.AssignedNode + " (non-local)"
 		}
-		replication.ReplicationConfig = *replication.Redacted()
+		replication.ReplicationConfig = *replication.Redacted(h.ctx())
 	}
 
 	h.writeJSON(replications)
@@ -1608,7 +1609,7 @@ func (h *handler) getReplication() error {
 		return err
 	}
 
-	h.writeJSON(replication.Redacted())
+	h.writeJSON(replication.Redacted(h.ctx()))
 	return nil
 }
 
@@ -1633,7 +1634,7 @@ func (h *handler) putReplication() error {
 		replicationConfig.ID = replicationID
 	}
 
-	created, err := h.db.SGReplicateMgr.UpsertReplication(replicationConfig)
+	created, err := h.db.SGReplicateMgr.UpsertReplication(h.ctx(), replicationConfig)
 	if err != nil {
 		return err
 	}
@@ -1650,7 +1651,7 @@ func (h *handler) deleteReplication() error {
 }
 
 func (h *handler) getReplicationsStatus() error {
-	replicationsStatus, err := h.db.SGReplicateMgr.GetReplicationStatusAll(h.getReplicationStatusOptions())
+	replicationsStatus, err := h.db.SGReplicateMgr.GetReplicationStatusAll(h.ctx(), h.getReplicationStatusOptions())
 	if err != nil {
 		return err
 	}
@@ -1660,7 +1661,7 @@ func (h *handler) getReplicationsStatus() error {
 
 func (h *handler) getReplicationStatus() error {
 	replicationID := mux.Vars(h.rq)["replicationID"]
-	status, err := h.db.SGReplicateMgr.GetReplicationStatus(replicationID, h.getReplicationStatusOptions())
+	status, err := h.db.SGReplicateMgr.GetReplicationStatus(h.ctx(), replicationID, h.getReplicationStatusOptions())
 	if err != nil {
 		return err
 	}
@@ -1689,7 +1690,7 @@ func (h *handler) putReplicationStatus() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Query parameter 'action' must be specified")
 	}
 
-	updatedStatus, err := h.db.SGReplicateMgr.PutReplicationStatus(replicationID, action)
+	updatedStatus, err := h.db.SGReplicateMgr.PutReplicationStatus(h.ctx(), replicationID, action)
 	if err != nil {
 		return err
 	}

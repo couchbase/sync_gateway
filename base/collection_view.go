@@ -79,7 +79,7 @@ func (c *Collection) GetDDocs() (ddocs map[string]sgbucket.DesignDoc, err error)
 	return ddocs, err
 }
 
-func (c *Collection) PutDDoc(docname string, sgDesignDoc *sgbucket.DesignDoc) error {
+func (c *Collection) PutDDoc(ctx context.Context, docname string, sgDesignDoc *sgbucket.DesignDoc) error {
 	if !c.IsDefaultScopeCollection() {
 		return fmt.Errorf("views not supported for non-default collection")
 	}
@@ -100,20 +100,20 @@ func (c *Collection) PutDDoc(docname string, sgDesignDoc *sgbucket.DesignDoc) er
 
 	// If design doc needs to be tombstone-aware, requires custom creation*
 	if sgDesignDoc.Options != nil && sgDesignDoc.Options.IndexXattrOnTombstones {
-		return c.Bucket.putDDocForTombstones(&gocbDesignDoc)
+		return c.Bucket.putDDocForTombstones(ctx, &gocbDesignDoc)
 	}
 
 	// Retry for all errors (The view service sporadically returns 500 status codes with Erlang errors (for unknown reasons) - E.g: 500 {"error":"case_clause","reason":"false"})
 	var worker RetryWorker = func() (bool, error, interface{}) {
 		err := manager.UpsertDesignDocument(gocbDesignDoc, gocb.DesignDocumentNamespaceProduction, nil)
 		if err != nil {
-			WarnfCtx(context.Background(), "Got error from UpsertDesignDocument: %v - Retrying...", err)
+			WarnfCtx(ctx, "Got error from UpsertDesignDocument: %v - Retrying...", err)
 			return true, err, nil
 		}
 		return false, nil, nil
 	}
 
-	err, _ := RetryLoop("PutDDocRetryLoop", worker, CreateSleeperFunc(5, 100))
+	err, _ := RetryLoop(ctx, "PutDDocRetryLoop", worker, CreateSleeperFunc(5, 100))
 	return err
 }
 
@@ -159,7 +159,7 @@ type NoNameDesignDocument struct {
 	Views map[string]NoNameView `json:"views"`
 }
 
-func (b *GocbV2Bucket) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
+func (b *GocbV2Bucket) putDDocForTombstones(ctx context.Context, ddoc *gocb.DesignDocument) error {
 	username, password, _ := b.Spec.Auth.GetCredentials()
 	agent, err := b.getGoCBAgent()
 	if err != nil {
@@ -177,7 +177,7 @@ func (b *GocbV2Bucket) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
 		return err
 	}
 
-	return putDDocForTombstones(ddoc.Name, data, agent.CapiEps(), agent.HTTPClient(), username, password)
+	return putDDocForTombstones(ctx, ddoc.Name, data, agent.CapiEps(), agent.HTTPClient(), username, password)
 
 }
 
@@ -190,9 +190,9 @@ func (c *Collection) DeleteDDoc(docname string) error {
 }
 
 func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
-
+	ctx := context.TODO() // fix in sg-bucket
 	var viewResult sgbucket.ViewResult
-	gocbViewResult, err := c.executeViewQuery(ddoc, name, params)
+	gocbViewResult, err := c.executeViewQuery(ctx, ddoc, name, params)
 	if err != nil {
 		return viewResult, err
 	}
@@ -221,7 +221,7 @@ func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgb
 
 		viewMeta, err := unmarshalViewMetadata(gocbViewResult)
 		if err != nil {
-			WarnfCtx(context.TODO(), "Unable to type get metadata for gocb ViewResult - the total rows count will be missing.")
+			WarnfCtx(ctx, "Unable to type get metadata for gocb ViewResult - the total rows count will be missing.")
 		} else {
 			viewResult.TotalRows = viewMeta.TotalRows
 		}
@@ -248,19 +248,19 @@ func unmarshalViewMetadata(viewResult *gocb.ViewResultRaw) (viewMetadata, error)
 }
 
 func (c *Collection) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
-
-	gocbViewResult, err := c.executeViewQuery(ddoc, name, params)
+	ctx := context.TODO() // fix in sg-bucket
+	gocbViewResult, err := c.executeViewQuery(ctx, ddoc, name, params)
 	if err != nil {
 		return nil, err
 	}
 	return &gocbRawIterator{rawResult: gocbViewResult, concurrentQueryOpLimitChan: c.Bucket.queryOps}, nil
 }
 
-func (c *Collection) executeViewQuery(ddoc, name string, params map[string]interface{}) (*gocb.ViewResultRaw, error) {
+func (c *Collection) executeViewQuery(ctx context.Context, ddoc, name string, params map[string]interface{}) (*gocb.ViewResultRaw, error) {
 	viewResult := sgbucket.ViewResult{}
 	viewResult.Rows = sgbucket.ViewRows{}
 
-	viewOpts, optsErr := createViewOptions(params)
+	viewOpts, optsErr := createViewOptions(ctx, params)
 	if optsErr != nil {
 		return nil, optsErr
 	}
@@ -281,37 +281,37 @@ func (c *Collection) executeViewQuery(ddoc, name string, params map[string]inter
 }
 
 // Applies the viewquery options as specified in the params map to the gocb.ViewOptions
-func createViewOptions(params map[string]interface{}) (viewOpts *gocb.ViewOptions, err error) {
+func createViewOptions(ctx context.Context, params map[string]interface{}) (viewOpts *gocb.ViewOptions, err error) {
 
 	viewOpts = &gocb.ViewOptions{}
 	for optionName, optionValue := range params {
 		switch optionName {
 		case ViewQueryParamStale:
-			viewOpts.ScanConsistency = asViewConsistency(optionValue)
+			viewOpts.ScanConsistency = asViewConsistency(ctx, optionValue)
 		case ViewQueryParamReduce:
-			viewOpts.Reduce = asBool(optionValue)
+			viewOpts.Reduce = asBool(ctx, optionValue)
 		case ViewQueryParamLimit:
 			uintVal, err := normalizeIntToUint(optionValue)
 			if err != nil {
-				WarnfCtx(context.Background(), "ViewQueryParamLimit error: %v", err)
+				WarnfCtx(ctx, "ViewQueryParamLimit error: %v", err)
 			}
 			viewOpts.Limit = uint32(uintVal)
 		case ViewQueryParamDescending:
-			if asBool(optionValue) == true {
+			if asBool(ctx, optionValue) == true {
 				viewOpts.Order = gocb.ViewOrderingDescending
 			}
 		case ViewQueryParamSkip:
 			uintVal, err := normalizeIntToUint(optionValue)
 			if err != nil {
-				WarnfCtx(context.Background(), "ViewQueryParamSkip error: %v", err)
+				WarnfCtx(ctx, "ViewQueryParamSkip error: %v", err)
 			}
 			viewOpts.Skip = uint32(uintVal)
 		case ViewQueryParamGroup:
-			viewOpts.Group = asBool(optionValue)
+			viewOpts.Group = asBool(ctx, optionValue)
 		case ViewQueryParamGroupLevel:
 			uintVal, err := normalizeIntToUint(optionValue)
 			if err != nil {
-				WarnfCtx(context.Background(), "ViewQueryParamGroupLevel error: %v", err)
+				WarnfCtx(ctx, "ViewQueryParamGroupLevel error: %v", err)
 			}
 			viewOpts.GroupLevel = uint32(uintVal)
 		case ViewQueryParamKey:
@@ -343,7 +343,7 @@ func createViewOptions(params map[string]interface{}) (viewOpts *gocb.ViewOption
 	// Default value of inclusiveEnd in Couchbase Server is true (if not specified)
 	inclusiveEnd := true
 	if _, ok := params[ViewQueryParamInclusiveEnd]; ok {
-		inclusiveEnd = asBool(params[ViewQueryParamInclusiveEnd])
+		inclusiveEnd = asBool(ctx, params[ViewQueryParamInclusiveEnd])
 	}
 	viewOpts.StartKey = startKey
 	viewOpts.EndKey = endKey
@@ -364,7 +364,7 @@ func createViewOptions(params map[string]interface{}) (viewOpts *gocb.ViewOption
 }
 
 // Used to convert the stale view parameter to a gocb ViewScanConsistency
-func asViewConsistency(value interface{}) gocb.ViewScanConsistency {
+func asViewConsistency(ctx context.Context, value interface{}) gocb.ViewScanConsistency {
 
 	switch typeValue := value.(type) {
 	case string:
@@ -376,7 +376,7 @@ func asViewConsistency(value interface{}) gocb.ViewScanConsistency {
 		}
 		parsedVal, err := strconv.ParseBool(typeValue)
 		if err != nil {
-			WarnfCtx(context.Background(), "asStale called with unknown value: %v.  defaulting to stale=false", typeValue)
+			WarnfCtx(ctx, "asStale called with unknown value: %v.  defaulting to stale=false", typeValue)
 			return gocb.ViewScanConsistencyRequestPlus
 		}
 		if parsedVal {
@@ -391,7 +391,7 @@ func asViewConsistency(value interface{}) gocb.ViewScanConsistency {
 			return gocb.ViewScanConsistencyRequestPlus
 		}
 	default:
-		WarnfCtx(context.Background(), "asViewConsistency called with unknown type: %T.  defaulting to RequestPlus", typeValue)
+		WarnfCtx(ctx, "asViewConsistency called with unknown type: %T.  defaulting to RequestPlus", typeValue)
 		return gocb.ViewScanConsistencyRequestPlus
 	}
 

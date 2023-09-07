@@ -22,7 +22,7 @@ import (
 
 // blipMessageSender validates specific request types
 type blipMessageSender interface {
-	Send(s *blip.Sender) (err error)
+	Send(ctx context.Context, s *blip.Sender) (err error)
 }
 
 // SubChangesRequest is a strongly typed 'subChanges' request.
@@ -41,8 +41,8 @@ type SubChangesRequest struct {
 
 var _ blipMessageSender = &SubChangesRequest{}
 
-func (rq *SubChangesRequest) Send(s *blip.Sender) error {
-	r, err := rq.marshalBLIPRequest()
+func (rq *SubChangesRequest) Send(ctx context.Context, s *blip.Sender) error {
+	r, err := rq.marshalBLIPRequest(ctx)
 	if err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func (rq *SubChangesRequest) Send(s *blip.Sender) error {
 	return nil
 }
 
-func (rq *SubChangesRequest) marshalBLIPRequest() (*blip.Message, error) {
+func (rq *SubChangesRequest) marshalBLIPRequest(ctx context.Context) (*blip.Message, error) {
 	msg := blip.NewRequest()
 	msg.SetProfile(MessageSubChanges)
 
@@ -70,7 +70,7 @@ func (rq *SubChangesRequest) marshalBLIPRequest() (*blip.Message, error) {
 		if err := msg.SetJSONBody(map[string]interface{}{
 			"docIDs": rq.DocIDs,
 		}); err != nil {
-			base.ErrorfCtx(context.Background(), "error marshalling docIDs slice into subChanges request: %v", err)
+			base.ErrorfCtx(ctx, "error marshalling docIDs slice into subChanges request: %v", err)
 			return nil, err
 		}
 	}
@@ -90,7 +90,7 @@ type SetSGR2CheckpointRequest struct {
 
 var _ blipMessageSender = &SetSGR2CheckpointRequest{}
 
-func (rq *SetSGR2CheckpointRequest) Send(s *blip.Sender) error {
+func (rq *SetSGR2CheckpointRequest) Send(_ context.Context, s *blip.Sender) error {
 	msg, err := rq.marshalBLIPRequest()
 	if err != nil {
 		return err
@@ -161,7 +161,7 @@ type GetSGR2CheckpointRequest struct {
 
 var _ blipMessageSender = &GetSGR2CheckpointRequest{}
 
-func (rq *GetSGR2CheckpointRequest) Send(s *blip.Sender) error {
+func (rq *GetSGR2CheckpointRequest) Send(_ context.Context, s *blip.Sender) error {
 	msg := rq.marshalBLIPRequest()
 
 	if ok := s.Send(msg); !ok {

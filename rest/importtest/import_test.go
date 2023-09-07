@@ -1272,7 +1272,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// We don't have a way to wait for a upgrade that doesn't happen, but we can look for the warning that happens.
-	base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.Cache().NonMobileIgnoredCount.Value()
 	}, 1)
 }
@@ -2074,10 +2074,9 @@ func TestAutoImportComputeStat(t *testing.T) {
 	require.NoError(t, err, fmt.Sprintf("Unable to insert doc %s", key))
 
 	// wait for import to process
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
 	}, 1)
-	require.True(t, ok)
 
 	// assert the stat increments for the auto import of the above doc
 	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
@@ -2346,7 +2345,7 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, ke
 	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
 	assert.True(t, ok)
-	generation, _ := db.ParseRevID(revision.(string))
+	generation, _ := db.ParseRevID(base.TestCtx(t), revision.(string))
 	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
 	assert.True(t, generation == expectedRevGeneration)
 }

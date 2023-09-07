@@ -278,7 +278,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	dcpFeedKey := GenerateCompactionDCPStreamName(t.Name(), CleanupPhase)
 	clientOptions, err := getCompactionDCPClientOptions(collectionID, testDb.Options.GroupID, testDb.MetadataKeys.DCPCheckpointPrefix(testDb.Options.GroupID))
 	require.NoError(t, err)
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, nil, *clientOptions, bucket)
+	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, nil, *clientOptions, bucket)
 	require.NoError(t, err)
 
 	// alter dcp metadata to feed into the compaction manager
@@ -294,7 +294,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	err = testDb.AttachmentCompactionManager.Process.Run(ctx, map[string]interface{}{"database": testDb}, testDb.AttachmentCompactionManager.UpdateStatusClusterAware, terminator)
 	require.NoError(t, err)
 
-	err = WaitForConditionWithOptions(func() bool {
+	err = WaitForConditionWithOptions(t, func() bool {
 		var status AttachmentManagerResponse
 		rawStatus, err := testDb.AttachmentCompactionManager.GetStatus()
 		assert.NoError(t, err)
@@ -440,7 +440,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": true})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(func() bool {
+	err = WaitForConditionWithOptions(t, func() bool {
 		var status AttachmentManagerResponse
 		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
 		assert.NoError(t, err)
@@ -465,7 +465,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": false})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(func() bool {
+	err = WaitForConditionWithOptions(t, func() bool {
 		var status AttachmentManagerResponse
 		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
 		assert.NoError(t, err)
@@ -491,7 +491,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(func() bool {
+	err = WaitForConditionWithOptions(t, func() bool {
 		var status AttachmentManagerResponse
 		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
 		assert.NoError(t, err)
@@ -510,7 +510,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(func() bool {
+	err = WaitForConditionWithOptions(t, func() bool {
 		var status AttachmentManagerResponse
 		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
 		assert.NoError(t, err)
@@ -590,7 +590,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": true})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(func() bool {
+	err = WaitForConditionWithOptions(t, func() bool {
 		var status AttachmentManagerResponse
 		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
 		assert.NoError(t, err)
@@ -615,7 +615,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": false})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(func() bool {
+	err = WaitForConditionWithOptions(t, func() bool {
 		var status AttachmentManagerResponse
 		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
 		assert.NoError(t, err)
@@ -676,7 +676,7 @@ func TestAttachmentProcessError(t *testing.T) {
 	assert.NoError(t, err)
 
 	var status AttachmentManagerResponse
-	err = WaitForConditionWithOptions(func() bool {
+	err = WaitForConditionWithOptions(t, func() bool {
 		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
@@ -716,7 +716,7 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	assert.Contains(t, err.Error(), "error opening stream for vb 0: VbUUID mismatch when failOnRollback set")
 }
 
-func WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
+func WaitForConditionWithOptions(t testing.TB, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
 	waitForSuccess := func() (shouldRetry bool, err error, value interface{}) {
 		if successFunc() {
 			return false, nil, nil
@@ -725,7 +725,7 @@ func WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeTo
 	}
 
 	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
-	err, _ := base.RetryLoop("Wait for condition options", waitForSuccess, sleeper)
+	err, _ := base.RetryLoop(base.TestCtx(t), "Wait for condition options", waitForSuccess, sleeper)
 	if err != nil {
 		return err
 	}
@@ -1000,11 +1000,11 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		// The timeToSleepMs here is low to ensure that this retry loop finishes after the mark starts, but before it has time to finish
 		timeToSleepMs = 10
 	)
-	err, _ := base.RetryLoop("wait for marking to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
+	err, _ := base.RetryLoop(ctx, "wait for marking to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 
 	terminator.Close() // Terminate mark function
-	err, _ = base.RetryLoop("wait for marking function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
+	err, _ = base.RetryLoop(ctx, "wait for marking function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
@@ -1024,11 +1024,11 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	}()
 
 	// The timeToSleepMs here is low to ensure that this retry loop finishes after the sweep starts, but before it has time to finish
-	err, _ = base.RetryLoop("wait for sweeping to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
+	err, _ = base.RetryLoop(ctx, "wait for sweeping to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 
 	terminator.Close() // Terminate sweep function
-	err, _ = base.RetryLoop("wait for sweeping function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
+	err, _ = base.RetryLoop(ctx, "wait for sweeping function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
 	require.NoError(t, err)
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)

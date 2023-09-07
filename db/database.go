@@ -345,7 +345,7 @@ func ConnectToBucket(ctx context.Context, spec base.BucketSpec, failFast bool) (
 	}
 
 	description := fmt.Sprintf("Attempt to connect to bucket : %v", spec.BucketName)
-	err, ibucket := base.RetryLoop(description, worker, getNewDatabaseSleeperFunc())
+	err, ibucket := base.RetryLoop(ctx, description, worker, getNewDatabaseSleeperFunc())
 	if err != nil {
 		return nil, err
 	}
@@ -361,11 +361,11 @@ func getServerUUID(ctx context.Context, bucket base.Bucket) (string, error) {
 	}
 	// start a retry loop to get server ID
 	worker := func() (bool, error, interface{}) {
-		uuid, err := base.GetServerUUID(gocbV2Bucket)
+		uuid, err := base.GetServerUUID(ctx, gocbV2Bucket)
 		return err != nil, err, uuid
 	}
 
-	err, uuid := base.RetryLoopCtx("Getting ServerUUID", worker, getNewDatabaseSleeperFunc(), ctx)
+	err, uuid := base.RetryLoop(ctx, "Getting ServerUUID", worker, getNewDatabaseSleeperFunc())
 	return uuid.(string), err
 }
 
@@ -393,7 +393,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// in order to pass it to RegisterImportPindexImpl
 	ctx = base.DatabaseLogCtx(ctx, dbName, options.LoggingConfig.Console)
 
-	if err := base.RequireNoBucketTTL(bucket); err != nil {
+	if err := base.RequireNoBucketTTL(ctx, bucket); err != nil {
 		return nil, err
 	}
 
@@ -476,7 +476,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// Initialize sg cluster config.  Required even if import and sgreplicate are disabled
 	// on this node, to support replication REST API calls
 	if base.IsEnterpriseEdition() {
-		sgCfg, err := base.NewCfgSG(metadataStore, metaKeys.SGCfgPrefix(dbContext.Options.GroupID))
+		sgCfg, err := base.NewCfgSG(ctx, metadataStore, metaKeys.SGCfgPrefix(dbContext.Options.GroupID))
 		if err != nil {
 			return nil, err
 		}
@@ -602,10 +602,10 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	context.mutationListener.Stop(ctx)
 	context.changeCache.Stop()
 	// Stop the channel cache and it's background tasks.
-	context.channelCache.Stop()
+	context.channelCache.Stop(ctx)
 	context.ImportListener.Stop()
 	if context.Heartbeater != nil {
-		context.Heartbeater.Stop()
+		context.Heartbeater.Stop(ctx)
 	}
 	if context.SGReplicateMgr != nil {
 		context.SGReplicateMgr.Stop()
@@ -733,13 +733,13 @@ func (context *DatabaseContext) RestartListener(ctx context.Context) error {
 }
 
 // Removes previous versions of Sync Gateway's design docs found on the server
-func (dbCtx *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (removedDesignDocs []string, err error) {
+func (dbCtx *DatabaseContext) RemoveObsoleteDesignDocs(ctx context.Context, previewOnly bool) (removedDesignDocs []string, err error) {
 	ds := dbCtx.Bucket.DefaultDataStore()
 	viewStore, ok := ds.(sgbucket.ViewStore)
 	if !ok {
 		return []string{}, fmt.Errorf("Datastore does not support views")
 	}
-	return removeObsoleteDesignDocs(context.TODO(), viewStore, previewOnly, dbCtx.UseViews())
+	return removeObsoleteDesignDocs(ctx, viewStore, previewOnly, dbCtx.UseViews())
 }
 
 // getDataStores returns all datastores on the database, including metadatastore
@@ -801,8 +801,8 @@ func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, preview
 // TODO: The underlying code (NotifyCheckForTermination) doesn't actually leverage the specific username - should be refactored
 //
 //	to remove
-func (context *DatabaseContext) NotifyTerminatedChanges(username string) {
-	context.mutationListener.NotifyCheckForTermination(base.SetOf(base.UserPrefixRoot + username))
+func (context *DatabaseContext) NotifyTerminatedChanges(ctx context.Context, username string) {
+	context.mutationListener.NotifyCheckForTermination(ctx, base.SetOf(base.UserPrefixRoot+username))
 }
 
 func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) error {
@@ -820,7 +820,7 @@ func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) err
 		// set DB state to Offline
 		atomic.StoreUint32(&dc.State, DBOffline)
 
-		if err := dc.EventMgr.RaiseDBStateChangeEvent(dc.Name, "offline", reason, dc.Options.AdminInterface); err != nil {
+		if err := dc.EventMgr.RaiseDBStateChangeEvent(ctx, dc.Name, "offline", reason, dc.Options.AdminInterface); err != nil {
 			base.DebugfCtx(ctx, base.KeyCRUD, "Error raising database state change event: %v", err)
 		}
 
@@ -1503,7 +1503,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 			count := len(purgedDocs)
 			purgedDocCount += count
 			if count > 0 {
-				collection.RemoveFromChangeCache(purgedDocs, startTime)
+				collection.RemoveFromChangeCache(ctx, purgedDocs, startTime)
 				collection.dbStats().Database().NumTombstonesCompacted.Add(int64(count))
 			}
 			base.DebugfCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
@@ -1536,7 +1536,7 @@ func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context) time.Du
 	if !ok {
 		return DefaultPurgeInterval
 	}
-	serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
+	serverPurgeInterval, err := cbStore.MetadataPurgeInterval(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - using default purge interval %.2f days. %s", DefaultPurgeInterval.Hours()/24, err)
 	}
@@ -1678,7 +1678,7 @@ func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) e
 		if err != nil {
 			return err
 		}
-		err = c.regeneratePrincipalSequences(authr, role)
+		err = c.regeneratePrincipalSequences(ctx, authr, role)
 		if err != nil {
 			return err
 		}
@@ -1689,7 +1689,7 @@ func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) e
 		if err != nil {
 			return err
 		}
-		err = c.regeneratePrincipalSequences(authr, user)
+		err = c.regeneratePrincipalSequences(ctx, authr, user)
 		if err != nil {
 			return err
 		}
@@ -1697,8 +1697,8 @@ func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) e
 	return nil
 }
 
-func (c *DatabaseCollection) regeneratePrincipalSequences(authr *auth.Authenticator, princ auth.Principal) error {
-	nextSeq, err := c.sequences().nextSequence()
+func (c *DatabaseCollection) regeneratePrincipalSequences(ctx context.Context, authr *auth.Authenticator, princ auth.Principal) error {
+	nextSeq, err := c.sequences().nextSequence(ctx)
 	if err != nil {
 		return err
 	}
@@ -1765,8 +1765,8 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 			}
 
 			changedChannels, err := doc.updateChannels(ctx, channels)
-			changed = len(doc.Access.updateAccess(doc, access)) +
-				len(doc.RoleAccess.updateAccess(doc, roles)) +
+			changed = len(doc.Access.updateAccess(ctx, doc, access)) +
+				len(doc.RoleAccess.updateAccess(ctx, doc, roles)) +
 				len(changedChannels)
 			if err != nil {
 				return
@@ -1806,7 +1806,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			if currentValue == nil || len(currentValue) == 0 {
 				return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 			}
-			doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
+			doc, err := unmarshalDocumentWithXattr(ctx, docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
 			if err != nil {
 				return nil, nil, deleteDoc, nil, err
 			}
@@ -2047,8 +2047,8 @@ func (context *DatabaseContext) AllowFlushNonCouchbaseBuckets() bool {
 
 // ////// SEQUENCE ALLOCATION:
 
-func (context *DatabaseContext) LastSequence() (uint64, error) {
-	return context.sequences.lastSequence()
+func (context *DatabaseContext) LastSequence(ctx context.Context) (uint64, error) {
+	return context.sequences.lastSequence(ctx)
 }
 
 // Helpers for unsupported options
@@ -2158,8 +2158,8 @@ func (dbc *Database) GetDefaultDatabaseCollectionWithUser() (*DatabaseCollection
 	}, nil
 }
 
-func (dbc *DatabaseContext) AuthenticatorOptions() auth.AuthenticatorOptions {
-	defaultOptions := auth.DefaultAuthenticatorOptions()
+func (dbc *DatabaseContext) AuthenticatorOptions(ctx context.Context) auth.AuthenticatorOptions {
+	defaultOptions := auth.DefaultAuthenticatorOptions(ctx)
 	defaultOptions.MetaKeys = dbc.MetadataKeys
 	return defaultOptions
 }
@@ -2239,14 +2239,14 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		if err != nil {
 			return pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", base.MD(db.Bucket.GetName()).Redact())
 		}
-		err = heartbeater.StartSendingHeartbeats()
+		err = heartbeater.StartSendingHeartbeats(ctx)
 		if err != nil {
 			return err
 		}
 		db.Heartbeater = heartbeater
 
 		cleanupFunctions = append(cleanupFunctions, func() {
-			db.Heartbeater.Stop()
+			db.Heartbeater.Stop(ctx)
 		})
 	}
 
@@ -2275,7 +2275,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	})
 
 	// Get current value of _sync:seq
-	initialSequence, seqErr := db.sequences.lastSequence()
+	initialSequence, seqErr := db.sequences.lastSequence(ctx)
 	if seqErr != nil {
 		return seqErr
 	}
@@ -2284,7 +2284,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	// Unlock change cache.  Validate that any allocated sequences on other nodes have either been assigned or released
 	// before starting
 	if initialSequence > 0 {
-		_ = db.sequences.waitForReleasedSequences(initialSequenceTime)
+		_ = db.sequences.waitForReleasedSequences(ctx, initialSequenceTime)
 	}
 
 	if err := db.changeCache.Start(initialSequence); err != nil {
@@ -2345,7 +2345,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.LocalJWTProviders = make(auth.LocalJWTProviderMap, len(db.Options.LocalJWTConfig))
 	for name, cfg := range db.Options.LocalJWTConfig {
-		db.LocalJWTProviders[name] = cfg.BuildProvider(name)
+		db.LocalJWTProviders[name] = cfg.BuildProvider(ctx, name)
 	}
 
 	if db.UseXattrs() {
@@ -2389,7 +2389,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	}
 	db.backgroundTasks = append(db.backgroundTasks, bgtSyncTime)
 
-	if err := base.RequireNoBucketTTL(db.Bucket); err != nil {
+	if err := base.RequireNoBucketTTL(ctx, db.Bucket); err != nil {
 		return err
 	}
 
@@ -2398,7 +2398,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	// Start checking heartbeats for other nodes.  Must be done after caching feed starts, to ensure any removals
 	// are detected and processed by this node.
 	if db.Heartbeater != nil {
-		if err := db.Heartbeater.StartCheckingHeartbeats(); err != nil {
+		if err := db.Heartbeater.StartCheckingHeartbeats(ctx); err != nil {
 			return err
 		}
 		// No cleanup necessary, stop heartbeater above will take care of it
@@ -2449,7 +2449,7 @@ func (dbc *DatabaseContext) InstallPrincipals(ctx context.Context, spec map[stri
 
 		}
 
-		err, _ := base.RetryLoop("installPrincipals", worker, base.CreateDoublingSleeperFunc(16, 10))
+		err, _ := base.RetryLoop(ctx, "installPrincipals", worker, base.CreateDoublingSleeperFunc(16, 10))
 		if err != nil {
 			return err
 		}

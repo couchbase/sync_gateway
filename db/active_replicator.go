@@ -168,7 +168,7 @@ func (ar *ActiveReplicator) _onReplicationComplete() {
 
 }
 
-func (ar *ActiveReplicator) State() (state string, errorMessage string) {
+func (ar *ActiveReplicator) State(ctx context.Context) (state string, errorMessage string) {
 
 	state = ReplicationStateStopped
 	if ar.Push != nil {
@@ -177,7 +177,7 @@ func (ar *ActiveReplicator) State() (state string, errorMessage string) {
 
 	if ar.Pull != nil {
 		pullState, pullErrorMessage := ar.Pull.getStateWithErrorMessage()
-		state = combinedState(state, pullState)
+		state = combinedState(ctx, state, pullState)
 		if pullErrorMessage != "" {
 			errorMessage = pullErrorMessage
 		}
@@ -186,12 +186,12 @@ func (ar *ActiveReplicator) State() (state string, errorMessage string) {
 	return state, errorMessage
 }
 
-func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
+func (ar *ActiveReplicator) GetStatus(ctx context.Context) *ReplicationStatus {
 
 	status := &ReplicationStatus{
 		ID: ar.ID,
 	}
-	status.Status, status.ErrorMessage = ar.State()
+	status.Status, status.ErrorMessage = ar.State(ctx)
 
 	if ar.Pull != nil {
 		status.PullReplicationStatus = ar.Pull.GetStatus().PullReplicationStatus
@@ -303,7 +303,7 @@ func base64UserInfo(i *url.Userinfo) string {
 //   - if either replication is in error, return error
 //   - if either replication is running, return running
 //   - if both replications are stopped, return stopped
-func combinedState(state1, state2 string) (combinedState string) {
+func combinedState(ctx context.Context, state1, state2 string) (combinedState string) {
 	if state1 == "" {
 		return state2
 	}
@@ -327,7 +327,7 @@ func combinedState(state1, state2 string) (combinedState string) {
 		return ReplicationStateReconnecting
 	}
 
-	base.InfofCtx(context.Background(), base.KeyReplicate, "Unhandled combination of replication states (%s, %s), returning %s", state1, state2, state1)
+	base.InfofCtx(ctx, base.KeyReplicate, "Unhandled combination of replication states (%s, %s), returning %s", state1, state2, state1)
 	return state1
 }
 

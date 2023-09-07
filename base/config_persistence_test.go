@@ -62,13 +62,13 @@ func TestConfigPersistence(t *testing.T) {
 			_, reinsertErr := cp.insertConfig(c, configKey, configBody)
 			require.Equal(t, ErrAlreadyExists, reinsertErr)
 
+			ctx := TestCtx(t)
 			var loadedConfig map[string]interface{}
-			loadCas, loadErr := cp.loadConfig(c, configKey, &loadedConfig)
+			loadCas, loadErr := cp.loadConfig(ctx, c, configKey, &loadedConfig)
 			require.NoError(t, loadErr)
 			assert.Equal(t, insertCas, loadCas)
 			assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
-
-			rawConfig, rawCas, rawErr := cp.loadRawConfig(c, configKey)
+			rawConfig, rawCas, rawErr := cp.loadRawConfig(ctx, c, configKey)
 			require.NoError(t, rawErr)
 			assert.Equal(t, insertCas, uint64(rawCas))
 			assert.Equal(t, rawConfigBody, rawConfig)
@@ -87,13 +87,13 @@ func TestConfigPersistence(t *testing.T) {
 
 			// retrieve config, validate updated value
 			var updatedConfig map[string]interface{}
-			loadCas, loadErr = cp.loadConfig(c, configKey, &updatedConfig)
+			loadCas, loadErr = cp.loadConfig(ctx, c, configKey, &updatedConfig)
 			require.NoError(t, loadErr)
 			assert.Equal(t, updateCas, gocb.Cas(loadCas))
 			assert.Equal(t, configBody["updated"], updatedConfig["updated"])
 
 			// retrieve raw config, validate updated value
-			rawConfig, rawCas, rawErr = cp.loadRawConfig(c, configKey)
+			rawConfig, rawCas, rawErr = cp.loadRawConfig(ctx, c, configKey)
 			require.NoError(t, rawErr)
 			assert.Equal(t, updateCas, rawCas)
 			assert.Equal(t, updatedRawBody, rawConfig)
@@ -108,11 +108,11 @@ func TestConfigPersistence(t *testing.T) {
 
 			// attempt to retrieve config, validate not found
 			var deletedConfig map[string]interface{}
-			_, loadErr = cp.loadConfig(c, configKey, &deletedConfig)
+			_, loadErr = cp.loadConfig(ctx, c, configKey, &deletedConfig)
 			assert.Equal(t, ErrNotFound, loadErr)
 
 			// attempt to retrieve raw config, validate updated value
-			_, _, rawErr = cp.loadRawConfig(c, configKey)
+			_, _, rawErr = cp.loadRawConfig(ctx, c, configKey)
 			require.Error(t, rawErr)
 		})
 	}
@@ -155,9 +155,10 @@ func TestXattrConfigPersistence(t *testing.T) {
 	_, reinsertErr := cp.insertConfig(c, configKey, configBody)
 	require.Equal(t, ErrAlreadyExists, reinsertErr)
 
+	ctx := TestCtx(t)
 	// Retrieve the config, cas should still match insertCas
 	var loadedConfig map[string]interface{}
-	loadCas, loadErr := cp.loadConfig(c, configKey, &loadedConfig)
+	loadCas, loadErr := cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
 	assert.Equal(t, insertCas, loadCas)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
@@ -167,7 +168,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	require.NoError(t, err)
 
 	// Retrieve the config, cas should still match insertCas
-	loadCas, loadErr = cp.loadConfig(c, configKey, &loadedConfig)
+	loadCas, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
 	assert.Equal(t, insertCas, loadCas)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
@@ -183,7 +184,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	assert.NoError(t, deleteErr)
 
 	// Retrieve the config, cas should still match insertCas
-	loadCas, loadErr = cp.loadConfig(c, configKey, &loadedConfig)
+	loadCas, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
 	assert.Equal(t, insertCas, loadCas)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
@@ -194,7 +195,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	assert.True(t, docBody != nil)
 
 	// Retrieve the config, cas should still match insertCas
-	loadCas, loadErr = cp.loadConfig(c, configKey, &loadedConfig)
+	loadCas, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
 	assert.Equal(t, insertCas, loadCas)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])

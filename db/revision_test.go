@@ -25,21 +25,22 @@ func TestParseRevID(t *testing.T) {
 	var generation int
 	var digest string
 
-	generation, _ = ParseRevID("ljlkjl")
+	ctx := base.TestCtx(t)
+	generation, _ = ParseRevID(ctx, "ljlkjl")
 	log.Printf("generation: %v", generation)
 	assert.True(t, generation == -1, "Expected -1 generation for invalid rev id")
 
-	generation, digest = ParseRevID("1-ljlkjl")
+	generation, digest = ParseRevID(ctx, "1-ljlkjl")
 	log.Printf("generation: %v, digest: %v", generation, digest)
 	assert.True(t, generation == 1, "Expected 1 generation")
 	assert.True(t, digest == "ljlkjl", "Unexpected digest")
 
-	generation, digest = ParseRevID("2222-")
+	generation, digest = ParseRevID(ctx, "2222-")
 	log.Printf("generation: %v, digest: %v", generation, digest)
 	assert.True(t, generation == 2222, "Expected invalid generation")
 	assert.True(t, digest == "", "Unexpected digest")
 
-	generation, digest = ParseRevID("333-a")
+	generation, digest = ParseRevID(ctx, "333-a")
 	log.Printf("generation: %v, digest: %v", generation, digest)
 	assert.True(t, generation == 333, "Expected generation")
 	assert.True(t, digest == "a", "Unexpected digest")
@@ -211,7 +212,7 @@ func BenchmarkSpecialProperties(b *testing.B) {
 		"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
 	}
 
-	specialBody := noSpecialBody.Copy(BodyShallowCopy)
+	specialBody := noSpecialBody.Copy(base.TestCtx(b), BodyShallowCopy)
 	specialBody[BodyId] = "abc123"
 	specialBody[BodyRev] = "1-abc"
 

@@ -321,7 +321,7 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 	require.NoError(t, err)
 	svrctx.GoCBAgent = goCBAgent
 
-	noX509HttpClient, err := svrctx.initializeNoX509HttpClient()
+	noX509HttpClient, err := svrctx.initializeNoX509HttpClient(ctx)
 	require.NoError(t, err)
 	svrctx.NoX509HTTPClient = noX509HttpClient
 
@@ -383,7 +383,7 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 		require.NoError(t, <-serveErr)
 	}()
 
-	err, _ = base.RetryLoop("try http request", func() (shouldRetry bool, err error, value interface{}) {
+	err, _ = base.RetryLoop(ctx, "try http request", func() (shouldRetry bool, err error, value interface{}) {
 		resp, err := http.Get("http://" + config.API.PublicInterface)
 		if err != nil {
 			return true, err, nil
@@ -445,7 +445,7 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 				},
 			}
 
-			err := startupConfig.Validate(base.IsEnterpriseEdition())
+			err := startupConfig.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
 			if test.expectError {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), errorText)
@@ -569,7 +569,7 @@ func TestUseTLSServer(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			sc := StartupConfig{Bootstrap: BootstrapConfig{Server: test.server, UseTLSServer: &test.useTLSServer}}
 
-			err := sc.Validate(base.IsEnterpriseEdition())
+			err := sc.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
 
 			if test.expectedError != nil {
 				require.Error(t, err)
@@ -752,7 +752,7 @@ func TestLogFlush(t *testing.T) {
 			}
 
 			sleeper := base.CreateSleeperFunc(200, 100)
-			err, _ = base.RetryLoop("Wait for log files", worker, sleeper)
+			err, _ = base.RetryLoop(ctx, "Wait for log files", worker, sleeper)
 			assert.NoError(t, err)
 			if !assert.Len(t, files, testCase.ExpectedLogFileCount) {
 				// Try to figure who is writing to the files

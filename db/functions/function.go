@@ -69,7 +69,7 @@ type functionImpl struct {
 }
 
 // Compiles the functions in a UserFunctionConfigMap, returning UserFunctions.
-func CompileFunctions(config FunctionsConfig) (*db.UserFunctions, error) {
+func CompileFunctions(ctx context.Context, config FunctionsConfig) (*db.UserFunctions, error) {
 	if config.MaxFunctionCount != nil && len(config.Definitions) > *config.MaxFunctionCount {
 		return nil, fmt.Errorf("too many functions declared (> %d)", *config.MaxFunctionCount)
 	}
@@ -81,7 +81,7 @@ func CompileFunctions(config FunctionsConfig) (*db.UserFunctions, error) {
 	for name, fnConfig := range config.Definitions {
 		if config.MaxCodeSize != nil && len(fnConfig.Code) > *config.MaxCodeSize {
 			multiError = multiError.Append(fmt.Errorf("function code too large (> %d bytes)", *config.MaxCodeSize))
-		} else if userFn, err := compileFunction(name, "function", fnConfig); err == nil {
+		} else if userFn, err := compileFunction(ctx, name, "function", fnConfig); err == nil {
 			fns.Definitions[name] = userFn
 		} else {
 			multiError = multiError.Append(err)
@@ -92,12 +92,12 @@ func CompileFunctions(config FunctionsConfig) (*db.UserFunctions, error) {
 
 // Validates a FunctionsConfig.
 func ValidateFunctions(ctx context.Context, config FunctionsConfig) error {
-	_, err := CompileFunctions(config)
+	_, err := CompileFunctions(ctx, config)
 	return err
 }
 
 // Creates a functionImpl from a UserFunctionConfig.
-func compileFunction(name string, typeName string, fnConfig *FunctionConfig) (*functionImpl, error) {
+func compileFunction(ctx context.Context, name string, typeName string, fnConfig *FunctionConfig) (*functionImpl, error) {
 	userFn := &functionImpl{
 		FunctionConfig: fnConfig,
 		name:           name,
@@ -107,7 +107,7 @@ func compileFunction(name string, typeName string, fnConfig *FunctionConfig) (*f
 	var err error
 	switch fnConfig.Type {
 	case "javascript":
-		userFn.compiled, err = newFunctionJSServer(name, typeName, fnConfig.Code)
+		userFn.compiled, err = newFunctionJSServer(ctx, name, typeName, fnConfig.Code)
 	case "query":
 		err = validateN1QLQuery(fnConfig.Code)
 		if err != nil {

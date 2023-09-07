@@ -49,7 +49,7 @@ func TestBootstrapConfig(t *testing.T) {
 
 	var dbConfig1 *DatabaseConfig
 
-	_, err = bootstrapContext.GetConfig(bucketName, configGroup1, db1Name, dbConfig1)
+	_, err = bootstrapContext.GetConfig(ctx, bucketName, configGroup1, db1Name, dbConfig1)
 	require.Error(t, err)
 }
 

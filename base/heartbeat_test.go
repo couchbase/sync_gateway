@@ -115,6 +115,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 	nodeCount := 3
 	nodes := make([]*couchbaseHeartBeater, nodeCount)
 	listeners := make([]*documentBackedListener, nodeCount)
+	ctx := TestCtx(t)
 	for i := 0; i < nodeCount; i++ {
 		nodeUUID := fmt.Sprintf("node%d", i)
 		node, err := NewCouchbaseHeartbeater(dataStore, keyprefix, nodeUUID)
@@ -124,13 +125,13 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 		assert.NoError(t, node.SetExpirySeconds(2))
 
 		// Start node
-		assert.NoError(t, node.Start())
+		assert.NoError(t, node.Start(ctx))
 
 		// Create and register listener.
 		// Simulates service starting on node, and self-registering the nodeUUID to that listener's node set
 		listener, err := NewDocumentBackedListener(dataStore, keyprefix)
 		require.NoError(t, err)
-		assert.NoError(t, listener.AddNode(nodeUUID))
+		assert.NoError(t, listener.AddNode(ctx, nodeUUID))
 		assert.NoError(t, node.RegisterListener(listener))
 
 		nodes[i] = node
@@ -146,7 +147,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 	assert.True(t, nodes[0].sendCount > 0)
 
 	// Stop node 0
-	nodes[0].Stop()
+	nodes[0].Stop(ctx)
 
 	// Wait for another node to detect node0 has stopped sending heartbeats
 	retryUntilFunc = func() bool {
@@ -170,8 +171,8 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 	assert.Contains(t, activeNodes, "node2")
 
 	// Stop heartbeaters
-	nodes[1].Stop()
-	nodes[2].Stop()
+	nodes[1].Stop(ctx)
+	nodes[2].Stop(ctx)
 }
 
 // TestNewCouchbaseHeartbeater simulates three nodes, with two services (listeners).
@@ -196,6 +197,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 	nodes := make([]*couchbaseHeartBeater, nodeCount)
 	importListeners := make([]*documentBackedListener, nodeCount)
 	sgrListeners := make([]*documentBackedListener, nodeCount)
+	ctx := TestCtx(t)
 	for i := 0; i < nodeCount; i++ {
 		nodeUUID := fmt.Sprintf("node%d", i)
 		node, err := NewCouchbaseHeartbeater(dataStore, keyprefix, nodeUUID)
@@ -205,13 +207,13 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 		assert.NoError(t, node.SetExpirySeconds(2))
 
 		// Start node
-		assert.NoError(t, node.Start())
+		assert.NoError(t, node.Start(ctx))
 
 		// Create and register import listener on all nodes.
 		// Simulates service starting on node, and self-registering the nodeUUID to that listener's node set
 		importListener, err := NewDocumentBackedListener(dataStore, keyprefix+":import")
 		require.NoError(t, err)
-		assert.NoError(t, importListener.AddNode(nodeUUID))
+		assert.NoError(t, importListener.AddNode(ctx, nodeUUID))
 		assert.NoError(t, node.RegisterListener(importListener))
 		importListeners[i] = importListener
 
@@ -219,7 +221,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 		if i < 2 {
 			sgrListener, err := NewDocumentBackedListener(dataStore, keyprefix+":sgr")
 			require.NoError(t, err)
-			assert.NoError(t, sgrListener.AddNode(nodeUUID))
+			assert.NoError(t, sgrListener.AddNode(ctx, nodeUUID))
 			assert.NoError(t, node.RegisterListener(sgrListener))
 			sgrListeners[i] = sgrListener
 		}
@@ -236,7 +238,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 	assert.True(t, nodes[0].sendCount > 0)
 
 	// Stop node 1
-	nodes[0].Stop()
+	nodes[0].Stop(ctx)
 
 	// Wait for both listener types node to detect node1 has stopped sending heartbeats
 	retryUntilFunc = func() bool {
@@ -276,8 +278,8 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 	assert.NotContains(t, activeReplicateNodes, "node2")
 
 	// Stop heartbeaters
-	nodes[1].Stop()
-	nodes[2].Stop()
+	nodes[1].Stop(ctx)
+	nodes[2].Stop(ctx)
 }
 
 // TestNewCouchbaseHeartbeater simulates three nodes.  The minimum time window for failed node
@@ -326,9 +328,10 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	assert.NoError(t, node2.SetExpirySeconds(2))
 	assert.NoError(t, node3.SetExpirySeconds(2))
 
-	assert.NoError(t, node1.Start())
-	assert.NoError(t, node2.Start())
-	assert.NoError(t, node3.Start())
+	ctx := TestCtx(t)
+	assert.NoError(t, node1.Start(ctx))
+	assert.NoError(t, node2.Start(ctx))
+	assert.NoError(t, node3.Start(ctx))
 
 	// Create three heartbeat listeners, associate one with each node
 	testUUID := cbgt.NewUUID()
@@ -352,21 +355,21 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 		"some-datasource",
 		eventHandlers,
 		options)
-	listener1, err := NewImportHeartbeatListener(&CbgtContext{
+	listener1, err := NewImportHeartbeatListener(ctx, &CbgtContext{
 		Cfg:     cfgCB,
 		Manager: testManager,
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, node1.RegisterListener(listener1))
 
-	listener2, err := NewImportHeartbeatListener(&CbgtContext{
+	listener2, err := NewImportHeartbeatListener(ctx, &CbgtContext{
 		Cfg:     cfgCB,
 		Manager: testManager,
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, node2.RegisterListener(listener2))
 
-	listener3, err := NewImportHeartbeatListener(&CbgtContext{
+	listener3, err := NewImportHeartbeatListener(ctx, &CbgtContext{
 		Cfg:     cfgCB,
 		Manager: testManager,
 	})
@@ -382,7 +385,7 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	assert.True(t, node1.sendCount > 0)
 
 	// Stop node 1
-	node1.Stop()
+	node1.Stop(ctx)
 
 	// Wait for another node to detect node1 has stopped sending heartbeats
 	retryUntilFunc = func() bool {
@@ -404,6 +407,6 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	assert.Contains(t, activeNodes, "node3")
 
 	// Stop heartbeaters
-	node2.Stop()
-	node3.Stop()
+	node2.Stop(ctx)
+	node3.Stop(ctx)
 }

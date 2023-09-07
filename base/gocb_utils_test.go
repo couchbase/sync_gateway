@@ -66,7 +66,7 @@ func TestGoCBv2SecurityConfig(t *testing.T) {
 	//
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			sc, err := GoCBv2SecurityConfig(test.tlsSkipVerify, test.caCertPath)
+			sc, err := GoCBv2SecurityConfig(TestCtx(t), test.tlsSkipVerify, test.caCertPath)
 			if test.expectError {
 				assert.Error(t, err)
 				assert.Nil(t, sc.TLSRootCAs)

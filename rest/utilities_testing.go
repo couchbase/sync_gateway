@@ -249,7 +249,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
 
 	// Allow EE-only config even in CE for testing using group IDs.
-	if err := sc.Validate(true); err != nil {
+	if err := sc.Validate(base.TestCtx(rt.TB), true); err != nil {
 		panic("invalid RestTester StartupConfig: " + err.Error())
 	}
 
@@ -325,7 +325,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.SgReplicateEnabled)
 
-		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled()
+		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled(ctx)
 		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
 			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
@@ -773,7 +773,7 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, usernam
 
 	sleeper := base.CreateSleeperFunc(200, 100)
 
-	err, changesVal := base.RetryLoop("Wait for changes", waitForChangesWorker, sleeper)
+	err, changesVal := base.RetryLoop(rt.Context(), "Wait for changes", waitForChangesWorker, sleeper)
 	if err != nil {
 		return changes, err
 	}
@@ -804,7 +804,7 @@ func (rt *RestTester) WaitForConditionWithOptions(successFunc func() bool, maxNu
 	}
 
 	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
-	err, _ := base.RetryLoop("Wait for condition options", waitForSuccess, sleeper)
+	err, _ := base.RetryLoop(rt.Context(), "Wait for condition options", waitForSuccess, sleeper)
 	if err != nil {
 		return err
 	}
@@ -814,7 +814,7 @@ func (rt *RestTester) WaitForConditionWithOptions(successFunc func() bool, maxNu
 
 func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRetry bool, err error, value interface{}), maxNumAttempts, timeToSleepMs int) error {
 	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
-	err, _ := base.RetryLoop("Wait for condition options", conditionFunc, sleeper)
+	err, _ := base.RetryLoop(rt.Context(), "Wait for condition options", conditionFunc, sleeper)
 	if err != nil {
 		return err
 	}
@@ -885,7 +885,7 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 
 	description := fmt.Sprintf("Wait for %d view results for query to %v", numResultsExpected, viewUrlPath)
 	sleeper := base.CreateSleeperFunc(200, 100)
-	err, returnVal := base.RetryLoop(description, worker, sleeper)
+	err, returnVal := base.RetryLoop(rt.Context(), description, worker, sleeper)
 
 	if err != nil {
 		return sgbucket.ViewResult{}, err
@@ -918,7 +918,7 @@ func (rt *RestTester) WaitForViewAvailable(viewURLPath string) (err error) {
 
 	description := "Wait for view readiness"
 	sleeper := base.CreateSleeperFunc(200, 100)
-	err, _ = base.RetryLoop(description, worker, sleeper)
+	err, _ = base.RetryLoop(rt.Context(), description, worker, sleeper)
 
 	return err
 
@@ -984,13 +984,13 @@ func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body 
 func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parentRevID string, body db.Body) (response *TestResponse, err error) {
 
 	requestBody := body.ShallowCopy()
-	newRevGeneration, newRevDigest := db.ParseRevID(newRevID)
+	newRevGeneration, newRevDigest := db.ParseRevID(base.TestCtx(rt.TB), newRevID)
 
 	revisions := make(map[string]interface{})
 	revisions["start"] = newRevGeneration
 	ids := []string{newRevDigest}
 	if parentRevID != "" {
-		_, parentDigest := db.ParseRevID(parentRevID)
+		_, parentDigest := db.ParseRevID(base.TestCtx(rt.TB), parentRevID)
 		ids = append(ids, parentDigest)
 	}
 	revisions["ids"] = ids
@@ -1069,7 +1069,7 @@ func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentialsConfig) {
 	rt.ServerContext().Config.BucketCredentials = config
 	// Update the CouchbaseCluster to include the new bucket credentials
-	couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(rt.ServerContext().Config, base.PerUseClusterConnections)
+	couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(base.TestCtx(rt.TB), rt.ServerContext().Config, base.PerUseClusterConnections)
 	require.NoError(rt.TB, err)
 	rt.ServerContext().BootstrapContext.Connection = couchbaseCluster
 }
@@ -1828,6 +1828,7 @@ func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]int
 	}
 
 	_, rawChanges := base.RetryLoop(
+		bt.restTester.Context(),
 		"WaitForNumChanges",
 		retryWorker,
 		base.CreateDoublingSleeperFunc(10, 10),
@@ -1895,6 +1896,7 @@ func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[st
 	}
 
 	_, allDocs := base.RetryLoop(
+		bt.restTester.Context(),
 		"WaitForNumDocsViaChanges",
 		retryWorker,
 		base.CreateDoublingSleeperFunc(20, 10),
@@ -2281,7 +2283,7 @@ func WaitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func(
 
 func WaitAndAssertBackgroundManagerState(t testing.TB, expected db.BackgroundProcessState, getStateFunc func(t testing.TB) db.BackgroundProcessState) bool {
 	t.Helper()
-	err, actual := base.RetryLoop(t.Name()+"-WaitAndAssertBackgroundManagerState", func() (shouldRetry bool, err error, value interface{}) {
+	err, actual := base.RetryLoop(base.TestCtx(t), t.Name()+"-WaitAndAssertBackgroundManagerState", func() (shouldRetry bool, err error, value interface{}) {
 		actual := getStateFunc(t)
 		return expected != actual, nil, actual
 	}, base.CreateMaxDoublingSleeperFunc(30, 100, 1000))
@@ -2290,7 +2292,7 @@ func WaitAndAssertBackgroundManagerState(t testing.TB, expected db.BackgroundPro
 
 func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.BackgroundManager) bool {
 	t.Helper()
-	err, b := base.RetryLoop(t.Name()+"-assertNoHeartbeatDoc", func() (shouldRetry bool, err error, value interface{}) {
+	err, b := base.RetryLoop(base.TestCtx(t), t.Name()+"-assertNoHeartbeatDoc", func() (shouldRetry bool, err error, value interface{}) {
 		b, err := bm.GetHeartbeatDoc(t)
 		return !base.IsDocNotFoundError(err), err, b
 	}, base.CreateMaxDoublingSleeperFunc(30, 100, 1000))

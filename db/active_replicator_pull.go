@@ -150,7 +150,7 @@ func (apr *ActivePullReplicator) _subChanges(collectionIdx *int, since string) e
 		Revocations:    apr.config.PurgeOnRemoval,
 		CollectionIdx:  collectionIdx,
 	}
-	return subChangesRequest.Send(apr.blipSender)
+	return subChangesRequest.Send(apr.ctx, apr.blipSender)
 }
 
 // Complete gracefully shuts down a replication, waiting for all in-flight revisions to be processed

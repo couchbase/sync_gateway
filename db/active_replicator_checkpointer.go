@@ -564,7 +564,7 @@ func (c *Checkpointer) getRemoteCheckpoint() (checkpoint *replicationCheckpoint,
 		CollectionIdx: c.collectionIdx,
 	}
 
-	if err := rq.Send(c.blipSender); err != nil {
+	if err := rq.Send(c.ctx, c.blipSender); err != nil {
 		return &replicationCheckpoint{}, err
 	}
 
@@ -597,7 +597,7 @@ func (c *Checkpointer) setRemoteCheckpoint(checkpoint *replicationCheckpoint) (n
 		rq.RevID = &parentRev
 	}
 
-	if err := rq.Send(c.blipSender); err != nil {
+	if err := rq.Send(c.ctx, c.blipSender); err != nil {
 		return "", err
 	}
 

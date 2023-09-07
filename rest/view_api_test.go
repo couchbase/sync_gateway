@@ -598,7 +598,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	defer rt.Close()
 
 	// Cleanup existing design docs
-	_, err := rt.GetDatabase().RemoveObsoleteDesignDocs(false)
+	_, err := rt.GetDatabase().RemoveObsoleteDesignDocs(base.TestCtx(t), false)
 	require.NoError(t, err)
 
 	bucket := rt.Bucket()

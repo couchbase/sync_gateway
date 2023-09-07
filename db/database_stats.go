@@ -10,6 +10,8 @@ licenses/APL2.txt.
 
 package db
 
+import "context"
+
 // Wrapper around *expvars.Map for database stats that provide:
 //
 //    - A lazy loading mechanism
@@ -20,11 +22,11 @@ package db
 // }
 
 // Update database-specific stats that are more efficiently calculated at stats collection time
-func (db *DatabaseContext) UpdateCalculatedStats() {
+func (db *DatabaseContext) UpdateCalculatedStats(ctx context.Context) {
 
 	db.changeCache.updateStats()
 	channelCache := db.changeCache.getChannelCache()
-	db.DbStats.Cache().ChannelCacheMaxEntries.Set(int64(channelCache.MaxCacheSize()))
+	db.DbStats.Cache().ChannelCacheMaxEntries.Set(int64(channelCache.MaxCacheSize(ctx)))
 	db.DbStats.Cache().HighSeqCached.Set(int64(channelCache.GetHighCacheSequence()))
 
 }

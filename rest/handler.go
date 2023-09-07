@@ -108,7 +108,7 @@ type handler struct {
 	rqCtx                 context.Context
 }
 
-type authScopeFunc func(bodyJSON []byte) (string, error)
+type authScopeFunc func(ctx context.Context, bodyJSON []byte) (string, error)
 
 type handlerPrivs int
 
@@ -373,7 +373,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 						base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 						return err
 					}
-					bucketName, _ = h.server.bucketNameFromDbName(keyspaceDb)
+					bucketName, _ = h.server.bucketNameFromDbName(h.ctx(), keyspaceDb)
 				}
 			} else {
 				return err
@@ -489,7 +489,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			// The above readBody() will end up clearing the body which the later handler will require. Re-populate this
 			// for the later handler.
 			h.requestBody.reader = io.NopCloser(bytes.NewReader(body))
-			authScope, err = h.authScopeFunc(body)
+			authScope, err = h.authScopeFunc(h.ctx(), body)
 			if err != nil {
 				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
 			}
@@ -498,7 +498,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			}
 		}
 
-		permissions, statusCode, err := checkAdminAuth(authScope, username, password, h.rq.Method, httpClient,
+		permissions, statusCode, err := checkAdminAuth(h.ctx(), authScope, username, password, h.rq.Method, httpClient,
 			managementEndpoints, *h.server.Config.API.EnableAdminAuthenticationPermissionsCheck, accessPermissions,
 			responsePermissions)
 		if err != nil {
@@ -860,7 +860,7 @@ func (h *handler) checkAdminAuthenticationOnly() (bool, error) {
 		return false, ErrLoginRequired
 	}
 
-	statusCode, _, err := doHTTPAuthRequest(httpClient, username, password, "POST", "/pools/default/checkPermissions", managementEndpoints, nil)
+	statusCode, _, err := doHTTPAuthRequest(h.ctx(), httpClient, username, password, "POST", "/pools/default/checkPermissions", managementEndpoints, nil)
 	if err != nil {
 		return false, base.HTTPErrorf(http.StatusInternalServerError, "Error performing HTTP auth request: %v", err)
 	}
@@ -872,9 +872,9 @@ func (h *handler) checkAdminAuthenticationOnly() (bool, error) {
 	return true, nil
 }
 
-func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, attemptedHTTPOperation string, httpClient *http.Client, managementEndpoints []string, shouldCheckPermissions bool, accessPermissions []Permission, responsePermissions []Permission) (responsePermissionResults map[string]bool, statusCode int, err error) {
+func checkAdminAuth(ctx context.Context, bucketName, basicAuthUsername, basicAuthPassword string, attemptedHTTPOperation string, httpClient *http.Client, managementEndpoints []string, shouldCheckPermissions bool, accessPermissions []Permission, responsePermissions []Permission) (responsePermissionResults map[string]bool, statusCode int, err error) {
 	anyResponsePermFailed := false
-	permissionStatusCode, permResults, err := CheckPermissions(httpClient, managementEndpoints, bucketName, basicAuthUsername, basicAuthPassword, accessPermissions, responsePermissions)
+	permissionStatusCode, permResults, err := CheckPermissions(ctx, httpClient, managementEndpoints, bucketName, basicAuthUsername, basicAuthPassword, accessPermissions, responsePermissions)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
@@ -919,7 +919,7 @@ func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, att
 		}
 	}
 
-	rolesStatusCode, err := CheckRoles(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, requestRoles, bucketName)
+	rolesStatusCode, err := CheckRoles(ctx, httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, requestRoles, bucketName)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
@@ -1100,7 +1100,7 @@ func (h *handler) readSanitizeJSON(val interface{}) error {
 	}
 
 	// Expand environment variables.
-	content, err = expandEnv(content)
+	content, err = expandEnv(h.ctx(), content)
 	if err != nil {
 		return err
 	}

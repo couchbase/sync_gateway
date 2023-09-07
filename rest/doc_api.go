@@ -467,7 +467,7 @@ func (h *handler) handlePutDoc() error {
 		h.setEtag(newRev)
 	} else {
 		// Replicator-style PUT with new_edits=false:
-		revisions := db.ParseRevisions(body)
+		revisions := db.ParseRevisions(h.ctx(), body)
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
@@ -515,7 +515,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 		parentRev = ifMatch
 	}
 
-	generation, _ := db.ParseRevID(parentRev)
+	generation, _ := db.ParseRevID(h.ctx(), parentRev)
 	generation++
 
 	deleted, _ := h.getOptBoolQuery("deleted", false)
@@ -530,7 +530,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 
 	// Handle and pull out expiry
 	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
-		body := newDoc.Body()
+		body := newDoc.Body(h.ctx())
 		expiry, err := body.ExtractExpiry()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
@@ -541,7 +541,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 
 	// Pull out attachments
 	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
-		body := newDoc.Body()
+		body := newDoc.Body(h.ctx())
 
 		newDoc.DocAttachments = db.GetBodyAttachments(body)
 		delete(body, db.BodyAttachments)

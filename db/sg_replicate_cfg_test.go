@@ -26,10 +26,10 @@ func TestReplicateManagerReplications(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	testCfg, err := base.NewCfgSG(testBucket.GetSingleDataStore(), "")
+	ctx := base.TestCtx(t)
+	testCfg, err := base.NewCfgSG(ctx, testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
-	ctx := base.TestCtx(t)
 	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer manager.Stop()
@@ -91,10 +91,10 @@ func TestReplicateManagerNodes(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	testCfg, err := base.NewCfgSG(testBucket.GetSingleDataStore(), "")
+	ctx := base.TestCtx(t)
+	testCfg, err := base.NewCfgSG(ctx, testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
-	ctx := base.TestCtx(t)
 	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer manager.Stop()
@@ -148,7 +148,7 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 	defer testBucket.Close()
 
 	ctx := base.TestCtx(t)
-	testCfg, err := base.NewCfgSG(testBucket.GetSingleDataStore(), "")
+	testCfg, err := base.NewCfgSG(ctx, testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
 	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
@@ -193,7 +193,7 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 	defer testBucket.Close()
 
 	ctx := base.TestCtx(t)
-	testCfg, err := base.NewCfgSG(testBucket.GetSingleDataStore(), "")
+	testCfg, err := base.NewCfgSG(ctx, testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
 	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
@@ -535,7 +535,7 @@ func TestUpsertReplicationConfig(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
-			testCase.existingConfig.Upsert(testCase.updatedConfig)
+			testCase.existingConfig.Upsert(base.TestCtx(t), testCase.updatedConfig)
 			equal, err := testCase.existingConfig.Equals(testCase.expectedConfig)
 			assert.NoError(t, err)
 			assert.True(t, equal)
@@ -643,10 +643,11 @@ func TestIsCfgChanged(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	testCfg, err := base.NewCfgSG(testBucket.GetSingleDataStore(), "")
+	ctx := base.TestCtx(t)
+	testCfg, err := base.NewCfgSG(ctx, testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
-	mgr, err := NewSGReplicateManager(base.TestCtx(t), &DatabaseContext{Name: "test"}, testCfg)
+	mgr, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 	defer mgr.Stop()
 
@@ -656,7 +657,7 @@ func TestIsCfgChanged(t *testing.T) {
 			replicatorConfig, err := mgr.NewActiveReplicatorConfig(replicationCfg)
 			require.NoError(t, err)
 
-			replicationCfg.Upsert(testCase.updatedConfig)
+			replicationCfg.Upsert(base.TestCtx(t), testCase.updatedConfig)
 
 			isChanged, err := mgr.isCfgChanged(replicationCfg, replicatorConfig)
 			assert.NoError(t, err)

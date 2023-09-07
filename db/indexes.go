@@ -337,7 +337,7 @@ func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, opt
 	}
 
 	description := fmt.Sprintf("Attempt to create index %s", indexName)
-	err, _ = base.RetryLoop(description, worker, sleeper)
+	err, _ = base.RetryLoop(ctx, description, worker, sleeper)
 
 	if err != nil {
 		return false, pkgerrors.Wrapf(err, "Error installing Couchbase index: %v", indexName)

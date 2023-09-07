@@ -110,7 +110,7 @@ type UnsupportedServerConfigLegacy struct {
 
 // ToStartupConfig returns the given LegacyServerConfig as a StartupConfig and a set of DBConfigs.
 // The returned configs do not contain any default values - only a direct mapping of legacy config options as they were given.
-func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
+func (lc *LegacyServerConfig) ToStartupConfig(ctx context.Context) (*StartupConfig, DbConfigMap, error) {
 	// find a database's credentials for bootstrap (this isn't the first database config entry due to map iteration)
 	bootstrapConfigIsSet := false
 	bsc := &BootstrapConfig{}
@@ -139,7 +139,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 		server, username, password, err := legacyServerAddressUpgrade(*dbConfig.Server)
 		if err != nil {
 			server = *dbConfig.Server
-			base.ErrorfCtx(context.Background(), "Error upgrading server address: %v", err)
+			base.ErrorfCtx(ctx, "Error upgrading server address: %v", err)
 		}
 
 		dbConfig.Server = base.StringPtr(server)
@@ -357,19 +357,19 @@ func (clusterConfig *ClusterConfigLegacy) GetCredentials() (string, string, stri
 }
 
 // LoadLegacyServerConfig loads a LegacyServerConfig from either a JSON file or from a URL
-func LoadLegacyServerConfig(path string) (config *LegacyServerConfig, err error) {
-	rc, err := readFromPath(path, false)
+func LoadLegacyServerConfig(ctx context.Context, path string) (config *LegacyServerConfig, err error) {
+	rc, err := readFromPath(ctx, path, false)
 	if err != nil {
 		return nil, err
 	}
 
 	defer func() { _ = rc.Close() }()
-	return readLegacyServerConfig(rc)
+	return readLegacyServerConfig(ctx, rc)
 }
 
 // readLegacyServerConfig returns a validated LegacyServerConfig from an io.Reader
-func readLegacyServerConfig(r io.Reader) (config *LegacyServerConfig, err error) {
-	err = DecodeAndSanitiseConfig(r, &config, true)
+func readLegacyServerConfig(ctx context.Context, r io.Reader) (config *LegacyServerConfig, err error) {
+	err = DecodeAndSanitiseConfig(ctx, r, &config, true)
 	if err != nil {
 		return config, err
 	}
@@ -382,10 +382,10 @@ func readLegacyServerConfig(r io.Reader) (config *LegacyServerConfig, err error)
 
 // setupServerConfig parses command-line flags, reads the optional configuration file,
 // performs the config validation and database setup.
-func setupServerConfig(args []string) (config *LegacyServerConfig, err error) {
+func setupServerConfig(ctx context.Context, args []string) (config *LegacyServerConfig, err error) {
 	var unknownFieldsErr error
 
-	config, err = ParseCommandLine(args, flag.ExitOnError)
+	config, err = ParseCommandLine(ctx, args, flag.ExitOnError)
 	if pkgerrors.Cause(err) == base.ErrUnknownField {
 		unknownFieldsErr = err
 	} else if err != nil {
@@ -401,32 +401,32 @@ func setupServerConfig(args []string) (config *LegacyServerConfig, err error) {
 	// Validation
 	var multiError *base.MultiError
 	multiError = multiError.Append(config.validate())
-	multiError = multiError.Append(config.setupAndValidateDatabases())
+	multiError = multiError.Append(config.setupAndValidateDatabases(ctx))
 	if multiError.ErrorOrNil() != nil {
-		base.ErrorfCtx(context.Background(), "Error during config validation: %v", multiError)
+		base.ErrorfCtx(ctx, "Error during config validation: %v", multiError)
 		return nil, fmt.Errorf("error(s) during config validation: %v", multiError)
 	}
 
 	return config, nil
 }
 
-func setupAndValidateDatabases(databases DbConfigMap) error {
+func setupAndValidateDatabases(ctx context.Context, databases DbConfigMap) error {
 	for name, dbConfig := range databases {
-		if err := dbConfig.setup(name, BootstrapConfig{}, nil, nil, false); err != nil {
+		if err := dbConfig.setup(ctx, name, BootstrapConfig{}, nil, nil, false); err != nil {
 			return err
 		}
-		if err := dbConfig.validate(context.Background(), false); err != nil {
+		if err := dbConfig.validate(ctx, false); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (config *LegacyServerConfig) setupAndValidateDatabases() error {
+func (config *LegacyServerConfig) setupAndValidateDatabases(ctx context.Context) error {
 	if config == nil {
 		return nil
 	}
-	return setupAndValidateDatabases(config.Databases)
+	return setupAndValidateDatabases(ctx, config.Databases)
 }
 
 // validate validates the given server config and returns all invalid options as a slice of errors
@@ -487,7 +487,7 @@ func (self *LegacyServerConfig) MergeWith(other *LegacyServerConfig) error {
 	return nil
 }
 
-func (sc *LegacyServerConfig) Redacted() (*LegacyServerConfig, error) {
+func (sc *LegacyServerConfig) Redacted(ctx context.Context) (*LegacyServerConfig, error) {
 	var config LegacyServerConfig
 
 	err := base.DeepCopyInefficient(&config, sc)
@@ -496,7 +496,7 @@ func (sc *LegacyServerConfig) Redacted() (*LegacyServerConfig, error) {
 	}
 
 	for i := range config.Databases {
-		config.Databases[i], err = config.Databases[i].Redacted()
+		config.Databases[i], err = config.Databases[i].Redacted(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -506,7 +506,7 @@ func (sc *LegacyServerConfig) Redacted() (*LegacyServerConfig, error) {
 }
 
 // Reads the command line flags and the optional config file.
-func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServerConfig, error) {
+func ParseCommandLine(ctx context.Context, args []string, handling flag.ErrorHandling) (*LegacyServerConfig, error) {
 	flagSet := flag.NewFlagSet(args[0], handling)
 
 	_ = flagSet.Bool("disable_persistent_config", false, "")
@@ -541,7 +541,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 	if flagSet.NArg() > 0 {
 		// Read the configuration file(s), if any:
 		for _, filename := range flagSet.Args() {
-			newConfig, newConfigErr := LoadLegacyServerConfig(filename)
+			newConfig, newConfigErr := LoadLegacyServerConfig(ctx, filename)
 
 			if newConfigErr != nil {
 				return config, pkgerrors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))

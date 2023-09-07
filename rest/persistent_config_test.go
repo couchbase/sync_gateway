@@ -58,7 +58,8 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	err := os.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
-	startupConfig, _, _, _, err := automaticConfigUpgrade(configPath)
+	ctx := base.TestCtx(t)
+	startupConfig, _, _, _, err := automaticConfigUpgrade(ctx, configPath)
 	require.NoError(t, err)
 
 	assert.Equal(t, "", startupConfig.Bootstrap.ConfigGroupID)
@@ -97,7 +98,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 
 	assert.Equal(t, config, string(writtenBackupFile))
 
-	cbs, err := CreateCouchbaseClusterFromStartupConfig(startupConfig, base.PerUseClusterConnections)
+	cbs, err := CreateCouchbaseClusterFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
 	require.NoError(t, err)
 
 	bootstrapContext := &bootstrapContext{
@@ -105,7 +106,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	}
 
 	var dbConfig DatabaseConfig
-	_, err = bootstrapContext.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, "db", &dbConfig)
+	_, err = bootstrapContext.GetConfig(ctx, tb.GetName(), PersistentConfigDefaultGroupID, "db", &dbConfig)
 	require.NoError(t, err)
 
 	assert.Equal(t, "db", dbConfig.Name)
@@ -161,7 +162,7 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 			err := os.WriteFile(configPath, []byte(config), os.FileMode(0644))
 			require.NoError(t, err)
 
-			_, _, _, _, err = automaticConfigUpgrade(configPath)
+			_, _, _, _, err = automaticConfigUpgrade(base.TestCtx(t), configPath)
 			assert.Error(t, err)
 		})
 	}
@@ -185,17 +186,18 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 	)
 	RequireStatus(t, resp, http.StatusCreated)
 
+	ctx := base.TestCtx(t)
 	// Use underlying connection to unmarshal to untyped config
 	cnf := make(map[string]interface{}, 1)
-	key := PersistentConfigKey(rt.ServerContext().Config.Bootstrap.ConfigGroupID, "newdb")
-	cas, err := rt.ServerContext().BootstrapContext.Connection.GetMetadataDocument(tb.GetName(), key, &cnf)
+	key := PersistentConfigKey(ctx, rt.ServerContext().Config.Bootstrap.ConfigGroupID, "newdb")
+	cas, err := rt.ServerContext().BootstrapContext.Connection.GetMetadataDocument(ctx, tb.GetName(), key, &cnf)
 	require.NoError(t, err)
 
 	// Add invalid json fields to the config
 	cnf["num_index_replicas"] = "0"
 
 	// Both calls to UpdateMetadataDocument and fetchAndLoadConfigs needed to enter the broken state
-	_, err = rt.ServerContext().BootstrapContext.Connection.WriteMetadataDocument(tb.GetName(), key, cas, &cnf)
+	_, err = rt.ServerContext().BootstrapContext.Connection.WriteMetadataDocument(ctx, tb.GetName(), key, cas, &cnf)
 	require.NoError(t, err)
 	_, err = rt.ServerContext().fetchAndLoadConfigs(rt.Context(), false)
 	assert.NoError(t, err)
@@ -237,8 +239,9 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	err := os.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
+	ctx := base.TestCtx(t)
 	// Run migration once
-	_, _, _, _, err = automaticConfigUpgrade(configPath)
+	_, _, _, _, err = automaticConfigUpgrade(ctx, configPath)
 	require.NoError(t, err)
 
 	updatedConfig := fmt.Sprintf(`{
@@ -264,10 +267,10 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Run migration again to ensure no error and validate it doesn't actually update db
-	startupConfig, _, _, _, err := automaticConfigUpgrade(updatedConfigPath)
+	startupConfig, _, _, _, err := automaticConfigUpgrade(ctx, updatedConfigPath)
 	require.NoError(t, err)
 
-	cbs, err := CreateCouchbaseClusterFromStartupConfig(startupConfig, base.PerUseClusterConnections)
+	cbs, err := CreateCouchbaseClusterFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
 	require.NoError(t, err)
 
 	bootstrapContext := &bootstrapContext{
@@ -275,7 +278,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	}
 
 	var dbConfig DatabaseConfig
-	originalDefaultDbConfigCAS, err := bootstrapContext.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, "db", &dbConfig)
+	originalDefaultDbConfigCAS, err := bootstrapContext.GetConfig(ctx, tb.GetName(), PersistentConfigDefaultGroupID, "db", &dbConfig)
 	assert.NoError(t, err)
 
 	// Ensure that revs limit hasn't actually been set
@@ -309,7 +312,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	err = os.WriteFile(importConfigPath, []byte(importConfig), os.FileMode(0644))
 	require.NoError(t, err)
 
-	startupConfig, _, _, _, err = automaticConfigUpgrade(importConfigPath)
+	startupConfig, _, _, _, err = automaticConfigUpgrade(ctx, importConfigPath)
 	// only supported in EE
 	if base.IsEnterpriseEdition() {
 		require.NoError(t, err)
@@ -319,12 +322,12 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 
 		// Ensure dbConfig is saved as the specified config group ID
 		var dbConfig DatabaseConfig
-		_, err = bootstrapContext.GetConfig(tb.GetName(), configUpgradeGroupID, "db", &dbConfig)
+		_, err = bootstrapContext.GetConfig(ctx, tb.GetName(), configUpgradeGroupID, "db", &dbConfig)
 		assert.NoError(t, err)
 
 		// Ensure default has not changed
 		dbConfig = DatabaseConfig{}
-		defaultDbConfigCAS, err := bootstrapContext.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, "db", &dbConfig)
+		defaultDbConfigCAS, err := bootstrapContext.GetConfig(ctx, tb.GetName(), PersistentConfigDefaultGroupID, "db", &dbConfig)
 		assert.NoError(t, err)
 		assert.Equal(t, originalDefaultDbConfigCAS, defaultDbConfigCAS)
 	} else {
@@ -360,7 +363,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -435,7 +438,7 @@ func TestPersistentConfigWithCollectionConflicts(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -585,7 +588,7 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -611,7 +614,7 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 		require.NoError(t, err)
 		_, err = registry.upsertDatabaseConfig(ctx, groupID, config)
 		require.NoError(t, err)
-		require.NoError(t, bc.setGatewayRegistry(bucketName, registry))
+		require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
 	}
 
 	// set up ScopesConfigs used by tests
@@ -732,7 +735,7 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -771,7 +774,7 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 		require.NoError(t, err)
 		_, err = registry.upsertDatabaseConfig(ctx, groupID, config)
 		require.NoError(t, err)
-		require.NoError(t, bc.setGatewayRegistry(bucketName, registry))
+		require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
 	}
 
 	// Case 1. GetDatabaseConfigs should roll back registry after update failure
@@ -886,7 +889,7 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -924,7 +927,7 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 		registry, err := bc.getGatewayRegistry(ctx, bucketName)
 		require.NoError(t, err)
 		require.NoError(t, registry.deleteDatabase(groupID, config.Name))
-		require.NoError(t, bc.setGatewayRegistry(bucketName, registry))
+		require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
 	}
 
 	// Case 1. Retrieval of database after delete failure should not find it (matching versions)
@@ -1003,7 +1006,7 @@ func TestPersistentConfigSlowCreateFailure(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -1029,11 +1032,11 @@ func TestPersistentConfigSlowCreateFailure(t *testing.T) {
 		require.NoError(t, err)
 		_, err = registry.upsertDatabaseConfig(ctx, groupID, config)
 		require.NoError(t, err)
-		require.NoError(t, bc.setGatewayRegistry(bucketName, registry))
+		require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
 	}
 
 	completeSlowCreate := func(t *testing.T, config *DatabaseConfig) error {
-		_, insertError := bc.Connection.InsertMetadataDocument(bucketName, PersistentConfigKey(groupID, config.Name), config)
+		_, insertError := bc.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, config.Name), config)
 		return insertError
 	}
 
@@ -1081,7 +1084,7 @@ func TestMigratev30PersistentConfig(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -1100,7 +1103,7 @@ func TestMigratev30PersistentConfig(t *testing.T) {
 		Version:  defaultVersion,
 	}
 
-	_, insertError := sc.BootstrapContext.Connection.InsertMetadataDocument(bucketName, PersistentConfigKey30(groupID), defaultDatabaseConfig)
+	_, insertError := sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
 	require.NoError(t, insertError)
 
 	migrateErr := sc.migrateV30Configs(ctx)
@@ -1114,11 +1117,11 @@ func TestMigratev30PersistentConfig(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, "1-abc", migratedDb.Version)
 	// Verify legacy config has been removed
-	_, getError := sc.BootstrapContext.Connection.GetMetadataDocument(bucketName, PersistentConfigKey30(groupID), defaultDatabaseConfig)
+	_, getError := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
 	require.Equal(t, base.ErrNotFound, getError)
 
 	// Update the db in the registry, and recreate legacy config.  Verify migration doesn't overwrite
-	_, insertError = sc.BootstrapContext.Connection.InsertMetadataDocument(bucketName, PersistentConfigKey30(groupID), defaultDatabaseConfig)
+	_, insertError = sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
 	require.NoError(t, insertError)
 	_, updateError := sc.BootstrapContext.UpdateConfig(ctx, bucketName, groupID, defaultDbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 		bucketDbConfig.Version = "2-abc"
@@ -1163,7 +1166,7 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -1189,7 +1192,7 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 		DbConfig: defaultDbConfig,
 		Version:  defaultVersion,
 	}
-	_, insertError := sc.BootstrapContext.Connection.InsertMetadataDocument(bucketName, PersistentConfigKey30(groupID), defaultDatabaseConfig)
+	_, insertError := sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
 	require.NoError(t, insertError)
 
 	migrateErr := sc.migrateV30Configs(ctx)

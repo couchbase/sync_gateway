@@ -242,7 +242,7 @@ func (c *changeCache) Stop() {
 	close(c.terminator)
 
 	// Wait for changeCache background tasks to finish.
-	waitForBGTCompletion(context.TODO(), BGTCompletionMaxWait, c.backgroundTasks, c.db.Name)
+	waitForBGTCompletion(c.logCtx, BGTCompletionMaxWait, c.backgroundTasks, c.db.Name)
 
 	c.lock.Lock()
 	c.logsDisabled = true
@@ -250,7 +250,7 @@ func (c *changeCache) Stop() {
 }
 
 // Empty out all channel caches.
-func (c *changeCache) Clear() error {
+func (c *changeCache) Clear(ctx context.Context) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -258,7 +258,7 @@ func (c *changeCache) Clear() error {
 	// the point at which the change cache was initialized / re-initialized.
 	// No need to touch c.nextSequence here, because we don't want to touch the sequence buffering state.
 	var err error
-	c.initialSequence, err = c.db.LastSequence()
+	c.initialSequence, err = c.db.LastSequence(ctx)
 	if err != nil {
 		return err
 	}
@@ -289,7 +289,7 @@ func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 
 	// Trigger _addPendingLogs to process any entries that have been pending too long:
 	c.lock.Lock()
-	changedChannels := c._addPendingLogs()
+	changedChannels := c._addPendingLogs(ctx)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
 		c.notifyChange(ctx, changedChannels)
 	}
@@ -402,7 +402,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	// If not using xattrs and no sync metadata found, check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
 	// before ignoring the mutation.
 	if !collection.UseXattrs() && !syncData.HasValidSyncData() {
-		migratedDoc, _ := collection.checkForUpgrade(docID, DocUnmarshalNoHistory)
+		migratedDoc, _ := collection.checkForUpgrade(c.logCtx, docID, DocUnmarshalNoHistory)
 		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
 			base.InfofCtx(c.logCtx, base.KeyCache, "Found mobile xattr on doc %q without %s property - caching, assuming upgrade in progress.", base.UD(docID), base.SyncPropertyName)
 			syncData = &migratedDoc.SyncData
@@ -520,8 +520,8 @@ type cachePrincipal struct {
 	Sequence uint64 `json:"sequence"`
 }
 
-func (c *changeCache) Remove(collectionID uint32, docIDs []string, startTime time.Time) (count int) {
-	return c.channelCache.Remove(collectionID, docIDs, startTime)
+func (c *changeCache) Remove(ctx context.Context, collectionID uint32, docIDs []string, startTime time.Time) (count int) {
+	return c.channelCache.Remove(ctx, collectionID, docIDs, startTime)
 }
 
 // Principals unmarshalled during caching don't need to instantiate a real principal - we're just using name and seq from the document
@@ -660,9 +660,9 @@ func (c *changeCache) processEntry(change *LogEntry) channels.Set {
 	var changedChannels channels.Set
 	if sequence == c.nextSequence || c.nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
-		changedChannels = channels.SetFromArrayNoValidate(c._addToCache(change))
+		changedChannels = channels.SetFromArrayNoValidate(c._addToCache(c.logCtx, change))
 		// Also add any pending sequences that are now contiguous:
-		changedChannels = changedChannels.Update(c._addPendingLogs())
+		changedChannels = changedChannels.Update(c._addPendingLogs(c.logCtx))
 	} else if sequence > c.nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		heap.Push(&c.pendingLogs, change)
@@ -679,7 +679,7 @@ func (c *changeCache) processEntry(change *LogEntry) channels.Set {
 
 		if numPending > c.options.CachePendingSeqMaxNum {
 			// Too many pending; add the oldest one:
-			changedChannels = c._addPendingLogs()
+			changedChannels = c._addPendingLogs(c.logCtx)
 		}
 	} else if sequence > c.initialSequence {
 		// Out-of-order sequence received!
@@ -692,7 +692,7 @@ func (c *changeCache) processEntry(change *LogEntry) channels.Set {
 			change.Skipped = true
 		}
 
-		changedChannels = changedChannels.UpdateWithSlice(c._addToCache(change))
+		changedChannels = changedChannels.UpdateWithSlice(c._addToCache(c.logCtx, change))
 		// Add to cache before removing from skipped, to ensure lowSequence doesn't get incremented until results are available
 		// in cache
 		err := c.RemoveSkipped(sequence)
@@ -705,7 +705,7 @@ func (c *changeCache) processEntry(change *LogEntry) channels.Set {
 
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
-func (c *changeCache) _addToCache(change *LogEntry) []channels.ID {
+func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) []channels.ID {
 
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
@@ -724,7 +724,7 @@ func (c *changeCache) _addToCache(change *LogEntry) []channels.ID {
 
 	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
 	// the change's active channels, as well as any channel removals for the active revision.
-	updatedChannels := c.channelCache.AddToCache(change)
+	updatedChannels := c.channelCache.AddToCache(c.logCtx, change)
 	if base.LogDebugEnabled(base.KeyDCP) {
 		base.DebugfCtx(c.logCtx, base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
 	}
@@ -740,7 +740,7 @@ func (c *changeCache) _addToCache(change *LogEntry) []channels.ID {
 // Add the first change(s) from pendingLogs if they're the next sequence.  If not, and we've been
 // waiting too long for nextSequence, move nextSequence to skipped queue.
 // Returns the channels that changed.
-func (c *changeCache) _addPendingLogs() channels.Set {
+func (c *changeCache) _addPendingLogs(ctx context.Context) channels.Set {
 	var changedChannels channels.Set
 
 	for len(c.pendingLogs) > 0 {
@@ -748,7 +748,7 @@ func (c *changeCache) _addPendingLogs() channels.Set {
 		isNext := change.Sequence == c.nextSequence
 		if isNext {
 			heap.Pop(&c.pendingLogs)
-			changedChannels = changedChannels.UpdateWithSlice(c._addToCache(change))
+			changedChannels = changedChannels.UpdateWithSlice(c._addToCache(ctx, change))
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
 			c.db.DbStats.Cache().NumSkippedSeqs.Add(1)
 			c.PushSkipped(c.nextSequence)
@@ -885,7 +885,7 @@ func (c *changeCache) waitForSequence(ctx context.Context, sequence uint64, maxW
 
 	ctx, cancel := context.WithDeadline(ctx, startTime.Add(maxWaitTime))
 	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(math.MaxInt64, 1, 100), ctx)
-	err, _ := base.RetryLoop(fmt.Sprintf("waitForSequence(%d)", sequence), worker, sleeper)
+	err, _ := base.RetryLoop(ctx, fmt.Sprintf("waitForSequence(%d)", sequence), worker, sleeper)
 	cancel()
 	return err
 }
@@ -908,7 +908,7 @@ func (c *changeCache) waitForSequenceNotSkipped(ctx context.Context, sequence ui
 
 	ctx, cancel := context.WithDeadline(ctx, startTime.Add(maxWaitTime))
 	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(math.MaxInt64, 1, 100), ctx)
-	err, _ := base.RetryLoop(fmt.Sprintf("waitForSequenceNotSkipped(%d)", sequence), worker, sleeper)
+	err, _ := base.RetryLoop(ctx, fmt.Sprintf("waitForSequenceNotSkipped(%d)", sequence), worker, sleeper)
 	cancel()
 	return err
 }
