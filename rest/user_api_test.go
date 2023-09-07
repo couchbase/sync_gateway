@@ -1263,7 +1263,7 @@ func TestUserXattrRevCache(t *testing.T) {
 	xattrKey := "channels"
 	channelName := []string{"ABC", "DEF"}
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(base.TestCtx(t))
 	syncFn := `function (doc, oldDoc, meta){
 				if (meta.xattrs.channels !== undefined){
 					channel(meta.xattrs.channels);
@@ -1364,7 +1364,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	docKey := t.Name()
 	xattrKey := "channels"
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(base.TestCtx(t))
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),

@@ -96,7 +96,7 @@ func (rc *BypassRevisionCache) Upsert(ctx context.Context, docRev DocumentRevisi
 	// no-op
 }
 
-func (rc *BypassRevisionCache) Invalidate(ctx context.Context, docID, revID string) {
+func (rc *BypassRevisionCache) Remove(docID, revID string) {
 	// nop
 }
 
