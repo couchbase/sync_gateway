@@ -473,3 +473,28 @@ func TestEvaluateFunction(t *testing.T) {
 	assert.Error(t, err, `strconv.ParseBool: parsing "TruE": invalid syntax`)
 	assert.False(t, result, "Import filter function should return true")
 }
+
+// TestImportInvalidMetadata tests triggering an import error if the metadata is unmarshalable
+func TestImportInvalidMetadata(t *testing.T) {
+	if !base.TestUseXattrs() || base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works with XATTRS enabled and in integration mode")
+	}
+
+	db := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{})
+	defer db.Close()
+
+	// make sure no documents are imported
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+
+	// write a document with inline sync metadata that is unmarshalable, triggering an import error
+	// can't write a document with invalid sync metadata as an xattr, so rely on legacy behavior
+	_, err := db.Bucket.Add("doc1", 0, `{"foo" : "bar", "_sync" : 1 }`)
+	require.NoError(t, err)
+
+	_, ok := base.WaitForStat(func() int64 {
+		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
+	}, 1)
+	require.True(t, ok)
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
+}
