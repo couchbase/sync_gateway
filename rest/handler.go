@@ -208,9 +208,9 @@ func (h *handler) ctx() context.Context {
 	return h.rqCtx
 }
 
-func (h *handler) addDatabaseLogContext(dbName string) {
+func (h *handler) addDatabaseLogContext(dbName string, logConfig *base.DbConsoleLogConfig) {
 	if dbName != "" {
-		h.rqCtx = base.DatabaseLogCtx(h.ctx(), dbName)
+		h.rqCtx = base.DatabaseLogCtx(h.ctx(), dbName, logConfig)
 	}
 }
 
@@ -331,9 +331,9 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	// look up the database context:
 	if keyspaceDb != "" {
-		h.addDatabaseLogContext(keyspaceDb)
 		var err error
 		if dbContext, err = h.server.GetActiveDatabase(keyspaceDb); err != nil {
+			h.addDatabaseLogContext(keyspaceDb, nil)
 			if err == base.ErrNotFound {
 				if shouldCheckAdminAuth {
 					// Check if authenticated before attempting to get inactive database
@@ -373,6 +373,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	// If this call is in the context of a DB make sure the DB is in a valid state
 	if dbContext != nil {
+		h.addDatabaseLogContext(keyspaceDb, dbContext.Options.LoggingConfig.Console)
 		if !h.runOffline {
 			// get a read lock on the dbContext
 			// When the lock is returned we know that the db state will not be changed by

@@ -166,7 +166,8 @@ type DbConfig struct {
 	UserFunctions                    *functions.FunctionsConfig       `json:"functions,omitempty"`                            // Named JS fns for clients to call
 	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
 	ChangesRequestPlus               *bool                            `json:"changes_request_plus,omitempty"`                 // If set, is used as the default value of request_plus for non-continuous replications
-	CORS                             *auth.CORSConfig                 `json:"cors,omitempty"`
+	CORS                             *auth.CORSConfig                 `json:"cors,omitempty"`                                 // Per-database CORS config
+	Logging                          *DbLoggingConfig                 `json:"logging,omitempty"`                              // Per-database Logging config
 }
 
 type ScopesConfig map[string]ScopeConfig
@@ -236,6 +237,17 @@ type ChannelCacheConfig struct {
 	MinLength            *int    `json:"min_length,omitempty"`                 // Minimum number of entries maintained in cache per channel
 	ExpirySeconds        *int    `json:"expiry_seconds,omitempty"`             // Time (seconds) to keep entries in cache beyond the minimum retained
 	DeprecatedQueryLimit *int    `json:"query_limit,omitempty"`                // Limit used for channel queries, if not specified by client DEPRECATED in favour of db.QueryPaginationLimit
+}
+
+// DbLoggingConfig allows per-database logging overrides
+type DbLoggingConfig struct {
+	Console *DbConsoleLoggingConfig `json:"console,omitempty"`
+}
+
+// DbConsoleLoggingConfig are per-db options configurable for console logging
+type DbConsoleLoggingConfig struct {
+	LogLevel *base.LogLevel `json:"log_level,omitempty"`
+	LogKeys  []string       `json:"log_keys,omitempty"`
 }
 
 func GetTLSVersionFromString(stringV *string) uint16 {
