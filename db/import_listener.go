@@ -101,6 +101,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 
 	// If this is a binary document we can ignore, but update checkpoint to avoid reprocessing upon restart
 	if event.DataType == base.MemcachedDataTypeRaw {
+		base.InfofCtx(il.loggingCtx, base.KeyImport, "Ignoring binary mutation event for %s.", base.UD(event.Key))
 		return true
 	}
 
@@ -113,10 +114,12 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 	// Unmarshal the doc metadata (if present) to determine if this mutation requires import.
 	syncData, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, il.database.Options.UserXattrKey, false)
 	if err != nil {
-		base.Debugf(base.KeyImport, "Found sync metadata, but unable to unmarshal for feed document %q.  Will not be imported.  Error: %v", base.UD(event.Key), err)
 		if err == base.ErrEmptyMetadata {
 			base.Warnf("Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
+		} else {
+			base.Warnf("Found sync metadata, but unable to unmarshal for feed document %q.  Will not be imported.  Error: %v", base.UD(event.Key), err)
 		}
+		il.stats.SharedBucketImport().ImportErrorCount.Add(1)
 		return
 	}
 
