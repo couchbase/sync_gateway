@@ -876,14 +876,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	// If asyncOnline wasn't specified, block until db init is completed, then start online processes
 	if !options.asyncOnline || dbInitDoneChan == nil {
-		base.DebugfCtx(ctx, base.KeyConfig, "Waiting for database init to complete...")
+		base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete...")
 		if dbInitDoneChan != nil {
 			initError := <-dbInitDoneChan
 			if initError != nil {
 				return nil, initError
 			}
 		}
-		base.DebugfCtx(ctx, base.KeyConfig, "Database init completed, starting online processes")
+		base.InfofCtx(ctx, base.KeyAll, "Database init completed, starting online processes")
 		if err := dbcontext.StartOnlineProcesses(ctx); err != nil {
 			return nil, err
 		}
@@ -893,7 +893,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	} else {
 		// If asyncOnline is requested, set state to Starting and spawn a separate goroutine to wait for init completion
 		// before going online
-		base.DebugfCtx(ctx, base.KeyConfig, "Waiting for database init to complete asynchonously...")
+		base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete asynchonously...")
 		atomic.StoreUint32(&dbcontext.State, db.DBStarting)
 		nonCancelCtx := base.NewNonCancelCtxForDatabase(dbName, dbcontext.Options.LoggingConfig.Console)
 		go sc.asyncDatabaseOnline(nonCancelCtx, dbcontext, dbInitDoneChan, config.Version)
@@ -924,10 +924,10 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 		return
 	}
 
-	base.DebugfCtx(ctx, base.KeyConfig, "Async database initialization complete, starting online processes...")
+	base.InfofCtx(ctx, base.KeyAll, "Async database initialization complete, starting online processes...")
 	err := dbc.StartOnlineProcesses(ctx)
 	if err != nil {
-		base.InfofCtx(ctx, base.KeyAll, "Error starting online processes after async initialization: %v", err)
+		base.ErrorfCtx(ctx, "Error starting online processes after async initialization: %v", err)
 		atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
 	}
 
