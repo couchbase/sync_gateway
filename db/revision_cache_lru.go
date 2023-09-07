@@ -69,8 +69,8 @@ func (sc *ShardedLRURevisionCache) Upsert(ctx context.Context, docRev DocumentRe
 	sc.getShard(docRev.DocID).Upsert(ctx, docRev)
 }
 
-func (sc *ShardedLRURevisionCache) Invalidate(ctx context.Context, docID, revID string) {
-	sc.getShard(docID).Invalidate(ctx, docID, revID)
+func (sc *ShardedLRURevisionCache) Remove(docID, revID string) {
+	sc.getShard(docID).Remove(docID, revID)
 }
 
 // An LRU cache of document revision bodies, together with their channel access.
@@ -261,14 +261,6 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision)
 	value.store(docRev)
 }
 
-func (rc *LRURevisionCache) Invalidate(ctx context.Context, docID, revID string) {
-	value := rc.getValue(docID, revID, false)
-	if value == nil {
-		return
-	}
-	rc.removeValue(value)
-}
-
 func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *revCacheValue) {
 	if docID == "" || revID == "" {
 		// TODO: CBG-1948
@@ -290,6 +282,20 @@ func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *r
 	return
 }
 
+// Remove removes a value from the revision cache, if present.
+func (rc *LRURevisionCache) Remove(docID, revID string) {
+	key := IDAndRev{DocID: docID, RevID: revID}
+	rc.lock.Lock()
+	defer rc.lock.Unlock()
+	element, ok := rc.cache[key]
+	if !ok {
+		return
+	}
+	rc.lruList.Remove(element)
+	delete(rc.cache, key)
+}
+
+// removeValue removes a value from the revision cache, if present and the value matches the the value. If there's an item in the revision cache with a matching docID and revID but the document is different, this item will not be removed from the rev cache.
 func (rc *LRURevisionCache) removeValue(value *revCacheValue) {
 	rc.lock.Lock()
 	if element := rc.cache[value.key]; element != nil && element.Value == value {
