@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 
 	"golang.org/x/crypto/bcrypt"
@@ -234,6 +235,55 @@ func GetTLSVersionFromString(stringV *string) uint16 {
 		}
 	}
 	return uint16(DefaultMinimumTLSVersionConst)
+}
+
+type invalidConfigInfo struct {
+	logged              bool
+	configBucketName    string
+	persistedBucketName string
+}
+
+type invalidDatabaseConfigs struct {
+	dbNames map[string]*invalidConfigInfo
+	m       sync.RWMutex
+}
+
+// addInvalidDatabase adds a db to invalid dbconfig map if it doesn't exist in there yet and will log for it at warning level
+// if the db already exists there we will calculate if we need to log again according to the config update interval
+func (d *invalidDatabaseConfigs) addInvalidDatabase(dbname string, cnf DatabaseConfig, bucket string) {
+	configInfo := invalidConfigInfo{
+		configBucketName:    *cnf.Bucket,
+		persistedBucketName: bucket,
+	}
+	d.m.Lock()
+	defer d.m.Unlock()
+	if d.dbNames[dbname] == nil {
+		// db hasn't been tracked as invalid config yet so add it
+		d.dbNames[dbname] = &configInfo
+	}
+	logMessage := fmt.Sprintf("Mismatch in database config for database %q bucket name: %q and backend bucket: %q You must update database config immediately", base.MD(dbname), base.MD(d.dbNames[dbname].configBucketName), base.MD(d.dbNames[dbname].persistedBucketName))
+	// if we get here we already have the db logged as an invalid config, so now we need to work out iof we should log for it now
+	if !d.dbNames[dbname].logged {
+		// we need to log at warning if we haven't already logged for this particular corrupt db config
+		base.Warnf(logMessage)
+		d.dbNames[dbname].logged = true
+	} else {
+		// already logged this entry at warning so need to log at info now
+		base.Infof(base.KeyConfig, logMessage)
+	}
+}
+
+func (d *invalidDatabaseConfigs) exists(dbname string) (*invalidConfigInfo, bool) {
+	d.m.RLock()
+	defer d.m.RUnlock()
+	config, ok := d.dbNames[dbname]
+	return config, ok
+}
+
+func (d *invalidDatabaseConfigs) remove(dbname string) {
+	d.m.Lock()
+	defer d.m.Unlock()
+	delete(d.dbNames, dbname)
 }
 
 // inheritFromBootstrap sets any empty Couchbase Server values from the given bootstrap config.
@@ -1182,7 +1232,15 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 		// inherit properties the bootstrap config
 		cnf.CACertPath = sc.config.Bootstrap.CACertPath
 
+		// We need to check for corruption in the database config (CC. CBG-3292). If the fetched config doesn't match the
+		// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
+		// in memory representation on the server context.
+		if bucket != *cnf.Bucket {
+			sc.handleInvalidDatabaseConfig(bucket, cnf)
+			return true, nil, fmt.Errorf("mismatch in persisted database bucket name %q vs the actual bucket name %q. Please correct db %q's config, groupID %q.", base.MD(cnf.Bucket), base.MD(bucket), base.MD(cnf.Name), base.MD(sc.config.Bootstrap.ConfigGroupID))
+		}
 		bucketCopy := bucket
+		// no corruption detected carry on as usual
 		cnf.Bucket = &bucketCopy
 
 		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
@@ -1199,11 +1257,19 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 	return false, nil, nil
 }
 
+func (sc *ServerContext) handleInvalidDatabaseConfig(bucket string, cnf DatabaseConfig) {
+	// track corrupt database context
+	sc.invalidDatabaseConfigTracking.addInvalidDatabase(cnf.Name, cnf, bucket)
+	// don't load config + remove from server context (apart from corrupt database map)
+	sc._removeDatabase(cnf.Name)
+}
+
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
 func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
 	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+
 	}
 
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
@@ -1246,6 +1312,14 @@ func (sc *ServerContext) fetchConfigs(isInitialStartup bool) (dbNameConfigs map[
 			cnf.Password = sc.config.Bootstrap.Password
 			cnf.CertPath = sc.config.Bootstrap.X509CertPath
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
+
+			// We need to check for corruption in the database config (CC. CBG-3292). If the fetched config doesn't match the
+			// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
+			// in memory representation on the server context.
+			if bucket != *cnf.Bucket {
+				sc.handleInvalidDatabaseConfig(bucket, cnf)
+				continue
+			}
 		}
 
 		base.Debugf(base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)

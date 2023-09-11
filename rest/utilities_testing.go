@@ -1787,3 +1787,15 @@ func RequireStatus(t testing.TB, response *TestResponse, expectedStatus int) {
 		expectedStatus, http.StatusText(expectedStatus),
 		response.Req.Method, response.Req.URL, response.Body)
 }
+
+func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, expectedDbNames []string) {
+	sc.invalidDatabaseConfigTracking.m.RLock()
+	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
+
+	dbNames := make([]string, 0, len(sc.invalidDatabaseConfigTracking.dbNames))
+
+	for name := range sc.invalidDatabaseConfigTracking.dbNames {
+		dbNames = append(dbNames, name)
+	}
+	require.EqualValues(t, expectedDbNames, dbNames)
+}

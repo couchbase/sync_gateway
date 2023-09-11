@@ -44,22 +44,23 @@ const KDefaultNumShards = 16
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config               *StartupConfig // The current runtime configuration of the node
-	initialStartupConfig *StartupConfig // The configuration at startup of the node. Built from config file + flags
-	persistentConfig     bool
-	bucketDbName         map[string]string              // bucketDbName is a map of bucket to database name
-	dbConfigs            map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
-	databases_           map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
-	lock                 sync.RWMutex
-	statsContext         *statsContext
-	bootstrapContext     *bootstrapContext
-	HTTPClient           *http.Client
-	cpuPprofFileMutex    sync.Mutex      // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
-	cpuPprofFile         *os.File        // An open file descriptor holds the reference during CPU profiling
-	_httpServers         []*http.Server  // A list of HTTP servers running under the ServerContext
-	GoCBAgent            *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
-	NoX509HTTPClient     *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
-	hasStarted           chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
+	config                        *StartupConfig // The current runtime configuration of the node
+	initialStartupConfig          *StartupConfig // The configuration at startup of the node. Built from config file + flags
+	persistentConfig              bool
+	bucketDbName                  map[string]string              // bucketDbName is a map of bucket to database name
+	dbConfigs                     map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
+	databases_                    map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
+	lock                          sync.RWMutex
+	statsContext                  *statsContext
+	bootstrapContext              *bootstrapContext
+	HTTPClient                    *http.Client
+	cpuPprofFileMutex             sync.Mutex      // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
+	cpuPprofFile                  *os.File        // An open file descriptor holds the reference during CPU profiling
+	_httpServers                  []*http.Server  // A list of HTTP servers running under the ServerContext
+	GoCBAgent                     *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
+	NoX509HTTPClient              *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
+	hasStarted                    chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
+	invalidDatabaseConfigTracking invalidDatabaseConfigs
 }
 
 type bootstrapContext struct {
@@ -105,6 +106,9 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 		statsContext:     &statsContext{},
 		bootstrapContext: &bootstrapContext{},
 		hasStarted:       make(chan struct{}),
+	}
+	sc.invalidDatabaseConfigTracking = invalidDatabaseConfigs{
+		dbNames: map[string]*invalidConfigInfo{},
 	}
 
 	if base.ServerIsWalrus(sc.config.Bootstrap.Server) {
@@ -171,6 +175,7 @@ func (sc *ServerContext) Close() {
 		_ = ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", &sc.config.API.AdminInterface)
 	}
 	sc.databases_ = nil
+	sc.invalidDatabaseConfigTracking.dbNames = nil
 
 	for _, s := range sc._httpServers {
 		base.Infof(base.KeyHTTP, "Closing HTTP Server: %v", s.Addr)
@@ -227,8 +232,16 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 			}
 		}
 	}
+	// handle the correct error message being returned for a corrupt database config
+	var httpErr *base.HTTPError
+	invalidConfig, ok := sc.invalidDatabaseConfigTracking.exists(name)
+	if ok {
+		httpErr = base.HTTPErrorf(http.StatusNotFound, "Mismatch in database config for database %s bucket name: %s and backend bucket: %s groupID: %s You must update database config immediately", base.MD(name), base.MD(invalidConfig.configBucketName), base.MD(invalidConfig.persistedBucketName), base.MD(sc.config.Bootstrap.ConfigGroupID))
+	} else {
+		httpErr = base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
+	}
 
-	return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
+	return nil, httpErr
 }
 
 func (sc *ServerContext) GetDbConfig(name string) *DbConfig {
@@ -270,6 +283,12 @@ func (sc *ServerContext) AllDatabases() map[string]*db.DatabaseContext {
 		databases[name] = database
 	}
 	return databases
+}
+
+func (sc *ServerContext) AllInvalidDatabases() map[string]*invalidConfigInfo {
+	sc.invalidDatabaseConfigTracking.m.RLock()
+	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
+	return sc.invalidDatabaseConfigTracking.dbNames
 }
 
 type PostUpgradeResult map[string]PostUpgradeDatabaseResult

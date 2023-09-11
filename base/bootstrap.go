@@ -16,6 +16,8 @@ type BootstrapConnection interface {
 	GetConfigBuckets() ([]string, error)
 	// GetConfig fetches a database config for a given bucket and config group ID, along with the CAS of the config document.
 	GetConfig(bucket, groupID string, valuePtr interface{}) (cas uint64, err error)
+	// Deleteconfig deletes a database config for a given bucket and config group ID.
+	DeleteConfig(bucket, groupID string) (err error)
 	// InsertConfig saves a new database config for a given bucket and config group ID.
 	InsertConfig(bucket, groupID string, value interface{}) (newCAS uint64, err error)
 	// UpdateConfig updates an existing database config for a given bucket and config group ID. updateCallback can return nil to remove the config.
@@ -187,6 +189,23 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 	defer teardown()
 
 	return cc.configPersistence.loadConfig(b.DefaultCollection(), PersistentConfigPrefix+groupID, valuePtr)
+}
+
+func (cc *CouchbaseCluster) DeleteConfig(location, groupID string) error {
+	if cc == nil {
+		return errors.New("nil CouchbaseCluster")
+	}
+
+	b, teardown, err := cc.getBucket(location)
+
+	if err != nil {
+		return err
+	}
+
+	defer teardown()
+
+	_, err = cc.configPersistence.removeRawConfig(b.DefaultCollection(), PersistentConfigPrefix+groupID, 0)
+	return err
 }
 
 func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interface{}) (newCAS uint64, err error) {
