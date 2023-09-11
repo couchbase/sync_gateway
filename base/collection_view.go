@@ -79,7 +79,8 @@ func (c *Collection) GetDDocs() (ddocs map[string]sgbucket.DesignDoc, err error)
 	return ddocs, err
 }
 
-func (c *Collection) PutDDoc(ctx context.Context, docname string, sgDesignDoc *sgbucket.DesignDoc) error {
+func (c *Collection) PutDDoc(docname string, sgDesignDoc *sgbucket.DesignDoc) error {
+	ctx := context.TODO() // fix in sg-bucket
 	if !c.IsDefaultScopeCollection() {
 		return fmt.Errorf("views not supported for non-default collection")
 	}

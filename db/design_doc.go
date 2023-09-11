@@ -787,7 +787,7 @@ func getViewStoreForDefaultCollection(dbContext *DatabaseContext) (sgbucket.View
 	}
 	vs, ok := base.AsViewStore(dbCollection.dataStore)
 	if !ok {
-		return nil, fmt.Errorf("dbCollection.dataStore is not a ViewStore")
+		return nil, fmt.Errorf("%T is not a ViewStore", dbCollection.dataStore)
 	}
 	return vs, nil
 }

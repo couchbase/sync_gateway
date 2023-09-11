@@ -40,8 +40,9 @@ type Collection struct {
 
 // Ensure that Collection implements sgbucket.DataStore/N1QLStore
 var (
-	_ DataStore = &Collection{}
-	_ N1QLStore = &Collection{}
+	_ DataStore          = &Collection{}
+	_ N1QLStore          = &Collection{}
+	_ sgbucket.ViewStore = &Collection{}
 )
 
 func AsCollection(dataStore DataStore) (*Collection, error) {
