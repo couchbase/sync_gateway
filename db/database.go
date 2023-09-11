@@ -58,6 +58,7 @@ const (
 	DefaultPurgeInterval                    = 30 * 24 * time.Hour
 	DefaultSGReplicateEnabled               = true
 	DefaultSGReplicateWebsocketPingInterval = time.Minute * 5
+	DefaultCompactInterval                  = 24 * time.Hour
 )
 
 // Default values for delta sync
@@ -66,7 +67,6 @@ var (
 	DefaultDeltaSyncRevMaxAge = uint32(60 * 60 * 24) // 24 hours in seconds
 )
 
-var DefaultCompactInterval = uint32(60 * 60 * 24) // Default compact interval in seconds = 1 Day
 var (
 	DefaultQueryPaginationLimit = 5000
 )
