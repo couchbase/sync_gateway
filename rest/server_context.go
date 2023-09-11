@@ -1069,7 +1069,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 	base.InfofCtx(ctx, base.KeyAll, "delta_sync enabled=%t with rev_max_age_seconds=%d for database %s", deltaSyncOptions.Enabled, deltaSyncOptions.RevMaxAgeSeconds, dbName)
 
-	compactIntervalSecs := db.DefaultCompactInterval
+	compactIntervalSecs := uint32(db.DefaultCompactInterval.Seconds())
 	if config.CompactIntervalDays != nil {
 		compactIntervalSecs = uint32(*config.CompactIntervalDays * 60 * 60 * 24)
 	}

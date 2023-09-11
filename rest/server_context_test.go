@@ -875,3 +875,48 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 }
+
+func TestCompactIntervalFromConfig(t *testing.T) {
+	testCases := []struct {
+		name                        string
+		compactIntervalDays         *float32
+		expectedCompactIntervalSecs uint32
+	}{
+		{
+			name:                        "compact interval days not set",
+			compactIntervalDays:         nil,
+			expectedCompactIntervalSecs: uint32(db.DefaultCompactInterval.Seconds()),
+		},
+		{
+			name:                        "explicit 1",
+			compactIntervalDays:         base.Float32Ptr(1),
+			expectedCompactIntervalSecs: uint32((24 * time.Hour).Seconds()),
+		},
+		{
+			name:                        "1.5",
+			compactIntervalDays:         base.Float32Ptr(1.5),
+			expectedCompactIntervalSecs: uint32((1.5 * 24 * time.Hour).Seconds()),
+		},
+		{
+			name:                        "2",
+			compactIntervalDays:         base.Float32Ptr(2),
+			expectedCompactIntervalSecs: uint32((2 * 24 * time.Hour).Seconds()),
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+
+			ctx := base.TestCtx(t)
+			startupConfig := &StartupConfig{}
+			sc := NewServerContext(ctx, startupConfig, false)
+			defer sc.Close(ctx)
+			config := &DbConfig{
+				CompactIntervalDays: test.compactIntervalDays,
+				Unsupported:         &db.UnsupportedOptions{},
+			}
+			opts, err := dbcOptionsFromConfig(base.TestCtx(t), sc, config, "fakedb")
+			require.NoError(t, err)
+			require.Equal(t, int(test.expectedCompactIntervalSecs), int(opts.CompactInterval))
+		})
+	}
+}
