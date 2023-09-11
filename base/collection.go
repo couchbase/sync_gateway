@@ -185,8 +185,9 @@ type GocbV2Bucket struct {
 }
 
 var (
-	_ sgbucket.BucketStore = &GocbV2Bucket{}
-	_ CouchbaseBucketStore = &GocbV2Bucket{}
+	_ sgbucket.BucketStore            = &GocbV2Bucket{}
+	_ CouchbaseBucketStore            = &GocbV2Bucket{}
+	_ sgbucket.DynamicDataStoreBucket = &GocbV2Bucket{}
 )
 
 func AsGocbV2Bucket(bucket Bucket) (*GocbV2Bucket, error) {
@@ -599,7 +600,8 @@ func (b *GocbV2Bucket) DropDataStore(name sgbucket.DataStoreName) error {
 	return b.bucket.Collections().DropCollection(gocb.CollectionSpec{Name: name.CollectionName(), ScopeName: name.ScopeName()}, nil)
 }
 
-func (b *GocbV2Bucket) CreateDataStore(ctx context.Context, name sgbucket.DataStoreName) error {
+func (b *GocbV2Bucket) CreateDataStore(name sgbucket.DataStoreName) error {
+	ctx := context.TODO() // fix in sg-bucket
 	// create scope first (if it doesn't already exist)
 	if name.ScopeName() != DefaultScope {
 		err := b.bucket.Collections().CreateScope(name.ScopeName(), nil)

@@ -457,7 +457,7 @@ func (tbp *TestBucketPool) createCollections(ctx context.Context, bucket Bucket)
 
 	dynamicDataStore, ok := bucket.(sgbucket.DynamicDataStoreBucket)
 	if !ok {
-		tbp.Fatalf(ctx, "Bucket doesn't support dynamic collection creation")
+		tbp.Fatalf(ctx, "Bucket doesn't support dynamic collection creation %T", bucket)
 	}
 
 	for i := 0; i < tbpNumCollectionsPerBucket(ctx); i++ {
