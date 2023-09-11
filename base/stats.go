@@ -30,6 +30,7 @@ const (
 
 	NamespaceKey                 = "sgw"
 	ResourceUtilizationSubsystem = "resource_utilization"
+	ErrorsSubsystem              = "errors"
 
 	SubsystemCacheKey           = "cache"
 	SubsystemDatabaseKey        = "database"
@@ -79,6 +80,7 @@ const (
 
 	StatAddedVersion3dot0dot0 = "3.0.0"
 	StatAddedVersion3dot1dot0 = "3.1.0"
+	StatAddedVersion3dot1dot2 = "3.1.2"
 	StatAddedVersion3dot2dot0 = "3.2.0"
 
 	StatDeprecatedVersionNotDeprecated = ""
@@ -105,15 +107,15 @@ var SyncGatewayStats *SgwStats
 var SkipPrometheusStatsRegistration bool
 
 func NewSyncGatewayStats() (*SgwStats, error) {
-	sgwStats := SgwStats{
-		GlobalStats: &GlobalStat{},
-		DbStats:     map[string]*DbStats{},
-	}
-
-	err := sgwStats.GlobalStats.initResourceUtilizationStats()
+	globalStats, err := newGlobalStat()
 	if err != nil {
 		return nil, err
 	}
+	sgwStats := SgwStats{
+		GlobalStats: globalStats,
+		DbStats:     map[string]*DbStats{},
+	}
+
 	err = sgwStats.initReplicationStats()
 	if err != nil {
 		return nil, err
@@ -158,6 +160,22 @@ func (s *SgwStats) String() string {
 
 type GlobalStat struct {
 	ResourceUtilization *ResourceUtilization `json:"resource_utilization"`
+	ErrorStat           *ErrorStat           `json:"errors"`
+}
+
+func newGlobalStat() (*GlobalStat, error) {
+	g := &GlobalStat{
+		ErrorStat: &ErrorStat{},
+	}
+	err := g.initResourceUtilizationStats()
+
+	if err != nil {
+		return nil, err
+	}
+
+	g.ErrorStat.DatabaseBucketMismatches, err = NewIntStat(ErrorsSubsystem, "database_config_bucket_mistmatches", StatUnitBytes, DatabaseBucketMistmatchesDesc, StatAddedVersion3dot1dot2, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+
+	return g, err
 }
 
 func (g *GlobalStat) initResourceUtilizationStats() error {
@@ -301,6 +319,11 @@ type ResourceUtilization struct {
 	WarnCount *SgwIntStat `json:"warn_count"`
 	// The total uptime.
 	Uptime *SgwDurStat `json:"uptime"`
+}
+
+type ErrorStat struct {
+	// The number of times a database config is found in the wrong bucket
+	DatabaseBucketMismatches *SgwIntStat `json:"database_config_bucket_mistmatches"`
 }
 
 type DbStats struct {

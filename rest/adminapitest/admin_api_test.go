@@ -1599,7 +1599,7 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 	// assert that a request to the database fails with correct error message
 	resp := rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
 	rest.RequireStatus(t, resp, http.StatusNotFound)
-	assert.Contains(t, resp.Body.String(), "Must update database config immediately")
+	assert.Contains(t, resp.Body.String(), "You must update database config immediately")
 }
 
 // TestMismatchedBucketNameOnDbConfigUpdate:
@@ -1635,6 +1635,7 @@ func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
 	// assert request fails
 	resp = rt.ReplaceDbConfig("db1", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusNotFound)
+	base.RequireWaitForStat(t, base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Value, 1)
 }
 
 // TestMultipleBucketWithBadDbConfigScenario1:
@@ -1643,6 +1644,9 @@ func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
 func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 	base.TestsRequireBootstrapConnection(t)
 	base.RequireNumTestBuckets(t, 3)
+	defer func() {
+		base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Set(0)
+	}()
 	tb1 := base.GetPersistentTestBucket(t)
 	defer tb1.Close()
 	tb2 := base.GetPersistentTestBucket(t)
@@ -1660,12 +1664,12 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 			config.Bootstrap.ConfigGroupID = groupID
 		},
 	})
-	defer rt1.Close()
 
 	// create a db config that has bucket C in the config and persist to rt1 bucket
 	dbConfig := rt1.NewDbConfig()
 	dbConfig.Name = "db1"
 	rt1.PersistDbConfigToBucket(dbConfig, tb3.GetName())
+	defer rt1.Close()
 
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb2,
@@ -1681,6 +1685,7 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 	dbConfig = rt2.NewDbConfig()
 	dbConfig.Name = "db1"
 	rt2.PersistDbConfigToBucket(dbConfig, tb3.GetName())
+	base.RequireWaitForStat(t, base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Value, 1)
 
 	rt3 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
@@ -1711,13 +1716,17 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 	// assert a request to the db fails with correct error message
 	resp := rt3.SendAdminRequest(http.MethodGet, "/db1/_config", "")
 	rest.RequireStatus(t, resp, http.StatusNotFound)
-	assert.Contains(t, resp.Body.String(), "Must update database config immediately")
+	assert.Contains(t, resp.Body.String(), "You must update database config immediately")
 }
 
 // TestMultipleBucketWithBadDbConfigScenario2:
 //   - create bucketA and bucketB with db configs that that both list bucket name as bucketA
 //   - start a new rest tester and assert that invalid db config is picked up and the valid one is also picked up
 func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
+	defer func() {
+		base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Set(0)
+	}()
+
 	base.TestsRequireBootstrapConnection(t)
 
 	base.RequireNumTestBuckets(t, 3)
@@ -1734,11 +1743,12 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 			config.Bootstrap.ConfigGroupID = "60ce5544-c368-4b08-b0ed-4ca3b37973f9"
 		},
 	})
+	defer rt1.Close()
+
 	// create a db config pointing to bucket C and persist to bucket A
 	dbConfig := rt1.NewDbConfig()
 	dbConfig.Name = "db1"
 	rt1.PersistDbConfigToBucket(dbConfig, rt1.CustomTestBucket.GetName())
-	defer rt1.Close()
 
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb2,
@@ -1750,6 +1760,7 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 	})
 	defer rt2.Close()
 
+	require.Equal(t, int64(0), base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Value())
 	// create a db config pointing to bucket C and persist to bucket B
 	dbConfig = rt2.NewDbConfig()
 	dbConfig.Name = "db1"
@@ -1773,6 +1784,8 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 	}, 200, 1000)
 	require.NoError(t, err)
 
+	base.RequireWaitForStat(t, base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Value, 1)
+
 	// assert that there is a valid database picked up as the invalid configs have this rest tester backing bucket
 	err = rt3.WaitForConditionWithOptions(func() bool {
 		validDatabase := rt3.ServerContext().AllDatabases()
@@ -1787,6 +1800,10 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 //   - persist that db config to another bucket
 //   - assert that is picked up as an invalid db config
 func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
+	defer func() {
+		base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Set(0)
+	}()
+
 	base.TestsRequireBootstrapConnection(t)
 
 	tb1 := base.GetPersistentTestBucket(t)
@@ -1804,6 +1821,7 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 	})
 	defer rt.Close()
 
+	require.Equal(t, int64(0), base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Value())
 	// create a new db
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Name = "db1"
@@ -1829,12 +1847,15 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 	// add the config to the other bucket
 	rt.InsertDbConfigToBucket(&persistedConfig, tb2.GetName())
 
+	require.Equal(t, int64(0), base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Value())
 	// assert the config is picked as invalid db config
 	err = rt.WaitForConditionWithOptions(func() bool {
 		invalidDatabases := rt.ServerContext().AllInvalidDatabases()
 		return len(invalidDatabases) == 1
 	}, 200, 1000)
 	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Value, 1)
 }
 
 func TestResyncStopUsingDCPStream(t *testing.T) {

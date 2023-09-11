@@ -67,6 +67,11 @@ const (
 	UptimeDesc = "The total uptime."
 )
 
+// error stat
+const (
+	DatabaseBucketMistmatchesDesc = "The total number of times a database config that is found to mismatch the bucket listed in the config is polled."
+)
+
 // cache stats descriptions
 const (
 	AbandonedSequencesDesc = "The total number of skipped sequences that were not found after 60 minutes and were abandoned."
