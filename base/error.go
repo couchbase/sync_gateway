@@ -43,10 +43,12 @@ var (
 	ErrUpdateCancel          = &sgError{"Cancel update"}
 	ErrImportCancelledPurged = &sgError{"Import Cancelled Due to Purge"}
 	ErrChannelFeed           = &sgError{"Error while building channel feed"}
-	ErrXattrNotFound         = &sgError{"Xattr Not Found"}
 	ErrTimeout               = &sgError{"Operation timed out"}
 	ErrPathNotFound          = sgbucket.ErrPathNotFound
 	ErrPathExists            = sgbucket.ErrPathExists
+
+	// ErrXattrNotFound is returned if a requested xattr is not present on a DCP event
+	ErrXattrNotFound = &sgError{"Xattr Not Found"}
 
 	// ErrPartialViewErrors is returned if the view call contains any partial errors.
 	// This is more of a warning, and inspecting ViewResult.Errors is required for detail.
