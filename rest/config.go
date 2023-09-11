@@ -24,6 +24,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -264,6 +265,55 @@ func GetTLSVersionFromString(stringV *string) uint16 {
 		}
 	}
 	return uint16(DefaultMinimumTLSVersionConst)
+}
+
+type invalidConfigInfo struct {
+	logged              bool
+	configBucketName    string
+	persistedBucketName string
+}
+
+type invalidDatabaseConfigs struct {
+	dbNames map[string]*invalidConfigInfo
+	m       sync.RWMutex
+}
+
+// addInvalidDatabase adds a db to invalid dbconfig map if it doesn't exist in there yet and will log for it at warning level
+// if the db already exists there we will calculate if we need to log again according to the config update interval
+func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname string, cnf DatabaseConfig, bucket string) {
+	configInfo := invalidConfigInfo{
+		configBucketName:    *cnf.Bucket,
+		persistedBucketName: bucket,
+	}
+	d.m.Lock()
+	defer d.m.Unlock()
+	if d.dbNames[dbname] == nil {
+		// db hasn't been tracked as invalid config yet so add it
+		d.dbNames[dbname] = &configInfo
+	}
+	logMessage := fmt.Sprintf("Mismatch in database config for database %q bucket name: %q and backend bucket: %q You must update database config immediately", base.MD(dbname), base.MD(d.dbNames[dbname].configBucketName), base.MD(d.dbNames[dbname].persistedBucketName))
+	// if we get here we already have the db logged as an invalid config, so now we need to work out iof we should log for it now
+	if !d.dbNames[dbname].logged {
+		// we need to log at warning if we haven't already logged for this particular corrupt db config
+		base.WarnfCtx(ctx, logMessage)
+		d.dbNames[dbname].logged = true
+	} else {
+		// already logged this entry at warning so need to log at info now
+		base.InfofCtx(ctx, base.KeyConfig, logMessage)
+	}
+}
+
+func (d *invalidDatabaseConfigs) exists(dbname string) (*invalidConfigInfo, bool) {
+	d.m.RLock()
+	defer d.m.RUnlock()
+	config, ok := d.dbNames[dbname]
+	return config, ok
+}
+
+func (d *invalidDatabaseConfigs) remove(dbname string) {
+	d.m.Lock()
+	defer d.m.Unlock()
+	delete(d.dbNames, dbname)
 }
 
 // inheritFromBootstrap sets any empty Couchbase Server values from the given bootstrap config.
@@ -1466,7 +1516,15 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 		// inherit properties the bootstrap config
 		cnf.CACertPath = sc.Config.Bootstrap.CACertPath
 
+		// We need to check for corruption in the database config (CC. CBG-3292). If the fetched config doesn't match the
+		// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
+		// in memory representation on the server context.
+		if bucket != *cnf.Bucket {
+			sc.handleInvalidDatabaseConfig(ctx, bucket, cnf)
+			return true, fmt.Errorf("mismatch in persisted database bucket name %q vs the actual bucket name %q. Please correct db %q's config, groupID %q.", base.MD(cnf.Bucket), base.MD(bucket), base.MD(cnf.Name), base.MD(sc.Config.Bootstrap.ConfigGroupID))
+		}
 		bucketCopy := bucket
+		// no corruption detected carry on as usual
 		cnf.Bucket = &bucketCopy
 
 		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
@@ -1487,6 +1545,13 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	}
 
 	return true, &cnf, nil
+}
+
+func (sc *ServerContext) handleInvalidDatabaseConfig(ctx context.Context, bucket string, cnf DatabaseConfig) {
+	// track corrupt database context
+	sc.invalidDatabaseConfigTracking.addInvalidDatabase(ctx, cnf.Name, cnf, bucket)
+	// don't load config + remove from server context (apart from corrupt database map)
+	sc._removeDatabase(ctx, cnf.Name)
 }
 
 func (sc *ServerContext) bucketNameFromDbName(ctx context.Context, dbName string) (bucketName string, found bool) {
@@ -1606,7 +1671,15 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			// inherit properties the bootstrap config
 			cnf.CACertPath = sc.Config.Bootstrap.CACertPath
 
+			// We need to check for corruption in the database config (CC. CBG-3292). If the fetched config doesn't match the
+			// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
+			// in memory representation on the server context.
+			if bucket != *cnf.Bucket {
+				sc.handleInvalidDatabaseConfig(ctx, bucket, *cnf)
+				continue
+			}
 			bucketCopy := bucket
+			// no corruption detected carry on as usual
 			cnf.Bucket = &bucketCopy
 
 			// stamp per-database credentials if set
