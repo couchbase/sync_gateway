@@ -75,7 +75,9 @@ func WriteCasWithXattr(ctx context.Context, store *Collection, k string, xattrKe
 
 // Single attempt to update a document and xattr.  Setting isDelete=true and value=nil will delete the document body.  Both
 // update types (UpdateTombstoneXattr, WriteCasWithXattr) include recoverable error retry.
-func WriteWithXattr(ctx context.Context, store *Collection, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
+
+func WriteWithXattr(ctx context.Context, store *Collection, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
+	// If this is a tombstone, we want to delete the document and update the xattr
 	if isDelete {
 		return UpdateTombstoneXattr(ctx, store, k, xattrKey, exp, cas, xattrValue, deleteBody)
 	} else {
@@ -85,8 +87,8 @@ func WriteWithXattr(ctx context.Context, store *Collection, k string, xattrKey s
 }
 
 // CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
-func UpdateTombstoneXattr(ctx context.Context, store *Collection, k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool) (casOut uint64, err error) {
 
+func UpdateTombstoneXattr(ctx context.Context, store *Collection, k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool) (casOut uint64, err error) {
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	requiresBodyRemoval := false
@@ -163,7 +165,6 @@ func UpdateTombstoneXattr(ctx context.Context, store *Collection, k string, xatt
 // If previous document is provided, will use it on 1st iteration instead of retrieving from bucket.
 // A zero CAS in `previous` is interpreted as no document existing; this can be used to short-
 // circuit the initial Get when the document is unlikely to already exist.
-
 func WriteUpdateWithXattr(ctx context.Context, store *Collection, k string, xattrKey string, userXattrKey string, exp uint32, opts *sgbucket.MutateInOptions, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 
 	var value []byte
