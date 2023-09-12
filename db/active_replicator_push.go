@@ -302,12 +302,8 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 		DatabaseCollection: dbCollection,
 		user:               apr.config.ActiveDB.user,
 	}
-	bh := blipHandler{
-		BlipSyncContext: apr.blipSyncContext,
-		db:              apr.config.ActiveDB,
-		collection:      dbCollectionWithUser,
-		serialNumber:    apr.blipSyncContext.incrementSerialNumber(),
-	}
+	bh := newBlipHandler(apr.ctx, apr.blipSyncContext, apr.config.ActiveDB, apr.blipSyncContext.incrementSerialNumber())
+	bh.collection = dbCollectionWithUser
 
 	var channels base.Set
 	if filteredChannels := apr.config.getFilteredChannels(nil); len(filteredChannels) > 0 {

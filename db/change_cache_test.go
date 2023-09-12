@@ -1993,7 +1993,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 				log.Printf("Start error for changeCache: %v", err)
 				b.Fail()
 			}
-			defer changeCache.Stop()
+			defer changeCache.Stop(ctx)
 
 			require.NoError(b, err)
 			if bm.warmCacheCount > 0 {
@@ -2012,7 +2012,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				entry := bm.feed.Next()
-				_ = changeCache.processEntry(entry)
+				_ = changeCache.processEntry(ctx, entry)
 			}
 		})
 	}
@@ -2227,7 +2227,7 @@ func BenchmarkDocChanged(b *testing.B) {
 				log.Printf("Start error for changeCache: %v", err)
 				b.Fail()
 			}
-			defer changeCache.Stop()
+			defer changeCache.Stop(ctx)
 
 			require.NoError(b, err)
 			if bm.warmCacheCount > 0 {

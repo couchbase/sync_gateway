@@ -47,13 +47,9 @@ func (apr *ActivePushReplicator) _startPushWithCollections() error {
 			user:               apr.config.ActiveDB.user,
 		}
 
-		bh := blipHandler{
-			BlipSyncContext: apr.blipSyncContext,
-			db:              apr.config.ActiveDB,
-			collection:      dbCollectionWithUser,
-			collectionIdx:   collectionIdx,
-			serialNumber:    apr.blipSyncContext.incrementSerialNumber(),
-		}
+		bh := newBlipHandler(apr.ctx, apr.blipSyncContext, apr.config.ActiveDB, apr.blipSyncContext.incrementSerialNumber())
+		bh.collection = dbCollectionWithUser
+		bh.collectionIdx = collectionIdx
 
 		var channels base.Set
 		if filteredChannels := apr.config.getFilteredChannels(collectionIdx); len(filteredChannels) > 0 {

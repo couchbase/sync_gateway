@@ -64,6 +64,15 @@ type blipHandler struct {
 	serialNumber  uint64                      // This blip handler's serial number to differentiate logs w/ other handlers
 }
 
+func newBlipHandler(ctx context.Context, bc *BlipSyncContext, db *Database, serialNumber uint64) *blipHandler {
+	return &blipHandler{
+		BlipSyncContext: bc,
+		db:              db,
+		loggingCtx:      ctx,
+		serialNumber:    serialNumber,
+	}
+}
+
 // BlipSyncContextClientType represents whether to replicate to another Sync Gateway or Couchbase Lite
 type BLIPSyncContextClientType string
 

@@ -705,7 +705,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 
 			// lowSequence is used to send composite keys to clients, so that they can obtain any currently
 			// skipped sequences in a future iteration or request.
-			oldestSkipped := col.changeCache().getOldestSkippedSequence()
+			oldestSkipped := col.changeCache().getOldestSkippedSequence(ctx)
 			if oldestSkipped > 0 {
 				lowSequence = oldestSkipped - 1
 				base.InfofCtx(ctx, base.KeyChanges, "%d is the oldest skipped sequence, using stable sequence number of %d for this feed %s", oldestSkipped, lowSequence, base.UD(to))

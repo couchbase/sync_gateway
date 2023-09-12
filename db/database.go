@@ -600,7 +600,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	waitForBGTCompletion(ctx, BGTCompletionMaxWait, context.backgroundTasks, context.Name)
 	context.sequences.Stop(ctx)
 	context.mutationListener.Stop(ctx)
-	context.changeCache.Stop()
+	context.changeCache.Stop(ctx)
 	// Stop the channel cache and it's background tasks.
 	context.channelCache.Stop(ctx)
 	context.ImportListener.Stop()
@@ -815,7 +815,7 @@ func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) err
 		dc.AccessLock.Lock()
 		defer dc.AccessLock.Unlock()
 
-		dc.changeCache.Stop()
+		dc.changeCache.Stop(ctx)
 
 		// set DB state to Offline
 		atomic.StoreUint32(&dc.State, DBOffline)
@@ -2291,7 +2291,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		return err
 	}
 	cleanupFunctions = append(cleanupFunctions, func() {
-		db.changeCache.Stop()
+		db.changeCache.Stop(ctx)
 	})
 
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
