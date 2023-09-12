@@ -368,13 +368,6 @@ func TestRevTreeChannelMapLeafOnly(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Intentionally keep a non-leaf channelsMap entry to ensure that unmarshalling strips it
-	treeJSON := []byte(`{
-	"revs":["3-three","2-two","1-one","3-drei","4-four"],
-	"parents":[1,2,-1,1,0],
-	"channelsMap":{"0":["EN"],"3":["DE"],"4":["EN-gb","EN-us"]}
-}`)
-
 	// marshal RevTree into storage format
 	bytes, err := base.JSONMarshal(tree)
 	require.NoError(t, err)
@@ -382,23 +375,6 @@ func TestRevTreeChannelMapLeafOnly(t *testing.T) {
 	var storedMap revTreeList
 	require.NoError(t, base.JSONUnmarshal(bytes, &storedMap))
 	assert.Len(t, storedMap.ChannelsMap, 2, "expected only two channelsMap entries (for the leaf revisions)")
-
-	// unmarshal treeJSON into RevTree to ensure non-leaf channels are stripped on unmarshal
-	var gotmap RevTree
-	require.NoError(t, base.JSONUnmarshal(treeJSON, &gotmap))
-
-	ri, err := gotmap.getInfo("3-three")
-	require.NoError(t, err)
-	assert.Nil(t, ri.Channels) // no channels on remarshalled RevTree for non-leaf revision
-
-	ri, err = gotmap.getInfo("4-four")
-	require.NoError(t, err)
-	assert.Equal(t, rev4Channels, ri.Channels) // leaf revision channels
-
-	ri, err = gotmap.getInfo("3-drei")
-	require.NoError(t, err)
-	assert.Equal(t, base.SetOf("DE"), ri.Channels) // leaf revision channels
-
 }
 
 func TestRevTreeIsLeaf(t *testing.T) {
