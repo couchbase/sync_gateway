@@ -1274,11 +1274,9 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 		// First attempt to update with a bad cas value, and ensure we're getting the expected error
 		_, errCasMismatch := dataStore.WriteWithXattr(key, xattrName, 0, uint64(1234), nil, nil, xattrValBytes, true, shouldDeleteBody[i])
 
-		//_, errCasMismatch := UpdateTombstoneXattr(dataStore, key, xattrName, 0, uint64(1234), &updatedXattrVal, shouldDeleteBody[i])
 		assert.True(t, IsCasMismatch(errCasMismatch), fmt.Sprintf("Expected cas mismatch for %s", key))
 
 		_, errDelete := dataStore.WriteWithXattr(key, xattrName, 0, uint64(casValues[i]), nil, nil, xattrValBytes, true, shouldDeleteBody[i])
-		//_, errDelete := UpdateTombstoneXattr(dataStore, key, xattrName, 0, uint64(casValues[i]), &updatedXattrVal, shouldDeleteBody[i])
 		log.Printf("Delete error: %v", errDelete)
 
 		assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
@@ -1289,7 +1287,6 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 	log.Printf("Deleting key: %v", key4)
 	_, errDelete := dataStore.WriteWithXattr(key4, xattrName, 0, uint64(0), nil, nil, xattrValBytes, true, false)
 
-	//_, errDelete := UpdateTombstoneXattr(dataStore, key4, xattrName, 0, uint64(0), &updatedXattrVal, false)
 	assert.NoError(t, errDelete, "Unexpected error tombstoning non-existent doc")
 	assert.True(t, verifyDocDeletedXattrExists(dataStore, key4, xattrName), "Expected doc to be deleted, but xattrs to exist")
 
