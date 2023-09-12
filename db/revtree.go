@@ -192,20 +192,20 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 		(*tree)[rep.Revs[i]] = info
 	}
 
-	if len(rep.ChannelsMap) > 0 || len(rep.Channels_Old) > 0 {
-		leaves := tree.Leaves()
+	if len(rep.ChannelsMap) > 0 {
 		for iStr, channels := range rep.ChannelsMap {
 			i, err := strconv.ParseInt(iStr, 10, 64)
 			if err != nil {
 				return err
 			}
 			info := (*tree)[rep.Revs[i]]
-			if _, isLeaf := leaves[info.ID]; isLeaf {
-				info.Channels = channels
-			}
+			info.Channels = channels
 		}
+	}
 
-		// we shouldn't be in a situation where we have both channels and channelsMap populated, but we still need to handle the old format.
+	// we shouldn't be in a situation where we have both channels and channelsMap populated, but we still need to handle the old format
+	if len(rep.Channels_Old) > 0 {
+		leaves := tree.Leaves()
 		for i, channels := range rep.Channels_Old {
 			info := (*tree)[rep.Revs[i]]
 			if _, isLeaf := leaves[info.ID]; isLeaf {
