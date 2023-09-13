@@ -280,6 +280,41 @@ func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) d
 	return resyncStatus
 }
 
+// UpdatePersistedBucketName will update the persisted config bucket name to name specified in parameters
+func (rt *RestTester) UpdatePersistedBucketName(dbConfig *DatabaseConfig, newBucketName *string) (*DatabaseConfig, error) {
+	updatedDbConfig := DatabaseConfig{}
+	_, err := rt.ServerContext().BootstrapContext.UpdateConfig(base.TestCtx(rt.TB), *dbConfig.Bucket, rt.ServerContext().Config.Bootstrap.ConfigGroupID, dbConfig.Name, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+
+		bucketDbConfig = dbConfig
+		bucketDbConfig.Bucket = newBucketName
+
+		return bucketDbConfig, nil
+	})
+	return &updatedDbConfig, err
+}
+
+func (rt *RestTester) InsertDbConfigToBucket(config *DatabaseConfig, bucketName string) {
+	_, insertErr := rt.ServerContext().BootstrapContext.InsertConfig(base.TestCtx(rt.TB), bucketName, rt.ServerContext().Config.Bootstrap.ConfigGroupID, config)
+	require.NoError(rt.TB, insertErr)
+}
+
+func (rt *RestTester) PersistDbConfigToBucket(dbConfig DbConfig, bucketName string) {
+	version, err := GenerateDatabaseConfigVersionID("", &dbConfig)
+	require.NoError(rt.TB, err)
+
+	metadataID, metadataIDError := rt.ServerContext().BootstrapContext.ComputeMetadataIDForDbConfig(base.TestCtx(rt.TB), &dbConfig)
+	require.NoError(rt.TB, metadataIDError)
+
+	dbConfig.Bucket = &bucketName
+	persistedConfig := DatabaseConfig{
+		Version:    version,
+		MetadataID: metadataID,
+		DbConfig:   dbConfig,
+		SGVersion:  base.ProductVersion.String(),
+	}
+	rt.InsertDbConfigToBucket(&persistedConfig, rt.CustomTestBucket.GetName())
+}
+
 // setupSGRPeers sets up two rest testers to be used for sg-replicate testing with the following configuration:
 //
 //	activeRT:

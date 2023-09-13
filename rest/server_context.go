@@ -75,6 +75,7 @@ type ServerContext struct {
 	allowScopesInPersistentConfig bool                 // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
 	DatabaseInitManager           *DatabaseInitManager // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
+	invalidDatabaseConfigTracking invalidDatabaseConfigs
 }
 
 type ActiveReplicationsCounter struct {
@@ -143,6 +144,9 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		statsContext:       &statsContext{},
 		BootstrapContext:   &bootstrapContext{},
 		hasStarted:         make(chan struct{}),
+	}
+	sc.invalidDatabaseConfigTracking = invalidDatabaseConfigs{
+		dbNames: map[string]*invalidConfigInfo{},
 	}
 
 	if base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
@@ -223,6 +227,7 @@ func (sc *ServerContext) Close(ctx context.Context) {
 		_ = db.EventMgr.RaiseDBStateChangeEvent(ctx, db.Name, "offline", "Database context closed", &sc.Config.API.AdminInterface)
 	}
 	sc.databases_ = nil
+	sc.invalidDatabaseConfigTracking.dbNames = nil
 
 	for _, s := range sc._httpServers {
 		base.InfofCtx(ctx, base.KeyHTTP, "Closing HTTP Server: %v", s.Addr)
@@ -292,8 +297,16 @@ func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (
 			}
 		}
 	}
+	// handle the correct error message being returned for a corrupt database config
+	var httpErr *base.HTTPError
+	invalidConfig, ok := sc.invalidDatabaseConfigTracking.exists(name)
+	if !dbConfigFound && ok {
+		httpErr = base.HTTPErrorf(http.StatusNotFound, "Mismatch in database config for database %s bucket name: %s and backend bucket: %s groupID: %s You must update database config immediately", base.MD(name), base.MD(invalidConfig.configBucketName), base.MD(invalidConfig.persistedBucketName), base.MD(sc.Config.Bootstrap.ConfigGroupID))
+	} else {
+		httpErr = base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
+	}
 
-	return nil, dbConfigFound, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
+	return nil, dbConfigFound, httpErr
 }
 
 func (sc *ServerContext) GetDbConfig(name string) *DbConfig {
@@ -335,6 +348,12 @@ func (sc *ServerContext) AllDatabases() map[string]*db.DatabaseContext {
 		databases[name] = database
 	}
 	return databases
+}
+
+func (sc *ServerContext) AllInvalidDatabases() map[string]*invalidConfigInfo {
+	sc.invalidDatabaseConfigTracking.m.RLock()
+	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
+	return sc.invalidDatabaseConfigTracking.dbNames
 }
 
 type PostUpgradeResult map[string]PostUpgradeDatabaseResult
@@ -1070,7 +1089,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 	base.InfofCtx(ctx, base.KeyAll, "delta_sync enabled=%t with rev_max_age_seconds=%d for database %s", deltaSyncOptions.Enabled, deltaSyncOptions.RevMaxAgeSeconds, dbName)
 
-	compactIntervalSecs := db.DefaultCompactInterval
+	compactIntervalSecs := uint32(db.DefaultCompactInterval.Seconds())
 	if config.CompactIntervalDays != nil {
 		compactIntervalSecs = uint32(*config.CompactIntervalDays * 60 * 60 * 24)
 	}
