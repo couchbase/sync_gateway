@@ -409,20 +409,19 @@ func (tree RevTree) findAncestorFromSet(revid string, ancestors []string) string
 }
 
 // Records a revision in a RevTree.
-func (tree RevTree) addRevision(docid string, info RevInfo) (err error) {
+func (tree RevTree) addRevision(docid string, info RevInfo) error {
 	revid := info.ID
 	if revid == "" {
-		err = errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal", docid))
-		return
+		return fmt.Errorf("doc: %v, RevTree addRevision, empty revid is illegal", docid)
 	}
 	if tree.contains(revid) {
-		err = errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, already contains rev %q", docid, revid))
-		return
+		return fmt.Errorf("doc: %v, RevTree addRevision, already contains rev %q", docid, revid)
 	}
-	parent := info.Parent
-	if parent != "" && !tree.contains(parent) {
-		err = errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, parent id %q is missing", docid, parent))
-		return
+	if p := info.Parent; p != "" {
+		parent, ok := tree[p]
+		if !ok {
+			return fmt.Errorf("doc: %v, RevTree addRevision for rev %q, parent id %q is missing", docid, revid, p)
+		}
 	}
 	tree[revid] = &info
 	return nil

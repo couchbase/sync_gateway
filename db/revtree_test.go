@@ -336,7 +336,7 @@ func TestRevTreeAddRevisionWithMissingParent(t *testing.T) {
 	assert.Equal(t, testmap, tempmap)
 
 	err := tempmap.addRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four"})
-	assert.Equal(t, fmt.Sprintf("doc: %v, RevTree addRevision, parent id %q is missing", "testdoc", "4-four"), err.Error())
+	assert.Equal(t, fmt.Sprintf("doc: %v, RevTree addRevision for rev %q, parent id %q is missing", "testdoc", "5-five", "4-four"), err.Error())
 }
 
 func TestRevTreeCompareRevIDs(t *testing.T) {
