@@ -539,12 +539,7 @@ func (col *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string)
 	}
 
 	if revid == doc.CurrentRev {
-		ch := base.SetOf()
-		for channelName, channelRemoval := range doc.Channels {
-			if channelRemoval == nil || channelRemoval.Seq == 0 {
-				ch.Add(channelName)
-			}
-		}
+		ch := doc.currentChannels()
 		return col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, ch)
 	} else if rev := doc.History[revid]; rev != nil {
 		// Authenticate against specific revision:

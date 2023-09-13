@@ -1213,3 +1213,14 @@ func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 
 	return data, xdata, nil
 }
+
+// Returns a set of the current (winning revision's) channels for the document.
+func (doc *Document) currentChannels() base.Set {
+	ch := base.SetOf()
+	for channelName, channelRemoval := range doc.Channels {
+		if channelRemoval == nil || channelRemoval.Seq == 0 {
+			ch.Add(channelName)
+		}
+	}
+	return ch
+}
