@@ -348,7 +348,7 @@ func TestRevTreeCompareRevIDs(t *testing.T) {
 	assert.Equal(t, 1, compareRevIDs(ctx, "5-bbb", "1-zzz"))
 }
 
-// TestRevTreeChannelMapLeafOnly ensures that only leaf revisions populate channel information from/to channelMap.
+// TestRevTreeChannelMapLeafOnly ensures that only non-winning leaf revisions populate channel information from/to channelMap.
 func TestRevTreeChannelMapLeafOnly(t *testing.T) {
 
 	// Add a 4th revision with channels to supersede rev 3-three
@@ -374,7 +374,7 @@ func TestRevTreeChannelMapLeafOnly(t *testing.T) {
 	// unmarshal back into revTreeList to ensure non-leaf channels are stripped on marshal for stored format
 	var storedMap revTreeList
 	require.NoError(t, base.JSONUnmarshal(bytes, &storedMap))
-	assert.Len(t, storedMap.ChannelsMap, 2, "expected only two channelsMap entries (for the leaf revisions)")
+	assert.Len(t, storedMap.ChannelsMap, 1, "expected only one channelsMap entry (for the non-winning leaf revisions)")
 }
 
 func TestRevTreeIsLeaf(t *testing.T) {
