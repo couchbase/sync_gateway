@@ -30,7 +30,7 @@ import (
 //	│ 1-one  │──│ 2-two  │──║3-three ║
 //	└────────┘  └────────┘  ╚════════╝
 var testmap = RevTree{
-	"3-three": {ID: "3-three", Parent: "2-two", Body: []byte(`{"foo":"bar"}`), Channels: base.SetOf("ABC", "CBS")},
+	"3-three": {ID: "3-three", Parent: "2-two", Body: []byte(`{"foo":"bar"}`)},
 	"2-two":   {ID: "2-two", Parent: "1-one"},
 	"1-one":   {ID: "1-one"},
 }
@@ -45,10 +45,10 @@ var testmap = RevTree{
 //	                       └─│ 3-drei │
 //	                         └────────┘
 var branchymap = RevTree{
-	"3-three": {ID: "3-three", Parent: "2-two", Channels: base.SetOf("EN")}, // winner because higher ASCII value (d vs. t)
+	"3-three": {ID: "3-three", Parent: "2-two"}, // winner because higher ASCII value (d vs. t)
 	"2-two":   {ID: "2-two", Parent: "1-one"},
 	"1-one":   {ID: "1-one"},
-	"3-drei":  {ID: "3-drei", Parent: "2-two", Channels: base.SetOf("DE")},
+	"3-drei":  {ID: "3-drei", Parent: "2-two"},
 }
 
 // multiroot is a revtree with multiple roots (disconnected branches)
@@ -229,17 +229,47 @@ func TestRevTreeUnmarshalOldFormat(t *testing.T) {
 	"bodies": ["{\"foo\":\"bar\"}", "", ""],
 	"channels": [["ABC", "CBS"], null, ["ABC"]]
 }`
-	assertRevTreeUnmarshal(t, testJSON, testmap)
+	tree := testmap.copy()
+
+	// set desired channels
+	ri, err := tree.getInfo("3-three")
+	require.NoError(t, err)
+	ri.Channels = base.SetOf("ABC", "CBS")
+
+	assertRevTreeUnmarshal(t, testJSON, tree)
+}
+
+func TestRevTreeUnmarshalChannelMap(t *testing.T) {
+	// we moved non-winning leaf revision channel information into a 'channelMap' property instead to handle the case where documents are in conflict.
+	const testJSON = `{
+	"revs": ["3-drei", "3-three", "2-two", "1-one"],
+	"parents": [2, 2, 3, -1],
+	"bodies": ["{\"foo\":\"buzz\"}", "{\"foo\":\"bar\"}", "", ""],
+	"channels": [["DE"], ["EN"], null, ["ABC"]]
+}`
+	tree := testmap.copy()
+
+	// set desired channels
+	ri, err := tree.getInfo("3-three")
+	require.NoError(t, err)
+	ri.Channels = base.SetOf("EN")
+
+	err = tree.addRevision("", RevInfo{
+		ID:       "3-drei",
+		Parent:   "2-two",
+		Body:     []byte(`{"foo":"buzz"}`),
+		Channels: base.SetOf("DE"),
+	})
+	require.NoError(t, err)
+
+	assertRevTreeUnmarshal(t, testJSON, tree)
 }
 
 func TestRevTreeUnmarshal(t *testing.T) {
-	// 'channels' is an old revtree property that stored channel history for previous revisions.
-	// we moved non-winning leaf revision channel information into a 'channelMap' property instead to handle the case where documents are in conflict.
 	const testJSON = `{
 	"revs": ["3-three", "2-two", "1-one"],
 	"parents": [1, 2, -1],
-	"bodymap": {"0":"{\"foo\":\"bar\"}"},
-	"channelsMap": {"0": ["ABC", "CBS"]}
+	"bodymap": {"0":"{\"foo\":\"bar\"}"}
 }`
 	assertRevTreeUnmarshal(t, testJSON, testmap)
 }
@@ -359,18 +389,23 @@ func TestRevTreeChannelMapLeafOnly(t *testing.T) {
 	//	└────────┘  └────────┘ │ ┌─────────────┐
 	//	                       └─│ 3-drei (DE) │
 	//	                         └─────────────┘
-	rev4Channels := base.SetOf("EN-us", "EN-gb")
 	tree := branchymap.copy()
 	err := tree.addRevision(t.Name(), RevInfo{
 		ID:       "4-four",
 		Parent:   "3-three",
-		Channels: rev4Channels,
+		Channels: base.SetOf("EN-us", "EN-gb"),
 	})
 	require.NoError(t, err)
+
+	// insert channel into tree - we don't store it in the globals because each test requires different channel data.
+	ri, err := tree.getInfo("3-drei")
+	require.NoError(t, err)
+	ri.Channels = base.SetOf("DE")
 
 	// marshal RevTree into storage format
 	bytes, err := base.JSONMarshal(tree)
 	require.NoError(t, err)
+
 	// unmarshal back into revTreeList to ensure non-leaf channels are stripped on marshal for stored format
 	var storedMap revTreeList
 	require.NoError(t, base.JSONUnmarshal(bytes, &storedMap))
