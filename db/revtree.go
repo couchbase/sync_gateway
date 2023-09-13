@@ -63,6 +63,8 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	}
 	revIndexes := map[string]int{"": -1}
 
+	winner, _, _ := tree.winningRevision()
+
 	i := 0
 	for _, info := range tree {
 		revIndexes[info.ID] = i
@@ -84,7 +86,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 		}
 
 		// for non-winning leaf revisions we'll store channel information
-		if len(info.Channels) > 0 {
+		if winner != info.ID && len(info.Channels) > 0 {
 			if rep.ChannelsMap == nil {
 				rep.ChannelsMap = make(map[string]base.Set, 1)
 			}
