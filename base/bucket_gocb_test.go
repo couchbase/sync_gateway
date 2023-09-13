@@ -1256,14 +1256,15 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 	shouldDeleteBody := []bool{true, true, false}
 	subdocStore, ok := AsSubdocXattrStore(dataStore)
 	require.True(t, ok)
+	ctx := TestCtx(t)
 	for i, key := range keys {
 
 		log.Printf("Delete testing for key: %v", key)
 		// First attempt to update with a bad cas value, and ensure we're getting the expected error
-		_, errCasMismatch := UpdateTombstoneXattr(subdocStore, key, xattrName, 0, uint64(1234), &updatedXattrVal, shouldDeleteBody[i])
+		_, errCasMismatch := UpdateTombstoneXattr(ctx, subdocStore, key, xattrName, 0, uint64(1234), &updatedXattrVal, shouldDeleteBody[i])
 		assert.True(t, IsCasMismatch(errCasMismatch), fmt.Sprintf("Expected cas mismatch for %s", key))
 
-		_, errDelete := UpdateTombstoneXattr(subdocStore, key, xattrName, 0, uint64(casValues[i]), &updatedXattrVal, shouldDeleteBody[i])
+		_, errDelete := UpdateTombstoneXattr(ctx, subdocStore, key, xattrName, 0, uint64(casValues[i]), &updatedXattrVal, shouldDeleteBody[i])
 		log.Printf("Delete error: %v", errDelete)
 
 		assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
@@ -1272,7 +1273,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	// Now attempt to tombstone key4 (NoDocNoXattr), should not return an error (per SG #3307).  Should save xattr metadata.
 	log.Printf("Deleting key: %v", key4)
-	_, errDelete := UpdateTombstoneXattr(subdocStore, key4, xattrName, 0, uint64(0), &updatedXattrVal, false)
+	_, errDelete := UpdateTombstoneXattr(ctx, subdocStore, key4, xattrName, 0, uint64(0), &updatedXattrVal, false)
 	assert.NoError(t, errDelete, "Unexpected error tombstoning non-existent doc")
 	assert.True(t, verifyDocDeletedXattrExists(dataStore, key4, xattrName), "Expected doc to be deleted, but xattrs to exist")
 
@@ -1402,7 +1403,8 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 	require.True(t, ok)
 	kvXattrStore, ok := subdocStore.(KvXattrStore)
 	require.True(t, ok)
-	deleteErr := deleteWithXattrInternal(kvXattrStore, key, xattrName, callback)
+	ctx := TestCtx(t)
+	deleteErr := deleteWithXattrInternal(ctx, kvXattrStore, key, xattrName, callback)
 
 	assert.True(t, deleteErr != nil, "We expected an error here, because deleteWithXattrInternal should have "+
 		" detected that the doc was resurrected during its execution")
@@ -1802,9 +1804,9 @@ func TestApplyViewQueryOptions(t *testing.T) {
 		ViewQueryParamKey:           "hello",
 		ViewQueryParamKeys:          []interface{}{"a", "b"},
 	}
-
+	ctx := TestCtx(t)
 	// Call applyViewQueryOptions (method being tested) which modifies viewQuery according to params
-	viewOpts, err := createViewOptions(params)
+	viewOpts, err := createViewOptions(ctx, params)
 	if err != nil {
 		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
 	}
@@ -1878,7 +1880,7 @@ func TestApplyViewQueryOptionsWithStrings(t *testing.T) {
 		ViewQueryParamKeys:          []string{"a", "b"},
 	}
 
-	_, err := createViewOptions(params)
+	_, err := createViewOptions(TestCtx(t), params)
 	if err != nil {
 		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
 	}
@@ -1895,8 +1897,9 @@ func TestApplyViewQueryStaleOptions(t *testing.T) {
 		ViewQueryParamStale: "false",
 	}
 
+	ctx := TestCtx(t)
 	// if it doesn't blow up, test passes
-	if _, err := createViewOptions(params); err != nil {
+	if _, err := createViewOptions(ctx, params); err != nil {
 		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
 	}
 
@@ -1904,7 +1907,7 @@ func TestApplyViewQueryStaleOptions(t *testing.T) {
 		ViewQueryParamStale: "ok",
 	}
 
-	if _, err := createViewOptions(params); err != nil {
+	if _, err := createViewOptions(ctx, params); err != nil {
 		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
 	}
 
@@ -1920,7 +1923,7 @@ func TestCouchbaseServerMaxTTL(t *testing.T) {
 
 	cbStore, ok := AsCouchbaseBucketStore(bucket)
 	require.True(t, ok)
-	maxTTL, err := cbStore.MaxTTL()
+	maxTTL, err := cbStore.MaxTTL(TestCtx(t))
 	assert.NoError(t, err, "Unexpected error")
 	assert.Equal(t, 0, maxTTL)
 
@@ -1943,7 +1946,7 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 	}
 
 	// Attempt to open the bucket again using invalid creds. We should expect an error.
-	bucket, err := GetBucket(testBucket.BucketSpec)
+	bucket, err := GetBucket(TestCtx(t), testBucket.BucketSpec)
 	assert.Equal(t, ErrAuthError, err)
 	assert.Nil(t, bucket)
 }
@@ -1977,7 +1980,7 @@ func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 	testBucket.BucketSpec.Keypath = keyPath
 
 	// Attempt to open a test bucket with invalid certs
-	bucket, err := GetBucket(testBucket.BucketSpec)
+	bucket, err := GetBucket(TestCtx(t), testBucket.BucketSpec)
 
 	// We no longer need the cert files, so go ahead and clean those up now before any assertions stop the test.
 	x509CleanupFn()
@@ -2143,7 +2146,8 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 	updatedXattrVal["rev"] = "2-EmDC"
 
 	// Attempt to delete the document body (deleteBody = true); isDelete is true to mark this doc as a tombstone.
-	_, errDelete := UpdateTombstoneXattr(subdocXattrStore, key, xattrKey, 0, cas, &updatedXattrVal, true)
+	ctx := TestCtx(t)
+	_, errDelete := UpdateTombstoneXattr(ctx, subdocXattrStore, key, xattrKey, 0, cas, &updatedXattrVal, true)
 	assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
 	assert.True(t, verifyDocDeletedXattrExists(dataStore, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
 
@@ -2239,9 +2243,10 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-EmDC"
 
+	ctx := TestCtx(t)
 	cas := uint64(0)
 	// Attempt to delete the document body (deleteBody = true); isDelete is true to mark this doc as a tombstone.
-	_, errDelete := UpdateTombstoneXattr(subdocXattrStore, key, xattrKey, 0, cas, &xattrVal, false)
+	_, errDelete := UpdateTombstoneXattr(ctx, subdocXattrStore, key, xattrKey, 0, cas, &xattrVal, false)
 	assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
 	assert.True(t, verifyDocDeletedXattrExists(dataStore, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
 

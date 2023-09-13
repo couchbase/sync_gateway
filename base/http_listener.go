@@ -34,7 +34,7 @@ const (
 
 // This is like a combination of http.ListenAndServe and http.ListenAndServeTLS, which also
 // uses ThrottledListen to limit the number of open HTTP connections.
-func ListenAndServeHTTP(addr string, connLimit uint, certFile, keyFile string, handler http.Handler,
+func ListenAndServeHTTP(ctx context.Context, addr string, connLimit uint, certFile, keyFile string, handler http.Handler,
 	readTimeout, writeTimeout, readHeaderTimeout, idleTimeout time.Duration, http2Enabled bool,
 	tlsMinVersion uint16) (serveFn func() error, server *http.Server, err error) {
 	var config *tls.Config
@@ -46,7 +46,7 @@ func ListenAndServeHTTP(addr string, connLimit uint, certFile, keyFile string, h
 			protocolsEnabled = []string{"h2", "http/1.1"}
 		}
 		config.NextProtos = protocolsEnabled
-		InfofCtx(context.TODO(), KeyHTTP, "Protocols enabled: %v on %v", config.NextProtos, SD(addr))
+		InfofCtx(ctx, KeyHTTP, "Protocols enabled: %v on %v", config.NextProtos, SD(addr))
 		config.Certificates = make([]tls.Certificate, 1)
 		var err error
 		config.Certificates[0], err = tls.LoadX509KeyPair(certFile, keyFile)
@@ -58,7 +58,7 @@ func ListenAndServeHTTP(addr string, connLimit uint, certFile, keyFile string, h
 	// Callback that turns off TCP NODELAY option when a client transitions to a WebSocket:
 	connStateFunc := func(clientConn net.Conn, state http.ConnState) {
 		if state == http.StateHijacked {
-			turnOffNoDelay(context.Background(), clientConn)
+			turnOffNoDelay(ctx, clientConn)
 		}
 	}
 

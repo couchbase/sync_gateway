@@ -1376,7 +1376,7 @@ func TestEventConfigValidationInvalid(t *testing.T) {
 
 	buf := bytes.NewBufferString(dbConfigJSON)
 	var dbConfig DbConfig
-	err := DecodeAndSanitiseConfig(buf, &dbConfig, true)
+	err := DecodeAndSanitiseConfig(base.TestCtx(t), buf, &dbConfig, true)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "document_scribbled_on")
 }
@@ -2682,7 +2682,7 @@ func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 
 	documentRev := db.DocumentRevision{DocID: "doc1", BodyBytes: []byte("null")}
 
-	body, err := documentRev.Mutable1xBody(collection, nil, nil, false)
+	body, err := documentRev.Mutable1xBody(rt.Context(), collection, nil, nil, false)
 	require.Error(t, err)
 	require.Nil(t, body)
 	assert.Contains(t, err.Error(), "null doc body for doc")

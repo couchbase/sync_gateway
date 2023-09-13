@@ -39,6 +39,7 @@ func WaitForPrimaryIndexEmpty(ctx context.Context, store base.N1QLStore) error {
 
 	// Kick off the retry loop
 	err, _ := base.RetryLoop(
+		ctx,
 		"Wait for index to be empty",
 		retryWorker,
 		base.CreateMaxDoublingSleeperFunc(60, 500, 5000),
@@ -483,8 +484,8 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 }
 
 // TestBucketPoolWithIndexes runs a TestMain for packages that require creation of indexes
-func TestBucketPoolWithIndexes(m *testing.M, tbpOptions base.TestBucketPoolOptions) {
-	base.TestBucketPoolMain(m, viewsAndGSIBucketReadier, viewsAndGSIBucketInit, tbpOptions)
+func TestBucketPoolWithIndexes(ctx context.Context, m *testing.M, tbpOptions base.TestBucketPoolOptions) {
+	base.TestBucketPoolMain(ctx, m, viewsAndGSIBucketReadier, viewsAndGSIBucketInit, tbpOptions)
 }
 
 // Parse the plan looking for use of the fetch operation (appears as the key/value pair "#operator":"Fetch")

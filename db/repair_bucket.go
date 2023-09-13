@@ -50,7 +50,7 @@ type RepairBucketResult struct {
 
 // Given a Couchbase Bucket doc, transform the doc in some way to produce a new doc.
 // Also return a boolean to indicate whether a transformation took place, or any errors occurred.
-type DocTransformer func(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error)
+type DocTransformer func(ctx context.Context, docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error)
 
 // A RepairBucket struct is the main API entrypoint to call for repairing documents in buckets
 type RepairBucket struct {
@@ -297,12 +297,12 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 }
 
 // Loops over all repair jobs and applies them
-func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, repairJobs []RepairJobType, err error) {
+func (r RepairBucket) TransformBucketDoc(ctx context.Context, docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, repairJobs []RepairJobType, err error) {
 
 	transformed = false
 	for _, repairJob := range r.RepairJobs {
 
-		repairedDoc, repairedDocTxformed, repairDocErr := repairJob(docId, originalCBDoc)
+		repairedDoc, repairedDocTxformed, repairDocErr := repairJob(ctx, docId, originalCBDoc)
 		if repairDocErr != nil {
 			return nil, false, repairJobs, repairDocErr
 		}
@@ -332,10 +332,10 @@ func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (tr
 }
 
 // Repairs rev tree cycles (see SG issue #2847)
-func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
+func RepairJobRevTreeCycles(ctx context.Context, docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 
-	base.DebugfCtx(context.TODO(), base.KeyCRUD, "RepairJobRevTreeCycles() called with doc id: %v", base.UD(docId))
-	defer base.DebugfCtx(context.TODO(), base.KeyCRUD, "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", base.UD(docId), base.UD(transformed), err)
+	base.DebugfCtx(ctx, base.KeyCRUD, "RepairJobRevTreeCycles() called with doc id: %v", base.UD(docId))
+	defer base.DebugfCtx(ctx, base.KeyCRUD, "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", base.UD(docId), base.UD(transformed), err)
 
 	doc, errUnmarshal := unmarshalDocument(docId, originalCBDoc)
 	if errUnmarshal != nil {
@@ -351,7 +351,7 @@ func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDo
 	}
 
 	// Repair it
-	if err := doc.History.RepairCycles(); err != nil {
+	if err := doc.History.RepairCycles(ctx); err != nil {
 		return nil, false, err
 	}
 

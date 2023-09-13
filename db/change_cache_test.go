@@ -270,7 +270,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	// Start continuous changes feed
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
 	options.ChangesCtx = changesCtx
 	defer changesCtxCancel()
 	options.Continuous = true
@@ -319,7 +319,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	// Modify the cache's late logs to remove the changes feed's lateFeedHandler sequence from the
 	// cache's lateLogs.  This will trigger an error on the next feed iteration, which should trigger
 	// rollback to resend all changes since low sequence (1)
-	c, err := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID))
+	c, err := db.changeCache.getChannelCache().getSingleChannelCache(ctx, channels.NewID("ABC", collectionID))
 	require.NoError(t, err)
 	abcCache := c.(*singleChannelCacheImpl)
 	abcCache.lateLogs[0].logEntry.Sequence = 1
@@ -578,7 +578,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 
 	successChan := make(chan bool)
 	go func() {
-		waiter.Wait()
+		waiter.Wait(ctx)
 		close(successChan)
 	}()
 
@@ -622,7 +622,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	// Test that retrieval isn't blocked by skipped sequences
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 6, base.DefaultWaitForSequence))
 	collection.user, _ = authenticator.GetUser("naomi")
-	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
+	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Equal(t, 4, len(changes))
 
@@ -642,25 +642,26 @@ func TestChannelCacheBackfill(t *testing.T) {
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 7, base.DefaultWaitForSequence))
 
 	// verify insert at start (PBS)
-	pbsCache, err := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("PBS", collectionID))
+	pbsCache, err := db.changeCache.getChannelCache().getSingleChannelCache(ctx, channels.NewID("PBS", collectionID))
 	require.NoError(t, err)
 	assert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
 	// verify insert at middle (ABC)
-	abcCache, err := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID))
+	abcCache, err := db.changeCache.getChannelCache().getSingleChannelCache(ctx, channels.NewID("ABC", collectionID))
 	require.NoError(t, err)
 	assert.True(t, verifyCacheSequences(abcCache, []uint64{1, 2, 3, 5, 6}))
 	// verify insert at end (NBC)
-	nbcCache, err := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("NBC", collectionID))
+	nbcCache, err := db.changeCache.getChannelCache().getSingleChannelCache(ctx, channels.NewID("NBC", collectionID))
 	require.NoError(t, err)
 	assert.True(t, verifyCacheSequences(nbcCache, []uint64{1, 3}))
 	// verify insert to empty cache (TBS)
-	tbsCache, err := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("TBS", collectionID))
+	tbsCache, err := db.changeCache.getChannelCache().getSingleChannelCache(ctx, channels.NewID("TBS", collectionID))
 	require.NoError(t, err)
 	assert.True(t, verifyCacheSequences(tbsCache, []uint64{3}))
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
 	// will be the late arriver (3) along with 5, 6)
-	changes, err = collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
+	changes, err = collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(t, lastSeq))
+	require.NoError(t, err)
 	assert.Equal(t, 3, len(changes))
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 3, LowSeq: 3},
@@ -699,7 +700,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	// Start changes feed
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
 	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
@@ -804,7 +805,7 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
 	options.ChangesCtx = changesCtx
 	defer changesCtxCancel()
 	options.Continuous = true
@@ -872,7 +873,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
 	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
@@ -928,7 +929,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
 	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
@@ -1053,7 +1054,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 		defer changesWg.Done()
 		var options ChangesOptions
 		options.Since = SequenceID{Seq: 0}
-		options.ChangesCtx = context.Background()
+		options.ChangesCtx = base.TestCtx(t)
 		options.Continuous = false
 		options.Wait = false
 		options.Limit = 2 // Avoid prepending results in cache, as we don't want second changes to serve results from cache
@@ -1072,7 +1073,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	initialPendingQueries := db.DbStats.Cache().ChannelCachePendingQueries.Value()
 
 	// Start a second goroutine that should block waiting for the view lock
-	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
 	changesWg.Add(1)
 	go func() {
 		defer changesWg.Done()
@@ -1144,7 +1145,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
 	options.ChangesCtx = changesCtx
 	defer changesCtxCancel()
 	options.Continuous = true
@@ -1236,7 +1237,7 @@ func TestChannelRace(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
 	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
@@ -1366,14 +1367,14 @@ func TestChannelCacheSize(t *testing.T) {
 	// Validate that retrieval returns expected sequences
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 750, base.DefaultWaitForSequence))
 	collection.user, _ = authenticator.GetUser("naomi")
-	changes, err := collection.GetChanges(ctx, base.SetOf("ABC"), getChangesOptionsWithZeroSeq())
+	changes, err := collection.GetChanges(ctx, base.SetOf("ABC"), getChangesOptionsWithZeroSeq(t))
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Equal(t, 750, len(changes))
 
 	// Validate that cache stores the expected number of values
 	collectionID := collection.GetCollectionID()
 
-	abcCache, err := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID))
+	abcCache, err := db.changeCache.getChannelCache().getSingleChannelCache(ctx, channels.NewID("ABC", collectionID))
 	require.NoError(t, err)
 
 	assert.Equal(t, 600, len(abcCache.(*singleChannelCacheImpl).logs))
@@ -1684,7 +1685,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	}
 
 	// Issue getChanges for empty channel
-	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
+	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly(t))
 	assert.NoError(t, err, "Couldn't GetChanges")
 	changesCount := len(changes)
 	assert.Equal(t, 0, changesCount)
@@ -1702,7 +1703,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	cacheWaiter.Add(docCount)
 	cacheWaiter.Wait()
 
-	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
+	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly(t))
 	assert.NoError(t, err, "Couldn't GetChanges")
 	changesCount = len(changes)
 	assert.Equal(t, 10, changesCount)
@@ -1749,7 +1750,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 	// Wait for writes to be in progress, then getChanges for channel zero
 	writesInProgress.Wait()
-	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
+	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err, "Couldn't GetChanges")
 	firstChangesCount := len(changes)
 	var lastSeq SequenceID
@@ -1760,7 +1761,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	// Wait for all writes to be cached, then getChanges again
 	cacheWaiter.Wait()
 
-	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithSeq(lastSeq))
+	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithSeq(t, lastSeq))
 	require.NoError(t, err, "Couldn't GetChanges")
 	secondChangesCount := len(changes)
 	assert.Equal(t, docCount, firstChangesCount+secondChangesCount)
@@ -1990,13 +1991,13 @@ func BenchmarkProcessEntry(b *testing.B) {
 				log.Printf("Start error for changeCache: %v", err)
 				b.Fail()
 			}
-			defer changeCache.Stop()
+			defer changeCache.Stop(ctx)
 
 			require.NoError(b, err)
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
 					channel := channels.NewID(fmt.Sprintf("channel_%d", i), collectionID)
-					_, err := changeCache.GetChanges(ctx, channel, getChangesOptionsWithZeroSeq())
+					_, err := changeCache.GetChanges(ctx, channel, getChangesOptionsWithZeroSeq(b))
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()
@@ -2009,7 +2010,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				entry := bm.feed.Next()
-				_ = changeCache.processEntry(entry)
+				_ = changeCache.processEntry(ctx, entry)
 			}
 		})
 	}
@@ -2224,13 +2225,13 @@ func BenchmarkDocChanged(b *testing.B) {
 				log.Printf("Start error for changeCache: %v", err)
 				b.Fail()
 			}
-			defer changeCache.Stop()
+			defer changeCache.Stop(ctx)
 
 			require.NoError(b, err)
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
 					channel := channels.NewID(fmt.Sprintf("channel_%d", i), collectionID)
-					_, err := changeCache.GetChanges(ctx, channel, getChangesOptionsWithZeroSeq())
+					_, err := changeCache.GetChanges(ctx, channel, getChangesOptionsWithZeroSeq(b))
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()

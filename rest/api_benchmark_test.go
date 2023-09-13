@@ -208,7 +208,7 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 	var body db.Body
 	require.NoError(b, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revid := body["rev"].(string)
-	_, rev1_digest := db.ParseRevID(revid)
+	_, rev1_digest := db.ParseRevID(rt.Context(), revid)
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/doc1k?rev=%s", revid), doc1k_putDoc)
 	if response.Code != 201 {
 		log.Printf("Unexpected add rev response: %d  %s", response.Code, response.Body.Bytes())

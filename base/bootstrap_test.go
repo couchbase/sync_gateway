@@ -47,8 +47,8 @@ func TestBootstrapRefCounting(t *testing.T) {
 	forcePerBucketAuth := false
 	tlsSkipVerify := BoolPtr(false)
 	var perBucketCredentialsConfig map[string]*CredentialsConfig
-
-	cluster, err := NewCouchbaseCluster(UnitTestUrl(), TestClusterUsername(), TestClusterPassword(), x509CertPath, x509KeyPath, caCertPath, forcePerBucketAuth, perBucketCredentialsConfig, tlsSkipVerify, BoolPtr(TestUseXattrs()), CachedClusterConnections)
+	ctx := TestCtx(t)
+	cluster, err := NewCouchbaseCluster(ctx, UnitTestUrl(), TestClusterUsername(), TestClusterPassword(), x509CertPath, x509KeyPath, caCertPath, forcePerBucketAuth, perBucketCredentialsConfig, tlsSkipVerify, BoolPtr(TestUseXattrs()), CachedClusterConnections)
 	require.NoError(t, err)
 	defer cluster.Close()
 	require.NotNil(t, cluster)
@@ -59,25 +59,25 @@ func TestBootstrapRefCounting(t *testing.T) {
 
 	buckets, err := cluster.GetConfigBuckets()
 	require.NoError(t, err)
-	require.Len(t, buckets, tbpNumBuckets())
+	require.Len(t, buckets, tbpNumBuckets(ctx))
 	// GetConfigBuckets doesn't cache connections, it uses cluster connection to determine number of buckets
 	require.Len(t, cluster.cachedBucketConnections.buckets, 0)
 
 	primeBucketConnectionCache := func(bucketNames []string) {
 		// Bucket CRUD ops do cache connections
 		for _, bucketName := range bucketNames {
-			exists, err := cluster.KeyExists(bucketName, "keyThatDoesNotExist")
+			exists, err := cluster.KeyExists(ctx, bucketName, "keyThatDoesNotExist")
 			require.NoError(t, err)
 			require.False(t, exists)
 		}
 	}
 
 	primeBucketConnectionCache(buckets)
-	require.Len(t, cluster.cachedBucketConnections.buckets, tbpNumBuckets())
+	require.Len(t, cluster.cachedBucketConnections.buckets, tbpNumBuckets(ctx))
 
 	// call removeOutdatedBuckets as no-op
 	cluster.cachedBucketConnections.removeOutdatedBuckets(SetOf(buckets...))
-	require.Len(t, cluster.cachedBucketConnections.buckets, tbpNumBuckets())
+	require.Len(t, cluster.cachedBucketConnections.buckets, tbpNumBuckets(ctx))
 
 	// call removeOutdatedBuckets to remove all cached buckets, call multiple times to make sure idempotent
 	for i := 0; i < 3; i++ {
@@ -86,7 +86,7 @@ func TestBootstrapRefCounting(t *testing.T) {
 	}
 
 	primeBucketConnectionCache(buckets)
-	require.Len(t, cluster.cachedBucketConnections.buckets, tbpNumBuckets())
+	require.Len(t, cluster.cachedBucketConnections.buckets, tbpNumBuckets(ctx))
 
 	// make sure that you can still use an active connection while the bucket has been removed
 	wg := sync.WaitGroup{}
@@ -94,7 +94,7 @@ func TestBootstrapRefCounting(t *testing.T) {
 	makeConnection := make(chan struct{})
 	go func() {
 		defer wg.Done()
-		b, teardown, err := cluster.getBucket(buckets[0])
+		b, teardown, err := cluster.getBucket(ctx, buckets[0])
 		defer teardown()
 		require.NoError(t, err)
 		require.NotNil(t, b)

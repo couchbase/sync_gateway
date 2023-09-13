@@ -42,11 +42,11 @@ type blipCollections struct {
 }
 
 // newBlipSyncCollection constructs a context to hold all blip data for a given collection.
-func newBlipSyncCollectionContext(dbCollection *DatabaseCollection) *blipSyncCollectionContext {
+func newBlipSyncCollectionContext(ctx context.Context, dbCollection *DatabaseCollection) *blipSyncCollectionContext {
 	c := &blipSyncCollectionContext{
 		dbCollection: dbCollection,
 	}
-	c.changesCtx, c.changesCtxCancel = context.WithCancel(context.Background())
+	c.changesCtx, c.changesCtxCancel = context.WithCancel(base.KeyspaceLogCtx(ctx, dbCollection.bucketName(), dbCollection.ScopeName, dbCollection.Name))
 	return c
 }
 

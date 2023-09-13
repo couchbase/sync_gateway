@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"context"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -20,8 +21,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	ctx := context.Background() // start of test process
 	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 8192}
-	db.TestBucketPoolWithIndexes(m, tbpOptions)
+	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }
 
 func TestConfigOverwritesLegacyFlags(t *testing.T) {
@@ -38,7 +40,7 @@ func TestConfigOverwritesLegacyFlags(t *testing.T) {
 
 		"config.json",
 	}
-	sc, _, _, err := parseFlags(osArgs)
+	sc, _, _, err := parseFlags(base.TestCtx(t), osArgs)
 	assert.NoError(t, err)
 
 	require.NotNil(t, sc)
@@ -85,7 +87,7 @@ func TestParseFlags(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			_, _, disablePersistentConfig, err := parseFlags(append(osArgsPrefix, test.osArgs...))
+			_, _, disablePersistentConfig, err := parseFlags(base.TestCtx(t), append(osArgsPrefix, test.osArgs...))
 			if test.expectedError != nil {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), *test.expectedError)

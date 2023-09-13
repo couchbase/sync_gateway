@@ -454,11 +454,11 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 	name := db.GenerateCompactionDCPStreamName(stat.CompactID, "mark")
 	checkpointPrefix := fmt.Sprintf("%s:%v", "_sync:dcp_ck:", name)
 
-	meta := base.NewDCPMetadataCS(dataStore, 1024, 8, checkpointPrefix)
+	meta := base.NewDCPMetadataCS(rt.Context(), dataStore, 1024, 8, checkpointPrefix)
 	vbMeta := meta.GetMeta(0)
 	vbMeta.VbUUID = garbageVBUUID
 	meta.SetMeta(0, vbMeta)
-	meta.Persist(0, []uint16{0})
+	meta.Persist(rt.Context(), 0, []uint16{0})
 
 	// kick off a new run attempting to start it again (should force into rollback handling)
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&action=start", "")

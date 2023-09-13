@@ -42,7 +42,7 @@ func TestLegacyFlagsValid(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = fillConfigWithLegacyFlags(flags, fs, false)
+	err = fillConfigWithLegacyFlags(base.TestCtx(t), flags, fs, false)
 	assert.NoError(t, err)
 
 	assert.Equal(t, "12.34.56.78", config.API.PublicInterface)
@@ -70,7 +70,7 @@ func TestLegacyFlagsError(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = fillConfigWithLegacyFlags(flags, fs, false)
+	err = fillConfigWithLegacyFlags(base.TestCtx(t), flags, fs, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), errorText)
 }

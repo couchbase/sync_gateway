@@ -540,7 +540,7 @@ func (op *OIDCProvider) runDiscoverySync(ctx context.Context, discoveryURL strin
 		return ttl, err
 	}
 	if refresh && !op.isStandardDiscovery() {
-		verifier := op.generateVerifier(&metadata, context.Background())
+		verifier := op.generateVerifier(&metadata, ctx)
 		op.client.SetConfig(verifier, metadata.endpoint())
 		op.metadata = metadata
 	}
@@ -624,7 +624,7 @@ func (op *OIDCProvider) verifyToken(ctx context.Context, token string, callbackU
 	}
 
 	// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
-	idToken, err := client.verifyJWT(token)
+	idToken, err := client.verifyJWT(ctx, token)
 	if err != nil {
 		base.DebugfCtx(ctx, base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
 		return nil, err
@@ -661,10 +661,10 @@ func getIssuerWithAudience(token *jwt.JSONWebToken) (issuer string, audiences []
 
 // verifyJWT parses a raw ID Token, verifies it's been signed by the provider
 // and returns the payload. It uses the ID Token Verifier to verify the token.
-func (client *OIDCClient) verifyJWT(token string) (*oidc.IDToken, error) {
+func (client *OIDCClient) verifyJWT(ctx context.Context, token string) (*oidc.IDToken, error) {
 	client.mutex.RLock()
 	defer client.mutex.RUnlock()
-	return client.verifier.Verify(context.Background(), token)
+	return client.verifier.Verify(ctx, token)
 }
 
 func SetURLQueryParam(strURL, name, value string) (string, error) {

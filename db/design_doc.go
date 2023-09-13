@@ -622,7 +622,7 @@ func installViews(ctx context.Context, viewStore sgbucket.ViewStore) error {
 		}
 
 		description := fmt.Sprintf("Attempt to install Couchbase design doc")
-		err, _ := base.RetryLoop(description, worker, sleeper)
+		err, _ := base.RetryLoop(ctx, description, worker, sleeper)
 
 		if err != nil {
 			return pkgerrors.WithStack(base.RedactErrorf("Error installing Couchbase Design doc: %v.  Error: %v", base.UD(designDocName), err))
@@ -787,7 +787,7 @@ func getViewStoreForDefaultCollection(dbContext *DatabaseContext) (sgbucket.View
 	}
 	vs, ok := base.AsViewStore(dbCollection.dataStore)
 	if !ok {
-		return nil, fmt.Errorf("dbCollection.dataStore is not a ViewStore")
+		return nil, fmt.Errorf("%T is not a ViewStore", dbCollection.dataStore)
 	}
 	return vs, nil
 }

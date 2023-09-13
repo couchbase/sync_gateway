@@ -155,20 +155,20 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 	return sc
 }
 
-func (sc *ServerContext) WaitForRESTAPIs() error {
+func (sc *ServerContext) WaitForRESTAPIs(ctx context.Context) error {
 	timeout := 30 * time.Second
 	interval := time.Millisecond * 100
 	numAttempts := int(timeout / interval)
-	timeoutCtx, cancelFn := context.WithTimeout(context.Background(), timeout)
+	ctx, cancelFn := context.WithTimeout(ctx, timeout)
 	defer cancelFn()
-	err, _ := base.RetryLoopCtx("Wait for REST APIs", func() (shouldRetry bool, err error, value interface{}) {
+	err, _ := base.RetryLoop(ctx, "Wait for REST APIs", func() (shouldRetry bool, err error, value interface{}) {
 		sc.lock.RLock()
 		defer sc.lock.RUnlock()
 		if len(sc._httpServers) == 3 {
 			return false, nil, nil
 		}
 		return true, nil, nil
-	}, base.CreateSleeperFunc(numAttempts, int(interval.Milliseconds())), timeoutCtx)
+	}, base.CreateSleeperFunc(numAttempts, int(interval.Milliseconds())))
 	return err
 }
 
@@ -201,7 +201,7 @@ func (sc *ServerContext) Close(ctx context.Context) {
 
 	for _, db := range sc.databases_ {
 		db.Close(ctx)
-		_ = db.EventMgr.RaiseDBStateChangeEvent(db.Name, "offline", "Database context closed", &sc.Config.API.AdminInterface)
+		_ = db.EventMgr.RaiseDBStateChangeEvent(ctx, db.Name, "offline", "Database context closed", &sc.Config.API.AdminInterface)
 	}
 	sc.databases_ = nil
 
@@ -334,7 +334,7 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 
 	for name, database := range sc.databases_ {
 		// View cleanup
-		removedDDocs, _ := database.RemoveObsoleteDesignDocs(preview)
+		removedDDocs, _ := database.RemoveObsoleteDesignDocs(ctx, preview)
 
 		// Index cleanup
 		var removedIndexes []string
@@ -554,6 +554,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 					}
 
 					err, _ = base.RetryLoop(
+						ctx,
 						fmt.Sprintf("waiting for %s.%s.%s to exist", base.MD(bucket.GetName()), base.MD(scopeName), base.MD(collectionName)),
 						waitForCollection,
 						base.CreateMaxDoublingSleeperFunc(30, 10, 1000))
@@ -562,7 +563,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 					return nil, fmt.Errorf("error attempting to create/update database: %w", err)
 				}
 				// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
-				if err := base.WaitUntilDataStoreExists(dataStore); err != nil {
+				if err := base.WaitUntilDataStoreExists(ctx, dataStore); err != nil {
 					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
 				}
 				metadataIndexOption := db.IndexesWithoutMetadata
@@ -700,7 +701,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		config.Unsupported.WarningThresholds.ChannelNameSize = &base.DefaultWarnThresholdChannelNameSize
 	}
 
-	autoImport, err := config.AutoImportEnabled()
+	autoImport, err := config.AutoImportEnabled(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -849,7 +850,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
-		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", stateChangeMsg, &sc.Config.API.AdminInterface)
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", stateChangeMsg, &sc.Config.API.AdminInterface)
 
 		return dbcontext, nil
 	}
@@ -868,7 +869,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return nil, err
 		}
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
-		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
 		return dbcontext, nil
 	} else {
 		// If asyncOnline is requested, set state to Starting and spawn a separate goroutine to wait for init completion
@@ -913,7 +914,7 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 
 	stateChangeMsg := "DB loaded from config"
 	atomic.StoreUint32(&dbc.State, db.DBOnline)
-	_ = dbc.EventMgr.RaiseDBStateChangeEvent(dbc.Name, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
+	_ = dbc.EventMgr.RaiseDBStateChangeEvent(ctx, dbc.Name, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
 
 }
 
@@ -1180,30 +1181,24 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 
 	// Per-database console logging config overrides
-	if config.Logging != nil && config.Logging.Console != nil {
-		logKey := base.ToLogKey(config.Logging.Console.LogKeys)
-		contextOptions.LoggingConfig.Console = &base.DbConsoleLogConfig{
-			LogLevel: config.Logging.Console.LogLevel,
-			LogKeys:  &logKey,
-		}
-	}
+	contextOptions.LoggingConfig.Console = config.toDbConsoleLogConfig(ctx)
 
 	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {
 		var err error
 		if config.UserFunctions != nil {
-			contextOptions.UserFunctions, err = functions.CompileFunctions(*config.UserFunctions)
+			contextOptions.UserFunctions, err = functions.CompileFunctions(ctx, *config.UserFunctions)
 			if err != nil {
 				return contextOptions, err
 			}
 		}
 		if config.GraphQL != nil {
-			contextOptions.GraphQL, err = functions.CompileGraphQL(config.GraphQL)
+			contextOptions.GraphQL, err = functions.CompileGraphQL(ctx, config.GraphQL)
 			if err != nil {
 				return contextOptions, err
 			}
 		}
 	} else if config.UserFunctions != nil || config.GraphQL != nil {
-		base.WarnfCtx(context.TODO(), `Database config options "functions" and "graphql" ignored because unsupported.user_queries feature flag is not enabled`)
+		base.WarnfCtx(ctx, `Database config options "functions" and "graphql" ignored because unsupported.user_queries feature flag is not enabled`)
 	}
 
 	return contextOptions, nil
@@ -1241,7 +1236,7 @@ func (sc *ServerContext) TakeDbOnline(nonContextStruct base.NonCancellableContex
 // validateMetadataStore will
 func validateMetadataStore(ctx context.Context, metadataStore base.DataStore) error {
 	// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
-	err := base.WaitUntilDataStoreExists(metadataStore)
+	err := base.WaitUntilDataStoreExists(ctx, metadataStore)
 	if err == nil {
 		return nil
 	}
@@ -1313,7 +1308,7 @@ func (sc *ServerContext) initEventHandlers(ctx context.Context, dbcontext *db.Da
 			if config.Unsupported != nil {
 				insecureSkipVerify = config.Unsupported.RemoteConfigTlsSkipVerify
 			}
-			filter, err := loadJavaScript(conf.Filter, insecureSkipVerify)
+			filter, err := loadJavaScript(ctx, conf.Filter, insecureSkipVerify)
 			if err != nil {
 				return &JavaScriptLoadError{
 					JSLoadType: WebhookFilter,
@@ -1342,7 +1337,7 @@ func (sc *ServerContext) initEventHandlers(ctx context.Context, dbcontext *db.Da
 			base.WarnfCtx(ctx, "Error parsing wait_for_process from config, using default %s", err)
 		}
 	}
-	dbcontext.EventMgr.Start(config.EventHandlers.MaxEventProc, int(customWaitTime))
+	dbcontext.EventMgr.Start(ctx, config.EventHandlers.MaxEventProc, int(customWaitTime))
 
 	return nil
 }
@@ -1366,12 +1361,12 @@ func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, event
 	for _, event := range events {
 		switch event.HandlerType {
 		case "webhook":
-			wh, err := db.NewWebhook(event.Url, event.Filter, event.Timeout, event.Options)
+			wh, err := db.NewWebhook(ctx, event.Url, event.Filter, event.Timeout, event.Options)
 			if err != nil {
 				base.WarnfCtx(ctx, "Error creating webhook %v", err)
 				return err
 			}
-			dbcontext.EventMgr.RegisterEventHandler(wh, eventType)
+			dbcontext.EventMgr.RegisterEventHandler(ctx, wh, eventType)
 		default:
 			return errors.New(fmt.Sprintf("Unknown event handler type %s", event.HandlerType))
 		}
@@ -1445,7 +1440,7 @@ func (sc *ServerContext) _suspendDatabase(ctx context.Context, dbName string) er
 	}
 
 	bucket := dbCtx.Bucket.GetName()
-	base.InfofCtx(context.TODO(), base.KeyAll, "Suspending db %q (bucket %q)", base.MD(dbName), base.MD(bucket))
+	base.InfofCtx(ctx, base.KeyAll, "Suspending db %q (bucket %q)", base.MD(dbName), base.MD(bucket))
 
 	if !sc._unloadDatabase(ctx, dbName) {
 		return base.ErrNotFound
@@ -1482,7 +1477,7 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 			bucket = *dbConfig.Bucket
 		}
 
-		cas, err := sc.BootstrapContext.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &dbConfig.DatabaseConfig)
+		cas, err := sc.BootstrapContext.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &dbConfig.DatabaseConfig)
 		if err == base.ErrNotFound {
 			// Database no longer exists, so clean up dbConfigs
 			base.InfofCtx(ctx, base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName), base.MD(bucket))
@@ -1556,7 +1551,7 @@ func (sc *ServerContext) logStats(ctx context.Context) error {
 		base.WarnfCtx(ctx, "Error getting sigar based system resource stats: %v", err)
 	}
 
-	sc.updateCalculatedStats()
+	sc.updateCalculatedStats(ctx)
 	// Create wrapper expvar map in order to add a timestamp field for logging purposes
 	currentTime := time.Now()
 	wrapper := statsWrapper{
@@ -1590,13 +1585,13 @@ func (sc *ServerContext) logNetworkInterfaceStats(ctx context.Context) {
 }
 
 // Updates stats that are more efficient to calculate at stats collection time
-func (sc *ServerContext) updateCalculatedStats() {
+func (sc *ServerContext) updateCalculatedStats(ctx context.Context) {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
 	for _, dbContext := range sc.databases_ {
 		dbState := atomic.LoadUint32(&dbContext.State)
 		if dbState == db.DBOnline {
-			dbContext.UpdateCalculatedStats()
+			dbContext.UpdateCalculatedStats(ctx)
 		}
 	}
 
@@ -1608,7 +1603,7 @@ func initClusterAgent(ctx context.Context, clusterAddress, clusterUser, clusterP
 		return nil, err
 	}
 
-	tlsRootCAProvider, err := base.GoCBCoreTLSRootCAProvider(tlsSkipVerify, caCertPath)
+	tlsRootCAProvider, err := base.GoCBCoreTLSRootCAProvider(ctx, tlsSkipVerify, caCertPath)
 	if err != nil {
 		return nil, err
 	}
@@ -1669,7 +1664,7 @@ func initClusterAgent(ctx context.Context, clusterAddress, clusterUser, clusterP
 // initializeGoCBAgent Obtains a gocb agent from the current server connection. Requires the agent to be closed after use.
 // Uses retry loop
 func (sc *ServerContext) initializeGoCBAgent(ctx context.Context) (*gocbcore.Agent, error) {
-	err, a := base.RetryLoop("Initialize Cluster Agent", func() (shouldRetry bool, err error, value interface{}) {
+	err, a := base.RetryLoop(ctx, "Initialize Cluster Agent", func() (shouldRetry bool, err error, value interface{}) {
 		agent, err := initClusterAgent(
 			ctx,
 			sc.Config.Bootstrap.Server, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password,
@@ -1697,7 +1692,7 @@ func (sc *ServerContext) initializeGoCBAgent(ctx context.Context) (*gocbcore.Age
 // without any x509 keypair included in the tls config.  This client can be used to perform basic
 // authentication checks against the server.
 // Client creation otherwise clones the approach used by gocb.
-func (sc *ServerContext) initializeNoX509HttpClient() (*http.Client, error) {
+func (sc *ServerContext) initializeNoX509HttpClient(ctx context.Context) (*http.Client, error) {
 
 	// baseTlsConfig defines the tlsConfig except for ServerName, which is updated based
 	// on addr in DialTLS
@@ -1705,7 +1700,7 @@ func (sc *ServerContext) initializeNoX509HttpClient() (*http.Client, error) {
 		MinVersion: tls.VersionTLS12,
 	}
 	var rootCAs *x509.CertPool
-	tlsRootCAProvider, err := base.GoCBCoreTLSRootCAProvider(sc.Config.Bootstrap.ServerTLSSkipVerify, sc.Config.Bootstrap.CACertPath)
+	tlsRootCAProvider, err := base.GoCBCoreTLSRootCAProvider(ctx, sc.Config.Bootstrap.ServerTLSSkipVerify, sc.Config.Bootstrap.CACertPath)
 	if err != nil {
 		return nil, err
 	}
@@ -1789,10 +1784,10 @@ func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *ht
 // For Authorization it checks whether the user has any ONE of the supplied accessPermissions
 // If the user is authorized it will also check the responsePermissions and return the results for these. These can be
 // used by handlers to determine different responses based on the permissions the user has.
-func CheckPermissions(httpClient *http.Client, managementEndpoints []string, bucketName, username, password string, accessPermissions []Permission, responsePermissions []Permission) (statusCode int, permissionResults map[string]bool, err error) {
+func CheckPermissions(ctx context.Context, httpClient *http.Client, managementEndpoints []string, bucketName, username, password string, accessPermissions []Permission, responsePermissions []Permission) (statusCode int, permissionResults map[string]bool, err error) {
 	combinedPermissions := append(accessPermissions, responsePermissions...)
 	body := []byte(strings.Join(FormatPermissionNames(combinedPermissions, bucketName), ","))
-	statusCode, bodyResponse, err := doHTTPAuthRequest(httpClient, username, password, "POST", "/pools/default/checkPermissions", managementEndpoints, body)
+	statusCode, bodyResponse, err := doHTTPAuthRequest(ctx, httpClient, username, password, "POST", "/pools/default/checkPermissions", managementEndpoints, body)
 	if err != nil {
 		return http.StatusInternalServerError, nil, err
 	}
@@ -1838,8 +1833,8 @@ func CheckPermissions(httpClient *http.Client, managementEndpoints []string, buc
 	return http.StatusForbidden, nil, nil
 }
 
-func CheckRoles(httpClient *http.Client, managementEndpoints []string, username, password string, requestedRoles []RouteRole, bucketName string) (statusCode int, err error) {
-	statusCode, bodyResponse, err := doHTTPAuthRequest(httpClient, username, password, "GET", "/whoami", managementEndpoints, nil)
+func CheckRoles(ctx context.Context, httpClient *http.Client, managementEndpoints []string, username, password string, requestedRoles []RouteRole, bucketName string) (statusCode int, err error) {
+	statusCode, bodyResponse, err := doHTTPAuthRequest(ctx, httpClient, username, password, "GET", "/whoami", managementEndpoints, nil)
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
@@ -1878,7 +1873,7 @@ func CheckRoles(httpClient *http.Client, managementEndpoints []string, username,
 	return http.StatusForbidden, nil
 }
 
-func doHTTPAuthRequest(httpClient *http.Client, username, password, method, path string, endpoints []string, requestBody []byte) (statusCode int, responseBody []byte, err error) {
+func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, password, method, path string, endpoints []string, requestBody []byte) (statusCode int, responseBody []byte, err error) {
 	retryCount := 0
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
@@ -1905,7 +1900,7 @@ func doHTTPAuthRequest(httpClient *http.Client, username, password, method, path
 		return false, err, nil
 	}
 
-	err, result := base.RetryLoop("", worker, base.CreateSleeperFunc(10, 100))
+	err, result := base.RetryLoop(ctx, "", worker, base.CreateSleeperFunc(10, 100))
 	if err != nil {
 		return 0, nil, err
 	}
@@ -1947,14 +1942,14 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 	sc.GoCBAgent = goCBAgent
 	//sc.DatabaseInitManager.cluster = goCBAgent.
 
-	sc.NoX509HTTPClient, err = sc.initializeNoX509HttpClient()
+	sc.NoX509HTTPClient, err = sc.initializeNoX509HttpClient(ctx)
 	if err != nil {
 		return err
 	}
 
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if sc.persistentConfig {
-		couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.CachedClusterConnections)
+		couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(ctx, sc.Config, base.CachedClusterConnections)
 		if err != nil {
 			return err
 		}

@@ -28,7 +28,7 @@ import (
 //     https://github.com/couchbase/sync_gateway/issues/1083
 //   - Hard limit vs Soft limit
 //     http://unix.stackexchange.com/questions/29577/ulimit-difference-between-hard-and-soft-limits
-func SetMaxFileDescriptors(requestedSoftFDLimit uint64) (uint64, error) {
+func SetMaxFileDescriptors(ctx context.Context, requestedSoftFDLimit uint64) (uint64, error) {
 
 	var limits syscall.Rlimit
 
@@ -37,6 +37,7 @@ func SetMaxFileDescriptors(requestedSoftFDLimit uint64) (uint64, error) {
 	}
 
 	requiresUpdate, recommendedSoftFDLimit := getSoftFDLimit(
+		ctx,
 		requestedSoftFDLimit,
 		limits,
 	)
@@ -52,7 +53,7 @@ func SetMaxFileDescriptors(requestedSoftFDLimit uint64) (uint64, error) {
 	err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &limits)
 
 	if err == nil {
-		InfofCtx(context.Background(), KeyAll, "Configured process to allow %d open file descriptors", recommendedSoftFDLimit)
+		InfofCtx(ctx, KeyAll, "Configured process to allow %d open file descriptors", recommendedSoftFDLimit)
 	}
 
 	return recommendedSoftFDLimit, err
@@ -76,7 +77,7 @@ func SetMaxFileDescriptors(requestedSoftFDLimit uint64) (uint64, error) {
 //     a lower limit than the system limit
 //  2. Only return a value that is LESS-THAN-OR-EQUAL to the existing hard limit
 //     since trying to set something higher than the hard limit will fail
-func getSoftFDLimit(requestedSoftFDLimit uint64, limit syscall.Rlimit) (requiresUpdate bool, recommendedSoftFDLimit uint64) {
+func getSoftFDLimit(ctx context.Context, requestedSoftFDLimit uint64, limit syscall.Rlimit) (requiresUpdate bool, recommendedSoftFDLimit uint64) {
 
 	currentSoftFdLimit := limit.Cur
 	currentHardFdLimit := limit.Max
@@ -84,14 +85,14 @@ func getSoftFDLimit(requestedSoftFDLimit uint64, limit syscall.Rlimit) (requires
 	// Is the user requesting something that is less than the existing soft limit?
 	if requestedSoftFDLimit <= currentSoftFdLimit {
 		// yep, and there is no point in doing so, so return false for requiresUpdate.
-		DebugfCtx(context.Background(), KeyAll, "requestedSoftFDLimit < currentSoftFdLimit (%v <= %v) no action needed", requestedSoftFDLimit, currentSoftFdLimit)
+		DebugfCtx(ctx, KeyAll, "requestedSoftFDLimit < currentSoftFdLimit (%v <= %v) no action needed", requestedSoftFDLimit, currentSoftFdLimit)
 		return false, currentSoftFdLimit
 	}
 
 	// Is the user requesting something higher than the existing hard limit?
 	if requestedSoftFDLimit >= currentHardFdLimit {
 		// yes, so just use the hard limit
-		InfofCtx(context.Background(), KeyAll, "requestedSoftFDLimit >= currentHardFdLimit (%v >= %v) capping at %v", requestedSoftFDLimit, currentHardFdLimit, currentHardFdLimit)
+		InfofCtx(ctx, KeyAll, "requestedSoftFDLimit >= currentHardFdLimit (%v >= %v) capping at %v", requestedSoftFDLimit, currentHardFdLimit, currentHardFdLimit)
 		return true, currentHardFdLimit
 	}
 

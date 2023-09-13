@@ -59,13 +59,13 @@ type JWTConfigCommon struct {
 }
 
 // ValidFor returns whether the issuer matches, and one of the audiences matches
-func (j JWTConfigCommon) ValidFor(issuer string, audiences audience) bool {
+func (j JWTConfigCommon) ValidFor(ctx context.Context, issuer string, audiences audience) bool {
 	if j.Issuer != issuer {
 		return false
 	}
 	// Nil ClientID is invalid (checked by config validation), but empty-string disables audience checking
 	if j.ClientID == nil {
-		base.ErrorfCtx(context.Background(), "JWTConfigCommon.ClientID nil - should never happen (for issuer %v)", base.UD(j.Issuer))
+		base.ErrorfCtx(ctx, "JWTConfigCommon.ClientID nil - should never happen (for issuer %v)", base.UD(j.Issuer))
 		return false
 	}
 	if *j.ClientID == "" {
@@ -147,7 +147,7 @@ type LocalJWTAuthConfig struct {
 }
 
 // BuildProvider prepares a LocalJWTAuthProvider from this config, initialising keySet.
-func (l LocalJWTAuthConfig) BuildProvider(name string) *LocalJWTAuthProvider {
+func (l LocalJWTAuthConfig) BuildProvider(ctx context.Context, name string) *LocalJWTAuthProvider {
 	var prov *LocalJWTAuthProvider
 	// validation ensures these are truly mutually exclusive
 	if len(l.Keys) > 0 {
@@ -160,10 +160,10 @@ func (l LocalJWTAuthConfig) BuildProvider(name string) *LocalJWTAuthProvider {
 		prov = &LocalJWTAuthProvider{
 			LocalJWTAuthConfig: l,
 			name:               name,
-			keySet:             oidc.NewRemoteKeySet(context.Background(), l.JWKSURI),
+			keySet:             oidc.NewRemoteKeySet(ctx, l.JWKSURI),
 		}
 	}
-	prov.initUserPrefix()
+	prov.initUserPrefix(ctx)
 	return prov
 }
 
@@ -209,14 +209,14 @@ func (l *LocalJWTAuthProvider) common() JWTConfigCommon {
 	return l.JWTConfigCommon
 }
 
-func (l *LocalJWTAuthProvider) initUserPrefix() {
+func (l *LocalJWTAuthProvider) initUserPrefix(ctx context.Context) {
 	if l.UserPrefix != "" || l.UsernameClaim != "" {
 		return
 	}
 
 	issuerURL, err := url.ParseRequestURI(l.Issuer)
 	if err != nil {
-		base.WarnfCtx(context.TODO(), "Unable to parse issuer URI when initializing user prefix - using provider name")
+		base.WarnfCtx(ctx, "Unable to parse issuer URI when initializing user prefix - using provider name")
 		l.UserPrefix = l.name
 		return
 	}

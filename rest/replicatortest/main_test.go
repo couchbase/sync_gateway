@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package replicatortest
 
 import (
+	"context"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -18,6 +19,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	ctx := context.Background() // start of test process
 	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 8192}
-	db.TestBucketPoolWithIndexes(m, tbpOptions)
+	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }

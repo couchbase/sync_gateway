@@ -141,7 +141,7 @@ func (db *DatabaseCollectionWithUser) AddDocToChangeEntryUsingRevCache(ctx conte
 	if err != nil {
 		return err
 	}
-	entry.Doc, err = rev.As1xBytes(db, nil, nil, false)
+	entry.Doc, err = rev.As1xBytes(ctx, db, nil, nil, false)
 	return err
 }
 
@@ -674,14 +674,14 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 
 		// Mark channel set as active, schedule defer
 		col.activeChannels().IncrChannels(collectionID, channelsSince)
-		defer col.activeChannels().DecrChannels(collectionID, channelsSince)
+		defer col.activeChannels().DecrChannels(ctx, collectionID, channelsSince)
 
 		// For a continuous feed, initialise the lateSequenceFeeds that track late-arriving sequences
 		// to the channel caches.
 		if options.Continuous || options.RequestPlusSeq > currentCachedSequence {
 			useLateSequenceFeeds = true
 			lateSequenceFeeds = make(map[channels.ID]*lateSequenceFeed)
-			defer col.closeLateFeeds(lateSequenceFeeds)
+			defer col.closeLateFeeds(ctx, lateSequenceFeeds)
 		}
 
 		// Store incoming low sequence, for potential use by longpoll iterations
@@ -701,7 +701,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 
 			// lowSequence is used to send composite keys to clients, so that they can obtain any currently
 			// skipped sequences in a future iteration or request.
-			oldestSkipped := col.changeCache().getOldestSkippedSequence()
+			oldestSkipped := col.changeCache().getOldestSkippedSequence(ctx)
 			if oldestSkipped > 0 {
 				lowSequence = oldestSkipped - 1
 				base.InfofCtx(ctx, base.KeyChanges, "%d is the oldest skipped sequence, using stable sequence number of %d for this feed %s", oldestSkipped, lowSequence, base.UD(to))
@@ -732,7 +732,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				chanID := channels.NewID(chanName, collectionID)
 				// Obtain a SingleChannelCache instance to use for both normal and late feeds.  Required to ensure consistency
 				// if cache is evicted during processing
-				singleChannelCache, err := col.changeCache().getChannelCache().getSingleChannelCache(chanID)
+				singleChannelCache, err := col.changeCache().getChannelCache().getSingleChannelCache(ctx, chanID)
 				if err != nil {
 					base.WarnfCtx(ctx, "Unable to obtain channel cache for %s, terminating feed", base.UD(chanName))
 					change := makeErrorEntry("Channel cache unavailable, terminating feed")
@@ -1002,7 +1002,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				}
 
 				col.dbStats().CBLReplicationPull().NumPullReplCaughtUp.Add(1)
-				waitResponse := changeWaiter.Wait()
+				waitResponse := changeWaiter.Wait(ctx)
 				col.dbStats().CBLReplicationPull().NumPullReplCaughtUp.Add(-1)
 
 				if waitResponse == WaiterClosed {
@@ -1040,7 +1040,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				changedChannels = newChannelsSince.CompareKeys(channelsSince)
 
 				if len(changedChannels) > 0 {
-					col.activeChannels().UpdateChanged(collectionID, changedChannels)
+					col.activeChannels().UpdateChanged(ctx, collectionID, changedChannels)
 				}
 				channelsSince = newChannelsSince
 			}
@@ -1048,7 +1048,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			// Clean up inactive lateSequenceFeeds (because user has lost access to the channel)
 			for channel, lateFeed := range lateSequenceFeeds {
 				if !lateFeed.active {
-					col.closeLateFeed(lateFeed)
+					col.closeLateFeed(ctx, lateFeed)
 					delete(lateSequenceFeeds, channel)
 				} else {
 					lateFeed.active = false
@@ -1100,8 +1100,8 @@ func (db *DatabaseCollectionWithUser) GetChanges(ctx context.Context, channels b
 }
 
 // Returns the set of cached log entries for a given channel
-func (c *DatabaseCollection) GetChangeLog(channel channels.ID, afterSeq uint64) (entries []*LogEntry, err error) {
-	return c.changeCache().getChannelCache().GetCachedChanges(channel)
+func (c *DatabaseCollection) GetChangeLog(ctx context.Context, channel channels.ID, afterSeq uint64) (entries []*LogEntry, err error) {
+	return c.changeCache().getChannelCache().GetCachedChanges(ctx, channel)
 }
 
 // WaitForSequenceNotSkipped blocks until the given sequence has been received or skipped by the change cache.
@@ -1117,8 +1117,11 @@ func (c *DatabaseCollection) WaitForSequenceNotSkipped(ctx context.Context, sequ
 }
 
 // WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database.
-func (c *DatabaseCollection) WaitForPendingChanges(ctx context.Context) (err error) {
-	lastSequence, err := c.LastSequence()
+func (c *DatabaseCollection) WaitForPendingChanges(ctx context.Context) error {
+	lastSequence, err := c.LastSequence(ctx)
+	if err != nil {
+		return err
+	}
 	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", lastSequence)
 	return c.changeCache().waitForSequence(ctx, lastSequence, base.DefaultWaitForSequence)
 }
@@ -1201,8 +1204,8 @@ func (db *DatabaseCollectionWithUser) getLateFeed(feedHandler *lateSequenceFeed,
 }
 
 // Closes a single late sequence feed.
-func (db *DatabaseCollectionWithUser) closeLateFeed(feedHandler *lateSequenceFeed) {
-	singleChannelCache, err := db.changeCache().getChannelCache().getSingleChannelCache(feedHandler.channel)
+func (db *DatabaseCollectionWithUser) closeLateFeed(ctx context.Context, feedHandler *lateSequenceFeed) {
+	singleChannelCache, err := db.changeCache().getChannelCache().getSingleChannelCache(ctx, feedHandler.channel)
 	if err != nil || !singleChannelCache.SupportsLateFeed() {
 		return
 	}
@@ -1212,9 +1215,9 @@ func (db *DatabaseCollectionWithUser) closeLateFeed(feedHandler *lateSequenceFee
 }
 
 // Closes set of feeds.  Invoked on changes termination
-func (db *DatabaseCollectionWithUser) closeLateFeeds(feeds map[channels.ID]*lateSequenceFeed) {
+func (db *DatabaseCollectionWithUser) closeLateFeeds(ctx context.Context, feeds map[channels.ID]*lateSequenceFeed) {
 	for _, feed := range feeds {
-		db.closeLateFeed(feed)
+		db.closeLateFeed(ctx, feed)
 	}
 }
 

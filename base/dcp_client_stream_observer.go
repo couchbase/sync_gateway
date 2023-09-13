@@ -9,8 +9,6 @@
 package base
 
 import (
-	"context"
-
 	"github.com/couchbase/gocbcore/v10"
 )
 
@@ -29,7 +27,7 @@ func (dc *DCPClient) SnapshotMarker(snapshotMarker gocbcore.DcpSnapshotMarker) {
 		endSeq:       snapshotMarker.EndSeqNo,
 		snapshotType: snapshotMarker.SnapshotType,
 	}
-	dc.workerForVbno(snapshotMarker.VbID).Send(e)
+	dc.workerForVbno(snapshotMarker.VbID).Send(dc.ctx, e)
 }
 
 func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
@@ -52,7 +50,7 @@ func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
 		key:        mutation.Key,
 		value:      mutation.Value,
 	}
-	dc.workerForVbno(mutation.VbID).Send(e)
+	dc.workerForVbno(mutation.VbID).Send(dc.ctx, e)
 }
 
 func (dc *DCPClient) Deletion(deletion gocbcore.DcpDeletion) {
@@ -73,7 +71,7 @@ func (dc *DCPClient) Deletion(deletion gocbcore.DcpDeletion) {
 		key:        deletion.Key,
 		value:      deletion.Value,
 	}
-	dc.workerForVbno(deletion.VbID).Send(e)
+	dc.workerForVbno(deletion.VbID).Send(dc.ctx, e)
 
 }
 
@@ -85,14 +83,14 @@ func (dc *DCPClient) End(end gocbcore.DcpStreamEnd, err error) {
 			streamID: end.StreamID,
 		},
 		err: err}
-	dc.workerForVbno(end.VbID).Send(e)
+	dc.workerForVbno(end.VbID).Send(dc.ctx, e)
 
 }
 
 func (dc *DCPClient) Expiration(expiration gocbcore.DcpExpiration) {
 	// SG doesn't opt in to expirations, so they'll come through as deletion events
 	// (cf.https://github.com/couchbase/kv_engine/blob/master/docs/dcp/documentation/expiry-opcode-output.md)
-	WarnfCtx(context.TODO(), "Unexpected DCP expiration event (vb:%d) for key %v", expiration.VbID, UD(string(expiration.Key)))
+	WarnfCtx(dc.ctx, "Unexpected DCP expiration event (vb:%d) for key %v", expiration.VbID, UD(string(expiration.Key)))
 }
 
 func (dc *DCPClient) CreateCollection(creation gocbcore.DcpCollectionCreation) {
@@ -124,7 +122,7 @@ func (dc *DCPClient) OSOSnapshot(snapshot gocbcore.DcpOSOSnapshot) {
 }
 
 func (dc *DCPClient) SeqNoAdvanced(seqNoAdvanced gocbcore.DcpSeqNoAdvanced) {
-	dc.workerForVbno(seqNoAdvanced.VbID).Send(seqnoAdvancedEvent{
+	dc.workerForVbno(seqNoAdvanced.VbID).Send(dc.ctx, seqnoAdvancedEvent{
 		streamEventCommon: streamEventCommon{
 			vbID:     seqNoAdvanced.VbID,
 			streamID: seqNoAdvanced.StreamID,

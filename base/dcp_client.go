@@ -40,6 +40,7 @@ type endStreamCallbackFunc func(e endStreamEvent)
 var ErrVbUUIDMismatch = errors.New("VbUUID mismatch when failOnRollback set")
 
 type DCPClient struct {
+	ctx                        context.Context
 	ID                         string                         // unique ID for DCPClient - used for DCP stream name, must be unique
 	agent                      *gocbcore.DCPAgent             // SDK DCP agent, manages connections and calls back to DCPClient stream observer implementation
 	callback                   sgbucket.FeedEventCallbackFunc // Callback invoked on DCP mutations/deletions
@@ -79,7 +80,7 @@ type DCPClientOptions struct {
 	CheckpointPrefix           string
 }
 
-func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*DCPClient, error) {
+func NewDCPClient(ctx context.Context, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*DCPClient, error) {
 
 	numWorkers := DefaultNumWorkers
 	if options.NumWorkers > 0 {
@@ -101,6 +102,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		}
 	}
 	client := &DCPClient{
+		ctx:                 ctx,
 		workers:             make([]*DCPWorker, numWorkers),
 		numVbuckets:         numVbuckets,
 		callback:            callback,
@@ -127,7 +129,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	case DCPMetadataStoreCS:
 		// TODO: Change GetSingleDataStore to a metadata Store?
 		metadataStore := bucket.DefaultDataStore()
-		client.metadata = NewDCPMetadataCS(metadataStore, numVbuckets, numWorkers, checkpointPrefix)
+		client.metadata = NewDCPMetadataCS(ctx, metadataStore, numVbuckets, numWorkers, checkpointPrefix)
 	case DCPMetadataStoreInMemory:
 		client.metadata = NewDCPMetadataMem(numVbuckets)
 	default:
@@ -255,7 +257,7 @@ func (dc *DCPClient) Start() (doneChan chan error, err error) {
 			return dc.doneChannel, err
 		}
 	}
-	dc.startWorkers()
+	dc.startWorkers(dc.ctx)
 
 	for i := uint16(0); i < dc.numVbuckets; i++ {
 		openErr := dc.openStream(i, openRetryCount)
@@ -287,7 +289,7 @@ func (dc *DCPClient) close() {
 
 	// set dc.closing to true, avoid re-triggering close if it's already in progress
 	if !dc.closing.CompareAndSwap(false, true) {
-		InfofCtx(context.TODO(), KeyDCP, "DCP Client close called - client is already closing")
+		InfofCtx(dc.ctx, KeyDCP, "DCP Client close called - client is already closing")
 		return
 	}
 
@@ -296,7 +298,7 @@ func (dc *DCPClient) close() {
 	if dc.agent != nil {
 		agentErr := dc.agent.Close()
 		if agentErr != nil {
-			WarnfCtx(context.TODO(), "Error closing DCP agent in client close: %v", agentErr)
+			WarnfCtx(dc.ctx, "Error closing DCP agent in client close: %v", agentErr)
 		}
 	}
 
@@ -330,7 +332,7 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 		return fmt.Errorf("Unable to start DCP Client - error creating authenticator: %w", authErr)
 	}
 
-	tlsRootCAProvider, err := GoCBCoreTLSRootCAProvider(&spec.TLSSkipVerify, spec.CACertPath)
+	tlsRootCAProvider, err := GoCBCoreTLSRootCAProvider(dc.ctx, &spec.TLSSkipVerify, spec.CACertPath)
 	if err != nil {
 		return err
 	}
@@ -393,7 +395,7 @@ func (dc *DCPClient) workerForVbno(vbNo uint16) *DCPWorker {
 }
 
 // startWorkers initializes the DCP workers to receive stream events from eventFeed
-func (dc *DCPClient) startWorkers() {
+func (dc *DCPClient) startWorkers(ctx context.Context) {
 
 	// vbuckets are assigned to workers as vbNo % NumWorkers.  Create set of assigned vbuckets
 	assignedVbs := make(map[int][]uint16)
@@ -412,13 +414,12 @@ func (dc *DCPClient) startWorkers() {
 			metaPersistFrequency: dc.checkpointPersistFrequency,
 		}
 		dc.workers[index] = NewDCPWorker(index, dc.metadata, dc.callback, dc.onStreamEnd, dc.terminator, nil, dc.checkpointPrefix, assignedVbs[index], options)
-		dc.workers[index].Start(&dc.workersWg)
+		dc.workers[index].Start(ctx, &dc.workersWg)
 	}
 }
 
 func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) error {
 
-	logCtx := context.TODO()
 	var openStreamErr error
 	var attempts uint32
 	for {
@@ -439,26 +440,26 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) error {
 		switch {
 		case errors.As(openStreamErr, &rollbackErr):
 			if dc.failOnRollback {
-				InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, closing client based on failOnRollback=true", vbID)
+				InfofCtx(dc.ctx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, closing client based on failOnRollback=true", vbID)
 				return fmt.Errorf("%w, failOnRollback requested", openStreamErr)
 			}
-			InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, will roll back metadata and retry: %v", vbID, openStreamErr)
+			InfofCtx(dc.ctx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, will roll back metadata and retry: %v", vbID, openStreamErr)
 
-			dc.rollback(logCtx, vbID, rollbackErr.SeqNo)
+			dc.rollback(dc.ctx, vbID, rollbackErr.SeqNo)
 		case errors.Is(openStreamErr, gocbcore.ErrMemdRangeError):
 			err := fmt.Errorf("Invalid metadata out of range for vbID %d, err: %v metadata %+v, shutting down agent", vbID, openStreamErr, dc.metadata.GetMeta(vbID))
-			WarnfCtx(logCtx, "%s", err)
+			WarnfCtx(dc.ctx, "%s", err)
 			return err
 		case errors.Is(openStreamErr, ErrVbUUIDMismatch):
-			WarnfCtx(logCtx, "Closing Stream for vbID: %d, %s", vbID, openStreamErr)
+			WarnfCtx(dc.ctx, "Closing Stream for vbID: %d, %s", vbID, openStreamErr)
 			return openStreamErr
 		case errors.Is(openStreamErr, gocbcore.ErrShutdown):
-			WarnfCtx(logCtx, "Closing stream for vbID %d, agent has been shut down", vbID)
+			WarnfCtx(dc.ctx, "Closing stream for vbID %d, agent has been shut down", vbID)
 			return openStreamErr
 		case errors.Is(openStreamErr, ErrTimeout):
-			DebugfCtx(logCtx, KeyDCP, "Timeout attempting to open stream for vb %d, will retry", vbID)
+			DebugfCtx(dc.ctx, KeyDCP, "Timeout attempting to open stream for vb %d, will retry", vbID)
 		default:
-			WarnfCtx(logCtx, "Unknown error opening stream for vbID %d: %v", vbID, openStreamErr)
+			WarnfCtx(dc.ctx, "Unknown error opening stream for vbID %d: %v", vbID, openStreamErr)
 		}
 		if maxRetries == infiniteOpenStreamRetries {
 			continue
@@ -558,29 +559,28 @@ func (dc *DCPClient) deactivateVbucket(vbID uint16) {
 		dc.close()
 		// On successful one-shot feed completion, purge persisted checkpoints
 		if dc.oneShot {
-			dc.metadata.Purge(len(dc.workers))
+			dc.metadata.Purge(dc.ctx, len(dc.workers))
 		}
 	}
 }
 
 func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
-	logCtx := context.TODO()
 	if e.err == nil {
-		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) closed, all items streamed", e.vbID)
+		DebugfCtx(dc.ctx, KeyDCP, "Stream (vb:%d) closed, all items streamed", e.vbID)
 		dc.deactivateVbucket(e.vbID)
 		return
 	}
 
 	if errors.Is(e.err, gocbcore.ErrDCPStreamClosed) {
-		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) closed by DCPClient", e.vbID)
+		DebugfCtx(dc.ctx, KeyDCP, "Stream (vb:%d) closed by DCPClient", e.vbID)
 		dc.fatalError(fmt.Errorf("Stream (vb:%d) closed by DCPClient", e.vbID))
 		return
 	}
 
 	if errors.Is(e.err, gocbcore.ErrDCPStreamStateChanged) || errors.Is(e.err, gocbcore.ErrDCPStreamTooSlow) || errors.Is(e.err, gocbcore.ErrDCPStreamDisconnected) {
-		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) ended with a known error, will reconnect. Reason: %s", e.vbID, e.err)
+		DebugfCtx(dc.ctx, KeyDCP, "Stream (vb:%d) ended with a known error, will reconnect. Reason: %s", e.vbID, e.err)
 	} else {
-		InfofCtx(logCtx, KeyDCP, "Stream (vb:%d) ended with an unknown error, will reconnect. Reason: %s", e.vbID, e.err)
+		InfofCtx(dc.ctx, KeyDCP, "Stream (vb:%d) ended with an unknown error, will reconnect. Reason: %s", e.vbID, e.err)
 	}
 	retries := infiniteOpenStreamRetries
 	if dc.oneShot {

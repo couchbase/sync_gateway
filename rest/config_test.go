@@ -12,7 +12,6 @@ package rest
 
 import (
 	"bytes"
-	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -90,7 +89,7 @@ func TestReadServerConfig(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(tt *testing.T) {
 			buf := bytes.NewBufferString(test.config)
-			_, err := readLegacyServerConfig(buf)
+			_, err := readLegacyServerConfig(base.TestCtx(t), buf)
 
 			// stdlib/CE specific error checking
 			expectedErr := test.errStdlib
@@ -135,10 +134,11 @@ func TestConfigValidation(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			buf := bytes.NewBufferString(test.config)
-			config, err := readLegacyServerConfig(buf)
+			config, err := readLegacyServerConfig(ctx, buf)
 			assert.NoError(t, err)
-			errorMessages := config.setupAndValidateDatabases()
+			errorMessages := config.setupAndValidateDatabases(ctx)
 			if test.err != "" {
 				require.NotNil(t, errorMessages)
 				multiError, ok := errorMessages.(*base.MultiError)
@@ -154,12 +154,12 @@ func TestConfigValidation(t *testing.T) {
 
 func TestConfigValidationDeltaSync(t *testing.T) {
 	jsonConfig := `{"databases": {"db": {"delta_sync": {"enabled": true}}}}`
-
+	ctx := base.TestCtx(t)
 	buf := bytes.NewBufferString(jsonConfig)
-	config, err := readLegacyServerConfig(buf)
+	config, err := readLegacyServerConfig(ctx, buf)
 	assert.NoError(t, err)
 
-	errorMessages := config.setupAndValidateDatabases()
+	errorMessages := config.setupAndValidateDatabases(ctx)
 	require.NoError(t, errorMessages)
 
 	require.NotNil(t, config.Databases["db"])
@@ -175,12 +175,12 @@ func TestConfigValidationDeltaSync(t *testing.T) {
 
 func TestConfigValidationCache(t *testing.T) {
 	jsonConfig := `{"databases": {"db": {"cache": {"rev_cache": {"size": 0}, "channel_cache": {"max_number": 100, "compact_high_watermark_pct": 95, "compact_low_watermark_pct": 25}}}}}`
-
+	ctx := base.TestCtx(t)
 	buf := bytes.NewBufferString(jsonConfig)
-	config, err := readLegacyServerConfig(buf)
+	config, err := readLegacyServerConfig(ctx, buf)
 	assert.NoError(t, err)
 
-	errorMessages := config.setupAndValidateDatabases()
+	errorMessages := config.setupAndValidateDatabases(ctx)
 	require.NoError(t, errorMessages)
 
 	require.NotNil(t, config.Databases["db"])
@@ -223,12 +223,12 @@ func TestConfigValidationCache(t *testing.T) {
 
 func TestConfigValidationImport(t *testing.T) {
 	jsonConfig := `{"databases": {"db": {"enable_shared_bucket_access":true, "import_docs": true, "import_partitions": 32}}}`
-
+	ctx := base.TestCtx(t)
 	buf := bytes.NewBufferString(jsonConfig)
-	config, err := readLegacyServerConfig(buf)
+	config, err := readLegacyServerConfig(ctx, buf)
 	assert.NoError(t, err)
 
-	errorMessages := config.setupAndValidateDatabases()
+	errorMessages := config.setupAndValidateDatabases(ctx)
 	require.NoError(t, errorMessages)
 	require.NotNil(t, config.Databases["db"])
 
@@ -289,10 +289,11 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			buf := bytes.NewBufferString(test.config)
-			config, err := readLegacyServerConfig(buf)
+			config, err := readLegacyServerConfig(ctx, buf)
 			assert.NoError(t, err)
-			errorMessages := config.setupAndValidateDatabases()
+			errorMessages := config.setupAndValidateDatabases(ctx)
 			if test.err != "" {
 				require.NotNil(t, errorMessages)
 				multiError, ok := errorMessages.(*base.MultiError)
@@ -452,7 +453,7 @@ func TestLoadServerConfigExamples(t *testing.T) {
 		}
 
 		t.Run(configPath, func(tt *testing.T) {
-			_, err := LoadLegacyServerConfig(configPath)
+			_, err := LoadLegacyServerConfig(base.TestCtx(t), configPath)
 			assert.NoError(tt, err, "unexpected error validating example config")
 		})
 
@@ -597,7 +598,7 @@ func TestAutoImportEnabled(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			dbConfig := &DbConfig{AutoImport: test.configValue}
 
-			got, err := dbConfig.AutoImportEnabled()
+			got, err := dbConfig.AutoImportEnabled(base.TestCtx(t))
 			assert.Equal(t, test.hasError, err != nil, "unexpected error from AutoImportEnabled")
 			assert.Equal(t, test.expected, got, "unexpected value from AutoImportEnabled")
 		})
@@ -720,9 +721,10 @@ func TestServerConfigValidate(t *testing.T) {
 }
 
 func TestSetupAndValidateDatabases(t *testing.T) {
+	ctx := base.TestCtx(t)
 	// No error will be returned if the server config itself is nil
 	var sc *LegacyServerConfig
-	errs := sc.setupAndValidateDatabases()
+	errs := sc.setupAndValidateDatabases(ctx)
 	assert.Nil(t, errs)
 
 	// Simulate  invalid control character in URL while validating and setting up databases;
@@ -732,7 +734,7 @@ func TestSetupAndValidateDatabases(t *testing.T) {
 	databases["db1"] = &DbConfig{Name: "db1", BucketConfig: *bc}
 
 	sc = &LegacyServerConfig{Databases: databases}
-	validationError := sc.setupAndValidateDatabases()
+	validationError := sc.setupAndValidateDatabases(ctx)
 	require.NotNil(t, validationError)
 	assert.Contains(t, validationError.Error(), "invalid control character in URL")
 }
@@ -767,7 +769,7 @@ func TestParseCommandLine(t *testing.T) {
 		"--logFilePath", logFilePath,
 		"--pretty"}
 
-	config, err := ParseCommandLine(args, flag.ContinueOnError)
+	config, err := ParseCommandLine(base.TestCtx(t), args, flag.ContinueOnError)
 	require.NoError(t, err, "Parsing commandline arguments without any config file")
 	assert.Equal(t, interfaceAddress, *config.Interface)
 	assert.Equal(t, adminInterface, *config.AdminInterface)
@@ -812,19 +814,19 @@ func TestGetCredentialsFromClusterConfig(t *testing.T) {
 
 func TestSetMaxFileDescriptors(t *testing.T) {
 	var maxFDs *uint64
-	err := SetMaxFileDescriptors(maxFDs)
+	err := SetMaxFileDescriptors(base.TestCtx(t), maxFDs)
 	assert.NoError(t, err, "Sets file descriptor limit to default when requested soft limit is nil")
 
 	// Set MaxFileDescriptors
 	maxFDsHigher := DefaultMaxFileDescriptors + 1
-	err = SetMaxFileDescriptors(&maxFDsHigher)
+	err = SetMaxFileDescriptors(base.TestCtx(t), &maxFDsHigher)
 	assert.NoError(t, err, "Error setting MaxFileDescriptors")
 }
 
 func TestParseCommandLineWithMissingConfig(t *testing.T) {
 	// Parse command line options with unknown sync gateway configuration file
 	args := []string{"sync_gateway", "missing-sync-gateway.conf"}
-	config, err := ParseCommandLine(args, flag.ContinueOnError)
+	config, err := ParseCommandLine(base.TestCtx(t), args, flag.ContinueOnError)
 	require.Error(t, err, "Trying to read configuration file which doesn't exist")
 	assert.Nil(t, config)
 }
@@ -847,7 +849,7 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
 	}()
 
 	args := []string{"sync_gateway", configFile.Name()}
-	config, err := ParseCommandLine(args, flag.ContinueOnError)
+	config, err := ParseCommandLine(base.TestCtx(t), args, flag.ContinueOnError)
 	assert.Error(t, err, "Parsing configuration file with an unknown field")
 	assert.Nil(t, config)
 }
@@ -902,7 +904,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 		"--profileInterface", profileInterface,
 		configFile.Name()}
 
-	config, err := ParseCommandLine(args, flag.ContinueOnError)
+	config, err := ParseCommandLine(base.TestCtx(t), args, flag.ContinueOnError)
 	require.NoError(t, err, "while parsing commandline options")
 	assert.Equal(t, interfaceAddress, *config.Interface)
 	assert.Equal(t, adminInterface, *config.AdminInterface)
@@ -990,10 +992,10 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 			NumIndexReplicas: base.UintPtr(0),
 		},
 	}
-
-	require.Nil(t, setupAndValidateDatabases(databases), "Unexpected error while validating databases")
-
 	ctx := base.TestCtx(t)
+
+	require.Nil(t, setupAndValidateDatabases(ctx, databases), "Unexpected error while validating databases")
+
 	sc := NewServerContext(ctx, config, false)
 	defer sc.Close(ctx)
 	for _, dbConfig := range databases {
@@ -1001,7 +1003,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 		require.NoError(t, err, "Couldn't add database from config")
 	}
 
-	sharedBucketErrors := sharedBucketDatabaseCheck(sc)
+	sharedBucketErrors := sharedBucketDatabaseCheck(ctx, sc)
 	require.NotNil(t, sharedBucketErrors)
 	multiError, ok := sharedBucketErrors.(*base.MultiError)
 	require.NotNil(t, ok)
@@ -1017,7 +1019,7 @@ func TestParseCommandLineWithIllegalOptionBucket(t *testing.T) {
 		"sync_gateway",
 		"--bucket", "sync_gateway", // Bucket option has been removed
 	}
-	config, err := ParseCommandLine(args, flag.ContinueOnError)
+	config, err := ParseCommandLine(base.TestCtx(t), args, flag.ContinueOnError)
 	assert.Error(t, err, "Parsing commandline arguments without any config file")
 	assert.Empty(t, config, "Couldn't parse commandline arguments")
 }
@@ -1077,7 +1079,7 @@ func TestEnvDefaultExpansion(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actualValue, err := envDefaultExpansion(test.envKey, func(s string) string { return test.envValue })
+			actualValue, err := envDefaultExpansion(base.TestCtx(t), test.envKey, func(s string) string { return test.envValue })
 			require.Equal(t, err, test.expectedError)
 			assert.Equal(t, test.expectedValue, actualValue)
 		})
@@ -1281,7 +1283,7 @@ func TestExpandEnv(t *testing.T) {
 				require.Equal(t, v, value, "Unexpected value set for environment variable %q", k)
 			}
 			// Check environment variable substitutions.
-			actualConfig, err := expandEnv(test.inputConfig)
+			actualConfig, err := expandEnv(base.TestCtx(t), test.inputConfig)
 			if test.expectedError != nil {
 				errs, ok := err.(*base.MultiError)
 				require.True(t, ok)
@@ -1414,7 +1416,7 @@ func TestConfigGroupIDValidation(t *testing.T) {
 					UseTLSServer:  base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
 				},
 			}
-			err := sc.Validate(isEnterpriseEdition)
+			err := sc.Validate(base.TestCtx(t), isEnterpriseEdition)
 			if test.expectedError != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), test.expectedError)
@@ -1465,7 +1467,7 @@ func TestClientTLSMissing(t *testing.T) {
 			if test.tlsCert {
 				config.API.HTTPS.TLSCertPath = "test.cert"
 			}
-			err := config.Validate(base.IsEnterpriseEdition())
+			err := config.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
 			if test.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), errorTLSOneMissing)
@@ -1656,7 +1658,7 @@ func TestLoadJavaScript(t *testing.T) {
 					teardownFn()
 				}
 			}()
-			js, err := loadJavaScript(inputJavaScriptOrPath, test.insecureSkipVerify)
+			js, err := loadJavaScript(base.TestCtx(t), inputJavaScriptOrPath, test.insecureSkipVerify)
 			if test.errExpected != nil {
 				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
@@ -1716,7 +1718,7 @@ func TestSetupDbConfigCredentials(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.dbConfig.setup(test.dbConfig.Name, test.bootstrapConfig, test.credentialsConfig, nil, false)
+			err := test.dbConfig.setup(base.TestCtx(t), test.dbConfig.Name, test.bootstrapConfig, test.credentialsConfig, nil, false)
 			require.NoError(t, err)
 			if test.expectX509 {
 				assert.Equal(t, "", test.dbConfig.Username)
@@ -1816,7 +1818,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
+			err := dbConfig.setup(base.TestCtx(t), dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
 				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
@@ -1910,7 +1912,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
+			err := dbConfig.setup(base.TestCtx(t), dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
 				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
@@ -2016,7 +2018,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
+			err := dbConfig.setup(base.TestCtx(t), dbConfig.Name, BootstrapConfig{}, nil, nil, false)
 			if test.errExpected != nil {
 				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
@@ -2341,7 +2343,7 @@ func TestStartupConfigBcryptCostValidation(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			sc := StartupConfig{Auth: AuthConfig{BcryptCost: test.cost}}
-			err := sc.Validate(base.IsEnterpriseEdition())
+			err := sc.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
 			if test.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), errContains)
@@ -2498,7 +2500,7 @@ func TestBucketCredentialsValidation(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.startupConfig.Validate(base.IsEnterpriseEdition())
+			err := test.startupConfig.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
 			if test.expectedError != nil {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), *test.expectedError)
@@ -2588,7 +2590,7 @@ func TestCollectionsValidation(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			validateOIDCConfig := false
-			err := test.dbConfig.validate(context.TODO(), validateOIDCConfig)
+			err := test.dbConfig.validate(base.TestCtx(t), validateOIDCConfig)
 			if test.expectedError != nil {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), *test.expectedError)

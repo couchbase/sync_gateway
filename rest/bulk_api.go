@@ -199,7 +199,7 @@ func (h *handler) handleAllDocs() error {
 	options.Limit = h.getIntQuery("limit", 0)
 
 	// Now it's time to actually write the response!
-	lastSeq, _ := h.db.LastSequence()
+	lastSeq, _ := h.db.LastSequence(h.ctx())
 	h.setHeader("Content-Type", "application/json")
 	// response.Write below would set Status OK implicitly. We manually do it here to ensure that our handler knows
 	// that the header has been written to, meaning we can prevent it from attempting to set the header again later on.
@@ -315,7 +315,7 @@ func (h *handler) handleDumpChannel() error {
 	since := h.getIntQuery("since", 0)
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "Dump channel %q", base.UD(channelName))
 
-	chanLog, _ := h.collection.GetChangeLog(ch.NewID(channelName, h.collection.GetCollectionID()), since)
+	chanLog, _ := h.collection.GetChangeLog(h.ctx(), ch.NewID(channelName, h.collection.GetCollectionID()), since)
 	if chanLog == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no such channel")
 	}
@@ -510,7 +510,7 @@ func (h *handler) handleBulkDocs() error {
 				docid, revid, _, err = h.collection.Post(h.ctx(), doc)
 			}
 		} else {
-			revisions := db.ParseRevisions(doc)
+			revisions := db.ParseRevisions(h.ctx(), doc)
 			if revisions == nil {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {

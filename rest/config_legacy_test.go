@@ -120,7 +120,8 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			lc := &test.input
 
-			migratedStartupConfig, _, err := lc.ToStartupConfig()
+			migratedStartupConfig, _, err := lc.ToStartupConfig(base.TestCtx(t))
+			require.NoError(t, err)
 
 			config := test.base
 			err = config.Merge(migratedStartupConfig)
@@ -252,7 +253,7 @@ func TestLegacyConfigXattrsDefault(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			lc := LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{EnableXattrs: test.xattrs}}}
-			_, dbs, err := lc.ToStartupConfig()
+			_, dbs, err := lc.ToStartupConfig(base.TestCtx(t))
 			require.NoError(t, err)
 
 			db, ok := dbs["db"]
@@ -276,7 +277,7 @@ func TestSGReplicateValidation(t *testing.T) {
 			]
 		}`)
 
-	_, err := readLegacyServerConfig(configReader)
+	_, err := readLegacyServerConfig(base.TestCtx(t), configReader)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), errText)
 }
@@ -327,17 +328,18 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 	err := os.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
-	sc, _, _, _, err := automaticConfigUpgrade(configPath)
+	ctx := base.TestCtx(t)
+	sc, _, _, _, err := automaticConfigUpgrade(ctx, configPath)
 	require.NoError(t, err)
 
-	cluster, err := CreateCouchbaseClusterFromStartupConfig(sc, base.PerUseClusterConnections)
+	cluster, err := CreateCouchbaseClusterFromStartupConfig(ctx, sc, base.PerUseClusterConnections)
 	require.NoError(t, err)
 
 	bootstrap := bootstrapContext{
 		Connection: cluster,
 	}
 	var dbConfig DatabaseConfig
-	_, err = bootstrap.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, "db", &dbConfig)
+	_, err = bootstrap.GetConfig(base.TestCtx(t), tb.GetName(), PersistentConfigDefaultGroupID, "db", &dbConfig)
 	require.NoError(t, err)
 
 	assert.Equal(t, &expected, dbConfig.Guest)
@@ -431,12 +433,12 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Copy behaviour of serverMainPersistentConfig - upgrade config, pass legacy users and roles in to addLegacyPrinciples (after server context is created)
-	_, _, users, roles, err := automaticConfigUpgrade(configPath)
+	_, _, users, roles, err := automaticConfigUpgrade(ctx, configPath)
 	require.NoError(t, err)
 	rt.ServerContext().addLegacyPrincipals(ctx, users, roles)
 
 	// Check that principles all exist on bucket
-	authenticator := auth.NewAuthenticator(bucket.DefaultDataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(bucket.DefaultDataStore(), nil, rt.GetDatabase().AuthenticatorOptions(ctx))
 	for _, name := range expectedUsers {
 		user, err := authenticator.GetUser(name)
 		assert.NoError(t, err)
@@ -485,7 +487,7 @@ func TestLegacyReplicationConfigValidation(t *testing.T) {
 
 			lc := LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{Replications: test.input}}}
 
-			_, _, err := lc.ToStartupConfig()
+			_, _, err := lc.ToStartupConfig(base.TestCtx(t))
 			fmt.Println(err)
 			if test.expectError {
 				assert.Error(t, err)

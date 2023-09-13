@@ -138,7 +138,7 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Set testing callbacks for async initialization
 	collectionCount := int64(0)
@@ -251,7 +251,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Seed the bucket with some documents
 	tb := base.GetTestBucket(t)
@@ -379,7 +379,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Set testing callbacks for async initialization
 	collectionCount := int64(0)
@@ -502,7 +502,7 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Set testing callbacks for async initialization
 	collectionCount := int64(0)
@@ -622,7 +622,7 @@ func TestSyncOnline(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Set testing callbacks for async initialization
 	collectionCount := int64(0)

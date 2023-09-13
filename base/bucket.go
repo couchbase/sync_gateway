@@ -58,9 +58,9 @@ type WrappingDatastore interface {
 type CouchbaseBucketStore interface {
 	GetName() string
 	MgmtEps() ([]string, error)
-	MetadataPurgeInterval() (time.Duration, error)
-	MaxTTL() (int, error)
-	HttpClient() *http.Client
+	MetadataPurgeInterval(ctx context.Context) (time.Duration, error)
+	MaxTTL(context.Context) (int, error)
+	HttpClient(context.Context) *http.Client
 	GetSpec() BucketSpec
 	GetMaxVbno() (uint16, error)
 
@@ -69,7 +69,7 @@ type CouchbaseBucketStore interface {
 	GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error)
 
 	// mgmtRequest uses the CouchbaseBucketStore's http client to make an http request against a management endpoint.
-	mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error)
+	mgmtRequest(ctx context.Context, method, uri, contentType string, body io.Reader) (*http.Response, error)
 }
 
 func AsCouchbaseBucketStore(b Bucket) (CouchbaseBucketStore, bool) {
@@ -259,13 +259,13 @@ func (b BucketSpec) GetViewQueryTimeoutMs() uint64 {
 
 // TLSConfig creates a TLS configuration and populates the certificates
 // Errors will get logged then nil is returned.
-func (b BucketSpec) TLSConfig() *tls.Config {
+func (b BucketSpec) TLSConfig(ctx context.Context) *tls.Config {
 	var certPool *x509.CertPool = nil
 	if !b.TLSSkipVerify { // Add certs if ServerTLSSkipVerify is not set
 		var err error
-		certPool, err = getRootCAs(b.CACertPath)
+		certPool, err = getRootCAs(ctx, b.CACertPath)
 		if err != nil {
-			ErrorfCtx(context.Background(), "Error creating tlsConfig for DCP processing: %v", err)
+			ErrorfCtx(ctx, "Error creating tlsConfig for DCP processing: %v", err)
 			return nil
 		}
 	}
@@ -279,7 +279,7 @@ func (b BucketSpec) TLSConfig() *tls.Config {
 	if b.Certpath != "" && b.Keypath != "" {
 		cert, err := tls.LoadX509KeyPair(b.Certpath, b.Keypath)
 		if err != nil {
-			ErrorfCtx(context.Background(), "Error creating tlsConfig for DCP processing: %v", err)
+			ErrorfCtx(ctx, "Error creating tlsConfig for DCP processing: %v", err)
 			return nil
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
@@ -343,9 +343,9 @@ func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsH
 
 }
 
-func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
+func GetBucket(ctx context.Context, spec BucketSpec) (bucket Bucket, err error) {
 	if spec.IsWalrusBucket() {
-		InfofCtx(context.TODO(), KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
+		InfofCtx(ctx, KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
 		bucket, err = walrus.GetCollectionBucket(spec.Server, spec.BucketName)
 		// If feed type is not specified (defaults to DCP) or isn't TAP, wrap with pseudo-vbucket handling for walrus
@@ -358,9 +358,9 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		if spec.Auth != nil {
 			username, _, _ = spec.Auth.GetCredentials()
 		}
-		InfofCtx(context.TODO(), KeyAll, "Opening Couchbase database %s on <%s> as user %q", MD(spec.BucketName), SD(spec.Server), UD(username))
+		InfofCtx(ctx, KeyAll, "Opening Couchbase database %s on <%s> as user %q", MD(spec.BucketName), SD(spec.Server), UD(username))
 
-		bucket, err = GetGoCBv2Bucket(spec)
+		bucket, err = GetGoCBv2Bucket(ctx, spec)
 		if err != nil {
 			return nil, err
 		}
@@ -446,13 +446,13 @@ func GetFeedType(bucket Bucket) (feedType string) {
 
 // Gets the bucket max TTL, or 0 if no TTL was set.  Sync gateway should fail to bring the DB online if this is non-zero,
 // since it's not meant to operate against buckets that auto-delete data.
-func getMaxTTL(store CouchbaseBucketStore) (int, error) {
+func getMaxTTL(ctx context.Context, store CouchbaseBucketStore) (int, error) {
 	var bucketResponseWithMaxTTL struct {
 		MaxTTLSeconds int `json:"maxTTL,omitempty"`
 	}
 
 	uri := fmt.Sprintf("/pools/default/buckets/%s", store.GetSpec().BucketName)
-	resp, err := store.mgmtRequest(http.MethodGet, uri, "application/json", nil)
+	resp, err := store.mgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
 	if err != nil {
 		return -1, err
 	}
@@ -472,8 +472,8 @@ func getMaxTTL(store CouchbaseBucketStore) (int, error) {
 }
 
 // Get the Server UUID of the bucket, this is also known as the Cluster UUID
-func GetServerUUID(store CouchbaseBucketStore) (uuid string, err error) {
-	resp, err := store.mgmtRequest(http.MethodGet, "/pools", "application/json", nil)
+func GetServerUUID(ctx context.Context, store CouchbaseBucketStore) (uuid string, err error) {
+	resp, err := store.mgmtRequest(ctx, http.MethodGet, "/pools", "application/json", nil)
 	if err != nil {
 		return "", err
 	}
@@ -498,18 +498,18 @@ func GetServerUUID(store CouchbaseBucketStore) (uuid string, err error) {
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
 // found, retrieves the cluster-wide value.
-func getMetadataPurgeInterval(store CouchbaseBucketStore) (time.Duration, error) {
+func getMetadataPurgeInterval(ctx context.Context, store CouchbaseBucketStore) (time.Duration, error) {
 
 	// Bucket-specific settings
 	uri := fmt.Sprintf("/pools/default/buckets/%s", store.GetName())
-	bucketPurgeInterval, err := retrievePurgeInterval(store, uri)
+	bucketPurgeInterval, err := retrievePurgeInterval(ctx, store, uri)
 	if bucketPurgeInterval > 0 || err != nil {
 		return bucketPurgeInterval, err
 	}
 
 	// Cluster-wide settings
 	uri = fmt.Sprintf("/settings/autoCompaction")
-	clusterPurgeInterval, err := retrievePurgeInterval(store, uri)
+	clusterPurgeInterval, err := retrievePurgeInterval(ctx, store, uri)
 	if clusterPurgeInterval > 0 || err != nil {
 		return clusterPurgeInterval, err
 	}
@@ -521,14 +521,14 @@ func getMetadataPurgeInterval(store CouchbaseBucketStore) (time.Duration, error)
 // Helper function to retrieve a Metadata Purge Interval from server and convert to hours.  Works for any uri
 // that returns 'purgeInterval' as a root-level property (which includes the two server endpoints for
 // bucket and server purge intervals).
-func retrievePurgeInterval(bucket CouchbaseBucketStore, uri string) (time.Duration, error) {
+func retrievePurgeInterval(ctx context.Context, bucket CouchbaseBucketStore, uri string) (time.Duration, error) {
 
 	// Both of the purge interval endpoints (cluster and bucket) return purgeInterval in the same way
 	var purgeResponse struct {
 		PurgeInterval float64 `json:"purgeInterval,omitempty"`
 	}
 
-	resp, err := bucket.mgmtRequest(http.MethodGet, uri, "application/json", nil)
+	resp, err := bucket.mgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
 	if err != nil {
 		return 0, err
 	}
@@ -536,7 +536,7 @@ func retrievePurgeInterval(bucket CouchbaseBucketStore, uri string) (time.Durati
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusForbidden {
-		WarnfCtx(context.TODO(), "403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
+		WarnfCtx(ctx, "403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
 	} else if resp.StatusCode != http.StatusOK {
 		return 0, errors.New(resp.Status)
 	}
@@ -555,10 +555,10 @@ func retrievePurgeInterval(bucket CouchbaseBucketStore, uri string) (time.Durati
 	return time.Duration(purgeIntervalHours) * time.Hour, nil
 }
 
-func ensureBodyClosed(body io.ReadCloser) {
+func ensureBodyClosed(ctx context.Context, body io.ReadCloser) {
 	err := body.Close()
 	if err != nil {
-		DebugfCtx(context.TODO(), KeyBucket, "Failed to close socket: %v", err)
+		DebugfCtx(ctx, KeyBucket, "Failed to close socket: %v", err)
 	}
 }
 
@@ -577,22 +577,22 @@ func AsSubdocStore(ds DataStore) (sgbucket.SubdocStore, bool) {
 // WaitUntilDataStoreExists will try to perform an operation in the given DataStore until it can succeed.
 //
 // There's no WaitForReady operation in GoCB for collections, only Buckets, so attempting to use Exists in this way this seems like our best option to check for availability.
-func WaitUntilDataStoreExists(ds DataStore) error {
-	return WaitForNoError(func() error {
+func WaitUntilDataStoreExists(ctx context.Context, ds DataStore) error {
+	return WaitForNoError(ctx, func() error {
 		_, err := ds.Exists("WaitUntilDataStoreExists")
 		return err
 	})
 }
 
 // RequireNoBucketTTL ensures there is no MaxTTL set on the bucket (SG #3314)
-func RequireNoBucketTTL(b Bucket) error {
+func RequireNoBucketTTL(ctx context.Context, b Bucket) error {
 	cbs, ok := AsCouchbaseBucketStore(b)
 	if !ok {
 		// Not a Couchbase bucket - no TTL check to do
 		return nil
 	}
 
-	maxTTL, err := cbs.MaxTTL()
+	maxTTL, err := cbs.MaxTTL(ctx)
 	if err != nil {
 		return err
 	}

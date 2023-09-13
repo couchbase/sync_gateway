@@ -99,12 +99,12 @@ func NewAuthenticator(datastore base.DataStore, channelComputer ChannelComputer,
 	}
 }
 
-func DefaultAuthenticatorOptions() AuthenticatorOptions {
+func DefaultAuthenticatorOptions(ctx context.Context) AuthenticatorOptions {
 	return AuthenticatorOptions{
 		ClientPartitionWindow: base.DefaultClientPartitionWindow,
 		SessionCookieName:     DefaultCookieName,
 		BcryptCost:            DefaultBcryptCost,
-		LogCtx:                context.Background(),
+		LogCtx:                ctx,
 	}
 }
 
@@ -722,7 +722,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProvide
 	}
 	if authenticator == nil {
 		for _, provider := range oidcProviders {
-			if provider.ValidFor(issuer, audiences) {
+			if provider.ValidFor(auth.LogCtx, issuer, audiences) {
 				base.TracefCtx(auth.LogCtx, base.KeyAuth, "Using OIDC provider %v", base.UD(provider.Issuer))
 				authenticator = provider
 				break
@@ -731,7 +731,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProvide
 	}
 	if authenticator == nil {
 		for _, provider := range localJWT {
-			if provider.ValidFor(issuer, audiences) {
+			if provider.ValidFor(auth.LogCtx, issuer, audiences) {
 				base.TracefCtx(auth.LogCtx, base.KeyAuth, "Using local JWT provider %v", base.UD(provider.Issuer))
 				authenticator = provider
 				break
@@ -744,7 +744,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProvide
 	}
 
 	var identity *Identity
-	identity, err = authenticator.verifyToken(context.TODO(), rawToken, callbackURLFunc)
+	identity, err = authenticator.verifyToken(auth.LogCtx, rawToken, callbackURLFunc)
 	if err != nil {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "JWT invalid: %v", err)
 		return nil, PrincipalConfig{}, base.HTTPErrorf(http.StatusUnauthorized, "Invalid JWT")

@@ -215,8 +215,8 @@ func (doc *Document) IsDeleted() bool {
 	return doc.hasFlag(channels.Deleted)
 }
 
-func (doc *Document) BodyWithSpecialProperties() ([]byte, error) {
-	bodyBytes, err := doc.BodyBytes()
+func (doc *Document) BodyWithSpecialProperties(ctx context.Context) ([]byte, error) {
+	bodyBytes, err := doc.BodyBytes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -248,26 +248,26 @@ func NewDocument(docid string) *Document {
 }
 
 // Accessors for document properties.  To support lazy unmarshalling of document contents, all access should be done through accessors
-func (doc *Document) Body() Body {
+func (doc *Document) Body(ctx context.Context) Body {
 	var caller string
 	if base.ConsoleLogLevel().Enabled(base.LevelTrace) {
 		caller = base.GetCallersName(1, true)
 	}
 
 	if doc._body != nil {
-		base.TracefCtx(context.Background(), base.KeyAll, "Already had doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		base.TracefCtx(ctx, base.KeyAll, "Already had doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return doc._body
 	}
 
 	if doc._rawBody == nil {
-		base.WarnfCtx(context.Background(), "Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		base.WarnfCtx(ctx, "Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return nil
 	}
 
-	base.TracefCtx(context.Background(), base.KeyAll, "        UNMARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+	base.TracefCtx(ctx, base.KeyAll, "        UNMARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 	err := doc._body.Unmarshal(doc._rawBody)
 	if err != nil {
-		base.WarnfCtx(context.Background(), "Unable to unmarshal document body from raw body : %s", err)
+		base.WarnfCtx(ctx, "Unable to unmarshal document body from raw body : %s", err)
 		return nil
 	}
 	return doc._body
@@ -306,7 +306,7 @@ func (doc *Document) HasBody() bool {
 	return doc._body != nil || doc._rawBody != nil
 }
 
-func (doc *Document) BodyBytes() ([]byte, error) {
+func (doc *Document) BodyBytes(ctx context.Context) ([]byte, error) {
 	var caller string
 	if base.ConsoleLogLevel().Enabled(base.LevelTrace) {
 		caller = base.GetCallersName(1, true)
@@ -317,7 +317,7 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 	}
 
 	if doc._body == nil {
-		base.WarnfCtx(context.Background(), "Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		base.WarnfCtx(ctx, "Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return nil, nil
 	}
 
@@ -383,14 +383,14 @@ func unmarshalDocument(docid string, data []byte) (*Document, error) {
 	return doc, nil
 }
 
-func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte, userXattrData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+func unmarshalDocumentWithXattr(ctx context.Context, docid string, data []byte, xattrData []byte, userXattrData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 
 	if xattrData == nil || len(xattrData) == 0 {
 		// If no xattr data, unmarshal as standard doc
 		doc, err = unmarshalDocument(docid, data)
 	} else {
 		doc = NewDocument(docid)
-		err = doc.UnmarshalWithXattr(data, xattrData, unmarshalLevel)
+		err = doc.UnmarshalWithXattr(ctx, data, xattrData, unmarshalLevel)
 	}
 	if err != nil {
 		return nil, err
@@ -462,7 +462,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 	return result, body, rawUserXattr, nil, err
 }
 
-func UnmarshalDocumentFromFeed(docid string, cas uint64, data []byte, dataType uint8, userXattrKey string) (doc *Document, err error) {
+func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, data []byte, dataType uint8, userXattrKey string) (doc *Document, err error) {
 	var body []byte
 
 	if dataType&base.MemcachedDataTypeXattr != 0 {
@@ -472,7 +472,7 @@ func UnmarshalDocumentFromFeed(docid string, cas uint64, data []byte, dataType u
 		if err != nil {
 			return nil, err
 		}
-		return unmarshalDocumentWithXattr(docid, body, syncXattr, userXattr, cas, DocUnmarshalAll)
+		return unmarshalDocumentWithXattr(ctx, docid, body, syncXattr, userXattr, cas, DocUnmarshalAll)
 	}
 
 	return unmarshalDocument(docid, data)
@@ -616,7 +616,7 @@ func (doc *Document) IsSGWrite(ctx context.Context, rawBody []byte) (isSGWrite b
 	}
 
 	// Since raw body isn't available, marshal from the document to perform body hash comparison
-	bodyBytes, err := doc.BodyBytes()
+	bodyBytes, err := doc.BodyBytes(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "Unable to marshal doc body during SG write check for doc %s. Error: %v", base.UD(doc.ID), err)
 		return false, false, false
@@ -672,19 +672,19 @@ func (c *DatabaseCollection) RevisionBodyLoader(key string) ([]byte, error) {
 }
 
 // Fetches the body of a revision as a map, or nil if it's not available.
-func (doc *Document) getRevisionBody(revid string, loader RevLoaderFunc) Body {
+func (doc *Document) getRevisionBody(ctx context.Context, revid string, loader RevLoaderFunc) Body {
 	var body Body
 	if revid == doc.CurrentRev {
-		body = doc.Body()
+		body = doc.Body(ctx)
 	} else {
-		body = doc.getNonWinningRevisionBody(revid, loader)
+		body = doc.getNonWinningRevisionBody(ctx, revid, loader)
 	}
 	return body
 }
 
 // Retrieves a non-winning revision body.  If not already loaded in the document (either because inline,
 // or was previously requested), loader function is used to retrieve from the bucket.
-func (doc *Document) getNonWinningRevisionBody(revid string, loader RevLoaderFunc) Body {
+func (doc *Document) getNonWinningRevisionBody(ctx context.Context, revid string, loader RevLoaderFunc) Body {
 	var body Body
 	bodyBytes, found := doc.History.getRevisionBody(revid, loader)
 	if !found || len(bodyBytes) == 0 {
@@ -692,7 +692,7 @@ func (doc *Document) getNonWinningRevisionBody(revid string, loader RevLoaderFun
 	}
 
 	if err := body.Unmarshal(bodyBytes); err != nil {
-		base.WarnfCtx(context.TODO(), "Unexpected error parsing body of rev %q: %v", revid, err)
+		base.WarnfCtx(ctx, "Unexpected error parsing body of rev %q: %v", revid, err)
 		return nil
 	}
 	return body
@@ -703,7 +703,7 @@ func (doc *Document) getRevisionBodyJSON(ctx context.Context, revid string, load
 	var bodyJSON []byte
 	if revid == doc.CurrentRev {
 		var marshalErr error
-		bodyJSON, marshalErr = doc.BodyBytes()
+		bodyJSON, marshalErr = doc.BodyBytes(ctx)
 		if marshalErr != nil {
 			base.WarnfCtx(ctx, "Marshal error when retrieving active current revision body: %v", marshalErr)
 		}
@@ -713,8 +713,8 @@ func (doc *Document) getRevisionBodyJSON(ctx context.Context, revid string, load
 	return bodyJSON
 }
 
-func (doc *Document) removeRevisionBody(revID string) {
-	removedBodyKey := doc.History.removeRevisionBody(revID)
+func (doc *Document) removeRevisionBody(ctx context.Context, revID string) {
+	removedBodyKey := doc.History.removeRevisionBody(ctx, revID)
 	if removedBodyKey != "" {
 		if doc.removedRevisionBodyKeys == nil {
 			doc.removedRevisionBodyKeys = make(map[string]string)
@@ -724,15 +724,15 @@ func (doc *Document) removeRevisionBody(revID string) {
 }
 
 // makeBodyActive moves a previously non-winning revision body from the rev tree to the document body
-func (doc *Document) promoteNonWinningRevisionBody(revid string, loader RevLoaderFunc) {
+func (doc *Document) promoteNonWinningRevisionBody(ctx context.Context, revid string, loader RevLoaderFunc) {
 	// If the new revision is not current, transfer the current revision's
 	// body to the top level doc._body:
-	doc.UpdateBody(doc.getNonWinningRevisionBody(revid, loader))
-	doc.removeRevisionBody(revid)
+	doc.UpdateBody(doc.getNonWinningRevisionBody(ctx, revid, loader))
+	doc.removeRevisionBody(ctx, revid)
 }
 
-func (doc *Document) pruneRevisions(maxDepth uint32, keepRev string) int {
-	numPruned, prunedTombstoneBodyKeys := doc.History.pruneRevisions(maxDepth, keepRev)
+func (doc *Document) pruneRevisions(ctx context.Context, maxDepth uint32, keepRev string) int {
+	numPruned, prunedTombstoneBodyKeys := doc.History.pruneRevisions(ctx, maxDepth, keepRev)
 	for revID, bodyKey := range prunedTombstoneBodyKeys {
 		if doc.removedRevisionBodyKeys == nil {
 			doc.removedRevisionBodyKeys = make(map[string]string)
@@ -743,12 +743,12 @@ func (doc *Document) pruneRevisions(maxDepth uint32, keepRev string) int {
 }
 
 // Adds a revision body (as Body) to a document.  Removes special properties first.
-func (doc *Document) setRevisionBody(revid string, newDoc *Document, storeInline, hasAttachments bool) {
+func (doc *Document) setRevisionBody(ctx context.Context, revid string, newDoc *Document, storeInline, hasAttachments bool) {
 	if revid == doc.CurrentRev {
 		doc._body = newDoc._body
 		doc._rawBody = newDoc._rawBody
 	} else {
-		bodyBytes, _ := newDoc.BodyBytes()
+		bodyBytes, _ := newDoc.BodyBytes(ctx)
 		doc.setNonWinningRevisionBody(revid, bodyBytes, storeInline, hasAttachments)
 	}
 }
@@ -796,12 +796,12 @@ func (doc *Document) persistModifiedRevisionBodies(datastore sgbucket.DataStore)
 
 // deleteRemovedRevisionBodies deletes obsolete non-inline revisions from the bucket.
 // Should be invoked AFTER the document is successfully committed.
-func (doc *Document) deleteRemovedRevisionBodies(dataStore base.DataStore) {
+func (doc *Document) deleteRemovedRevisionBodies(ctx context.Context, dataStore base.DataStore) {
 
 	for _, revBodyKey := range doc.removedRevisionBodyKeys {
 		deleteErr := dataStore.Delete(revBodyKey)
 		if deleteErr != nil {
-			base.WarnfCtx(context.TODO(), "Unable to delete old revision body using key %s - will not be deleted from bucket.", revBodyKey)
+			base.WarnfCtx(ctx, "Unable to delete old revision body using key %s - will not be deleted from bucket.", revBodyKey)
 		}
 	}
 	doc.removedRevisionBodyKeys = map[string]string{}
@@ -813,7 +813,7 @@ func (doc *Document) persistRevisionBody(datastore sgbucket.DataStore, key strin
 }
 
 // Move any large revision bodies to external document storage
-func (doc *Document) migrateRevisionBodies(dataStore base.DataStore) error {
+func (doc *Document) migrateRevisionBodies(ctx context.Context, dataStore base.DataStore) error {
 
 	for _, revID := range doc.History.GetLeaves() {
 		revInfo, err := doc.History.getInfo(revID)
@@ -824,7 +824,7 @@ func (doc *Document) migrateRevisionBodies(dataStore base.DataStore) error {
 			bodyKey := generateRevBodyKey(doc.ID, revID)
 			persistErr := doc.persistRevisionBody(dataStore, bodyKey, revInfo.Body)
 			if persistErr != nil {
-				base.WarnfCtx(context.TODO(), "Unable to store revision body for doc %s, rev %s externally: %v", base.UD(doc.ID), revID, persistErr)
+				base.WarnfCtx(ctx, "Unable to store revision body for doc %s, rev %s externally: %v", base.UD(doc.ID), revID, persistErr)
 				continue
 			}
 			revInfo.BodyKey = bodyKey
@@ -986,7 +986,7 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 // Determine whether the specified revision was a channel removal, based on doc.Channels.  If so, construct the standard document body for a
 // removal notification (_removed=true)
 // Set of channels returned from IsChannelRemoval are "Active" channels and NOT "Removed".
-func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history Revisions, channels base.Set, isRemoval bool, isDelete bool, err error) {
+func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBytes []byte, history Revisions, channels base.Set, isRemoval bool, isDelete bool, err error) {
 
 	removedChannels := make(base.Set)
 
@@ -1026,14 +1026,14 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 	if len(revHistory) == 0 {
 		revHistory = []string{revID}
 	}
-	history = encodeRevisions(doc.ID, revHistory)
+	history = encodeRevisions(ctx, doc.ID, revHistory)
 
 	return bodyBytes, history, activeChannels, true, isDelete, nil
 }
 
 // Updates a document's channel/role UserAccessMap with new access settings from an AccessMap.
 // Returns an array of the user/role names whose access has changed as a result.
-func (accessMap *UserAccessMap) updateAccess(doc *Document, newAccess channels.AccessMap) (changedUsers []string) {
+func (accessMap *UserAccessMap) updateAccess(ctx context.Context, doc *Document, newAccess channels.AccessMap) (changedUsers []string) {
 	// Update users already appearing in doc.Access:
 	for name, access := range *accessMap {
 		if access.UpdateAtSequence(newAccess[name], doc.Sequence) {
@@ -1058,7 +1058,7 @@ func (accessMap *UserAccessMap) updateAccess(doc *Document, newAccess channels.A
 		if accessMap == &doc.RoleAccess {
 			what = "role"
 		}
-		base.InfofCtx(context.TODO(), base.KeyAccess, "Doc %q grants %s access: %v", base.UD(doc.ID), what, base.UD(*accessMap))
+		base.InfofCtx(ctx, base.KeyAccess, "Doc %q grants %s access: %v", base.UD(doc.ID), what, base.UD(*accessMap))
 	}
 	return changedUsers
 }
@@ -1120,9 +1120,9 @@ func (doc *Document) MarshalJSON() (data []byte, err error) {
 // (unmarshalLevel) specifies how much of the provided document/xattr needs to be initially unmarshalled.  If
 // unmarshalLevel is anything less than the full document + metadata, the raw data is retained for subsequent
 // lazy unmarshalling as needed.
-func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLevel DocumentUnmarshalLevel) error {
+func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata []byte, unmarshalLevel DocumentUnmarshalLevel) error {
 	if doc.ID == "" {
-		base.WarnfCtx(context.Background(), "Attempted to unmarshal document without ID set")
+		base.WarnfCtx(ctx, "Attempted to unmarshal document without ID set")
 		return errors.New("Document was unmarshalled without ID set")
 	}
 

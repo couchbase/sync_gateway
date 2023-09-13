@@ -67,7 +67,7 @@ func isGoCBQueryTimeoutError(err error) bool {
 }
 
 // putDDocForTombstones uses the provided client and endpoints to create a design doc with index_xattr_on_deleted_docs=true
-func putDDocForTombstones(name string, payload []byte, capiEps []string, client *http.Client, username string, password string) error {
+func putDDocForTombstones(ctx context.Context, name string, payload []byte, capiEps []string, client *http.Client, username string, password string) error {
 
 	// From gocb.Bucket.getViewEp() - pick view endpoint at random
 	if len(capiEps) == 0 {
@@ -92,7 +92,7 @@ func putDDocForTombstones(name string, payload []byte, capiEps []string, client 
 		return err
 	}
 
-	defer ensureBodyClosed(resp.Body)
+	defer ensureBodyClosed(ctx, resp.Body)
 	if resp.StatusCode != 201 {
 		data, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -149,20 +149,20 @@ func normalizeIntToUint(value interface{}) (uint, error) {
 	}
 }
 
-func asBool(value interface{}) bool {
+func asBool(ctx context.Context, value interface{}) bool {
 
 	switch typeValue := value.(type) {
 	case string:
 		parsedVal, err := strconv.ParseBool(typeValue)
 		if err != nil {
-			WarnfCtx(context.Background(), "asBool called with unknown value: %v.  defaulting to false", typeValue)
+			WarnfCtx(ctx, "asBool called with unknown value: %v.  defaulting to false", typeValue)
 			return false
 		}
 		return parsedVal
 	case bool:
 		return typeValue
 	default:
-		WarnfCtx(context.Background(), "asBool called with unknown type: %T.  defaulting to false", typeValue)
+		WarnfCtx(ctx, "asBool called with unknown type: %T.  defaulting to false", typeValue)
 		return false
 	}
 

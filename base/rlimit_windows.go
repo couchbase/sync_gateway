@@ -10,6 +10,8 @@ licenses/APL2.txt.
 
 package base
 
-func SetMaxFileDescriptors(maxFDs uint64) (uint64, error) {
+import "context"
+
+func SetMaxFileDescriptors(_ context.Context, maxFDs uint64) (uint64, error) {
 	return 0, nil
 }

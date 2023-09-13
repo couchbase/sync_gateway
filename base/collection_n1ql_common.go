@@ -168,7 +168,7 @@ func waitForIndexExistence(ctx context.Context, store N1QLStore, indexName strin
 	}
 
 	// Kick off retry loop
-	err, _ := RetryLoop("waitForIndexExistence", worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
+	err, _ := RetryLoop(ctx, "waitForIndexExistence", worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
 	if err != nil {
 		return pkgerrors.Wrapf(err, "Error during waitForIndexExistence for index %s", indexName)
 	}
@@ -241,7 +241,7 @@ func buildIndexes(ctx context.Context, s N1QLStore, indexNames []string) error {
 
 	// If indexer reports build will be completed in the background, wait to validate build actually happens.
 	if IsIndexerRetryBuildError(err) {
-		InfofCtx(context.TODO(), KeyQuery, "Indexer error creating index - waiting for background build.  Error:%v", err)
+		InfofCtx(ctx, KeyQuery, "Indexer error creating index - waiting for background build.  Error:%v", err)
 		// Wait for bucket to be created in background before returning
 		return s.WaitForIndexesOnline(ctx, indexNames, false)
 	}
@@ -281,7 +281,7 @@ func GetIndexMeta(ctx context.Context, store N1QLStore, indexName string) (exist
 	}
 
 	// Kick off retry loop
-	err, val := RetryLoop("GetIndexMeta", worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
+	err, val := RetryLoop(ctx, "GetIndexMeta", worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
 	if err != nil {
 		return false, nil, pkgerrors.Wrapf(err, "Error during GetIndexMeta for index %s", indexName)
 	}
@@ -474,9 +474,10 @@ func (i *gocbRawIterator) Next(valuePtr interface{}) bool {
 		return false
 	}
 
+	ctx := context.TODO() // fix in sg-bucket
 	err := JSONUnmarshal(nextBytes, &valuePtr)
 	if err != nil {
-		WarnfCtx(context.TODO(), "Unable to marshal view result row into value: %v", err)
+		WarnfCtx(ctx, "Unable to marshal view result row into value: %v", err)
 		return false
 	}
 	return true

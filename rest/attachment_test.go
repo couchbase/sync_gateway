@@ -2452,7 +2452,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 	losingRev3 := RespRevID(t, resp)
 
 	// Create doc conflicting with previous revid referencing previous attachment too
-	_, revIDHash := db.ParseRevID(revid)
+	_, revIDHash := db.ParseRevID(rt.Context(), revid)
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc?new_edits=false", `{"_rev": "3-b", "_revisions": {"ids": ["b", "`+revIDHash+`"], "start": 3}, "_attachments": {"hello.txt": {"revpos":2,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}, "Winning Rev": true}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	winningRev3 := RespRevID(t, resp)
