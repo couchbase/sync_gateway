@@ -164,7 +164,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			}
 			bh.collectionCtx, err = bh.collections.get(nil)
 			if err != nil {
-				bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.collection.DatabaseCollection))
+				bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.loggingCtx, bh.collection.DatabaseCollection))
 				bh.collectionCtx, _ = bh.collections.get(nil)
 			}
 			return next(bh, bm)
@@ -273,7 +273,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	// Create ctx if it has been cancelled
 	if collectionCtx.changesCtx.Err() != nil {
-		collectionCtx.changesCtx, collectionCtx.changesCtxCancel = context.WithCancel(context.Background())
+		collectionCtx.changesCtx, collectionCtx.changesCtxCancel = context.WithCancel(bh.loggingCtx)
 	}
 
 	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
