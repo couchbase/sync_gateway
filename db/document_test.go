@@ -132,8 +132,9 @@ func BenchmarkDocUnmarshal(b *testing.B) {
 
 	for _, bm := range unmarshalBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
+			ctx := base.TestCtx(b)
 			for i := 0; i < b.N; i++ {
-				_, _ = unmarshalDocumentWithXattr("doc_1k", doc1k_body, doc1k_meta, nil, 1, bm.unmarshalLevel)
+				_, _ = unmarshalDocumentWithXattr(ctx, "doc_1k", doc1k_body, doc1k_meta, nil, 1, bm.unmarshalLevel)
 			}
 		})
 	}
@@ -154,6 +155,7 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 
 	for _, bm := range unmarshalBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
+			ctx := base.TestCtx(b)
 			for i := 0; i < b.N; i++ {
 				b.StopTimer()
 				doc := NewDocument("testDocID")
@@ -170,7 +172,7 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 				} else {
 					err = base.JSONUnmarshal(doc1k_body, &doc._body)
 					if bm.fixJSONNumbers {
-						doc.Body().FixJSONNumbers()
+						doc.Body(ctx).FixJSONNumbers()
 					}
 				}
 				b.StopTimer()
@@ -178,7 +180,7 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 					log.Printf("Unmarshal error: %s", err)
 				}
 
-				if len(doc.Body()) == 0 {
+				if len(doc.Body(ctx)) == 0 {
 					log.Printf("Empty body")
 				}
 

@@ -29,20 +29,20 @@ type BootstrapConnection interface {
 	// GetConfigBuckets returns a list of bucket names where a bootstrap metadata documents could reside.
 	GetConfigBuckets() ([]string, error)
 	// GetMetadataDocument fetches a bootstrap metadata document for a given bucket and key, along with the CAS of the config document.
-	GetMetadataDocument(bucket, key string, valuePtr interface{}) (cas uint64, err error)
+	GetMetadataDocument(ctx context.Context, bucket, key string, valuePtr interface{}) (cas uint64, err error)
 	// InsertMetadataDocument saves a new bootstrap metadata document for a given bucket and key.
-	InsertMetadataDocument(bucket, key string, value interface{}) (newCAS uint64, err error)
+	InsertMetadataDocument(ctx context.Context, bucket, key string, value interface{}) (newCAS uint64, err error)
 	// DeleteMetadataDocument deletes an existing bootstrap metadata document for a given bucket and key.
-	DeleteMetadataDocument(bucket, key string, cas uint64) (err error)
+	DeleteMetadataDocument(ctx context.Context, bucket, key string, cas uint64) (err error)
 	// UpdateMetadataDocument updates an existing bootstrap metadata document for a given bucket and key. updateCallback can return nil to remove the config.  Retries on CAS failure.
-	UpdateMetadataDocument(bucket, key string, updateCallback func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error)) (newCAS uint64, err error)
+	UpdateMetadataDocument(ctx context.Context, bucket, key string, updateCallback func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error)) (newCAS uint64, err error)
 	// WriteMetadataDocument writes a bootstrap metadata document for a given bucket and key.  Does not retry on CAS failure.
-	WriteMetadataDocument(bucket, key string, cas uint64, valuePtr interface{}) (casOut uint64, err error)
+	WriteMetadataDocument(ctx context.Context, bucket, key string, cas uint64, valuePtr interface{}) (casOut uint64, err error)
 	// TouchMetadataDocument sets the specified property in a bootstrap metadata document for a given bucket and key.  Used to
 	// trigger CAS update on the document, to block any racing updates. Does not retry on CAS failure.
-	TouchMetadataDocument(bucket, key string, property string, value string, cas uint64) (casOut uint64, err error)
+	TouchMetadataDocument(ctx context.Context, bucket, key string, property string, value string, cas uint64) (casOut uint64, err error)
 	// KeyExists checks whether the specified key exists
-	KeyExists(bucket, key string) (exists bool, err error)
+	KeyExists(ctx context.Context, bucket, key string) (exists bool, err error)
 	// Returns the bootstrap connection's cluster connection as N1QLStore for the specified bucket/scope/collection.
 	// Does NOT establish a bucket connection, the bucketName/scopeName/collectionName is for query scoping only
 	GetClusterN1QLStore(bucketName, scopeName, collectionName string) (*ClusterOnlyN1QLStore, error)
@@ -144,12 +144,12 @@ func (c *cachedBucketConnections) _set(bucketName string, bucket *cachedBucket) 
 var _ BootstrapConnection = &CouchbaseCluster{}
 
 // NewCouchbaseCluster creates and opens a Couchbase Server cluster connection.
-func NewCouchbaseCluster(server, username, password,
+func NewCouchbaseCluster(ctx context.Context, server, username, password,
 	x509CertPath, x509KeyPath, caCertPath string,
 	forcePerBucketAuth bool, perBucketCreds PerBucketCredentialsConfig,
 	tlsSkipVerify *bool, useXattrConfig *bool, bucketMode BucketConnectionMode) (*CouchbaseCluster, error) {
 
-	securityConfig, err := GoCBv2SecurityConfig(tlsSkipVerify, caCertPath)
+	securityConfig, err := GoCBv2SecurityConfig(ctx, tlsSkipVerify, caCertPath)
 	if err != nil {
 		return nil, err
 	}
@@ -311,12 +311,12 @@ func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
 	return bucketList, nil
 }
 
-func (cc *CouchbaseCluster) GetMetadataDocument(location, docID string, valuePtr interface{}) (cas uint64, err error) {
+func (cc *CouchbaseCluster) GetMetadataDocument(ctx context.Context, location, docID string, valuePtr interface{}) (cas uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(location)
+	b, teardown, err := cc.getBucket(ctx, location)
 
 	if err != nil {
 		return 0, err
@@ -324,15 +324,15 @@ func (cc *CouchbaseCluster) GetMetadataDocument(location, docID string, valuePtr
 
 	defer teardown()
 
-	return cc.configPersistence.loadConfig(b.DefaultCollection(), docID, valuePtr)
+	return cc.configPersistence.loadConfig(ctx, b.DefaultCollection(), docID, valuePtr)
 }
 
-func (cc *CouchbaseCluster) InsertMetadataDocument(location, key string, value interface{}) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) InsertMetadataDocument(ctx context.Context, location, key string, value interface{}) (newCAS uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(location)
+	b, teardown, err := cc.getBucket(ctx, location)
 	if err != nil {
 		return 0, err
 	}
@@ -342,12 +342,12 @@ func (cc *CouchbaseCluster) InsertMetadataDocument(location, key string, value i
 }
 
 // WriteMetadataDocument writes a metadata document, and fails on CAS mismatch
-func (cc *CouchbaseCluster) WriteMetadataDocument(location, docID string, cas uint64, value interface{}) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) WriteMetadataDocument(ctx context.Context, location, docID string, cas uint64, value interface{}) (newCAS uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(location)
+	b, teardown, err := cc.getBucket(ctx, location)
 	if err != nil {
 		return 0, err
 	}
@@ -362,13 +362,13 @@ func (cc *CouchbaseCluster) WriteMetadataDocument(location, docID string, cas ui
 	return uint64(casOut), err
 }
 
-func (cc *CouchbaseCluster) TouchMetadataDocument(location, docID string, property, value string, cas uint64) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) TouchMetadataDocument(ctx context.Context, location, docID string, property, value string, cas uint64) (newCAS uint64, err error) {
 
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(location)
+	b, teardown, err := cc.getBucket(ctx, location)
 	if err != nil {
 		return 0, err
 	}
@@ -379,12 +379,12 @@ func (cc *CouchbaseCluster) TouchMetadataDocument(location, docID string, proper
 
 }
 
-func (cc *CouchbaseCluster) DeleteMetadataDocument(location, key string, cas uint64) (err error) {
+func (cc *CouchbaseCluster) DeleteMetadataDocument(ctx context.Context, location, key string, cas uint64) (err error) {
 	if cc == nil {
 		return errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(location)
+	b, teardown, err := cc.getBucket(ctx, location)
 	if err != nil {
 		return err
 	}
@@ -395,12 +395,12 @@ func (cc *CouchbaseCluster) DeleteMetadataDocument(location, key string, cas uin
 }
 
 // UpdateMetadataDocument retries on CAS mismatch
-func (cc *CouchbaseCluster) UpdateMetadataDocument(location, docID string, updateCallback func(bucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error)) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) UpdateMetadataDocument(ctx context.Context, location, docID string, updateCallback func(bucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error)) (newCAS uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(location)
+	b, teardown, err := cc.getBucket(ctx, location)
 	if err != nil {
 		return 0, err
 	}
@@ -409,7 +409,7 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(location, docID string, updat
 	collection := b.DefaultCollection()
 
 	for {
-		bucketValue, cas, err := cc.configPersistence.loadRawConfig(collection, docID)
+		bucketValue, cas, err := cc.configPersistence.loadRawConfig(ctx, collection, docID)
 		if err != nil {
 			return 0, err
 		}
@@ -445,12 +445,12 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(location, docID string, updat
 
 }
 
-func (cc *CouchbaseCluster) KeyExists(location, docID string) (exists bool, err error) {
+func (cc *CouchbaseCluster) KeyExists(ctx context.Context, location, docID string) (exists bool, err error) {
 	if cc == nil {
 		return false, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(location)
+	b, teardown, err := cc.getBucket(ctx, location)
 
 	if err != nil {
 		return false, err
@@ -484,10 +484,10 @@ func (cc *CouchbaseCluster) GetClusterN1QLStore(bucketName, scopeName, collectio
 	return NewClusterOnlyN1QLStore(gocbCluster, bucketName, scopeName, collectionName)
 }
 
-func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {
+func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {
 
 	if cc.bucketConnectionMode != CachedClusterConnections {
-		return cc.connectToBucket(bucketName)
+		return cc.connectToBucket(ctx, bucketName)
 	}
 
 	teardownFn = func() {
@@ -501,7 +501,7 @@ func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardo
 	}
 
 	// cached bucket not found, connect and add
-	newBucket, bucketCloseFn, err := cc.connectToBucket(bucketName)
+	newBucket, bucketCloseFn, err := cc.connectToBucket(ctx, bucketName)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -515,7 +515,7 @@ func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardo
 }
 
 // connectToBucket establishes a new connection to a bucket, and returns the bucket after waiting for it to be ready.
-func (cc *CouchbaseCluster) connectToBucket(bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {
+func (cc *CouchbaseCluster) connectToBucket(ctx context.Context, bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {
 	var connection *gocb.Cluster
 	if bucketAuth, set := cc.perBucketAuth[bucketName]; set {
 		connection, err = cc.connect(bucketAuth)
@@ -548,7 +548,7 @@ func (cc *CouchbaseCluster) connectToBucket(bucketName string) (b *gocb.Bucket, 
 	teardownFn = func() {
 		err := connection.Close(&gocb.ClusterCloseOptions{})
 		if err != nil {
-			WarnfCtx(context.Background(), "Failed to close cluster connection: %v", err)
+			WarnfCtx(ctx, "Failed to close cluster connection: %v", err)
 		}
 	}
 

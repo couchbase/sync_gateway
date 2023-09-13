@@ -107,8 +107,9 @@ func TestCreateJWTToken(t *testing.T) {
 
 func TestExtractSubjectFromRefreshToken(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
+	ctx := base.TestCtx(t)
 	// Extract subject from invalid refresh token
-	sub, err := extractSubjectFromRefreshToken("invalid_refresh_token")
+	sub, err := extractSubjectFromRefreshToken(ctx, "invalid_refresh_token")
 	require.Error(t, err, "invalid refresh token error")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 	assert.Empty(t, sub, "couldn't extract subject from refresh token")
@@ -117,7 +118,7 @@ func TestExtractSubjectFromRefreshToken(t *testing.T) {
 	subject := "subject"
 	accessToken := base64.StdEncoding.EncodeToString([]byte(subject))
 	refreshToken := base64.StdEncoding.EncodeToString([]byte(subject + ":::" + accessToken))
-	sub, err = extractSubjectFromRefreshToken(refreshToken)
+	sub, err = extractSubjectFromRefreshToken(ctx, refreshToken)
 	require.NoError(t, err, "invalid refresh token error")
 	assert.Equal(t, subject, sub)
 }

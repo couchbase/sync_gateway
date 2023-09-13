@@ -11,10 +11,12 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"testing"
 )
 
 func TestMain(m *testing.M) {
+	ctx := context.Background() // start of test process
 	tbpOptions := TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
-	TestBucketPoolNoIndexes(m, tbpOptions)
+	TestBucketPoolNoIndexes(ctx, m, tbpOptions)
 }

@@ -112,13 +112,13 @@ type jsEventTask struct {
 }
 
 // Compiles a JavaScript event function to a jsEventTask object.
-func newJsEventTask(funcSource string) (sgbucket.JSServerTask, error) {
+func newJsEventTask(ctx context.Context, funcSource string) (sgbucket.JSServerTask, error) {
 	eventTask := &jsEventTask{}
 	err := eventTask.InitWithLogging(funcSource, 0,
 		func(s string) {
-			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": Webhook %s", base.UD(s))
+			base.ErrorfCtx(ctx, base.KeyJavascript.String()+": Webhook %s", base.UD(s))
 		},
-		func(s string) { base.InfofCtx(context.Background(), base.KeyJavascript, "Webhook %s", base.UD(s)) })
+		func(s string) { base.InfofCtx(ctx, base.KeyJavascript, "Webhook %s", base.UD(s)) })
 	if err != nil {
 		return nil, err
 	}
@@ -153,19 +153,21 @@ type JSEventFunction struct {
 	*sgbucket.JSServer
 }
 
-func NewJSEventFunction(fnSource string) *JSEventFunction {
+func NewJSEventFunction(ctx context.Context, fnSource string) *JSEventFunction {
 
-	base.InfofCtx(context.Background(), base.KeyEvents, "Creating new JSEventFunction")
+	base.InfofCtx(ctx, base.KeyEvents, "Creating new JSEventFunction")
 	return &JSEventFunction{
 		JSServer: sgbucket.NewJSServer(fnSource, 0, kTaskCacheSize,
 			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-				return newJsEventTask(fnSource)
+				return newJsEventTask(ctx, fnSource)
 			}),
 	}
 }
 
 // Calls a jsEventFunction returning an interface{}
 func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
+
+	ctx := context.TODO() // fix in sg-bucket
 
 	var err error
 	var result interface{}
@@ -178,12 +180,12 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	case *DBStateChangeEvent:
 		result, err = ef.Call(event.Doc)
 	default:
-		base.WarnfCtx(context.TODO(), "unknown event %v tried to call function", event.EventType())
+		base.WarnfCtx(ctx, "unknown event %v tried to call function", event.EventType())
 		return "", fmt.Errorf("unknown event %v tried to call function", event.EventType())
 	}
 
 	if err != nil {
-		base.WarnfCtx(context.TODO(), "Error calling function - function processing aborted: %v", err)
+		base.WarnfCtx(ctx, "Error calling function - function processing aborted: %v", err)
 		return "", err
 	}
 

@@ -37,7 +37,7 @@ func waitForStatGreaterThan(t *testing.T, getStatFunc func() int64, expected int
 		return stat <= expected, nil, val
 	}
 	// wait for up to 20 seconds for the stat to meet the expected value
-	err, val := base.RetryLoop("waitForStatGreaterThan retry loop", workerFunc, base.CreateSleeperFunc(200, 100))
+	err, val := base.RetryLoop(base.TestCtx(t), "waitForStatGreaterThan retry loop", workerFunc, base.CreateSleeperFunc(200, 100))
 	require.NoError(t, err)
 	valInt64, ok := val.(int64)
 	require.True(t, ok)

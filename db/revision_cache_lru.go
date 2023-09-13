@@ -423,7 +423,7 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 		docRev, err = value.asDocumentRevision(docRevBody, nil)
 		// If the body is requested and not yet populated on revCacheValue, populate it from the doc
 		if includeBody && docRev._shallowCopyBody == nil {
-			body := doc.Body()
+			body := doc.Body(ctx)
 			value.lock.Lock()
 			if value.body == nil {
 				value.body = body

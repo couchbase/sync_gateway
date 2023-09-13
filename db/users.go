@@ -33,7 +33,7 @@ func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bo
 		return base.ErrNotFound
 	}
 
-	seq, err := db.sequences.nextSequence()
+	seq, err := db.sequences.nextSequence(ctx)
 	if err != nil {
 		return err
 	}
@@ -183,7 +183,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		// Update the persistent sequence number of this principal (only allocate a sequence when needed - issue #673):
 		nextSeq := uint64(0)
 
-		nextSeq, err = dbc.sequences.nextSequence()
+		nextSeq, err = dbc.sequences.nextSequence(ctx)
 		if err != nil {
 			return replaced, err
 		}

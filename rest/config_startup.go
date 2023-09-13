@@ -197,8 +197,8 @@ func (sc *StartupConfig) IsServerless() bool {
 	return base.BoolDefault(sc.Unsupported.Serverless.Enabled, false)
 }
 
-func LoadStartupConfigFromPath(path string) (*StartupConfig, error) {
-	rc, err := readFromPath(path, false)
+func LoadStartupConfigFromPath(ctx context.Context, path string) (*StartupConfig, error) {
+	rc, err := readFromPath(ctx, path, false)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,7 @@ func LoadStartupConfigFromPath(path string) (*StartupConfig, error) {
 	defer func() { _ = rc.Close() }()
 
 	var sc StartupConfig
-	err = DecodeAndSanitiseConfig(rc, &sc, true)
+	err = DecodeAndSanitiseConfig(ctx, rc, &sc, true)
 	return &sc, err
 }
 
@@ -233,7 +233,7 @@ func NewEmptyStartupConfig() StartupConfig {
 
 // setGlobalConfig will set global variables and other settings based on the given StartupConfig.
 // We should try to keep these minimal where possible, and favour ServerContext-scoped values.
-func setGlobalConfig(sc *StartupConfig) error {
+func setGlobalConfig(ctx context.Context, sc *StartupConfig) error {
 
 	// Per-process limits, can't be scoped any narrower.
 	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
@@ -241,12 +241,12 @@ func setGlobalConfig(sc *StartupConfig) error {
 		cpus := runtime.NumCPU()
 		if cpus > 1 {
 			runtime.GOMAXPROCS(cpus)
-			base.InfofCtx(context.Background(), base.KeyAll, "Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
+			base.InfofCtx(ctx, base.KeyAll, "Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
 		}
 	}
 
-	if _, err := base.SetMaxFileDescriptors(sc.MaxFileDescriptors); err != nil {
-		base.ErrorfCtx(context.Background(), "Error setting MaxFileDescriptors to %d: %v", sc.MaxFileDescriptors, err)
+	if _, err := base.SetMaxFileDescriptors(ctx, sc.MaxFileDescriptors); err != nil {
+		base.ErrorfCtx(ctx, "Error setting MaxFileDescriptors to %d: %v", sc.MaxFileDescriptors, err)
 	}
 
 	// TODO: Remove with GoCB DCP switch
@@ -256,7 +256,7 @@ func setGlobalConfig(sc *StartupConfig) error {
 
 	// Given unscoped usage of base.JSON functions, this can't be scoped.
 	if base.BoolDefault(sc.Unsupported.UseStdlibJSON, false) {
-		base.InfofCtx(context.Background(), base.KeyAll, "Using the stdlib JSON package")
+		base.InfofCtx(ctx, base.KeyAll, "Using the stdlib JSON package")
 		base.UseStdlibJSON = true
 	}
 

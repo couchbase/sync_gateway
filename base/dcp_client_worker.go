@@ -84,24 +84,24 @@ func NewDCPWorker(workerID int, metadata DCPMetadataStore, mutationCallback sgbu
 }
 
 // Send accepts incoming events from the DCP client and adds to the worker's buffered feed, to be processed by the main worker goroutine
-func (w *DCPWorker) Send(event streamEvent) {
+func (w *DCPWorker) Send(ctx context.Context, event streamEvent) {
 	// Ignore mutations if they come in after the client has started closing (CBG-2173)
 	// This needs to be a separate select because if w.eventFeed has capacity at the same time as the terminator is closed,
 	// the outcome is non-deterministic (https://go.dev/ref/spec#Select_statements)
 	select {
 	case <-w.terminator:
-		TracefCtx(context.TODO(), KeyDCP, "Ignoring stream event (vb:%d) as the client is closing", event.VbID())
+		TracefCtx(ctx, KeyDCP, "Ignoring stream event (vb:%d) as the client is closing", event.VbID())
 		return
 	default:
 	}
 	select {
 	case w.eventFeed <- event:
 	case <-w.terminator:
-		InfofCtx(context.TODO(), KeyDCP, "Closing DCP worker, DCP Client was closed")
+		InfofCtx(ctx, KeyDCP, "Closing DCP worker, DCP Client was closed")
 	}
 }
 
-func (w *DCPWorker) Start(wg *sync.WaitGroup) {
+func (w *DCPWorker) Start(ctx context.Context, wg *sync.WaitGroup) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -118,14 +118,14 @@ func (w *DCPWorker) Start(wg *sync.WaitGroup) {
 					if w.mutationCallback != nil {
 						w.mutationCallback(e.asFeedEvent())
 					}
-					w.updateSeq(e.key, vbID, e.seq)
+					w.updateSeq(ctx, e.key, vbID, e.seq)
 				case deletionEvent:
 					if w.mutationCallback != nil && !w.ignoreDeletes {
 						w.mutationCallback(e.asFeedEvent())
 					}
-					w.updateSeq(e.key, vbID, e.seq)
+					w.updateSeq(ctx, e.key, vbID, e.seq)
 				case seqnoAdvancedEvent:
-					w.updateSeq(nil, vbID, e.seq)
+					w.updateSeq(ctx, nil, vbID, e.seq)
 				case endStreamEvent:
 					w.endStreamCallback(e)
 				}
@@ -144,7 +144,7 @@ func (w *DCPWorker) checkPendingSnapshot(vbID uint16) {
 	}
 }
 
-func (w *DCPWorker) updateSeq(key []byte, vbID uint16, seq uint64) {
+func (w *DCPWorker) updateSeq(ctx context.Context, key []byte, vbID uint16, seq uint64) {
 	// Ignore DCP checkpoint documents
 	if bytes.HasPrefix(key, w.checkpointPrefixBytes) {
 		return
@@ -155,7 +155,7 @@ func (w *DCPWorker) updateSeq(key []byte, vbID uint16, seq uint64) {
 	w.metadata.UpdateSeq(vbID, seq)
 
 	if time.Since(w.lastMetaPersistTime) > w.metaPersistFrequency {
-		w.metadata.Persist(w.ID, w.assignedVbs)
+		w.metadata.Persist(ctx, w.ID, w.assignedVbs)
 	}
 
 }

@@ -236,7 +236,7 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar"}`)
 	RequireStatus(t, res, http.StatusCreated)
 	rev1 := RespRevID(t, res)
-	_, rev1Hash := db.ParseRevID(rev1)
+	_, rev1Hash := db.ParseRevID(rt.Context(), rev1)
 
 	// push winning branch
 	wg.Add(2)

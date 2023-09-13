@@ -12,7 +12,6 @@ package rest
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -340,7 +339,6 @@ func (s *mockAuthServer) makeToken(claimSet claimSet) (string, error) {
 	builder := jwt.Signed(s.signer).Claims(primaryClaims).Claims(secondaryClaims)
 	token, err := builder.CompactSerialize()
 	if err != nil {
-		base.ErrorfCtx(context.TODO(), "Error serializing token: %s", err)
 		return "", err
 	}
 	return token, nil
@@ -1162,11 +1160,12 @@ func TestOpenIDConnectImplicitFlowReuseToken(t *testing.T) {
 
 	require.NoError(t, restTester.WaitForPendingChanges())
 
-	u, err := restTester.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("foo_noah")
+	ctx := base.DatabaseLogCtx(base.TestCtx(t), restTester.GetDatabase().Name, nil)
+	u, err := restTester.GetDatabase().Authenticator(ctx).GetUser("foo_noah")
 	require.NoError(t, err)
 	firstJWTLastUpdated := u.JWTLastUpdated()
 
-	lastSeq, err := restTester.GetDatabase().LastSequence()
+	lastSeq, err := restTester.GetDatabase().LastSequence(ctx)
 	assert.NoError(t, err)
 
 	// Observing an updated user inside the changes request isn't deterministic, as it depends on the timing of the DCP feed for the principal update made during the changes request...
@@ -1185,12 +1184,12 @@ func TestOpenIDConnectImplicitFlowReuseToken(t *testing.T) {
 	assert.Equalf(t, int64(0), observedUserUpdateCount, "%d of %d changes observed user update (expected 0)", observedUserUpdateCount, numChanges)
 
 	// since we made no changes to channels, we shouldn't expect the user to actually be updated with a new JWT timestamp.
-	u, err = restTester.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("foo_noah")
+	u, err = restTester.GetDatabase().Authenticator(ctx).GetUser("foo_noah")
 	require.NoError(t, err)
 	finalJWTLastUpdated := u.JWTLastUpdated()
 	assert.Equal(t, firstJWTLastUpdated, finalJWTLastUpdated)
 
-	finalLastSeq, err := restTester.GetDatabase().LastSequence()
+	finalLastSeq, err := restTester.GetDatabase().LastSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(lastSeq), int64(finalLastSeq))
 
@@ -1205,12 +1204,12 @@ func TestOpenIDConnectImplicitFlowReuseToken(t *testing.T) {
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &changesResp))
 	assert.Lenf(t, changesResp.Results, 1, "Expected user update on changes feed")
 
-	u, err = restTester.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("foo_noah")
+	u, err = restTester.GetDatabase().Authenticator(ctx).GetUser("foo_noah")
 	require.NoError(t, err)
 	postUpdateJWTLastUpdated := u.JWTLastUpdated()
 	base.AssertTimeGreaterThan(t, postUpdateJWTLastUpdated, finalJWTLastUpdated)
 
-	postUpdateLastSeq, err := restTester.GetDatabase().LastSequence()
+	postUpdateLastSeq, err := restTester.GetDatabase().LastSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(finalLastSeq+1), int64(postUpdateLastSeq))
 }
@@ -2481,7 +2480,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &startupConfig, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)

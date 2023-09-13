@@ -488,7 +488,7 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
 
 	// Create a new user and save to database to create user session.
-	authenticator := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions(rt.Context()))
 	user, err := authenticator.NewUser("eve", "cGFzc3dvcmQ=", channels.BaseSetOf(t, "*"))
 	assert.NoError(t, err, "Couldn't create new user")
 	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")

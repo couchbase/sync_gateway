@@ -21,10 +21,10 @@ import (
 )
 
 // GoCBv2SecurityConfig returns a gocb.SecurityConfig to use when connecting given a CA Cert path.
-func GoCBv2SecurityConfig(tlsSkipVerify *bool, caCertPath string) (sc gocb.SecurityConfig, err error) {
+func GoCBv2SecurityConfig(ctx context.Context, tlsSkipVerify *bool, caCertPath string) (sc gocb.SecurityConfig, err error) {
 	var certPool *x509.CertPool = nil
 	if tlsSkipVerify == nil || !*tlsSkipVerify { // Add certs if ServerTLSSkipVerify is not set
-		certPool, err = getRootCAs(caCertPath)
+		certPool, err = getRootCAs(ctx, caCertPath)
 		if err != nil {
 			return sc, err
 		}
@@ -121,10 +121,10 @@ func GoCBCoreAuthConfig(username, password, certPath, keyPath string) (gocbcore.
 	}, nil
 }
 
-func GoCBCoreTLSRootCAProvider(tlsSkipVerify *bool, caCertPath string) (wrapper func() *x509.CertPool, err error) {
+func GoCBCoreTLSRootCAProvider(ctx context.Context, tlsSkipVerify *bool, caCertPath string) (wrapper func() *x509.CertPool, err error) {
 	var certPool *x509.CertPool = nil
 	if tlsSkipVerify == nil || !*tlsSkipVerify { // Add certs if ServerTLSSkipVerify is not set
-		certPool, err = getRootCAs(caCertPath)
+		certPool, err = getRootCAs(ctx, caCertPath)
 		if err != nil {
 			return nil, err
 		}
@@ -137,7 +137,7 @@ func GoCBCoreTLSRootCAProvider(tlsSkipVerify *bool, caCertPath string) (wrapper 
 
 // getRootCAs gets generates a cert pool from the certs at caCertPath. If caCertPath is empty, the systems cert pool is used.
 // If an error happens when retrieving the system cert pool, it is logged (not returned) and an empty (not nil) cert pool is returned.
-func getRootCAs(caCertPath string) (*x509.CertPool, error) {
+func getRootCAs(ctx context.Context, caCertPath string) (*x509.CertPool, error) {
 	if caCertPath != "" {
 		rootCAs := x509.NewCertPool()
 
@@ -157,7 +157,7 @@ func getRootCAs(caCertPath string) (*x509.CertPool, error) {
 	rootCAs, err := x509.SystemCertPool()
 	if err != nil {
 		rootCAs = x509.NewCertPool()
-		WarnfCtx(context.Background(), "Could not retrieve root CAs: %v", err)
+		WarnfCtx(ctx, "Could not retrieve root CAs: %v", err)
 	}
 	return rootCAs, nil
 }

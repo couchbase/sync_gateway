@@ -336,7 +336,7 @@ func TestGetDeleted(t *testing.T) {
 	assert.Equal(t, rev2id, doc.SyncData.CurrentRev)
 
 	// Try again but with a user who doesn't have access to this revision (see #179)
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions(ctx))
 	collection.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
 	collection.user.SetExplicitChannels(nil, 1)
@@ -403,7 +403,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Try again with a user who doesn't have access to this revision
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions(ctx))
 	collection.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
 
@@ -505,8 +505,8 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	body, err := collection.Get1xRevBody(ctx, "doc1", rev2ID, true, nil)
 	require.NoError(t, err, "Error getting 1x rev body")
 
-	_, rev1Digest := ParseRevID(rev1ID)
-	_, rev2Digest := ParseRevID(rev2ID)
+	_, rev1Digest := ParseRevID(ctx, rev1ID)
+	_, rev2Digest := ParseRevID(ctx, rev2ID)
 
 	bodyExpected := Body{
 		"k2":       "v2",
@@ -871,7 +871,7 @@ func TestAllDocsOnly(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	// Trigger creation of the channel cache for channel "all"
-	_, err := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
+	_, err := db.changeCache.getChannelCache().getSingleChannelCache(ctx, channels.NewID("all", collectionID))
 	require.NoError(t, err)
 
 	ids := make([]AllDocsEntry, 100)
@@ -916,14 +916,14 @@ func TestAllDocsOnly(t *testing.T) {
 	err = db.changeCache.waitForSequence(ctx, 101, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 
-	changeLog, err := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
+	changeLog, err := collection.GetChangeLog(ctx, channels.NewID("all", collectionID), 0)
 	require.NoError(t, err)
 	require.Len(t, changeLog, 50)
 	assert.Equal(t, "alldoc-51", changeLog[0].DocID)
 
 	// Now check the changes feed:
 	var options ChangesOptions
-	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
+	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
 	options.ChangesCtx = changesCtx
 	defer changesCtxCancel()
 	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
@@ -994,7 +994,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	_, err = db.UpdatePrincipal(ctx, userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
-	nextSeq, err := db.sequences.nextSequence()
+	nextSeq, err := db.sequences.nextSequence(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), nextSeq)
 
@@ -1005,7 +1005,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	_, err = db.UpdatePrincipal(ctx, userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
-	nextSeq, err = db.sequences.nextSequence()
+	nextSeq, err = db.sequences.nextSequence(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(3), nextSeq)
 }
@@ -1034,7 +1034,7 @@ func TestRepeatedConflict(t *testing.T) {
 	assert.NoError(t, err, "add 2-a")
 
 	// Get the _rev that was set in the body by PutExistingRevWithBody() and make assertions on it
-	revGen, _ := ParseRevID(newRev)
+	revGen, _ := ParseRevID(ctx, newRev)
 	assert.Equal(t, 2, revGen)
 
 	// Remove the _rev key from the body, and call PutExistingRevWithBody() again, which should re-add it
@@ -1043,7 +1043,7 @@ func TestRepeatedConflict(t *testing.T) {
 	assert.NoError(t, err)
 
 	// The _rev should pass the same assertions as before, since PutExistingRevWithBody() should re-add it
-	revGen, _ = ParseRevID(newRev)
+	revGen, _ = ParseRevID(ctx, newRev)
 	assert.Equal(t, 2, revGen)
 
 }
@@ -1060,7 +1060,7 @@ func TestConflicts(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	allChannel := channels.NewID("all", collectionID)
-	_, err := db.changeCache.getChannelCache().getSingleChannelCache(allChannel)
+	_, err := db.changeCache.getChannelCache().getSingleChannelCache(ctx, allChannel)
 	require.NoError(t, err)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
@@ -1073,7 +1073,7 @@ func TestConflicts(t *testing.T) {
 	// Wait for rev to be cached
 	cacheWaiter.AddAndWait(1)
 
-	changeLog, err := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
+	changeLog, err := collection.GetChangeLog(ctx, channels.NewID("all", collectionID), 0)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(changeLog))
 
@@ -1111,7 +1111,7 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change-log of the "all" channel:
 	cacheWaiter.Wait()
-	changeLog, err = collection.GetChangeLog(allChannel, 0)
+	changeLog, err = collection.GetChangeLog(ctx, allChannel, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(changeLog))
 	assert.Equal(t, uint64(3), changeLog[0].Sequence)
@@ -1122,7 +1122,7 @@ func TestConflicts(t *testing.T) {
 	// Verify the _changes feed:
 	options := ChangesOptions{
 		Conflicts:  true,
-		ChangesCtx: context.Background(),
+		ChangesCtx: base.TestCtx(t),
 	}
 	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
@@ -1615,7 +1615,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 	assert.True(t, strings.Contains(retrievedView.Map, "emit()"))
 	assert.NotEqual(t, mapFunction, retrievedView.Map) // SG should wrap the map function, so they shouldn't be equal
 
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions(ctx))
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
@@ -1703,7 +1703,7 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	doc, err = collection.GetDocument(ctx, docid, DocUnmarshalAll)
 	require.NotNil(t, doc)
 	assert.Equal(t, rev2id, doc.CurrentRev)
-	assert.Equal(t, "value", doc.Body()["_special"])
+	assert.Equal(t, "value", doc.Body(ctx)["_special"])
 	assert.NoError(t, err, "Unable to retrieve doc using generated uuid")
 }
 
@@ -2167,8 +2167,8 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.Equal(t, revId, doc.RevID)
 	assert.NoError(t, err, "Couldn't retrieve document")
-	assert.Equal(t, "Bob", doc.Body()["name"])
-	assert.Equal(t, json.Number("52"), doc.Body()["age"])
+	assert.Equal(t, "Bob", doc.Body(ctx)["name"])
+	assert.Equal(t, json.Number("52"), doc.Body(ctx)["age"])
 }
 
 // Multiple clients are attempting to push the same new, non-winning revision concurrently; non-winning is an
@@ -2762,7 +2762,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
 		assert.NoError(t, err)
 		assert.NotEmpty(t, role)
-		seq, err := db.sequences.nextSequence()
+		seq, err := db.sequences.nextSequence(ctx)
 		assert.NoError(t, err)
 		role.SetSequence(seq)
 		err = auth.Save(role)
@@ -2771,7 +2771,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 		user, err := auth.NewUser(fmt.Sprintf("user%d", i), "letmein", base.SetOf("ABC"))
 		assert.NoError(t, err)
 		assert.NotEmpty(t, user)
-		seq, err = db.sequences.nextSequence()
+		seq, err = db.sequences.nextSequence(ctx)
 		assert.NoError(t, err)
 		user.SetSequence(seq)
 		err = auth.Save(user)
@@ -3006,10 +3006,9 @@ func TestImportCompactPanic(t *testing.T) {
 	require.NoError(t, collection.WaitForPendingChanges(ctx))
 
 	// Wait for Compact to run - in the failing case it'll panic before incrementing the stat
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return db.DbStats.Database().NumTombstonesCompacted.Value()
 	}, 1)
-	require.True(t, ok)
 }
 
 func TestGetDatabaseCollectionWithUserScopesNil(t *testing.T) {
@@ -3230,14 +3229,15 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 			name:    "test_unstoppable_runner",
 			Process: &testBackgroundProcess{isStoppable: false},
 		}
-		err := bgMngr.Start(context.TODO(), map[string]interface{}{})
+		ctx := base.TestCtx(t)
+		err := bgMngr.Start(ctx, map[string]interface{}{})
 		require.NoError(t, err)
 		err = bgMngr.Stop()
 		require.NoError(t, err)
 
 		startTime := time.Now()
 		deadline := 10 * time.Second
-		waitForBackgroundManagersToStop(context.TODO(), deadline, []*BackgroundManager{bgMngr})
+		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{bgMngr})
 		assert.Greater(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopping, bgMngr.GetRunState())
 	})
@@ -3247,14 +3247,15 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 			name:    "test_stoppable_runner",
 			Process: &testBackgroundProcess{isStoppable: true},
 		}
-		err := bgMngr.Start(context.TODO(), map[string]interface{}{})
+		ctx := base.TestCtx(t)
+		err := bgMngr.Start(ctx, map[string]interface{}{})
 		require.NoError(t, err)
 		err = bgMngr.Stop()
 		require.NoError(t, err)
 
 		startTime := time.Now()
 		deadline := 10 * time.Second
-		waitForBackgroundManagersToStop(context.TODO(), deadline, []*BackgroundManager{bgMngr})
+		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{bgMngr})
 		assert.Less(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopped, bgMngr.GetRunState())
 	})
@@ -3264,7 +3265,8 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 			name:    "test_stoppable_runner",
 			Process: &testBackgroundProcess{isStoppable: true},
 		}
-		err := stoppableBgMngr.Start(context.TODO(), map[string]interface{}{})
+		ctx := base.TestCtx(t)
+		err := stoppableBgMngr.Start(ctx, map[string]interface{}{})
 		require.NoError(t, err)
 		err = stoppableBgMngr.Stop()
 		require.NoError(t, err)
@@ -3274,14 +3276,14 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 			Process: &testBackgroundProcess{isStoppable: false},
 		}
 
-		err = unstoppableBgMngr.Start(context.TODO(), map[string]interface{}{})
+		err = unstoppableBgMngr.Start(ctx, map[string]interface{}{})
 		require.NoError(t, err)
 		err = unstoppableBgMngr.Stop()
 		require.NoError(t, err)
 
 		startTime := time.Now()
 		deadline := 10 * time.Second
-		waitForBackgroundManagersToStop(context.TODO(), deadline, []*BackgroundManager{stoppableBgMngr, unstoppableBgMngr})
+		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{stoppableBgMngr, unstoppableBgMngr})
 		assert.Greater(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopped, stoppableBgMngr.GetRunState())
 		assert.Equal(t, BackgroundProcessStateStopping, unstoppableBgMngr.GetRunState())

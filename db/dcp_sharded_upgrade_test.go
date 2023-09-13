@@ -236,7 +236,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	ctx = db.AddDatabaseLogContext(ctx)
 	collection := GetSingleDatabaseCollection(t, db)
 
-	err, _ = base.RetryLoop("wait for non-existent node to be removed", func() (shouldRetry bool, err error, value interface{}) {
+	err, _ = base.RetryLoop(ctx, "wait for non-existent node to be removed", func() (shouldRetry bool, err error, value interface{}) {
 		nodes, _, err := cbgt.CfgGetNodeDefs(db.CfgSG, cbgt.NODE_DEFS_KNOWN)
 		if err != nil {
 			return false, err, nil
@@ -250,7 +250,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	}, base.CreateSleeperFunc(100, 100))
 	require.NoError(t, err)
 
-	err, _ = base.RetryLoop("wait for all pindexes to be reassigned", func() (shouldRetry bool, err error, value interface{}) {
+	err, _ = base.RetryLoop(ctx, "wait for all pindexes to be reassigned", func() (shouldRetry bool, err error, value interface{}) {
 		pIndexes, _, err := cbgt.CfgGetPlanPIndexes(db.CfgSG)
 		if err != nil {
 			return false, nil, err

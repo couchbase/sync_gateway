@@ -98,6 +98,7 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 	}
 
 	dcpClient, err := NewDCPClient(
+		ctx,
 		feedName,
 		callback,
 		options,

@@ -158,7 +158,7 @@ func (c *DatabaseCollection) groupID() string {
 // FlushChannelCache flush support. Currently test-only - added for unit test access from rest package
 func (c *DatabaseCollection) FlushChannelCache(ctx context.Context) error {
 	base.InfofCtx(ctx, base.KeyCache, "Flushing channel cache")
-	return c.dbCtx.changeCache.Clear()
+	return c.dbCtx.changeCache.Clear(ctx)
 }
 
 // FlushRevisionCacheForTest creates a new revision cache. This is currently at the database level. Only use this in test code.
@@ -197,8 +197,8 @@ func (c *DatabaseCollection) isGuestReadOnly() bool {
 }
 
 // LastSequence returns the highest sequence number allocated for this collection.
-func (c *DatabaseCollection) LastSequence() (uint64, error) {
-	return c.dbCtx.sequences.lastSequence()
+func (c *DatabaseCollection) LastSequence(ctx context.Context) (uint64, error) {
+	return c.dbCtx.sequences.lastSequence(ctx)
 }
 
 // localDocExpirySecs returns the expiry for docs tracking Couchbase Lite replication state. This is controlled at the database level.
@@ -238,8 +238,8 @@ func (c *DatabaseCollectionWithUser) ReloadUser(ctx context.Context) error {
 }
 
 // RemoveFromChangeCache removes select documents from all channel caches and returns the number of documents removed.
-func (c *DatabaseCollection) RemoveFromChangeCache(docIDs []string, startTime time.Time) int {
-	return c.dbCtx.changeCache.Remove(c.GetCollectionID(), docIDs, startTime)
+func (c *DatabaseCollection) RemoveFromChangeCache(ctx context.Context, docIDs []string, startTime time.Time) int {
+	return c.dbCtx.changeCache.Remove(ctx, c.GetCollectionID(), docIDs, startTime)
 }
 
 // revsLimit is the max depth a document's revision tree can grow to. This is controlled at a database level.

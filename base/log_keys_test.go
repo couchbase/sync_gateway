@@ -58,34 +58,35 @@ func TestLogKeyNames(t *testing.T) {
 	assert.Contains(t, name, "Replicate")
 
 	keys := []string{}
-	logKeys := ToLogKey(keys)
+	ctx := TestCtx(t)
+	logKeys := ToLogKey(ctx, keys)
 	assert.Equal(t, LogKeyMask(0), logKeys)
 	assert.Equal(t, []string{}, logKeys.EnabledLogKeys())
 
 	keys = append(keys, "DCP")
-	logKeys = ToLogKey(keys)
+	logKeys = ToLogKey(ctx, keys)
 	assert.Equal(t, *logKeyMask(KeyDCP), logKeys)
 	assert.Equal(t, []string{KeyDCP.String()}, logKeys.EnabledLogKeys())
 
 	keys = append(keys, "Access")
-	logKeys = ToLogKey(keys)
+	logKeys = ToLogKey(ctx, keys)
 	assert.Equal(t, *logKeyMask(KeyAccess, KeyDCP), logKeys)
 	assert.Equal(t, []string{KeyAccess.String(), KeyDCP.String()}, logKeys.EnabledLogKeys())
 
 	keys = []string{"*", "DCP"}
-	logKeys = ToLogKey(keys)
+	logKeys = ToLogKey(ctx, keys)
 	assert.Equal(t, *logKeyMask(KeyAll, KeyDCP), logKeys)
 	assert.Equal(t, []string{KeyAll.String(), KeyDCP.String()}, logKeys.EnabledLogKeys())
 
 	// Special handling of log keys
 	keys = []string{"HTTP+"}
-	logKeys = ToLogKey(keys)
+	logKeys = ToLogKey(ctx, keys)
 	assert.Equal(t, *logKeyMask(KeyHTTP, KeyHTTPResp), logKeys)
 	assert.Equal(t, []string{KeyHTTP.String(), KeyHTTPResp.String()}, logKeys.EnabledLogKeys())
 
 	// Test that invalid log keys are ignored, and "+" suffixes are stripped.
 	keys = []string{"DCP", "WS+", "InvalidLogKey"}
-	logKeys = ToLogKey(keys)
+	logKeys = ToLogKey(ctx, keys)
 	assert.Equal(t, *logKeyMask(KeyDCP, KeyWebSocket), logKeys)
 	assert.Equal(t, []string{KeyDCP.String(), KeyWebSocket.String()}, logKeys.EnabledLogKeys())
 }
@@ -190,8 +191,9 @@ func BenchmarkLogKeyName(b *testing.B) {
 }
 
 func BenchmarkToLogKey(b *testing.B) {
+	ctx := TestCtx(b)
 	for i := 0; i < b.N; i++ {
-		_ = ToLogKey([]string{"CRUD", "DCP", "Replicate"})
+		_ = ToLogKey(ctx, []string{"CRUD", "DCP", "Replicate"})
 	}
 }
 

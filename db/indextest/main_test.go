@@ -25,8 +25,9 @@ func TestMain(m *testing.M) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		return
 	}
+	ctx := context.Background() // start of test process
 	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
-	base.TestBucketPoolMain(m, primaryIndexReadier, primaryIndexInit, tbpOptions)
+	base.TestBucketPoolMain(ctx, m, primaryIndexReadier, primaryIndexInit, tbpOptions)
 }
 
 // primaryIndexInit is run synchronously only once per-bucket to create a primary index.

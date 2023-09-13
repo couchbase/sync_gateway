@@ -299,7 +299,7 @@ func (rt *RestTester) InsertDbConfigToBucket(config *DatabaseConfig, bucketName 
 }
 
 func (rt *RestTester) PersistDbConfigToBucket(dbConfig DbConfig, bucketName string) {
-	version, err := GenerateDatabaseConfigVersionID("", &dbConfig)
+	version, err := GenerateDatabaseConfigVersionID(rt.Context(), "", &dbConfig)
 	require.NoError(rt.TB, err)
 
 	metadataID, metadataIDError := rt.ServerContext().BootstrapContext.ComputeMetadataIDForDbConfig(base.TestCtx(rt.TB), &dbConfig)

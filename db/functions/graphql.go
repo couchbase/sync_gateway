@@ -92,8 +92,8 @@ type graphQLImpl struct {
 }
 
 // Creates a new GraphQL instance from its configuration.
-func CompileGraphQL(config *GraphQLConfig) (*graphQLImpl, error) {
-	if schema, err := config.compileSchema(); err != nil {
+func CompileGraphQL(ctx context.Context, config *GraphQLConfig) (*graphQLImpl, error) {
+	if schema, err := config.compileSchema(ctx); err != nil {
 		return nil, err
 	} else {
 		gql := &graphQLImpl{
@@ -106,11 +106,11 @@ func CompileGraphQL(config *GraphQLConfig) (*graphQLImpl, error) {
 
 // Validates a GraphQL configuration by parsing the schema.
 func (config *GraphQLConfig) Validate(ctx context.Context) error {
-	_, err := config.compileSchema()
+	_, err := config.compileSchema(ctx)
 	return err
 }
 
-func (config *GraphQLConfig) compileSchema() (schema graphql.Schema, err error) {
+func (config *GraphQLConfig) compileSchema(ctx context.Context) (schema graphql.Schema, err error) {
 	// Get the schema source, from either `schema` or `schemaFile`:
 	schemaSource, err := config.getSchema()
 	if err != nil {
@@ -137,11 +137,11 @@ ResolverLoop:
 			} else if fieldName == "__typename" {
 				// The "__typename" resolver returns the name of the concrete type of an
 				// instance of an interface.
-				typeNameResolver, err = config.compileTypeNameResolver(typeName, fnConfig)
+				typeNameResolver, err = config.compileTypeNameResolver(ctx, typeName, fnConfig)
 				resolverCount += 1
 			} else {
 				var fn graphql.FieldResolveFn
-				fn, err = config.compileFieldResolver(typeName, fieldName, fnConfig)
+				fn, err = config.compileFieldResolver(ctx, typeName, fieldName, fnConfig)
 				fieldMap[fieldName] = &gqltools.FieldResolve{Resolve: fn}
 				resolverCount += 1
 			}
@@ -177,7 +177,7 @@ ResolverLoop:
 	})
 
 	if err == nil && len(schema.TypeMap()) == 0 {
-		base.WarnfCtx(context.Background(), "GraphQL Schema object has no registered TypeMap -- this probably means the schema has unresolved types. See gqltools warnings above")
+		base.WarnfCtx(ctx, "GraphQL Schema object has no registered TypeMap -- this probably means the schema has unresolved types. See gqltools warnings above")
 		err = fmt.Errorf("GraphQL Schema object has no registered TypeMap -- this probably means the schema has unresolved types")
 	}
 	return schema, err
@@ -219,14 +219,14 @@ func graphQLResolverName(typeName string, fieldName string) string {
 
 // Creates a graphQLResolver for the given JavaScript code, and returns a graphql-go FieldResolveFn
 // that invokes it.
-func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName string, fnConfig FunctionConfig) (graphql.FieldResolveFn, error) {
+func (config *GraphQLConfig) compileFieldResolver(ctx context.Context, typeName string, fieldName string, fnConfig FunctionConfig) (graphql.FieldResolveFn, error) {
 	name := graphQLResolverName(typeName, fieldName)
 	isMutation := typeName == "Mutation"
 	if isMutation && fnConfig.Type == "query" {
 		return nil, fmt.Errorf("GraphQL mutations must be implemented in JavaScript")
 	}
 
-	userFn, err := compileFunction(name, "GraphQL resolver", &fnConfig)
+	userFn, err := compileFunction(ctx, name, "GraphQL resolver", &fnConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -272,14 +272,14 @@ func resolverInfo(params graphql.ResolveParams) map[string]any {
 
 //////// TYPE-NAME RESOLVER:
 
-func (config *GraphQLConfig) compileTypeNameResolver(interfaceName string, fnConfig FunctionConfig) (graphql.ResolveTypeFn, error) {
+func (config *GraphQLConfig) compileTypeNameResolver(ctx context.Context, interfaceName string, fnConfig FunctionConfig) (graphql.ResolveTypeFn, error) {
 	if fnConfig.Type != "javascript" {
 		return nil, fmt.Errorf("a GraphQL '__typename__' resolver must be JavaScript")
 	} else if fnConfig.Allow != nil {
 		return nil, fmt.Errorf("'allow' is not valid in a GraphQL '__typename__' resolver")
 	}
 
-	fn, err := compileFunction(interfaceName, "GraphQL type-name resolver", &fnConfig)
+	fn, err := compileFunction(ctx, interfaceName, "GraphQL type-name resolver", &fnConfig)
 	if err != nil {
 		return nil, err
 	}

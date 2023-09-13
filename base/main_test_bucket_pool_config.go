@@ -71,7 +71,8 @@ var tbpDefaultBucketSpec = BucketSpec{
 
 // TestsUseNamedCollections returns true if the tests use named collections.
 func TestsUseNamedCollections() bool {
-	ok, err := GTestBucketPool.canUseNamedCollections()
+	ctx := context.Background()
+	ok, err := GTestBucketPool.canUseNamedCollections(ctx)
 	return err == nil && ok
 }
 
@@ -90,7 +91,7 @@ func TestsRequireMobileRBAC(t *testing.T) {
 }
 
 // canUseNamedCollections returns true if the cluster supports named collections, and they are also requested
-func (tbp *TestBucketPool) canUseNamedCollections() (bool, error) {
+func (tbp *TestBucketPool) canUseNamedCollections(ctx context.Context) (bool, error) {
 	// walrus supports collections, but we need to query the server's version for capability check
 	clusterSupport := true
 	if tbp.cluster != nil {
@@ -111,10 +112,10 @@ func (tbp *TestBucketPool) canUseNamedCollections() (bool, error) {
 	useDefaultCollection, isSet := os.LookupEnv(tbpEnvUseDefaultCollection)
 	if !isSet {
 		if !queryStoreSupportsCollections {
-			tbp.Logf(context.TODO(), "GSI disabled - not using named collections")
+			tbp.Logf(ctx, "GSI disabled - not using named collections")
 			return false, nil
 		}
-		tbp.Logf(context.TODO(), "Will use named collections if cluster supports them: %v", clusterSupport)
+		tbp.Logf(ctx, "Will use named collections if cluster supports them: %v", clusterSupport)
 		// use collections if running GSI and server >= 7
 		return clusterSupport, nil
 	}
@@ -136,52 +137,52 @@ func (tbp *TestBucketPool) canUseNamedCollections() (bool, error) {
 }
 
 // tbpNumBuckets returns the configured number of buckets to use in the pool.
-func tbpNumBuckets() int {
+func tbpNumBuckets(ctx context.Context) int {
 	numBuckets := tbpDefaultBucketPoolSize
 	if envPoolSize := os.Getenv(tbpEnvBucketPoolSize); envPoolSize != "" {
 		var err error
 		numBuckets, err = strconv.Atoi(envPoolSize)
 		if err != nil {
-			FatalfCtx(context.TODO(), "Couldn't parse %s: %v", tbpEnvBucketPoolSize, err)
+			FatalfCtx(ctx, "Couldn't parse %s: %v", tbpEnvBucketPoolSize, err)
 		}
 	}
 	return numBuckets
 }
 
 // tbpNumReplicasreturns the number of replicas to use in each bucket.
-func tbpNumReplicas() uint32 {
+func tbpNumReplicas(ctx context.Context) uint32 {
 	numReplicas := os.Getenv(tbpEnvBucketNumReplicas)
 	if numReplicas == "" {
 		return 0
 	}
 	replicas, err := strconv.Atoi(numReplicas)
 	if err != nil {
-		FatalfCtx(context.TODO(), "Couldn't parse %s: %v", tbpEnvBucketPoolSize, err)
+		FatalfCtx(ctx, "Couldn't parse %s: %v", tbpEnvBucketPoolSize, err)
 	}
 	return uint32(replicas)
 }
 
 // tbpNumCollectionsPerBucket returns the configured number of collections prepared in a bucket.
-func tbpNumCollectionsPerBucket() int {
+func tbpNumCollectionsPerBucket(ctx context.Context) int {
 	numCollectionsPerBucket := tbpDefaultCollectionPoolSize
 	if envCollectionPoolSize := os.Getenv(tbpEnvCollectionPoolSize); envCollectionPoolSize != "" {
 		var err error
 		numCollectionsPerBucket, err = strconv.Atoi(envCollectionPoolSize)
 		if err != nil {
-			FatalfCtx(context.TODO(), "Couldn't parse %s: %v", tbpEnvCollectionPoolSize, err)
+			FatalfCtx(ctx, "Couldn't parse %s: %v", tbpEnvCollectionPoolSize, err)
 		}
 	}
 	return numCollectionsPerBucket
 }
 
 // tbpBucketQuotaMB returns the configured bucket RAM quota.
-func tbpBucketQuotaMB() int {
+func tbpBucketQuotaMB(ctx context.Context) int {
 	bucketQuota := defaultBucketQuotaMB
 	if envBucketQuotaMB := os.Getenv(tbpEnvBucketQuotaMB); envBucketQuotaMB != "" {
 		var err error
 		bucketQuota, err = strconv.Atoi(envBucketQuotaMB)
 		if err != nil {
-			FatalfCtx(context.TODO(), "Couldn't parse %s: %v", tbpEnvBucketQuotaMB, err)
+			FatalfCtx(ctx, "Couldn't parse %s: %v", tbpEnvBucketQuotaMB, err)
 		}
 	}
 	return bucketQuota

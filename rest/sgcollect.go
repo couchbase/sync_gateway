@@ -313,7 +313,7 @@ func sgCollectPaths() (sgBinary, sgCollectBinary string, err error) {
 		return "", "", err
 	}
 
-	logCtx := context.Background()
+	logCtx := context.TODO() // this is global variable at init, we can't pass it in easily
 	hasBinDir := true
 	sgCollectPath := filepath.Join("tools", "sgcollect_info")
 
