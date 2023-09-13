@@ -1339,14 +1339,25 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 		return nil, fmt.Errorf("error %s from getAttachment: %s", resp.Properties[BlipErrorCode], respBody)
 	}
 	lNum, metaLengthOK := meta["length"]
+	if !metaLengthOK {
+		return nil, fmt.Errorf("no attachment length provided in meta")
+	}
+
 	metaLength, ok := base.ToInt64(lNum)
 	if !ok {
-		return nil, fmt.Errorf("invalid attachment length found in meta")
+		return nil, fmt.Errorf("invalid attachment length %q found in meta", lNum)
 	}
 
 	// Verify that the attachment we received matches the metadata stored in the document
-	if !metaLengthOK || len(respBody) != int(metaLength) || Sha1DigestKey(respBody) != digest {
-		return nil, base.HTTPErrorf(http.StatusBadRequest, "Incorrect data sent for attachment with digest: %s", digest)
+	expectedLength := int(metaLength)
+	actualLength := len(respBody)
+	if actualLength != expectedLength {
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "Incorrect data sent for attachment with digest: %s (length mismatch - expected %d got %d)", digest, expectedLength, actualLength)
+	}
+
+	actualDigest := Sha1DigestKey(respBody)
+	if actualDigest != digest {
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "Incorrect data sent for attachment with digest: %s (digest mismatch - got %s)", digest, actualDigest)
 	}
 
 	bh.replicationStats.GetAttachment.Add(1)

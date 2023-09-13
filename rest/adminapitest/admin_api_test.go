@@ -1496,7 +1496,7 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 
 	// grab the persisted db config from the bucket
 	databaseConfig := rest.DatabaseConfig{}
-	_, err := rt.ServerContext().BootstrapContext.GetConfig(rt.CustomTestBucket.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID, "db1", &databaseConfig)
+	_, err := rt.ServerContext().BootstrapContext.GetConfig(rt.Context(), rt.CustomTestBucket.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID, "db1", &databaseConfig)
 	require.NoError(t, err)
 
 	// update the persisted config to a fake bucket name
@@ -1574,7 +1574,7 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Name = "db1"
 
-	version, err := rest.GenerateDatabaseConfigVersionID("", &dbConfig)
+	version, err := rest.GenerateDatabaseConfigVersionID(rt.Context(), "", &dbConfig)
 	require.NoError(t, err)
 
 	metadataID, metadataIDError := rt.ServerContext().BootstrapContext.ComputeMetadataIDForDbConfig(base.TestCtx(t), &dbConfig)
@@ -1812,7 +1812,7 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// persistence logic construction
-	version, err := rest.GenerateDatabaseConfigVersionID("", &dbConfig)
+	version, err := rest.GenerateDatabaseConfigVersionID(rt.Context(), "", &dbConfig)
 	require.NoError(rt.TB, err)
 
 	metadataID, metadataIDError := rt.ServerContext().BootstrapContext.ComputeMetadataIDForDbConfig(base.TestCtx(rt.TB), &dbConfig)
