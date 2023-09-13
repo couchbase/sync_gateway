@@ -60,7 +60,7 @@ func (b *bootstrapContext) GetConfig(ctx context.Context, bucketName, groupID, d
 func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID string, config *DatabaseConfig) (newCAS uint64, err error) {
 	dbName := config.Name
 	attempts := 0
-	ctx = b.addDatabaseLogContext(ctx, dbName)
+	ctx = b.addDatabaseLogContext(ctx, &config.DbConfig)
 	for attempts < configUpdateMaxRetryAttempts {
 		attempts++
 		base.InfofCtx(ctx, base.KeyConfig, "InsertConfig into bucket %s starting (attempt %d/%d)", bucketName, attempts, configUpdateMaxRetryAttempts)
@@ -137,7 +137,6 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 	var previousVersion string
 	attempts := 0
 
-	ctx = b.addDatabaseLogContext(ctx, dbName)
 outer:
 	for attempts < configUpdateMaxRetryAttempts {
 		attempts++
@@ -145,6 +144,9 @@ outer:
 		// Step 1. Fetch registry and databases - enforces registry/config synchronization
 		var existingConfig *DatabaseConfig
 		registry, existingConfig, err = b.getRegistryAndDatabase(ctx, bucketName, groupID, dbName)
+		if existingConfig != nil {
+			ctx = b.addDatabaseLogContext(ctx, &existingConfig.DbConfig)
+		}
 		if err != nil {
 			base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig unable to retrieve registry and database: %v", err)
 			return 0, err
@@ -229,7 +231,6 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 	var existingCas uint64
 	var registry *GatewayRegistry
 	attempts := 0
-	ctx = b.addDatabaseLogContext(ctx, dbName)
 outer:
 	for attempts < configUpdateMaxRetryAttempts {
 		attempts++
@@ -445,7 +446,7 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 // triggers registry rollback and returns rollback error
 func (b *bootstrapContext) getDatabaseConfig(ctx context.Context, bucketName, groupID, dbName string, version string, registry *GatewayRegistry) (*DatabaseConfig, error) {
 
-	ctx = b.addDatabaseLogContext(ctx, dbName)
+	ctx = b.addDatabaseLogContext(ctx, &DbConfig{Name: dbName})
 	config, err := b.getConfigVersionWithRetry(ctx, bucketName, groupID, dbName, version)
 	if err != nil {
 		if err == base.ErrConfigRegistryRollback {
@@ -687,8 +688,8 @@ func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketNam
 
 }
 
-func (b *bootstrapContext) addDatabaseLogContext(ctx context.Context, dbName string) context.Context {
-	return base.DatabaseLogCtx(ctx, dbName, nil)
+func (b *bootstrapContext) addDatabaseLogContext(ctx context.Context, config *DbConfig) context.Context {
+	return base.DatabaseLogCtx(ctx, config.Name, config.toDbConsoleLogConfig(ctx))
 }
 
 func (b *bootstrapContext) ComputeMetadataIDForDbConfig(ctx context.Context, config *DbConfig) (string, error) {

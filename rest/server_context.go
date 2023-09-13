@@ -1205,13 +1205,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 
 	// Per-database console logging config overrides
-	if config.Logging != nil && config.Logging.Console != nil {
-		logKey := base.ToLogKey(ctx, config.Logging.Console.LogKeys)
-		contextOptions.LoggingConfig.Console = &base.DbConsoleLogConfig{
-			LogLevel: config.Logging.Console.LogLevel,
-			LogKeys:  &logKey,
-		}
-	}
+	contextOptions.LoggingConfig.Console = config.toDbConsoleLogConfig(ctx)
 
 	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {
 		var err error
