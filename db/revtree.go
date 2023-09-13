@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -64,10 +63,6 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	}
 	revIndexes := map[string]int{"": -1}
 
-	// there's no way to lookup leaves by key without doing a full tree iteration, so we'll just do it once the first time we need it
-	var leaves map[string]*RevInfo
-	leavesOnce := sync.Once{}
-
 	i := 0
 	for _, info := range tree {
 		revIndexes[info.ID] = i
@@ -88,20 +83,12 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 			}
 		}
 
-		// for leaf revisions we'll store channel information
-		// there's some duplication here for the current rev
-		// (active channels are stored outside the revtree)
-		// but special casing this doesn't seem worthwhile
+		// for non-winning leaf revisions we'll store channel information
 		if len(info.Channels) > 0 {
-			leavesOnce.Do(func() {
-				leaves = tree.Leaves()
-			})
-			if _, isLeaf := leaves[info.ID]; isLeaf {
-				if rep.ChannelsMap == nil {
-					rep.ChannelsMap = make(map[string]base.Set, 1)
-				}
-				rep.ChannelsMap[strconv.FormatInt(int64(i), 10)] = info.Channels
+			if rep.ChannelsMap == nil {
+				rep.ChannelsMap = make(map[string]base.Set, 1)
 			}
+			rep.ChannelsMap[strconv.FormatInt(int64(i), 10)] = info.Channels
 		}
 
 		if info.Deleted {
@@ -422,6 +409,7 @@ func (tree RevTree) addRevision(docid string, info RevInfo) error {
 		if !ok {
 			return fmt.Errorf("doc: %v, RevTree addRevision for rev %q, parent id %q is missing", docid, revid, p)
 		}
+		parent.Channels = nil
 	}
 	tree[revid] = &info
 	return nil
