@@ -1659,11 +1659,9 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	}
 
 	// Fetch the xattr and make sure it contains the above value
-	subdocXattrStore, ok := rt.GetSingleDataStore().(base.SubdocXattrStore)
-	require.True(t, ok)
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	_, err = subdocXattrStore.SubdocGetBodyAndXattr("-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, "", &retrievedVal, &retrievedXattr, nil)
+	_, err = rt.GetSingleDataStore().GetWithXattr("-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, "", &retrievedVal, &retrievedXattr, nil)
 	assert.NoError(t, err, "Unexpected Error")
 	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedXattr["rev"])
 
