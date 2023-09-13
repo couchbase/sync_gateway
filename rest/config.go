@@ -1369,6 +1369,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 		}
 		for dbName, fetchedConfig := range fetchedConfigs {
 			if dbConfig, ok := sc.dbConfigs[dbName]; ok && dbConfig.cfgCas >= fetchedConfig.cfgCas {
+				sc.invalidDatabaseConfigTracking.remove(dbName)
 				base.DebugfCtx(ctx, base.KeyConfig, "Database %q bucket %q config has not changed since last update", fetchedConfig.Name, *fetchedConfig.Bucket)
 				delete(fetchedConfigs, dbName)
 			}
@@ -1388,7 +1389,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 	for _, dbName := range deletedDatabases {
 		// It's possible that the "deleted" database was not written to the server until after sc.FetchConfigs had returned...
 		// we'll need to pay for the cost of getting the config again now that we've got the write lock to double-check this db is definitely ok to remove...
-		found, _, err := sc.fetchDatabase(ctx, dbName)
+		found, _, err := sc._fetchDatabase(ctx, dbName)
 		if err != nil {
 			base.InfofCtx(ctx, base.KeyConfig, "Error fetching config for database %q to check whether we need to remove it: %v", dbName, err)
 		}
@@ -1416,15 +1417,13 @@ func (sc *ServerContext) fetchAndLoadDatabaseSince(ctx context.Context, dbName s
 }
 
 func (sc *ServerContext) fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string) (found bool, err error) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
 	return sc._fetchAndLoadDatabase(nonContextStruct, dbName)
 }
 
 // _fetchAndLoadDatabase will attempt to find the given database name first in a matching bucket name,
 // but then fall back to searching through configs in each bucket to try and find a config.
 func (sc *ServerContext) _fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string) (found bool, err error) {
-	found, dbConfig, err := sc.fetchDatabase(nonContextStruct.Ctx, dbName)
+	found, dbConfig, err := sc._fetchDatabase(nonContextStruct.Ctx, dbName)
 	if err != nil || !found {
 		return false, err
 	}
@@ -1492,6 +1491,13 @@ func (sc *ServerContext) findBucketWithCallback(callback func(bucket string) (ex
 }
 
 func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
+	// fetch will update the databses
+	sc.lock.Lock()
+	defer sc.lock.Lock()
+	return sc._fetchDatabase(ctx, dbName)
+}
+
+func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
 	// loop code moved to foreachDbConfig
 	var cnf DatabaseConfig
 	callback := func(bucket string) (exit bool, err error) {
@@ -1525,7 +1531,7 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 		// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
 		// in memory representation on the server context.
 		if bucket != *cnf.Bucket {
-			sc.handleInvalidDatabaseConfig(ctx, bucket, cnf)
+			sc._handleInvalidDatabaseConfig(ctx, bucket, cnf)
 			return true, fmt.Errorf("mismatch in persisted database bucket name %q vs the actual bucket name %q. Please correct db %q's config, groupID %q.", base.MD(cnf.Bucket), base.MD(bucket), base.MD(cnf.Name), base.MD(sc.Config.Bootstrap.ConfigGroupID))
 		}
 		bucketCopy := bucket
@@ -1553,6 +1559,12 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 }
 
 func (sc *ServerContext) handleInvalidDatabaseConfig(ctx context.Context, bucket string, cnf DatabaseConfig) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	sc._handleInvalidDatabaseConfig(ctx, bucket, cnf)
+}
+
+func (sc *ServerContext) _handleInvalidDatabaseConfig(ctx context.Context, bucket string, cnf DatabaseConfig) {
 	// track corrupt database context
 	sc.invalidDatabaseConfigTracking.addInvalidDatabase(ctx, cnf.Name, cnf, bucket)
 	// don't load config + remove from server context (apart from corrupt database map)

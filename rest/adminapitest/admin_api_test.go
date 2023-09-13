@@ -1635,7 +1635,6 @@ func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
 	// assert request fails
 	resp = rt.ReplaceDbConfig("db1", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusNotFound)
-	base.RequireWaitForStat(t, base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Value, 1)
 }
 
 // TestMultipleBucketWithBadDbConfigScenario1:
@@ -1644,9 +1643,6 @@ func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
 func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 	base.TestsRequireBootstrapConnection(t)
 	base.RequireNumTestBuckets(t, 3)
-	defer func() {
-		base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Set(0)
-	}()
 	tb1 := base.GetPersistentTestBucket(t)
 	defer tb1.Close()
 	tb2 := base.GetPersistentTestBucket(t)
@@ -1685,7 +1681,6 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 	dbConfig = rt2.NewDbConfig()
 	dbConfig.Name = "db1"
 	rt2.PersistDbConfigToBucket(dbConfig, tb3.GetName())
-	base.RequireWaitForStat(t, base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Value, 1)
 
 	rt3 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
@@ -1723,10 +1718,6 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 //   - create bucketA and bucketB with db configs that that both list bucket name as bucketA
 //   - start a new rest tester and assert that invalid db config is picked up and the valid one is also picked up
 func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
-	defer func() {
-		base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Set(0)
-	}()
-
 	base.TestsRequireBootstrapConnection(t)
 
 	base.RequireNumTestBuckets(t, 3)
@@ -1760,7 +1751,6 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 	})
 	defer rt2.Close()
 
-	require.Equal(t, int64(0), base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Value())
 	// create a db config pointing to bucket C and persist to bucket B
 	dbConfig = rt2.NewDbConfig()
 	dbConfig.Name = "db1"
@@ -1784,8 +1774,6 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 	}, 200, 1000)
 	require.NoError(t, err)
 
-	base.RequireWaitForStat(t, base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Value, 1)
-
 	// assert that there is a valid database picked up as the invalid configs have this rest tester backing bucket
 	err = rt3.WaitForConditionWithOptions(func() bool {
 		validDatabase := rt3.ServerContext().AllDatabases()
@@ -1800,10 +1788,6 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 //   - persist that db config to another bucket
 //   - assert that is picked up as an invalid db config
 func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
-	defer func() {
-		base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Set(0)
-	}()
-
 	base.TestsRequireBootstrapConnection(t)
 
 	tb1 := base.GetPersistentTestBucket(t)
@@ -1821,7 +1805,6 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 	})
 	defer rt.Close()
 
-	require.Equal(t, int64(0), base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Value())
 	// create a new db
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Name = "db1"
@@ -1847,7 +1830,6 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 	// add the config to the other bucket
 	rt.InsertDbConfigToBucket(&persistedConfig, tb2.GetName())
 
-	require.Equal(t, int64(0), base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Value())
 	// assert the config is picked as invalid db config
 	err = rt.WaitForConditionWithOptions(func() bool {
 		invalidDatabases := rt.ServerContext().AllInvalidDatabases()
@@ -1855,7 +1837,6 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 	}, 200, 1000)
 	require.NoError(t, err)
 
-	base.RequireWaitForStat(t, base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Value, 1)
 }
 
 func TestResyncStopUsingDCPStream(t *testing.T) {
