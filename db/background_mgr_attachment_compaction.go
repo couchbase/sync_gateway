@@ -113,9 +113,9 @@ func (a *AttachmentCompactionManager) PurgeDCPMetadata(ctx context.Context, data
 		return err
 	}
 
-	metadata := base.NewDCPMetadataCS(datastore, numVbuckets, base.DefaultNumWorkers, metadataKeyPrefix)
+	metadata := base.NewDCPMetadataCS(ctx, datastore, numVbuckets, base.DefaultNumWorkers, metadataKeyPrefix)
 	base.InfofCtx(ctx, base.KeyDCP, "purging persisted dcp metadata for attachment compaction run %s", a.CompactID)
-	metadata.Purge(base.DefaultNumWorkers)
+	metadata.Purge(ctx, base.DefaultNumWorkers)
 	return nil
 }
 
@@ -132,7 +132,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	var metadataKeyPrefix string
 
 	persistClusterStatus := func() {
-		err := persistClusterStatusCallback()
+		err := persistClusterStatusCallback(ctx)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to persist cluster status on-demand following completion of phase: %v", err)
 		}
@@ -157,7 +157,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 			return shouldRetry, err, nil
 		}
 		// retry loop for handling a rollback during mark phase of compaction process
-		err, _ = base.RetryLoop("attachmentCompactMarkPhase", worker, base.CreateMaxDoublingSleeperFunc(25, 100, 10000))
+		err, _ = base.RetryLoop(ctx, "attachmentCompactMarkPhase", worker, base.CreateMaxDoublingSleeperFunc(25, 100, 10000))
 		if err != nil || terminator.IsClosed() {
 			if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
 				// log warning to show we hit max number of retries
@@ -185,7 +185,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 			return shouldRetry, err, nil
 		}
 		// retry loop for handling a rollback during mark phase of compaction process
-		err, _ = base.RetryLoop("attachmentCompactCleanupPhase", worker, base.CreateMaxDoublingSleeperFunc(25, 100, 10000))
+		err, _ = base.RetryLoop(ctx, "attachmentCompactCleanupPhase", worker, base.CreateMaxDoublingSleeperFunc(25, 100, 10000))
 		if err != nil || terminator.IsClosed() {
 			if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
 				// log warning to show we hit max number of retries

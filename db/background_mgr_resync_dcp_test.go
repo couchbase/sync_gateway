@@ -124,7 +124,7 @@ func TestResyncDCPInit(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			err = resycMgr.Process.Init(context.TODO(), options, clusterData)
+			err = resycMgr.Process.Init(ctx, options, clusterData)
 			require.NoError(t, err)
 
 			response := getResyncStats(resycMgr.Process)
@@ -170,7 +170,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err = WaitForConditionWithOptions(func() bool {
+		err = WaitForConditionWithOptions(t, func() bool {
 			stats := getResyncStats(resycMgr.Process)
 			if stats.DocsProcessed > 300 {
 				err = resycMgr.Stop()
@@ -182,7 +182,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	err = WaitForConditionWithOptions(func() bool {
+	err = WaitForConditionWithOptions(t, func() bool {
 		var status BackgroundManagerStatus
 		rawStatus, _ := resycMgr.GetStatus()
 		_ = json.Unmarshal(rawStatus, &status)
@@ -224,7 +224,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		err := resyncMgr.Start(ctx, options)
 		require.NoError(t, err)
 
-		err = WaitForConditionWithOptions(func() bool {
+		err = WaitForConditionWithOptions(t, func() bool {
 			var status BackgroundManagerStatus
 			rawStatus, _ := resyncMgr.GetStatus()
 			_ = json.Unmarshal(rawStatus, &status)
@@ -259,7 +259,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		err := resyncMgr.Start(ctx, options)
 		require.NoError(t, err)
 
-		err = WaitForConditionWithOptions(func() bool {
+		err = WaitForConditionWithOptions(t, func() bool {
 			var status BackgroundManagerStatus
 			rawStatus, _ := resyncMgr.GetStatus()
 			_ = json.Unmarshal(rawStatus, &status)
@@ -306,7 +306,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	// Attempt to Start running process
 	go func() {
 		defer wg.Done()
-		err := WaitForConditionWithOptions(func() bool {
+		err := WaitForConditionWithOptions(t, func() bool {
 			stats := getResyncStats(resycMgr.Process)
 			return stats.DocsProcessed > 100
 		}, 100, 200)
@@ -317,7 +317,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 		assert.Contains(t, err.Error(), "Process already running")
 	}()
 
-	err = WaitForConditionWithOptions(func() bool {
+	err = WaitForConditionWithOptions(t, func() bool {
 		var status BackgroundManagerStatus
 		rawStatus, _ := resycMgr.GetStatus()
 		_ = json.Unmarshal(rawStatus, &status)
@@ -375,7 +375,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 		}
 	}()
 
-	err = WaitForConditionWithOptions(func() bool {
+	err = WaitForConditionWithOptions(t, func() bool {
 		var status BackgroundManagerStatus
 		rawStatus, _ := resycMgr.GetStatus()
 		_ = json.Unmarshal(rawStatus, &status)
@@ -391,7 +391,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 	err = resycMgr.Start(ctx, options)
 	require.NoError(t, err)
 
-	err = WaitForConditionWithOptions(func() bool {
+	err = WaitForConditionWithOptions(t, func() bool {
 		var status BackgroundManagerStatus
 		rawStatus, _ := resycMgr.GetStatus()
 		_ = json.Unmarshal(rawStatus, &status)

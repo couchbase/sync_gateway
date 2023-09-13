@@ -112,7 +112,7 @@ func (d *DCPDest) DataUpdate(partition string, key []byte, seq uint64,
 	if !dcpKeyFilter(key, d.metaKeys) {
 		return nil
 	}
-	event := makeFeedEventForDest(key, val, cas, partitionToVbNo(partition), collectionIDFromExtras(extras), 0, 0, sgbucket.FeedOpMutation)
+	event := makeFeedEventForDest(key, val, cas, partitionToVbNo(d.loggingCtx, partition), collectionIDFromExtras(extras), 0, 0, sgbucket.FeedOpMutation)
 	d.dataUpdate(seq, event)
 	return nil
 }
@@ -136,7 +136,7 @@ func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []b
 		if !ok {
 			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_GOCB_DCP to cbgt.GocbExtras")
 		}
-		event = makeFeedEventForDest(key, val, cas, partitionToVbNo(partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, sgbucket.FeedOpMutation)
+		event = makeFeedEventForDest(key, val, cas, partitionToVbNo(d.loggingCtx, partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, sgbucket.FeedOpMutation)
 
 	}
 
@@ -151,7 +151,7 @@ func (d *DCPDest) DataDelete(partition string, key []byte, seq uint64,
 		return nil
 	}
 
-	event := makeFeedEventForDest(key, nil, cas, partitionToVbNo(partition), collectionIDFromExtras(extras), 0, 0, sgbucket.FeedOpDeletion)
+	event := makeFeedEventForDest(key, nil, cas, partitionToVbNo(d.loggingCtx, partition), collectionIDFromExtras(extras), 0, 0, sgbucket.FeedOpDeletion)
 	d.dataUpdate(seq, event)
 	return nil
 }
@@ -174,7 +174,7 @@ func (d *DCPDest) DataDeleteEx(partition string, key []byte, seq uint64,
 		if !ok {
 			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_GOCB_DCP to cbgt.GocbExtras")
 		}
-		event = makeFeedEventForDest(key, dcpExtras.Value, cas, partitionToVbNo(partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, sgbucket.FeedOpDeletion)
+		event = makeFeedEventForDest(key, dcpExtras.Value, cas, partitionToVbNo(d.loggingCtx, partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, sgbucket.FeedOpDeletion)
 
 	}
 	d.dataUpdate(seq, event)
@@ -183,12 +183,12 @@ func (d *DCPDest) DataDeleteEx(partition string, key []byte, seq uint64,
 
 func (d *DCPDest) SnapshotStart(partition string,
 	snapStart, snapEnd uint64) error {
-	d.snapshotStart(partitionToVbNo(partition), snapStart, snapEnd)
+	d.snapshotStart(partitionToVbNo(d.loggingCtx, partition), snapStart, snapEnd)
 	return nil
 }
 
 func (d *DCPDest) OpaqueGet(partition string) (value []byte, lastSeq uint64, err error) {
-	vbNo := partitionToVbNo(partition)
+	vbNo := partitionToVbNo(d.loggingCtx, partition)
 	if !d.metaInitComplete[vbNo] {
 		d.InitVbMeta(vbNo)
 		d.metaInitComplete[vbNo] = true
@@ -202,7 +202,7 @@ func (d *DCPDest) OpaqueGet(partition string) (value []byte, lastSeq uint64, err
 }
 
 func (d *DCPDest) OpaqueSet(partition string, value []byte) error {
-	vbNo := partitionToVbNo(partition)
+	vbNo := partitionToVbNo(d.loggingCtx, partition)
 	if !d.metaInitComplete[vbNo] {
 		d.InitVbMeta(vbNo)
 		d.metaInitComplete[vbNo] = true
@@ -212,12 +212,12 @@ func (d *DCPDest) OpaqueSet(partition string, value []byte) error {
 }
 
 func (d *DCPDest) Rollback(partition string, rollbackSeq uint64) error {
-	return d.rollback(partitionToVbNo(partition), rollbackSeq)
+	return d.rollback(partitionToVbNo(d.loggingCtx, partition), rollbackSeq)
 }
 
 func (d *DCPDest) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq uint64) error {
 	cbgtMeta := makeVbucketMetadataForSequence(vbucketUUID, rollbackSeq)
-	return d.rollbackEx(partitionToVbNo(partition), vbucketUUID, rollbackSeq, cbgtMeta)
+	return d.rollbackEx(partitionToVbNo(d.loggingCtx, partition), vbucketUUID, rollbackSeq, cbgtMeta)
 }
 
 // TODO: Not implemented, review potential usage
@@ -243,10 +243,10 @@ func (d *DCPDest) Stats(io.Writer) error {
 	return nil
 }
 
-func partitionToVbNo(partition string) uint16 {
+func partitionToVbNo(ctx context.Context, partition string) uint16 {
 	vbNo, err := strconv.Atoi(partition)
 	if err != nil {
-		ErrorfCtx(context.Background(), "Unexpected non-numeric partition value %s, ignoring: %v", partition, err)
+		ErrorfCtx(ctx, "Unexpected non-numeric partition value %s, ignoring: %v", partition, err)
 		return 0
 	}
 	return uint16(vbNo)

@@ -720,7 +720,7 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Create a DB configured with one scope
 	res := BootstrapAdminRequest(t, http.MethodPut, "/db/", string(mustMarshalJSON(t, map[string]any{
@@ -886,7 +886,7 @@ func TestCollectionStats(t *testing.T) {
 		ok, err := dbc.GetCollectionDatastore().AddRaw("importeddoc", 0, []byte(`{"imported":true}`))
 		require.NoError(t, err)
 		assert.True(t, ok)
-		base.WaitForStat(collection2Stats.ImportCount.Value, 1)
+		base.RequireWaitForStat(t, collection2Stats.ImportCount.Value, 1)
 		assert.Equal(t, int64(2), collection2Stats.NumDocWrites.Value())
 	}
 }

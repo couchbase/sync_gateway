@@ -64,6 +64,15 @@ type blipHandler struct {
 	serialNumber  uint64                      // This blip handler's serial number to differentiate logs w/ other handlers
 }
 
+func newBlipHandler(ctx context.Context, bc *BlipSyncContext, db *Database, serialNumber uint64) *blipHandler {
+	return &blipHandler{
+		BlipSyncContext: bc,
+		db:              db,
+		loggingCtx:      ctx,
+		serialNumber:    serialNumber,
+	}
+}
+
 // BlipSyncContextClientType represents whether to replicate to another Sync Gateway or Couchbase Lite
 type BLIPSyncContextClientType string
 
@@ -155,7 +164,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			}
 			bh.collectionCtx, err = bh.collections.get(nil)
 			if err != nil {
-				bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.collection.DatabaseCollection))
+				bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.loggingCtx, bh.collection.DatabaseCollection))
 				bh.collectionCtx, _ = bh.collections.get(nil)
 			}
 			return next(bh, bm)
@@ -242,7 +251,7 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	defaultSince := CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
-		seq, err := bh.collection.LastSequence()
+		seq, err := bh.collection.LastSequence(bh.loggingCtx)
 		return SequenceID{Seq: seq}, err
 	}
 	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, defaultSince, latestSeq, ParseJSONSequenceID)
@@ -264,7 +273,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	// Create ctx if it has been cancelled
 	if collectionCtx.changesCtx.Err() != nil {
-		collectionCtx.changesCtx, collectionCtx.changesCtxCancel = context.WithCancel(context.Background())
+		collectionCtx.changesCtx, collectionCtx.changesCtxCancel = context.WithCancel(bh.loggingCtx)
 	}
 
 	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
@@ -496,7 +505,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		if bh.db.User() != nil {
 			user = bh.db.User().Name()
 		}
-		bh.db.DatabaseContext.NotifyTerminatedChanges(user)
+		bh.db.DatabaseContext.NotifyTerminatedChanges(bh.loggingCtx, user)
 	}
 
 	return !forceClose
@@ -688,7 +697,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			// already have this rev, tell the peer to skip sending it
 			output.Write([]byte("0"))
 			if collectionCtx.sgr2PullAlreadyKnownSeqsCallback != nil {
-				seq, err := ParseJSONSequenceID(seqStr(change[0]))
+				seq, err := ParseJSONSequenceID(seqStr(bh.loggingCtx, change[0]))
 				if err != nil {
 					base.WarnfCtx(bh.loggingCtx, "Unable to parse known sequence %q for %q / %q: %v", change[0], base.UD(docID), revID, err)
 				} else {
@@ -710,7 +719,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 			// skip parsing seqno if we're not going to use it (no callback defined)
 			if collectionCtx.sgr2PullAddExpectedSeqsCallback != nil {
-				seq, err := ParseJSONSequenceID(seqStr(change[0]))
+				seq, err := ParseJSONSequenceID(seqStr(bh.loggingCtx, change[0]))
 				if err != nil {
 					// We've already asked for the doc/rev for the sequence so assume we're going to receive it... Just log this and carry on
 					base.WarnfCtx(bh.loggingCtx, "Unable to parse expected sequence %q for %q / %q: %v", change[0], base.UD(docID), revID, err)
@@ -1009,7 +1018,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
-		err = base.Patch(&deltaSrcMap, newDoc.Body())
+		err = base.Patch(&deltaSrcMap, newDoc.Body(bh.loggingCtx))
 		// err should only ever be a FleeceDeltaError here - but to be defensive, handle other errors too (e.g. somehow reaching this code in a CE build)
 		if err != nil {
 			// Something went wrong in the diffing library. We want to know about this!
@@ -1022,14 +1031,14 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		stats.deltaRecvCount.Add(1)
 	}
 
-	err = validateBlipBody(bodyBytes, newDoc)
+	err = validateBlipBody(bh.loggingCtx, bodyBytes, newDoc)
 	if err != nil {
 		return err
 	}
 
 	// Handle and pull out expiry
 	if bytes.Contains(bodyBytes, []byte(BodyExpiry)) {
-		body := newDoc.Body()
+		body := newDoc.Body(bh.loggingCtx)
 		expiry, err := body.ExtractExpiry()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
@@ -1060,7 +1069,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 	// Pull out attachments
 	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
-		body := newDoc.Body()
+		body := newDoc.Body(bh.loggingCtx)
 
 		var currentBucketDoc *Document
 
@@ -1073,12 +1082,12 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
 			if err == nil {
 				commonAncestor := currentDoc.History.findAncestorFromSet(currentDoc.CurrentRev, history)
-				minRevpos, _ = ParseRevID(commonAncestor)
+				minRevpos, _ = ParseRevID(bh.loggingCtx, commonAncestor)
 				minRevpos++
 				rawBucketDoc = rawDoc
 				currentBucketDoc = currentDoc
 			} else {
-				minRevpos, _ = ParseRevID(history[len(history)-1])
+				minRevpos, _ = ParseRevID(bh.loggingCtx, history[len(history)-1])
 			}
 		}
 
@@ -1096,7 +1105,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				if !ok {
 					// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
 					// update to ensure it's fetched and uploaded
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(revID)
+					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, revID)
 					continue
 				}
 
@@ -1136,7 +1145,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				// digest is different we need to override the revpos and set it to the current revision to ensure
 				// the attachment is requested and stored
 				if int(incomingAttachmentRevpos) <= minRevpos && currentAttachmentDigest != incomingAttachmentDigest {
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(revID)
+					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, revID)
 				}
 			}
 
@@ -1232,7 +1241,7 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Error getting client attachment: %v", err))
 	}
 
-	proof := ProveAttachment(attData, nonce)
+	proof := ProveAttachment(bh.loggingCtx, attData, nonce)
 
 	resp := rq.Response()
 	resp.SetBody([]byte(proof))
@@ -1353,7 +1362,7 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 // This is to prevent clients from creating a doc with a digest for an attachment they otherwise can't access, in order to download it.
 func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, digest string, knownData []byte) error {
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
-	nonce, proof, err := GenerateProofOfAttachment(knownData)
+	nonce, proof, err := GenerateProofOfAttachment(bh.loggingCtx, knownData)
 	if err != nil {
 		return err
 	}

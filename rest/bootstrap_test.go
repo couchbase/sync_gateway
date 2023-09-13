@@ -43,7 +43,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -105,7 +105,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -162,7 +162,7 @@ func TestBootstrapDuplicateCollections(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -209,7 +209,7 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -285,7 +285,7 @@ func DevTestFetchConfigManual(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Sleep to wait for bucket polling iterations, or allow manual modification to server accessibility
 

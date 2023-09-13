@@ -11,13 +11,15 @@ licenses/APL2.txt.
 package indextest
 
 import (
+	"context"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 )
 
 func TestMain(m *testing.M) {
+	ctx := context.Background() // start of test process
 	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
 	// Do not create indexes for this test, so they are built by server_context.go
-	base.TestBucketPoolNoIndexes(m, tbpOptions)
+	base.TestBucketPoolNoIndexes(ctx, m, tbpOptions)
 }

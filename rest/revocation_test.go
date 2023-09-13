@@ -118,7 +118,8 @@ func (tester *ChannelRevocationTester) removeUserChannel(user, channel string) {
 }
 
 func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
-	currentSeq, err := tester.restTester.GetDatabase().LastSequence()
+	ctx := base.DatabaseLogCtx(base.TestCtx(tester.restTester.TB), tester.restTester.GetDatabase().Name, nil)
+	currentSeq, err := tester.restTester.GetDatabase().LastSequence(ctx)
 	require.NoError(tester.test, err)
 
 	loopCount := seq - currentSeq
@@ -2504,7 +2505,7 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 	require.NoError(t, bt.StartPull())
 
 	// in the failing case we'll panic before hitting this
-	base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 	}, 1)
 }

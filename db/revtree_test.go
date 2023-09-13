@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -55,7 +56,7 @@ type BranchSpec struct {
 //	\ 3-b -- 4-b ... etc (losing branch)
 //
 // NOTE: the 1-a -- 2-a unconflicted branch can be longer, depending on value of unconflictedBranchNumRevs
-func getTwoBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, losingBranchNumRevs int, tombstoneLosingBranch bool) RevTree {
+func getTwoBranchTestRevtree1(ctx context.Context, unconflictedBranchNumRevs, winningBranchNumRevs, losingBranchNumRevs int, tombstoneLosingBranch bool) RevTree {
 
 	branchSpecs := []BranchSpec{
 		{
@@ -65,7 +66,7 @@ func getTwoBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, l
 		},
 	}
 
-	return getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
+	return getMultiBranchTestRevtree1(ctx, unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
 
 }
 
@@ -76,7 +77,7 @@ func getTwoBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, l
 //	           \ 3-d -- 4-d ... etc (losing branch #n)
 //
 // NOTE: the 1-a -- 2-a unconflicted branch can be longer, depending on value of unconflictedBranchNumRevs
-func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs int, losingBranches []BranchSpec) RevTree {
+func getMultiBranchTestRevtree1(ctx context.Context, unconflictedBranchNumRevs, winningBranchNumRevs int, losingBranches []BranchSpec) RevTree {
 
 	if unconflictedBranchNumRevs < 1 {
 		panic(fmt.Sprintf("Must have at least 1 unconflictedBranchNumRevs"))
@@ -100,10 +101,10 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 	if err := base.JSONUnmarshal([]byte(testJSON), &revTree); err != nil {
 		panic(fmt.Sprintf("Error: %v", err))
 	}
-
 	if unconflictedBranchNumRevs > 1 {
 		// Add revs to unconflicted branch
 		addRevs(
+			ctx,
 			revTree,
 			"1-winning",
 			unconflictedBranchNumRevs-1,
@@ -121,6 +122,7 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 
 		// Add revs to winning branch
 		addRevs(
+			ctx,
 			revTree,
 			winningBranchStartRev,
 			winningBranchNumRevs,
@@ -140,6 +142,7 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 
 			// Add revs to losing branch
 			addRevs(
+				ctx,
 				revTree,
 				losingBranchStartRev,
 				losingBranchSpec.NumRevs, // Subtract 1 since we already added initial
@@ -196,7 +199,7 @@ func TestGetMultiBranchTestRevtree(t *testing.T) {
 			LastRevisionIsTombstone: true,
 		},
 	}
-	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(base.TestCtx(t), 50, 100, branchSpecs)
 	leaves := revTree.GetLeaves()
 	sort.Strings(leaves)
 	assert.Equal(t, []string{"110-left", "150-winning", "76-right"}, leaves)
@@ -299,11 +302,12 @@ func TestRevTreeAddRevisionWithMissingParent(t *testing.T) {
 }
 
 func TestRevTreeCompareRevIDs(t *testing.T) {
-	assert.Equal(t, 0, compareRevIDs("1-aaa", "1-aaa"))
-	assert.Equal(t, -1, compareRevIDs("1-aaa", "5-aaa"))
-	assert.Equal(t, 1, compareRevIDs("10-aaa", "5-aaa"))
-	assert.Equal(t, 1, compareRevIDs("1-bbb", "1-aaa"))
-	assert.Equal(t, 1, compareRevIDs("5-bbb", "1-zzz"))
+	ctx := base.TestCtx(t)
+	assert.Equal(t, 0, compareRevIDs(ctx, "1-aaa", "1-aaa"))
+	assert.Equal(t, -1, compareRevIDs(ctx, "1-aaa", "5-aaa"))
+	assert.Equal(t, 1, compareRevIDs(ctx, "10-aaa", "5-aaa"))
+	assert.Equal(t, 1, compareRevIDs(ctx, "1-bbb", "1-aaa"))
+	assert.Equal(t, 1, compareRevIDs(ctx, "5-bbb", "1-zzz"))
 }
 
 func TestRevTreeIsLeaf(t *testing.T) {
@@ -315,20 +319,21 @@ func TestRevTreeIsLeaf(t *testing.T) {
 }
 
 func TestRevTreeWinningRev(t *testing.T) {
+	ctx := base.TestCtx(t)
 	tempmap := branchymap.copy()
-	winner, branched, conflict := tempmap.winningRevision()
+	winner, branched, conflict := tempmap.winningRevision(ctx)
 	assert.Equal(t, "3-three", winner)
 	assert.True(t, branched)
 	assert.True(t, conflict)
 	err := tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
 	require.NoError(t, err)
-	winner, branched, conflict = tempmap.winningRevision()
+	winner, branched, conflict = tempmap.winningRevision(ctx)
 	assert.Equal(t, "4-four", winner)
 	assert.True(t, branched)
 	assert.True(t, conflict)
 	err = tempmap.addRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four", Deleted: true})
 	require.NoError(t, err)
-	winner, branched, conflict = tempmap.winningRevision()
+	winner, branched, conflict = tempmap.winningRevision(ctx)
 	assert.Equal(t, "3-drei", winner)
 	assert.True(t, branched)
 	assert.False(t, conflict)
@@ -357,19 +362,20 @@ func TestPruneRevisions(t *testing.T) {
 	assert.Equal(t, uint32(2), tempmap["2-two"].depth)
 	assert.Equal(t, uint32(3), tempmap["1-one"].depth)
 
+	ctx := base.TestCtx(t)
 	// Prune:
-	pruned, _ := tempmap.pruneRevisions(1000, "")
+	pruned, _ := tempmap.pruneRevisions(ctx, 1000, "")
 	assert.Equal(t, 0, pruned)
-	pruned, _ = tempmap.pruneRevisions(3, "")
+	pruned, _ = tempmap.pruneRevisions(ctx, 3, "")
 	assert.Equal(t, 0, pruned)
-	pruned, _ = tempmap.pruneRevisions(2, "")
+	pruned, _ = tempmap.pruneRevisions(ctx, 2, "")
 	assert.Equal(t, 1, pruned)
 	assert.Equal(t, 4, len(tempmap))
 	assert.Equal(t, (*RevInfo)(nil), tempmap["1-one"])
 	assert.Equal(t, "", tempmap["2-two"].Parent)
 
 	// Make sure leaves are never pruned:
-	pruned, _ = tempmap.pruneRevisions(1, "")
+	pruned, _ = tempmap.pruneRevisions(ctx, 1, "")
 	assert.Equal(t, 2, pruned)
 	assert.Equal(t, 2, len(tempmap))
 	assert.True(t, tempmap["3-three"] != nil)
@@ -382,13 +388,13 @@ func TestPruneRevisions(t *testing.T) {
 func TestPruneRevsSingleBranch(t *testing.T) {
 
 	numRevs := 100
-
-	revTree := getMultiBranchTestRevtree1(numRevs, 0, []BranchSpec{})
+	ctx := base.TestCtx(t)
+	revTree := getMultiBranchTestRevtree1(ctx, numRevs, 0, []BranchSpec{})
 
 	maxDepth := uint32(20)
 	expectedNumPruned := numRevs - int(maxDepth)
 
-	numPruned, _ := revTree.pruneRevisions(maxDepth, "")
+	numPruned, _ := revTree.pruneRevisions(ctx, maxDepth, "")
 	assert.Equal(t, expectedNumPruned, numPruned)
 
 }
@@ -405,12 +411,12 @@ func TestPruneRevsOneWinningOneNonwinningBranch(t *testing.T) {
 
 	unconflictedBranchNumRevs := 2
 	winningBranchNumRevs := 4
-
-	revTree := getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
+	ctx := base.TestCtx(t)
+	revTree := getMultiBranchTestRevtree1(ctx, unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
 
 	maxDepth := uint32(2)
 
-	revTree.pruneRevisions(maxDepth, "")
+	revTree.pruneRevisions(ctx, maxDepth, "")
 
 	assert.Equal(t, int(maxDepth), revTree.LongestBranch())
 
@@ -429,17 +435,18 @@ func TestPruneRevsOneWinningOneOldTombstonedBranch(t *testing.T) {
 	unconflictedBranchNumRevs := 1
 	winningBranchNumRevs := 5
 
-	revTree := getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
+	ctx := base.TestCtx(t)
+	revTree := getMultiBranchTestRevtree1(ctx, unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
 
 	maxDepth := uint32(2)
 
-	revTree.pruneRevisions(maxDepth, "")
+	revTree.pruneRevisions(ctx, maxDepth, "")
 
 	assert.True(t, revTree.LongestBranch() == int(maxDepth))
 
 	// we shouldn't have any tombstoned branches, since the tombstoned branch was so old
 	// it should have been pruned away
-	assert.Equal(t, 0, revTree.FindLongestTombstonedBranch())
+	assert.Equal(t, 0, revTree.FindLongestTombstonedBranch(ctx))
 
 }
 
@@ -461,11 +468,12 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 	unconflictedBranchNumRevs := 1
 	winningBranchNumRevs := 5
 
-	revTree := getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
+	ctx := base.TestCtx(t)
+	revTree := getMultiBranchTestRevtree1(ctx, unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
 
 	maxDepth := uint32(2)
 
-	revTree.pruneRevisions(maxDepth, "")
+	revTree.pruneRevisions(ctx, maxDepth, "")
 
 	assert.True(t, revTree.LongestBranch() == int(maxDepth))
 
@@ -485,7 +493,7 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 	// +
 	// 1 extra rev in branchspec since LastRevisionIsTombstone (that variable name is misleading)
 	expectedGenLongestTSd := 6
-	assert.Equal(t, expectedGenLongestTSd, revTree.FindLongestTombstonedBranch())
+	assert.Equal(t, expectedGenLongestTSd, revTree.FindLongestTombstonedBranch(ctx))
 
 }
 
@@ -504,9 +512,9 @@ func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 		},
 	}
 
-	revTree := getMultiBranchTestRevtree1(3, 7, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(base.TestCtx(t), 3, 7, branchSpecs)
 
-	generationShortestNonTombstonedBranch, _ := revTree.FindShortestNonTombstonedBranch()
+	generationShortestNonTombstonedBranch, _ := revTree.FindShortestNonTombstonedBranch(base.TestCtx(t))
 
 	// The "non-winning unresolved" branch has 7 revisions due to:
 	// 3 unconflictedBranchNumRevs
@@ -539,9 +547,9 @@ func TestGenerationLongestTombstonedBranch(t *testing.T) {
 			LastRevisionIsTombstone: true,
 		},
 	}
-
-	revTree := getMultiBranchTestRevtree1(3, 7, branchSpecs)
-	generationLongestTombstonedBranch := revTree.FindLongestTombstonedBranch()
+	ctx := base.TestCtx(t)
+	revTree := getMultiBranchTestRevtree1(ctx, 3, 7, branchSpecs)
+	generationLongestTombstonedBranch := revTree.FindLongestTombstonedBranch(ctx)
 
 	// The generation of the longest deleted branch is:
 	// 3 unconflictedBranchNumRevs
@@ -571,10 +579,11 @@ func TestPruneRevisionsPostIssue2651ThreeBranches(t *testing.T) {
 			LastRevisionIsTombstone: true,
 		},
 	}
-	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
+	ctx := base.TestCtx(t)
+	revTree := getMultiBranchTestRevtree1(ctx, 50, 100, branchSpecs)
 
 	maxDepth := uint32(50)
-	numPruned, _ := revTree.pruneRevisions(maxDepth, "")
+	numPruned, _ := revTree.pruneRevisions(ctx, maxDepth, "")
 	t.Logf("numPruned: %v", numPruned)
 	t.Logf("LongestBranch: %v", revTree.LongestBranch())
 
@@ -594,7 +603,8 @@ func TestPruneRevsSingleTombstonedBranch(t *testing.T) {
 		},
 	}
 
-	revTree := getMultiBranchTestRevtree1(1, 0, branchSpecs)
+	ctx := base.TestCtx(t)
+	revTree := getMultiBranchTestRevtree1(ctx, 1, 0, branchSpecs)
 
 	log.Printf("RevTreeAfter before: %v", revTree.RenderGraphvizDot())
 
@@ -603,7 +613,7 @@ func TestPruneRevsSingleTombstonedBranch(t *testing.T) {
 
 	expectedNumPruned += 1 // To account for the tombstone revision in the branchspec, which is spearate from NumRevs
 
-	numPruned, _ := revTree.pruneRevisions(maxDepth, "")
+	numPruned, _ := revTree.pruneRevisions(ctx, maxDepth, "")
 
 	log.Printf("RevTreeAfter pruning: %v", revTree.RenderGraphvizDot())
 
@@ -625,7 +635,7 @@ func TestLongestBranch1(t *testing.T) {
 			LastRevisionIsTombstone: true,
 		},
 	}
-	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(base.TestCtx(t), 50, 100, branchSpecs)
 
 	assert.True(t, revTree.LongestBranch() == 150)
 
@@ -652,7 +662,8 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 			LastRevisionIsTombstone: false,
 		},
 	}
-	revTree := getMultiBranchTestRevtree1(1, 15, branchSpecs)
+	ctx := base.TestCtx(t)
+	revTree := getMultiBranchTestRevtree1(ctx, 1, 15, branchSpecs)
 
 	if dumpRevTreeDotFiles {
 		err := os.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_initial.dot", []byte(revTree.RenderGraphvizDot()), 0666)
@@ -661,7 +672,7 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 
 	maxDepth := uint32(7)
 
-	revTree.pruneRevisions(maxDepth, "")
+	revTree.pruneRevisions(ctx, maxDepth, "")
 
 	if dumpRevTreeDotFiles {
 		err := os.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned1.dot", []byte(revTree.RenderGraphvizDot()), 0666)
@@ -672,6 +683,7 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 
 	// Add revs to winning branch
 	addRevs(
+		ctx,
 		revTree,
 		winningBranchStartRev,
 		10,
@@ -683,7 +695,7 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	revTree.pruneRevisions(maxDepth, "")
+	revTree.pruneRevisions(base.TestCtx(t), maxDepth, "")
 
 	if dumpRevTreeDotFiles {
 		err := os.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned_final.dot", []byte(revTree.RenderGraphvizDot()), 0666)
@@ -721,7 +733,7 @@ func TestParseRevisions(t *testing.T) {
 		var body Body
 		unmarshalErr := body.Unmarshal([]byte(c.json))
 		assert.NoError(t, unmarshalErr, "base JSON in test case")
-		ids := ParseRevisions(body)
+		ids := ParseRevisions(base.TestCtx(t), body)
 		assert.Equal(t, c.ids, ids)
 	}
 }
@@ -755,59 +767,60 @@ func BenchmarkEncodeRevisions(b *testing.B) {
 		},
 	}
 
+	ctx := base.TestCtx(b)
 	for _, test := range tests {
 		docID := b.Name() + "-" + test.name
 		b.Run(test.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_ = encodeRevisions(docID, test.input)
+				_ = encodeRevisions(ctx, docID, test.input)
 			}
 		})
 	}
 }
 
 func TestEncodeRevisions(t *testing.T) {
-	encoded := encodeRevisions(t.Name(), []string{"5-huey", "4-dewey", "3-louie"})
+	encoded := encodeRevisions(base.TestCtx(t), t.Name(), []string{"5-huey", "4-dewey", "3-louie"})
 	assert.Equal(t, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}}, encoded)
 }
 
 func TestEncodeRevisionsGap(t *testing.T) {
-	encoded := encodeRevisions(t.Name(), []string{"5-huey", "3-louie"})
+	encoded := encodeRevisions(base.TestCtx(t), t.Name(), []string{"5-huey", "3-louie"})
 	assert.Equal(t, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "louie"}}, encoded)
 }
 
 func TestEncodeRevisionsZero(t *testing.T) {
-	encoded := encodeRevisions(t.Name(), []string{"1-foo", "0-bar"})
+	encoded := encodeRevisions(base.TestCtx(t), t.Name(), []string{"1-foo", "0-bar"})
 	assert.Equal(t, Revisions{RevisionsStart: 1, RevisionsIds: []string{"foo", ""}}, encoded)
 }
 
 func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
+	ctx := base.TestCtx(t)
+	encoded := encodeRevisions(ctx, t.Name(), []string{"5-huey", "4-dewey", "3-louie", "2-screwy"})
 
-	encoded := encodeRevisions(t.Name(), []string{"5-huey", "4-dewey", "3-louie", "2-screwy"})
-
-	result, trimmedRevs := trimEncodedRevisionsToAncestor(encoded, []string{"3-walter", "17-gretchen", "1-fooey"}, 1000)
+	result, trimmedRevs := trimEncodedRevisionsToAncestor(ctx, encoded, []string{"3-walter", "17-gretchen", "1-fooey"}, 1000)
 	assert.True(t, result)
 	assert.Equal(t, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie", "screwy"}}, trimmedRevs)
 
-	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, []string{"3-walter", "3-louie", "1-fooey"}, 2)
+	result, trimmedRevs = trimEncodedRevisionsToAncestor(ctx, trimmedRevs, []string{"3-walter", "3-louie", "1-fooey"}, 2)
 	assert.True(t, result)
 	assert.Equal(t, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}}, trimmedRevs)
 
-	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, []string{"3-walter", "3-louie", "1-fooey"}, 3)
+	result, trimmedRevs = trimEncodedRevisionsToAncestor(ctx, trimmedRevs, []string{"3-walter", "3-louie", "1-fooey"}, 3)
 	assert.True(t, result)
 	assert.Equal(t, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}}, trimmedRevs)
 
-	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, []string{"3-walter", "3-louie", "5-huey"}, 3)
+	result, trimmedRevs = trimEncodedRevisionsToAncestor(ctx, trimmedRevs, []string{"3-walter", "3-louie", "5-huey"}, 3)
 	assert.True(t, result)
 	assert.Equal(t, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey"}}, trimmedRevs)
 
 	// Check maxLength with no ancestors:
-	encoded = encodeRevisions(t.Name(), []string{"5-huey", "4-dewey", "3-louie", "2-screwy"})
+	encoded = encodeRevisions(base.TestCtx(t), t.Name(), []string{"5-huey", "4-dewey", "3-louie", "2-screwy"})
 
-	result, trimmedRevs = trimEncodedRevisionsToAncestor(encoded, nil, 6)
+	result, trimmedRevs = trimEncodedRevisionsToAncestor(ctx, encoded, nil, 6)
 	assert.True(t, result)
 	assert.Equal(t, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie", "screwy"}}, trimmedRevs)
 
-	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, nil, 2)
+	result, trimmedRevs = trimEncodedRevisionsToAncestor(ctx, trimmedRevs, nil, 2)
 	assert.True(t, result)
 	assert.Equal(t, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey"}}, trimmedRevs)
 }
@@ -842,6 +855,7 @@ func TestRepairRevsHistoryWithCycles(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD)
 
+	ctx := base.TestCtx(t)
 	for i, testdocProblematicRevTree := range testdocProblematicRevTrees {
 
 		docId := "testdocProblematicRevTree"
@@ -851,7 +865,7 @@ func TestRepairRevsHistoryWithCycles(t *testing.T) {
 			t.Fatalf("Error unmarshalling doc %d: %v", i, err)
 		}
 
-		if err := rawDoc.History.RepairCycles(); err != nil {
+		if err := rawDoc.History.RepairCycles(ctx); err != nil {
 			t.Fatalf("Unable to repair doc.  Err: %v", err)
 		}
 
@@ -923,14 +937,15 @@ func TestRevisionPruningLoop(t *testing.T) {
 
 	// Keep adding to the main branch without pruning.  Simulates old pruning algorithm,
 	// which maintained rev history due to tombstone branch
+	ctx := base.TestCtx(t)
 	for generation := 6; generation <= 15; generation++ {
 		revID := fmt.Sprintf("%d-foo", generation)
 		parentRevID := fmt.Sprintf("%d-foo", generation-1)
-		_, err := addPruneAndGet(revTree, revID, parentRevID, revBody, revsLimit, nonTombstone)
+		_, err := addPruneAndGet(ctx, revTree, revID, parentRevID, revBody, revsLimit, nonTombstone)
 		assert.NoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
 
 		keepAliveRevID := fmt.Sprintf("%d-keep", generation)
-		_, err = addPruneAndGet(revTree, keepAliveRevID, parentRevID, revBody, revsLimit, tombstone)
+		_, err = addPruneAndGet(ctx, revTree, keepAliveRevID, parentRevID, revBody, revsLimit, tombstone)
 		assert.NoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
 
 		// The act of marshalling the rev tree and then unmarshalling back into a revtree data structure
@@ -986,7 +1001,7 @@ func TestPruneRevisionsWithDisconnected(t *testing.T) {
 		"73-abc": {ID: "73-abc", Parent: "72-abc", Deleted: true},
 	}
 
-	prunedCount, _ := revTree.pruneRevisions(4, "")
+	prunedCount, _ := revTree.pruneRevisions(base.TestCtx(t), 4, "")
 	assert.Equal(t, 10, prunedCount)
 
 	remainingKeys := make([]string, 0, len(revTree))
@@ -998,14 +1013,14 @@ func TestPruneRevisionsWithDisconnected(t *testing.T) {
 	assert.Equal(t, []string{"101-abc", "102-abc", "103-abc", "103-def", "104-abc", "105-abc", "106-abc", "106-def", "107-abc"}, remainingKeys)
 }
 
-func addPruneAndGet(revTree RevTree, revID string, parentRevID string, revBody []byte, revsLimit uint32, tombstone bool) (numPruned int, err error) {
+func addPruneAndGet(ctx context.Context, revTree RevTree, revID string, parentRevID string, revBody []byte, revsLimit uint32, tombstone bool) (numPruned int, err error) {
 	_ = revTree.addRevision("doc", RevInfo{
 		ID:      revID,
 		Parent:  parentRevID,
 		Body:    revBody,
 		Deleted: tombstone,
 	})
-	numPruned, _ = revTree.pruneRevisions(revsLimit, revID)
+	numPruned, _ = revTree.pruneRevisions(ctx, revsLimit, revID)
 
 	// Get history for new rev (checks for loops)
 	history, err := revTree.getHistory(revID)
@@ -1057,15 +1072,16 @@ func BenchmarkRevTreePruning(b *testing.B) {
 		},
 	}
 
+	ctx := base.TestCtx(b)
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 
 		b.StopTimer()
-		revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
+		revTree := getMultiBranchTestRevtree1(ctx, 50, 100, branchSpecs)
 		b.StartTimer()
 
-		revTree.pruneRevisions(50, "")
+		revTree.pruneRevisions(ctx, 50, "")
 	}
 
 }
@@ -1095,7 +1111,7 @@ func BenchmarkRevtreeUnmarshal(b *testing.B) {
 	})
 }
 
-func addRevs(revTree RevTree, startingParentRevId string, numRevs int, revDigest string) {
+func addRevs(ctx context.Context, revTree RevTree, startingParentRevId string, numRevs int, revDigest string) {
 
 	docSizeBytes := 1024 * 5
 	body := createBodyContentAsMapWithSize(docSizeBytes)
@@ -1106,7 +1122,7 @@ func addRevs(revTree RevTree, startingParentRevId string, numRevs int, revDigest
 
 	channels := base.SetOf("ABC", "CBS")
 
-	generation, _ := ParseRevID(startingParentRevId)
+	generation, _ := ParseRevID(ctx, startingParentRevId)
 
 	for i := 0; i < numRevs; i++ {
 

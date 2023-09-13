@@ -167,7 +167,7 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 			return nil, err
 		}
 
-		collectionContext := newBlipSyncCollectionContext(dbCollection)
+		collectionContext := newBlipSyncCollectionContext(arc.blipSyncContext.loggingCtx, dbCollection)
 		blipSyncCollectionContexts[i] = collectionContext
 		collectionCheckpoints[i] = *checkpoint
 

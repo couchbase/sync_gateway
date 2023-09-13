@@ -40,8 +40,9 @@ type Collection struct {
 
 // Ensure that Collection implements sgbucket.DataStore/N1QLStore
 var (
-	_ DataStore = &Collection{}
-	_ N1QLStore = &Collection{}
+	_ DataStore          = &Collection{}
+	_ N1QLStore          = &Collection{}
+	_ sgbucket.ViewStore = &Collection{}
 )
 
 func AsCollection(dataStore DataStore) (*Collection, error) {
@@ -412,7 +413,8 @@ func (c *Collection) isRecoverableWriteError(err error) bool {
 func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 	agent, err := c.Bucket.getGoCBAgent()
 	if err != nil {
-		WarnfCtx(context.TODO(), "Unable to obtain gocbcore.Agent while retrieving expiry:%v", err)
+		ctx := context.TODO() // fix in sg-bucket
+		WarnfCtx(ctx, "Unable to obtain gocbcore.Agent while retrieving expiry:%v", err)
 		return 0, err
 	}
 

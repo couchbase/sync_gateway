@@ -1416,7 +1416,8 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 	// case to KvXattrStore to pass to deleteWithXattrInternal
 	collection, ok := dataStore.(*Collection)
 	require.True(t, ok)
-	deleteErr := deleteWithXattrInternal(collection, key, xattrName, callback)
+	ctx := TestCtx(t)
+	deleteErr := deleteWithXattrInternal(ctx, collection, key, xattrName, callback)
 	assert.Equal(t, 1, numTimesCalledBack)
 	assert.True(t, deleteErr != nil, "We expected an error here, because deleteWithXattrInternal should have "+
 		" detected that the doc was resurrected during its execution")
@@ -1823,9 +1824,9 @@ func TestApplyViewQueryOptions(t *testing.T) {
 		ViewQueryParamKey:           "hello",
 		ViewQueryParamKeys:          []interface{}{"a", "b"},
 	}
-
+	ctx := TestCtx(t)
 	// Call applyViewQueryOptions (method being tested) which modifies viewQuery according to params
-	viewOpts, err := createViewOptions(params)
+	viewOpts, err := createViewOptions(ctx, params)
 	if err != nil {
 		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
 	}
@@ -1899,7 +1900,7 @@ func TestApplyViewQueryOptionsWithStrings(t *testing.T) {
 		ViewQueryParamKeys:          []string{"a", "b"},
 	}
 
-	_, err := createViewOptions(params)
+	_, err := createViewOptions(TestCtx(t), params)
 	if err != nil {
 		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
 	}
@@ -1916,8 +1917,9 @@ func TestApplyViewQueryStaleOptions(t *testing.T) {
 		ViewQueryParamStale: "false",
 	}
 
+	ctx := TestCtx(t)
 	// if it doesn't blow up, test passes
-	if _, err := createViewOptions(params); err != nil {
+	if _, err := createViewOptions(ctx, params); err != nil {
 		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
 	}
 
@@ -1925,7 +1927,7 @@ func TestApplyViewQueryStaleOptions(t *testing.T) {
 		ViewQueryParamStale: "ok",
 	}
 
-	if _, err := createViewOptions(params); err != nil {
+	if _, err := createViewOptions(ctx, params); err != nil {
 		t.Fatalf("Error calling applyViewQueryOptions: %v", err)
 	}
 
@@ -1941,7 +1943,7 @@ func TestCouchbaseServerMaxTTL(t *testing.T) {
 
 	cbStore, ok := AsCouchbaseBucketStore(bucket)
 	require.True(t, ok)
-	maxTTL, err := cbStore.MaxTTL()
+	maxTTL, err := cbStore.MaxTTL(TestCtx(t))
 	assert.NoError(t, err, "Unexpected error")
 	assert.Equal(t, 0, maxTTL)
 

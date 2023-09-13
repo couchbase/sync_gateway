@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package functions
 
 import (
+	"context"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -18,6 +19,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	ctx := context.Background() // start of test process
 	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
-	db.TestBucketPoolWithIndexes(m, tbpOptions)
+	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }

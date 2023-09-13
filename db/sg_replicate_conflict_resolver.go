@@ -62,7 +62,7 @@ type Conflict struct {
 // based on a merge of the two.
 //   - In the merge case, winner[revid] must be empty.
 //   - If an nil Body is returned, the conflict should be resolved as a deletion/tombstone.
-type ConflictResolverFunc func(conflict Conflict) (winner Body, err error)
+type ConflictResolverFunc func(ctx context.Context, conflict Conflict) (winner Body, err error)
 
 type ConflictResolverStats struct {
 	ConflictResultMergeCount  *base.SgwIntStat
@@ -107,9 +107,9 @@ func NewConflictResolver(crf ConflictResolverFunc, statsContainer *base.DbReplic
 
 // Wrapper for ConflictResolverFunc that evaluates whether conflict resolution resulted in
 // localWins, remoteWins, or merge
-func (c *ConflictResolver) Resolve(conflict Conflict) (winner Body, resolutionType ConflictResolutionType, err error) {
+func (c *ConflictResolver) Resolve(ctx context.Context, conflict Conflict) (winner Body, resolutionType ConflictResolutionType, err error) {
 
-	winner, err = c.crf(conflict)
+	winner, err = c.crf(ctx, conflict)
 	if err != nil {
 		return winner, "", err
 	}
@@ -132,7 +132,7 @@ func (c *ConflictResolver) Resolve(conflict Conflict) (winner Body, resolutionTy
 		return winner, ConflictResolutionRemote, nil
 	}
 
-	base.InfofCtx(context.Background(), base.KeyReplicate, "Conflict resolver returned non-empty revID (%s) not matching local (%s) or remote (%s), treating result as merge.", winningRev, localRev, remoteRev)
+	base.InfofCtx(ctx, base.KeyReplicate, "Conflict resolver returned non-empty revID (%s) not matching local (%s) or remote (%s), treating result as merge.", winningRev, localRev, remoteRev)
 	c.stats.ConflictResultMergeCount.Add(1)
 	return winner, ConflictResolutionMerge, err
 }
@@ -141,7 +141,7 @@ func (c *ConflictResolver) Resolve(conflict Conflict) (winner Body, resolutionTy
 // with the exception that a deleted revision is picked as the winner:
 // the revision whose (deleted, generation, hash) tuple compares the highest.
 // Returns error to satisfy ConflictResolverFunc signature.
-func DefaultConflictResolver(conflict Conflict) (result Body, err error) {
+func DefaultConflictResolver(ctx context.Context, conflict Conflict) (result Body, err error) {
 	localDeleted, _ := conflict.LocalDocument[BodyDeleted].(bool)
 	remoteDeleted, _ := conflict.RemoteDocument[BodyDeleted].(bool)
 	if localDeleted && !remoteDeleted {
@@ -153,7 +153,7 @@ func DefaultConflictResolver(conflict Conflict) (result Body, err error) {
 
 	localRevID, _ := conflict.LocalDocument[BodyRev].(string)
 	remoteRevID, _ := conflict.RemoteDocument[BodyRev].(string)
-	if compareRevIDs(localRevID, remoteRevID) >= 0 {
+	if compareRevIDs(ctx, localRevID, remoteRevID) >= 0 {
 		return conflict.LocalDocument, nil
 	} else {
 		return conflict.RemoteDocument, nil
@@ -161,16 +161,16 @@ func DefaultConflictResolver(conflict Conflict) (result Body, err error) {
 }
 
 // LocalWinsConflictResolver returns the local document as winner
-func LocalWinsConflictResolver(conflict Conflict) (winner Body, err error) {
+func LocalWinsConflictResolver(_ context.Context, conflict Conflict) (winner Body, err error) {
 	return conflict.LocalDocument, nil
 }
 
 // RemoteWinsConflictResolver returns the local document as-is
-func RemoteWinsConflictResolver(conflict Conflict) (winner Body, err error) {
+func RemoteWinsConflictResolver(_ context.Context, conflict Conflict) (winner Body, err error) {
 	return conflict.RemoteDocument, nil
 }
 
-func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSource string, customResolverTimeout time.Duration) (ConflictResolverFunc, error) {
+func NewConflictResolverFunc(ctx context.Context, resolverType ConflictResolverType, customResolverSource string, customResolverTimeout time.Duration) (ConflictResolverFunc, error) {
 	switch resolverType {
 	case ConflictResolverLocalWins:
 		return LocalWinsConflictResolver, nil
@@ -179,7 +179,7 @@ func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSo
 	case ConflictResolverDefault:
 		return DefaultConflictResolver, nil
 	case ConflictResolverCustom:
-		return NewCustomConflictResolver(customResolverSource, customResolverTimeout)
+		return NewCustomConflictResolver(ctx, customResolverSource, customResolverTimeout)
 	default:
 		return nil, fmt.Errorf("Unknown Conflict Resolver type: %s", resolverType)
 	}
@@ -187,8 +187,8 @@ func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSo
 
 // NewCustomConflictResolver returns a ConflictResolverFunc that executes the
 // javascript conflict resolver specified by source
-func NewCustomConflictResolver(source string, timeout time.Duration) (ConflictResolverFunc, error) {
-	conflictResolverJSServer := NewConflictResolverJSServer(source, timeout)
+func NewCustomConflictResolver(ctx context.Context, source string, timeout time.Duration) (ConflictResolverFunc, error) {
+	conflictResolverJSServer := NewConflictResolverJSServer(ctx, source, timeout)
 	return conflictResolverJSServer.EvaluateFunction, nil
 }
 
@@ -197,21 +197,21 @@ type ConflictResolverJSServer struct {
 	*sgbucket.JSServer
 }
 
-func NewConflictResolverJSServer(fnSource string, timeout time.Duration) *ConflictResolverJSServer {
-	base.DebugfCtx(context.Background(), base.KeyReplicate, "Creating new ConflictResolverFunction")
+func NewConflictResolverJSServer(ctx context.Context, fnSource string, timeout time.Duration) *ConflictResolverJSServer {
+	base.DebugfCtx(ctx, base.KeyReplicate, "Creating new ConflictResolverFunction")
 	return &ConflictResolverJSServer{
 		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize, newConflictResolverRunner),
 	}
 }
 
 // EvaluateFunction executes the conflict resolver with the provided conflict and returns the result.
-func (i *ConflictResolverJSServer) EvaluateFunction(conflict Conflict) (Body, error) {
+func (i *ConflictResolverJSServer) EvaluateFunction(ctx context.Context, conflict Conflict) (Body, error) {
 	docID, _ := conflict.LocalDocument[BodyId].(string)
 	localRevID, _ := conflict.LocalDocument[BodyRev].(string)
 	remoteRevID, _ := conflict.RemoteDocument[BodyRev].(string)
 	result, err := i.Call(conflict)
 	if err != nil {
-		base.WarnfCtx(context.Background(), "Unexpected error invoking conflict resolver for document %s, local/remote revisions %s/%s - processing aborted, document will not be replicated.  Error: %v",
+		base.WarnfCtx(ctx, "Unexpected error invoking conflict resolver for document %s, local/remote revisions %s/%s - processing aborted, document will not be replicated.  Error: %v",
 			base.UD(docID), base.UD(localRevID), base.UD(remoteRevID), err)
 		return nil, err
 	}
@@ -227,23 +227,24 @@ func (i *ConflictResolverJSServer) EvaluateFunction(conflict Conflict) (Body, er
 	case map[string]interface{}:
 		return result, nil
 	case error:
-		base.WarnfCtx(context.Background(), "conflictResolverRunner: "+result.Error())
+		base.WarnfCtx(ctx, "conflictResolverRunner: "+result.Error())
 		return nil, result
 	default:
-		base.WarnfCtx(context.Background(), "Custom conflict resolution function returned non-document result %v Type: %T", result, result)
+		base.WarnfCtx(ctx, "Custom conflict resolution function returned non-document result %v Type: %T", result, result)
 		return nil, errors.New("Custom conflict resolution function returned non-document value.")
 	}
 }
 
 // Compiles a JavaScript event function to a conflictResolverRunner object.
 func newConflictResolverRunner(funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
+	ctx := context.TODO() // fix in sg-bucket
 	conflictResolverRunner := &sgbucket.JSRunner{}
 	err := conflictResolverRunner.InitWithLogging(funcSource, timeout,
 		func(s string) {
-			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": ConflictResolver %s", base.UD(s))
+			base.ErrorfCtx(ctx, base.KeyJavascript.String()+": ConflictResolver %s", base.UD(s))
 		},
 		func(s string) {
-			base.InfofCtx(context.Background(), base.KeyJavascript, "ConflictResolver %s", base.UD(s))
+			base.InfofCtx(ctx, base.KeyJavascript, "ConflictResolver %s", base.UD(s))
 		})
 	if err != nil {
 		return nil, err
@@ -252,27 +253,27 @@ func newConflictResolverRunner(funcSource string, timeout time.Duration) (sgbuck
 	// Implementation of the 'defaultPolicy(conflict)' callback:
 	conflictResolverRunner.DefineNativeFunction("defaultPolicy", func(call otto.FunctionCall) otto.Value {
 		if len(call.ArgumentList) == 0 {
-			return ErrorToOttoValue(conflictResolverRunner, errors.New("No conflict parameter specified when calling defaultPolicy()"))
+			return ErrorToOttoValue(ctx, conflictResolverRunner, errors.New("No conflict parameter specified when calling defaultPolicy()"))
 		}
 		rawConflict, exportErr := call.Argument(0).Export()
 		if exportErr != nil {
-			return ErrorToOttoValue(conflictResolverRunner, fmt.Errorf("Unable to export conflict parameter for defaultPolicy(): %v Error: %s", call.Argument(0), exportErr))
+			return ErrorToOttoValue(ctx, conflictResolverRunner, fmt.Errorf("Unable to export conflict parameter for defaultPolicy(): %v Error: %s", call.Argument(0), exportErr))
 		}
 
 		// Called defaultPolicy with null/undefined value - return
 		if rawConflict == nil || call.Argument(0).IsUndefined() {
-			return ErrorToOttoValue(conflictResolverRunner, errors.New("Null or undefined value passed to defaultPolicy()"))
+			return ErrorToOttoValue(ctx, conflictResolverRunner, errors.New("Null or undefined value passed to defaultPolicy()"))
 		}
 
 		conflict, ok := rawConflict.(Conflict)
 		if !ok {
-			return ErrorToOttoValue(conflictResolverRunner, fmt.Errorf("Invalid value passed to defaultPolicy().  Value was type %T, expected type Conflict", rawConflict))
+			return ErrorToOttoValue(ctx, conflictResolverRunner, fmt.Errorf("Invalid value passed to defaultPolicy().  Value was type %T, expected type Conflict", rawConflict))
 		}
 
-		defaultWinner, _ := DefaultConflictResolver(conflict)
+		defaultWinner, _ := DefaultConflictResolver(ctx, conflict)
 		ottoDefaultWinner, err := conflictResolverRunner.ToValue(defaultWinner)
 		if err != nil {
-			return ErrorToOttoValue(conflictResolverRunner, fmt.Errorf("Error converting default winner to javascript value.  Error:%w", err))
+			return ErrorToOttoValue(ctx, conflictResolverRunner, fmt.Errorf("Error converting default winner to javascript value.  Error:%w", err))
 		}
 		return ottoDefaultWinner
 	})
@@ -286,10 +287,10 @@ func newConflictResolverRunner(funcSource string, timeout time.Duration) (sgbuck
 }
 
 // Converts an error to an otto value, to support native functions returning errors.
-func ErrorToOttoValue(runner *sgbucket.JSRunner, err error) otto.Value {
+func ErrorToOttoValue(ctx context.Context, runner *sgbucket.JSRunner, err error) otto.Value {
 	errorValue, convertErr := runner.ToValue(err)
 	if convertErr != nil {
-		base.WarnfCtx(context.Background(), "Unable to convert error to otto value: %v", convertErr)
+		base.WarnfCtx(ctx, "Unable to convert error to otto value: %v", convertErr)
 	}
 	return errorValue
 }

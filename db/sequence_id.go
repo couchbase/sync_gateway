@@ -68,14 +68,14 @@ func (s SequenceID) intSeqToString() string {
 	}
 }
 
-func seqStr(seq interface{}) string {
+func seqStr(ctx context.Context, seq interface{}) string {
 	switch seq := seq.(type) {
 	case string:
 		return seq
 	case json.Number:
 		return seq.String()
 	}
-	base.WarnfCtx(context.Background(), "unknown seq type: %T", seq)
+	base.WarnfCtx(ctx, "unknown seq type: %T", seq)
 	return ""
 }
 

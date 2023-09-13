@@ -73,16 +73,16 @@ func (b *Body) Unmarshal(data []byte) error {
 	return nil
 }
 
-func (body Body) Copy(copyType BodyCopyType) Body {
+func (body Body) Copy(ctx context.Context, copyType BodyCopyType) Body {
 	switch copyType {
 	case BodyShallowCopy:
 		return body.ShallowCopy()
 	case BodyDeepCopy:
-		return body.DeepCopy()
+		return body.DeepCopy(ctx)
 	case BodyNoCopy:
 		return body
 	default:
-		base.InfofCtx(context.Background(), base.KeyCRUD, "Unexpected copy type specified in body.Copy - defaulting to shallow copy.  copyType: %d", copyType)
+		base.InfofCtx(ctx, base.KeyCRUD, "Unexpected copy type specified in body.Copy - defaulting to shallow copy.  copyType: %d", copyType)
 		return body.ShallowCopy()
 	}
 }
@@ -98,11 +98,11 @@ func (body Body) ShallowCopy() Body {
 	return copied
 }
 
-func (body Body) DeepCopy() Body {
+func (body Body) DeepCopy(ctx context.Context) Body {
 	var copiedBody Body
 	err := base.DeepCopyInefficient(&copiedBody, body)
 	if err != nil {
-		base.InfofCtx(context.Background(), base.KeyCRUD, "Error copying body: %v", err)
+		base.InfofCtx(ctx, base.KeyCRUD, "Error copying body: %v", err)
 	}
 	return copiedBody
 }
@@ -360,37 +360,37 @@ func CreateRevIDWithBytes(generation int, parentRevID string, bodyBytes []byte) 
 }
 
 // Returns the generation number (numeric prefix) of a revision ID.
-func genOfRevID(revid string) int {
+func genOfRevID(ctx context.Context, revid string) int {
 	if revid == "" {
 		return 0
 	}
 	var generation int
 	n, _ := fmt.Sscanf(revid, "%d-", &generation)
 	if n < 1 || generation < 1 {
-		base.WarnfCtx(context.Background(), "genOfRevID unsuccessful for %q", revid)
+		base.WarnfCtx(ctx, "genOfRevID unsuccessful for %q", revid)
 		return -1
 	}
 	return generation
 }
 
 // Splits a revision ID into generation number and hex digest.
-func ParseRevID(revid string) (int, string) {
+func ParseRevID(ctx context.Context, revid string) (int, string) {
 	if revid == "" {
 		return 0, ""
 	}
 
 	idx := strings.Index(revid, "-")
 	if idx == -1 {
-		base.WarnfCtx(context.Background(), "parseRevID found no separator in rev %q", revid)
+		base.WarnfCtx(ctx, "parseRevID found no separator in rev %q", revid)
 		return -1, ""
 	}
 
 	gen, err := strconv.Atoi(revid[:idx])
 	if err != nil {
-		base.WarnfCtx(context.Background(), "parseRevID unexpected generation in rev %q: %s", revid, err)
+		base.WarnfCtx(ctx, "parseRevID unexpected generation in rev %q: %s", revid, err)
 		return -1, ""
 	} else if gen < 1 {
-		base.WarnfCtx(context.Background(), "parseRevID unexpected generation in rev %q", revid)
+		base.WarnfCtx(ctx, "parseRevID unexpected generation in rev %q", revid)
 		return -1, ""
 	}
 
@@ -401,9 +401,9 @@ func ParseRevID(revid string) (int, string) {
 // 1  if id1 is 'greater' than id2
 // -1 if id1 is 'less' than id2
 // 0  if the two are equal.
-func compareRevIDs(id1, id2 string) int {
-	gen1, sha1 := ParseRevID(id1)
-	gen2, sha2 := ParseRevID(id2)
+func compareRevIDs(ctx context.Context, id1, id2 string) int {
+	gen1, sha1 := ParseRevID(ctx, id1)
+	gen2, sha2 := ParseRevID(ctx, id2)
 	switch {
 	case gen1 > gen2:
 		return 1

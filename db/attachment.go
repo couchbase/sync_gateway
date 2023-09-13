@@ -169,8 +169,8 @@ func (db *DatabaseCollectionWithUser) retrieveAncestorAttachments(ctx context.Co
 	// No non-pruned ancestor is available
 	if commonAncestor := doc.History.findAncestorFromSet(doc.CurrentRev, docHistory); commonAncestor != "" {
 		parentAttachments := make(map[string]interface{})
-		commonAncestorGen := int64(genOfRevID(commonAncestor))
-		for name, activeAttachment := range GetBodyAttachments(doc.Body()) {
+		commonAncestorGen := int64(genOfRevID(ctx, commonAncestor))
+		for name, activeAttachment := range GetBodyAttachments(doc.Body(ctx)) {
 			if attachmentMeta, ok := activeAttachment.(map[string]interface{}); ok {
 				activeRevpos, ok := base.ToInt64(attachmentMeta["revpos"])
 				if ok && activeRevpos <= commonAncestorGen {
@@ -329,24 +329,24 @@ func GetAttachmentVersion(meta map[string]interface{}) (int, bool) {
 }
 
 // GenerateProofOfAttachment returns a nonce and proof for an attachment body.
-func GenerateProofOfAttachment(attachmentData []byte) (nonce []byte, proof string, err error) {
+func GenerateProofOfAttachment(ctx context.Context, attachmentData []byte) (nonce []byte, proof string, err error) {
 	nonce = make([]byte, 20)
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, "", base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Failed to generate random data: %s", err))
 	}
-	proof = ProveAttachment(attachmentData, nonce)
-	base.TracefCtx(context.Background(), base.KeyCRUD, "Generated nonce %v and proof %q for attachment: %v", nonce, proof, attachmentData)
+	proof = ProveAttachment(ctx, attachmentData, nonce)
+	base.TracefCtx(ctx, base.KeyCRUD, "Generated nonce %v and proof %q for attachment: %v", nonce, proof, attachmentData)
 	return nonce, proof, nil
 }
 
 // ProveAttachment returns the proof for an attachment body and nonce pair.
-func ProveAttachment(attachmentData, nonce []byte) (proof string) {
+func ProveAttachment(ctx context.Context, attachmentData, nonce []byte) (proof string) {
 	d := sha1.New()
 	d.Write([]byte{byte(len(nonce))})
 	d.Write(nonce)
 	d.Write(attachmentData)
 	proof = "sha1-" + base64.StdEncoding.EncodeToString(d.Sum(nil))
-	base.TracefCtx(context.Background(), base.KeyCRUD, "Generated proof %q using nonce %v for attachment: %v", proof, nonce, attachmentData)
+	base.TracefCtx(ctx, base.KeyCRUD, "Generated proof %q using nonce %v for attachment: %v", proof, nonce, attachmentData)
 	return proof
 }
 

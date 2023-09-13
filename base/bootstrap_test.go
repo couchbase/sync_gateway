@@ -48,8 +48,8 @@ func TestBootstrapRefCounting(t *testing.T) {
 	forcePerBucketAuth := false
 	tlsSkipVerify := BoolPtr(false)
 	var perBucketCredentialsConfig map[string]*CredentialsConfig
-
-	cluster, err := NewCouchbaseCluster(UnitTestUrl(), TestClusterUsername(), TestClusterPassword(), x509CertPath, x509KeyPath, caCertPath, forcePerBucketAuth, perBucketCredentialsConfig, tlsSkipVerify, BoolPtr(TestUseXattrs()), CachedClusterConnections)
+	ctx := TestCtx(t)
+	cluster, err := NewCouchbaseCluster(ctx, UnitTestUrl(), TestClusterUsername(), TestClusterPassword(), x509CertPath, x509KeyPath, caCertPath, forcePerBucketAuth, perBucketCredentialsConfig, tlsSkipVerify, BoolPtr(TestUseXattrs()), CachedClusterConnections)
 	require.NoError(t, err)
 	defer cluster.Close()
 	require.NotNil(t, cluster)
@@ -67,14 +67,14 @@ func TestBootstrapRefCounting(t *testing.T) {
 		}
 
 	}
-	require.Len(t, testBuckets, tbpNumBuckets())
+	require.Len(t, testBuckets, tbpNumBuckets(ctx))
 	// GetConfigBuckets doesn't cache connections, it uses cluster connection to determine number of buckets
 	require.Len(t, cluster.cachedBucketConnections.buckets, 0)
 
 	primeBucketConnectionCache := func(bucketNames []string) {
 		// Bucket CRUD ops do cache connections
 		for _, bucketName := range bucketNames {
-			exists, err := cluster.KeyExists(bucketName, "keyThatDoesNotExist")
+			exists, err := cluster.KeyExists(ctx, bucketName, "keyThatDoesNotExist")
 			require.NoError(t, err)
 			require.False(t, exists)
 		}
@@ -102,7 +102,7 @@ func TestBootstrapRefCounting(t *testing.T) {
 	makeConnection := make(chan struct{})
 	go func() {
 		defer wg.Done()
-		b, teardown, err := cluster.getBucket(buckets[0])
+		b, teardown, err := cluster.getBucket(ctx, buckets[0])
 		defer teardown()
 		require.NoError(t, err)
 		require.NotNil(t, b)

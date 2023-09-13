@@ -24,7 +24,7 @@ import (
 
 // EventHandler interface represents an instance of an event handler defined in the database config
 type EventHandler interface {
-	HandleEvent(event Event) bool
+	HandleEvent(ctx context.Context, event Event) bool
 	String() string
 }
 
@@ -50,7 +50,7 @@ const (
 )
 
 // Creates a new webhook handler based on the url and filter function.
-func NewWebhook(url string, filterFnString string, timeout *uint64, options map[string]interface{}) (*Webhook, error) {
+func NewWebhook(ctx context.Context, url string, filterFnString string, timeout *uint64, options map[string]interface{}) (*Webhook, error) {
 
 	var err error
 
@@ -63,7 +63,7 @@ func NewWebhook(url string, filterFnString string, timeout *uint64, options map[
 		url: url,
 	}
 	if filterFnString != "" {
-		wh.filter = NewJSEventFunction(filterFnString)
+		wh.filter = NewJSEventFunction(ctx, filterFnString)
 	}
 
 	if timeout != nil {
@@ -87,11 +87,10 @@ func NewWebhook(url string, filterFnString string, timeout *uint64, options map[
 // Performs an HTTP POST to the url defined for the handler.  If a filter function is defined,
 // calls it to determine whether to POST.  The payload for the POST is depends
 // on the event type.
-func (wh *Webhook) HandleEvent(event Event) bool {
+func (wh *Webhook) HandleEvent(ctx context.Context, event Event) bool {
 
 	const contentType = "application/json"
 	var payload []byte
-	logCtx := context.TODO()
 
 	// Different events post different content by default
 	switch event := event.(type) {
@@ -112,12 +111,12 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		//}
 		jsonOut, err := base.JSONMarshal(event.Doc)
 		if err != nil {
-			base.WarnfCtx(logCtx, "Error marshalling doc for webhook post")
+			base.WarnfCtx(ctx, "Error marshalling doc for webhook post")
 			return false
 		}
 		payload = jsonOut
 	default:
-		base.WarnfCtx(logCtx, "Webhook invoked for unsupported event type.")
+		base.WarnfCtx(ctx, "Webhook invoked for unsupported event type.")
 		return false
 	}
 
@@ -125,7 +124,7 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		// If filter function is defined, use it to determine whether to post
 		success, err := wh.filter.CallValidateFunction(event)
 		if err != nil {
-			base.WarnfCtx(logCtx, "Error calling webhook filter function: %v", err)
+			base.WarnfCtx(ctx, "Error calling webhook filter function: %v", err)
 		}
 
 		// If filter returns false, cancel webhook post
@@ -141,24 +140,24 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 			if resp != nil && resp.Body != nil {
 				_, err := io.Copy(io.Discard, resp.Body)
 				if err != nil {
-					base.DebugfCtx(logCtx, base.KeyEvents, "Error copying response body: %v", err)
+					base.DebugfCtx(ctx, base.KeyEvents, "Error copying response body: %v", err)
 				}
 				err = resp.Body.Close()
 				if err != nil {
-					base.DebugfCtx(logCtx, base.KeyEvents, "Error closing response body: %v", err)
+					base.DebugfCtx(ctx, base.KeyEvents, "Error closing response body: %v", err)
 				}
 			}
 		}()
 
 		if err != nil {
-			base.WarnfCtx(logCtx, "Error attempting to post %s to url %s: %s", base.UD(event.String()), base.UD(wh.SanitizedUrl()), err)
+			base.WarnfCtx(ctx, "Error attempting to post %s to url %s: %s", base.UD(event.String()), base.UD(wh.SanitizedUrl(ctx)), err)
 			return false
 		}
 
 		// Check Log Level first, as SanitizedUrl is expensive to evaluate.
 		if base.LogDebugEnabled(base.KeyEvents) {
-			base.DebugfCtx(logCtx, base.KeyEvents, "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
-				base.UD(string(payload)), base.UD(wh.SanitizedUrl()), resp.Status)
+			base.DebugfCtx(ctx, base.KeyEvents, "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
+				base.UD(string(payload)), base.UD(wh.SanitizedUrl(ctx)), resp.Status)
 		}
 		return true
 	}()
@@ -166,10 +165,10 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 }
 
 func (wh *Webhook) String() string {
-	return fmt.Sprintf("Webhook handler [%s]", wh.SanitizedUrl())
+	return fmt.Sprintf("Webhook handler [%s]", wh.SanitizedUrl(context.TODO())) // not possible to provide a better context and satisfy fmt.Stringer
 }
 
-func (wh *Webhook) SanitizedUrl() string {
+func (wh *Webhook) SanitizedUrl(ctx context.Context) string {
 	// Basic auth credentials may have been included in the URL, in which case obscure them
-	return base.RedactBasicAuthURLUserAndPassword(wh.url)
+	return base.RedactBasicAuthURLUserAndPassword(ctx, wh.url)
 }

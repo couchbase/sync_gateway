@@ -42,11 +42,11 @@ var kUserFunctionMaxCallDepth = 20
 var kJavaScriptWrapper string
 
 // Creates a JSServer instance wrapping a userJSRunner, for user JS functions and GraphQL resolvers.
-func newFunctionJSServer(name string, what string, sourceCode string) (*sgbucket.JSServer, error) {
+func newFunctionJSServer(ctx context.Context, name string, what string, sourceCode string) (*sgbucket.JSServer, error) {
 	js := fmt.Sprintf(kJavaScriptWrapper, sourceCode)
 	jsServer := sgbucket.NewJSServer(js, 0, kUserFunctionCacheSize,
 		func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-			return newJSRunner(name, what, fnSource)
+			return newJSRunner(ctx, name, what, fnSource)
 		})
 	// Call WithTask to force a task to be instantiated, which will detect syntax errors in the script. Otherwise the error only gets detected the first time a client calls the function.
 	var err error
@@ -67,8 +67,7 @@ type jsRunner struct {
 }
 
 // Creates a jsRunner given its name and JavaScript source code.
-func newJSRunner(name string, kind string, funcSource string) (*jsRunner, error) {
-	ctx := context.Background()
+func newJSRunner(ctx context.Context, name string, kind string, funcSource string) (*jsRunner, error) {
 	runner := &jsRunner{
 		name: name,
 		kind: kind,
@@ -104,7 +103,7 @@ func newJSRunner(name string, kind string, funcSource string) (*jsRunner, error)
 			runner.currentDB = nil
 		}()
 		if err != nil {
-			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": %s %s failed: %#v", runner.kind, runner.name, err)
+			base.ErrorfCtx(ctx, base.KeyJavascript.String()+": %s %s failed: %#v", runner.kind, runner.name, err)
 			return nil, runner.convertError(err)
 		}
 		return jsResult.Export()

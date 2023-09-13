@@ -238,7 +238,7 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get the existing bucket doc
-		_, existingBucketDoc, err := collection.GetDocWithXattr(docID, DocUnmarshalAll)
+		_, existingBucketDoc, err := collection.GetDocWithXattr(ctx, docID, DocUnmarshalAll)
 		require.NoError(t, err)
 
 		// Migrate document metadata from document body to system xattr.
@@ -1159,7 +1159,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 		}
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
-		_ = base.Patch(&deltaSrcMap, newDoc.Body())
+		_ = base.Patch(&deltaSrcMap, newDoc.Body(ctx))
 	}
 
 	b.Run("SmallDiff", func(b *testing.B) {

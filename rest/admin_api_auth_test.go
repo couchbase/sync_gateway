@@ -129,7 +129,7 @@ func TestCheckPermissions(t *testing.T) {
 				defer DeleteUser(t, httpClient, eps[0], testCase.CreateUser)
 			}
 
-			statusCode, permResults, err := CheckPermissions(httpClient, eps, "", testCase.Username, testCase.Password, testCase.RequestPermissions, testCase.ResponsePermissions)
+			statusCode, permResults, err := CheckPermissions(base.TestCtx(t), httpClient, eps, "", testCase.Username, testCase.Password, testCase.RequestPermissions, testCase.ResponsePermissions)
 			require.NoError(t, err)
 			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)
 			assert.True(t, reflect.DeepEqual(testCase.ExpectedPermissionResults, permResults))
@@ -160,14 +160,14 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	require.NoError(t, err)
 	svrctx.GoCBAgent = goCBAgent
 
-	noX509HttpClient, err := svrctx.initializeNoX509HttpClient()
+	noX509HttpClient, err := svrctx.initializeNoX509HttpClient(ctx)
 	require.NoError(t, err)
 	svrctx.NoX509HTTPClient = noX509HttpClient
 
 	eps, httpClient, err := svrctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
-	statusCode, _, err := CheckPermissions(httpClient, eps, "", base.TestClusterUsername(), base.TestClusterPassword(), []Permission{Permission{"!admin", false}}, nil)
+	statusCode, _, err := CheckPermissions(ctx, httpClient, eps, "", base.TestClusterUsername(), base.TestClusterPassword(), []Permission{Permission{"!admin", false}}, nil)
 	assert.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, statusCode)
@@ -282,7 +282,7 @@ func TestCheckRoles(t *testing.T) {
 				defer DeleteUser(t, httpClient, eps[0], testCase.CreateUser)
 			}
 
-			statusCode, err := CheckRoles(httpClient, eps, testCase.Username, testCase.Password, testCase.RequestRoles, testCase.BucketName)
+			statusCode, err := CheckRoles(base.TestCtx(t), httpClient, eps, testCase.Username, testCase.Password, testCase.RequestRoles, testCase.BucketName)
 			require.NoError(t, err)
 			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)
 		})
@@ -421,7 +421,7 @@ func TestAdminAuth(t *testing.T) {
 				defer DeleteUser(t, httpClient, managementEndpoints[0], testCase.CreateUser)
 			}
 
-			permResults, statusCode, err := checkAdminAuth(testCase.BucketName, testCase.Username, testCase.Password, testCase.Operation, httpClient, managementEndpoints, true, testCase.CheckPermissions, testCase.ResponsePermissions)
+			permResults, statusCode, err := checkAdminAuth(base.TestCtx(t), testCase.BucketName, testCase.Username, testCase.Password, testCase.Operation, httpClient, managementEndpoints, true, testCase.CheckPermissions, testCase.ResponsePermissions)
 
 			assert.NoError(t, err)
 			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)
@@ -458,7 +458,7 @@ func TestAdminAuthWithX509(t *testing.T) {
 	require.NoError(t, err)
 	svrctx.GoCBAgent = goCBAgent
 
-	noX509HttpClient, err := svrctx.initializeNoX509HttpClient()
+	noX509HttpClient, err := svrctx.initializeNoX509HttpClient(ctx)
 	require.NoError(t, err)
 	svrctx.NoX509HTTPClient = noX509HttpClient
 
@@ -466,11 +466,11 @@ func TestAdminAuthWithX509(t *testing.T) {
 	require.NoError(t, err)
 
 	var statusCode int
-	_, statusCode, err = checkAdminAuth("", base.TestClusterUsername(), base.TestClusterPassword(), "", httpClient, managementEndpoints, true, []Permission{{"!admin", false}}, nil)
+	_, statusCode, err = checkAdminAuth(ctx, "", base.TestClusterUsername(), base.TestClusterPassword(), "", httpClient, managementEndpoints, true, []Permission{{"!admin", false}}, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, statusCode)
 
-	_, statusCode, err = checkAdminAuth("", "invalidUser", "invalidPassword", "", httpClient, managementEndpoints, true, []Permission{{"!admin", false}}, nil)
+	_, statusCode, err = checkAdminAuth(ctx, "", "invalidUser", "invalidPassword", "", httpClient, managementEndpoints, true, []Permission{{"!admin", false}}, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, statusCode)
 	require.Contains(t, err.Error(), ErrInvalidLogin.Message)
@@ -988,7 +988,7 @@ func TestDisablePermissionCheck(t *testing.T) {
 			}
 			defer DeleteUser(t, httpClient, eps[0], testCase.CreateUser)
 
-			_, statusCode, err := checkAdminAuth(rt.Bucket().GetName(), testCase.CreateUser, "password", "", httpClient, eps, testCase.DoPermissionCheck, testCase.RequirePerms, nil)
+			_, statusCode, err := checkAdminAuth(rt.Context(), rt.Bucket().GetName(), testCase.CreateUser, "password", "", httpClient, eps, testCase.DoPermissionCheck, testCase.RequirePerms, nil)
 			assert.NoError(t, err)
 
 			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)

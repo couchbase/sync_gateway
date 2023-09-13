@@ -40,7 +40,7 @@ func MakeUser(t *testing.T, httpClient *http.Client, serverURL, username, passwo
 		return false, err, resp
 	}
 
-	err, resp := base.RetryLoop("Admin Auth testing MakeUser", retryWorker, base.CreateSleeperFunc(10, 100))
+	err, resp := base.RetryLoop(base.TestCtx(t), "Admin Auth testing MakeUser", retryWorker, base.CreateSleeperFunc(10, 100))
 	require.NoError(t, err)
 
 	if resp.(*http.Response).StatusCode != http.StatusOK {
@@ -67,7 +67,7 @@ func DeleteUser(t *testing.T, httpClient *http.Client, serverURL, username strin
 		return false, err, resp
 	}
 
-	err, resp := base.RetryLoop("Admin Auth testing DeleteUser", retryWorker, base.CreateSleeperFunc(10, 100))
+	err, resp := base.RetryLoop(base.TestCtx(t), "Admin Auth testing DeleteUser", retryWorker, base.CreateSleeperFunc(10, 100))
 	require.NoError(t, err)
 
 	require.Equal(t, http.StatusOK, resp.(*http.Response).StatusCode)

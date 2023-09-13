@@ -195,7 +195,7 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 		return err != nil, err, nil
 	}
 
-	err, _ := base.RetryLoopCtx("replicator reconnect", retryFunc, sleeperFunc, ctx)
+	err, _ := base.RetryLoop(ctx, "replicator reconnect", retryFunc, sleeperFunc)
 	// release timer associated with context deadline
 	if deadlineCancel != nil {
 		deadlineCancel()

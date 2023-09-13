@@ -24,7 +24,7 @@ const flagDeprecated = `Flag "%s" is deprecated. Please use "%s" in future.`
 func legacyServerMain(ctx context.Context, osArgs []string, flagStartupConfig *StartupConfig) error {
 	base.WarnfCtx(ctx, "Running in legacy config mode")
 
-	lc, err := setupServerConfig(osArgs)
+	lc, err := setupServerConfig(ctx, osArgs)
 	if err != nil {
 		return err
 	}
@@ -33,7 +33,7 @@ func legacyServerMain(ctx context.Context, osArgs []string, flagStartupConfig *S
 
 	lc.DisablePersistentConfig = base.BoolPtr(true)
 
-	migratedStartupConfig, databases, err := lc.ToStartupConfig()
+	migratedStartupConfig, databases, err := lc.ToStartupConfig(ctx)
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func registerLegacyFlags(config *StartupConfig, fs *flag.FlagSet) map[string]leg
 	}
 }
 
-func fillConfigWithLegacyFlags(flags map[string]legacyConfigFlag, fs *flag.FlagSet, consoleLogLevelSet bool) error {
+func fillConfigWithLegacyFlags(ctx context.Context, flags map[string]legacyConfigFlag, fs *flag.FlagSet, consoleLogLevelSet bool) error {
 	var errors *base.MultiError
 	fs.Visit(func(f *flag.Flag) {
 		cfgFlag, legacyFlag := flags[f.Name]
@@ -108,30 +108,30 @@ func fillConfigWithLegacyFlags(flags map[string]legacyConfigFlag, fs *flag.FlagS
 		switch f.Name {
 		case "interface", "adminInterface", "profileInterface", "url", "certpath", "keypath", "cacertpath", "logFilePath":
 			*cfgFlag.config.(*string) = *cfgFlag.flagValue.(*string)
-			base.WarnfCtx(context.Background(), flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
+			base.WarnfCtx(ctx, flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
 		case "pretty":
 			rCfg := reflect.ValueOf(cfgFlag.config).Elem()
 			rFlag := reflect.ValueOf(cfgFlag.flagValue)
 			rCfg.Set(rFlag)
-			base.WarnfCtx(context.Background(), flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
+			base.WarnfCtx(ctx, flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
 		case "verbose":
 			if *cfgFlag.flagValue.(*bool) {
 				if consoleLogLevelSet {
-					base.WarnfCtx(context.Background(), `Cannot use deprecated flag "-verbose" with flag "-logging.console.log_level". To set Sync Gateway to be verbose, please use flag "-logging.console.log_level info". Ignoring flag...`)
+					base.WarnfCtx(ctx, `Cannot use deprecated flag "-verbose" with flag "-logging.console.log_level". To set Sync Gateway to be verbose, please use flag "-logging.console.log_level info". Ignoring flag...`)
 				} else {
 					*cfgFlag.config.(**base.LogLevel) = base.LogLevelPtr(base.LevelInfo)
-					base.WarnfCtx(context.Background(), flagDeprecated, "-"+f.Name, "-logging.console.log_level info")
+					base.WarnfCtx(ctx, flagDeprecated, "-"+f.Name, "-logging.console.log_level info")
 				}
 			}
 		case "log":
 			list := strings.Split(*cfgFlag.flagValue.(*string), ",")
 			*cfgFlag.config.(*[]string) = list
-			base.WarnfCtx(context.Background(), flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
+			base.WarnfCtx(ctx, flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
 		case "configServer":
 			err := fmt.Errorf(`flag "-%s" is no longer supported and has been removed`, f.Name)
 			errors = errors.Append(err)
 		case "dbname", "deploymentID":
-			base.WarnfCtx(context.Background(), `Flag "-%s" is no longer supported and has been removed.`, f.Name)
+			base.WarnfCtx(ctx, `Flag "-%s" is no longer supported and has been removed.`, f.Name)
 		}
 	})
 	return errors.ErrorOrNil()

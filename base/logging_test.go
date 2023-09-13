@@ -98,7 +98,8 @@ func BenchmarkLogRotation(b *testing.B) {
 			// Tidy up temp log files in a retry loop because
 			// we can't remove temp dir while the async compression is still writing log files
 			assert.NoError(bm, logger.Close())
-			err, _ = RetryLoop("benchmark-logrotate-teardown",
+			ctx := TestCtx(bm)
+			err, _ = RetryLoop(ctx, "benchmark-logrotate-teardown",
 				func() (shouldRetry bool, err error, value interface{}) {
 					err = os.RemoveAll(logPath)
 					return err != nil, err, nil

@@ -496,7 +496,7 @@ func handleRefreshTokenRequest(h *handler) error {
 	refreshToken := h.rq.FormValue("refresh_token")
 
 	// extract the subject from the refresh token
-	subject, err := extractSubjectFromRefreshToken(refreshToken)
+	subject, err := extractSubjectFromRefreshToken(h.ctx(), refreshToken)
 
 	// Check for subject in map of known authenticated users
 	authState, ok := authCodeTokenMap[subject]
@@ -542,16 +542,16 @@ func writeTokenResponse(h *handler, subject string, issuerUrl string, authState 
 	return nil
 }
 
-func extractSubjectFromRefreshToken(refreshToken string) (string, error) {
+func extractSubjectFromRefreshToken(ctx context.Context, refreshToken string) (string, error) {
 	decodedToken, err := base64.StdEncoding.DecodeString(refreshToken)
 	if err != nil {
-		base.DebugfCtx(context.Background(), base.KeyAuth, "invalid refresh token provided, error: %v", err)
+		base.DebugfCtx(ctx, base.KeyAuth, "invalid refresh token provided, error: %v", err)
 		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid OIDC Refresh Token")
 	}
 
 	components := strings.Split(string(decodedToken), ":::")
 	subject := components[0]
-	base.DebugfCtx(context.Background(), base.KeyAuth, "subject extracted from refresh token = %v", subject)
+	base.DebugfCtx(ctx, base.KeyAuth, "subject extracted from refresh token = %v", subject)
 
 	if len(components) != 2 || subject == "" {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "OIDC Refresh Token does not contain subject")
