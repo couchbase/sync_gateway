@@ -796,7 +796,7 @@ func encodeRevisions(ctx context.Context, docID string, revs []string) Revisions
 		if i == 0 {
 			start = gen
 		} else if gen != start-i {
-			base.WarnfCtx(ctx, "Found gap in revision list for doc %q. Expecting gen %v but got %v in %v", base.UD(docID), start-i, gen, revs)
+			base.DebugfCtx(ctx, base.KeyCRUD, "Found gap in revision list for doc %q. Expecting gen %v but got %v in %v", base.UD(docID), start-i, gen, revs)
 		}
 	}
 	return Revisions{RevisionsStart: start, RevisionsIds: ids}
