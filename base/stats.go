@@ -30,7 +30,7 @@ const (
 
 	NamespaceKey                 = "sgw"
 	ResourceUtilizationSubsystem = "resource_utilization"
-	ErrorsSubsystem              = "errors"
+	ConfigSubsystem              = "config"
 
 	SubsystemCacheKey           = "cache"
 	SubsystemDatabaseKey        = "database"
@@ -173,7 +173,7 @@ func newGlobalStat() (*GlobalStat, error) {
 		return nil, err
 	}
 
-	g.ErrorStat.DatabaseBucketMismatches, err = NewIntStat(ErrorsSubsystem, "database_config_bucket_mistmatches", StatUnitBytes, DatabaseBucketMistmatchesDesc, StatAddedVersion3dot1dot2, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	g.ErrorStat.DatabaseBucketMismatches, err = NewIntStat(ConfigSubsystem, "database_config_bucket_mistmatches", StatUnitBytes, DatabaseBucketMismatchesDesc, StatAddedVersion3dot1dot2, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
 
 	return g, err
 }
@@ -322,7 +322,7 @@ type ResourceUtilization struct {
 }
 
 type ErrorStat struct {
-	// The number of times a database config is found in the wrong bucket
+	// The number of times the bucket specified in a database config doesn't match the bucket it's found in.
 	DatabaseBucketMismatches *SgwIntStat `json:"database_config_bucket_mistmatches"`
 }
 
