@@ -1464,7 +1464,10 @@ func TestSyncFnOnPush(t *testing.T) {
 		"public": &channels.ChannelRemoval{Seq: 2, RevID: "4-four"},
 	}, doc.Channels)
 
-	assert.Equal(t, base.SetOf("clibup"), doc.History["4-four"].Channels)
+	// We no longer store channels for the winning revision in the RevTree,
+	// so don't expect it to be in doc.History like it used to be...
+	// The above assertion ensured the doc was *actually* in the correct channel.
+	assert.Nil(t, doc.History["4-four"].Channels)
 }
 
 func TestInvalidChannel(t *testing.T) {
