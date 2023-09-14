@@ -202,7 +202,7 @@ func TestRetryLoop(t *testing.T) {
 
 	// Kick off retry loop
 	description := fmt.Sprintf("TestRetryLoop")
-	err, result := RetryLoop(description, worker, sleeper)
+	err, result := RetryLoop(TestCtx(t), description, worker, sleeper)
 
 	// We shouldn't get an error, because it will retry a few times and then succeed
 	assert.True(t, err == nil)
@@ -624,7 +624,7 @@ func TestRedactBasicAuthURL(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			assert.Equal(t, test.expected, RedactBasicAuthURLUserAndPassword(test.input))
+			assert.Equal(t, test.expected, RedactBasicAuthURLUserAndPassword(TestCtx(t), test.input))
 		})
 	}
 }

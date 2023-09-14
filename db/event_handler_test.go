@@ -33,16 +33,16 @@ func TestWebhookString(t *testing.T) {
 
 func TestSanitizedUrl(t *testing.T) {
 	var wh *Webhook
-
+	ctx := base.TestCtx(t)
 	wh = &Webhook{
 		url: "https://foo%40bar.baz:my-%24ecret-p%40%25%24w0rd@example.com:8888/bar",
 	}
-	assert.Equal(t, "https://xxxxx:xxxxx@example.com:8888/bar", wh.SanitizedUrl())
+	assert.Equal(t, "https://xxxxx:xxxxx@example.com:8888/bar", wh.SanitizedUrl(ctx))
 
 	wh = &Webhook{
 		url: "https://example.com/does-not-count-as-url-embedded:basic-auth-credentials@qux",
 	}
-	assert.Equal(t, "https://example.com/does-not-count-as-url-embedded:basic-auth-credentials@qux", wh.SanitizedUrl())
+	assert.Equal(t, "https://example.com/does-not-count-as-url-embedded:basic-auth-credentials@qux", wh.SanitizedUrl(ctx))
 }
 
 func TestCallValidateFunction(t *testing.T) {
@@ -53,30 +53,31 @@ func TestCallValidateFunction(t *testing.T) {
 	bodyBytes, _ := base.JSONMarshal(body)
 	event := &DocumentChangeEvent{DocID: docId, DocBytes: bodyBytes, OldDoc: oldBodyJSON, Channels: channels}
 
+	ctx := base.TestCtx(t)
 	// Boolean return type handling of CallValidateFunction; bool true value.
 	source := `function(doc) { if (doc.key1 == "value1") { return true; } else { return false; } }`
-	filterFunc := NewJSEventFunction(source)
+	filterFunc := NewJSEventFunction(ctx, source)
 	result, err := filterFunc.CallValidateFunction(event)
 	assert.True(t, result, "It should return true since doc.key1 is value1")
 	assert.NoError(t, err, "It should return boolean result")
 
 	// Boolean return type handling of CallValidateFunction; bool false value.
 	source = `function(doc) { if (doc.key1 == "value2") { return true; } else { return false; } }`
-	filterFunc = NewJSEventFunction(source)
+	filterFunc = NewJSEventFunction(ctx, source)
 	result, err = filterFunc.CallValidateFunction(event)
 	assert.False(t, result, "It should return false since doc.key1 is not value2")
 	assert.NoError(t, err, "It should return boolean result")
 
 	// Parsable boolean string return type handling of CallValidateFunction.
 	source = `function(doc) { if (doc.key1 == "value1") { return "true"; } else { return "false"; } }`
-	filterFunc = NewJSEventFunction(source)
+	filterFunc = NewJSEventFunction(ctx, source)
 	result, err = filterFunc.CallValidateFunction(event)
 	assert.True(t, result, "It should return true since doc.key1 is value1")
 	assert.NoError(t, err, "It should return parsable boolean result")
 
 	// Non parsable boolean string return type handling of CallValidateFunction.
 	source = `function(doc) { if (doc.key1 == "value1") { return "TrUe"; } else { return "false"; } }`
-	filterFunc = NewJSEventFunction(source)
+	filterFunc = NewJSEventFunction(ctx, source)
 	result, err = filterFunc.CallValidateFunction(event)
 	assert.False(t, result, "It should return false since 'TrUe' is non parsable boolean string")
 	assert.Error(t, err, "It should return parsable throw ParseBool error")
@@ -84,7 +85,7 @@ func TestCallValidateFunction(t *testing.T) {
 
 	// Not boolean and not parsable boolean string return type handling of CallValidateFunction.
 	source = `function(doc) { if (doc.key1 == "Pi") { return 3.14; } else { return 0.0; } }`
-	filterFunc = NewJSEventFunction(source)
+	filterFunc = NewJSEventFunction(ctx, source)
 	result, err = filterFunc.CallValidateFunction(event)
 	assert.False(t, result, "It should return not boolean and not parsable boolean string value")
 	assert.Error(t, err, "It should throw Validate function returned non-boolean value error")
@@ -92,7 +93,7 @@ func TestCallValidateFunction(t *testing.T) {
 
 	// Simulate CallFunction failure by making syntax error in filter function.
 	source = `function(doc) { invalidKeyword if (doc.key1 == "value1") { return true; } else { return false; } }`
-	filterFunc = NewJSEventFunction(source)
+	filterFunc = NewJSEventFunction(ctx, source)
 	result, err = filterFunc.CallValidateFunction(event)
 	assert.False(t, result, "It should return false due to the syntax error in filter function")
 	assert.Error(t, err, "It should throw an error due to syntax error")

@@ -9,6 +9,8 @@
 package rest
 
 import (
+	"context"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -40,7 +42,7 @@ type DatabaseConfig struct {
 	DbConfig
 }
 
-func (dbc *DatabaseConfig) Redacted() (*DatabaseConfig, error) {
+func (dbc *DatabaseConfig) Redacted(ctx context.Context) (*DatabaseConfig, error) {
 	var config DatabaseConfig
 
 	err := base.DeepCopyInefficient(&config, dbc)
@@ -48,7 +50,7 @@ func (dbc *DatabaseConfig) Redacted() (*DatabaseConfig, error) {
 		return nil, err
 	}
 
-	err = config.DbConfig.redactInPlace()
+	err = config.DbConfig.redactInPlace(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -70,13 +72,13 @@ func (dbc *DatabaseConfig) GetCollectionNames() base.ScopeAndCollectionNames {
 	return collections
 }
 
-func GenerateDatabaseConfigVersionID(previousRevID string, dbConfig *DbConfig) (string, error) {
+func GenerateDatabaseConfigVersionID(ctx context.Context, previousRevID string, dbConfig *DbConfig) (string, error) {
 	encodedBody, err := base.JSONMarshalCanonical(dbConfig)
 	if err != nil {
 		return "", err
 	}
 
-	previousGen, previousRev := db.ParseRevID(previousRevID)
+	previousGen, previousRev := db.ParseRevID(ctx, previousRevID)
 	generation := previousGen + 1
 
 	hash := db.CreateRevIDWithBytes(generation, previousRev, encodedBody)

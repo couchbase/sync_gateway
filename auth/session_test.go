@@ -29,7 +29,7 @@ func TestCreateSession(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	dataStore := testBucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
 
 	user, err := auth.NewUser(username, "password", base.Set{})
 	require.NoError(t, err)
@@ -74,7 +74,7 @@ func TestDeleteSession(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	dataStore := testBucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
 
 	id, err := base.GenerateRandomSecret()
 	require.NoError(t, err)
@@ -103,7 +103,7 @@ func TestMakeSessionCookie(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	dataStore := testBucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
 
 	sessionID, err := base.GenerateRandomSecret()
 	require.NoError(t, err)
@@ -129,7 +129,7 @@ func TestMakeSessionCookieProperties(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	dataStore := testBucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
 
 	sessionID, err := base.GenerateRandomSecret()
 	require.NoError(t, err)
@@ -164,7 +164,7 @@ func TestDeleteSessionForCookie(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	dataStore := testBucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
 
 	sessionID, err := base.GenerateRandomSecret()
 	require.NoError(t, err)
@@ -227,7 +227,7 @@ func TestCreateSessionChangePassword(t *testing.T) {
 			testBucket := base.GetTestBucket(t)
 			defer testBucket.Close()
 			dataStore := testBucket.GetSingleDataStore()
-			auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
+			auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
 
 			user, err := auth.NewUser(test.username, test.password, base.Set{})
 			require.NoError(t, err)
@@ -266,7 +266,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	dataStore := testBucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
 	const username = "Alice"
 	user, err := auth.NewUser(username, "password", base.Set{})
 	require.NoError(t, err)

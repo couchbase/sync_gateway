@@ -191,7 +191,7 @@ func (keyMask *LogKeyMask) EnabledLogKeys() []string {
 
 // ToLogKey takes a slice of case-sensitive log key names and will return a LogKeyMask bitfield
 // and a slice of deferred log functions for any warnings that may occurr.
-func ToLogKey(keysStr []string) (logKeys LogKeyMask) {
+func ToLogKey(ctx context.Context, keysStr []string) (logKeys LogKeyMask) {
 
 	for _, key := range keysStr {
 		// Take a copy of key, so we can use it in a closure outside the scope
@@ -209,14 +209,14 @@ func ToLogKey(keysStr []string) (logKeys LogKeyMask) {
 		// Strip a single "+" suffix in log keys and warn (for backwards compatibility)
 		if strings.HasSuffix(key, "+") {
 			newLogKey := strings.TrimSuffix(key, "+")
-			WarnfCtx(context.Background(), "Deprecated log key: %q found. Changing to: %q.", originalKey, newLogKey)
+			WarnfCtx(ctx, "Deprecated log key: %q found. Changing to: %q.", originalKey, newLogKey)
 			key = newLogKey
 		}
 
 		if logKey, ok := logKeyNamesInverse[key]; ok {
 			logKeys.Enable(logKey)
 		} else {
-			WarnfCtx(context.Background(), "Invalid log key: %v", originalKey)
+			WarnfCtx(ctx, "Invalid log key: %v", originalKey)
 		}
 	}
 

@@ -62,7 +62,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 			}
 
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 			if err != nil {
 				return nil, err
 			}
@@ -76,7 +76,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 
 		dbCreds := h.server.Config.DatabaseCredentials[dbName]
 		bucketCreds := h.server.Config.BucketCredentials[bucket]
-		if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+		if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 			return err
 		}
 

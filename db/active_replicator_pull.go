@@ -112,7 +112,7 @@ func (apr *ActivePullReplicator) _startPullNonCollection() error {
 	if err != nil {
 		return err
 	}
-	apr.blipSyncContext.collections.setNonCollectionAware(newBlipSyncCollectionContext(defaultCollection))
+	apr.blipSyncContext.collections.setNonCollectionAware(newBlipSyncCollectionContext(apr.ctx, defaultCollection))
 
 	if err := apr._initCheckpointer(nil); err != nil {
 		// clean up anything we've opened so far
@@ -150,7 +150,7 @@ func (apr *ActivePullReplicator) _subChanges(collectionIdx *int, since string) e
 		Revocations:    apr.config.PurgeOnRemoval,
 		CollectionIdx:  collectionIdx,
 	}
-	return subChangesRequest.Send(apr.blipSender)
+	return subChangesRequest.Send(apr.ctx, apr.blipSender)
 }
 
 // Complete gracefully shuts down a replication, waiting for all in-flight revisions to be processed

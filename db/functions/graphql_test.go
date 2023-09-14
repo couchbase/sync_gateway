@@ -481,7 +481,7 @@ func TestGraphQLMaxSchemaSize(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileGraphQL(&config)
+	_, err := CompileGraphQL(base.TestCtx(t), &config)
 	assert.ErrorContains(t, err, "GraphQL schema too large (> 20 bytes)")
 }
 
@@ -513,7 +513,7 @@ func TestGraphQLMaxResolverCount(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileGraphQL(&config)
+	_, err := CompileGraphQL(base.TestCtx(t), &config)
 	assert.ErrorContains(t, err, "too many GraphQL resolvers (> 1)")
 }
 
@@ -530,7 +530,7 @@ func TestArgsInResolverConfig(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileGraphQL(&config)
+	_, err := CompileGraphQL(base.TestCtx(t), &config)
 	assert.ErrorContains(t, err, `'args' is not valid in a GraphQL resolver config`)
 }
 
@@ -539,7 +539,7 @@ func TestUnresolvedTypesInSchema(t *testing.T) {
 		Schema:    base.StringPtr(`type Query{} type abc{def:kkk}`),
 		Resolvers: nil,
 	}
-	_, err := CompileGraphQL(&config)
+	_, err := CompileGraphQL(base.TestCtx(t), &config)
 	assert.ErrorContains(t, err, `GraphQL Schema object has no registered TypeMap -- this probably means the schema has unresolved types`)
 }
 
@@ -556,7 +556,7 @@ func TestInvalidMutationType(t *testing.T) {
 				},
 			},
 		}
-		_, err := CompileGraphQL(&config)
+		_, err := CompileGraphQL(base.TestCtx(t), &config)
 		assert.ErrorContains(t, err, `unrecognized 'type' "cpp"`)
 	})
 	t.Run("Unrecognized type query", func(t *testing.T) {
@@ -571,7 +571,7 @@ func TestInvalidMutationType(t *testing.T) {
 				},
 			},
 		}
-		_, err := CompileGraphQL(&config)
+		_, err := CompileGraphQL(base.TestCtx(t), &config)
 		assert.ErrorContains(t, err, `GraphQL mutations must be implemented in JavaScript`)
 	})
 }
@@ -588,7 +588,7 @@ func TestCompilationErrorInResolverCode(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileGraphQL(&config)
+	_, err := CompileGraphQL(base.TestCtx(t), &config)
 	assert.ErrorContains(t, err, `500 Error compiling GraphQL resolver "Query:square"`)
 }
 
@@ -606,7 +606,7 @@ func TestGraphQLMaxCodeSize(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileGraphQL(&config)
+	_, err := CompileGraphQL(base.TestCtx(t), &config)
 	assert.ErrorContains(t, err, "resolver square code too large (> 2 bytes)")
 }
 
@@ -630,7 +630,7 @@ func TestTypenameResolver(t *testing.T) {
 				},
 			},
 		}
-		_, err := CompileGraphQL(&config)
+		_, err := CompileGraphQL(base.TestCtx(t), &config)
 		assert.ErrorContains(t, err, "a GraphQL '__typename__' resolver must be JavaScript")
 	})
 	t.Run("Error in compiling typename resolver", func(t *testing.T) {
@@ -649,7 +649,7 @@ func TestTypenameResolver(t *testing.T) {
 				},
 			},
 		}
-		_, err := CompileGraphQL(&config)
+		_, err := CompileGraphQL(base.TestCtx(t), &config)
 		assert.ErrorContains(t, err, `Error compiling GraphQL type-name resolver "Book"`)
 	})
 	t.Run("Typename Resolver should not have allow", func(t *testing.T) {
@@ -671,7 +671,7 @@ func TestTypenameResolver(t *testing.T) {
 				},
 			},
 		}
-		_, err := CompileGraphQL(&config)
+		_, err := CompileGraphQL(base.TestCtx(t), &config)
 		assert.ErrorContains(t, err, "'allow' is not valid in a GraphQL '__typename__' resolver")
 	})
 
@@ -699,7 +699,7 @@ func TestTypenameResolver(t *testing.T) {
 				},
 			},
 		}
-		_, err := CompileGraphQL(&config)
+		_, err := CompileGraphQL(base.TestCtx(t), &config)
 		assert.NoError(t, err)
 		db, ctx := setupTestDBWithFunctions(t, nil, &config)
 		defer db.Close(ctx)
@@ -716,7 +716,7 @@ func TestInvalidSchemaAndSchemaFile(t *testing.T) {
 			SchemaFile: base.StringPtr("someInvalidPath/someInvalidFileName"),
 			Resolvers:  nil,
 		}
-		_, err := CompileGraphQL(&config)
+		_, err := CompileGraphQL(base.TestCtx(t), &config)
 		assert.ErrorContains(t, err, "GraphQL config: only one of `schema` and `schemaFile` may be used")
 	})
 
@@ -724,7 +724,7 @@ func TestInvalidSchemaAndSchemaFile(t *testing.T) {
 		var config = GraphQLConfig{
 			Resolvers: nil,
 		}
-		_, err := CompileGraphQL(&config)
+		_, err := CompileGraphQL(base.TestCtx(t), &config)
 		assert.ErrorContains(t, err, "GraphQL config: either `schema` or `schemaFile` must be defined")
 	})
 
@@ -732,7 +732,7 @@ func TestInvalidSchemaAndSchemaFile(t *testing.T) {
 		var config = GraphQLConfig{
 			SchemaFile: base.StringPtr("dummySchemaFile.txt"),
 		}
-		_, err := CompileGraphQL(&config)
+		_, err := CompileGraphQL(base.TestCtx(t), &config)
 		fmt.Println(err)
 		assert.ErrorContains(t, err, "can't read file")
 	})
@@ -747,7 +747,7 @@ func TestValidSchemaFile(t *testing.T) {
 		var config = GraphQLConfig{
 			SchemaFile: base.StringPtr("schema.graphql"),
 		}
-		_, err = CompileGraphQL(&config)
+		_, err = CompileGraphQL(base.TestCtx(t), &config)
 		assert.NoError(t, err)
 
 		err = os.Remove("schema.graphql")
@@ -774,6 +774,6 @@ func TestFixOfCVE_2022_37315(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileGraphQL(&config)
+	_, err := CompileGraphQL(base.TestCtx(t), &config)
 	assert.ErrorContains(t, err, `Syntax Error GraphQL (1:1) Unexpected Name "String"`)
 }

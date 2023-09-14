@@ -488,7 +488,7 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
 
 	// Create a new user and save to database to create user session.
-	authenticator := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions(rt.Context()))
 	user, err := authenticator.NewUser("eve", "cGFzc3dvcmQ=", channels.BaseSetOf(t, "*"))
 	assert.NoError(t, err, "Couldn't create new user")
 	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")
@@ -1218,9 +1218,9 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Get sync data for doc and ensure user xattr has been used correctly to set channel
 			var syncData db.SyncData
-			subdocStore, ok := rt.GetSingleDataStore().(base.SubdocXattrStore)
+			dataStore := rt.GetSingleDataStore()
 			require.True(t, ok)
-			_, err = subdocStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+			_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData)
 			assert.NoError(t, err)
 
 			assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
@@ -1238,7 +1238,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Ensure old channel set with user xattr has been removed
 			var syncData2 db.SyncData
-			_, err = subdocStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
+			_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData2)
 			assert.NoError(t, err)
 
 			assert.Equal(t, uint64(3), syncData2.Channels[channelName].Seq)
@@ -1248,9 +1248,6 @@ func TestRemovingUserXattr(t *testing.T) {
 
 func TestUserXattrRevCache(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
 
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
@@ -1469,9 +1466,6 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
-	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
-	require.True(t, ok)
-
 	// Initial PUT
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -1480,7 +1474,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	// Get current sync data
 	var syncData db.SyncData
-	_, err := subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err := dataStore.GetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	docRev, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
@@ -1500,7 +1494,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	// Ensure import worked and sequence incremented but that sequence did not
 	var syncData2 db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	docRev2, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
@@ -1522,7 +1516,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.NoError(t, err)
 
 	var syncData3 db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	assert.NotEqual(t, syncData2.CurrentRev, syncData3.CurrentRev)

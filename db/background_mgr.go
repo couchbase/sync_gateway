@@ -95,7 +95,7 @@ type BackgroundManagerProcessI interface {
 	ResetStatus()
 }
 
-type updateStatusCallbackFunc func() error
+type updateStatusCallbackFunc func(ctx context.Context) error
 
 // GetName returns name of the background manager
 func (b *BackgroundManager) GetName() string {
@@ -103,7 +103,7 @@ func (b *BackgroundManager) GetName() string {
 }
 
 func (b *BackgroundManager) Start(ctx context.Context, options map[string]interface{}) error {
-	err := b.markStart()
+	err := b.markStart(ctx)
 	if err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]interf
 			for {
 				select {
 				case <-ticker.C:
-					err := b.UpdateStatusClusterAware()
+					err := b.UpdateStatusClusterAware(ctx)
 					if err != nil {
 						base.WarnfCtx(ctx, "Failed to update background manager status: %v", err)
 					}
@@ -164,7 +164,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]interf
 		// Once our background process run has completed we should update the completed status and delete the heartbeat
 		// doc
 		if b.isClusterAware() {
-			err := b.UpdateStatusClusterAware()
+			err := b.UpdateStatusClusterAware(ctx)
 			if err != nil {
 				base.WarnfCtx(ctx, "Failed to update background manager status: %v", err)
 			}
@@ -176,7 +176,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]interf
 	}()
 
 	if b.isClusterAware() {
-		err := b.UpdateStatusClusterAware()
+		err := b.UpdateStatusClusterAware(ctx)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Failed to update background manager status: %v", err)
 		}
@@ -185,7 +185,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]interf
 	return nil
 }
 
-func (b *BackgroundManager) markStart() error {
+func (b *BackgroundManager) markStart(ctx context.Context) error {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -213,9 +213,9 @@ func (b *BackgroundManager) markStart() error {
 			for {
 				select {
 				case <-ticker.C:
-					err = b.UpdateHeartbeatDocClusterAware()
+					err = b.UpdateHeartbeatDocClusterAware(ctx)
 					if err != nil {
-						base.ErrorfCtx(context.TODO(), "Failed to update expiry on heartbeat doc: %v", err)
+						base.ErrorfCtx(ctx, "Failed to update expiry on heartbeat doc: %v", err)
 						b.SetError(err)
 					}
 				case <-terminator.Done():
@@ -446,11 +446,11 @@ func (b *BackgroundManager) SetError(err error) {
 
 // UpdateStatusClusterAware gets the current local status from the running process and updates the status document in
 // the bucket. Implements a retry. Used for Cluster Aware operations
-func (b *BackgroundManager) UpdateStatusClusterAware() error {
+func (b *BackgroundManager) UpdateStatusClusterAware(ctx context.Context) error {
 	if b.clusterAwareOptions == nil {
 		return nil
 	}
-	err, _ := base.RetryLoop("UpdateStatusClusterAware", func() (shouldRetry bool, err error, value interface{}) {
+	err, _ := base.RetryLoop(ctx, "UpdateStatusClusterAware", func() (shouldRetry bool, err error, value interface{}) {
 		status, metadata, err := b.getStatusLocal()
 		if err != nil {
 			return true, err, nil
@@ -477,7 +477,7 @@ type HeartbeatDoc struct {
 
 // UpdateHeartbeatDocClusterAware simply performs a touch operation on the heartbeat document to update its expiry.
 // Implements a retry. Used for Cluster Aware operations
-func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
+func (b *BackgroundManager) UpdateHeartbeatDocClusterAware(ctx context.Context) error {
 	statusRaw, _, err := b.clusterAwareOptions.metadataStore.GetAndTouchRaw(b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs)
 	if err != nil {
 		// If we get an error but the error is doc not found and terminator closed it means we have terminated the
@@ -505,7 +505,7 @@ func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
 	if status.ShouldStop {
 		err = b.Stop()
 		if err != nil {
-			base.WarnfCtx(context.TODO(), "Failed to stop process %q: %v", b.clusterAwareOptions.processSuffix, err)
+			base.WarnfCtx(ctx, "Failed to stop process %q: %v", b.clusterAwareOptions.processSuffix, err)
 		}
 	}
 

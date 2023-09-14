@@ -158,13 +158,13 @@ func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucke
 
 	usingDocker, dockerName := base.TestUseCouchbaseServerDockerName()
 	if usingDocker {
-		err = loadCertsIntoCouchbaseServerDocker(*testURL, ca, nodePair, dockerName)
+		err = loadCertsIntoCouchbaseServerDocker(base.TestCtx(t), *testURL, ca, nodePair, dockerName)
 	} else {
 		isLocalX509, localUserName := base.TestX509LocalServer()
 		if isLocalX509 {
-			err = loadCertsIntoLocalCouchbaseServer(*testURL, ca, nodePair, localUserName)
+			err = loadCertsIntoLocalCouchbaseServer(base.TestCtx(t), *testURL, ca, nodePair, localUserName)
 		} else {
-			err = loadCertsIntoCouchbaseServer(*testURL, ca, nodePair)
+			err = loadCertsIntoCouchbaseServer(base.TestCtx(t), *testURL, ca, nodePair)
 		}
 	}
 	require.NoError(t, err)

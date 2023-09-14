@@ -89,7 +89,7 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 
 	// Register heartbeat listener to trigger removal from cfg when
 	// other SG nodes stop sending heartbeats.
-	listener, err := registerHeartbeatListener(heartbeater, cbgtContext)
+	listener, err := registerHeartbeatListener(ctx, heartbeater, cbgtContext)
 	if err != nil {
 		return nil, err
 	}
@@ -169,11 +169,11 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configG
 	cbgt.RegisterBucketDataSourceOptionsCallback(indexName, c.Manager.UUID(), func(options *cbdatasource.BucketDataSourceOptions) *cbdatasource.BucketDataSourceOptions {
 		if spec.IsTLS() {
 			options.TLSConfig = func() *tls.Config {
-				return spec.TLSConfig()
+				return spec.TLSConfig(ctx)
 			}
 		}
 
-		networkType := getNetworkTypeFromConnSpec(connSpec)
+		networkType := getNetworkTypeFromConnSpec(ctx, connSpec)
 		InfofCtx(ctx, KeyDCP, "Using network type: %s", networkType)
 
 		// default (aka internal) networking is handled by cbdatasource, so we can avoid the shims altogether in this case, for all other cases we need shims to remap hosts.
@@ -376,7 +376,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		if spec.TLSSkipVerify {
 			setCbgtRootCertsForBucket(bucketUUID, nil)
 		} else {
-			certs, err := getRootCAs(spec.CACertPath)
+			certs, err := getRootCAs(ctx, spec.CACertPath)
 			if err != nil {
 				return nil, fmt.Errorf("failed to load root CAs: %w", err)
 			}
@@ -531,14 +531,14 @@ func initCfgCB(bucket Bucket, spec BucketSpec) (*cbgt.CfgCB, error) {
 	return cfgCB, nil
 }
 
-func registerHeartbeatListener(heartbeater Heartbeater, cbgtContext *CbgtContext) (*importHeartbeatListener, error) {
+func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbgtContext *CbgtContext) (*importHeartbeatListener, error) {
 
 	if cbgtContext == nil || cbgtContext.Manager == nil || cbgtContext.Cfg == nil || heartbeater == nil {
 		return nil, errors.New("Unable to register import heartbeat listener with nil manager, cfg or heartbeater")
 	}
 
 	// Register listener for import, uses cfg and manager to manage set of participating nodes
-	importHeartbeatListener, err := NewImportHeartbeatListener(cbgtContext)
+	importHeartbeatListener, err := NewImportHeartbeatListener(ctx, cbgtContext)
 	if err != nil {
 		return nil, err
 	}
@@ -561,16 +561,16 @@ type importHeartbeatListener struct {
 	lock       sync.RWMutex  // lock for nodeIDs access
 }
 
-func NewImportHeartbeatListener(ctx *CbgtContext) (*importHeartbeatListener, error) {
+func NewImportHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext) (*importHeartbeatListener, error) {
 
-	if ctx == nil {
+	if cbgtCtx == nil {
 		return nil, errors.New("ctx must not be nil for ImportHeartbeatListener")
 	}
 
 	listener := &importHeartbeatListener{
-		ctx:        ctx,
-		mgr:        ctx.Manager,
-		cfg:        ctx.Cfg,
+		ctx:        cbgtCtx,
+		mgr:        cbgtCtx.Manager,
+		cfg:        cbgtCtx.Cfg,
 		terminator: make(chan struct{}),
 	}
 
@@ -581,7 +581,7 @@ func NewImportHeartbeatListener(ctx *CbgtContext) (*importHeartbeatListener, err
 	}
 
 	// Subscribe to changes to the known node set key
-	err = listener.subscribeNodeChanges()
+	err = listener.subscribeNodeChanges(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -594,29 +594,28 @@ func (l *importHeartbeatListener) Name() string {
 }
 
 // When we detect other nodes have stopped pushing heartbeats, use manager to remove from cfg
-func (l *importHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
+func (l *importHeartbeatListener) StaleHeartbeatDetected(ctx context.Context, nodeUUID string) {
 
-	InfofCtx(context.TODO(), KeyCluster, "StaleHeartbeatDetected by import listener for node: %v", nodeUUID)
+	InfofCtx(ctx, KeyCluster, "StaleHeartbeatDetected by import listener for node: %v", nodeUUID)
 	err := cbgt.UnregisterNodes(l.cfg, l.mgr.Version(), []string{nodeUUID})
 	if err != nil {
-		WarnfCtx(context.TODO(), "Attempt to unregister %v from CBGT got error: %v", nodeUUID, err)
+		WarnfCtx(ctx, "Attempt to unregister %v from CBGT got error: %v", nodeUUID, err)
 	}
 }
 
 // subscribeNodeChanges registers with the manager's cfg implementation for notifications on changes to the
 // NODE_DEFS_KNOWN key.  When notified, refreshes the handlers nodeIDs.
-func (l *importHeartbeatListener) subscribeNodeChanges() error {
-	logCtx := context.TODO()
+func (l *importHeartbeatListener) subscribeNodeChanges(ctx context.Context) error {
 
 	cfgEvents := make(chan cbgt.CfgEvent)
 	err := l.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN), cfgEvents)
 	if err != nil {
-		DebugfCtx(logCtx, KeyCluster, "Error subscribing NODE_DEFS_KNOWN changes: %v", err)
+		DebugfCtx(ctx, KeyCluster, "Error subscribing NODE_DEFS_KNOWN changes: %v", err)
 		return err
 	}
 	err = l.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_WANTED), cfgEvents)
 	if err != nil {
-		DebugfCtx(logCtx, KeyCluster, "Error subscribing NODE_DEFS_WANTED changes: %v", err)
+		DebugfCtx(ctx, KeyCluster, "Error subscribing NODE_DEFS_WANTED changes: %v", err)
 		return err
 	}
 	go func() {
@@ -626,12 +625,12 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 			case <-cfgEvents:
 				localNodeRegistered, err := l.reloadNodes()
 				if err != nil {
-					WarnfCtx(logCtx, "Error while reloading heartbeat node definitions: %v", err)
+					WarnfCtx(ctx, "Error while reloading heartbeat node definitions: %v", err)
 				}
 				if !localNodeRegistered {
 					registerErr := l.mgr.Register(cbgt.NODE_DEFS_WANTED)
 					if registerErr != nil {
-						WarnfCtx(logCtx, "Error attempting to re-register node, node will not participate in import until restarted or cbgt cfg is next updated: %v", registerErr)
+						WarnfCtx(ctx, "Error attempting to re-register node, node will not participate in import until restarted or cbgt cfg is next updated: %v", registerErr)
 					}
 				}
 

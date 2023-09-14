@@ -74,42 +74,37 @@ func TestPublicRESTStatCount(t *testing.T) {
 
 	// create a user to authenticate as for public api calls and assert the stat hasn't incremented as a result
 	rt.CreateUser("greg", []string{"ABC"})
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
 	}, 0)
-	require.True(t, ok)
 
 	// use public api to put a doc through SGW then assert the stat has increased by 1
 	resp := rt.SendUserRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"foo":"bar", "channels":["ABC"]}`, "greg")
 	RequireStatus(t, resp, http.StatusCreated)
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
 	}, 1)
-	require.True(t, ok)
 
 	// send admin request assert that the public rest count doesn't increase
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusOK)
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
 	}, 1)
-	require.True(t, ok)
 
 	// send another public request to assert the stat increases by 1
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc1", "", "greg")
 	RequireStatus(t, resp, http.StatusOK)
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
 	}, 2)
-	require.True(t, ok)
 
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/_blipsync", "", "greg")
 	RequireStatus(t, resp, http.StatusUpgradeRequired)
 
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
 	}, 2)
-	require.True(t, ok)
 
 	srv := httptest.NewServer(rt.TestMetricsHandler())
 	defer srv.Close()
@@ -120,19 +115,17 @@ func TestPublicRESTStatCount(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	// assert the stat doesn't increment
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
 	}, 2)
-	require.True(t, ok)
 
 	// test public endpoint but one that doesn't access a db
 	resp = rt.SendUserRequest(http.MethodGet, "/", "", "greg")
 	RequireStatus(t, resp, http.StatusOK)
 	// assert the stat doesn't increment
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
 	}, 2)
-	require.True(t, ok)
 }
 
 func TestDBRoot(t *testing.T) {
@@ -1444,7 +1437,7 @@ func TestEventConfigValidationInvalid(t *testing.T) {
 
 	buf := bytes.NewBufferString(dbConfigJSON)
 	var dbConfig DbConfig
-	err := DecodeAndSanitiseConfig(buf, &dbConfig, true)
+	err := DecodeAndSanitiseConfig(base.TestCtx(t), buf, &dbConfig, true)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "document_scribbled_on")
 }
@@ -1659,11 +1652,9 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	}
 
 	// Fetch the xattr and make sure it contains the above value
-	subdocXattrStore, ok := rt.GetSingleDataStore().(base.SubdocXattrStore)
-	require.True(t, ok)
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	_, err = subdocXattrStore.SubdocGetBodyAndXattr("-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, "", &retrievedVal, &retrievedXattr, nil)
+	_, err = rt.GetSingleDataStore().GetWithXattr("-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, "", &retrievedVal, &retrievedXattr, nil)
 	assert.NoError(t, err, "Unexpected Error")
 	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedXattr["rev"])
 
@@ -2748,7 +2739,7 @@ func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 
 	documentRev := db.DocumentRevision{DocID: "doc1", BodyBytes: []byte("null")}
 
-	body, err := documentRev.Mutable1xBody(collection, nil, nil, false)
+	body, err := documentRev.Mutable1xBody(rt.Context(), collection, nil, nil, false)
 	require.Error(t, err)
 	require.Nil(t, body)
 	assert.Contains(t, err.Error(), "null doc body for doc")

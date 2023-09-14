@@ -30,10 +30,10 @@ const (
 type Heartbeater interface {
 	RegisterListener(listener HeartbeatListener) error
 	UnregisterListener(name string)
-	Start() error
-	StartSendingHeartbeats() error
-	StartCheckingHeartbeats() error
-	Stop()
+	Start(context.Context) error
+	StartSendingHeartbeats(context.Context) error
+	StartCheckingHeartbeats(context.Context) error
+	Stop(context.Context)
 }
 
 // A HeartbeatListener defines the set of nodes it wants to monitor, and a callback when one of those nodes stops
@@ -41,7 +41,7 @@ type Heartbeater interface {
 type HeartbeatListener interface {
 	Name() string
 	GetNodes() (nodeUUIDs []string, err error)
-	StaleHeartbeatDetected(nodeUUID string)
+	StaleHeartbeatDetected(ctx context.Context, nodeUUID string)
 	Stop()
 }
 
@@ -103,17 +103,17 @@ func NewCouchbaseHeartbeater(dataStore DataStore, keyPrefix, nodeUUID string) (h
 
 // Start the heartbeater.  Underlying methods performs the first heartbeat send and check synchronously, then
 // starts scheduled goroutines for ongoing processing.
-func (h *couchbaseHeartBeater) Start() error {
+func (h *couchbaseHeartBeater) Start(ctx context.Context) error {
 
-	if err := h.StartSendingHeartbeats(); err != nil {
+	if err := h.StartSendingHeartbeats(ctx); err != nil {
 		return err
 	}
 
-	if err := h.StartCheckingHeartbeats(); err != nil {
+	if err := h.StartCheckingHeartbeats(ctx); err != nil {
 		return err
 	}
 
-	DebugfCtx(context.TODO(), KeyCluster, "Sending node heartbeats at interval: %v", h.heartbeatSendInterval)
+	DebugfCtx(ctx, KeyCluster, "Sending node heartbeats at interval: %v", h.heartbeatSendInterval)
 
 	return nil
 
@@ -121,7 +121,7 @@ func (h *couchbaseHeartBeater) Start() error {
 
 // Stop terminates the send and check goroutines, and blocks for up to 1s
 // until goroutines are actually terminated.
-func (h *couchbaseHeartBeater) Stop() {
+func (h *couchbaseHeartBeater) Stop(ctx context.Context) {
 
 	if h == nil {
 		return
@@ -134,7 +134,7 @@ func (h *couchbaseHeartBeater) Stop() {
 	for h.sendActive.IsTrue() || h.checkActive.IsTrue() {
 		waitTimeMs += 10
 		if waitTimeMs > maxWaitTimeMs {
-			WarnfCtx(context.Background(), "couchbaseHeartBeater didn't complete Stop() within expected elapsed time")
+			WarnfCtx(ctx, "couchbaseHeartBeater didn't complete Stop() within expected elapsed time")
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -143,7 +143,7 @@ func (h *couchbaseHeartBeater) Stop() {
 }
 
 // Send initial heartbeat, and start goroutine to schedule sendHeartbeat invocation
-func (h *couchbaseHeartBeater) StartSendingHeartbeats() error {
+func (h *couchbaseHeartBeater) StartSendingHeartbeats(ctx context.Context) error {
 	if err := h.sendHeartbeat(); err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func (h *couchbaseHeartBeater) StartSendingHeartbeats() error {
 				return
 			case <-ticker.C:
 				if err := h.sendHeartbeat(); err != nil {
-					WarnfCtx(context.Background(), "Unexpected error sending heartbeat - will be retried: %v", err)
+					WarnfCtx(ctx, "Unexpected error sending heartbeat - will be retried: %v", err)
 				}
 			}
 		}
@@ -171,10 +171,10 @@ func (h *couchbaseHeartBeater) StartSendingHeartbeats() error {
 }
 
 // Perform initial heartbeat check, then start goroutine to schedule check for stale heartbeats
-func (h *couchbaseHeartBeater) StartCheckingHeartbeats() error {
+func (h *couchbaseHeartBeater) StartCheckingHeartbeats(ctx context.Context) error {
 
-	if err := h.checkStaleHeartbeats(); err != nil {
-		WarnfCtx(context.Background(), "Error checking for stale heartbeats: %v", err)
+	if err := h.checkStaleHeartbeats(ctx); err != nil {
+		WarnfCtx(ctx, "Error checking for stale heartbeats: %v", err)
 	}
 
 	ticker := time.NewTicker(h.heartbeatPollInterval)
@@ -187,8 +187,8 @@ func (h *couchbaseHeartBeater) StartCheckingHeartbeats() error {
 				ticker.Stop()
 				return
 			case <-ticker.C:
-				if err := h.checkStaleHeartbeats(); err != nil {
-					WarnfCtx(context.Background(), "Error checking for stale heartbeats: %v", err)
+				if err := h.checkStaleHeartbeats(ctx); err != nil {
+					WarnfCtx(ctx, "Error checking for stale heartbeats: %v", err)
 				}
 			}
 		}
@@ -246,13 +246,13 @@ func (l ListenerMap) String() string {
 
 // getAllNodes returns all nodes from all registered listeners as a map from nodeUUID to the listeners
 // registered for that node
-func (h *couchbaseHeartBeater) getNodeListenerMap() ListenerMap {
+func (h *couchbaseHeartBeater) getNodeListenerMap(ctx context.Context) ListenerMap {
 	nodeToListenerMap := make(ListenerMap)
 	h.heartbeatListenersMutex.RLock()
 	for _, listener := range h.heartbeatListeners {
 		listenerNodes, err := listener.GetNodes()
 		if err != nil {
-			WarnfCtx(context.Background(), "Error obtaining node set for listener %s - will be omitted for this heartbeat iteration.  Error: %v", listener.Name(), err)
+			WarnfCtx(ctx, "Error obtaining node set for listener %s - will be omitted for this heartbeat iteration.  Error: %v", listener.Name(), err)
 		}
 		for _, nodeUUID := range listenerNodes {
 			_, ok := nodeToListenerMap[nodeUUID]
@@ -266,11 +266,11 @@ func (h *couchbaseHeartBeater) getNodeListenerMap() ListenerMap {
 	return nodeToListenerMap
 }
 
-func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
+func (h *couchbaseHeartBeater) checkStaleHeartbeats(ctx context.Context) error {
 
 	// Build set of all nodes
-	nodeListenerMap := h.getNodeListenerMap()
-	TracefCtx(context.Background(), KeyCluster, "Checking heartbeats for node set: %s", nodeListenerMap)
+	nodeListenerMap := h.getNodeListenerMap(ctx)
+	TracefCtx(ctx, KeyCluster, "Checking heartbeats for node set: %s", nodeListenerMap)
 
 	for heartbeatNodeUUID, listeners := range nodeListenerMap {
 		if heartbeatNodeUUID == h.nodeUUID {
@@ -292,7 +292,7 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
 			// doc not found, which means the heartbeat doc expired.
 			// Notify listeners for this node
 			for _, listener := range listeners {
-				listener.StaleHeartbeatDetected(heartbeatNodeUUID)
+				listener.StaleHeartbeatDetected(ctx, heartbeatNodeUUID)
 			}
 		}
 	}
@@ -390,8 +390,8 @@ func (dh *documentBackedListener) Stop() {
 	return
 }
 
-func (dh *documentBackedListener) StaleHeartbeatDetected(nodeUUID string) {
-	_ = dh.RemoveNode(nodeUUID)
+func (dh *documentBackedListener) StaleHeartbeatDetected(ctx context.Context, nodeUUID string) {
+	_ = dh.RemoveNode(ctx, nodeUUID)
 	atomic.AddUint64(&dh.staleNotificationCount, 1)
 }
 
@@ -400,17 +400,17 @@ func (dh *documentBackedListener) StaleNotificationCount() uint64 {
 }
 
 // Adds the node to the tracking document
-func (dh *documentBackedListener) AddNode(nodeID string) error {
-	return dh.updateNodeList(nodeID, false)
+func (dh *documentBackedListener) AddNode(ctx context.Context, nodeID string) error {
+	return dh.updateNodeList(ctx, nodeID, false)
 }
 
 // Removes the node to the tracking document
-func (dh *documentBackedListener) RemoveNode(nodeID string) error {
-	return dh.updateNodeList(nodeID, true)
+func (dh *documentBackedListener) RemoveNode(ctx context.Context, nodeID string) error {
+	return dh.updateNodeList(ctx, nodeID, true)
 }
 
 // Adds or removes a nodeID from the node list document
-func (dh *documentBackedListener) updateNodeList(nodeID string, remove bool) error {
+func (dh *documentBackedListener) updateNodeList(ctx context.Context, nodeID string, remove bool) error {
 
 	dh.lock.Lock()
 	defer dh.lock.Unlock()
@@ -445,7 +445,7 @@ func (dh *documentBackedListener) updateNodeList(nodeID string, remove bool) err
 			dh.nodeIDs = append(dh.nodeIDs, nodeID)
 		}
 
-		InfofCtx(context.TODO(), KeyCluster, "Updating nodeList document (%s) with node IDs: %v", dh.nodeListKey, dh.nodeIDs)
+		InfofCtx(ctx, KeyCluster, "Updating nodeList document (%s) with node IDs: %v", dh.nodeListKey, dh.nodeIDs)
 
 		casOut, err := dh.datastore.WriteCas(dh.nodeListKey, 0, 0, dh.cas, dh.nodeIDs, 0)
 

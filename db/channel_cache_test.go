@@ -32,22 +32,22 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	collectionID := GetSingleDatabaseCollection(t, db.DatabaseContext).GetCollectionID()
 
 	// Make channels active
-	_, err := cache.GetChanges(ctx, channels.NewID("TestA", collectionID), getChangesOptionsWithCtxOnly())
+	_, err := cache.GetChanges(ctx, channels.NewID("TestA", collectionID), getChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err)
-	_, err = cache.GetChanges(ctx, channels.NewID("TestB", collectionID), getChangesOptionsWithCtxOnly())
+	_, err = cache.GetChanges(ctx, channels.NewID("TestB", collectionID), getChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err)
-	_, err = cache.GetChanges(ctx, channels.NewID("TestC", collectionID), getChangesOptionsWithCtxOnly())
+	_, err = cache.GetChanges(ctx, channels.NewID("TestC", collectionID), getChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err)
-	_, err = cache.GetChanges(ctx, channels.NewID("TestD", collectionID), getChangesOptionsWithCtxOnly())
+	_, err = cache.GetChanges(ctx, channels.NewID("TestD", collectionID), getChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err)
 
 	// Add some entries to caches, leaving some empty caches
-	cache.AddToCache(logEntry(1, "doc1", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
-	cache.AddToCache(logEntry(2, "doc2", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
-	cache.AddToCache(logEntry(3, "doc3", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
-	cache.AddToCache(logEntry(4, "doc4", "1-a", []string{"TestC"}, collectionID))
+	cache.AddToCache(ctx, logEntry(1, "doc1", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
+	cache.AddToCache(ctx, logEntry(2, "doc2", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
+	cache.AddToCache(ctx, logEntry(3, "doc3", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
+	cache.AddToCache(ctx, logEntry(4, "doc4", "1-a", []string{"TestC"}, collectionID))
 
-	db.UpdateCalculatedStats()
+	db.UpdateCalculatedStats(ctx)
 
 	maxEntries := db.DbStats.Cache().ChannelCacheMaxEntries.Value()
 	assert.Equal(t, 4, int(maxEntries))
@@ -84,22 +84,23 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 	testStats := dbstats.Cache()
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
+	ctx := base.TestCtx(t)
 	cache, err := newChannelCache(base.TestCtx(t), "testDb", options, testQueryHandlerFactory, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
-	defer cache.Stop()
+	defer cache.Stop(ctx)
 
 	require.NoError(t, err)
 
 	// Add 16 channels to the cache.  Shouldn't trigger compaction (hwm is not exceeded)
 	for i := 1; i <= 16; i++ {
 		channelName := fmt.Sprintf("chan_%d", i)
-		cache.addChannelCache(channels.NewID(channelName, base.DefaultCollectionID))
+		cache.addChannelCache(ctx, channels.NewID(channelName, base.DefaultCollectionID))
 	}
 	// Validate cache size
 	assert.Equal(t, 16, cache.channelCaches.Length())
 
 	// Add another channel to cache
-	cache.addChannelCache(channels.NewID("chan_17", base.DefaultCollectionID))
+	cache.addChannelCache(ctx, channels.NewID("chan_17", base.DefaultCollectionID))
 
 	assert.True(t, waitForCompaction(cache), "Compaction didn't complete in expected time")
 
@@ -125,15 +126,17 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 	testStats := dbstats.Cache()
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
+
+	ctx := base.TestCtx(t)
 	cache, err := newChannelCache(base.TestCtx(t), "testDb", options, testQueryHandlerFactory, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
-	defer cache.Stop()
+	defer cache.Stop(ctx)
 
 	// Add 16 channels to the cache.  Mark odd channels as active, even channels as inactive.
 	// Shouldn't trigger compaction (hwm is not exceeded)
 	for i := 1; i <= 18; i++ {
 		channel := channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID)
-		cache.addChannelCache(channel)
+		cache.addChannelCache(ctx, channel)
 		if i%2 == 1 {
 			log.Printf("Marking channel %q as active", channel)
 			activeChannels.IncrChannel(channel)
@@ -144,7 +147,7 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 
 	log.Printf("adding 19th element to cache...")
 	// Add another channel to cache, should trigger compaction
-	cache.addChannelCache(channels.NewID("chan_19", base.DefaultCollectionID))
+	cache.addChannelCache(ctx, channels.NewID("chan_19", base.DefaultCollectionID))
 
 	assert.True(t, waitForCompaction(cache), "Compaction didn't complete in expected time")
 
@@ -183,15 +186,16 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 	testStats := dbstats.Cache()
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
+	ctx := base.TestCtx(t)
 	cache, err := newChannelCache(base.TestCtx(t), "testDb", options, testQueryHandlerFactory, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
-	defer cache.Stop()
+	defer cache.Stop(ctx)
 
 	// Add 18 channels to the cache.  Mark channels 1-10 as active
 	// Shouldn't trigger compaction (hwm is not exceeded)
 	for i := 1; i <= 18; i++ {
 		channel := channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID)
-		cache.addChannelCache(channel)
+		cache.addChannelCache(ctx, channel)
 		if i <= 10 {
 			log.Printf("Marking channel %q as active", channel)
 			activeChannels.IncrChannel(channel)
@@ -201,7 +205,7 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 	assert.Equal(t, 18, cache.channelCaches.Length())
 
 	// Add another channel to cache, should trigger compaction
-	cache.addChannelCache(channels.NewID("chan_19", base.DefaultCollectionID))
+	cache.addChannelCache(ctx, channels.NewID("chan_19", base.DefaultCollectionID))
 	assert.True(t, waitForCompaction(cache), "Compaction didn't complete in expected time")
 
 	// Expect channels 1-10, 11-15 to be evicted, and all to be marked as NRU during compaction
@@ -223,7 +227,7 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 		channel := channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID)
 		cacheElement, isCached := cache.channelCaches.Get(channel)
 		assert.True(t, isCached, fmt.Sprintf("Expected %s to be cached during recently used update", channel))
-		AsSingleChannelCache(cacheElement).recentlyUsed.Set(true)
+		AsSingleChannelCache(ctx, cacheElement).recentlyUsed.Set(true)
 	}
 
 	// Add new channels to trigger compaction.  At start of compaction, expect:
@@ -234,9 +238,9 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 		channel := channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID)
 		if i <= 10 {
 			log.Printf("Marking channel %q as inactive", channel)
-			activeChannels.DecrChannel(channel)
+			activeChannels.DecrChannel(ctx, channel)
 		} else {
-			cache.addChannelCache(channel)
+			cache.addChannelCache(ctx, channel)
 		}
 	}
 
@@ -280,9 +284,10 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache(base.TestCtx(t), "testDb", options, queryHandler.asFactory, activeChannels, testStats)
+	ctx := base.TestCtx(t)
+	cache, err := newChannelCache(ctx, "testDb", options, queryHandler.asFactory, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
-	defer cache.Stop()
+	defer cache.Stop(ctx)
 
 	channelCount := 90
 	// define channel set
@@ -298,7 +303,7 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 
 	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
 	logEntry := testLogEntryForChannels(1, channelNames)
-	cache.AddToCache(logEntry)
+	cache.AddToCache(ctx, logEntry)
 
 	workerCount := 25
 	getChangesCount := 400
@@ -312,7 +317,7 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 			for i := 0; i < getChangesCount; i++ {
 				channelNumber := rand.Intn(channelCount) + 1
 				channel := channels.NewID(fmt.Sprintf("chan_%d", channelNumber), base.DefaultCollectionID)
-				options := getChangesOptionsWithCtxOnly()
+				options := getChangesOptionsWithCtxOnly(t)
 				changes, err := cache.GetChanges(base.TestCtx(t), channel, options)
 				if len(changes) == 1 {
 					changesSuccessCount++
@@ -354,9 +359,10 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache(base.TestCtx(t), "testDb", options, queryHandler.asFactory, activeChannels, testStats)
+	ctx := base.TestCtx(t)
+	cache, err := newChannelCache(ctx, "testDb", options, queryHandler.asFactory, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
-	defer cache.Stop()
+	defer cache.Stop(ctx)
 
 	channelCount := 200
 	// define channel set
@@ -372,7 +378,7 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 
 	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
 	logEntry := testLogEntryForChannels(1, channelNames)
-	cache.AddToCache(logEntry)
+	cache.AddToCache(ctx, logEntry)
 
 	workerCount := 25
 	getChangesCount := 400
@@ -386,7 +392,7 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 			for i := 0; i < getChangesCount; i++ {
 				channelNumber := rand.Intn(channelCount) + 1
 				channel := channels.NewID(fmt.Sprintf("chan_%d", channelNumber), base.DefaultCollectionID)
-				options := getChangesOptionsWithCtxOnly()
+				options := getChangesOptionsWithCtxOnly(t)
 				changes, err := cache.GetChanges(base.TestCtx(t), channel, options)
 				if len(changes) == 1 {
 					changesSuccessCount++
@@ -423,9 +429,10 @@ func TestChannelCacheBypass(t *testing.T) {
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache(base.TestCtx(t), "testDb", options, queryHandler.asFactory, activeChannels, testStats)
+	ctx := base.TestCtx(t)
+	cache, err := newChannelCache(ctx, "testDb", options, queryHandler.asFactory, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
-	defer cache.Stop()
+	defer cache.Stop(ctx)
 
 	channelCount := 100
 	// define channel set
@@ -441,12 +448,12 @@ func TestChannelCacheBypass(t *testing.T) {
 
 	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
 	logEntry := testLogEntryForChannels(1, channelNames)
-	cache.AddToCache(logEntry)
+	cache.AddToCache(ctx, logEntry)
 
 	// Issue queries for all channels.  First 20 should end up in the cache, remaining 80 should trigger bypass
 	for c := 1; c <= channelCount; c++ {
 		channel := channels.NewID(fmt.Sprintf("chan_%d", c), base.DefaultCollectionID)
-		options := getChangesOptionsWithCtxOnly()
+		options := getChangesOptionsWithCtxOnly(t)
 		changes, err := cache.GetChanges(base.TestCtx(t), channel, options)
 		assert.NoError(t, err, fmt.Sprintf("Error getting changes for channel %q", channel))
 		assert.True(t, len(changes) == 1, "Expected one change per channel")

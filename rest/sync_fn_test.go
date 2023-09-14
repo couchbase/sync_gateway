@@ -276,7 +276,7 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 	rev3aID := RespRevID(t, resp)
 
 	// rev 2-b
-	_, rev1Hash := db.ParseRevID(rev1ID)
+	_, rev1Hash := db.ParseRevID(rt.Context(), rev1ID)
 	resp = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?new_edits=false", testDocID), `{"`+db.BodyRevisions+`":{"start":2,"ids":["b", "`+rev1Hash+`"]}}`)
 	RequireStatus(t, resp, 201)
 	rev2bID := RespRevID(t, resp)

@@ -435,7 +435,7 @@ func TestUserFunctionSyntaxError(t *testing.T) {
 		},
 	}
 
-	_, err := CompileFunctions(kUserFunctionBadConfig)
+	_, err := CompileFunctions(base.TestCtx(t), kUserFunctionBadConfig)
 	assert.Error(t, err)
 }
 
@@ -456,7 +456,7 @@ func TestUserFunctionsMaxFunctionCount(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileFunctions(twoFunctionConfig)
+	_, err := CompileFunctions(base.TestCtx(t), twoFunctionConfig)
 	assert.ErrorContains(t, err, "too many functions declared (> 1)")
 }
 
@@ -472,7 +472,7 @@ func TestUserFunctionsMaxCodeSize(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileFunctions(functionConfig)
+	_, err := CompileFunctions(base.TestCtx(t), functionConfig)
 	assert.ErrorContains(t, err, "function code too large (> 20 bytes)")
 }
 
@@ -485,7 +485,7 @@ func TestUserFunctionAllow(t *testing.T) {
 	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig, nil)
 	defer db.Close(ctx)
 
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions(ctx))
 	user, err := authenticator.NewUser("maurice", "pass", base.SetOf("city-Paris"))
 	assert.NoError(t, err)
 
@@ -650,11 +650,11 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig 
 	}
 	var err error
 	if fnConfig != nil {
-		options.UserFunctions, err = CompileFunctions(*fnConfig)
+		options.UserFunctions, err = CompileFunctions(base.TestCtx(t), *fnConfig)
 		assert.NoError(t, err)
 	}
 	if gqConfig != nil {
-		options.GraphQL, err = CompileGraphQL(gqConfig)
+		options.GraphQL, err = CompileGraphQL(base.TestCtx(t), gqConfig)
 		assert.NoError(t, err)
 	}
 	return setupTestDBWithOptions(t, options)

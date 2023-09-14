@@ -29,10 +29,9 @@ func TestBytesReadDocOperations(t *testing.T) {
 
 	// create a user to authenticate as for public api calls and assert the stat hasn't incremented as a result
 	rt.CreateUser("greg", []string{"ABC"})
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, 0)
-	require.True(t, ok)
 
 	// use public api to put a doc through SGW then assert the stat has increased
 	input := `{"foo":"bar", "channels":["ABC"]}`
@@ -40,34 +39,30 @@ func TestBytesReadDocOperations(t *testing.T) {
 	resp := rt.SendUserRequest(http.MethodPut, "/{{.keyspace}}/doc1", input, "greg")
 	RequireStatus(t, resp, http.StatusCreated)
 
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 	// send admin request assert that the public rest count doesn't increase
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusOK)
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 	// send user request that has empty body, assert the stat doesn't increase
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc1", "", "greg")
 	RequireStatus(t, resp, http.StatusOK)
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 	// assert blipsync connection doesn't increment stat
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/_blipsync", "", "greg")
 	RequireStatus(t, resp, http.StatusUpgradeRequired)
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 	srv := httptest.NewServer(rt.TestMetricsHandler())
 	defer srv.Close()
@@ -78,19 +73,17 @@ func TestBytesReadDocOperations(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 	// test public endpoint but one that doesn't access a db and assert that doesn't increment stat
 	resp = rt.SendUserRequest(http.MethodGet, "/", "", "greg")
 	RequireStatus(t, resp, http.StatusOK)
 	// assert the stat doesn't increment
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 	// send another public request (this time POST) to check stat increments, but check it increments by correct bytes value
 	input = fmt.Sprint(`{"foo":"bar", "channels":["ABC"]}`)
@@ -100,10 +93,9 @@ func TestBytesReadDocOperations(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	cumulativeBytes := len(inputBytes) + len(inputBytes2)
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(cumulativeBytes))
-	require.True(t, ok)
 }
 
 func TestBytesReadChanges(t *testing.T) {
@@ -112,10 +104,9 @@ func TestBytesReadChanges(t *testing.T) {
 
 	// create a user and assert this doesn't increase the bytes read stat
 	rt.CreateUser("alice", nil)
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, 0)
-	require.True(t, ok)
 
 	// take the bytes of the body we will pass into request and perform changes POST request
 	changesJSON := `{"style":"all_docs", "timeout":6000, "feed":"longpoll", "limit":50, "since":"0"}`
@@ -124,10 +115,9 @@ func TestBytesReadChanges(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// assert the stat has increased by the number of bytes passed into request
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(byteArrayChangesBody)))
-	require.True(t, ok)
 
 }
 
@@ -161,10 +151,9 @@ func TestBytesReadPutAttachment(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// assert the stat has increased by the attachment endpoint input
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(byteArrayAttachmentBody)))
-	require.True(t, ok)
 
 	// test incorrect user still increments count
 	resp = rt.SendUserRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+revid, attachmentBody, reqHeaders, "bob", "letmein")
@@ -172,10 +161,9 @@ func TestBytesReadPutAttachment(t *testing.T) {
 
 	newStatNum := len(byteArrayAttachmentBody) * 2
 
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(newStatNum))
-	require.True(t, ok)
 
 }
 
@@ -206,20 +194,18 @@ func TestBytesReadRevDiff(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// assert the stat has increased by the bytes above
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 	newStat := len(inputBytes) * 2
 	// now try failed auth
 	resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_revs_diff", input, "bob")
 	RequireStatus(t, resp, http.StatusUnauthorized)
 
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(newStat))
-	require.True(t, ok)
 
 }
 
@@ -248,20 +234,18 @@ func TestBytesReadAllDocs(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// assert the stat has increased by the bytes length
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 	newStat := len(inputBytes) * 2
 	// now try failed auth
 	resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_all_docs", input, "bob")
 	RequireStatus(t, resp, http.StatusUnauthorized)
 
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(newStat))
-	require.True(t, ok)
 
 }
 
@@ -277,20 +261,18 @@ func TestBytesReadBulkDocs(t *testing.T) {
 	resp := rt.SendUserRequest("POST", "/{{.keyspace}}/_bulk_docs", input, "alice")
 	RequireStatus(t, resp, http.StatusCreated)
 
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 	newStat := len(inputBytes) * 2
 	// now try failed auth
 	resp = rt.SendUserRequest("POST", "/{{.keyspace}}/_bulk_docs", input, "bob")
 	RequireStatus(t, resp, http.StatusUnauthorized)
 
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(newStat))
-	require.True(t, ok)
 
 }
 
@@ -314,20 +296,18 @@ func TestBytesReadBulkGet(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// assert the stat has increased by the length of byte array
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 	newStat := len(inputBytes) * 2
 	// now try failed auth
 	resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_bulk_get", input, "bob")
 	RequireStatus(t, resp, http.StatusUnauthorized)
 
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(newStat))
-	require.True(t, ok)
 
 }
 
@@ -344,20 +324,18 @@ func TestBytesReadLocalDocPut(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// assert the stat is increased by the correct amount
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 	newStat := len(inputBytes) * 2
 	// now try failed auth
 	resp = rt.SendUserRequest(http.MethodPut, "/{{.keyspace}}/_local/doc1", input, "bob")
 	RequireStatus(t, resp, http.StatusUnauthorized)
 
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(newStat))
-	require.True(t, ok)
 }
 
 func TestBytesReadPOSTSession(t *testing.T) {
@@ -373,20 +351,18 @@ func TestBytesReadPOSTSession(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// assert the stat is increased by the correct amount
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 	newStat := len(inputBytes) * 2
 	// now try failed auth
 	resp = rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", input, "bob")
 	RequireStatus(t, resp, http.StatusUnauthorized)
 
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(newStat))
-	require.True(t, ok)
 }
 
 func TestBytesReadAuthFailed(t *testing.T) {
@@ -404,10 +380,9 @@ func TestBytesReadAuthFailed(t *testing.T) {
 	RequireStatus(t, resp, http.StatusUnauthorized)
 
 	// assert the stat has still increased by the bytes of the body passed into request
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 }
 
@@ -437,11 +412,10 @@ func TestBytesReadGzipRequest(t *testing.T) {
 	resp := rt.Send(rq)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		fmt.Println(rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value())
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 }
 
@@ -471,10 +445,9 @@ func TestPutDBBytesRead(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// assert the stat hasn't increased (admin request doesn't effect count)
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, 0)
-	require.True(t, ok)
 
 }
 
@@ -490,10 +463,9 @@ func TestOfflineDBBytesRead(t *testing.T) {
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", "alice")
 	RequireStatus(t, resp, http.StatusOK)
 
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, 0)
-	require.True(t, ok)
 
 	// try adding body to get request
 	input := `{"random": "body"}`
@@ -501,9 +473,8 @@ func TestOfflineDBBytesRead(t *testing.T) {
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", input, "alice")
 	RequireStatus(t, resp, http.StatusOK)
 
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
-	require.True(t, ok)
 
 }

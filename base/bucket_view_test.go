@@ -78,7 +78,8 @@ func TestView(t *testing.T) {
 
 	description := fmt.Sprintf("Wait for view readiness")
 	sleeper := CreateSleeperFunc(50, 100)
-	viewErr, _ := RetryLoop(description, worker, sleeper)
+	ctx := TestCtx(t)
+	viewErr, _ := RetryLoop(ctx, description, worker, sleeper)
 	require.NoError(t, viewErr)
 
 	// stale=false

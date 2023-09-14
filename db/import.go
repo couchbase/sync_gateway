@@ -91,7 +91,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 		return nil, err
 	}
 
-	return db.importDoc(ctx, docid, existingDoc.Body(), expiry, isDelete, existingBucketDoc, mode)
+	return db.importDoc(ctx, docid, existingDoc.Body(ctx), expiry, isDelete, existingBucketDoc, mode)
 }
 
 // Import document
@@ -150,7 +150,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 			// If this is an on-demand import, we want to continue to import the current version of the doc.  Re-initialize existing doc based on the latest doc
 			if mode == ImportOnDemand {
-				body = doc.Body()
+				body = doc.Body(ctx)
 				if body == nil {
 					return nil, nil, false, nil, base.ErrEmptyDocument
 				}
@@ -172,7 +172,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 				if doc.inlineSyncData {
 					existingDoc.Body, err = doc.MarshalBodyAndSync()
 				} else {
-					existingDoc.Body, err = doc.BodyBytes()
+					existingDoc.Body, err = doc.BodyBytes(ctx)
 				}
 
 				if err != nil {
@@ -196,7 +196,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 			// If document still requires import post-migration attempt, continue with import processing based on the body returned by migrate
 			doc = migratedDoc
-			body = migratedDoc.Body()
+			body = migratedDoc.Body(ctx)
 			base.InfofCtx(ctx, base.KeyMigrate, "Falling back to import with cas: %v", doc.Cas)
 		}
 
@@ -276,7 +276,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		if shouldGenerateNewRev {
 			// The active rev is the parent for an import
 			parentRev := doc.CurrentRev
-			generation, _ := ParseRevID(parentRev)
+			generation, _ := ParseRevID(ctx, parentRev)
 			generation++
 			newRev = CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
 			if err != nil {
@@ -373,7 +373,7 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	}
 
 	// Move any large revision bodies to external storage
-	err = doc.migrateRevisionBodies(db.dataStore)
+	err = doc.migrateRevisionBodies(ctx, db.dataStore)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyMigrate, "Error migrating revision bodies to external storage, doc %q, (cas=%d), Error: %v", base.UD(docid), doc.Cas, err)
 	}
@@ -476,7 +476,7 @@ type ImportFilterFunction struct {
 
 func NewImportFilterFunction(ctx context.Context, fnSource string, timeout time.Duration) *ImportFilterFunction {
 
-	base.DebugfCtx(context.Background(), base.KeyImport, "Creating new ImportFilterFunction")
+	base.DebugfCtx(ctx, base.KeyImport, "Creating new ImportFilterFunction")
 	return &ImportFilterFunction{
 		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize,
 			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {

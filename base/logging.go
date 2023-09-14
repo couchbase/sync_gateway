@@ -34,7 +34,7 @@ func GetLogKeys() map[string]bool {
 }
 
 // UpdateLogKeys updates the console's log keys from a map
-func UpdateLogKeys(keys map[string]bool, replace bool) {
+func UpdateLogKeys(ctx context.Context, keys map[string]bool, replace bool) {
 	if replace {
 		ConsoleLogKey().Set(logKeyMask(KeyNone))
 	}
@@ -48,7 +48,7 @@ func UpdateLogKeys(keys map[string]bool, replace bool) {
 		}
 	}
 
-	InfofCtx(context.Background(), KeyAll, "Setting log keys to: %v", ConsoleLogKey().EnabledLogKeys())
+	InfofCtx(ctx, KeyAll, "Setting log keys to: %v", ConsoleLogKey().EnabledLogKeys())
 }
 
 // Returns a string identifying a function on the call stack.
@@ -94,8 +94,8 @@ var (
 )
 
 // RotateLogfiles rotates all active log files.
-func RotateLogfiles() map[*FileLogger]error {
-	InfofCtx(context.Background(), KeyAll, "Rotating log files...")
+func RotateLogfiles(ctx context.Context) map[*FileLogger]error {
+	InfofCtx(ctx, KeyAll, "Rotating log files...")
 
 	loggers := map[*FileLogger]error{
 		traceLogger: nil,
@@ -272,7 +272,7 @@ func LogSyncGatewayVersion(ctx context.Context) {
 	ConsolefCtx(ctx, LevelNone, KeyNone, msg)
 
 	// Log the startup indicator to ALL log files too.
-	msg = addPrefixes(msg, context.Background(), LevelNone, KeyNone)
+	msg = addPrefixes(msg, ctx, LevelNone, KeyNone)
 	if errorLogger.shouldLog(LevelNone) {
 		errorLogger.logger.Printf(msg)
 	}
@@ -399,7 +399,7 @@ func AssertLogContains(t *testing.T, s string, f func()) {
 		}
 		return true, nil, nil
 	}
-	err, _ := RetryLoop("wait for logs", retry, CreateSleeperFunc(10, 100))
+	err, _ := RetryLoop(TestCtx(t), "wait for logs", retry, CreateSleeperFunc(10, 100))
 	consoleLogger.logger.SetOutput(os.Stderr)
 
 	assert.NoError(t, err, "Console logs did not contain %q", s)

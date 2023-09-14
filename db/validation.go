@@ -10,6 +10,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"strings"
 
@@ -72,13 +73,13 @@ func validateImportBody(body Body) error {
 
 // validateBlipBody validates incoming blip rev bodies
 // Takes a rawBody to avoid an unnecessary call to doc.BodyBytes()
-func validateBlipBody(rawBody []byte, doc *Document) error {
+func validateBlipBody(ctx context.Context, rawBody []byte, doc *Document) error {
 	// Prevent disallowed internal properties from being used
 	disallowed := []string{base.SyncPropertyName, BodyId, BodyRev, BodyDeleted, BodyRevisions}
 	for _, prop := range disallowed {
 		// Only unmarshal if raw body contains the disallowed property
 		if bytes.Contains(rawBody, []byte(`"`+prop+`"`)) {
-			if _, ok := doc.Body()[prop]; ok {
+			if _, ok := doc.Body(ctx)[prop]; ok {
 				return base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+prop+"' is a reserved internal property")
 			}
 		}

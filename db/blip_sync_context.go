@@ -170,11 +170,7 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 			bsc.reportComputeStat(rq, startTime)
 		}()
 
-		handler := blipHandler{
-			BlipSyncContext: bsc,
-			db:              bsc.copyContextDatabase(),
-			serialNumber:    bsc.incrementSerialNumber(),
-		}
+		handler := newBlipHandler(bsc.loggingCtx, bsc, bsc.copyContextDatabase(), bsc.incrementSerialNumber())
 
 		// Trace log the full message body and properties
 		if base.LogTraceEnabled(base.KeySyncMsg) {
@@ -182,7 +178,7 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 			base.TracefCtx(bsc.loggingCtx, base.KeySyncMsg, "Recv Req %s: Body: '%s' Properties: %v", rq, base.UD(rqBody), base.UD(rq.Properties))
 		}
 
-		if err := handlerFn(&handler, rq); err != nil {
+		if err := handlerFn(handler, rq); err != nil {
 			status, msg := base.ErrorAsHTTPStatus(err)
 			if response := rq.Response(); response != nil {
 				response.SetError("HTTP", status, msg)

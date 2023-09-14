@@ -654,9 +654,8 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
-	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
-	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+
+	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
@@ -710,9 +709,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
-	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
-	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to update the document again via Sync Gateway.  Should not trigger import, PUT should be successful,
@@ -772,9 +769,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
-	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
-	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Wait until crc match count changes
@@ -1272,7 +1267,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// We don't have a way to wait for a upgrade that doesn't happen, but we can look for the warning that happens.
-	base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.Cache().NonMobileIgnoredCount.Value()
 	}, 1)
 }
@@ -2074,10 +2069,9 @@ func TestAutoImportComputeStat(t *testing.T) {
 	require.NoError(t, err, fmt.Sprintf("Unable to insert doc %s", key))
 
 	// wait for import to process
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
 	}, 1)
-	require.True(t, ok)
 
 	// assert the stat increments for the auto import of the above doc
 	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
@@ -2288,9 +2282,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	// Modify the document via the SDK to add the body back
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
-	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
-	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to get the document again via Sync Gateway.  Should not trigger import.
@@ -2346,7 +2338,7 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, ke
 	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
 	assert.True(t, ok)
-	generation, _ := db.ParseRevID(revision.(string))
+	generation, _ := db.ParseRevID(base.TestCtx(t), revision.(string))
 	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
 	assert.True(t, generation == expectedRevGeneration)
 }
@@ -2735,9 +2727,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 
 	// Get Xattr and ensure channel value set correctly
 	var syncData db.SyncData
-	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
-	require.True(t, ok)
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
@@ -2752,7 +2742,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.NoError(t, err)
 
 	var syncData2 db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
@@ -2770,7 +2760,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.NoError(t, err)
 
 	var syncData3 db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData3)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData3)
 	assert.NoError(t, err)
 
 	assert.Equal(t, syncData2.Crc32c, syncData3.Crc32c)
@@ -2791,7 +2781,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	var syncData4 db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData4)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData4)
 	assert.NoError(t, err)
 
 	assert.Equal(t, base.Crc32cHashString(updateVal), syncData4.Crc32c)
@@ -2835,8 +2825,6 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
 	}
-	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
-	require.True(t, ok)
 
 	// Add doc with SDK
 	err := dataStore.Set(docKey, 0, nil, []byte(`{}`))
@@ -2874,7 +2862,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 
 	// Get sync data for doc and ensure user xattr has been used correctly to set channel
 	var syncData db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
@@ -2888,7 +2876,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	var syncData2 db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
@@ -2972,10 +2960,8 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	// Ensure sync function has ran on import
 	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
-	subdocXattrStore, ok := dataStore.(base.SubdocXattrStore)
-	require.True(t, ok)
 	var syncData db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())

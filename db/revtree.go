@@ -187,7 +187,7 @@ func (tree RevTree) ContainsCycles() bool {
 }
 
 // Repair rev trees that have cycles introduced by SG Issue #2847
-func (tree RevTree) RepairCycles() (err error) {
+func (tree RevTree) RepairCycles(ctx context.Context) (err error) {
 
 	// This function will be called back for every leaf node in tree
 	leafProcessor := func(leaf *RevInfo) {
@@ -200,8 +200,8 @@ func (tree RevTree) RepairCycles() (err error) {
 
 		for {
 
-			if node.ParentGenGTENodeGen() {
-				base.InfofCtx(context.Background(), base.KeyCRUD, "Node %+v detected to have invalid parent rev (parent generation larger than node generation).  Repairing by designating as a root node.", base.UD(node))
+			if node.ParentGenGTENodeGen(ctx) {
+				base.InfofCtx(ctx, base.KeyCRUD, "Node %+v detected to have invalid parent rev (parent generation larger than node generation).  Repairing by designating as a root node.", base.UD(node))
 				node.Parent = ""
 				break
 			}
@@ -231,8 +231,8 @@ func (tree RevTree) RepairCycles() (err error) {
 //
 // where the parent generation is *higher* than the node generation, which is never a valid scenario.
 // Likewise, detect situations where the parent generation is equal to the node generation, which is also invalid.
-func (node RevInfo) ParentGenGTENodeGen() bool {
-	return genOfRevID(node.Parent) >= genOfRevID(node.ID)
+func (node RevInfo) ParentGenGTENodeGen(ctx context.Context) bool {
+	return genOfRevID(ctx, node.Parent) >= genOfRevID(ctx, node.ID)
 }
 
 // Returns true if the RevTree has an entry for this revid.
@@ -313,7 +313,7 @@ func (tree RevTree) isLeaf(revid string) bool {
 
 // Finds the "winning" revision, the one that should be treated as the default.
 // This is the leaf revision whose (!deleted, generation, hash) tuple compares the highest.
-func (tree RevTree) winningRevision() (winner string, branched bool, inConflict bool) {
+func (tree RevTree) winningRevision(ctx context.Context) (winner string, branched bool, inConflict bool) {
 	winnerExists := false
 	leafCount := 0
 	activeLeafCount := 0
@@ -324,7 +324,7 @@ func (tree RevTree) winningRevision() (winner string, branched bool, inConflict 
 			activeLeafCount++
 		}
 		if (exists && !winnerExists) ||
-			((exists == winnerExists) && compareRevIDs(info.ID, winner) > 0) {
+			((exists == winnerExists) && compareRevIDs(ctx, info.ID, winner) > 0) {
 			winner = info.ID
 			winnerExists = exists
 		}
@@ -423,10 +423,10 @@ func (tree RevTree) setRevisionBody(revid string, body []byte, bodyKey string, h
 	info.HasAttachments = hasAttachments
 }
 
-func (tree RevTree) removeRevisionBody(revid string) (deletedBodyKey string) {
+func (tree RevTree) removeRevisionBody(ctx context.Context, revid string) (deletedBodyKey string) {
 	info, found := tree[revid]
 	if !found {
-		base.ErrorfCtx(context.Background(), "RemoveRevisionBody called for revid not in tree: %v", revid)
+		base.ErrorfCtx(ctx, "RemoveRevisionBody called for revid not in tree: %v", revid)
 		return ""
 	}
 	deletedBodyKey = info.BodyKey
@@ -461,7 +461,7 @@ func (tree RevTree) copy() RevTree {
 //
 //	pruned: number of revisions pruned
 //	prunedTombstoneBodyKeys: set of tombstones with external body storage that were pruned, as map[revid]bodyKey
-func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int, prunedTombstoneBodyKeys map[string]string) {
+func (tree RevTree) pruneRevisions(ctx context.Context, maxDepth uint32, keepRev string) (pruned int, prunedTombstoneBodyKeys map[string]string) {
 
 	if len(tree) <= int(maxDepth) {
 		return
@@ -479,7 +479,7 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int,
 	}
 
 	// Calculate tombstoneGenerationThreshold
-	genShortestNonTSBranch, foundShortestNonTSBranch := tree.FindShortestNonTombstonedBranch()
+	genShortestNonTSBranch, foundShortestNonTSBranch := tree.FindShortestNonTombstonedBranch(ctx)
 	tombstoneGenerationThreshold := -1
 	if foundShortestNonTSBranch {
 		// Only set the tombstoneGenerationThreshold if a genShortestNonTSBranch was found.  (fixes #2695)
@@ -493,7 +493,7 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int,
 			if !leaf.Deleted { // Ignore non-tombstoned leaves
 				continue
 			}
-			leafGeneration, _ := ParseRevID(leaf.ID)
+			leafGeneration, _ := ParseRevID(ctx, leaf.ID)
 			if leafGeneration < tombstoneGenerationThreshold {
 				pruned += tree.DeleteBranch(leaf)
 				if leaf.BodyKey != "" {
@@ -567,11 +567,11 @@ func (tree RevTree) computeDepthsAndFindLeaves() (maxDepth uint32, leaves []stri
 //	http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/three_branches.png
 //
 // The minimim generation that has a non-deleted leaf is "7-non-winning unresolved"
-func (tree RevTree) FindShortestNonTombstonedBranch() (generation int, found bool) {
-	return tree.FindShortestNonTombstonedBranchFromLeaves(tree.GetLeaves())
+func (tree RevTree) FindShortestNonTombstonedBranch(ctx context.Context) (generation int, found bool) {
+	return tree.FindShortestNonTombstonedBranchFromLeaves(ctx, tree.GetLeaves())
 }
 
-func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (generation int, found bool) {
+func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(ctx context.Context, leaves []string) (generation int, found bool) {
 
 	found = false
 	genShortestNonTSBranch := math.MaxInt32
@@ -583,7 +583,7 @@ func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (
 			// This is a tombstoned branch, skip it
 			continue
 		}
-		gen := genOfRevID(revid)
+		gen := genOfRevID(ctx, revid)
 		if gen > 0 && gen < genShortestNonTSBranch {
 			genShortestNonTSBranch = gen
 			found = true
@@ -597,14 +597,14 @@ func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (
 //	http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/four_branches_two_tombstoned.png
 //
 // The longest deleted branch has a generation of 10
-func (tree RevTree) FindLongestTombstonedBranch() (generation int) {
-	return tree.FindLongestTombstonedBranchFromLeaves(tree.GetLeaves())
+func (tree RevTree) FindLongestTombstonedBranch(ctx context.Context) (generation int) {
+	return tree.FindLongestTombstonedBranchFromLeaves(ctx, tree.GetLeaves())
 }
 
-func (tree RevTree) FindLongestTombstonedBranchFromLeaves(leaves []string) (generation int) {
+func (tree RevTree) FindLongestTombstonedBranchFromLeaves(ctx context.Context, leaves []string) (generation int) {
 	genLongestTSBranch := 0
 	for _, revid := range leaves {
-		gen := genOfRevID(revid)
+		gen := genOfRevID(ctx, revid)
 		if tree[revid].Deleted {
 			if gen > genLongestTSBranch {
 				genLongestTSBranch = gen
@@ -742,7 +742,7 @@ func (tree RevTree) getHistory(revid string) ([]string, error) {
 // ////// ENCODED REVISION LISTS (_revisions):
 
 // Parses a CouchDB _rev or _revisions property into a list of revision IDs
-func ParseRevisions(body Body) []string {
+func ParseRevisions(ctx context.Context, body Body) []string {
 	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
 
 	revisionsProperty, ok := body[BodyRevisions]
@@ -751,7 +751,7 @@ func ParseRevisions(body Body) []string {
 		if !ok {
 			return nil
 		}
-		if genOfRevID(revid) < 1 {
+		if genOfRevID(ctx, revid) < 1 {
 			return nil
 		}
 		oneRev := make([]string, 0, 1)
@@ -787,16 +787,16 @@ func splitRevisionList(revisions Revisions) (int, []string) {
 // Standard CouchDB encoding of a revision list: digests without numeric generation prefixes go in
 // the "ids" property, and the first (largest) generation number in the "start" property.
 // The docID parameter is informational only - and used when logging edge cases.
-func encodeRevisions(docID string, revs []string) Revisions {
+func encodeRevisions(ctx context.Context, docID string, revs []string) Revisions {
 	ids := make([]string, len(revs))
 	var start int
 	for i, revid := range revs {
-		gen, id := ParseRevID(revid)
+		gen, id := ParseRevID(ctx, revid)
 		ids[i] = id
 		if i == 0 {
 			start = gen
 		} else if gen != start-i {
-			base.WarnfCtx(context.TODO(), "Found gap in revision list for doc %q. Expecting gen %v but got %v in %v", base.UD(docID), start-i, gen, revs)
+			base.DebugfCtx(ctx, base.KeyCRUD, "Found gap in revision list for doc %q. Expecting gen %v but got %v in %v", base.UD(docID), start-i, gen, revs)
 		}
 	}
 	return Revisions{RevisionsStart: start, RevisionsIds: ids}
@@ -806,7 +806,7 @@ func encodeRevisions(docID string, revs []string) Revisions {
 // trim the history to stop at the first ancestor revID. If no ancestors are found, trim to
 // length maxUnmatchedLen.
 // TODO: Document/rename what the boolean result return value represents
-func trimEncodedRevisionsToAncestor(revs Revisions, ancestors []string, maxUnmatchedLen int) (result bool, trimmedRevs Revisions) {
+func trimEncodedRevisionsToAncestor(ctx context.Context, revs Revisions, ancestors []string, maxUnmatchedLen int) (result bool, trimmedRevs Revisions) {
 
 	trimmedRevs = revs
 
@@ -816,7 +816,7 @@ func trimEncodedRevisionsToAncestor(revs Revisions, ancestors []string, maxUnmat
 	}
 	matchIndex := len(digests)
 	for _, revID := range ancestors {
-		gen, digest := ParseRevID(revID)
+		gen, digest := ParseRevID(ctx, revID)
 		if index := start - gen; index >= 0 && index < matchIndex && digest == digests[index] {
 			matchIndex = index
 			maxUnmatchedLen = matchIndex + 1
