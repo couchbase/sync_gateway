@@ -467,7 +467,7 @@ func (tbp *TestBucketPool) createCollections(ctx context.Context, bucket Bucket)
 
 		tbp.Logf(ctx, "Creating new collection: %s.%s", scopeName, collectionName)
 		dataStoreName := ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
-		err := dynamicDataStore.CreateDataStore(dataStoreName)
+		err := dynamicDataStore.CreateDataStore(ctx, dataStoreName)
 		if err != nil {
 			tbp.Fatalf(ctx, "Couldn't create datastore %v.%v: %v", scopeName, collectionName, err)
 		}
@@ -655,7 +655,7 @@ var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Buc
 			return errors.New("N1QLBucketEmptierFunc used with non-N1QL store")
 		}
 
-		if hasPrimary, _, err := getIndexMetaWithoutRetry(n1qlStore, PrimaryIndexName); err != nil {
+		if hasPrimary, _, err := getIndexMetaWithoutRetry(ctx, n1qlStore, PrimaryIndexName); err != nil {
 			return err
 		} else if !hasPrimary {
 			return fmt.Errorf("bucket does not have primary index, so can't empty bucket using N1QL")

@@ -411,7 +411,7 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 
 func requireSyncData(rt *rest.RestTester, dataStore base.DataStore, docName string, hasSyncData bool) {
 	var rawDoc, rawXattr, rawUserXattr []byte
-	_, err := dataStore.GetWithXattr(docName, base.SyncXattrName, rt.GetDatabase().Options.UserXattrKey, &rawDoc, &rawXattr, &rawUserXattr)
+	_, err := dataStore.GetWithXattr(rt.Context(), docName, base.SyncXattrName, rt.GetDatabase().Options.UserXattrKey, &rawDoc, &rawXattr, &rawUserXattr)
 	require.NoError(rt.TB, err)
 	if hasSyncData {
 		require.NotEqual(rt.TB, "", string(rawXattr), "Expected data for %s %s", dataStore.GetName(), docName)

@@ -291,7 +291,7 @@ func (config *GraphQLConfig) compileTypeNameResolver(ctx context.Context, interf
 		if err != nil {
 			return nil
 		}
-		result, err := invocation.(*jsInvocation).ResolveType(params)
+		result, err := invocation.(*jsInvocation).ResolveType(ctx, params)
 		var objType *graphql.Object
 		if err != nil {
 			base.WarnfCtx(params.Context, "GraphQL resolver %q failed with error %v", name, err)

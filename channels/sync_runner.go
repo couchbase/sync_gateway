@@ -127,7 +127,7 @@ func NewSyncRunner(ctx context.Context, funcSource string, timeout time.Duration
 	}
 
 	// Implementation of the 'channel()' callback:
-	runner.DefineNativeFunction("channel", func(call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("channel", func(ctx context.Context, call otto.FunctionCall) otto.Value {
 		for _, arg := range call.ArgumentList {
 			if strings := ottoValueToStringArray(ctx, arg); strings != nil {
 				runner.channels = append(runner.channels, strings...)
@@ -137,17 +137,17 @@ func NewSyncRunner(ctx context.Context, funcSource string, timeout time.Duration
 	})
 
 	// Implementation of the 'access()' callback:
-	runner.DefineNativeFunction("access", func(call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("access", func(ctx context.Context, call otto.FunctionCall) otto.Value {
 		return runner.addValueForUser(ctx, call.Argument(0), call.Argument(1), runner.access)
 	})
 
 	// Implementation of the 'role()' callback:
-	runner.DefineNativeFunction("role", func(call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("role", func(ctx context.Context, call otto.FunctionCall) otto.Value {
 		return runner.addValueForUser(ctx, call.Argument(0), call.Argument(1), runner.roles)
 	})
 
 	// Implementation of the 'reject()' callback:
-	runner.DefineNativeFunction("reject", func(call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("reject", func(ctx context.Context, call otto.FunctionCall) otto.Value {
 		if runner.output.Rejection == nil {
 			if status, err := call.Argument(0).ToInteger(); err == nil && status >= 400 {
 				var message string
@@ -161,7 +161,7 @@ func NewSyncRunner(ctx context.Context, funcSource string, timeout time.Duration
 	})
 
 	// Implementation of the 'expiry()' callback:
-	runner.DefineNativeFunction("expiry", func(call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("expiry", func(ctx context.Context, call otto.FunctionCall) otto.Value {
 		if len(call.ArgumentList) > 0 {
 			rawExpiry, exportErr := call.Argument(0).Export()
 			if exportErr != nil {

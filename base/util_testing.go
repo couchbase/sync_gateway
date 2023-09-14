@@ -176,12 +176,12 @@ func (b *TestBucket) GetMetadataStore() sgbucket.DataStore {
 	return b.Bucket.DefaultDataStore()
 }
 
-func (b *TestBucket) CreateDataStore(name sgbucket.DataStoreName) error {
+func (b *TestBucket) CreateDataStore(ctx context.Context, name sgbucket.DataStoreName) error {
 	dynamicDataStore, ok := b.Bucket.(sgbucket.DynamicDataStoreBucket)
 	if !ok {
 		return fmt.Errorf("Bucket %T doesn't support dynamic collection creation", b.Bucket)
 	}
-	return dynamicDataStore.CreateDataStore(name)
+	return dynamicDataStore.CreateDataStore(ctx, name)
 }
 
 func (b *TestBucket) DropDataStore(name sgbucket.DataStoreName) error {

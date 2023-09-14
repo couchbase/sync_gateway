@@ -57,28 +57,28 @@ func TestCallValidateFunction(t *testing.T) {
 	// Boolean return type handling of CallValidateFunction; bool true value.
 	source := `function(doc) { if (doc.key1 == "value1") { return true; } else { return false; } }`
 	filterFunc := NewJSEventFunction(ctx, source)
-	result, err := filterFunc.CallValidateFunction(event)
+	result, err := filterFunc.CallValidateFunction(ctx, event)
 	assert.True(t, result, "It should return true since doc.key1 is value1")
 	assert.NoError(t, err, "It should return boolean result")
 
 	// Boolean return type handling of CallValidateFunction; bool false value.
 	source = `function(doc) { if (doc.key1 == "value2") { return true; } else { return false; } }`
 	filterFunc = NewJSEventFunction(ctx, source)
-	result, err = filterFunc.CallValidateFunction(event)
+	result, err = filterFunc.CallValidateFunction(ctx, event)
 	assert.False(t, result, "It should return false since doc.key1 is not value2")
 	assert.NoError(t, err, "It should return boolean result")
 
 	// Parsable boolean string return type handling of CallValidateFunction.
 	source = `function(doc) { if (doc.key1 == "value1") { return "true"; } else { return "false"; } }`
 	filterFunc = NewJSEventFunction(ctx, source)
-	result, err = filterFunc.CallValidateFunction(event)
+	result, err = filterFunc.CallValidateFunction(ctx, event)
 	assert.True(t, result, "It should return true since doc.key1 is value1")
 	assert.NoError(t, err, "It should return parsable boolean result")
 
 	// Non parsable boolean string return type handling of CallValidateFunction.
 	source = `function(doc) { if (doc.key1 == "value1") { return "TrUe"; } else { return "false"; } }`
 	filterFunc = NewJSEventFunction(ctx, source)
-	result, err = filterFunc.CallValidateFunction(event)
+	result, err = filterFunc.CallValidateFunction(ctx, event)
 	assert.False(t, result, "It should return false since 'TrUe' is non parsable boolean string")
 	assert.Error(t, err, "It should return parsable throw ParseBool error")
 	assert.Contains(t, err.Error(), `invalid syntax`)
@@ -86,7 +86,7 @@ func TestCallValidateFunction(t *testing.T) {
 	// Not boolean and not parsable boolean string return type handling of CallValidateFunction.
 	source = `function(doc) { if (doc.key1 == "Pi") { return 3.14; } else { return 0.0; } }`
 	filterFunc = NewJSEventFunction(ctx, source)
-	result, err = filterFunc.CallValidateFunction(event)
+	result, err = filterFunc.CallValidateFunction(ctx, event)
 	assert.False(t, result, "It should return not boolean and not parsable boolean string value")
 	assert.Error(t, err, "It should throw Validate function returned non-boolean value error")
 	assert.Contains(t, err.Error(), "Validate function returned non-boolean value.")
@@ -94,7 +94,7 @@ func TestCallValidateFunction(t *testing.T) {
 	// Simulate CallFunction failure by making syntax error in filter function.
 	source = `function(doc) { invalidKeyword if (doc.key1 == "value1") { return true; } else { return false; } }`
 	filterFunc = NewJSEventFunction(ctx, source)
-	result, err = filterFunc.CallValidateFunction(event)
+	result, err = filterFunc.CallValidateFunction(ctx, event)
 	assert.False(t, result, "It should return false due to the syntax error in filter function")
 	assert.Error(t, err, "It should throw an error due to syntax error")
 	assert.Contains(t, err.Error(), "Unexpected token")

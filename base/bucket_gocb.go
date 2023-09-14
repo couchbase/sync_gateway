@@ -116,7 +116,7 @@ func QueryBucketItemCount(ctx context.Context, n1qlStore N1QLStore) (itemCount i
 	var val struct {
 		Count int `json:"count"`
 	}
-	err = r.One(&val)
+	err = r.One(ctx, &val)
 	if err != nil {
 		return -1, err
 	}

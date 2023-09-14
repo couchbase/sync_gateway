@@ -104,7 +104,7 @@ func TestN1qlQuery(t *testing.T) {
 
 	// Iterate over results - validate values and count to ensure $minvalue is being applied correctly
 	for {
-		ok := queryResults.Next(&queryResult)
+		ok := queryResults.Next(ctx, &queryResult)
 		if !ok {
 			queryCloseErr = queryResults.Close()
 			break
@@ -122,7 +122,7 @@ func TestN1qlQuery(t *testing.T) {
 
 	count = 0
 	for {
-		ok := queryResults.Next(&queryResult)
+		ok := queryResults.Next(ctx, &queryResult)
 		if !ok {
 			queryCloseErr = queryResults.Close()
 			break
@@ -200,7 +200,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 
 	// Iterate over results - validate values and count to ensure $minvalue is being applied correctly
 	for {
-		ok := queryResults.Next(&queryResult)
+		ok := queryResults.Next(ctx, &queryResult)
 		if !ok {
 			queryCloseErr = queryResults.Close()
 			assert.NoError(t, queryCloseErr, "Error closing queryResults")
@@ -655,7 +655,7 @@ func TestWaitForBucketExistence(t *testing.T) {
 
 	ctx := TestCtx(t)
 	go func() {
-		indexExists, _, err := getIndexMetaWithoutRetry(n1qlStore, indexName)
+		indexExists, _, err := getIndexMetaWithoutRetry(ctx, n1qlStore, indexName)
 		assert.NoError(t, err, "No error while trying to fetch the index metadata")
 
 		if indexExists {

@@ -184,7 +184,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 
 	err = WaitForConditionWithOptions(t, func() bool {
 		var status BackgroundManagerStatus
-		rawStatus, _ := resycMgr.GetStatus()
+		rawStatus, _ := resycMgr.GetStatus(ctx)
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateStopped
 	}, 200, 100)
@@ -226,7 +226,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 
 		err = WaitForConditionWithOptions(t, func() bool {
 			var status BackgroundManagerStatus
-			rawStatus, _ := resyncMgr.GetStatus()
+			rawStatus, _ := resyncMgr.GetStatus(ctx)
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateCompleted
 		}, 200, 200)
@@ -261,7 +261,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 
 		err = WaitForConditionWithOptions(t, func() bool {
 			var status BackgroundManagerStatus
-			rawStatus, _ := resyncMgr.GetStatus()
+			rawStatus, _ := resyncMgr.GetStatus(ctx)
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateCompleted
 		}, 200, 200)
@@ -319,7 +319,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 
 	err = WaitForConditionWithOptions(t, func() bool {
 		var status BackgroundManagerStatus
-		rawStatus, _ := resycMgr.GetStatus()
+		rawStatus, _ := resycMgr.GetStatus(ctx)
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateCompleted
 	}, 200, 200)
@@ -362,7 +362,7 @@ func TestResyncImportComputeStat(t *testing.T) {
 
 	err = WaitForConditionWithOptions(t, func() bool {
 		var status BackgroundManagerStatus
-		rawStatus, _ := resycMgr.GetStatus()
+		rawStatus, _ := resycMgr.GetStatus(ctx)
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateCompleted
 	}, 200, 200)
@@ -414,7 +414,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 
 	err = WaitForConditionWithOptions(t, func() bool {
 		var status BackgroundManagerStatus
-		rawStatus, _ := resycMgr.GetStatus()
+		rawStatus, _ := resycMgr.GetStatus(ctx)
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateStopped
 	}, 200, 200)
@@ -430,7 +430,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 
 	err = WaitForConditionWithOptions(t, func() bool {
 		var status BackgroundManagerStatus
-		rawStatus, _ := resycMgr.GetStatus()
+		rawStatus, _ := resycMgr.GetStatus(ctx)
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateCompleted
 	}, 200, 200)

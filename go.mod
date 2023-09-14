@@ -39,6 +39,10 @@ require (
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
+replace github.com/couchbase/sg-bucket => ../sg-bucket
+
+replace github.com/couchbaselabs/rosmar => ../rosmar
+
 require (
 	github.com/aws/aws-sdk-go v1.44.77 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect

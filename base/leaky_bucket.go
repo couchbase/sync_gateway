@@ -97,12 +97,12 @@ func (b *LeakyBucket) GetUnderlyingBucket() Bucket {
 	return b.bucket
 }
 
-func (b *LeakyBucket) CreateDataStore(name sgbucket.DataStoreName) error {
+func (b *LeakyBucket) CreateDataStore(ctx context.Context, name sgbucket.DataStoreName) error {
 	dynamicDataStore, ok := b.GetUnderlyingBucket().(sgbucket.DynamicDataStoreBucket)
 	if !ok {
 		return fmt.Errorf("Bucket %T doesn't support dynamic collection creation", b.GetUnderlyingBucket())
 	}
-	return dynamicDataStore.CreateDataStore(name)
+	return dynamicDataStore.CreateDataStore(ctx, name)
 }
 
 func (b *LeakyBucket) DropDataStore(name sgbucket.DataStoreName) error {

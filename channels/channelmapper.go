@@ -45,8 +45,8 @@ const DocChannelsSyncFunction = `function(doc){channel(doc.channels);}`
 // NewChannelMapper creates a new channel mapper with a specific javascript function and a timeout. A zero value timeout will never timeout.
 func NewChannelMapper(ctx context.Context, fnSource string, timeout time.Duration) *ChannelMapper {
 	return &ChannelMapper{
-		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize,
-			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
+		JSServer: sgbucket.NewJSServer(ctx, fnSource, timeout, kTaskCacheSize,
+			func(ctx context.Context, fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
 				return NewSyncRunner(ctx, fnSource, timeout)
 			}),
 	}
@@ -61,11 +61,11 @@ func GetDefaultSyncFunction(scopeName, collectionName string) string {
 
 }
 
-func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+func (mapper *ChannelMapper) MapToChannelsAndAccess(ctx context.Context, body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
 	numberFixBody := ConvertJSONNumbers(body)
 	numberFixMetaMap := ConvertJSONNumbers(metaMap)
 
-	result1, err := mapper.Call(numberFixBody, sgbucket.JSONString(oldBodyJSON), numberFixMetaMap, userCtx)
+	result1, err := mapper.Call(ctx, numberFixBody, sgbucket.JSONString(oldBodyJSON), numberFixMetaMap, userCtx)
 	if err != nil {
 		return nil, err
 	}

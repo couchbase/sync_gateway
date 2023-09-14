@@ -719,7 +719,7 @@ func waitAndRequireDBState(t *testing.T, dbName string, targetState uint32) {
 
 func requireActiveChannel(t *testing.T, dataStore base.DataStore, key string, channelName string) {
 	xattr := db.SyncData{}
-	_, err := dataStore.GetWithXattr(key, base.SyncXattrName, "", nil, &xattr, nil)
+	_, err := dataStore.GetWithXattr(base.TestCtx(t), key, base.SyncXattrName, "", nil, &xattr, nil)
 	require.NoError(t, err, "Error Getting Xattr as sync data")
 	channel, ok := xattr.Channels[channelName]
 	require.True(t, ok)

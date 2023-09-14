@@ -528,7 +528,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 		ScopeID    *string `json:"scope_id"`
 		KeyspaceID *string `json:"keyspace_id"`
 	}
-	require.NoError(t, res.One(&indexMetaResult))
+	require.NoError(t, res.One(ctx, &indexMetaResult))
 	require.NotNil(t, indexMetaResult)
 
 	// if the index was created on the _default collection in the bucket, keyspace_id is the bucket name, and the other fields are not present.
@@ -549,7 +549,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	var primaryQueryResult struct {
 		Test *bool `json:"test"`
 	}
-	require.NoError(t, res.One(&primaryQueryResult))
+	require.NoError(t, res.One(ctx, &primaryQueryResult))
 	require.NotNil(t, primaryQueryResult)
 
 	assert.True(t, *primaryQueryResult.Test)
@@ -651,7 +651,7 @@ func TestCollectionsPutDocInDefaultCollectionWithNamedCollections(t *testing.T) 
 	// create named collection in the default scope
 	const customCollectionName = "new_collection"
 	dBucket := tb.GetUnderlyingBucket().(sgbucket.DynamicDataStoreBucket)
-	require.NoError(t, dBucket.CreateDataStore(base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
+	require.NoError(t, dBucket.CreateDataStore(base.TestCtx(t), base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
 	defer func() {
 		assert.NoError(t, dBucket.DropDataStore(base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
 	}()

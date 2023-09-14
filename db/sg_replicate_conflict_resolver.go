@@ -200,7 +200,7 @@ type ConflictResolverJSServer struct {
 func NewConflictResolverJSServer(ctx context.Context, fnSource string, timeout time.Duration) *ConflictResolverJSServer {
 	base.DebugfCtx(ctx, base.KeyReplicate, "Creating new ConflictResolverFunction")
 	return &ConflictResolverJSServer{
-		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize, newConflictResolverRunner),
+		JSServer: sgbucket.NewJSServer(ctx, fnSource, timeout, kTaskCacheSize, newConflictResolverRunner),
 	}
 }
 
@@ -209,7 +209,7 @@ func (i *ConflictResolverJSServer) EvaluateFunction(ctx context.Context, conflic
 	docID, _ := conflict.LocalDocument[BodyId].(string)
 	localRevID, _ := conflict.LocalDocument[BodyRev].(string)
 	remoteRevID, _ := conflict.RemoteDocument[BodyRev].(string)
-	result, err := i.Call(conflict)
+	result, err := i.Call(ctx, conflict)
 	if err != nil {
 		base.WarnfCtx(ctx, "Unexpected error invoking conflict resolver for document %s, local/remote revisions %s/%s - processing aborted, document will not be replicated.  Error: %v",
 			base.UD(docID), base.UD(localRevID), base.UD(remoteRevID), err)
@@ -236,8 +236,7 @@ func (i *ConflictResolverJSServer) EvaluateFunction(ctx context.Context, conflic
 }
 
 // Compiles a JavaScript event function to a conflictResolverRunner object.
-func newConflictResolverRunner(funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-	ctx := context.TODO() // fix in sg-bucket
+func newConflictResolverRunner(ctx context.Context, funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
 	conflictResolverRunner := &sgbucket.JSRunner{}
 	err := conflictResolverRunner.InitWithLogging(funcSource, timeout,
 		func(s string) {
@@ -251,7 +250,7 @@ func newConflictResolverRunner(funcSource string, timeout time.Duration) (sgbuck
 	}
 
 	// Implementation of the 'defaultPolicy(conflict)' callback:
-	conflictResolverRunner.DefineNativeFunction("defaultPolicy", func(call otto.FunctionCall) otto.Value {
+	conflictResolverRunner.DefineNativeFunction("defaultPolicy", func(ctx context.Context, call otto.FunctionCall) otto.Value {
 		if len(call.ArgumentList) == 0 {
 			return ErrorToOttoValue(ctx, conflictResolverRunner, errors.New("No conflict parameter specified when calling defaultPolicy()"))
 		}

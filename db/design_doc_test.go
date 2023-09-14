@@ -30,14 +30,15 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
 	require.True(t, ok)
 
-	err := viewStore.PutDDoc(DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
+	ctx := base.TestCtx(t)
+	err := viewStore.PutDDoc(ctx, DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
 	require.NoError(t, err, "Unable to create design doc (DesignDocSyncGatewayPrefix)")
 
-	err = viewStore.PutDDoc(DesignDocSyncHousekeepingPrefix, &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(ctx, DesignDocSyncHousekeepingPrefix, &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"all_docs": sgbucket.ViewDef{Map: mapFunction},
 		},
@@ -45,7 +46,7 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 	require.NoError(t, err, "Unable to create design doc (DesignDocSyncHousekeepingPrefix)")
 
 	// Add some user design docs that shouldn't be removed
-	err = viewStore.PutDDoc("sync_gateway_user_ddoc", &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(ctx, "sync_gateway_user_ddoc", &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels_custom": sgbucket.ViewDef{Map: mapFunction},
 		},
@@ -60,7 +61,6 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 	)
 
 	// Invoke removal in preview mode
-	ctx := base.TestCtx(t)
 	removedDDocs, removeErr := removeObsoleteDesignDocs(ctx, viewStore, true, true)
 	require.NoError(t, removeErr, "Error removing previous design docs")
 	assert.Equal(t, 2, len(removedDDocs))
@@ -100,25 +100,26 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 	viewStore, ok := base.AsViewStore(bucket.Bucket.DefaultDataStore())
 	require.True(t, ok)
 
-	err := viewStore.PutDDoc(DesignDocSyncGatewayPrefix+"_2.0", &sgbucket.DesignDoc{
+	ctx := base.TestCtx(t)
+	err := viewStore.PutDDoc(ctx, DesignDocSyncGatewayPrefix+"_2.0", &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
 	require.NoError(t, err)
-	err = viewStore.PutDDoc(DesignDocSyncHousekeepingPrefix+"_2.0", &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(ctx, DesignDocSyncHousekeepingPrefix+"_2.0", &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
 	require.NoError(t, err)
-	err = viewStore.PutDDoc(DesignDocSyncGatewayPrefix+"_2.1", &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(ctx, DesignDocSyncGatewayPrefix+"_2.1", &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
 	require.NoError(t, err)
-	err = viewStore.PutDDoc(DesignDocSyncHousekeepingPrefix+"_2.1", &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(ctx, DesignDocSyncHousekeepingPrefix+"_2.1", &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
@@ -134,7 +135,6 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 	)
 
 	useViewsTrueRemovalPreview := []string{"sync_gateway_2.0", "sync_housekeeping_2.0"}
-	ctx := base.TestCtx(t)
 
 	removedDDocsPreview, _ := removeObsoleteDesignDocs(ctx, viewStore, true, true)
 	assert.Equal(t, useViewsTrueRemovalPreview, removedDDocsPreview)
@@ -164,13 +164,14 @@ func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
 	require.True(t, ok)
 
-	err := viewStore.PutDDoc(DesignDocSyncGatewayPrefix+"_test", &sgbucket.DesignDoc{
+	ctx := base.TestCtx(t)
+	err := viewStore.PutDDoc(ctx, DesignDocSyncGatewayPrefix+"_test", &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
 	require.NoError(t, err)
-	err = viewStore.PutDDoc(DesignDocSyncHousekeepingPrefix+"_test", &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(ctx, DesignDocSyncHousekeepingPrefix+"_test", &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
@@ -187,8 +188,6 @@ func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 	require.Truef(t, ok, "bucket is not a leaky bucket")
 	leakyDataStore.SetDDocGetErrorCount(1)
 	leakyDataStore.SetDDocDeleteErrorCount(1)
-
-	ctx := base.TestCtx(t)
 
 	removedDDocsPreview, err := removeObsoleteDesignDocs(ctx, viewStore, true, false)
 	assert.NoError(t, err)
