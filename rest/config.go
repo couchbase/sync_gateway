@@ -1493,7 +1493,7 @@ func (sc *ServerContext) findBucketWithCallback(callback func(bucket string) (ex
 func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
 	// fetch will update the databses
 	sc.lock.Lock()
-	defer sc.lock.Lock()
+	defer sc.lock.Unlock()
 	return sc._fetchDatabase(ctx, dbName)
 }
 
