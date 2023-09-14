@@ -63,7 +63,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	}
 	revIndexes := map[string]int{"": -1}
 
-	winner, _, _ := tree.winningRevision()
+	winner, _, _ := tree.winningRevision(context.TODO())
 
 	i := 0
 	for _, info := range tree {
