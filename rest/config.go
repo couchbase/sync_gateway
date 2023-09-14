@@ -308,7 +308,7 @@ func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname 
 		// already logged this entry at warning so need to log at info now
 		base.InfofCtx(ctx, base.KeyConfig, logMessage)
 	}
-	base.SyncGatewayStats.GlobalStats.ErrorStat.DatabaseBucketMismatches.Add(1)
+	base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Add(1)
 }
 
 func (d *invalidDatabaseConfigs) exists(dbname string) (*invalidConfigInfo, bool) {
