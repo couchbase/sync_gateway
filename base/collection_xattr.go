@@ -391,7 +391,7 @@ func (c *Collection) UpdateXattr(_ context.Context, k string, xattrKey string, e
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
 	}
-	c.appendMacroExpansions(mutateOps, opts)
+	mutateOps = c.appendMacroExpansions(mutateOps, opts)
 
 	options := &gocb.MutateInOptions{
 		Expiry:        CbsExpiryToDuration(exp),
@@ -417,7 +417,7 @@ func (c *Collection) UpdateBodyAndXattr(_ context.Context, k string, xattrKey st
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
 		gocb.ReplaceSpec("", bytesToRawMessage(v), nil),
 	}
-	c.appendMacroExpansions(mutateOps, opts)
+	mutateOps = c.appendMacroExpansions(mutateOps, opts)
 
 	options := &gocb.MutateInOptions{
 		Expiry:        CbsExpiryToDuration(exp),
@@ -439,6 +439,7 @@ func (c *Collection) UpdateXattrDeleteBody(_ context.Context, k, xattrKey string
 	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
+		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
 		gocb.RemoveSpec("", nil),
 	}
 	mutateOps = c.appendMacroExpansions(mutateOps, opts)
