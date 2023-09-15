@@ -2448,8 +2448,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	err = activeRT.WaitForRev("doc", rev)
 	require.NoError(t, err)
 
-	_, ok := base.WaitForStat(pullStats.HandleRevCount.Value, 1)
-	require.True(t, ok)
+	base.RequireWaitForStat(t, pullStats.HandleRevCount.Value, 1)
 	assert.NotEqualValues(t, 0, pullStats.HandleRevBytes.Value())
 	// Confirm connected client count has not increased, which uses same processRev code
 	assert.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
@@ -2620,8 +2619,7 @@ func TestUnsubChanges(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Empty(t, response)
 	// Wait for unsub changes to stop the sub changes being sent before sending document up
-	activeReplVal, _ := base.WaitForStat(activeReplStat.Value, 0)
-	assert.EqualValues(t, 0, activeReplVal)
+	base.RequireWaitForStat(t, activeReplStat.Value, 0)
 
 	// Confirm no more changes are being sent
 	resp = rt.UpdateDoc("doc2", "", `{"key":"val1"}`)

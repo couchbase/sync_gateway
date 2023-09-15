@@ -253,45 +253,43 @@ func x509SSHUsername() string {
 }
 
 // loadCertsIntoCouchbaseServer will upload the given certs into Couchbase Server (via SSH and the REST API)
-func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, ca *caPair, node *nodePair) error {
+func loadCertsIntoCouchbaseServer(ctx context.Context, couchbaseServerURL url.URL, ca *caPair, node *nodePair) error {
 	// Copy node cert and key via SSH
 	sshRemoteHost := x509SSHUsername() + "@" + couchbaseServerURL.Hostname()
 	err := sshCopyFileAsExecutable(node.PEMFilepath, sshRemoteHost, "/opt/couchbase/var/lib/couchbase/inbox")
 	if err != nil {
 		return err
 	}
-	logCtx := context.Background()
-	base.DebugfCtx(logCtx, base.KeyAll, "copied x509 node chain.pem to integration test server")
+	base.DebugfCtx(ctx, base.KeyAll, "copied x509 node chain.pem to integration test server")
 
 	err = sshCopyFileAsExecutable(node.KeyFilePath, sshRemoteHost, "/opt/couchbase/var/lib/couchbase/inbox")
 	if err != nil {
 		return err
 	}
-	base.DebugfCtx(logCtx, base.KeyAll, "copied x509 node pkey.key to integration test server")
+	base.DebugfCtx(ctx, base.KeyAll, "copied x509 node pkey.key to integration test server")
 
-	return uploadCACertViaREST(couchbaseServerURL, ca)
+	return uploadCACertViaREST(ctx, couchbaseServerURL, ca)
 }
 
 // loadCertsIntoCouchbaseServer will upload the given certs into Couchbase Server (via SSH and the REST API)
-func loadCertsIntoCouchbaseServerDocker(couchbaseServerURL url.URL, ca *caPair, node *nodePair, containerName string) error {
+func loadCertsIntoCouchbaseServerDocker(ctx context.Context, couchbaseServerURL url.URL, ca *caPair, node *nodePair, containerName string) error {
 	err := copyLocalFileIntoDocker(containerName, node.PEMFilepath, "/opt/couchbase/var/lib/couchbase/inbox")
 	if err != nil {
 		return err
 	}
-	logCtx := context.Background()
-	base.DebugfCtx(logCtx, base.KeyAll, "copied x509 node chain.pem to integration test server")
+	base.DebugfCtx(ctx, base.KeyAll, "copied x509 node chain.pem to integration test server")
 
 	err = copyLocalFileIntoDocker(containerName, node.KeyFilePath, "/opt/couchbase/var/lib/couchbase/inbox")
 	if err != nil {
 		return err
 	}
-	base.DebugfCtx(logCtx, base.KeyAll, "copied x509 node pkey.key to integration test server")
+	base.DebugfCtx(ctx, base.KeyAll, "copied x509 node pkey.key to integration test server")
 
-	return uploadCACertViaREST(couchbaseServerURL, ca)
+	return uploadCACertViaREST(ctx, couchbaseServerURL, ca)
 }
 
 // loadCertsIntoLocalCouchbaseServer will upload the given certs into Couchbase Server (via SSH and the REST API)
-func loadCertsIntoLocalCouchbaseServer(couchbaseServerURL url.URL, ca *caPair, node *nodePair, localMacOSUser string) error {
+func loadCertsIntoLocalCouchbaseServer(ctx context.Context, couchbaseServerURL url.URL, ca *caPair, node *nodePair, localMacOSUser string) error {
 
 	localMacOSCouchbaseServerInbox := "/Users/" + localMacOSUser + "/Library/Application Support/Couchbase/var/lib/couchbase/inbox"
 
@@ -300,18 +298,17 @@ func loadCertsIntoLocalCouchbaseServer(couchbaseServerURL url.URL, ca *caPair, n
 	if err != nil {
 		return err
 	}
-	logCtx := context.Background()
-	base.DebugfCtx(logCtx, base.KeyAll, "copied x509 node chain.pem to integration test server")
+	base.DebugfCtx(ctx, base.KeyAll, "copied x509 node chain.pem to integration test server")
 
 	err = copyLocalFile(node.KeyFilePath, localMacOSCouchbaseServerInbox)
 	if err != nil {
 		return err
 	}
-	base.DebugfCtx(logCtx, base.KeyAll, "copied x509 node pkey.key to integration test server")
-	return uploadCACertViaREST(couchbaseServerURL, ca)
+	base.DebugfCtx(ctx, base.KeyAll, "copied x509 node pkey.key to integration test server")
+	return uploadCACertViaREST(ctx, couchbaseServerURL, ca)
 }
 
-func uploadCACertViaREST(couchbaseServerURL url.URL, ca *caPair) error {
+func uploadCACertViaREST(ctx context.Context, couchbaseServerURL url.URL, ca *caPair) error {
 	restAPIURL := basicAuthRESTPIURLFromConnstrHost(couchbaseServerURL)
 
 	// Upload the CA cert via the REST API
@@ -327,8 +324,7 @@ func uploadCACertViaREST(couchbaseServerURL url.URL, ca *caPair) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("couldn't uploadClusterCA: expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
 	}
-	logCtx := context.Background()
-	base.DebugfCtx(logCtx, base.KeyAll, "uploaded ca.pem to Couchbase Server")
+	base.DebugfCtx(ctx, base.KeyAll, "uploaded ca.pem to Couchbase Server")
 
 	// Make CBS read the newly uploaded certs
 	resp, err = http.Post(restAPIURL.String()+"/node/controller/reloadCertificate", "", nil)
@@ -343,9 +339,9 @@ func uploadCACertViaREST(couchbaseServerURL url.URL, ca *caPair) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("couldn't reloadCertificate: expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
 	}
-	base.DebugfCtx(logCtx, base.KeyAll, "triggered reload of certificates on Couchbase Server")
+	base.DebugfCtx(ctx, base.KeyAll, "triggered reload of certificates on Couchbase Server")
 
-	if err := enableX509ClientCertsInCouchbaseServer(restAPIURL); err != nil {
+	if err := enableX509ClientCertsInCouchbaseServer(ctx, restAPIURL); err != nil {
 		return err
 	}
 
@@ -353,7 +349,7 @@ func uploadCACertViaREST(couchbaseServerURL url.URL, ca *caPair) error {
 }
 
 // couchbaseNodeConfiguredHostname returns the Couchbase node name for the given URL.
-func couchbaseNodeConfiguredHostname(restAPIURL url.URL) (string, error) {
+func couchbaseNodeConfiguredHostname(ctx context.Context, restAPIURL url.URL) (string, error) {
 	resp, err := http.Get(restAPIURL.String() + "/pools/default")
 	if err != nil {
 		return "", err
@@ -374,7 +370,7 @@ func couchbaseNodeConfiguredHostname(restAPIURL url.URL) (string, error) {
 	if err := e.Decode(&respJSON); err != nil {
 		return "", err
 	}
-	base.DebugfCtx(context.Background(), base.KeyAll, "enabled X.509 client certs in Couchbase Server")
+	base.DebugfCtx(ctx, base.KeyAll, "enabled X.509 client certs in Couchbase Server")
 
 	for _, n := range respJSON.NodesExt {
 		if n.ThisNode {
@@ -389,7 +385,7 @@ func couchbaseNodeConfiguredHostname(restAPIURL url.URL) (string, error) {
 func assertHostnameMatch(t *testing.T, couchbaseServerURL *url.URL) {
 	restAPIURL := basicAuthRESTPIURLFromConnstrHost(*couchbaseServerURL)
 
-	nodeHostname, err := couchbaseNodeConfiguredHostname(restAPIURL)
+	nodeHostname, err := couchbaseNodeConfiguredHostname(base.TestCtx(t), restAPIURL)
 	require.NoError(t, err)
 	if nodeHostname != restAPIURL.Host {
 		t.Fatal("Test requires " + base.TestEnvCouchbaseServerUrl + " to be the same as the Couchbase Server node hostname...\n\n" +
@@ -397,7 +393,7 @@ func assertHostnameMatch(t *testing.T, couchbaseServerURL *url.URL) {
 	}
 }
 
-func enableX509ClientCertsInCouchbaseServer(restAPIURL url.URL) error {
+func enableX509ClientCertsInCouchbaseServer(ctx context.Context, restAPIURL url.URL) error {
 	clientAuthSettings := bytes.NewBufferString(`
 {
   "state": "enable",
@@ -421,7 +417,7 @@ func enableX509ClientCertsInCouchbaseServer(restAPIURL url.URL) error {
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		return fmt.Errorf("couldn't configure clientCertAuth: expected %d or %d status codes but got %d: %s", http.StatusOK, http.StatusAccepted, resp.StatusCode, respBody)
 	}
-	base.DebugfCtx(context.Background(), base.KeyAll, "enabled X.509 client certs in Couchbase Server")
+	base.DebugfCtx(ctx, base.KeyAll, "enabled X.509 client certs in Couchbase Server")
 
 	return nil
 }

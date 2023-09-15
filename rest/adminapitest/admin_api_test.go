@@ -129,7 +129,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 		t.Fatalf("Error unmarshalling response: %v", err)
 	}
 	revId := responseDoc["rev"].(string)
-	revGeneration, revIdHash := db.ParseRevID(revId)
+	revGeneration, revIdHash := db.ParseRevID(rt.Context(), revId)
 	assert.Equal(t, 1, revGeneration)
 
 	// Update doc (normal update, no conflicting revisions added)
@@ -147,7 +147,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 		t.Fatalf("Error unmarshalling response: %v", err)
 	}
 	revId = responseDoc["rev"].(string)
-	revGeneration, _ = db.ParseRevID(revId)
+	revGeneration, _ = db.ParseRevID(rt.Context(), revId)
 	assert.Equal(t, 2, revGeneration)
 
 	// Create conflict again, should be a no-op and return the same response as previous attempt
@@ -157,7 +157,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 		t.Fatalf("Error unmarshalling response: %v", err)
 	}
 	revId = responseDoc["rev"].(string)
-	revGeneration, _ = db.ParseRevID(revId)
+	revGeneration, _ = db.ParseRevID(rt.Context(), revId)
 	assert.Equal(t, 2, revGeneration)
 
 }
@@ -939,7 +939,7 @@ func TestResyncForNamedCollection(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and add new scopes and collections to it.
 	tb := base.GetTestBucket(t)
@@ -1073,7 +1073,7 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and add new scopes and collections to it.
 	tb := base.GetTestBucket(t)
@@ -2834,7 +2834,7 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -2897,7 +2897,7 @@ func TestDbConfigCredentials(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -2962,7 +2962,7 @@ func TestInvalidDBConfig(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3016,7 +3016,7 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", `{"bucket": "nonexistentbucket"}`)
 	resp.RequireStatus(http.StatusForbidden)
@@ -3048,7 +3048,7 @@ func TestPutDbConfigChangeName(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3092,7 +3092,7 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and add new scopes and collections to it.
 	tb := base.GetTestBucket(t)
@@ -3167,7 +3167,7 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3292,7 +3292,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
@@ -3372,7 +3372,7 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3451,7 +3451,7 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3526,7 +3526,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3546,7 +3546,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 			RevsLimit:        base.Uint32Ptr(123), // use RevsLimit to detect config changes
 		},
 	}
-	dbConfig.Version, err = rest.GenerateDatabaseConfigVersionID("", &dbConfig.DbConfig)
+	dbConfig.Version, err = rest.GenerateDatabaseConfigVersionID(ctx, "", &dbConfig.DbConfig)
 	require.NoError(t, err)
 
 	// initialise with db config
@@ -3575,7 +3575,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 
 			db.SGVersion = version
 			db.DbConfig.RevsLimit = base.Uint32Ptr(revsLimit)
-			db.Version, err = rest.GenerateDatabaseConfigVersionID(db.Version, &db.DbConfig)
+			db.Version, err = rest.GenerateDatabaseConfigVersionID(ctx, db.Version, &db.DbConfig)
 			if err != nil {
 				return nil, err
 			}
@@ -3616,7 +3616,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	assertRevsLimit(sc, 654)
 
@@ -3641,7 +3641,7 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -3729,7 +3729,7 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 	defer func() {
 		sc.Close(ctx)
 		require.NoError(t, <-serverErr)
@@ -3844,7 +3844,7 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3941,7 +3941,7 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
 	defer func() {
@@ -3990,7 +3990,7 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 }
 
 func BootstrapWaitForDatabaseState(t *testing.T, dbName string, state uint32) {
-	err := base.WaitForNoError(func() error {
+	err := base.WaitForNoError(base.TestCtx(t), func() error {
 		resp := rest.BootstrapAdminRequest(t, http.MethodGet, "/"+dbName+"/", "")
 		if resp.StatusCode != http.StatusOK {
 			return errors.New("expected 200 status")
@@ -4241,7 +4241,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 	ctx := rt.Context()
 
 	cbStore, _ := base.AsCouchbaseBucketStore(rt.Bucket())
-	serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
+	serverPurgeInterval, err := cbStore.MetadataPurgeInterval(ctx)
 	require.NoError(t, err)
 	// Set server purge interval back to what it was for bucket reuse
 	defer setServerPurgeInterval(t, rt, fmt.Sprintf("%.2f", serverPurgeInterval.Hours()/24))
@@ -4304,9 +4304,9 @@ func TestPerDBCredsOverride(t *testing.T) {
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
-	couchbaseCluster, err := rest.CreateCouchbaseClusterFromStartupConfig(sc.Config, base.PerUseClusterConnections)
+	couchbaseCluster, err := rest.CreateCouchbaseClusterFromStartupConfig(ctx, sc.Config, base.PerUseClusterConnections)
 	require.NoError(t, err)
 	sc.BootstrapContext.Connection = couchbaseCluster
 

@@ -196,7 +196,7 @@ func TestSetupAndValidate(t *testing.T) {
         }`))
 		defer deleteTempFile(t, configFile)
 		args := []string{"sync_gateway", configFile.Name()}
-		config, err := setupServerConfig(args)
+		config, err := setupServerConfig(base.TestCtx(t), args)
 		require.NoError(t, err, "Error reading config file")
 		require.NotNil(t, config)
 
@@ -243,7 +243,7 @@ func TestSetupAndValidate(t *testing.T) {
 		configFile := createTempFile(t, []byte(`{"unknownKey":"unknownValue"}`))
 		defer deleteTempFile(t, configFile)
 		args := []string{"sync_gateway", configFile.Name()}
-		config, err := setupServerConfig(args)
+		config, err := setupServerConfig(base.TestCtx(t), args)
 		require.Error(t, err, "Should throw error reading file")
 		assert.Contains(t, err.Error(), "unrecognized JSON field")
 		assert.Nil(t, config)
@@ -253,7 +253,7 @@ func TestSetupAndValidate(t *testing.T) {
 		configFile := createTempFile(t, []byte(``))
 		args := []string{"sync_gateway", configFile.Name()}
 		deleteTempFile(t, configFile)
-		config, err := setupServerConfig(args)
+		config, err := setupServerConfig(base.TestCtx(t), args)
 		require.Error(t, err, "Should throw error reading file")
 		assert.Contains(t, err.Error(), "Error reading config file")
 		assert.Nil(t, config)
@@ -276,7 +276,7 @@ func TestSetupAndValidate(t *testing.T) {
 		}`))
 		defer deleteTempFile(t, configFile)
 		args := []string{"sync_gateway", configFile.Name()}
-		config, err := setupServerConfig(args)
+		config, err := setupServerConfig(base.TestCtx(t), args)
 		require.Error(t, err, "Should throw error reading file")
 		assert.Contains(t, err.Error(), "minimum value for unsupported.stats_log_freq_secs is: 10")
 		assert.Nil(t, config)

@@ -42,13 +42,13 @@ func NewActiveChannels(activeChannelCountStat *base.SgwIntStat) *ActiveChannels 
 
 // Update changed increments/decrements active channel counts based on a set of changed channels.  Triggered
 // when the set of channels being replicated by a given replication changes.
-func (ac *ActiveChannels) UpdateChanged(collectionID uint32, changedChannels ChangedKeys) {
+func (ac *ActiveChannels) UpdateChanged(ctx context.Context, collectionID uint32, changedChannels ChangedKeys) {
 	ac.lock.Lock()
 	for channelName, isIncrement := range changedChannels {
 		if isIncrement {
 			ac._incr(NewID(channelName, collectionID))
 		} else {
-			ac._decr(NewID(channelName, collectionID))
+			ac._decr(ctx, NewID(channelName, collectionID))
 		}
 	}
 
@@ -64,11 +64,11 @@ func (ac *ActiveChannels) IncrChannels(collectionID uint32, timedSet TimedSet) {
 	}
 }
 
-func (ac *ActiveChannels) DecrChannels(collectionID uint32, timedSet TimedSet) {
+func (ac *ActiveChannels) DecrChannels(ctx context.Context, collectionID uint32, timedSet TimedSet) {
 	ac.lock.Lock()
 	defer ac.lock.Unlock()
 	for channelName, _ := range timedSet {
-		ac._decr(NewID(channelName, collectionID))
+		ac._decr(ctx, NewID(channelName, collectionID))
 	}
 }
 
@@ -85,9 +85,9 @@ func (ac *ActiveChannels) IncrChannel(channel ID) {
 	ac.lock.Unlock()
 }
 
-func (ac *ActiveChannels) DecrChannel(channel ID) {
+func (ac *ActiveChannels) DecrChannel(ctx context.Context, channel ID) {
 	ac.lock.Lock()
-	ac._decr(channel)
+	ac._decr(ctx, channel)
 	ac.lock.Unlock()
 }
 
@@ -99,10 +99,10 @@ func (ac *ActiveChannels) _incr(channel ID) {
 	ac.channelCounts[channel] = current + 1
 }
 
-func (ac *ActiveChannels) _decr(channel ID) {
+func (ac *ActiveChannels) _decr(ctx context.Context, channel ID) {
 	current, ok := ac.channelCounts[channel]
 	if !ok {
-		base.WarnfCtx(context.Background(), "Attempt made to decrement inactive channel %s - will be ignored", base.UD(channel))
+		base.WarnfCtx(ctx, "Attempt made to decrement inactive channel %s - will be ignored", base.UD(channel))
 		return
 	}
 	if current <= 1 {

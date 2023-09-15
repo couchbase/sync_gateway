@@ -60,8 +60,8 @@ func TestMigrateMetadata(t *testing.T) {
 	assert.NoError(t, err, "Error writing doc w/ expiry")
 
 	// Get the existing bucket doc
-	_, existingBucketDoc, err := collection.GetDocWithXattr(key, DocUnmarshalAll)
-
+	_, existingBucketDoc, err := collection.GetDocWithXattr(ctx, key, DocUnmarshalAll)
+	require.NoError(t, err)
 	// Set the expiry value to a stale value (it's about to be stale, since below it will get updated to a later value)
 	existingBucketDoc.Expiry = uint32(syncMetaExpiry.Unix())
 
@@ -153,7 +153,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			assert.NoError(t, err, "Error writing doc w/ expiry")
 
 			// Get the existing bucket doc
-			_, existingBucketDoc, err := collection.GetDocWithXattr(key, DocUnmarshalAll)
+			_, existingBucketDoc, err := collection.GetDocWithXattr(ctx, key, DocUnmarshalAll)
 			assert.NoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
 
 			body = Body{}
@@ -322,7 +322,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Get the existing bucket doc
-			_, existingBucketDoc, err = collection.GetDocWithXattr(testcase.docname, DocUnmarshalAll)
+			_, existingBucketDoc, err = collection.GetDocWithXattr(ctx, testcase.docname, DocUnmarshalAll)
 			assert.NoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
 
 			importD := `{"new":"Val"}`
@@ -429,7 +429,7 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, ke
 	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
 	assert.True(t, ok)
-	generation, _ := ParseRevID(revision.(string))
+	generation, _ := ParseRevID(base.TestCtx(t), revision.(string))
 	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
 	assert.True(t, generation == expectedRevGeneration)
 }
@@ -537,15 +537,13 @@ func TestImportNonZeroStart(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return collection.collectionStats.ImportCount.Value()
 	}, 1)
-	require.True(t, ok)
 
-	_, ok = base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return db.DbStats.Database().DCPReceivedCount.Value()
 	}, 1)
-	require.True(t, ok)
 
 	doc, err := collection.GetDocument(base.TestCtx(t), doc1, DocUnmarshalAll)
 	require.NoError(t, err)
@@ -570,9 +568,8 @@ func TestImportInvalidMetadata(t *testing.T) {
 	_, err := bucket.GetSingleDataStore().Add("doc1", 0, `{"foo" : "bar", "_sync" : 1 }`)
 	require.NoError(t, err)
 
-	_, ok := base.WaitForStat(func() int64 {
+	base.RequireWaitForStat(t, func() int64 {
 		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
 	}, 1)
-	require.True(t, ok)
 	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
 }

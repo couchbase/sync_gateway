@@ -46,42 +46,44 @@ func TestSequenceAllocator(t *testing.T) {
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
 	MaxSequenceIncrFrequency = 60 * time.Second
 
-	initSequence, err := a.lastSequence()
+	ctx := base.TestCtx(t)
+
+	initSequence, err := a.lastSequence(ctx)
 	assert.Equal(t, uint64(0), initSequence)
 	assert.NoError(t, err, "error retrieving last sequence")
 
 	// Initial allocation should use batch size of 1
-	nextSequence, err := a.nextSequence()
+	nextSequence, err := a.nextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(1), nextSequence)
 	assertNewAllocatorStats(t, testStats, 1, 1, 1, 0)
 
 	// Subsequent allocation should increase batch size to 2, allocate 1
-	nextSequence, err = a.nextSequence()
+	nextSequence, err = a.nextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(2), nextSequence)
 	assertNewAllocatorStats(t, testStats, 2, 3, 2, 0)
 
 	// Subsequent allocation shouldn't trigger allocation
-	nextSequence, err = a.nextSequence()
+	nextSequence, err = a.nextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(3), nextSequence)
 	assertNewAllocatorStats(t, testStats, 2, 3, 3, 0)
 
 	// Subsequent allocation should increase batch to 4, allocate 1
-	nextSequence, err = a.nextSequence()
+	nextSequence, err = a.nextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(4), nextSequence)
 	assert.Equal(t, 4, int(a.sequenceBatchSize))
 	assertNewAllocatorStats(t, testStats, 3, 7, 4, 0)
 
 	// Release unused sequences.  Should reduce batch size to 1 (based on 3 unused)
-	a.releaseUnusedSequences(base.TestCtx(t))
+	a.releaseUnusedSequences(ctx)
 	assertNewAllocatorStats(t, testStats, 3, 7, 4, 3)
 	assert.Equal(t, 1, int(a.sequenceBatchSize))
 
 	// Subsequent allocation should increase batch to 2, allocate 1
-	nextSequence, err = a.nextSequence()
+	nextSequence, err = a.nextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(8), nextSequence)
 	assertNewAllocatorStats(t, testStats, 4, 9, 5, 3)
@@ -103,20 +105,20 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 	oldFrequency := MaxSequenceIncrFrequency
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
 	MaxSequenceIncrFrequency = 1000 * time.Millisecond
-
-	a, err := newSequenceAllocator(base.TestCtx(t), bucket.GetSingleDataStore(), testStats, base.DefaultMetadataKeys)
+	ctx := base.TestCtx(t)
+	a, err := newSequenceAllocator(ctx, bucket.GetSingleDataStore(), testStats, base.DefaultMetadataKeys)
 	// Reduce sequence wait for Stop testing
 	a.releaseSequenceWait = 10 * time.Millisecond
 	assert.NoError(t, err, "error creating allocator")
 
 	// Initial allocation should use batch size of 1
-	nextSequence, err := a.nextSequence()
+	nextSequence, err := a.nextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(1), nextSequence)
 	assertNewAllocatorStats(t, testStats, 1, 1, 1, 0)
 
 	// Subsequent allocation should increase batch size to 2, allocate 1
-	nextSequence, err = a.nextSequence()
+	nextSequence, err = a.nextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(2), nextSequence)
 	assertNewAllocatorStats(t, testStats, 2, 3, 2, 0)
@@ -149,6 +151,7 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 	var err error
 
 	var wg sync.WaitGroup
+	ctx := base.TestCtx(t)
 	callbackCount := 0
 	incrCallback := func() {
 		callbackCount++
@@ -160,7 +163,7 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 			for i := 0; i < 500; i++ {
 				wg.Add(1)
 				go func(a *sequenceAllocator) {
-					_, err := a.nextSequence()
+					_, err := a.nextSequence(ctx)
 					assert.NoError(t, err)
 					wg.Done()
 				}(a)
@@ -186,11 +189,11 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 	a.releaseSequenceWait = 10 * time.Millisecond
 	assert.NoError(t, err, "error creating allocator")
 
-	nextSequence, err := a.nextSequence()
+	nextSequence, err := a.nextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(1), nextSequence)
 
-	nextSequence, err = a.nextSequence()
+	nextSequence, err = a.nextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(2), nextSequence)
 
@@ -208,13 +211,13 @@ func TestReleaseSequenceWait(t *testing.T) {
 	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 	testStats := dbstats.Database()
-
-	a, err := newSequenceAllocator(base.TestCtx(t), bucket.GetSingleDataStore(), testStats, base.DefaultMetadataKeys)
+	ctx := base.TestCtx(t)
+	a, err := newSequenceAllocator(ctx, bucket.GetSingleDataStore(), testStats, base.DefaultMetadataKeys)
 	require.NoError(t, err)
 	defer a.Stop(base.TestCtx(t))
 
 	startTime := time.Now().Add(-1 * time.Second)
-	amountWaited := a.waitForReleasedSequences(startTime)
+	amountWaited := a.waitForReleasedSequences(ctx, startTime)
 	// Time will be a little less than a.releaseSequenceWait - 1*time.Second - validate
 	// there's a non-zero wait that's less than releaseSequenceWait
 	assert.True(t, amountWaited > 0)
@@ -222,7 +225,7 @@ func TestReleaseSequenceWait(t *testing.T) {
 
 	// Validate no wait for a time in the past longer than releaseSequenceWait
 	noWaitTime := time.Now().Add(-5 * time.Second)
-	amountWaited = a.waitForReleasedSequences(noWaitTime)
+	amountWaited = a.waitForReleasedSequences(ctx, noWaitTime)
 	assert.Equal(t, time.Duration(0), amountWaited)
 }
 

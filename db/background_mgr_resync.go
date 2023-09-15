@@ -51,7 +51,7 @@ func (r *ResyncManager) Run(ctx context.Context, options map[string]interface{},
 	resyncCollections := options["collections"].(ResyncCollections)
 
 	persistClusterStatus := func() {
-		err := persistClusterStatusCallback()
+		err := persistClusterStatusCallback(ctx)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to persist cluster status on-demand for resync operation: %v", err)
 		}

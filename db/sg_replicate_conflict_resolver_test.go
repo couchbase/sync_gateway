@@ -13,6 +13,7 @@ package db
 import (
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -63,7 +64,7 @@ func TestDefaultConflictResolver(t *testing.T) {
 				LocalDocument:  test.localDocument,
 				RemoteDocument: test.remoteDocument,
 			}
-			result, err := DefaultConflictResolver(conflict)
+			result, err := DefaultConflictResolver(base.TestCtx(t), conflict)
 			assert.NoError(t, err)
 			assert.Equal(tt, test.expectedWinner, result)
 		})
@@ -158,9 +159,10 @@ func TestCustomConflictResolver(t *testing.T) {
 				LocalDocument:  test.localDocument,
 				RemoteDocument: test.remoteDocument,
 			}
-			customConflictResolverFunc, err := NewCustomConflictResolver(test.resolverSource, 0)
+			ctx := base.TestCtx(t)
+			customConflictResolverFunc, err := NewCustomConflictResolver(ctx, test.resolverSource, 0)
 			require.NoError(tt, err)
-			result, err := customConflictResolverFunc(conflict)
+			result, err := customConflictResolverFunc(ctx, conflict)
 			if test.expectError {
 				assert.Error(t, err)
 				return

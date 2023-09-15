@@ -432,7 +432,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	require.NoError(t, err)
 	// Update database config in the bucket (increment version)
 	newCas, err := sc.BootstrapContext.UpdateConfig(ctx, tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(rt.Context(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -458,7 +458,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 
 	// Update database config in the bucket again to test caching disable case
 	newCas, err = sc.BootstrapContext.UpdateConfig(ctx, tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(rt.Context(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 		if err != nil {
 			return nil, err
 		}

@@ -157,7 +157,7 @@ func (rev *DocumentRevision) Body() (b Body, err error) {
 
 // Mutable1xBody returns a copy of the given document revision as a 1.x style body (with special properties)
 // Callers are free to modify this body without affecting the document revision.
-func (rev *DocumentRevision) Mutable1xBody(db *DatabaseCollectionWithUser, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b Body, err error) {
+func (rev *DocumentRevision) Mutable1xBody(ctx context.Context, db *DatabaseCollectionWithUser, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b Body, err error) {
 	b, err = rev.Body()
 	if err != nil {
 		return nil, err
@@ -189,7 +189,7 @@ func (rev *DocumentRevision) Mutable1xBody(db *DatabaseCollectionWithUser, reque
 			if len(attachmentsSince) > 0 {
 				ancestor := rev.History.findAncestor(attachmentsSince)
 				if ancestor != "" {
-					minRevpos, _ = ParseRevID(ancestor)
+					minRevpos, _ = ParseRevID(ctx, ancestor)
 					minRevpos++
 				}
 			}
@@ -210,9 +210,9 @@ func (rev *DocumentRevision) Mutable1xBody(db *DatabaseCollectionWithUser, reque
 }
 
 // As1xBytes returns a byte slice representing the 1.x style body, containing special properties (i.e. _id, _rev, _attachments, etc.)
-func (rev *DocumentRevision) As1xBytes(db *DatabaseCollectionWithUser, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b []byte, err error) {
+func (rev *DocumentRevision) As1xBytes(ctx context.Context, db *DatabaseCollectionWithUser, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b []byte, err error) {
 	// unmarshal
-	body1x, err := rev.Mutable1xBody(db, requestedHistory, attachmentsSince, showExp)
+	body1x, err := rev.Mutable1xBody(ctx, db, requestedHistory, attachmentsSince, showExp)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +267,7 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 	if bodyBytes, body, attachments, err = backingStore.getRevision(ctx, doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
 		// the revision was a channel removal. If so, we want to store as removal in the revision cache
-		removalBodyBytes, removalHistory, activeChannels, isRemoval, isDelete, isRemovalErr := doc.IsChannelRemoval(revid)
+		removalBodyBytes, removalHistory, activeChannels, isRemoval, isDelete, isRemovalErr := doc.IsChannelRemoval(ctx, revid)
 		if isRemovalErr != nil {
 			return bodyBytes, body, history, channels, isRemoval, nil, isDelete, nil, isRemovalErr
 		}
@@ -285,7 +285,7 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 	if getHistoryErr != nil {
 		return bodyBytes, body, history, channels, removed, nil, deleted, nil, getHistoryErr
 	}
-	history = encodeRevisions(doc.ID, validatedHistory)
+	history = encodeRevisions(ctx, doc.ID, validatedHistory)
 	channels = doc.History[revid].Channels
 
 	return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, err

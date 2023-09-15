@@ -38,14 +38,15 @@ func emptyMetaMap() map[string]interface{} {
 var noUser = map[string]interface{}{"name": nil, "channels": []string{}}
 
 func TestOttoValueToStringArray(t *testing.T) {
+	ctx := base.TestCtx(t)
 	// Test for https://github.com/robertkrimen/otto/issues/24
 	value, _ := otto.New().ToValue([]string{"foo", "bar", "baz"})
-	strings := ottoValueToStringArray(value)
+	strings := ottoValueToStringArray(ctx, value)
 	assert.Equal(t, []string{"foo", "bar", "baz"}, strings)
 
 	// Test for https://issues.couchbase.com/browse/CBG-714
 	value, _ = otto.New().ToValue([]interface{}{"a", []interface{}{"b", "g"}, "c", 4})
-	strings = ottoValueToStringArray(value)
+	strings = ottoValueToStringArray(ctx, value)
 	assert.Equal(t, []string{"a", "c"}, strings)
 }
 

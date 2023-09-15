@@ -31,8 +31,9 @@ func TestGetSoftFDLimitWithCurrent(t *testing.T) {
 		Cur: currentSoftFdLimit,
 		Max: currentHardFdLimit,
 	}
-
-	requiresUpdate, softFDLimit := getSoftFDLimit(
+	ctx := TestCtx(t)
+	requiresUpdate, _ := getSoftFDLimit(
+		ctx,
 		requestedSoftFDLimit,
 		limit,
 	)
@@ -40,7 +41,8 @@ func TestGetSoftFDLimitWithCurrent(t *testing.T) {
 
 	limit.Cur = uint64(512)
 
-	requiresUpdate, softFDLimit = getSoftFDLimit(
+	requiresUpdate, softFDLimit := getSoftFDLimit(
+		ctx,
 		requestedSoftFDLimit,
 		limit,
 	)
@@ -67,27 +69,28 @@ func TestSetMaxFileDescriptors(t *testing.T) {
 	}()
 
 	// noop
-	n, err := SetMaxFileDescriptors(0)
+	ctx := TestCtx(t)
+	n, err := SetMaxFileDescriptors(ctx, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, int(n))
 
 	// noop (current limit < new limit)
-	n, err = SetMaxFileDescriptors(newLimits.Cur - 1)
+	n, err = SetMaxFileDescriptors(ctx, newLimits.Cur-1)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, int(n))
 
 	// noop (current limit == new limit)
-	n, err = SetMaxFileDescriptors(newLimits.Cur)
+	n, err = SetMaxFileDescriptors(ctx, newLimits.Cur)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, int(n))
 
 	// increase
-	n, err = SetMaxFileDescriptors(newLimits.Cur + 2)
+	n, err = SetMaxFileDescriptors(ctx, newLimits.Cur+2)
 	assert.NoError(t, err)
 	assert.Equal(t, int(newLimits.Cur+2), int(n))
 
 	// noop (we don't decrease limits)
-	n, err = SetMaxFileDescriptors(newLimits.Cur + 1)
+	n, err = SetMaxFileDescriptors(ctx, newLimits.Cur+1)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, int(n))
 }

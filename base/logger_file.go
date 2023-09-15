@@ -76,14 +76,14 @@ type logRotationConfig struct {
 }
 
 // NewFileLogger returns a new FileLogger from a config.
-func NewFileLogger(config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, buffer *strings.Builder) (*FileLogger, error) {
+func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, buffer *strings.Builder) (*FileLogger, error) {
 
 	if config == nil {
 		config = &FileLoggerConfig{}
 	}
 
 	// validate and set defaults
-	if err := config.init(level, name, logFilePath, minAge); err != nil {
+	if err := config.init(ctx, level, name, logFilePath, minAge); err != nil {
 		return nil, err
 	}
 
@@ -174,7 +174,7 @@ func (l *FileLogger) getFileLoggerConfig() *FileLoggerConfig {
 	return &fileLoggerConfig
 }
 
-func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath string, minAge int) error {
+func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name string, logFilePath string, minAge int) error {
 	if lfc == nil {
 		return errors.New("nil LogFileConfig")
 	}
@@ -209,15 +209,15 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 	go func() {
 		defer func() {
 			if panicked := recover(); panicked != nil {
-				WarnfCtx(context.Background(), "Panic when deleting rotated log files: \n %s", panicked, debug.Stack())
+				WarnfCtx(ctx, "Panic when deleting rotated log files: \n %s", panicked, debug.Stack())
 			}
 		}()
 		for {
 			select {
 			case <-ticker.C:
-				err := runLogDeletion(logFilePath, level.String(), int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
+				err := runLogDeletion(ctx, logFilePath, level.String(), int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
 				if err != nil {
-					WarnfCtx(context.Background(), "%s", err)
+					WarnfCtx(ctx, "%s", err)
 				}
 			}
 		}
@@ -267,7 +267,7 @@ func newLumberjackOutput(filename string, maxSize, maxAge int) *lumberjack.Logge
 // runLogDeletion will delete rotated logs for the supplied logLevel. It will only perform these deletions when the
 // cumulative size of the logs are above the supplied sizeLimitMB.
 // logDirectory is the supplied directory where the logs are stored.
-func runLogDeletion(logDirectory string, logLevel string, sizeLimitMBLowWatermark int, sizeLimitMBHighWatermark int) (err error) {
+func runLogDeletion(ctx context.Context, logDirectory string, logLevel string, sizeLimitMBLowWatermark int, sizeLimitMBHighWatermark int) (err error) {
 
 	sizeLimitMBLowWatermark = sizeLimitMBLowWatermark * 1024 * 1024   // Convert MB input to bytes
 	sizeLimitMBHighWatermark = sizeLimitMBHighWatermark * 1024 * 1024 // Convert MB input to bytes
@@ -288,7 +288,7 @@ func runLogDeletion(logDirectory string, logLevel string, sizeLimitMBLowWatermar
 		if strings.HasPrefix(file.Name(), logFilePrefix+logLevel) && strings.HasSuffix(file.Name(), ".log.gz") {
 			fi, err := file.Info()
 			if err != nil {
-				InfofCtx(context.TODO(), KeyAll, "Couldn't get size of log file %q: %v - ignoring for cleanup calculation", file.Name(), err)
+				InfofCtx(ctx, KeyAll, "Couldn't get size of log file %q: %v - ignoring for cleanup calculation", file.Name(), err)
 				continue
 			}
 

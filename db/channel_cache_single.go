@@ -134,7 +134,7 @@ func newSingleChannelCache(queryHandler ChannelQueryHandler, channel channels.ID
 	return cache
 }
 
-func newChannelCacheWithOptions(queryHandler ChannelQueryHandler, channel channels.ID, validFrom uint64, options ChannelCacheOptions, cacheStats *base.CacheStats) *singleChannelCacheImpl {
+func newChannelCacheWithOptions(ctx context.Context, queryHandler ChannelQueryHandler, channel channels.ID, validFrom uint64, options ChannelCacheOptions, cacheStats *base.CacheStats) *singleChannelCacheImpl {
 	cache := newSingleChannelCache(queryHandler, channel, validFrom, cacheStats)
 
 	// Update cache options when present
@@ -154,7 +154,7 @@ func newChannelCacheWithOptions(queryHandler ChannelQueryHandler, channel channe
 		cache.options.MaxNumChannels = options.MaxNumChannels
 	}
 
-	base.DebugfCtx(context.Background(), base.KeyCache, "Initialized cache for channel %q with min:%v max:%v age:%v, validFrom: %d",
+	base.DebugfCtx(ctx, base.KeyCache, "Initialized cache for channel %q with min:%v max:%v age:%v, validFrom: %d",
 		base.UD(cache.channelID), cache.options.ChannelCacheMinLength, cache.options.ChannelCacheMaxLength, cache.options.ChannelCacheAge, validFrom)
 
 	return cache
@@ -183,24 +183,24 @@ func (c *singleChannelCacheImpl) SupportsLateFeed() bool {
 }
 
 // Low-level method to add a LogEntry to a single channel's cache.
-func (c *singleChannelCacheImpl) addToCache(change *LogEntry, isRemoval bool) {
+func (c *singleChannelCacheImpl) addToCache(ctx context.Context, change *LogEntry, isRemoval bool) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	if c.wouldBeImmediatelyPruned(change) {
-		base.InfofCtx(context.TODO(), base.KeyCache, "Not adding change #%d doc %q / %q ==> channel %q, since it will be immediately pruned",
+		base.InfofCtx(ctx, base.KeyCache, "Not adding change #%d doc %q / %q ==> channel %q, since it will be immediately pruned",
 			change.Sequence, base.UD(change.DocID), change.RevID, base.UD(c.channelID))
 		return
 	}
 
 	if !isRemoval {
-		c._appendChange(change)
+		c._appendChange(ctx, change)
 	} else {
 		removalChange := *change
 		removalChange.Flags |= channels.Removed
-		c._appendChange(&removalChange)
+		c._appendChange(ctx, &removalChange)
 	}
-	c._pruneCacheLength()
+	c._pruneCacheLength(ctx)
 }
 
 // If certain conditions are met, it's possible that this change will be added and then
@@ -218,7 +218,7 @@ func (c *singleChannelCacheImpl) wouldBeImmediatelyPruned(change *LogEntry) bool
 }
 
 // Remove purges the given doc IDs from the channel cache and returns the number of items removed.
-func (c *singleChannelCacheImpl) Remove(collectionID uint32, docIDs []string, startTime time.Time) (count int) {
+func (c *singleChannelCacheImpl) Remove(ctx context.Context, collectionID uint32, docIDs []string, startTime time.Time) (count int) {
 	// Exit early if there's no work to do
 	if len(docIDs) == 0 {
 		return 0
@@ -226,7 +226,6 @@ func (c *singleChannelCacheImpl) Remove(collectionID uint32, docIDs []string, st
 
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	logCtx := context.TODO()
 
 	// Build subset of docIDs that we know are present in the cache
 	foundDocs := make(map[string]struct{}, 0)
@@ -245,7 +244,7 @@ func (c *singleChannelCacheImpl) Remove(collectionID uint32, docIDs []string, st
 			// Make sure the document we're about to remove is older than the start time of the purge
 			// This is to ensure that resurrected documents do not accidentally get removed.
 			if c.logs[i].TimeReceived.After(startTime) {
-				base.DebugfCtx(logCtx, base.KeyCache, "Skipping removal of doc %q from cache %q - received after purge",
+				base.DebugfCtx(ctx, base.KeyCache, "Skipping removal of doc %q from cache %q - received after purge",
 					base.UD(docID), base.UD(c.channelID))
 				continue
 			}
@@ -260,7 +259,7 @@ func (c *singleChannelCacheImpl) Remove(collectionID uint32, docIDs []string, st
 			delete(c.cachedDocIDs, docID)
 			count++
 
-			base.TracefCtx(logCtx, base.KeyCache, "Removed doc %q from cache %q", base.UD(docID), base.UD(c.channelID))
+			base.TracefCtx(ctx, base.KeyCache, "Removed doc %q from cache %q", base.UD(docID), base.UD(c.channelID))
 		}
 	}
 
@@ -268,7 +267,7 @@ func (c *singleChannelCacheImpl) Remove(collectionID uint32, docIDs []string, st
 }
 
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
-func (c *singleChannelCacheImpl) _pruneCacheLength() (pruned int) {
+func (c *singleChannelCacheImpl) _pruneCacheLength(ctx context.Context) (pruned int) {
 	// If we are over max length, prune it down to max length
 	if len(c.logs) > c.options.ChannelCacheMaxLength {
 		pruned = len(c.logs) - c.options.ChannelCacheMaxLength
@@ -281,7 +280,7 @@ func (c *singleChannelCacheImpl) _pruneCacheLength() (pruned int) {
 	}
 
 	if pruned > 0 {
-		base.DebugfCtx(context.TODO(), base.KeyCache, "Pruned %d entries from channel %q", pruned, base.UD(c.channelID))
+		base.DebugfCtx(ctx, base.KeyCache, "Pruned %d entries from channel %q", pruned, base.UD(c.channelID))
 	}
 
 	return pruned
@@ -460,13 +459,13 @@ func (c *singleChannelCacheImpl) _adjustFirstSeq(change *LogEntry) {
 
 // Adds an entry to the end of an array of LogEntries.
 // Any existing entry with the same DocID is removed.
-func (c *singleChannelCacheImpl) _appendChange(change *LogEntry) {
+func (c *singleChannelCacheImpl) _appendChange(ctx context.Context, change *LogEntry) {
 
 	log := c.logs
 	end := len(log) - 1
 	if end >= 0 {
 		if change.Sequence <= log[end].Sequence {
-			base.DebugfCtx(context.TODO(), base.KeyCache, "LogEntries.appendChange: out-of-order sequence #%d (last is #%d) - handling as insert",
+			base.DebugfCtx(ctx, base.KeyCache, "LogEntries.appendChange: out-of-order sequence #%d (last is #%d) - handling as insert",
 				change.Sequence, log[end].Sequence)
 			// insert the change in the array, ensuring the docID isn't already present
 			c.insertChange(&c.logs, change)

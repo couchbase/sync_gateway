@@ -129,7 +129,7 @@ func NewSyncRunner(ctx context.Context, funcSource string, timeout time.Duration
 	// Implementation of the 'channel()' callback:
 	runner.DefineNativeFunction("channel", func(call otto.FunctionCall) otto.Value {
 		for _, arg := range call.ArgumentList {
-			if strings := ottoValueToStringArray(arg); strings != nil {
+			if strings := ottoValueToStringArray(ctx, arg); strings != nil {
 				runner.channels = append(runner.channels, strings...)
 			}
 		}
@@ -138,12 +138,12 @@ func NewSyncRunner(ctx context.Context, funcSource string, timeout time.Duration
 
 	// Implementation of the 'access()' callback:
 	runner.DefineNativeFunction("access", func(call otto.FunctionCall) otto.Value {
-		return runner.addValueForUser(call.Argument(0), call.Argument(1), runner.access)
+		return runner.addValueForUser(ctx, call.Argument(0), call.Argument(1), runner.access)
 	})
 
 	// Implementation of the 'role()' callback:
 	runner.DefineNativeFunction("role", func(call otto.FunctionCall) otto.Value {
-		return runner.addValueForUser(call.Argument(0), call.Argument(1), runner.roles)
+		return runner.addValueForUser(ctx, call.Argument(0), call.Argument(1), runner.roles)
 	})
 
 	// Implementation of the 'reject()' callback:
@@ -218,10 +218,10 @@ func (runner *SyncRunner) SetFunction(funcSource string) (bool, error) {
 }
 
 // Common implementation of 'access()' and 'role()' callbacks
-func (runner *SyncRunner) addValueForUser(user otto.Value, value otto.Value, mapping map[string][]string) otto.Value {
-	valueStrings := ottoValueToStringArray(value)
+func (runner *SyncRunner) addValueForUser(ctx context.Context, user otto.Value, value otto.Value, mapping map[string][]string) otto.Value {
+	valueStrings := ottoValueToStringArray(ctx, value)
 	if len(valueStrings) > 0 {
-		for _, name := range ottoValueToStringArray(user) {
+		for _, name := range ottoValueToStringArray(ctx, user) {
 			mapping[name] = append(mapping[name], valueStrings...)
 		}
 	}
@@ -258,13 +258,13 @@ func AccessNameToPrincipalName(accessPrincipalName string) (principalName string
 }
 
 // Converts a JS string or array into a Go string array.
-func ottoValueToStringArray(value otto.Value) []string {
+func ottoValueToStringArray(ctx context.Context, value otto.Value) []string {
 	nativeValue, _ := value.Export()
 
 	result, nonStrings := base.ValueToStringArray(nativeValue)
 
 	if !value.IsNull() && !value.IsUndefined() && nonStrings != nil {
-		base.WarnfCtx(context.Background(), "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
+		base.WarnfCtx(ctx, "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
 	}
 	return result
 }

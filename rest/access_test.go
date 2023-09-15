@@ -92,7 +92,7 @@ func TestStarAccess(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions(rt.Context()))
 	a.Collections = rt.GetDatabase().CollectionNames
 	var changes struct {
 		Results []db.ChangeEntry
@@ -306,7 +306,7 @@ func TestNumAccessErrors(t *testing.T) {
 	response := rt.SendUserRequest("PUT", "/{{.keyspace}}/doc", `{"prop":true, "channels":["foo"]}`, "user")
 	RequireStatus(t, response, 403)
 
-	base.WaitForStat(func() int64 { return rt.GetDatabase().DbStats.SecurityStats.NumAccessErrors.Value() }, 1)
+	base.RequireWaitForStat(t, func() int64 { return rt.GetDatabase().DbStats.SecurityStats.NumAccessErrors.Value() }, 1)
 }
 func TestUserHasDocAccessDocNotFound(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -601,7 +601,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	}
 
 	// Create some docs:
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions(rt.Context()))
 	a.Collections = rt.GetDatabase().CollectionNames
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)

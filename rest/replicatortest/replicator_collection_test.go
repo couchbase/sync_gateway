@@ -152,7 +152,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Equal(t, "", ar.GetStatus().LastSeqPull)
+	assert.Equal(t, "", ar.GetStatus(ctx1).LastSeqPull)
 
 	// Start the replicator (implicit connect)
 	require.NoError(t, ar.Start(ctx1))

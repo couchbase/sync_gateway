@@ -18,16 +18,27 @@ import (
 )
 
 func TestCollectionBlipHandler(t *testing.T) {
-	allDBContext := &DatabaseContext{}
-	allDBCollection := &DatabaseCollection{dbCtx: allDBContext}
+	allDBContext := &DatabaseContext{Name: "db"}
+	ctx := base.TestCtx(t)
+	dbStats, err := initDatabaseStats(ctx, allDBContext.Name, false, DatabaseContextOptions{})
+	require.NoError(t, err)
+	allDBContext.DbStats = dbStats
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+	allDBCollection, err := newDatabaseCollection(ctx, allDBContext, bucket.GetSingleDataStore(), nil)
+	require.NoError(t, err)
 	allDBContext.CollectionByID = map[uint32]*DatabaseCollection{
 		base.DefaultCollectionID: allDBCollection,
 	}
 	allDB := &Database{
 		DatabaseContext: allDBContext,
 	}
-	realCollectionDB0 := &DatabaseCollection{dbCtx: &DatabaseContext{}}
-	realCollectionDB1 := &DatabaseCollection{dbCtx: &DatabaseContext{}}
+	allDBContext.Bucket = bucket
+	require.NoError(t, err)
+	realCollectionDB0, err := newDatabaseCollection(ctx, allDBContext, bucket.GetSingleDataStore(), nil)
+	require.NoError(t, err)
+	realCollectionDB1, err := newDatabaseCollection(ctx, allDBContext, bucket.GetSingleDataStore(), nil)
+	require.NoError(t, err)
 	testCases := []struct {
 		name               string
 		blipMessage        *blip.Message
@@ -133,16 +144,17 @@ func TestCollectionBlipHandler(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
-			bh := blipHandler{
-				db: allDB,
-				BlipSyncContext: &BlipSyncContext{
+			bh := newBlipHandler(ctx,
+				&BlipSyncContext{
 					loggingCtx:  ctx,
 					collections: &blipCollections{},
 				},
-			}
+				allDB,
+				0,
+			)
 			bh.collections.set(testCase.collectionContexts)
 			if testCase.collection != nil {
-				bh.collections.setNonCollectionAware(&blipSyncCollectionContext{dbCollection: testCase.collection.DatabaseCollection})
+				bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(ctx, testCase.collection.DatabaseCollection))
 			}
 
 			passedMiddleware := false
@@ -151,7 +163,7 @@ func TestCollectionBlipHandler(t *testing.T) {
 				return nil
 			}
 			middleware := collectionBlipHandler(success)
-			err := middleware(&bh, testCase.blipMessage)
+			err := middleware(bh, testCase.blipMessage)
 			if testCase.err == nil {
 				require.NoError(t, err)
 				require.True(t, passedMiddleware)

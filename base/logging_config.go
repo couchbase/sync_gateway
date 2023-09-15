@@ -89,33 +89,33 @@ func InitLogging(ctx context.Context, logFilePath string,
 		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Files to %v", logFilePath)
 	}
 
-	errorLogger, err = NewFileLogger(error, LevelError, LevelError.String(), logFilePath, errorMinAge, &errorLogger.buffer)
+	errorLogger, err = NewFileLogger(ctx, error, LevelError, LevelError.String(), logFilePath, errorMinAge, &errorLogger.buffer)
 	if err != nil {
 		return err
 	}
 
-	warnLogger, err = NewFileLogger(warn, LevelWarn, LevelWarn.String(), logFilePath, warnMinAge, &warnLogger.buffer)
+	warnLogger, err = NewFileLogger(ctx, warn, LevelWarn, LevelWarn.String(), logFilePath, warnMinAge, &warnLogger.buffer)
 	if err != nil {
 		return err
 	}
 
-	infoLogger, err = NewFileLogger(info, LevelInfo, LevelInfo.String(), logFilePath, infoMinAge, &infoLogger.buffer)
+	infoLogger, err = NewFileLogger(ctx, info, LevelInfo, LevelInfo.String(), logFilePath, infoMinAge, &infoLogger.buffer)
 	if err != nil {
 		return err
 	}
 
-	debugLogger, err = NewFileLogger(debug, LevelDebug, LevelDebug.String(), logFilePath, debugMinAge, &debugLogger.buffer)
+	debugLogger, err = NewFileLogger(ctx, debug, LevelDebug, LevelDebug.String(), logFilePath, debugMinAge, &debugLogger.buffer)
 	if err != nil {
 		return err
 	}
 
-	traceLogger, err = NewFileLogger(trace, LevelTrace, LevelTrace.String(), logFilePath, traceMinAge, &traceLogger.buffer)
+	traceLogger, err = NewFileLogger(ctx, trace, LevelTrace, LevelTrace.String(), logFilePath, traceMinAge, &traceLogger.buffer)
 	if err != nil {
 		return err
 	}
 
 	// Since there is no level checking in the stats logging, use LevelNone for the level.
-	statsLogger, err = NewFileLogger(stats, LevelNone, "stats", logFilePath, statsMinage, &statsLogger.buffer)
+	statsLogger, err = NewFileLogger(ctx, stats, LevelNone, "stats", logFilePath, statsMinage, &statsLogger.buffer)
 	if err != nil {
 		return err
 	}

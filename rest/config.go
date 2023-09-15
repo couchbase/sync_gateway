@@ -304,7 +304,7 @@ func (dbConfig *DbConfig) setDatabaseCredentials(credentials base.CredentialsCon
 }
 
 // setup populates fields in the dbConfig
-func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, dbCredentials, bucketCredentials *base.CredentialsConfig, forcePerBucketAuth bool) error {
+func (dbConfig *DbConfig) setup(ctx context.Context, dbName string, bootstrapConfig BootstrapConfig, dbCredentials, bucketCredentials *base.CredentialsConfig, forcePerBucketAuth bool) error {
 	dbConfig.Name = dbName
 	if dbConfig.Bucket == nil {
 		dbConfig.Bucket = &dbConfig.Name
@@ -349,7 +349,7 @@ func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, 
 
 	// Load Sync Function.
 	if dbConfig.Sync != nil {
-		sync, err := loadJavaScript(*dbConfig.Sync, insecureSkipVerify)
+		sync, err := loadJavaScript(ctx, *dbConfig.Sync, insecureSkipVerify)
 		if err != nil {
 			return &JavaScriptLoadError{
 				JSLoadType: SyncFunction,
@@ -362,7 +362,7 @@ func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, 
 
 	// Load Import Filter Function.
 	if dbConfig.ImportFilter != nil {
-		importFilter, err := loadJavaScript(*dbConfig.ImportFilter, insecureSkipVerify)
+		importFilter, err := loadJavaScript(ctx, *dbConfig.ImportFilter, insecureSkipVerify)
 		if err != nil {
 			return &JavaScriptLoadError{
 				JSLoadType: ImportFilter,
@@ -376,7 +376,7 @@ func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, 
 	// Load Conflict Resolution Function.
 	for _, rc := range dbConfig.Replications {
 		if rc.ConflictResolutionFn != "" {
-			conflictResolutionFn, err := loadJavaScript(rc.ConflictResolutionFn, insecureSkipVerify)
+			conflictResolutionFn, err := loadJavaScript(ctx, rc.ConflictResolutionFn, insecureSkipVerify)
 			if err != nil {
 				return &JavaScriptLoadError{
 					JSLoadType: ConflictResolver,
@@ -395,8 +395,8 @@ func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig, 
 // If the specified path does not qualify for a valid file or an URI, it returns the input path
 // as-is with the assumption that it is an inline JavaScript source. Returns error if there is
 // any failure in reading the JavaScript file or URI.
-func loadJavaScript(path string, insecureSkipVerify bool) (js string, err error) {
-	rc, err := readFromPath(path, insecureSkipVerify)
+func loadJavaScript(ctx context.Context, path string, insecureSkipVerify bool) (js string, err error) {
+	rc, err := readFromPath(ctx, path, insecureSkipVerify)
 	if errors.Is(err, ErrPathNotFound) {
 		// If rc is nil and readFromPath returns no error, treat the
 		// the given path as an inline JavaScript and return it as-is.
@@ -463,10 +463,10 @@ var ErrPathNotFound = errors.New("path not found")
 
 // readFromPath creates a ReadCloser from the given path. The path must be either a valid file
 // or an HTTP/HTTPS endpoint. Returns an error if there is any failure in building ReadCloser.
-func readFromPath(path string, insecureSkipVerify bool) (rc io.ReadCloser, err error) {
+func readFromPath(ctx context.Context, path string, insecureSkipVerify bool) (rc io.ReadCloser, err error) {
 	messageFormat := "Loading content from [%s] ..."
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
-		base.InfofCtx(context.Background(), base.KeyAll, messageFormat, path)
+		base.InfofCtx(ctx, base.KeyAll, messageFormat, path)
 		client := base.GetHttpClient(insecureSkipVerify)
 		resp, err := client.Get(path)
 		if err != nil {
@@ -477,7 +477,7 @@ func readFromPath(path string, insecureSkipVerify bool) (rc io.ReadCloser, err e
 		}
 		rc = resp.Body
 	} else if base.FileExists(path) {
-		base.InfofCtx(context.Background(), base.KeyAll, messageFormat, path)
+		base.InfofCtx(ctx, base.KeyAll, messageFormat, path)
 		rc, err = os.Open(path)
 		if err != nil {
 			return nil, err
@@ -488,7 +488,7 @@ func readFromPath(path string, insecureSkipVerify bool) (rc io.ReadCloser, err e
 	return rc, nil
 }
 
-func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
+func (dbConfig *DbConfig) AutoImportEnabled(ctx context.Context) (bool, error) {
 	if dbConfig.AutoImport == nil {
 		return base.DefaultAutoImport, nil
 	}
@@ -499,7 +499,7 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 
 	str, ok := dbConfig.AutoImport.(string)
 	if ok && str == "continuous" {
-		base.WarnfCtx(context.Background(), `Using deprecated config value for "import_docs": "continuous". Use "import_docs": true instead.`)
+		base.WarnfCtx(ctx, `Using deprecated config value for "import_docs": "continuous". Use "import_docs": true instead.`)
 		return true, nil
 	}
 
@@ -669,7 +669,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	}
 
 	// Import validation
-	autoImportEnabled, err := dbConfig.AutoImportEnabled()
+	autoImportEnabled, err := dbConfig.AutoImportEnabled(ctx)
 	if err != nil {
 		multiError = multiError.Append(err)
 	}
@@ -1009,7 +1009,7 @@ func (dbConfig *DbConfig) UseXattrs() bool {
 	return base.DefaultUseXattrs
 }
 
-func (dbConfig *DbConfig) Redacted() (*DbConfig, error) {
+func (dbConfig *DbConfig) Redacted(ctx context.Context) (*DbConfig, error) {
 	var config DbConfig
 
 	err := base.DeepCopyInefficient(&config, dbConfig)
@@ -1017,12 +1017,12 @@ func (dbConfig *DbConfig) Redacted() (*DbConfig, error) {
 		return nil, err
 	}
 
-	err = config.redactInPlace()
+	err = config.redactInPlace(ctx)
 	return &config, err
 }
 
 // redactInPlace modifies the given config to redact the fields inside it.
-func (config *DbConfig) redactInPlace() error {
+func (config *DbConfig) redactInPlace(ctx context.Context) error {
 
 	if config.Password != "" {
 		config.Password = base.RedactedStr
@@ -1035,21 +1035,21 @@ func (config *DbConfig) redactInPlace() error {
 	}
 
 	for i, _ := range config.Replications {
-		config.Replications[i] = config.Replications[i].Redacted()
+		config.Replications[i] = config.Replications[i].Redacted(ctx)
 	}
 
 	return nil
 }
 
 // DecodeAndSanitiseConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
-func DecodeAndSanitiseConfig(r io.Reader, config interface{}, disallowUnknownFields bool) (err error) {
+func DecodeAndSanitiseConfig(ctx context.Context, r io.Reader, config interface{}, disallowUnknownFields bool) (err error) {
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
 
 	// Expand environment variables.
-	b, err = expandEnv(b)
+	b, err = expandEnv(ctx, b)
 	if err != nil {
 		return err
 	}
@@ -1067,14 +1067,14 @@ func DecodeAndSanitiseConfig(r io.Reader, config interface{}, disallowUnknownFie
 // current environment variables. The replacement is case-sensitive. References
 // to undefined variables will result in an error. A default value can
 // be given by using the form ${var:-default value}.
-func expandEnv(config []byte) (value []byte, err error) {
+func expandEnv(ctx context.Context, config []byte) (value []byte, err error) {
 	var multiError *base.MultiError
 	val := []byte(os.Expand(string(config), func(key string) string {
 		if key == "$" {
-			base.DebugfCtx(context.Background(), base.KeyConfig, "Skipping environment variable expansion: %s", key)
+			base.DebugfCtx(ctx, base.KeyConfig, "Skipping environment variable expansion: %s", key)
 			return key
 		}
-		val, err := envDefaultExpansion(key, os.Getenv)
+		val, err := envDefaultExpansion(ctx, key, os.Getenv)
 		if err != nil {
 			multiError = multiError.Append(err)
 		}
@@ -1095,19 +1095,19 @@ func (e ErrEnvVarUndefined) Error() string {
 
 // envDefaultExpansion implements the ${foo:-bar} parameter expansion from
 // https://pubs.opengroup.org/onlinepubs/009695399/utilities/xcu_chap02.html#tag_02_06_02
-func envDefaultExpansion(key string, getEnvFn func(string) string) (value string, err error) {
+func envDefaultExpansion(ctx context.Context, key string, getEnvFn func(string) string) (value string, err error) {
 	kvPair := strings.SplitN(key, ":-", 2)
 	key = kvPair[0]
 	value = getEnvFn(key)
 	if value == "" && len(kvPair) == 2 {
 		// Set value to the default.
 		value = kvPair[1]
-		base.DebugfCtx(context.Background(), base.KeyConfig, "Replacing config environment variable '${%s}' with "+
+		base.DebugfCtx(ctx, base.KeyConfig, "Replacing config environment variable '${%s}' with "+
 			"default value specified", key)
 	} else if value == "" && len(kvPair) != 2 {
 		return "", ErrEnvVarUndefined{key: key}
 	} else {
-		base.DebugfCtx(context.Background(), base.KeyConfig, "Replacing config environment variable '${%s}'", key)
+		base.DebugfCtx(ctx, base.KeyConfig, "Replacing config environment variable '${%s}'", key)
 	}
 	return value, nil
 }
@@ -1133,20 +1133,20 @@ func (sc *StartupConfig) SetupAndValidateLogging(ctx context.Context) (err error
 	)
 }
 
-func SetMaxFileDescriptors(maxP *uint64) error {
+func SetMaxFileDescriptors(ctx context.Context, maxP *uint64) error {
 	maxFDs := DefaultMaxFileDescriptors
 	if maxP != nil {
 		maxFDs = *maxP
 	}
-	_, err := base.SetMaxFileDescriptors(maxFDs)
+	_, err := base.SetMaxFileDescriptors(ctx, maxFDs)
 	if err != nil {
-		base.ErrorfCtx(context.Background(), "Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
+		base.ErrorfCtx(ctx, "Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
 		return err
 	}
 	return nil
 }
 
-func (sc *ServerContext) Serve(config *StartupConfig, addr string, handler http.Handler) error {
+func (sc *ServerContext) Serve(ctx context.Context, config *StartupConfig, addr string, handler http.Handler) error {
 	http2Enabled := false
 	if config.Unsupported.HTTP2 != nil && config.Unsupported.HTTP2.Enabled != nil {
 		http2Enabled = *config.Unsupported.HTTP2.Enabled
@@ -1155,6 +1155,7 @@ func (sc *ServerContext) Serve(config *StartupConfig, addr string, handler http.
 	tlsMinVersion := GetTLSVersionFromString(&config.API.HTTPS.TLSMinimumVersion)
 
 	serveFn, server, err := base.ListenAndServeHTTP(
+		ctx,
 		addr,
 		config.API.MaximumConnections,
 		config.API.HTTPS.TLSCertPath,
@@ -1183,7 +1184,7 @@ func (sc *ServerContext) addHTTPServer(s *http.Server) {
 }
 
 // Validate returns errors errors if invalid config is present
-func (sc *StartupConfig) Validate(isEnterpriseEdition bool) (errorMessages error) {
+func (sc *StartupConfig) Validate(ctx context.Context, isEnterpriseEdition bool) (errorMessages error) {
 	var multiError *base.MultiError
 	if sc.Bootstrap.Server == "" {
 		multiError = multiError.Append(fmt.Errorf("a server must be provided in the Bootstrap configuration"))
@@ -1220,7 +1221,7 @@ func (sc *StartupConfig) Validate(isEnterpriseEdition bool) (errorMessages error
 	if sc.DatabaseCredentials != nil {
 		for dbName, creds := range sc.DatabaseCredentials {
 			if (creds.X509CertPath != "" || creds.X509KeyPath != "") && (creds.Username != "" || creds.Password != "") {
-				base.WarnfCtx(context.TODO(), "database %q in database_credentials cannot use both x509 and basic auth. Will use x509 only.", base.MD(dbName))
+				base.WarnfCtx(ctx, "database %q in database_credentials cannot use both x509 and basic auth. Will use x509 only.", base.MD(dbName))
 			}
 		}
 	}
@@ -1269,11 +1270,11 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 	base.InfofCtx(ctx, base.KeyAll, "Logging: Console keys: %v", base.ConsoleLogKey().EnabledLogKeys())
 	base.InfofCtx(ctx, base.KeyAll, "Logging: Redaction level: %s", config.Logging.RedactionLevel)
 
-	if err := setGlobalConfig(config); err != nil {
+	if err := setGlobalConfig(ctx, config); err != nil {
 		return nil, err
 	}
 
-	if err := config.Validate(base.IsEnterpriseEdition()); err != nil {
+	if err := config.Validate(ctx, base.IsEnterpriseEdition()); err != nil {
 		return nil, err
 	}
 
@@ -1381,7 +1382,7 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 
 	for _, bucketName := range buckets {
 		var dbConfig DatabaseConfig
-		legacyCas, getErr := sc.BootstrapContext.Connection.GetMetadataDocument(bucketName, PersistentConfigKey30(groupID), &dbConfig)
+		legacyCas, getErr := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), &dbConfig)
 		if getErr == base.ErrNotFound {
 			continue
 		} else if getErr != nil {
@@ -1397,7 +1398,7 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 			}
 			return fmt.Errorf("Error migrating v3.0 config for bucket %s groupID %s: %w", base.MD(bucketName), base.MD(groupID), insertErr)
 		}
-		removeErr := sc.BootstrapContext.Connection.DeleteMetadataDocument(bucketName, PersistentConfigKey30(groupID), legacyCas)
+		removeErr := sc.BootstrapContext.Connection.DeleteMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), legacyCas)
 		if removeErr != nil {
 			base.InfofCtx(ctx, base.KeyConfig, "Failed to remove legacy config for database %s.", base.MD(dbConfig.Name))
 		}
@@ -1433,7 +1434,7 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	// loop code moved to foreachDbConfig
 	var cnf DatabaseConfig
 	callback := func(bucket string) (exit bool, err error) {
-		cas, err := sc.BootstrapContext.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &cnf)
+		cas, err := sc.BootstrapContext.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &cnf)
 		if err == base.ErrNotFound {
 			base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
 			return false, err
@@ -1482,7 +1483,7 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	return true, &cnf, nil
 }
 
-func (sc *ServerContext) bucketNameFromDbName(dbName string) (bucketName string, found bool) {
+func (sc *ServerContext) bucketNameFromDbName(ctx context.Context, dbName string) (bucketName string, found bool) {
 	// Minimal representation of config struct to be tolerant of invalid database configurations where we still need to find a database name
 	// see if we find the database in-memory first, otherwise fall back to scanning buckets for db configs
 	sc.lock.RLock()
@@ -1502,7 +1503,7 @@ func (sc *ServerContext) bucketNameFromDbName(dbName string) (bucketName string,
 
 	cfgDbName := &dbConfigNameOnly{}
 	callback := func(bucket string) (exit bool, err error) {
-		_, err = sc.BootstrapContext.GetConfigName(bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, cfgDbName)
+		_, err = sc.BootstrapContext.GetConfigName(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, cfgDbName)
 		if err != nil && err != base.ErrNotFound {
 			return true, err
 		}
@@ -1749,23 +1750,23 @@ func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) 
 
 	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
 	go func() {
-		if err := sc.Serve(config, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
+		if err := sc.Serve(ctx, config, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
 			base.ErrorfCtx(ctx, "Error serving the Metrics API: %v", err)
 		}
 	}()
 
 	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting admin server on %s", config.API.AdminInterface)
 	go func() {
-		if err := sc.Serve(config, config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
+		if err := sc.Serve(ctx, config, config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
 			base.ErrorfCtx(ctx, "Error serving the Admin API: %v", err)
 		}
 	}()
 
 	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting server on %s ...", config.API.PublicInterface)
-	return sc.Serve(config, config.API.PublicInterface, CreatePublicHandler(sc))
+	return sc.Serve(ctx, config, config.API.PublicInterface, CreatePublicHandler(sc))
 }
 
-func sharedBucketDatabaseCheck(sc *ServerContext) (errors error) {
+func sharedBucketDatabaseCheck(ctx context.Context, sc *ServerContext) (errors error) {
 	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(sc.databases_))
 	for _, dbContext := range sc.databases_ {
 		if uuid, err := dbContext.Bucket.UUID(); err == nil {
@@ -1780,7 +1781,7 @@ func sharedBucketDatabaseCheck(sc *ServerContext) (errors error) {
 		multiError = multiError.Append(sharedBucketError)
 		messageFormat := "Bucket %q is shared among databases %s. " +
 			"This may result in unexpected behaviour if security is not defined consistently."
-		base.WarnfCtx(context.Background(), messageFormat, base.MD(sharedBucket.bucketName), base.MD(sharedBucket.dbNames))
+		base.WarnfCtx(ctx, messageFormat, base.MD(sharedBucket.bucketName), base.MD(sharedBucket.dbNames))
 	}
 	return multiError.ErrorOrNil()
 }
@@ -1846,9 +1847,9 @@ func (sc *ServerContext) _findDuplicateCollections(cnf DatabaseConfig) []string 
 }
 
 // PersistentConfigKey returns a document key to use to store database configs
-func PersistentConfigKey(groupID string, metadataID string) string {
+func PersistentConfigKey(ctx context.Context, groupID string, metadataID string) string {
 	if groupID == "" {
-		base.WarnfCtx(context.TODO(), "Empty group ID specified for PersistentConfigKey - using %v", PersistentConfigDefaultGroupID)
+		base.WarnfCtx(ctx, "Empty group ID specified for PersistentConfigKey - using %v", PersistentConfigDefaultGroupID)
 		groupID = PersistentConfigDefaultGroupID
 	}
 	if metadataID == "" {
@@ -1859,18 +1860,18 @@ func PersistentConfigKey(groupID string, metadataID string) string {
 }
 
 // Return the persistent config key for a legacy 3.0 persistent config (single database per bucket model)
-func PersistentConfigKey30(groupID string) string {
+func PersistentConfigKey30(ctx context.Context, groupID string) string {
 	if groupID == "" {
-		base.WarnfCtx(context.TODO(), "Empty group ID specified for PersistentConfigKey - using %v", PersistentConfigDefaultGroupID)
+		base.WarnfCtx(ctx, "Empty group ID specified for PersistentConfigKey - using %v", PersistentConfigDefaultGroupID)
 		groupID = PersistentConfigDefaultGroupID
 	}
 	return base.PersistentConfigPrefixWithoutGroupID + groupID
 }
 
-func HandleSighup() {
-	for logger, err := range base.RotateLogfiles() {
+func HandleSighup(ctx context.Context) {
+	for logger, err := range base.RotateLogfiles(ctx) {
 		if err != nil {
-			base.WarnfCtx(context.Background(), "Error rotating %v: %v", logger, err)
+			base.WarnfCtx(ctx, "Error rotating %v: %v", logger, err)
 		}
 	}
 }
@@ -1888,7 +1889,7 @@ func RegisterSignalHandler(ctx context.Context) {
 			base.InfofCtx(ctx, base.KeyAll, "Handling signal: %v", sig)
 			switch sig {
 			case syscall.SIGHUP:
-				HandleSighup()
+				HandleSighup(ctx)
 			default:
 				// Ensure log buffers are flushed before exiting.
 				base.FlushLogBuffers()
@@ -1896,4 +1897,17 @@ func RegisterSignalHandler(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// toDbConsoleLogConfig converts the console logging from a DbConfig to a DbConsoleLogConfig
+func (c *DbConfig) toDbConsoleLogConfig(ctx context.Context) *base.DbConsoleLogConfig {
+	// Per-database console logging config overrides
+	if c.Logging != nil && c.Logging.Console != nil {
+		logKey := base.ToLogKey(ctx, c.Logging.Console.LogKeys)
+		return &base.DbConsoleLogConfig{
+			LogLevel: c.Logging.Console.LogLevel,
+			LogKeys:  &logKey,
+		}
+	}
+	return nil
 }

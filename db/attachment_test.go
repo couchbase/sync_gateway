@@ -489,14 +489,14 @@ func TestGenerateProofOfAttachment(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	attData := []byte(`hello world`)
-
-	nonce, proof1, err := GenerateProofOfAttachment(attData)
+	ctx := base.TestCtx(t)
+	nonce, proof1, err := GenerateProofOfAttachment(ctx, attData)
 	require.NoError(t, err)
 	assert.True(t, len(nonce) >= 20, "nonce should be at least 20 bytes")
 	assert.NotEmpty(t, proof1)
 	assert.True(t, strings.HasPrefix(proof1, "sha1-"))
 
-	proof2 := ProveAttachment(attData, nonce)
+	proof2 := ProveAttachment(ctx, attData, nonce)
 	assert.NotEmpty(t, proof1, "")
 	assert.True(t, strings.HasPrefix(proof1, "sha1-"))
 
@@ -850,7 +850,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		require.NoError(t, err)
 
 		// latest rev was 3-a when we called GetActive, make sure that hasn't changed.
-		gen, _ := ParseRevID(rev.RevID)
+		gen, _ := ParseRevID(ctx, rev.RevID)
 		assert.Equal(t, 3, gen)
 
 		// read-only operations don't "upgrade" the metadata, but it should still transform it on-demand before returning.
@@ -881,7 +881,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		require.NoError(t, err)
 
 		// latest rev was 3-a when we called Get, make sure that hasn't changed.
-		gen, _ := ParseRevID(rev.RevID)
+		gen, _ := ParseRevID(ctx, rev.RevID)
 		assert.Equal(t, 3, gen)
 
 		// read-only operations don't "upgrade" the metadata, but it should still transform it on-demand before returning.
@@ -924,7 +924,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		newRevID, _, err := collection.Put(ctx, docKey, newBody)
 		require.NoError(t, err)
 
-		gen, _ := ParseRevID(newRevID)
+		gen, _ := ParseRevID(ctx, newRevID)
 		assert.Equal(t, 4, gen)
 
 		// Verify attachments are in syncData returned from GetRev
@@ -982,14 +982,14 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		newRevID, _, err := collection.Put(ctx, docKey, newBody)
 		require.NoError(t, err)
 
-		gen, _ := ParseRevID(newRevID)
+		gen, _ := ParseRevID(ctx, newRevID)
 		assert.Equal(t, 4, gen)
 
 		// Verify attachments are now present via GetRev
 		rev, err = collection.GetRev(ctx, docKey, newRevID, true, nil)
 		require.NoError(t, err)
 
-		gen, _ = ParseRevID(rev.RevID)
+		gen, _ = ParseRevID(ctx, rev.RevID)
 		assert.Equal(t, 4, gen)
 
 		assert.Len(t, rev.Attachments, 2, "expecting 2 attachments returned in rev")

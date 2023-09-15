@@ -44,11 +44,11 @@ var ErrCfgCasError = &cbgt.CfgCASError{}
 //
 // urlStr: single URL or multiple URLs delimited by ';'
 // bucket: couchbase bucket name
-func NewCfgSG(datastore sgbucket.DataStore, keyPrefix string) (*CfgSG, error) {
+func NewCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix string) (*CfgSG, error) {
 
 	cfgContextID := MD(datastore.GetName()).Redact() + "-cfgSG"
 	// should this inherit DB context?
-	loggingCtx := LogContextWith(context.Background(), &LogContext{CorrelationID: cfgContextID})
+	loggingCtx := LogContextWith(ctx, &LogContext{CorrelationID: cfgContextID})
 
 	c := &CfgSG{
 		datastore:     datastore,

@@ -12,7 +12,6 @@ package rest
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -97,6 +96,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		btr.replicationStats = db.NewBlipSyncStats()
 	}
 
+	ctx := base.DatabaseLogCtx(base.TestCtx(btr.bt.restTester.TB), btr.bt.restTester.GetDatabase().Name, nil)
 	btr.bt.blipContext.HandlerForProfile[db.MessageProveAttachment] = func(msg *blip.Message) {
 		btr.storeMessage(msg)
 
@@ -121,7 +121,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			panic(fmt.Sprintf("error getting client attachment: %v", err))
 		}
 
-		proof := db.ProveAttachment(attData, nonce)
+		proof := db.ProveAttachment(ctx, attData, nonce)
 
 		resp := msg.Response()
 		resp.SetBody([]byte(proof))
@@ -335,7 +335,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					if err != nil {
 						panic(err)
 					}
-					nonce, proof, err := db.GenerateProofOfAttachment(attData)
+					nonce, proof, err := db.GenerateProofOfAttachment(ctx, attData)
 					if err != nil {
 						panic(err)
 					}
@@ -446,14 +446,14 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		digest, ok := msg.Properties[db.GetAttachmentDigest]
 		if !ok {
-			base.PanicfCtx(context.TODO(), "couldn't find digest in getAttachment message properties")
+			base.PanicfCtx(ctx, "couldn't find digest in getAttachment message properties")
 		}
 
 		btcr := btc.getCollectionClientFromMessage(msg)
 
 		attachment, err := btcr.getAttachment(digest)
 		if err != nil {
-			base.PanicfCtx(context.TODO(), "couldn't find attachment for digest: %v", digest)
+			base.PanicfCtx(ctx, "couldn't find attachment for digest: %v", digest)
 		}
 
 		response := msg.Response()
@@ -468,7 +468,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
 		btr.storeMessage(msg)
-		base.PanicfCtx(context.TODO(), "Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)
+		base.PanicfCtx(ctx, "Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)
 	}
 }
 
@@ -477,6 +477,8 @@ func (btc *BlipTesterCollectionClient) saveAttachment(_, base64data string) (dat
 	btc.attachmentsLock.Lock()
 	defer btc.attachmentsLock.Unlock()
 
+	ctx := base.DatabaseLogCtx(base.TestCtx(btc.parent.rt.TB), btc.parent.rt.GetDatabase().Name, nil)
+
 	data, err := base64.StdEncoding.DecodeString(base64data)
 	if err != nil {
 		return 0, "", err
@@ -484,7 +486,7 @@ func (btc *BlipTesterCollectionClient) saveAttachment(_, base64data string) (dat
 
 	digest = db.Sha1DigestKey(data)
 	if _, found := btc.attachments[digest]; found {
-		base.InfofCtx(context.TODO(), base.KeySync, "attachment with digest %s already exists", digest)
+		base.InfofCtx(ctx, base.KeySync, "attachment with digest %s already exists", digest)
 	} else {
 		btc.attachments[digest] = data
 	}
@@ -514,8 +516,9 @@ func (btc *BlipTesterCollectionClient) updateLastReplicatedRev(docID, revID stri
 		return
 	}
 
-	currentGen, _ := db.ParseRevID(currentRevID)
-	incomingGen, _ := db.ParseRevID(revID)
+	ctx := base.TestCtx(btc.parent.rt.TB)
+	currentGen, _ := db.ParseRevID(ctx, currentRevID)
+	incomingGen, _ := db.ParseRevID(ctx, revID)
 	if incomingGen > currentGen {
 		btc.lastReplicatedRev[docID] = revID
 	}
@@ -787,7 +790,8 @@ func (btc *BlipTesterCollectionClient) PushRev(docID, parentRev string, body []b
 
 // PushRevWithHistory creates a revision on the client with history, and immediately sends a changes request for it.
 func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev string, body []byte, revCount, prunedRevCount int) (revID string, err error) {
-	parentRevGen, _ := db.ParseRevID(parentRev)
+	ctx := base.DatabaseLogCtx(base.TestCtx(btc.parent.rt.TB), btc.parent.rt.GetDatabase().Name, nil)
+	parentRevGen, _ := db.ParseRevID(ctx, parentRev)
 	revGen := parentRevGen + revCount + prunedRevCount
 
 	var revisionHistory []string
@@ -864,7 +868,7 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 
 	btc.addCollectionProperty(revRequest)
 	if btc.parent.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" {
-		base.DebugfCtx(context.TODO(), base.KeySync, "Sending deltas from test client")
+		base.DebugfCtx(ctx, base.KeySync, "Sending deltas from test client")
 		var parentDocJSON, newDocJSON db.Body
 		err := parentDocJSON.Unmarshal(parentDocBody)
 		if err != nil {
@@ -883,7 +887,7 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 		revRequest.Properties[db.RevMessageDeltaSrc] = parentRev
 		body = delta
 	} else {
-		base.DebugfCtx(context.TODO(), base.KeySync, "Not sending deltas from test client")
+		base.DebugfCtx(ctx, base.KeySync, "Not sending deltas from test client")
 	}
 
 	revRequest.SetBody(body)
@@ -907,7 +911,8 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 }
 
 func (btc *BlipTesterCollectionClient) StoreRevOnClient(docID, revID string, body []byte) error {
-	revGen, _ := db.ParseRevID(revID)
+	ctx := base.DatabaseLogCtx(base.TestCtx(btc.parent.rt.TB), btc.parent.rt.GetDatabase().Name, nil)
+	revGen, _ := db.ParseRevID(ctx, revID)
 	newBody, err := btc.ProcessInlineAttachments(body, revGen)
 	if err != nil {
 		return err

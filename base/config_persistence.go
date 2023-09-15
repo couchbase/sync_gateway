@@ -24,13 +24,13 @@ import (
 type ConfigPersistence interface {
 	// Operations for interacting with raw config ([]byte).  gocb.Cas values represent document cas,
 	// cfgCas represent the cas value associated with the last mutation, and may not match document CAS
-	loadRawConfig(c *gocb.Collection, key string) ([]byte, gocb.Cas, error)
+	loadRawConfig(ctx context.Context, c *gocb.Collection, key string) ([]byte, gocb.Cas, error)
 	removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, error)
 	replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (casOut gocb.Cas, err error)
 
 	// Operations for interacting with marshalled config. cfgCas represents the cas value
 	// associated with the last config mutation, and may not match document CAS
-	loadConfig(c *gocb.Collection, key string, valuePtr interface{}) (cfgCas uint64, err error)
+	loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr interface{}) (cfgCas uint64, err error)
 	insertConfig(c *gocb.Collection, key string, value interface{}) (cfgCas uint64, err error)
 
 	// touchConfigRollback sets the specific property to the specified string value via a subdoc operation.
@@ -93,7 +93,7 @@ func (xbp *XattrBootstrapPersistence) touchConfigRollback(c *gocb.Collection, ke
 
 // loadRawConfig returns the config and document cas (not cfgCas).  Does not restore deleted documents,
 // to avoid cas collisions with concurrent updates
-func (xbp *XattrBootstrapPersistence) loadRawConfig(c *gocb.Collection, key string) ([]byte, gocb.Cas, error) {
+func (xbp *XattrBootstrapPersistence) loadRawConfig(ctx context.Context, c *gocb.Collection, key string) ([]byte, gocb.Cas, error) {
 
 	var rawValue []byte
 	ops := []gocb.LookupInSpec{
@@ -109,12 +109,12 @@ func (xbp *XattrBootstrapPersistence) loadRawConfig(c *gocb.Collection, key stri
 		// config
 		xattrContErr := res.ContentAt(0, &rawValue)
 		if xattrContErr != nil {
-			DebugfCtx(context.TODO(), KeyCRUD, "No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
+			DebugfCtx(ctx, KeyCRUD, "No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
 			return rawValue, 0, ErrNotFound
 		}
 		return rawValue, res.Cas(), nil
 	} else if errors.Is(lookupErr, gocbcore.ErrDocumentNotFound) {
-		DebugfCtx(context.TODO(), KeyCRUD, "No config document found for key=%s", key)
+		DebugfCtx(ctx, KeyCRUD, "No config document found for key=%s", key)
 		return rawValue, 0, ErrNotFound
 	} else {
 		return rawValue, 0, lookupErr
@@ -167,7 +167,7 @@ func (xbp *XattrBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key s
 
 // loadConfig returns the cas associated with the last cfg change (xattr._sync.cas).  If a deleted document body is
 // detected, recreates the document to avoid metadata purge
-func (xbp *XattrBootstrapPersistence) loadConfig(c *gocb.Collection, key string, valuePtr interface{}) (cas uint64, err error) {
+func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr interface{}) (cas uint64, err error) {
 
 	ops := []gocb.LookupInSpec{
 		gocb.GetSpec(cfgXattrConfigPath, GetSpecXattr),
@@ -184,7 +184,7 @@ func (xbp *XattrBootstrapPersistence) loadConfig(c *gocb.Collection, key string,
 		// config
 		xattrContErr := res.ContentAt(0, valuePtr)
 		if xattrContErr != nil {
-			DebugfCtx(context.TODO(), KeyCRUD, "No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
+			DebugfCtx(ctx, KeyCRUD, "No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
 			return 0, ErrNotFound
 		}
 
@@ -192,7 +192,7 @@ func (xbp *XattrBootstrapPersistence) loadConfig(c *gocb.Collection, key string,
 		var strCas string
 		xattrCasErr := res.ContentAt(1, &strCas)
 		if xattrCasErr != nil {
-			DebugfCtx(context.TODO(), KeyCRUD, "No xattr cas found for key=%s, path=%s: %v", key, cfgXattrCasPath, xattrContErr)
+			DebugfCtx(ctx, KeyCRUD, "No xattr cas found for key=%s, path=%s: %v", key, cfgXattrCasPath, xattrContErr)
 			return 0, ErrNotFound
 		}
 		cfgCas := HexCasToUint64(strCas)
@@ -203,12 +203,12 @@ func (xbp *XattrBootstrapPersistence) loadConfig(c *gocb.Collection, key string,
 		if bodyErr != nil {
 			restoreErr := xbp.restoreDocumentBody(c, key, valuePtr, strCas)
 			if restoreErr != nil {
-				WarnfCtx(context.TODO(), "Error attempting to restore unexpected deletion of config: %v", restoreErr)
+				WarnfCtx(ctx, "Error attempting to restore unexpected deletion of config: %v", restoreErr)
 			}
 		}
 		return cfgCas, nil
 	} else if errors.Is(lookupErr, gocbcore.ErrDocumentNotFound) {
-		DebugfCtx(context.TODO(), KeyCRUD, "No config document found for key=%s", key)
+		DebugfCtx(ctx, KeyCRUD, "No config document found for key=%s", key)
 		return 0, ErrNotFound
 	} else {
 		return 0, lookupErr
@@ -241,7 +241,7 @@ type DocumentBootstrapPersistence struct {
 	CommonBootstrapPersistence
 }
 
-func (dbp *DocumentBootstrapPersistence) loadRawConfig(c *gocb.Collection, key string) ([]byte, gocb.Cas, error) {
+func (dbp *DocumentBootstrapPersistence) loadRawConfig(_ context.Context, c *gocb.Collection, key string) ([]byte, gocb.Cas, error) {
 	res, err := c.Get(key, &gocb.GetOptions{
 		Transcoder: gocb.NewRawJSONTranscoder(),
 	})
@@ -276,7 +276,7 @@ func (dbp *DocumentBootstrapPersistence) replaceRawConfig(c *gocb.Collection, ke
 	return replaceRes.Cas(), nil
 }
 
-func (dbp *DocumentBootstrapPersistence) loadConfig(c *gocb.Collection, key string, valuePtr interface{}) (cas uint64, err error) {
+func (dbp *DocumentBootstrapPersistence) loadConfig(_ context.Context, c *gocb.Collection, key string, valuePtr interface{}) (cas uint64, err error) {
 
 	res, err := c.Get(key, &gocb.GetOptions{
 		Timeout:       time.Second * 10,

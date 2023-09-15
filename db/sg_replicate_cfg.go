@@ -257,7 +257,7 @@ func (rc *ReplicationConfig) validateFilteredChannels() error {
 
 // Upsert updates ReplicationConfig with any non-empty properties specified in the incoming replication config.
 // Note that if the intention is to reset the value to default, empty values must be specified.
-func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
+func (rc *ReplicationConfig) Upsert(ctx context.Context, c *ReplicationUpsertConfig) {
 
 	if c.Remote != nil {
 		rc.Remote = *c.Remote
@@ -351,7 +351,7 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 			rc.QueryParams = newParamMap
 		default:
 			// unsupported query params type, don't upsert
-			base.WarnfCtx(context.Background(), "Unexpected QueryParams type found during upsert, will be ignored (%T): %v", c.QueryParams, c.QueryParams)
+			base.WarnfCtx(ctx, "Unexpected QueryParams type found during upsert, will be ignored (%T): %v", c.QueryParams, c.QueryParams)
 		}
 	}
 }
@@ -371,7 +371,7 @@ func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, erro
 
 // Redacted returns the ReplicationCfg with password of the remote database redacted from
 // both replication config and remote URL, i.e., any password will be replaced with xxxxx.
-func (rc *ReplicationConfig) Redacted() *ReplicationConfig {
+func (rc *ReplicationConfig) Redacted(ctx context.Context) *ReplicationConfig {
 	config := *rc
 	if config.Password != "" {
 		config.Password = base.RedactedStr
@@ -379,7 +379,7 @@ func (rc *ReplicationConfig) Redacted() *ReplicationConfig {
 	if config.RemotePassword != "" {
 		config.RemotePassword = base.RedactedStr
 	}
-	config.Remote = base.RedactBasicAuthURLPassword(config.Remote)
+	config.Remote = base.RedactBasicAuthURLPassword(ctx, config.Remote)
 	return &config
 }
 
@@ -411,7 +411,7 @@ func (ar *ActiveReplicator) alignState(ctx context.Context, targetState string) 
 		return nil
 	}
 
-	currentState, _ := ar.State()
+	currentState, _ := ar.State(ctx)
 	if targetState == currentState {
 		return nil
 	}
@@ -606,10 +606,10 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	// Set conflict resolver for pull replications
 	if rc.Direction == ActiveReplicatorTypePull || rc.Direction == ActiveReplicatorTypePushAndPull {
 		if config.ConflictResolutionType == "" {
-			rc.ConflictResolverFunc, err = NewConflictResolverFunc(ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
+			rc.ConflictResolverFunc, err = NewConflictResolverFunc(m.loggingCtx, ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout)
 
 		} else {
-			rc.ConflictResolverFunc, err = NewConflictResolverFunc(config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
+			rc.ConflictResolverFunc, err = NewConflictResolverFunc(m.loggingCtx, config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout)
 			rc.ConflictResolverFuncSrc = config.ConflictResolutionFn
 		}
 		if err != nil {
@@ -1067,7 +1067,7 @@ func (m *sgReplicateManager) PutReplications(replications map[string]*Replicatio
 }
 
 // PUT _replication/replicationID
-func (m *sgReplicateManager) UpsertReplication(replication *ReplicationUpsertConfig) (created bool, err error) {
+func (m *sgReplicateManager) UpsertReplication(ctx context.Context, replication *ReplicationUpsertConfig) (created bool, err error) {
 
 	created = true
 	addReplicationCallback := func(cluster *SGRCluster) (cancel bool, err error) {
@@ -1075,7 +1075,7 @@ func (m *sgReplicateManager) UpsertReplication(replication *ReplicationUpsertCon
 		if exists {
 			created = false
 			// If replication already exists ensure its in the stopped state before allowing upsert
-			state, err := m.GetReplicationStatus(replication.ID, DefaultReplicationStatusOptions())
+			state, err := m.GetReplicationStatus(ctx, replication.ID, DefaultReplicationStatusOptions())
 			if err != nil {
 				return true, err
 			}
@@ -1096,7 +1096,7 @@ func (m *sgReplicateManager) UpsertReplication(replication *ReplicationUpsertCon
 			}
 		}
 
-		cluster.Replications[replication.ID].Upsert(replication)
+		cluster.Replications[replication.ID].Upsert(ctx, replication)
 
 		validateErr := cluster.Replications[replication.ID].ValidateReplication(false)
 		if validateErr != nil {
@@ -1388,7 +1388,7 @@ func DefaultReplicationStatusOptions() ReplicationStatusOptions {
 	}
 }
 
-func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options ReplicationStatusOptions) (*ReplicationStatus, error) {
+func (m *sgReplicateManager) GetReplicationStatus(ctx context.Context, replicationID string, options ReplicationStatusOptions) (*ReplicationStatus, error) {
 
 	// Check if replication is assigned locally
 	m.activeReplicatorsLock.RLock()
@@ -1402,7 +1402,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 	var status *ReplicationStatus
 	var remoteCfg *ReplicationCfg
 	if isLocal {
-		status = replication.GetStatus()
+		status = replication.GetStatus(ctx)
 	} else {
 		// Attempt to retrieve persisted status
 		var loadErr error
@@ -1437,7 +1437,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 				return nil, err
 			}
 		}
-		status.Config = remoteCfg.ReplicationConfig.Redacted()
+		status.Config = remoteCfg.ReplicationConfig.Redacted(ctx)
 	}
 
 	if !options.IncludeError && status.Status == ReplicationStateError {
@@ -1450,7 +1450,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 	return status, nil
 }
 
-func (m *sgReplicateManager) PutReplicationStatus(replicationID, action string) (status *ReplicationStatus, err error) {
+func (m *sgReplicateManager) PutReplicationStatus(ctx context.Context, replicationID, action string) (status *ReplicationStatus, err error) {
 
 	targetState := ""
 	switch action {
@@ -1469,7 +1469,7 @@ func (m *sgReplicateManager) PutReplicationStatus(replicationID, action string) 
 		return nil, err
 	}
 
-	updatedStatus, err := m.GetReplicationStatus(replicationID, DefaultReplicationStatusOptions())
+	updatedStatus, err := m.GetReplicationStatus(ctx, replicationID, DefaultReplicationStatusOptions())
 	if err != nil {
 		// Not found is expected when adhoc replication is stopped, return removed status instead of error
 		// since UpdateReplicationState was successful
@@ -1489,7 +1489,7 @@ func (m *sgReplicateManager) PutReplicationStatus(replicationID, action string) 
 	return updatedStatus, nil
 }
 
-func (m *sgReplicateManager) GetReplicationStatusAll(options ReplicationStatusOptions) ([]*ReplicationStatus, error) {
+func (m *sgReplicateManager) GetReplicationStatusAll(ctx context.Context, options ReplicationStatusOptions) ([]*ReplicationStatus, error) {
 
 	statuses := make([]*ReplicationStatus, 0)
 
@@ -1500,7 +1500,7 @@ func (m *sgReplicateManager) GetReplicationStatusAll(options ReplicationStatusOp
 	}
 
 	for replicationID, _ := range persistedReplications {
-		status, err := m.GetReplicationStatus(replicationID, options)
+		status, err := m.GetReplicationStatus(ctx, replicationID, options)
 		if err != nil {
 			base.WarnfCtx(m.loggingCtx, "Unable to retrieve replication status for replication %s", replicationID)
 		}
@@ -1551,7 +1551,7 @@ func (l *ReplicationHeartbeatListener) Name() string {
 }
 
 // When we detect other nodes have stopped pushing heartbeats, use manager to remove from cfg
-func (l *ReplicationHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
+func (l *ReplicationHeartbeatListener) StaleHeartbeatDetected(_ context.Context, nodeUUID string) {
 
 	base.InfofCtx(l.mgr.loggingCtx, base.KeyCluster, "StaleHeartbeatDetected by sg-replicate listener for node: %v", nodeUUID)
 	err := l.mgr.RemoveNode(nodeUUID)

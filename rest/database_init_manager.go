@@ -74,7 +74,7 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 
 	base.InfofCtx(ctx, base.KeyAll, "Starting new async initialization for database %s ...",
 		base.MD(dbConfig.Name))
-	couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(startupConfig, base.PerUseClusterConnections)
+	couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
 	if err != nil {
 		return nil, err
 	}

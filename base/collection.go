@@ -30,16 +30,15 @@ import (
 )
 
 // GetGoCBv2Bucket opens a connection to the Couchbase cluster and returns a *GocbV2Bucket for the specified BucketSpec.
-func GetGoCBv2Bucket(spec BucketSpec) (*GocbV2Bucket, error) {
+func GetGoCBv2Bucket(ctx context.Context, spec BucketSpec) (*GocbV2Bucket, error) {
 
-	logCtx := context.TODO()
 	connString, err := spec.GetGoCBConnString(nil)
 	if err != nil {
-		WarnfCtx(logCtx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
+		WarnfCtx(ctx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
 	}
 
-	securityConfig, err := GoCBv2SecurityConfig(&spec.TLSSkipVerify, spec.CACertPath)
+	securityConfig, err := GoCBv2SecurityConfig(ctx, &spec.TLSSkipVerify, spec.CACertPath)
 	if err != nil {
 		return nil, err
 	}
@@ -50,13 +49,13 @@ func GetGoCBv2Bucket(spec BucketSpec) (*GocbV2Bucket, error) {
 	}
 
 	if _, ok := authenticator.(gocb.CertificateAuthenticator); ok {
-		InfofCtx(logCtx, KeyAuth, "Using cert authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
+		InfofCtx(ctx, KeyAuth, "Using cert authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 	} else {
-		InfofCtx(logCtx, KeyAuth, "Using credential authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
+		InfofCtx(ctx, KeyAuth, "Using credential authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 	}
 
 	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, StdlibDurationPtr(spec.GetViewQueryTimeout()))
-	InfofCtx(logCtx, KeyAll, "Setting query timeouts for bucket %s to %v", spec.BucketName, timeoutsConfig.QueryTimeout)
+	InfofCtx(ctx, KeyAll, "Setting query timeouts for bucket %s to %v", spec.BucketName, timeoutsConfig.QueryTimeout)
 
 	clusterOptions := gocb.ClusterOptions{
 		Authenticator:  authenticator,
@@ -71,7 +70,7 @@ func GetGoCBv2Bucket(spec BucketSpec) (*GocbV2Bucket, error) {
 
 	cluster, err := gocb.Connect(connString, clusterOptions)
 	if err != nil {
-		InfofCtx(logCtx, KeyAuth, "Unable to connect to cluster: %v", err)
+		InfofCtx(ctx, KeyAuth, "Unable to connect to cluster: %v", err)
 		return nil, err
 	}
 
@@ -86,11 +85,11 @@ func GetGoCBv2Bucket(spec BucketSpec) (*GocbV2Bucket, error) {
 		if errors.Is(err, gocb.ErrAuthenticationFailure) {
 			return nil, ErrAuthError
 		}
-		WarnfCtx(context.TODO(), "Error waiting for cluster to be ready: %v", err)
+		WarnfCtx(ctx, "Error waiting for cluster to be ready: %v", err)
 		return nil, err
 	}
 
-	return GetGocbV2BucketFromCluster(cluster, spec, time.Second*30, true)
+	return GetGocbV2BucketFromCluster(ctx, cluster, spec, time.Second*30, true)
 
 }
 
@@ -106,7 +105,7 @@ func getClusterVersion(cluster *gocb.Cluster) (int, int, error) {
 	return clusterCompatMajor, clusterCompatMinor, nil
 }
 
-func GetGocbV2BucketFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilReady time.Duration, failFast bool) (*GocbV2Bucket, error) {
+func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec BucketSpec, waitUntilReady time.Duration, failFast bool) (*GocbV2Bucket, error) {
 
 	// Connect to bucket
 	bucket := cluster.Bucket(spec.BucketName)
@@ -125,7 +124,7 @@ func GetGocbV2BucketFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUnti
 		if errors.Is(err, gocb.ErrAuthenticationFailure) {
 			return nil, ErrAuthError
 		}
-		WarnfCtx(context.TODO(), "Error waiting for bucket to be ready: %v", err)
+		WarnfCtx(ctx, "Error waiting for bucket to be ready: %v", err)
 		return nil, err
 	}
 	clusterCompatMajor, clusterCompatMinor, err := getClusterVersion(cluster)
@@ -155,7 +154,7 @@ func GetGocbV2BucketFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUnti
 
 	if maxConcurrentQueryOps > DefaultHttpMaxIdleConnsPerHost*queryNodeCount {
 		maxConcurrentQueryOps = DefaultHttpMaxIdleConnsPerHost * queryNodeCount
-		InfofCtx(context.TODO(), KeyAll, "Setting max_concurrent_query_ops to %d based on query node count (%d)", maxConcurrentQueryOps, queryNodeCount)
+		InfofCtx(ctx, KeyAll, "Setting max_concurrent_query_ops to %d based on query node count (%d)", maxConcurrentQueryOps, queryNodeCount)
 	}
 
 	gocbv2Bucket.queryOps = make(chan struct{}, maxConcurrentQueryOps)
@@ -187,8 +186,9 @@ type GocbV2Bucket struct {
 }
 
 var (
-	_ sgbucket.BucketStore = &GocbV2Bucket{}
-	_ CouchbaseBucketStore = &GocbV2Bucket{}
+	_ sgbucket.BucketStore            = &GocbV2Bucket{}
+	_ CouchbaseBucketStore            = &GocbV2Bucket{}
+	_ sgbucket.DynamicDataStoreBucket = &GocbV2Bucket{}
 )
 
 func AsGocbV2Bucket(bucket Bucket) (*GocbV2Bucket, error) {
@@ -351,14 +351,14 @@ func (b *GocbV2Bucket) Flush(ctx context.Context) error {
 
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		if err := bucketManager.FlushBucket(b.GetName(), nil); err != nil {
-			WarnfCtx(context.TODO(), "Error flushing bucket %s: %v  Will retry.", MD(b.GetName()).Redact(), err)
+			WarnfCtx(ctx, "Error flushing bucket %s: %v  Will retry.", MD(b.GetName()).Redact(), err)
 			return true, err, nil
 		}
 
 		return false, nil, nil
 	}
 
-	err, _ := RetryLoop("EmptyTestBucket", workerFlush, CreateDoublingSleeperFunc(12, 10))
+	err, _ := RetryLoop(ctx, "EmptyTestBucket", workerFlush, CreateDoublingSleeperFunc(12, 10))
 	if err != nil {
 		return err
 	}
@@ -381,7 +381,7 @@ func (b *GocbV2Bucket) Flush(ctx context.Context) error {
 	}
 
 	// Kick off retry loop
-	err, _ = RetryLoop("Wait until bucket has 0 items after flush", worker, CreateMaxDoublingSleeperFunc(25, 100, 10000))
+	err, _ = RetryLoop(ctx, "Wait until bucket has 0 items after flush", worker, CreateMaxDoublingSleeperFunc(25, 100, 10000))
 	if err != nil {
 		return pkgerrors.Wrapf(err, "Error during Wait until bucket %s has 0 items after flush", MD(b.GetName()).Redact())
 	}
@@ -442,18 +442,18 @@ func (b *GocbV2Bucket) QueryEpsCount() (int, error) {
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
 // found, retrieves the cluster-wide value.
-func (b *GocbV2Bucket) MetadataPurgeInterval() (time.Duration, error) {
-	return getMetadataPurgeInterval(b)
+func (b *GocbV2Bucket) MetadataPurgeInterval(ctx context.Context) (time.Duration, error) {
+	return getMetadataPurgeInterval(ctx, b)
 }
 
-func (b *GocbV2Bucket) MaxTTL() (int, error) {
-	return getMaxTTL(b)
+func (b *GocbV2Bucket) MaxTTL(ctx context.Context) (int, error) {
+	return getMaxTTL(ctx, b)
 }
 
-func (b *GocbV2Bucket) HttpClient() *http.Client {
+func (b *GocbV2Bucket) HttpClient(ctx context.Context) *http.Client {
 	agent, err := b.getGoCBAgent()
 	if err != nil {
-		WarnfCtx(context.TODO(), "Unable to obtain gocbcore.Agent while retrieving httpClient:%v", err)
+		WarnfCtx(ctx, "Unable to obtain gocbcore.Agent while retrieving httpClient:%v", err)
 		return nil
 	}
 	return agent.HTTPClient()
@@ -464,7 +464,7 @@ func (b *GocbV2Bucket) BucketName() string {
 	return b.GetName()
 }
 
-func (b *GocbV2Bucket) mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error) {
+func (b *GocbV2Bucket) mgmtRequest(ctx context.Context, method, uri, contentType string, body io.Reader) (*http.Response, error) {
 	if contentType == "" && body != nil {
 		// TODO: CBG-1948
 		panic("Content-type must be specified for non-null body.")
@@ -489,7 +489,7 @@ func (b *GocbV2Bucket) mgmtRequest(method, uri, contentType string, body io.Read
 		req.SetBasicAuth(username, password)
 	}
 
-	return b.HttpClient().Do(req)
+	return b.HttpClient(ctx).Do(req)
 }
 
 // This prevents Sync Gateway from overflowing gocb's pipeline
@@ -595,6 +595,7 @@ func (b *GocbV2Bucket) DropDataStore(name sgbucket.DataStoreName) error {
 }
 
 func (b *GocbV2Bucket) CreateDataStore(name sgbucket.DataStoreName) error {
+	ctx := context.TODO() // fix in sg-bucket
 	// create scope first (if it doesn't already exist)
 	if name.ScopeName() != DefaultScope {
 		err := b.bucket.Collections().CreateScope(name.ScopeName(), nil)
@@ -608,7 +609,7 @@ func (b *GocbV2Bucket) CreateDataStore(name sgbucket.DataStoreName) error {
 	}
 	// Can't use Collection.Exists since we can't get a collection until the collection exists on CBS
 	gocbCollection := b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName())
-	return WaitForNoError(func() error {
+	return WaitForNoError(ctx, func() error {
 		_, err := gocbCollection.Exists("fakedocid", nil)
 		return err
 	})

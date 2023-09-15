@@ -579,12 +579,12 @@ var GlobalTestLoggingSet = AtomicBool{}
 
 // SetUpGlobalTestLogging sets a global log level at runtime by using the SG_TEST_LOG_LEVEL environment variable.
 // This global level overrides any tests that specify their own test log level with SetUpTestLogging.
-func SetUpGlobalTestLogging(m *testing.M) (teardownFn func()) {
+func SetUpGlobalTestLogging(ctx context.Context, m *testing.M) (teardownFn func()) {
 	if logLevel := os.Getenv(TestEnvGlobalLogLevel); logLevel != "" {
 		var l LogLevel
 		err := l.UnmarshalText([]byte(logLevel))
 		if err != nil {
-			FatalfCtx(context.TODO(), "TEST: Invalid log level used for %q: %s", TestEnvGlobalLogLevel, err)
+			FatalfCtx(ctx, "TEST: Invalid log level used for %q: %s", TestEnvGlobalLogLevel, err)
 		}
 		caller := GetCallersName(1, false)
 		InfofCtx(context.Background(), KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, KeyAll)
@@ -728,13 +728,13 @@ func DirExists(filename string) bool {
 }
 
 // WaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
-func WaitForStat(getStatFunc func() int64, expected int64) (int64, bool) {
+func WaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (int64, bool) {
 	workerFunc := func() (shouldRetry bool, err error, val interface{}) {
 		val = getStatFunc()
 		return val != expected, nil, val
 	}
 	// wait for up to 20 seconds for the stat to meet the expected value
-	err, val := RetryLoop("waitForStat retry loop", workerFunc, CreateSleeperFunc(200, 100))
+	err, val := RetryLoop(TestCtx(t), "waitForStat retry loop", workerFunc, CreateSleeperFunc(200, 100))
 	valInt64, ok := val.(int64)
 
 	return valInt64, err == nil && ok
@@ -742,7 +742,7 @@ func WaitForStat(getStatFunc func() int64, expected int64) (int64, bool) {
 
 // RequireWaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
 func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) {
-	val, ok := WaitForStat(getStatFunc, expected)
+	val, ok := WaitForStat(t, getStatFunc, expected)
 	require.True(t, ok)
 	require.Equal(t, expected, val)
 }
@@ -750,7 +750,7 @@ func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) 
 // TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not
 // support collections.
 func TestRequiresCollections(t testing.TB) {
-	if ok, err := GTestBucketPool.canUseNamedCollections(); err != nil {
+	if ok, err := GTestBucketPool.canUseNamedCollections(TestCtx(t)); err != nil {
 		t.Skipf("Skipping test - collections not supported: %v", err)
 	} else if !ok {
 		t.Skipf("Skipping test - collections not enabled")
@@ -793,7 +793,7 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 
 	un, pw, _ := bucketSpec.Auth.GetCredentials()
 	var rootCAs *x509.CertPool
-	if tlsConfig := bucketSpec.TLSConfig(); tlsConfig != nil {
+	if tlsConfig := bucketSpec.TLSConfig(ctx); tlsConfig != nil {
 		rootCAs = tlsConfig.RootCAs
 	}
 	cluster, err := gocb.Connect(bucketSpec.Server, gocb.ClusterOptions{
@@ -825,7 +825,7 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)
-			if err := WaitForNoError(func() error {
+			if err := WaitForNoError(ctx, func() error {
 				_, err := cluster.Bucket(bucketSpec.BucketName).Scope(scopeName).Collection(collectionName).Exists("WaitForExists", nil)
 				return err
 			}); err != nil {

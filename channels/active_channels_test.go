@@ -28,6 +28,7 @@ func TestActiveChannelsConcurrency(t *testing.T) {
 	GHIChan := NewID("GHI", base.DefaultCollectionID)
 	JKLChan := NewID("JKL", base.DefaultCollectionID)
 	MNOChan := NewID("MNO", base.DefaultCollectionID)
+	ctx := base.TestCtx(t)
 	// Concurrent Incr, Decr
 	for i := 0; i < 50; i++ {
 		wg.Add(1)
@@ -40,7 +41,7 @@ func TestActiveChannelsConcurrency(t *testing.T) {
 			inactiveChans := base.SetOf(ABCChan.Name, DEFChan.Name)
 			inactiveChansTimedSet := AtSequence(inactiveChans, seqNo)
 
-			ac.DecrChannels(base.DefaultCollectionID, inactiveChansTimedSet)
+			ac.DecrChannels(ctx, base.DefaultCollectionID, inactiveChansTimedSet)
 		}()
 	}
 	wg.Wait()
@@ -57,9 +58,9 @@ func TestActiveChannelsConcurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			changedKeys := ChangedKeys{"ABC": true, "DEF": true, "GHI": false, "MNO": true}
-			ac.UpdateChanged(base.DefaultCollectionID, changedKeys)
+			ac.UpdateChanged(ctx, base.DefaultCollectionID, changedKeys)
 			changedKeys = ChangedKeys{"DEF": false}
-			ac.UpdateChanged(base.DefaultCollectionID, changedKeys)
+			ac.UpdateChanged(ctx, base.DefaultCollectionID, changedKeys)
 		}()
 	}
 	wg.Wait()

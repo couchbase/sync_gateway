@@ -96,7 +96,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	resyncLoggingID := "Resync: " + r.ResyncID
 
 	persistClusterStatus := func() {
-		err := persistClusterStatusCallback()
+		err := persistClusterStatusCallback(ctx)
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to persist cluster status on-demand for resync operation: %v", resyncLoggingID, err)
 		}
@@ -160,7 +160,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	clientOptions := getReSyncDCPClientOptions(collectionIDs, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
 
 	dcpFeedKey := generateResyncDCPStreamName(r.ResyncID)
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, bucket)
+	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
 		return err

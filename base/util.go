@@ -73,20 +73,20 @@ func NewNonCancelCtxForDatabase(dbName string, dbConsoleLogConfig *DbConsoleLogC
 }
 
 // RedactBasicAuthURLUserAndPassword returns the given string, with a redacted HTTP basic auth component.
-func RedactBasicAuthURLUserAndPassword(urlIn string) string {
+func RedactBasicAuthURLUserAndPassword(ctx context.Context, urlIn string) string {
 	redactedUrl, err := RedactBasicAuthURL(urlIn, false)
 	if err != nil {
-		WarnfCtx(context.Background(), "%v", err)
+		WarnfCtx(ctx, "%v", err)
 		return ""
 	}
 	return redactedUrl
 }
 
 // RedactBasicAuthURLPassword returns the given string, with a redacted HTTP basic auth password component.
-func RedactBasicAuthURLPassword(urlIn string) string {
+func RedactBasicAuthURLPassword(ctx context.Context, urlIn string) string {
 	redactedUrl, err := RedactBasicAuthURL(urlIn, true)
 	if err != nil {
-		WarnfCtx(context.Background(), "%v", err)
+		WarnfCtx(ctx, "%v", err)
 		return ""
 	}
 	return redactedUrl
@@ -442,11 +442,7 @@ func (r *RetryTimeoutError) Error() string {
 	return fmt.Sprintf("RetryLoop for %v giving up after %v attempts", r.description, r.attempts)
 }
 
-func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (error, interface{}) {
-	return RetryLoopCtx(description, worker, sleeper, context.Background())
-}
-
-func RetryLoopCtx(description string, worker RetryWorker, sleeper RetrySleeper, ctx context.Context) (error, interface{}) {
+func RetryLoop(ctx context.Context, description string, worker RetryWorker, sleeper RetrySleeper) (error, interface{}) {
 
 	numAttempts := 1
 
@@ -481,7 +477,7 @@ func RetryLoopCtx(description string, worker RetryWorker, sleeper RetrySleeper, 
 
 // A version of RetryLoop that returns a strongly typed cas as uint64, to avoid interface conversion overhead for
 // high throughput operations.
-func RetryLoopCas(description string, worker RetryCasWorker, sleeper RetrySleeper) (error, uint64) {
+func RetryLoopCas(ctx context.Context, description string, worker RetryCasWorker, sleeper RetrySleeper) (error, uint64) {
 
 	numAttempts := 1
 
@@ -498,10 +494,10 @@ func RetryLoopCas(description string, worker RetryCasWorker, sleeper RetrySleepe
 			if err == nil {
 				err = NewRetryTimeoutError(description, numAttempts)
 			}
-			WarnfCtx(context.Background(), "RetryLoopCas for %v giving up after %v attempts", description, numAttempts)
+			WarnfCtx(ctx, "RetryLoopCas for %v giving up after %v attempts", description, numAttempts)
 			return err, value
 		}
-		DebugfCtx(context.Background(), KeyAll, "RetryLoopCas retrying %v after %v ms.", description, sleepMs)
+		DebugfCtx(ctx, KeyAll, "RetryLoopCas retrying %v after %v ms.", description, sleepMs)
 
 		<-time.After(time.Millisecond * time.Duration(sleepMs))
 
@@ -1205,13 +1201,13 @@ func ExpvarFloatVal(val float64) *expvar.Float {
 }
 
 // Convert an expvar.Var to an int64.  Return 0 if the expvar var is nil.
-func ExpvarVar2Int(expvarVar expvar.Var) int64 {
+func ExpvarVar2Int(ctx context.Context, expvarVar expvar.Var) int64 {
 	if expvarVar == nil {
 		return 0
 	}
 	asInt, ok := expvarVar.(*expvar.Int)
 	if !ok {
-		WarnfCtx(context.Background(), "ExpvarVar2Int could not convert %v to *expvar.Int", expvarVar)
+		WarnfCtx(ctx, "ExpvarVar2Int could not convert %v to *expvar.Int", expvarVar)
 		return 0
 	}
 	return asInt.Value()
@@ -1815,8 +1811,8 @@ func AllOrNoneNil(vals ...interface{}) bool {
 }
 
 // WaitForNoError runs the callback until it no longer returns an error.
-func WaitForNoError(callback func() error) error {
-	err, _ := RetryLoop("wait for no error", func() (bool, error, interface{}) {
+func WaitForNoError(ctx context.Context, callback func() error) error {
+	err, _ := RetryLoop(ctx, "wait for no error", func() (bool, error, interface{}) {
 		callbackErr := callback()
 		return callbackErr != nil, callbackErr, nil
 	}, CreateMaxDoublingSleeperFunc(30, 10, 1000))

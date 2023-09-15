@@ -60,7 +60,7 @@ func NewConsoleLogger(ctx context.Context, shouldLogLocation bool, config *Conso
 		return nil, err
 	}
 
-	logKey := ToLogKey(config.LogKeys)
+	logKey := ToLogKey(ctx, config.LogKeys)
 
 	logger := &ConsoleLogger{
 		LogLevel:     config.LogLevel,

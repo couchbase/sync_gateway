@@ -75,7 +75,7 @@ func newSequenceAllocator(ctx context.Context, datastore base.DataStore, dbStats
 		defer base.FatalPanicHandler()
 		s.releaseSequenceMonitor(ctx)
 	}()
-	_, err := s.lastSequence() // just reads latest sequence from bucket
+	_, err := s.lastSequence(ctx) // just reads latest sequence from bucket
 	return s, err
 }
 
@@ -141,7 +141,7 @@ func (s *sequenceAllocator) releaseUnusedSequences(ctx context.Context) {
 
 // Retrieves the last allocated sequence.  If there hasn't been an allocation yet by this node,
 // retrieves the value of the _sync:seq counter from the bucket by doing an incr(0)
-func (s *sequenceAllocator) lastSequence() (uint64, error) {
+func (s *sequenceAllocator) lastSequence(ctx context.Context) (uint64, error) {
 	s.mutex.Lock()
 	lastSeq := s.last
 	s.mutex.Unlock()
@@ -152,7 +152,7 @@ func (s *sequenceAllocator) lastSequence() (uint64, error) {
 	s.dbStats.SequenceGetCount.Add(1)
 	last, err := s.getSequence()
 	if err != nil {
-		base.WarnfCtx(context.TODO(), "Error from Get in getSequence(): %v", err)
+		base.WarnfCtx(ctx, "Error from Get in getSequence(): %v", err)
 	}
 	return last, err
 }
@@ -161,11 +161,11 @@ func (s *sequenceAllocator) lastSequence() (uint64, error) {
 // If previously reserved sequences are available (s.last < s.max), returns one
 // and increments s.last.
 // If no previously reserved sequences are available, reserves new batch.
-func (s *sequenceAllocator) nextSequence() (sequence uint64, err error) {
+func (s *sequenceAllocator) nextSequence(ctx context.Context) (sequence uint64, err error) {
 	s.mutex.Lock()
 	sequencesReserved := false
 	if s.last >= s.max {
-		if err := s._reserveSequenceRange(); err != nil {
+		if err := s._reserveSequenceRange(ctx); err != nil {
 			s.mutex.Unlock()
 			return 0, err
 		}
@@ -186,7 +186,7 @@ func (s *sequenceAllocator) nextSequence() (sequence uint64, err error) {
 }
 
 // Reserve a new sequence range.  Called by nextSequence when the previously allocated sequences have all been used.
-func (s *sequenceAllocator) _reserveSequenceRange() error {
+func (s *sequenceAllocator) _reserveSequenceRange(ctx context.Context) error {
 
 	// If the time elapsed since the last reserveSequenceRange invocation reserve is shorter than our target frequency,
 	// this indicates we're making an incr call more frequently than we want to.  Triggers an increase in batch size to
@@ -196,12 +196,12 @@ func (s *sequenceAllocator) _reserveSequenceRange() error {
 		if s.sequenceBatchSize > maxBatchSize {
 			s.sequenceBatchSize = maxBatchSize
 		}
-		base.DebugfCtx(context.TODO(), base.KeyCRUD, "Increased sequence batch to %d", s.sequenceBatchSize)
+		base.DebugfCtx(ctx, base.KeyCRUD, "Increased sequence batch to %d", s.sequenceBatchSize)
 	}
 
 	max, err := s.incrementSequence(s.sequenceBatchSize)
 	if err != nil {
-		base.WarnfCtx(context.TODO(), "Error from incrementSequence in _reserveSequences(%d): %v", s.sequenceBatchSize, err)
+		base.WarnfCtx(ctx, "Error from incrementSequence in _reserveSequences(%d): %v", s.sequenceBatchSize, err)
 		return err
 	}
 
@@ -263,13 +263,13 @@ func (s *sequenceAllocator) releaseSequenceRange(ctx context.Context, fromSequen
 
 // waitForReleasedSequences blocks for 'releaseSequenceWait' past the provided startTime.
 // Used to guarantee assignment of allocated sequences on other nodes.
-func (s *sequenceAllocator) waitForReleasedSequences(startTime time.Time) (waitedFor time.Duration) {
+func (s *sequenceAllocator) waitForReleasedSequences(ctx context.Context, startTime time.Time) (waitedFor time.Duration) {
 
 	requiredWait := s.releaseSequenceWait - time.Since(startTime)
 	if requiredWait < 0 {
 		return 0
 	}
-	base.InfofCtx(context.TODO(), base.KeyCache, "Waiting %v for sequence allocation...", requiredWait)
+	base.InfofCtx(ctx, base.KeyCache, "Waiting %v for sequence allocation...", requiredWait)
 	time.Sleep(requiredWait)
 	return requiredWait
 }
