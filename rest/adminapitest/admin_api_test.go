@@ -1676,7 +1676,7 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 	// assert that a request to the database fails with correct error message
 	resp := rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
 	rest.RequireStatus(t, resp, http.StatusNotFound)
-	assert.Contains(t, resp.Body.String(), "Must update database config immediately")
+	assert.Contains(t, resp.Body.String(), "You must update database config immediately")
 }
 
 // TestMismatchedBucketNameOnDbConfigUpdate:
@@ -1737,12 +1737,12 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 			config.Bootstrap.ConfigGroupID = groupID
 		},
 	})
-	defer rt1.Close()
 
 	// create a db config that has bucket C in the config and persist to rt1 bucket
 	dbConfig := rt1.NewDbConfig()
 	dbConfig.Name = "db1"
 	rt1.PersistDbConfigToBucket(dbConfig, tb3.GetName())
+	defer rt1.Close()
 
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb2,
@@ -1788,7 +1788,7 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 	// assert a request to the db fails with correct error message
 	resp := rt3.SendAdminRequest(http.MethodGet, "/db1/_config", "")
 	rest.RequireStatus(t, resp, http.StatusNotFound)
-	assert.Contains(t, resp.Body.String(), "Must update database config immediately")
+	assert.Contains(t, resp.Body.String(), "You must update database config immediately")
 }
 
 // TestMultipleBucketWithBadDbConfigScenario2:
@@ -1811,11 +1811,12 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 			config.Bootstrap.ConfigGroupID = "60ce5544-c368-4b08-b0ed-4ca3b37973f9"
 		},
 	})
+	defer rt1.Close()
+
 	// create a db config pointing to bucket C and persist to bucket A
 	dbConfig := rt1.NewDbConfig()
 	dbConfig.Name = "db1"
 	rt1.PersistDbConfigToBucket(dbConfig, rt1.CustomTestBucket.GetName())
-	defer rt1.Close()
 
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb2,
@@ -1912,6 +1913,7 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 		return len(invalidDatabases) == 1
 	}, 200, 1000)
 	require.NoError(t, err)
+
 }
 
 func TestResyncStopUsingDCPStream(t *testing.T) {
