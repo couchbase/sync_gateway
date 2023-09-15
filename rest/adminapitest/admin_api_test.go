@@ -3772,7 +3772,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	assert.Equal(t, db.DefaultChannelCacheMaxNumber, *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber)
 	assert.Equal(t, base.DefaultOldRevExpirySeconds, *dbConfig.OldRevExpirySeconds)
 	assert.Equal(t, false, *dbConfig.StartOffline)
-	assert.Equal(t, db.DefaultCompactInterval, uint32(*dbConfig.CompactIntervalDays))
+	assert.Equal(t, db.DefaultCompactInterval, time.Duration(*dbConfig.CompactIntervalDays)*24*time.Hour)
 
 	assert.Equal(t, dbConfig.Logging.Console.LogLevel.String(), base.LevelDebug.String())
 	assert.Equal(t, dbConfig.Logging.Console.LogKeys, []string{base.KeyDCP.String()})
@@ -3789,7 +3789,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	assert.Equal(t, db.DefaultChannelCacheMaxNumber, *runtimeServerConfigDatabase.CacheConfig.ChannelCacheConfig.MaxNumber)
 	assert.Equal(t, base.DefaultOldRevExpirySeconds, *runtimeServerConfigDatabase.OldRevExpirySeconds)
 	assert.Equal(t, false, *runtimeServerConfigDatabase.StartOffline)
-	assert.Equal(t, db.DefaultCompactInterval, uint32(*runtimeServerConfigDatabase.CompactIntervalDays))
+	assert.Equal(t, db.DefaultCompactInterval, time.Duration(*runtimeServerConfigDatabase.CompactIntervalDays)*24*time.Hour)
 
 	// Test unsupported options
 	tb2 := base.GetTestBucket(t)
