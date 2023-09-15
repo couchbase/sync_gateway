@@ -164,18 +164,27 @@ type GlobalStat struct {
 }
 
 func newGlobalStat() (*GlobalStat, error) {
-	g := &GlobalStat{
-		ConfigStat: &ConfigStat{},
-	}
+	g := &GlobalStat{}
 	err := g.initResourceUtilizationStats()
-
 	if err != nil {
 		return nil, err
 	}
+	err = g.initConfigStats()
+	if err != nil {
+		return nil, err
+	}
+	return g, nil
+}
 
-	g.ConfigStat.DatabaseBucketMismatches, err = NewIntStat(ConfigSubsystem, "database_config_bucket_mismatches", StatUnitBytes, DatabaseBucketMismatchesDesc, StatAddedVersion3dot1dot2, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
-
-	return g, err
+func (g *GlobalStat) initConfigStats() error {
+	configStat := &ConfigStat{}
+	var err error
+	configStat.DatabaseBucketMismatches, err = NewIntStat(ConfigSubsystem, "database_config_bucket_mismatches", StatUnitBytes, DatabaseBucketMismatchesDesc, StatAddedVersion3dot1dot2, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	g.ConfigStat = configStat
+	return nil
 }
 
 func (g *GlobalStat) initResourceUtilizationStats() error {
