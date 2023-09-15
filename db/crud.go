@@ -1899,6 +1899,10 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
 		// Update the document, storing metadata in extended attribute
+		if opts == nil {
+			opts = &sgbucket.MutateInOptions{}
+		}
+		opts.MacroExpansion = macroExpandSpec(base.SyncXattrName)
 		casOut, err = db.dataStore.WriteUpdateWithXattr(ctx, key, base.SyncXattrName, db.userXattrKey(), expiry, opts, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(ctx, docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll); err != nil {
@@ -1924,7 +1928,6 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 			docSequence = doc.Sequence
 			inConflict = doc.hasFlag(channels.Conflict)
-
 			currentRevFromHistory, ok := doc.History[doc.CurrentRev]
 			if !ok {
 				err = base.RedactErrorf("WriteUpdateWithXattr() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", doc.CurrentRev, base.UD(doc))
@@ -2581,4 +2584,26 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 		// Parent revision mismatch, so this is a conflict:
 		return ProposedRev_Conflict, doc.CurrentRev
 	}
+}
+
+const (
+	xattrMacroCas         = "cas"
+	xattrMacroValueCrc32c = "value_crc32c"
+)
+
+func macroExpandSpec(xattrName string) []sgbucket.MacroExpansionSpec {
+	macroExpansion := []sgbucket.MacroExpansionSpec{
+		sgbucket.NewMacroExpansionSpec(xattrCasPath(xattrName), sgbucket.MacroCas),
+		sgbucket.NewMacroExpansionSpec(xattrCrc32cPath(xattrName), sgbucket.MacroCrc32c),
+	}
+
+	return macroExpansion
+}
+
+func xattrCasPath(xattrKey string) string {
+	return xattrKey + "." + xattrMacroCas
+}
+
+func xattrCrc32cPath(xattrKey string) string {
+	return xattrKey + "." + xattrMacroValueCrc32c
 }

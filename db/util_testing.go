@@ -637,3 +637,9 @@ func (a *ActiveReplicator) GetActiveReplicatorConfig() *ActiveReplicatorConfig {
 func (apr *ActivePullReplicator) GetBlipSender() *blip.Sender {
 	return apr.blipSender
 }
+
+func DefaultMutateInOpts() *sgbucket.MutateInOptions {
+	return &sgbucket.MutateInOptions{
+		MacroExpansion: macroExpandSpec(base.SyncXattrName),
+	}
+}

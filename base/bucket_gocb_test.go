@@ -484,7 +484,7 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	}
 
 	cas := uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, val, xattrVal)
+	cas, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, syncMutateInOpts(), val, xattrVal)
 	assert.NoError(t, err, "WriteCasWithXattr error")
 	log.Printf("Post-write, cas is %d", cas)
 
@@ -1199,7 +1199,7 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
 
-	_, mutateErr := dataStore.UpdateXattrDeleteBody(ctx, key, xattrName, 0, cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattrDeleteBody(ctx, key, xattrName, 0, cas, xattrVal, nil)
 	assert.NoError(t, mutateErr)
 
 	// Verify delete of body and update of XATTR
@@ -2110,7 +2110,7 @@ func createTombstonedDoc(t *testing.T, dataStore sgbucket.DataStore, key, xattrN
 	require.NoError(t, err)
 
 	// Create tombstone revision which deletes doc body but preserves XATTR
-	_, mutateErr := dataStore.DeleteBody(ctx, key, xattrName, 0, cas)
+	_, mutateErr := dataStore.DeleteBody(ctx, key, xattrName, 0, cas, nil)
 	/*
 		flags := gocb.SubdocDocFlagAccessDeleted
 		_, mutateErr := dataStore.dataStore.MutateInEx(key, flags, gocb.Cas(cas), uint32(0)).
@@ -2172,7 +2172,7 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 
 	cas := uint64(0)
 	// CAS-safe write of the document and it's associated named extended attributes
-	cas, err := dataStore.WriteCasWithXattr(ctx, key, xattrKey, 0, cas, nil, val, xattrVal)
+	cas, err := dataStore.WriteCasWithXattrctx, key, xattrKey, 0, cas, syncMutateInOpts(), val, xattrVal)
 	require.NoError(t, err, "Error doing WriteCasWithXattr")
 
 	updatedXattrVal := make(map[string]interface{})
@@ -2183,7 +2183,7 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 
 	xattrValBytes, err := JSONMarshal(updatedXattrVal)
 	require.NoError(t, err)
-	_, errDelete := dataStore.WriteWithXattr(ctx, key, xattrKey, 0, cas, nil, nil, xattrValBytes, true, true)
+	_, errDelete := dataStore.WriteWithXattr(ctx, key, xattrKey, 0, cas, syncMutateInOpts(), nil, xattrValBytes, true, true)
 	assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
 	assert.True(t, verifyDocDeletedXattrExists(ctx, dataStore, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
 
@@ -2283,7 +2283,7 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 	// Attempt to delete the document body (deleteBody = true); isDelete is true to mark this doc as a tombstone.
 	xattrValBytes, err := JSONMarshal(xattrVal)
 	require.NoError(t, err)
-	_, errDelete := dataStore.WriteWithXattr(ctx, key, xattrKey, 0, cas, nil, nil, xattrValBytes, true, false)
+	_, errDelete := dataStore.WriteWithXattr(ctx, key, xattrKey, 0, cas, syncMutateInOpts(), nil, xattrValBytes, true, false)
 	assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
 	assert.True(t, verifyDocDeletedXattrExists(ctx, dataStore, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
 
@@ -2578,4 +2578,14 @@ func TestMobileSystemCollectionCRUD(t *testing.T) {
 
 	err = ds.Delete(docID)
 	require.NoError(t, err)
+}
+
+// Used to test standard sync mutateInOpts from the base package
+func syncMutateInOpts() *sgbucket.MutateInOptions {
+	return &sgbucket.MutateInOptions{
+		MacroExpansion: []sgbucket.MacroExpansionSpec{
+			sgbucket.NewMacroExpansionSpec(xattrCasPath(SyncXattrName), sgbucket.MacroCas),
+			sgbucket.NewMacroExpansionSpec(xattrCrc32cPath(SyncXattrName), sgbucket.MacroCrc32c),
+		},
+	}
 }

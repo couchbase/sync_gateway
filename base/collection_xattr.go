@@ -282,7 +282,7 @@ func (c *Collection) SubdocGetBodyAndXattr(ctx context.Context, k string, xattrK
 
 // InsertXattr inserts a new server tombstone with an associated mobile xattr.  Writes cas and crc32c to the xattr using
 // macro expansion.
-func (c *Collection) InsertXattr(_ context.Context, k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
+func (c *Collection) InsertXattr(_ context.Context, k string, xattrKey string, exp uint32, cas uint64, xv interface{}, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -297,9 +297,8 @@ func (c *Collection) InsertXattr(_ context.Context, k string, xattrKey string, e
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
-		gocb.UpsertSpec(xattrCasPath(xattrKey), gocb.MutationMacroCAS, UpsertSpecXattr),
-		gocb.UpsertSpec(xattrCrc32cPath(xattrKey), gocb.MutationMacroValueCRC32c, UpsertSpecXattr),
 	}
+	mutateOps = c.appendMacroExpansions(mutateOps, opts)
 	options := &gocb.MutateInOptions{
 		StoreSemantic: gocb.StoreSemanticsReplace, // set replace here, as we're explicitly setting SubdocDocFlagMkDoc above if tombstone creation is not supported
 		Expiry:        CbsExpiryToDuration(exp),
@@ -315,16 +314,15 @@ func (c *Collection) InsertXattr(_ context.Context, k string, xattrKey string, e
 
 // InsertBodyAndXattr inserts a document and associated mobile xattr in a single mutateIn operation.  Writes cas and crc32c to the xattr using
 // macro expansion.
-func (c *Collection) InsertBodyAndXattr(_ context.Context, k string, xattrKey string, exp uint32, v interface{}, xv interface{}) (casOut uint64, err error) {
+func (c *Collection) InsertBodyAndXattr(_ context.Context, k string, xattrKey string, exp uint32, v interface{}, xv interface{}, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
-		gocb.UpsertSpec(xattrCasPath(xattrKey), gocb.MutationMacroCAS, UpsertSpecXattr),
-		gocb.UpsertSpec(xattrCrc32cPath(xattrKey), gocb.MutationMacroValueCRC32c, UpsertSpecXattr),
 		gocb.ReplaceSpec("", bytesToRawMessage(v), nil),
 	}
+	mutateOps = c.appendMacroExpansions(mutateOps, opts)
 	options := &gocb.MutateInOptions{
 		Expiry:        CbsExpiryToDuration(exp),
 		StoreSemantic: gocb.StoreSemanticsInsert,
@@ -386,15 +384,15 @@ func (c *Collection) SubdocSetXattr(k string, xattrKey string, xv interface{}) (
 
 // UpdateXattr updates the xattr on an existing document. Writes cas and crc32c to the xattr using
 // macro expansion.
-func (c *Collection) UpdateXattr(_ context.Context, k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
+func (c *Collection) UpdateXattr(_ context.Context, k string, xattrKey string, exp uint32, cas uint64, xv interface{}, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
-		gocb.UpsertSpec(xattrCasPath(xattrKey), gocb.MutationMacroCAS, UpsertSpecXattr),
-		gocb.UpsertSpec(xattrCrc32cPath(xattrKey), gocb.MutationMacroValueCRC32c, UpsertSpecXattr),
 	}
+	c.appendMacroExpansions(mutateOps, opts)
+
 	options := &gocb.MutateInOptions{
 		Expiry:        CbsExpiryToDuration(exp),
 		StoreSemantic: gocb.StoreSemanticsUpsert,
@@ -417,10 +415,10 @@ func (c *Collection) UpdateBodyAndXattr(_ context.Context, k string, xattrKey st
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
-		gocb.UpsertSpec(xattrCasPath(xattrKey), gocb.MutationMacroCAS, UpsertSpecXattr),
-		gocb.UpsertSpec(xattrCrc32cPath(xattrKey), gocb.MutationMacroValueCRC32c, UpsertSpecXattr),
 		gocb.ReplaceSpec("", bytesToRawMessage(v), nil),
 	}
+	c.appendMacroExpansions(mutateOps, opts)
+
 	options := &gocb.MutateInOptions{
 		Expiry:        CbsExpiryToDuration(exp),
 		StoreSemantic: gocb.StoreSemanticsUpsert,
@@ -436,16 +434,14 @@ func (c *Collection) UpdateBodyAndXattr(_ context.Context, k string, xattrKey st
 
 // UpdateXattrDeleteBody deletes the document body and updates the xattr of an existing document. Writes cas and crc32c to the xattr using
 // macro expansion.
-func (c *Collection) UpdateXattrDeleteBody(_ context.Context, k, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
+func (c *Collection) UpdateXattrDeleteBody(_ context.Context, k, xattrKey string, exp uint32, cas uint64, xv interface{}, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
-		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
-		gocb.UpsertSpec(xattrCasPath(xattrKey), gocb.MutationMacroCAS, UpsertSpecXattr),
-		gocb.UpsertSpec(xattrCrc32cPath(xattrKey), gocb.MutationMacroValueCRC32c, UpsertSpecXattr),
 		gocb.RemoveSpec("", nil),
 	}
+	mutateOps = c.appendMacroExpansions(mutateOps, opts)
 	options := &gocb.MutateInOptions{
 		StoreSemantic: gocb.StoreSemanticsReplace,
 		Expiry:        CbsExpiryToDuration(exp),
@@ -520,15 +516,14 @@ func (c *Collection) DeleteBodyAndXattr(_ context.Context, k string, xattrKey st
 }
 
 // DeleteBody deletes the document body of an existing document, and updates cas and crc32c in the associated xattr.
-func (c *Collection) DeleteBody(_ context.Context, k string, xattrKey string, exp uint32, cas uint64) (casOut uint64, err error) {
+func (c *Collection) DeleteBody(_ context.Context, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
 	mutateOps := []gocb.MutateInSpec{
-		gocb.UpsertSpec(xattrCasPath(xattrKey), gocb.MutationMacroCAS, UpsertSpecXattr),
-		gocb.UpsertSpec(xattrCrc32cPath(xattrKey), gocb.MutationMacroValueCRC32c, UpsertSpecXattr),
 		gocb.RemoveSpec("", nil),
 	}
+	mutateOps = c.appendMacroExpansions(mutateOps, opts)
 	options := &gocb.MutateInOptions{
 		StoreSemantic: gocb.StoreSemanticsReplace,
 		Expiry:        CbsExpiryToDuration(exp),
@@ -618,4 +613,28 @@ func (c *Collection) DeleteUserXattr(k string, xattrKey string) (uint64, error) 
 		return 0, mutateErr
 	}
 	return uint64(result.Cas()), nil
+}
+
+// initializeMutateInSpec will append macro expansions defined in MutateInOptions to the provided
+// gocb MutateInSpec.
+func (c *Collection) appendMacroExpansions(mutateInSpec []gocb.MutateInSpec, opts *sgbucket.MutateInOptions) []gocb.MutateInSpec {
+
+	if opts == nil {
+		return mutateInSpec
+	}
+	for _, v := range opts.MacroExpansion {
+		mutateInSpec = append(mutateInSpec, gocb.UpsertSpec(v.Path, gocbMutationMacro(v.Type), UpsertSpecXattr))
+	}
+	return mutateInSpec
+}
+
+func gocbMutationMacro(meType sgbucket.MacroExpansionType) gocb.MutationMacro {
+	switch meType {
+	case sgbucket.MacroCas:
+		return gocb.MutationMacroCAS
+	case sgbucket.MacroCrc32c:
+		return gocb.MutationMacroValueCRC32c
+	default:
+		return gocb.MutationMacroCAS
+	}
 }
