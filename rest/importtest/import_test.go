@@ -655,7 +655,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
 
-	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal, nil)
 
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
@@ -709,7 +709,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal, nil)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to update the document again via Sync Gateway.  Should not trigger import, PUT should be successful,
@@ -769,7 +769,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal, nil)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Wait until crc match count changes
@@ -2283,7 +2283,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	// Modify the document via the SDK to add the body back
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal, nil)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to get the document again via Sync Gateway.  Should not trigger import.

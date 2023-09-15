@@ -124,7 +124,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 	var newRev string
 	var alreadyImportedDoc *Document
 
-	mutationOptions := sgbucket.MutateInOptions{}
+	mutationOptions := &sgbucket.MutateInOptions{}
 	if db.dataStore.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) {
 		mutationOptions.PreserveExpiry = true
 	} else {
@@ -139,7 +139,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		existingDoc.Expiry = *expiry
 	}
 
-	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, existingDoc.Expiry, &mutationOptions, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, existingDoc.Expiry, mutationOptions, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
 		if doc.Cas != existingDoc.Cas {
@@ -184,7 +184,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		// If the existing doc is a legacy SG write (_sync in body), check for migrate instead of import.
 		_, ok := body[base.SyncPropertyName]
 		if ok || doc.inlineSyncData {
-			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(ctx, newDoc.ID, body, existingDoc, &mutationOptions)
+			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(ctx, newDoc.ID, body, existingDoc, mutationOptions)
 			if migrateErr != nil {
 				return nil, nil, false, updatedExpiry, migrateErr
 			}

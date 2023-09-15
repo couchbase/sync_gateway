@@ -13,9 +13,9 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.2.4-0.20230511103754-8dd1a95f5f33
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20230912183916-dfc81a029d3b
+	github.com/couchbase/sg-bucket v0.0.0-20230914234809-b3764b485ae9
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
-	github.com/couchbaselabs/rosmar v0.0.0-20230912185358-c5847ff7b0be
+	github.com/couchbaselabs/rosmar v0.0.0-20230915041912-1ef8902279b3
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
 	github.com/google/uuid v1.3.0

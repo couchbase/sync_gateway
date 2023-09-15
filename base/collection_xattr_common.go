@@ -37,7 +37,7 @@ func WriteCasWithXattr(store *Collection, k string, xattrKey string, exp uint32,
 
 		// cas=0 specifies an insert
 		if cas == 0 {
-			casOut, err = store.InsertBodyAndXattr(k, xattrKey, exp, v, xv)
+			casOut, err = store.InsertBodyAndXattr(k, xattrKey, exp, v, xv, opts)
 			if err != nil {
 				shouldRetry = store.isRecoverableWriteError(err)
 				return shouldRetry, err, uint64(0)
@@ -55,7 +55,7 @@ func WriteCasWithXattr(store *Collection, k string, xattrKey string, exp uint32,
 			}
 		} else {
 			// Update xattr only
-			casOut, err = store.UpdateXattr(k, xattrKey, exp, cas, xv)
+			casOut, err = store.UpdateXattr(k, xattrKey, exp, cas, xv, opts)
 			if err != nil {
 				shouldRetry = store.isRecoverableWriteError(err)
 				return shouldRetry, err, uint64(0)
@@ -77,7 +77,7 @@ func WriteCasWithXattr(store *Collection, k string, xattrKey string, exp uint32,
 // update types (UpdateTombstoneXattr, WriteCasWithXattr) include recoverable error retry.
 func WriteWithXattr(store *Collection, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
 	if isDelete {
-		return UpdateTombstoneXattr(store, k, xattrKey, exp, cas, xattrValue, deleteBody)
+		return UpdateTombstoneXattr(store, k, xattrKey, exp, cas, xattrValue, deleteBody, opts)
 	} else {
 		// Not a delete - update the body and xattr
 		return WriteCasWithXattr(store, k, xattrKey, exp, cas, opts, value, xattrValue)
@@ -85,10 +85,8 @@ func WriteWithXattr(store *Collection, k string, xattrKey string, exp uint32, ca
 }
 
 // CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
-func UpdateTombstoneXattr(store *Collection, k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool) (casOut uint64, err error) {
+func UpdateTombstoneXattr(store *Collection, k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 
-	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
-	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	requiresBodyRemoval := false
 	worker := func() (shouldRetry bool, err error, value uint64) {
 
@@ -97,16 +95,16 @@ func UpdateTombstoneXattr(store *Collection, k string, xattrKey string, exp uint
 
 		// If deleteBody == true, remove the body and update xattr
 		if deleteBody {
-			casOut, tombstoneErr = store.UpdateXattrDeleteBody(k, xattrKey, exp, cas, xv)
+			casOut, tombstoneErr = store.UpdateXattrDeleteBody(k, xattrKey, exp, cas, xv, opts)
 		} else {
 			if cas == 0 {
 				// if cas == 0, create a new server tombstone with xattr
-				casOut, tombstoneErr = store.InsertXattr(k, xattrKey, exp, cas, xv)
+				casOut, tombstoneErr = store.InsertXattr(k, xattrKey, exp, cas, xv, opts)
 				// If one-step tombstone creation is not supported, set flag for document body removal
 				requiresBodyRemoval = !store.IsSupported(sgbucket.BucketStoreFeatureCreateDeletedWithXattr)
 			} else {
 				// If cas is non-zero, this is an already existing tombstone.  Update xattr only
-				casOut, tombstoneErr = store.UpdateXattr(k, xattrKey, exp, cas, xv)
+				casOut, tombstoneErr = store.UpdateXattr(k, xattrKey, exp, cas, xv, opts)
 			}
 		}
 
@@ -131,7 +129,7 @@ func UpdateTombstoneXattr(store *Collection, k string, xattrKey string, exp uint
 	if requiresBodyRemoval {
 		worker := func() (shouldRetry bool, err error, value uint64) {
 
-			casOut, removeErr := store.DeleteBody(k, xattrKey, exp, cas)
+			casOut, removeErr := store.DeleteBody(k, xattrKey, exp, cas, opts)
 			if removeErr != nil {
 				// If there is a cas mismatch the body has since been updated and so we don't need to bother removing
 				// body in this operation
@@ -163,7 +161,6 @@ func UpdateTombstoneXattr(store *Collection, k string, xattrKey string, exp uint
 // If previous document is provided, will use it on 1st iteration instead of retrieving from bucket.
 // A zero CAS in `previous` is interpreted as no document existing; this can be used to short-
 // circuit the initial Get when the document is unlikely to already exist.
-
 func WriteUpdateWithXattr(store *Collection, k string, xattrKey string, userXattrKey string, exp uint32, opts *sgbucket.MutateInOptions, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 
 	var value []byte

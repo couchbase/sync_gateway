@@ -90,6 +90,8 @@ github.com/couchbase/sg-bucket v0.0.0-20230908223124-2f1078e2282c h1:gs5NrvLopWk
 github.com/couchbase/sg-bucket v0.0.0-20230908223124-2f1078e2282c/go.mod h1:sZO/b/EAyLhPJWOSiaaYRQ3rnveSumRh2wUEfNkK/UM=
 github.com/couchbase/sg-bucket v0.0.0-20230912183916-dfc81a029d3b h1:kTGWkJ30HJQ39SIgtkGjFIOcE3p1L0RwN5sBiVakVAs=
 github.com/couchbase/sg-bucket v0.0.0-20230912183916-dfc81a029d3b/go.mod h1:sZO/b/EAyLhPJWOSiaaYRQ3rnveSumRh2wUEfNkK/UM=
+github.com/couchbase/sg-bucket v0.0.0-20230914234809-b3764b485ae9 h1:Ovl0sOja287DuQzCPtMZdJdyrwKvJ92jNw51NWCbixo=
+github.com/couchbase/sg-bucket v0.0.0-20230914234809-b3764b485ae9/go.mod h1:sZO/b/EAyLhPJWOSiaaYRQ3rnveSumRh2wUEfNkK/UM=
 github.com/couchbase/tools-common v0.0.0-20220810163003-4c3c185822d4 h1:Ub0gZWccoNL+ag59v8S23tbHDknfN1l3CVl7Kb+hFO0=
 github.com/couchbase/tools-common v0.0.0-20220810163003-4c3c185822d4/go.mod h1:lW0Em1mo5xqQ0mRMzJlg013/6ruyISupTfW7nbLaa1E=
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f h1:al5DxXEBAUmINnP5dR950gL47424WzncuRpNdg0TWR0=
@@ -106,6 +108,8 @@ github.com/couchbaselabs/rosmar v0.0.0-20230911231259-0e6c8bec54b0 h1:iicxlq0vE6
 github.com/couchbaselabs/rosmar v0.0.0-20230911231259-0e6c8bec54b0/go.mod h1:TZR8hpREKvIClLqJY22IbfX6PugLx9Z/HyY2iawyXP0=
 github.com/couchbaselabs/rosmar v0.0.0-20230912185358-c5847ff7b0be h1:isy668YrOJq4HooAf0Rxeo1bK3S72Os8QUu8ww3sUGg=
 github.com/couchbaselabs/rosmar v0.0.0-20230912185358-c5847ff7b0be/go.mod h1:zLWlNnNF3ro+KtAeOFmghmhonmD0ttXlx314CtFWwb4=
+github.com/couchbaselabs/rosmar v0.0.0-20230915041912-1ef8902279b3 h1:wT35/q1Yqbc4a1E28tj/QUot0vvdW+gnEwQPJS4Dgbk=
+github.com/couchbaselabs/rosmar v0.0.0-20230915041912-1ef8902279b3/go.mod h1:jYNDVH7TiPYLipcOrYjeTbt3IwKrY7B7iKEBUvHiykU=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

@@ -333,14 +333,6 @@ func (lds *LeakyDataStore) IsSupported(feature sgbucket.BucketStoreFeature) bool
 	return lds.dataStore.IsSupported(feature)
 }
 
-func (lds *LeakyDataStore) InsertXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
-	return lds.dataStore.InsertXattr(k, xattrKey, exp, cas, xv)
-}
-
-func (lds *LeakyDataStore) InsertBodyAndXattr(k string, xattrKey string, exp uint32, v interface{}, xv interface{}) (casOut uint64, err error) {
-	return lds.dataStore.InsertBodyAndXattr(k, xattrKey, exp, v, xv)
-}
-
 func (lds *LeakyDataStore) SubdocSetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
 	raw, err := JSONMarshal(xv)
 	if err == nil {
@@ -349,28 +341,20 @@ func (lds *LeakyDataStore) SubdocSetXattr(k string, xattrKey string, xv interfac
 	return
 }
 
-func (lds *LeakyDataStore) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
-	return lds.dataStore.UpdateXattr(k, xattrKey, exp, cas, xv)
+func (lds *LeakyDataStore) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+	return lds.dataStore.UpdateXattr(k, xattrKey, exp, cas, xv, opts)
 }
 
-func (lds *LeakyDataStore) UpdateBodyAndXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
-	return lds.dataStore.UpdateBodyAndXattr(k, xattrKey, exp, cas, opts, v, xv)
-}
-
-func (lds *LeakyDataStore) UpdateXattrDeleteBody(k, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error) {
-	return lds.dataStore.UpdateXattrDeleteBody(k, xattrKey, exp, cas, xv)
+func (lds *LeakyDataStore) UpdateXattrDeleteBody(k, xattrKey string, exp uint32, cas uint64, xv interface{}, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+	return lds.dataStore.UpdateXattrDeleteBody(k, xattrKey, exp, cas, xv, opts)
 }
 
 func (lds *LeakyDataStore) DeleteXattr(k string, xattrKey string, cas uint64) error {
 	return lds.dataStore.RemoveXattr(k, xattrKey, cas)
 }
 
-func (lds *LeakyDataStore) DeleteBodyAndXattr(k string, xattrKey string) error {
-	return lds.dataStore.DeleteBodyAndXattr(k, xattrKey)
-}
-
-func (lds *LeakyDataStore) DeleteBody(k string, xattrKey string, exp uint32, cas uint64) (casOut uint64, err error) {
-	return lds.dataStore.DeleteBody(k, xattrKey, exp, cas)
+func (lds *LeakyDataStore) DeleteBody(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+	return lds.dataStore.DeleteBody(k, xattrKey, exp, cas, opts)
 }
 
 func (lds *LeakyDataStore) GetSpec() BucketSpec {
