@@ -69,7 +69,7 @@ const (
 
 // error stat
 const (
-	DatabaseBucketMismatchesDesc = "The total number of times a database config that is found to mismatch the bucket listed in the config is polled."
+	DatabaseBucketMismatchesDesc = "The total number of times a database config is polled from a bucket that doesn't match the bucket specified in the database config."
 )
 
 // cache stats descriptions
