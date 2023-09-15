@@ -1292,7 +1292,7 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 	assert.NoError(t, err)
 
 	if base.TestUseXattrs() {
-		_, err = collection.dataStore.WriteCasWithXattr(ctx, docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
+		_, err = collection.dataStore.WriteCasWithXattr(ctx, docKey, base.SyncXattrName, 0, 0, DefaultMutateInOpts(), bodyVal, xattrVal)
 		assert.NoError(t, err)
 	} else {
 		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
