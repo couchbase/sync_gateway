@@ -30,6 +30,8 @@ type jsInvocation struct {
 	args map[string]any
 }
 
+var _ resolver = &jsInvocation{}
+
 func (fn *jsInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 	return nil, nil
 }

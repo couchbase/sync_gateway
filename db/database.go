@@ -613,7 +613,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 	waitForBackgroundManagersToStop(ctx, BGTCompletionMaxWait, bgManagers)
 
-	context.Bucket.Close()
+	context.Bucket.Close(ctx)
 	context.Bucket = nil
 
 	base.RemovePerDbStats(context.Name)

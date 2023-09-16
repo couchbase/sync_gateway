@@ -228,7 +228,7 @@ func (h *handler) handleFlush() error {
 		if err != nil {
 			return err
 		}
-		defer tempBucketForFlush.Close() // Close the temporary connection to the bucket that was just for purposes of flushing it
+		defer tempBucketForFlush.Close(h.ctx()) // Close the temporary connection to the bucket that was just for purposes of flushing it
 
 		// Flush the bucket (assuming it conforms to sgbucket.DeleteableStore interface
 		if tempBucketForFlush, ok := tempBucketForFlush.(sgbucket.FlushableStore); ok {

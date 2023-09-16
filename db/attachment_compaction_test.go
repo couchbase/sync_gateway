@@ -404,7 +404,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	}
 
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
-	defer b.Close()
+	defer b.Close(base.TestCtx(t))
 
 	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
@@ -554,7 +554,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	}
 
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
-	defer b.Close()
+	defer b.Close(base.TestCtx(t))
 
 	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
@@ -664,7 +664,7 @@ func TestAttachmentProcessError(t *testing.T) {
 			return fmt.Errorf("some error")
 		},
 	})
-	defer b.Close()
+	defer b.Close(base.TestCtx(t))
 
 	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)

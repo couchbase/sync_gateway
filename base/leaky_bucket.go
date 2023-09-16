@@ -47,9 +47,9 @@ func (b *LeakyBucket) UUID() (string, error) {
 	return b.bucket.UUID()
 }
 
-func (b *LeakyBucket) Close() {
+func (b *LeakyBucket) Close(ctx context.Context) {
 	if !b.config.IgnoreClose {
-		b.bucket.Close()
+		b.bucket.Close(ctx)
 	}
 }
 

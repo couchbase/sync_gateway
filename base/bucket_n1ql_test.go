@@ -33,8 +33,9 @@ func TestN1qlQuery(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -54,7 +55,6 @@ func TestN1qlQuery(t *testing.T) {
 		assert.True(t, added, "AddRaw returned added=false, expected true")
 	}
 
-	ctx := TestCtx(t)
 	indexExpression := "val"
 	err := n1qlStore.CreateIndex(ctx, "testIndex_value", indexExpression, "", testN1qlOptions)
 	if err != nil && err != ErrAlreadyExists {
@@ -144,8 +144,9 @@ func TestN1qlFilterExpression(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
@@ -162,8 +163,6 @@ func TestN1qlFilterExpression(t *testing.T) {
 		}
 		assert.True(t, added, "AddRaw returned added=false, expected true")
 	}
-
-	ctx := TestCtx(t)
 
 	indexExpression := "val"
 	filterExpression := "val < 3"
@@ -224,8 +223,9 @@ func TestIndexMeta(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -234,7 +234,6 @@ func TestIndexMeta(t *testing.T) {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
 
-	ctx := TestCtx(t)
 	// Check index state pre-creation
 	exists, meta, err := n1qlStore.GetIndexMeta(ctx, "testIndex_value")
 	assert.False(t, exists)
@@ -272,8 +271,9 @@ func TestMalformedN1qlQuery(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -292,8 +292,6 @@ func TestMalformedN1qlQuery(t *testing.T) {
 		}
 		assert.True(t, added, "AddRaw returned added=false, expected true")
 	}
-
-	ctx := TestCtx(t)
 
 	indexExpression := "val"
 	err := n1qlStore.CreateIndex(ctx, "testIndex_value_malformed", indexExpression, "", testN1qlOptions)
@@ -349,8 +347,9 @@ func TestCreateAndDropIndex(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -358,8 +357,6 @@ func TestCreateAndDropIndex(t *testing.T) {
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
-
-	ctx := TestCtx(t)
 
 	createExpression := SyncPropertyName + ".sequence"
 	err := n1qlStore.CreateIndex(ctx, "testIndex_sequence", createExpression, "", testN1qlOptions)
@@ -381,8 +378,9 @@ func TestCreateDuplicateIndex(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -390,7 +388,6 @@ func TestCreateDuplicateIndex(t *testing.T) {
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
-	ctx := TestCtx(t)
 
 	createExpression := SyncPropertyName + ".sequence"
 	err := n1qlStore.CreateIndex(ctx, "testIndexDuplicateSequence", createExpression, "", testN1qlOptions)
@@ -417,8 +414,9 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -426,8 +424,6 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
-
-	ctx := TestCtx(t)
 
 	createExpression := SyncPropertyName + ".sequence"
 	err := n1qlStore.CreateIndex(ctx, "testIndex-sequence", createExpression, "", testN1qlOptions)
@@ -450,8 +446,9 @@ func TestDeferredCreateIndex(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -461,7 +458,6 @@ func TestDeferredCreateIndex(t *testing.T) {
 	}
 
 	indexName := "testIndexDeferred"
-	ctx := TestCtx(t)
 	assert.NoError(t, tearDownTestIndex(ctx, n1qlStore, indexName), "Error in pre-test cleanup")
 
 	deferN1qlOptions := &N1qlIndexOptions{
@@ -496,8 +492,9 @@ func TestBuildDeferredIndexes(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -506,7 +503,6 @@ func TestBuildDeferredIndexes(t *testing.T) {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
 
-	ctx := TestCtx(t)
 	deferredIndexName := "testIndexDeferred"
 	nonDeferredIndexName := "testIndexNonDeferred"
 	assert.NoError(t, tearDownTestIndex(ctx, n1qlStore, deferredIndexName), "Error in pre-test cleanup")
@@ -565,8 +561,9 @@ func TestCreateAndDropIndexErrors(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -574,7 +571,6 @@ func TestCreateAndDropIndexErrors(t *testing.T) {
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
-	ctx := TestCtx(t)
 	// Malformed expression
 	createExpression := "_sync sequence"
 	err := n1qlStore.CreateIndex(ctx, "testIndex_malformed", createExpression, "", testN1qlOptions)
@@ -635,8 +631,9 @@ func TestWaitForBucketExistence(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -653,7 +650,6 @@ func TestWaitForBucketExistence(t *testing.T) {
 	)
 	var options = &N1qlIndexOptions{NumReplica: 0}
 
-	ctx := TestCtx(t)
 	go func() {
 		indexExists, _, err := getIndexMetaWithoutRetry(ctx, n1qlStore, indexName)
 		assert.NoError(t, err, "No error while trying to fetch the index metadata")

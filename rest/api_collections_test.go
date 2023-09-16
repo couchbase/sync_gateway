@@ -161,8 +161,9 @@ func TestCollectionsPublicChannel(t *testing.T) {
 
 // TestNoCollectionsPutDocWithKeyspace ensures that a keyspace can't be used to insert a doc on a database not configured for collections.
 func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	// Force use of no scopes intentionally
 	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
@@ -236,10 +237,10 @@ func TestMultiCollectionDCP(t *testing.T) {
 	}
 
 	t.Skip("Skip until CBG-2266 is implemented")
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
 	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
 	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, map[string][]string{
 		"foo": {
 			"bar",
@@ -287,8 +288,9 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
+	ctx := base.TestCtx(t)
 	tb := base.GetPersistentTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	scopesConfig := GetCollectionsConfig(t, tb, 2)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
@@ -421,8 +423,9 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 
 func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
 	base.TestRequiresCollections(t)
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	scopesConfig := GetCollectionsConfig(t, tb, 2)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
@@ -623,8 +626,9 @@ func TestCollectionsPutDBInexistentCollection(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: tb,
@@ -645,8 +649,9 @@ func TestCollectionsPutDocInDefaultCollectionWithNamedCollections(t *testing.T) 
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	// create named collection in the default scope
 	const customCollectionName = "new_collection"
@@ -684,9 +689,9 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 
 	base.TestRequiresCollections(t)
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
 	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 
 	scopesAndCollections := map[string][]string{
 		"fooScope": {
@@ -762,8 +767,9 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 func TestCollectionStats(t *testing.T) {
 	base.TestRequiresCollections(t)
 
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	scopesConfig := GetCollectionsConfig(t, tb, 2)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)

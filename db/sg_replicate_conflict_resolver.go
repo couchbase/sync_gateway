@@ -250,7 +250,7 @@ func newConflictResolverRunner(ctx context.Context, funcSource string, timeout t
 	}
 
 	// Implementation of the 'defaultPolicy(conflict)' callback:
-	conflictResolverRunner.DefineNativeFunction("defaultPolicy", func(ctx context.Context, call otto.FunctionCall) otto.Value {
+	conflictResolverRunner.DefineNativeFunction("defaultPolicy", func(call otto.FunctionCall) otto.Value {
 		if len(call.ArgumentList) == 0 {
 			return ErrorToOttoValue(ctx, conflictResolverRunner, errors.New("No conflict parameter specified when calling defaultPolicy()"))
 		}

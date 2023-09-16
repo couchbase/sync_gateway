@@ -21,8 +21,9 @@ import (
 
 func TestRemoveObsoleteDesignDocs(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	mapFunction := `function (doc, meta) { emit(); }`
 
 	// Add some design docs in the old format
@@ -30,7 +31,6 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
 	require.True(t, ok)
 
-	ctx := base.TestCtx(t)
 	err := viewStore.PutDDoc(ctx, DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
@@ -92,15 +92,15 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 	setDesignDocPreviousVersionsForTest(t, "2.0")
 
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	mapFunction := `function (doc, meta){ emit(); }`
 
 	viewStore, ok := base.AsViewStore(bucket.Bucket.DefaultDataStore())
 	require.True(t, ok)
 
-	ctx := base.TestCtx(t)
 	err := viewStore.PutDDoc(ctx, DesignDocSyncGatewayPrefix+"_2.0", &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
@@ -156,15 +156,15 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 	setDesignDocPreviousVersionsForTest(t, "test")
 
+	ctx := base.TestCtx(t)
 	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{})
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	mapFunction := `function (doc, meta){ emit(); }`
 
 	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
 	require.True(t, ok)
 
-	ctx := base.TestCtx(t)
 	err := viewStore.PutDDoc(ctx, DesignDocSyncGatewayPrefix+"_test", &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},

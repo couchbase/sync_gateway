@@ -215,9 +215,9 @@ func (b *GocbV2Bucket) GetCluster() *gocb.Cluster {
 	return b.cluster
 }
 
-func (b *GocbV2Bucket) Close() {
+func (b *GocbV2Bucket) Close(ctx context.Context) {
 	if err := b.cluster.Close(nil); err != nil {
-		WarnfCtx(context.TODO(), "Error closing cluster for bucket %s: %v", MD(b.BucketName()), err)
+		WarnfCtx(ctx, "Error closing cluster for bucket %s: %v", MD(b.BucketName()), err)
 	}
 }
 

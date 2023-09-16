@@ -159,13 +159,14 @@ func TestCBGTIndexCreation(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx := TestCtx(t)
 			bucket := GetTestBucket(t)
-			defer bucket.Close()
+			defer bucket.Close(ctx)
 
 			spec := bucket.BucketSpec
 
 			// Use an in-memory cfg, set up cbgt manager
-			ctx := DatabaseLogCtx(TestCtx(t), tc.dbName, nil)
+			ctx = DatabaseLogCtx(ctx, tc.dbName, nil)
 			cfg, err := NewCbgtCfgMem()
 			require.NoError(t, err)
 			context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", tc.dbName)
@@ -263,14 +264,14 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server bucket")
 	}
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	spec := bucket.BucketSpec
 	testDbName := "testDB"
 
 	// Use an in-memory cfg, set up cbgt manager
-	ctx := TestCtx(t)
 	cfg, err := NewCbgtCfgMem()
 	require.NoError(t, err)
 	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", testDbName)
@@ -338,8 +339,9 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server bucket")
 	}
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	spec := bucket.BucketSpec
 	unsafeTestDBName := "testDB" +
@@ -348,7 +350,6 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 		"01234567890123456789012345678901234567890123456789"
 
 	// Use an in-memory cfg, set up cbgt manager
-	ctx := TestCtx(t)
 	cfg, err := NewCbgtCfgMem()
 	require.NoError(t, err)
 	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", unsafeTestDBName)
@@ -418,8 +419,9 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server bucket")
 	}
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -427,7 +429,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	testDBName := "testDB"
 
 	// Use an bucket-backed cfg
-	cfg, err := NewCfgSG(TestCtx(t), dataStore, "")
+	cfg, err := NewCfgSG(ctx, dataStore, "")
 	require.NoError(t, err)
 
 	// Define index type for db name

@@ -28,7 +28,7 @@ func TestRemoveCollection(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	numCollections := 2
 	bucket := base.GetPersistentTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(base.TestCtx(t))
 	base.RequireNumTestDataStores(t, numCollections)
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket:             bucket.NoCloseClone(),
@@ -85,7 +85,7 @@ func TestRemoveCollection(t *testing.T) {
 	require.NoError(t, err)
 
 	altBucket := base.GetTestBucket(t)
-	defer altBucket.Close()
+	defer altBucket.Close(base.TestCtx(t))
 	const password = "password2"
 	rest.MakeUser(t, httpClient, eps[0], bucket2Role.RoleName, password, []string{fmt.Sprintf("%s[%s]", bucket2Role.RoleName, altBucket.GetName())})
 	defer rest.DeleteUser(t, httpClient, eps[0], bucket2Role.RoleName)

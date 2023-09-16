@@ -130,8 +130,8 @@ func ForChangedUsers(a, b AccessMap, fn func(user string)) {
 	}
 }
 
-func (runner *SyncRunner) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
-	result, err := runner.Call(body, sgbucket.JSONString(oldBodyJSON), userCtx)
+func (runner *SyncRunner) MapToChannelsAndAccess(ctx context.Context, body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+	result, err := runner.Call(ctx, body, sgbucket.JSONString(oldBodyJSON), userCtx)
 	if err != nil {
 		return nil, err
 	}

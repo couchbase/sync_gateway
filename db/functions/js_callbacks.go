@@ -21,9 +21,9 @@ import (
 	"github.com/robertkrimen/otto"
 )
 
-func (runner *jsRunner) defineNativeCallbacks() {
+func (runner *jsRunner) defineNativeCallbacks(ctx context.Context) {
 	// Implementation of the 'delete(docID)' callback:
-	runner.DefineNativeFunction("_delete", func(ctx context.Context, call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("_delete", func(call otto.FunctionCall) otto.Value {
 		var docID string
 		var doc map[string]any
 		if arg0 := call.Argument(0); arg0.IsString() {
@@ -39,7 +39,7 @@ func (runner *jsRunner) defineNativeCallbacks() {
 	})
 
 	// Implementation of the 'function(name,params)' callback:
-	runner.DefineNativeFunction("_func", func(ctx context.Context, call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("_func", func(call otto.FunctionCall) otto.Value {
 		funcName := ottoStringParam(call, 0, "user.function")
 		params := ottoObjectParam(call, 1, true, "user.function")
 		sudo := ottoBoolParam(call, 2)
@@ -48,7 +48,7 @@ func (runner *jsRunner) defineNativeCallbacks() {
 	})
 
 	// Implementation of the 'get(docID)' callback:
-	runner.DefineNativeFunction("_get", func(ctx context.Context, call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("_get", func(call otto.FunctionCall) otto.Value {
 		docID := ottoStringParam(call, 0, "user.get")
 		sudo := ottoBoolParam(call, 1)
 		doc, err := runner.do_get(docID, nil, sudo)
@@ -56,7 +56,7 @@ func (runner *jsRunner) defineNativeCallbacks() {
 	})
 
 	// Implementation of the 'graphql(query,params)' callback:
-	runner.DefineNativeFunction("_graphql", func(ctx context.Context, call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("_graphql", func(call otto.FunctionCall) otto.Value {
 		query := ottoStringParam(call, 0, "user.graphql")
 		params := ottoObjectParam(call, 1, true, "user.graphql")
 		sudo := ottoBoolParam(call, 2)
@@ -65,7 +65,7 @@ func (runner *jsRunner) defineNativeCallbacks() {
 	})
 
 	// Implementation of the 'save(doc,docID?)' callback:
-	runner.DefineNativeFunction("_save", func(ctx context.Context, call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("_save", func(call otto.FunctionCall) otto.Value {
 		doc := ottoObjectParam(call, 0, false, "user.save")
 		docID := ottoOptionalStringParam(call, 1, "user.save")
 		sudo := ottoBoolParam(call, 2)
@@ -74,7 +74,7 @@ func (runner *jsRunner) defineNativeCallbacks() {
 	})
 
 	// Implementation of the '_requireMutating()' callback:
-	runner.DefineNativeFunction("_requireMutating", func(ctx context.Context, call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("_requireMutating", func(call otto.FunctionCall) otto.Value {
 		err := runner.checkMutationAllowed("requireMutating")
 		return ottoResult(call, nil, err)
 	})

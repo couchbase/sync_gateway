@@ -210,7 +210,7 @@ type resolver = interface {
 	db.UserFunctionInvocation
 
 	// Calls a user function as a GraphQL resolver, given the parameters passed by the go-graphql API.
-	Resolve(params graphql.ResolveParams) (any, error)
+	Resolve(ctx context.Context, params graphql.ResolveParams) (any, error)
 }
 
 func graphQLResolverName(typeName string, fieldName string) string {
@@ -241,7 +241,7 @@ func (config *GraphQLConfig) compileFieldResolver(ctx context.Context, typeName 
 		if err != nil {
 			return nil, err
 		}
-		return invocation.(resolver).Resolve(params)
+		return invocation.(resolver).Resolve(ctx, params)
 	}, nil
 }
 

@@ -26,8 +26,9 @@ import (
 )
 
 func TestSetGet(t *testing.T) {
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -55,8 +56,9 @@ func TestSetGet(t *testing.T) {
 
 func TestSetGetRaw(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -86,8 +88,9 @@ func TestSetGetRaw(t *testing.T) {
 
 func TestAddRaw(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	val := []byte("bar")
@@ -125,8 +128,9 @@ func TestAddRaw(t *testing.T) {
 
 func TestWriteCasBasic(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	val := []byte("bar2")
@@ -165,8 +169,9 @@ func TestWriteCasBasic(t *testing.T) {
 
 func TestWriteCasAdvanced(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 
@@ -200,8 +205,9 @@ func TestWriteCasAdvanced(t *testing.T) {
 
 func TestUpdate(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	valInitial := []byte(`{"state":"initial"}`)
@@ -257,8 +263,9 @@ func TestUpdate(t *testing.T) {
 
 func TestUpdateCASFailure(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	valInitial := []byte(`{"state":"initial"}`)
@@ -306,8 +313,9 @@ func TestUpdateCASFailure(t *testing.T) {
 
 func TestUpdateCASFailureOnInsert(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	valCasMismatch := []byte(`{"state":"casMismatch"}`)
@@ -351,8 +359,9 @@ func TestUpdateCASFailureOnInsert(t *testing.T) {
 
 func TestIncrCounter(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 
@@ -402,8 +411,9 @@ func TestGetAndTouchRaw(t *testing.T) {
 	key := t.Name()
 	val := []byte("bar")
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	defer func() {
@@ -449,8 +459,9 @@ func TestXattrWriteCasSimple(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	xattrName := SyncXattrName
@@ -464,7 +475,6 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	xattrVal["seq"] = float64(123)
 	xattrVal["rev"] = "1-1234"
 
-	ctx := TestCtx(t)
 	var existsVal map[string]interface{}
 	_, err := dataStore.Get(key, existsVal)
 	if err == nil {
@@ -513,8 +523,9 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -526,7 +537,6 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 	xattrVal["seq"] = float64(123)
 	xattrVal["rev"] = "1-1234"
 
-	ctx := TestCtx(t)
 	var existsVal map[string]interface{}
 	_, err := dataStore.Get(key, existsVal)
 	if err == nil {
@@ -581,8 +591,9 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -594,7 +605,6 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 	xattrVal["seq"] = float64(123)
 	xattrVal["rev"] = "1-1234"
 
-	ctx := TestCtx(t)
 	var existsVal map[string]interface{}
 	_, err := dataStore.Get(key, existsVal)
 	if err == nil {
@@ -651,8 +661,9 @@ func TestXattrWriteCasRaw(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -666,7 +677,6 @@ func TestXattrWriteCasRaw(t *testing.T) {
 	xattrVal["rev"] = "1-1234"
 	xattrValRaw, _ := JSONMarshal(xattrVal)
 
-	ctx := TestCtx(t)
 	var existsVal map[string]interface{}
 	_, err := dataStore.Get(key, existsVal)
 	if err == nil {
@@ -709,8 +719,9 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	xattrName := SyncXattrName
@@ -721,7 +732,6 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	xattrVal["seq"] = float64(123)
 	xattrVal["rev"] = "1-1234"
 
-	ctx := TestCtx(t)
 	var existsVal map[string]interface{}
 	_, err := dataStore.Get(key, existsVal)
 	if err == nil {
@@ -778,8 +788,9 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	xattrName := SyncXattrName
@@ -790,7 +801,6 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 	xattrVal["seq"] = float64(123)
 	xattrVal["rev"] = "1-1234"
 
-	ctx := TestCtx(t)
 	var existsVal map[string]interface{}
 	_, err := dataStore.Get(key, existsVal)
 	if err == nil {
@@ -857,8 +867,9 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -870,7 +881,6 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	xattrVal["seq"] = float64(1)
 	xattrVal["rev"] = "1-1234"
 
-	ctx := TestCtx(t)
 	var existsVal map[string]interface{}
 	var existsXattr map[string]interface{}
 	_, err := dataStore.GetWithXattr(ctx, key, xattrName, "", &existsVal, &existsXattr, nil)
@@ -966,8 +976,9 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	xattrKey := SyncXattrName
@@ -1014,7 +1025,6 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 		return updatedDoc, updatedXattr, false, nil, nil
 	}
 
-	ctx := TestCtx(t)
 	_, err := dataStore.WriteUpdateWithXattr(ctx, key, xattrKey, userXattrKey, 0, nil, nil, writeUpdateFunc)
 	assert.NoError(t, err)
 
@@ -1044,8 +1054,9 @@ func TestXattrDeleteDocument(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	// Create document with XATTR
 	xattrName := SyncXattrName
@@ -1063,7 +1074,6 @@ func TestXattrDeleteDocument(t *testing.T) {
 		require.NoError(t, dataStore.Delete(key))
 	}
 
-	ctx := TestCtx(t)
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect success)
 	cas := uint64(0)
 	_, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, val, xattrVal)
@@ -1094,8 +1104,9 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	// Create document with XATTR
@@ -1114,7 +1125,6 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 		require.NoError(t, dataStore.Delete(key))
 	}
 
-	ctx := TestCtx(t)
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect success)
 	cas := uint64(0)
 	_, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, val, xattrVal)
@@ -1162,8 +1172,9 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 // TestXattrDeleteDocumentAndUpdateXATTR.  Delete the document body and update the xattr.
 func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	// Create document with XATTR
 	xattrName := SyncXattrName
@@ -1174,7 +1185,6 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"
 
-	ctx := TestCtx(t)
 	key := t.Name()
 	_, _, err := dataStore.GetRaw(key)
 	if err == nil {
@@ -1211,8 +1221,9 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key1 := t.Name() + "DocExistsXattrExists"
@@ -1231,7 +1242,6 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	var err error
 
-	ctx := TestCtx(t)
 	// Create w/ XATTR
 	cas1 := uint64(0)
 	cas1, err = dataStore.WriteCasWithXattr(ctx, key1, xattrName, 0, cas1, nil, val, xattrVal)
@@ -1312,8 +1322,9 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key1 := t.Name() + "DocExistsXattrExists"
@@ -1332,7 +1343,6 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	var err error
 
-	ctx := TestCtx(t)
 	// Create w/ XATTR
 	cas1 := uint64(0)
 	_, err = dataStore.WriteCasWithXattr(ctx, key1, xattrName, 0, cas1, nil, val, xattrVal)
@@ -1395,15 +1405,15 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 	}
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
 	xattrName := SyncXattrName
 	createTombstonedDoc(t, dataStore, key, xattrName)
 
-	ctx := TestCtx(t)
 	numTimesCalledBack := 0
 	callback := func(k string, xattrKey string) {
 
@@ -1443,8 +1453,9 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key1 := t.Name() + "DocExistsXattrExists"
@@ -1463,7 +1474,6 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 	var err error
 
-	ctx := TestCtx(t)
 	// Create w/ XATTR
 	cas := uint64(0)
 	_, err = dataStore.WriteCasWithXattr(ctx, key1, xattrName, 0, cas, nil, val, xattrVal)
@@ -1536,8 +1546,9 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	}
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key1 := t.Name() + "DocExistsXattrExists"
@@ -1556,7 +1567,6 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 
 	var err error
 
-	ctx := TestCtx(t)
 	// Create w/ XATTR
 	cas1 := uint64(0)
 	cas1, err = dataStore.WriteCasWithXattr(ctx, key1, xattrName, 0, cas1, nil, val, xattrVal)
@@ -1648,8 +1658,9 @@ func TestGetXattr(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyAll)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	// Doc 1
@@ -1680,7 +1691,6 @@ func TestGetXattr(t *testing.T) {
 
 	var err error
 
-	ctx := TestCtx(t)
 	// Create w/ XATTR
 	cas := uint64(0)
 	_, err = dataStore.WriteCasWithXattr(ctx, key1, xattrName1, 0, cas, nil, val1, xattrVal1)
@@ -1741,8 +1751,9 @@ func TestGetXattrAndBody(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyAll)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	// Doc 1
@@ -1773,7 +1784,6 @@ func TestGetXattrAndBody(t *testing.T) {
 
 	var err error
 
-	ctx := TestCtx(t)
 	// Create w/ XATTR
 	cas := uint64(0)
 	_, err = dataStore.WriteCasWithXattr(ctx, key1, xattrName1, 0, cas, nil, val1, xattrVal1)
@@ -1956,8 +1966,9 @@ func TestCouchbaseServerMaxTTL(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	cbStore, ok := AsCouchbaseBucketStore(bucket)
 	require.True(t, ok)
@@ -1973,8 +1984,9 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := TestCtx(t)
 	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 
 	// Override test bucket spec with invalid creds
 	testBucket.BucketSpec.Auth = TestAuthenticator{
@@ -1994,8 +2006,9 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 	t.Skip("Disabled pending CBG-2473")
 
+	ctx := TestCtx(t)
 	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 
 	// Remove existing password-based authentication
 	testBucket.BucketSpec.Auth = nil
@@ -2142,8 +2155,9 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	// Create a document with extended attributes
@@ -2156,7 +2170,6 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-EmDC"
 
-	ctx := TestCtx(t)
 	cas := uint64(0)
 	// CAS-safe write of the document and it's associated named extended attributes
 	cas, err := dataStore.WriteCasWithXattr(ctx, key, xattrKey, 0, cas, nil, val, xattrVal)
@@ -2187,8 +2200,9 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	userXattrStore, ok := AsUserXattrStore(dataStore)
@@ -2209,7 +2223,6 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 	_, err = userXattrStore.WriteUserXattr(docKey, "test", userXattrVal)
 	assert.NoError(t, err)
 
-	ctx := TestCtx(t)
 	var docValRet, syncXattrValRet, userXattrValRet map[string]interface{}
 	_, err = dataStore.GetWithXattr(ctx, docKey, SyncXattrName, "test", &docValRet, &syncXattrValRet, &userXattrValRet)
 	assert.NoError(t, err)
@@ -2222,8 +2235,9 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	docKey := t.Name()
@@ -2239,7 +2253,6 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 	_, err = userXattrStore.WriteUserXattr(docKey, "_sync", syncXattrVal)
 	assert.NoError(t, err)
 
-	ctx := TestCtx(t)
 	var docValRet, syncXattrValRet, userXattrValRet map[string]interface{}
 	_, err = dataStore.GetWithXattr(ctx, docKey, SyncXattrName, "test", &docValRet, &syncXattrValRet, &userXattrValRet)
 	assert.NoError(t, err)
@@ -2251,8 +2264,9 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	// Create a document with extended attributes
@@ -2265,7 +2279,6 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-EmDC"
 
-	ctx := TestCtx(t)
 	cas := uint64(0)
 	// Attempt to delete the document body (deleteBody = true); isDelete is true to mark this doc as a tombstone.
 	xattrValBytes, err := JSONMarshal(xattrVal)
@@ -2292,8 +2305,9 @@ func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
 		t.Skip("RawBackwardCompatibility tests depend on couchbase transcoding")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -2331,8 +2345,9 @@ func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 		t.Skip("RawBackwardCompatibility tests depend on couchbase transcoding")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -2368,8 +2383,9 @@ func TestGetExpiry(t *testing.T) {
 		t.Skip("Walrus doesn't support expiry")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -2380,7 +2396,6 @@ func TestGetExpiry(t *testing.T) {
 	err := dataStore.Set(key, expiryValue, nil, val)
 	assert.NoError(t, err, "Error calling Set()")
 
-	ctx := TestCtx(t)
 	expiry, expiryErr := dataStore.GetExpiry(ctx, key)
 	assert.NoError(t, expiryErr)
 
@@ -2412,8 +2427,9 @@ func TestGetStatsVbSeqNo(t *testing.T) {
 		t.Skip("Walrus doesn't support stats-vbseqno")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	cbstore, ok := AsCouchbaseBucketStore(bucket)
@@ -2445,8 +2461,9 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 	if !TestUseCouchbaseServer() {
 		t.Skip("Test can only be ran against CBS due to GoCB v2 use")
 	}
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	if !bucket.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) {
 		t.Skip("Preserve expiry is not supported with this CBS version. Skipping test...")
@@ -2514,7 +2531,7 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 // TestMobileSystemCollectionCRUD ensures that if the mobile system collection exists, Sync Gateway is able to perform CRUD on a document in the mobile system collection.
 func TestMobileSystemCollectionCRUD(t *testing.T) {
 	b := getTestBucket(t, false)
-	defer b.Close()
+	defer b.Close(TestCtx(t))
 
 	if !b.IsSupported(sgbucket.BucketStoreFeatureSystemCollections) {
 		WarnfCtx(TestCtx(t), "Non-fatal test failure: Configured Couchbase Server does not support system collections")

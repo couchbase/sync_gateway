@@ -561,7 +561,7 @@ func TestImportNonZeroStart(t *testing.T) {
 func TestImportInvalidMetadata(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(base.TestCtx(t))
 
 	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
 	defer db.Close(ctx)

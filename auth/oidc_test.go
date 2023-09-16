@@ -299,7 +299,7 @@ func TestConcurrentSetConfig(t *testing.T) {
 		fooMetadata.AuthorizationEndpoint = expectedAuthURL[0]
 		fooMetadata.TokenEndpoint = expectedTokenURL[0]
 		providerLock.Lock()
-		verifier = provider.generateVerifier(&fooMetadata, base.TestCtx(t))
+		verifier = provider.generateVerifier(&fooMetadata, ctx)
 		require.NotNil(t, verifier, "error generating id token verifier")
 		provider.client.SetConfig(verifier, fooMetadata.endpoint())
 		providerLock.Unlock()
@@ -310,7 +310,7 @@ func TestConcurrentSetConfig(t *testing.T) {
 		barMetadata.AuthorizationEndpoint = expectedAuthURL[1]
 		barMetadata.TokenEndpoint = expectedTokenURL[1]
 		providerLock.Lock()
-		verifier = provider.generateVerifier(&barMetadata, base.TestCtx(t))
+		verifier = provider.generateVerifier(&barMetadata, ctx)
 		require.NotNil(t, verifier, "error generating id token verifier")
 		provider.client.SetConfig(verifier, barMetadata.endpoint())
 		providerLock.Unlock()
@@ -1181,9 +1181,9 @@ func TestJWTRolesChannels(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Greater(t, len(tc.logins), 0, "Test case is missing simulated logins")
-
+			ctx := base.TestCtx(t)
 			testBucket := base.GetTestBucket(t)
-			defer testBucket.Close()
+			defer testBucket.Close(ctx)
 			dataStore := testBucket.GetSingleDataStore()
 			testMockComputer := mockComputerV2{
 				roles:        map[string]ch.TimedSet{},
@@ -1191,7 +1191,7 @@ func TestJWTRolesChannels(t *testing.T) {
 				roleChannels: map[string]ch.TimedSet{},
 			}
 
-			auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions(base.TestCtx(t)))
+			auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions(ctx))
 
 			provider := &OIDCProvider{
 				Name: "foo",
@@ -1218,12 +1218,12 @@ func TestJWTRolesChannels(t *testing.T) {
 				}
 				seq := user.Sequence() + 1
 				if !user.ExplicitRoles().Equals(base.SetFromArray(login.explicitRoles)) {
-					base.DebugfCtx(base.TestCtx(t), base.KeyAll, "setting explicit roles to %v", login.explicitRoles)
+					base.DebugfCtx(ctx, base.KeyAll, "setting explicit roles to %v", login.explicitRoles)
 					user.SetExplicitRoles(ch.AtSequence(base.SetFromArray(login.explicitRoles), seq), seq)
 					user.SetRoleInvalSeq(seq)
 				}
 				if !user.ExplicitChannels().Equals(base.SetFromArray(login.explicitChannels)) {
-					base.DebugfCtx(base.TestCtx(t), base.KeyAll, "setting explicit channels to %v", login.explicitRoles)
+					base.DebugfCtx(ctx, base.KeyAll, "setting explicit channels to %v", login.explicitRoles)
 					user.SetExplicitChannels(ch.AtSequence(base.SetFromArray(login.explicitChannels), seq), seq)
 					user.SetChannelInvalSeq(seq)
 				}

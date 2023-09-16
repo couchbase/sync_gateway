@@ -139,7 +139,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 	leakyBucket := base.NewLeakyBucket(testBucket, leakyOptions)
 	dbCtx, err := NewDatabaseContext(ctx, "db", leakyBucket, false, dbcOptions)
 	if err != nil {
-		testBucket.Close()
+		testBucket.Close(ctx)
 		t.Fatalf("Unable to create database context: %v", err)
 	}
 	err = dbCtx.StartOnlineProcesses(ctx)
@@ -2744,7 +2744,7 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 
 func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(base.TestCtx(t))
 
 	db, ctx := setupTestDBForBucket(t, bucket)
 	defer db.Close(ctx)
@@ -3068,7 +3068,7 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 	base.RequireNumTestDataStores(t, 1)
 
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(base.TestCtx(t))
 
 	ds, err := bucket.GetNamedDataStore(0)
 	require.NoError(t, err)

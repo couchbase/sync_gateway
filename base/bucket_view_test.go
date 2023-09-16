@@ -24,8 +24,9 @@ func TestView(t *testing.T) {
 	if !TestsDisableGSI() {
 		t.Skip("GSI tests are not compatible with views")
 	}
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 	viewStore, ok := AsViewStore(dataStore)
@@ -41,7 +42,6 @@ func TestView(t *testing.T) {
 	ddoc := &sgbucket.DesignDoc{
 		Views: map[string]sgbucket.ViewDef{viewName: view},
 	}
-	ctx := TestCtx(t)
 	err := viewStore.PutDDoc(ctx, ddocName, ddoc)
 	require.NoError(t, err)
 

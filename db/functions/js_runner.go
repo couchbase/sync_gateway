@@ -84,7 +84,7 @@ func newJSRunner(ctx context.Context, name string, kind string, funcSource strin
 	}
 
 	// Define the `get`, `save`, etc. function callbacks:
-	runner.defineNativeCallbacks()
+	runner.defineNativeCallbacks(ctx)
 
 	// Set (and compile) the JS function:
 	if _, err := runner.JSRunner.SetFunction(funcSource); err != nil {
@@ -143,7 +143,7 @@ func (runner *jsRunner) CallWithDB(db *db.Database, ctx context.Context, jsArgs 
 	runner.SetTimeout(timeout)
 	runner.currentDB = db
 	runner.ctx = ctx
-	return runner.Call(jsArgs...)
+	return runner.Call(ctx, jsArgs...)
 }
 
 // JavaScript error returned by a jsRunner

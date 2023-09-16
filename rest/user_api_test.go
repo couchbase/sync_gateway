@@ -1257,11 +1257,12 @@ func TestUserXattrRevCache(t *testing.T) {
 		t.Skipf("test is EE only - user xattrs")
 	}
 
+	ctx := base.TestCtx(t)
 	docKey := t.Name()
 	xattrKey := "channels"
 	channelName := []string{"ABC", "DEF"}
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 	syncFn := `function (doc, oldDoc, meta){
 				if (meta.xattrs.channels !== undefined){
 					channel(meta.xattrs.channels);
@@ -1297,7 +1298,7 @@ func TestUserXattrRevCache(t *testing.T) {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
-	ctx := rt2.Context()
+	ctx = rt2.Context()
 	a := rt2.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	userABC, err := a.NewUser("userABC", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
@@ -1349,7 +1350,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only - user xattrs")
 	}
-
+	ctx := base.TestCtx(t)
 	// Sync function to set channel access to a channels UserXattrKey
 	syncFn := `
 			function (doc, oldDoc, meta){
@@ -1362,7 +1363,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	docKey := t.Name()
 	xattrKey := "channels"
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
@@ -1390,7 +1391,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
-	ctx := rt2.Context()
+	ctx = rt2.Context()
 	a := rt2.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
 	userDEF, err := a.NewUser("userDEF", "letmein", channels.BaseSetOf(t, "DEF"))
@@ -1527,8 +1528,9 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	base.RequireNumTestDataStores(t, numCollections)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
+	ctx := base.TestCtx(t)
 	testBucket := base.GetPersistentTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
 
 	rtConfig := &RestTesterConfig{
