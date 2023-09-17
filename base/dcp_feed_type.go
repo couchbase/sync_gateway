@@ -44,68 +44,75 @@ type cbgtCreds struct {
 // This used to be called SOURCE_GOCOUCHBASE_DCP_SG (with the same string value).
 const SOURCE_DCP_SG = "couchbase-dcp-sg"
 
-// cbgtRootCAsProvider implements cbgt.RootCAsProvider. It returns a x509.CertPool factory with the root certificates
-// for the given bucket. Edge cases:
-// * If it returns a function that returns nil, TLS is used but certificate validation is disabled.
-// * If it returns a nil function, TLS is disabled altogether.
-func cbgtRootCAsProvider(bucketName, bucketUUID string) func() *x509.CertPool {
-	cbgtGlobalsLock.Lock()
-	pool, ok := cbgtRootCertPools[bucketUUID]
-	cbgtGlobalsLock.Unlock()
-	if ok {
-		return func() *x509.CertPool {
-			return pool
+func getCBGTRootCAsProvider(ctx context.Context) func(bucketName, bucketUUID string) func() *x509.CertPool {
+
+	// cbgtRootCAsProvider implements cbgt.RootCAsProvider. It returns a x509.CertPool factory with the root certificates
+	// for the given bucket. Edge cases:
+	// * If it returns a function that returns nil, TLS is used but certificate validation is disabled.
+	// * If it returns a nil function, TLS is disabled altogether.
+	cbgtRootCAsProvider := func(bucketName, bucketUUID string) func() *x509.CertPool {
+		cbgtGlobalsLock.Lock()
+		pool, ok := cbgtRootCertPools[bucketUUID]
+		cbgtGlobalsLock.Unlock()
+		if ok {
+			return func() *x509.CertPool {
+				return pool
+			}
 		}
+		TracefCtx(ctx, KeyDCP, "Bucket %v not found in root cert pools, not using TLS.", MD(bucketName))
+		return nil
 	}
-	TracefCtx(context.TODO(), KeyDCP, "Bucket %v not found in root cert pools, not using TLS.", MD(bucketName))
-	return nil
+	return cbgtRootCAsProvider
 }
 
-// cbgt's default GetPoolsDefaultForBucket only works with cbauth
-func cbgtGetPoolsDefaultForBucket(server, bucket string, scopes bool) ([]byte, error) {
-	cbgtGlobalsLock.Lock()
-	dbName, ok := cbgtBucketToDBName[bucket]
-	if !ok {
-		cbgtGlobalsLock.Unlock()
-		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: no DB for bucket %v", MD(bucket).Redact())
-	}
-	creds, ok := cbgtCredentials[dbName]
-	if !ok {
-		cbgtGlobalsLock.Unlock()
-		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: no credentials for DB %v (bucket %v)", MD(dbName).Redact(), MD(bucket).Redact())
-	}
-	// creds is not a pointer, safe to unlock
-	cbgtGlobalsLock.Unlock()
-
-	url := server + "/pools/default/buckets/" + bucket
-	if scopes {
-		url += "/scopes"
-	}
-
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed to init request: %v", err)
-	}
-	req.SetBasicAuth(creds.username, creds.password)
-
-	res, err := cbgt.HttpClient().Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed request: %v", err)
-	}
-	defer func() {
-		if err := res.Body.Close(); err != nil {
-			WarnfCtx(context.TODO(), "Failed to close %v request body: %v", MD(url).Redact(), err)
+func getCBGTGetPoolsDefaultForBucket(ctx context.Context) func(server, bucket string, scopes bool) ([]byte, error) {
+	// cbgt's default GetPoolsDefaultForBucket only works with cbauth
+	cbgtGetPoolsDefaultForBucket := func(server, bucket string, scopes bool) ([]byte, error) {
+		cbgtGlobalsLock.Lock()
+		dbName, ok := cbgtBucketToDBName[bucket]
+		if !ok {
+			cbgtGlobalsLock.Unlock()
+			return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: no DB for bucket %v", MD(bucket).Redact())
 		}
-	}()
+		creds, ok := cbgtCredentials[dbName]
+		if !ok {
+			cbgtGlobalsLock.Unlock()
+			return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: no credentials for DB %v (bucket %v)", MD(dbName).Redact(), MD(bucket).Redact())
+		}
+		// creds is not a pointer, safe to unlock
+		cbgtGlobalsLock.Unlock()
 
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed to read body: %v", err)
+		url := server + "/pools/default/buckets/" + bucket
+		if scopes {
+			url += "/scopes"
+		}
+
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed to init request: %v", err)
+		}
+		req.SetBasicAuth(creds.username, creds.password)
+
+		res, err := cbgt.HttpClient().Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed request: %v", err)
+		}
+		defer func() {
+			if err := res.Body.Close(); err != nil {
+				WarnfCtx(ctx, "Failed to close %v request body: %v", MD(url).Redact(), err)
+			}
+		}()
+
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed to read body: %v", err)
+		}
+		if len(body) == 0 {
+			return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: empty body")
+		}
+		return body, nil
 	}
-	if len(body) == 0 {
-		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: empty body")
-	}
-	return body, nil
+	return cbgtGetPoolsDefaultForBucket
 }
 
 // When SG isn't using x.509 authentication, it's necessary to pass bucket credentials
@@ -132,9 +139,10 @@ func init() {
 			" via DCP protocol.",
 		StartSample: cbgt.NewDCPFeedParams(),
 	})
-	cbgt.RootCAsProvider = cbgtRootCAsProvider
+	ctx := context.TODO() // this is in init, can we move the assignment to before use of cbgt?
+	cbgt.RootCAsProvider = getCBGTRootCAsProvider(ctx)
 	cbgt.UserAgentStr = VersionString
-	cbgt.GetPoolsDefaultForBucket = cbgtGetPoolsDefaultForBucket
+	cbgt.GetPoolsDefaultForBucket = getCBGTGetPoolsDefaultForBucket(ctx)
 }
 
 type SGFeedSourceParams struct {
@@ -159,7 +167,7 @@ type SGFeedIndexParams struct {
 
 // cbgtFeedParams returns marshalled cbgt.DCPFeedParams as string, to be passed as feedparams during cbgt.Manager init.
 // Used to pass basic auth credentials and xattr flag to cbgt.
-func cbgtFeedParams(spec BucketSpec, scope string, collections []string, dbName string) (string, error) {
+func cbgtFeedParams(ctx context.Context, spec BucketSpec, scope string, collections []string, dbName string) (string, error) {
 	feedParams := &SGFeedSourceParams{}
 	feedParams.DbName = dbName
 
@@ -176,7 +184,7 @@ func cbgtFeedParams(spec BucketSpec, scope string, collections []string, dbName 
 	if err != nil {
 		return "", err
 	}
-	TracefCtx(context.TODO(), KeyDCP, "CBGT feed params: %v", UD(string(paramBytes)))
+	TracefCtx(ctx, KeyDCP, "CBGT feed params: %v", UD(string(paramBytes)))
 	return string(paramBytes), nil
 }
 
