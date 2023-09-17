@@ -13,9 +13,9 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.2.4-0.20230511103754-8dd1a95f5f33
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20230912183916-dfc81a029d3b
+	github.com/couchbase/sg-bucket v0.0.0-20230917233712-d10f9c9a67bf
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
-	github.com/couchbaselabs/rosmar v0.0.0-20230912185358-c5847ff7b0be
+	github.com/couchbaselabs/rosmar v0.0.0-20230917234319-863fd7bad3d8
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
 	github.com/google/uuid v1.3.0
@@ -38,10 +38,6 @@ require (
 	gopkg.in/couchbaselabs/gocbconnstr.v1 v1.0.4
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
-
-replace github.com/couchbase/sg-bucket => ../sg-bucket
-
-replace github.com/couchbaselabs/rosmar => ../rosmar
 
 require (
 	github.com/aws/aws-sdk-go v1.44.77 // indirect
