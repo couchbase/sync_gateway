@@ -529,25 +529,19 @@ func (db *DatabaseCollectionWithUser) Get1xRevAndChannels(ctx context.Context, d
 }
 
 // Returns an HTTP 403 error if the User is not allowed to access any of this revision's channels.
-func (col *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string) error {
+func (col *DatabaseCollectionWithUser) authorizeDoc(ctx context.Context, doc *Document, revid string) error {
 	user := col.user
 	if doc == nil || user == nil {
 		return nil // A nil User means access control is disabled
 	}
-	if revid == "" {
-		revid = doc.CurrentRev
-	}
 
-	if revid == doc.CurrentRev {
-		ch := doc.currentChannels()
-		return col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, ch)
-	} else if rev := doc.History[revid]; rev != nil {
-		// Authenticate against specific revision:
-		return col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, rev.Channels)
-	} else {
+	channelsForRev, ok := doc.channelsForRev(revid)
+	if !ok {
 		// No such revision; let the caller proceed and return a 404
 		return nil
 	}
+
+	return col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, channelsForRev)
 }
 
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
@@ -685,7 +679,7 @@ func (db *DatabaseCollectionWithUser) getAncestorJSON(ctx context.Context, doc *
 // instead returns a minimal deletion or removal revision to let them know it's gone.
 func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *Document, revid string, listRevisions bool) (bodyBytes []byte, removed bool, err error) {
 	var attachments AttachmentsMeta
-	if err := db.authorizeDoc(doc, revid); err != nil {
+	if err := db.authorizeDoc(ctx, doc, revid); err != nil {
 		// As a special case, you don't need channel access to see a deletion revision,
 		// otherwise the client's replicator can't process the deletion (since deletions
 		// usually aren't on any channels at all!) But don't show the full body. (See #59)

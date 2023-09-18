@@ -181,6 +181,8 @@ type Document struct {
 	RevID          string
 	DocAttachments AttachmentsMeta
 	inlineSyncData bool
+
+	currentRevChannels base.Set // A base.Set of the current revision's channels (determined by SyncData.Channels at UnmarshalJSON time)
 }
 
 type historyOnlySyncData struct {
@@ -1212,6 +1214,21 @@ func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 	}
 
 	return data, xdata, nil
+}
+
+// channelsForRev returns the set of channels the given revision is in for the document
+// Channel information is only stored for leaf nodes in the revision tree, as we don't keep full history of channel information
+func (doc *Document) channelsForRev(revid string) (base.Set, bool) {
+	if revid == "" || doc.CurrentRev == revid {
+		return doc.currentRevChannels, true
+	}
+
+	if rev, ok := doc.History[revid]; ok {
+		return rev.Channels, true
+	}
+
+	// no rev
+	return nil, false
 }
 
 // Returns a set of the current (winning revision's) channels for the document.

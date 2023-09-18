@@ -139,7 +139,7 @@ func TestBackingStore(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "Jens", docRev.DocID)
 	assert.NotNil(t, docRev.History)
-	assert.NotNil(t, docRev.Channels)
+	assert.NotNil(t, docRev.Channels) // FIXME (bbrks): Failing test w/ revcache changes
 	assert.Equal(t, int64(0), cacheHitCounter.Value())
 	assert.Equal(t, int64(1), cacheMissCounter.Value())
 	assert.Equal(t, int64(1), getDocumentCounter.Value())
@@ -159,7 +159,7 @@ func TestBackingStore(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "Jens", docRev.DocID)
 	assert.NotNil(t, docRev.History)
-	assert.NotNil(t, docRev.Channels)
+	assert.NotNil(t, docRev.Channels) // FIXME (bbrks): Failing test w/ revcache changes
 	assert.Equal(t, int64(1), cacheHitCounter.Value())
 	assert.Equal(t, int64(2), cacheMissCounter.Value())
 	assert.Equal(t, int64(2), getDocumentCounter.Value())

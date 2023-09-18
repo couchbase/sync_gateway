@@ -284,10 +284,8 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 	}
 	history = encodeRevisions(ctx, doc.ID, validatedHistory)
 
-	if doc.CurrentRev == revid {
-		channels = doc.currentChannels()
-	} else {
-		channels = doc.History[revid].Channels
+	if revChannels, ok := doc.channelsForRev(revid); ok {
+		channels = revChannels
 	}
 
 	return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, err
