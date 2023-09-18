@@ -21,7 +21,7 @@ import (
 	"github.com/robertkrimen/otto"
 )
 
-func (runner *jsRunner) defineNativeCallbacks(ctx context.Context) {
+func (runner *jsRunner) defineNativeCallbacks(_ context.Context) {
 	// Implementation of the 'delete(docID)' callback:
 	runner.DefineNativeFunction("_delete", func(call otto.FunctionCall) otto.Value {
 		var docID string
@@ -137,6 +137,7 @@ func (runner *jsRunner) do_delete(docID string, body map[string]any, sudo bool) 
 func (runner *jsRunner) do_func(ctx context.Context, funcName string, params map[string]any, sudo bool) (any, error) {
 	if sudo {
 		exitSudo := runner.enterSudo()
+		ctx = runner.ctx
 		defer exitSudo()
 	}
 	return runner.currentDB.CallUserFunction(ctx, funcName, params, true)
