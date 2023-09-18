@@ -476,7 +476,7 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) error {
 		attempts++
 	}
 
-	return fmt.Errorf("openStream failed to complete after %d attempts, last error: %w", openRetryCount, openStreamErr)
+	return fmt.Errorf("openStream failed to complete after %d attempts, last error: %w", attempts, openStreamErr)
 }
 
 func (dc *DCPClient) rollback(ctx context.Context, vbID uint16, seqNo gocbcore.SeqNo) {
