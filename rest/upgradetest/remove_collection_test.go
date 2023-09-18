@@ -52,7 +52,7 @@ func TestRemoveCollection(t *testing.T) {
 	deletedDataStore := dataStores[1]
 
 	defer func() {
-		assert.NoError(t, bucket.CreateDataStore(rt.Context(), deletedDataStore))
+		assert.NoError(t, bucket.CreateDataStore(base.TestCtx(t), deletedDataStore))
 
 	}()
 	// drop a data store
