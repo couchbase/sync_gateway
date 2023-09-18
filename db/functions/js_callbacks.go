@@ -43,7 +43,7 @@ func (runner *jsRunner) defineNativeCallbacks(ctx context.Context) {
 		funcName := ottoStringParam(call, 0, "user.function")
 		params := ottoObjectParam(call, 1, true, "user.function")
 		sudo := ottoBoolParam(call, 2)
-		result, err := runner.do_func(ctx, funcName, params, sudo)
+		result, err := runner.do_func(runner.ctx, funcName, params, sudo)
 		return ottoJSONResult(call, result, err)
 	})
 
