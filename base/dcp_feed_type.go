@@ -139,7 +139,8 @@ func init() {
 			" via DCP protocol.",
 		StartSample: cbgt.NewDCPFeedParams(),
 	})
-	ctx := context.TODO() // this is in init, can we move the assignment to before use of cbgt?
+	// this is not possible to scope the context to an individual database scope, since these functions are global to cbgt
+	ctx := context.TODO()
 	cbgt.RootCAsProvider = getCBGTRootCAsProvider(ctx)
 	cbgt.UserAgentStr = VersionString
 	cbgt.GetPoolsDefaultForBucket = getCBGTGetPoolsDefaultForBucket(ctx)
