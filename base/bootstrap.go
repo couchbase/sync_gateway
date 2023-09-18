@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
+	"dario.cat/mergo"
 	"github.com/couchbase/gocb/v2"
-	"github.com/imdario/mergo"
 	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
