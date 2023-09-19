@@ -59,10 +59,11 @@ func TestBcryptDefaultCostTime(t *testing.T) {
 }
 
 func TestSetBcryptCost(t *testing.T) {
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(ctx))
 
 	err := auth.SetBcryptCost(DefaultBcryptCost - 1) // below minimum allowed value
 	assert.Equal(t, ErrInvalidBcryptCost, errors.Cause(err))

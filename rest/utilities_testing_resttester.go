@@ -362,11 +362,12 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 	_ = activeRT.Bucket()
 
 	teardown = func() {
+		ctx := base.TestCtx(t)
 		activeRT.Close()
-		activeTestBucket.Close()
+		activeTestBucket.Close(ctx)
 		srv.Close()
 		passiveRT.Close()
-		passiveTestBucket.Close()
+		passiveTestBucket.Close(ctx)
 	}
 	return activeRT, passiveRT, passiveDBURL.String(), teardown
 }

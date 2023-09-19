@@ -51,7 +51,7 @@ func init() {
 type TestBucket struct {
 	Bucket
 	BucketSpec BucketSpec
-	closeFn    func()
+	closeFn    func(context.Context)
 	t          testing.TB
 }
 
@@ -69,8 +69,8 @@ func (b *TestBucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.DataS
 	return b.Bucket.NamedDataStore(name)
 }
 
-func (tb TestBucket) Close() {
-	tb.closeFn()
+func (tb TestBucket) Close(ctx context.Context) {
+	tb.closeFn(ctx)
 }
 
 func (tb *TestBucket) GetUnderlyingBucket() Bucket {
@@ -98,7 +98,7 @@ func (tb *TestBucket) NoCloseClone() *TestBucket {
 	return &TestBucket{
 		Bucket:     NoCloseClone(tb.Bucket),
 		BucketSpec: tb.BucketSpec,
-		closeFn:    func() {},
+		closeFn:    func(context.Context) {},
 		t:          tb.t,
 	}
 }
@@ -176,12 +176,12 @@ func (b *TestBucket) GetMetadataStore() sgbucket.DataStore {
 	return b.Bucket.DefaultDataStore()
 }
 
-func (b *TestBucket) CreateDataStore(name sgbucket.DataStoreName) error {
+func (b *TestBucket) CreateDataStore(ctx context.Context, name sgbucket.DataStoreName) error {
 	dynamicDataStore, ok := b.Bucket.(sgbucket.DynamicDataStoreBucket)
 	if !ok {
 		return fmt.Errorf("Bucket %T doesn't support dynamic collection creation", b.Bucket)
 	}
-	return dynamicDataStore.CreateDataStore(name)
+	return dynamicDataStore.CreateDataStore(ctx, name)
 }
 
 func (b *TestBucket) DropDataStore(name sgbucket.DataStoreName) error {

@@ -38,9 +38,7 @@ func TestDatabaseInitManager(t *testing.T) {
 
 	// Get a test bucket for bootstrap testing, and create dbconfig targeting that bucket
 	tb := base.GetTestBucket(t)
-	defer func() {
-		tb.Close()
-	}()
+	defer tb.Close(ctx)
 	dbName := "dbName"
 	var scopesConfig ScopesConfig
 	if base.TestsUseNamedCollections() {
@@ -89,9 +87,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 
 	// Get a test bucket for bootstrap testing, and drop indexes created by bucket pool readier
 	tb := base.GetTestBucket(t)
-	defer func() {
-		tb.Close()
-	}()
+	defer tb.Close(ctx)
 	// Drop all test indexes so we can test InitializeDatabase
 	DropAllTestIndexes(t, tb)
 
@@ -179,9 +175,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 
 	// Get a test bucket for bootstrap testing, and drop indexes created by bucket pool readier
 	tb := base.GetTestBucket(t)
-	defer func() {
-		tb.Close()
-	}()
+	defer tb.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
 	DropAllTestIndexes(t, tb)
@@ -266,9 +260,7 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 
 	// Get a test bucket for bootstrap testing, and drop indexes created by bucket pool readier
 	tb := base.GetTestBucket(t)
-	defer func() {
-		tb.Close()
-	}()
+	defer tb.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
 	DropAllTestIndexes(t, tb)
@@ -353,18 +345,14 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 
 	// Get two test buckets for bootstrap testing, and drop indexes created by bucket pool readier
 	tb1 := base.GetTestBucket(t)
-	defer func() {
-		tb1.Close()
-	}()
+	defer tb1.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
 	DropAllTestIndexes(t, tb1)
 
 	// Get two test buckets for bootstrap testing, and drop indexes created by bucket pool readier
 	tb2 := base.GetTestBucket(t)
-	defer func() {
-		tb2.Close()
-	}()
+	defer tb2.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
 	DropAllTestIndexes(t, tb2)
@@ -455,9 +443,7 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 
 	// Get a test bucket for bootstrap testing, and drop indexes created by bucket pool readier
 	tb := base.GetTestBucket(t)
-	defer func() {
-		tb.Close()
-	}()
+	defer tb.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
 	DropAllTestIndexes(t, tb)

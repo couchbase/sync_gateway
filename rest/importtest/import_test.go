@@ -655,7 +655,8 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
 
-	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	ctx := base.TestCtx(t)
+	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
@@ -706,10 +707,11 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	_, cas, getErr := dataStore.GetRaw(mobileKey)
 	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
+	ctx := base.TestCtx(t)
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to update the document again via Sync Gateway.  Should not trigger import, PUT should be successful,
@@ -766,10 +768,11 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	// Check expvars before update
 	crcMatchesBefore := rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value()
 
+	ctx := base.TestCtx(t)
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Wait until crc match count changes
@@ -1104,8 +1107,9 @@ func TestCheckForUpgradeOnRead(t *testing.T) {
     "time_saved": "2017-09-14T23:54:25.975220906-07:00"
 }`
 
+	ctx := base.TestCtx(t)
 	// Create via the SDK with sync metadata intact
-	_, err := dataStore.WriteCasWithXattr(key, base.SyncXattrName, 0, 0, nil, []byte(bodyString), []byte(xattrString))
+	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, nil, []byte(bodyString), []byte(xattrString))
 	assert.NoError(t, err, "Error writing doc w/ xattr")
 
 	// Attempt to get the documents via Sync Gateway.  Should successfully retrieve doc by triggering
@@ -1180,8 +1184,9 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
     "time_saved": "2017-09-14T23:54:25.975220906-07:00"
 }`
 
+	ctx := base.TestCtx(t)
 	// Create via the SDK with sync metadata intact
-	_, err := dataStore.WriteCasWithXattr(key, base.SyncXattrName, 0, 0, nil, []byte(bodyString), []byte(xattrString))
+	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, nil, []byte(bodyString), []byte(xattrString))
 	assert.NoError(t, err, "Error writing doc w/ xattr")
 	require.NoError(t, rt.WaitForSequence(5))
 
@@ -1248,8 +1253,9 @@ func TestCheckForUpgradeFeed(t *testing.T) {
     "time_saved": "2017-09-14T23:54:25.975220906-07:00"
 }`
 
+	ctx := base.TestCtx(t)
 	// Create via the SDK with sync metadata intact
-	_, err := dataStore.WriteCasWithXattr(key, base.SyncXattrName, 0, 0, nil, []byte(bodyString), []byte(xattrString))
+	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, nil, []byte(bodyString), []byte(xattrString))
 	assert.NoError(t, err, "Error writing doc w/ xattr")
 	require.NoError(t, rt.WaitForSequence(1))
 
@@ -1302,7 +1308,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Verify the expiry is as expected
-	beforeExpiry, err := dataStore.GetExpiry(mobileKey)
+	beforeExpiry, err := dataStore.GetExpiry(rt.Context(), mobileKey)
 	require.NoError(t, err, "Error calling GetExpiry()")
 	assertExpiry(t, uint32(expiryUnixEpoch), beforeExpiry)
 
@@ -1323,12 +1329,12 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	assertXattrSyncMetaRevGeneration(t, dataStore, mobileKeyNoExpiry, 1)
 
 	// Verify the expiry has been preserved after the import
-	afterExpiry, err := dataStore.GetExpiry(mobileKey)
+	afterExpiry, err := dataStore.GetExpiry(rt.Context(), mobileKey)
 	assert.NoError(t, err, "Error calling GetExpiry()")
 	assertExpiry(t, beforeExpiry, afterExpiry)
 
 	// Negative test case -- make sure no expiry was erroneously added by the import
-	expiry, err := dataStore.GetExpiry(mobileKeyNoExpiry)
+	expiry, err := dataStore.GetExpiry(rt.Context(), mobileKeyNoExpiry)
 	assert.NoError(t, err, "Error calling GetExpiry()")
 	assert.True(t, expiry == 0)
 }
@@ -1373,7 +1379,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	assertXattrSyncMetaRevGeneration(t, dataStore, key, 1)
 
 	// Now get the doc expiry and validate that it has been migrated into the doc metadata
-	expiry, err := dataStore.GetExpiry(key)
+	expiry, err := dataStore.GetExpiry(rt.Context(), key)
 	assert.True(t, expiry > 0)
 	assert.NoError(t, err, "Error calling getExpiry()")
 	log.Printf("expiry: %v", expiry)
@@ -1520,7 +1526,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 			require.NoError(t, err, "Error writing SDK doc")
 
 			// Verify the expiry is as expected
-			beforeExpiry, err := dataStore.GetExpiry(key)
+			beforeExpiry, err := dataStore.GetExpiry(rt.Context(), key)
 			require.NoError(t, err, "Error calling GetExpiry()")
 			assertExpiry(t, uint32(expiryUnixEpoch), beforeExpiry)
 
@@ -1537,7 +1543,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 			assertXattrSyncMetaRevGeneration(t, dataStore, key, testCase.expectedRevGeneration)
 
 			// Verify the expiry has not been changed from the original expiry value
-			afterExpiry, err := dataStore.GetExpiry(key)
+			afterExpiry, err := dataStore.GetExpiry(rt.Context(), key)
 			require.NoError(t, err, "Error calling GetExpiry()")
 			assertExpiry(t, beforeExpiry, afterExpiry)
 		})
@@ -1608,7 +1614,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 			assertXattrSyncMetaRevGeneration(t, dataStore, key, testCase.expectedRevGeneration)
 
 			// Now get the doc expiry and validate that it has been migrated into the doc metadata
-			expiry, err := dataStore.GetExpiry(key)
+			expiry, err := dataStore.GetExpiry(rt.Context(), key)
 			assert.NoError(t, err, "Error calling GetExpiry()")
 			assert.True(t, expiry > 0)
 			log.Printf("expiry: %v", expiry)
@@ -1739,12 +1745,13 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 	changes, err := rt.WaitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/{{.keyspace}}/_changes", "", true)
 	assert.NoError(t, err, "Error waiting for changes")
 	require.Lenf(t, changes.Results, maxDecimalPlaces+1-minDecimalPlaces, "Expected %d changes in: %#v", (maxDecimalPlaces+1)-minDecimalPlaces, changes.Results)
+	ctx := base.TestCtx(t)
 
 	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
 		docID := "TestImportDecimalScale" + strconv.Itoa(i)
 		var docBody []byte
 		var syncData db.SyncData
-		_, err := dataStore.GetWithXattr(docID, base.SyncXattrName, "", &docBody, &syncData, nil)
+		_, err := dataStore.GetWithXattr(ctx, docID, base.SyncXattrName, "", &docBody, &syncData, nil)
 		require.NoError(t, err)
 
 		assert.NotEqualf(t, "", syncData.CurrentRev, "Expecting non-empty rev ID for imported doc %v", docID)
@@ -1804,11 +1811,12 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 	assert.NoError(t, err, "Error waiting for changes")
 	require.Lenf(t, changes.Results, maxDecimalPlaces+1-minDecimalPlaces, "Expected %d changes in: %#v", (maxDecimalPlaces+1)-minDecimalPlaces, changes.Results)
 
+	ctx := base.TestCtx(t)
 	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
 		docID := "TestImportDecimalPlacesScientificNotation" + strconv.Itoa(i)
 		var docBody []byte
 		var syncData db.SyncData
-		_, err := dataStore.GetWithXattr(docID, base.SyncXattrName, "", &docBody, &syncData, nil)
+		_, err := dataStore.GetWithXattr(ctx, docID, base.SyncXattrName, "", &docBody, &syncData, nil)
 		require.NoError(t, err)
 
 		assert.NotEqualf(t, "", syncData.CurrentRev, "Expecting non-empty rev ID for imported doc %v", docID)
@@ -2279,10 +2287,11 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 
+	ctx := base.TestCtx(t)
 	// Modify the document via the SDK to add the body back
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	_, mutateErr := dataStore.UpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to get the document again via Sync Gateway.  Should not trigger import.
@@ -2334,7 +2343,7 @@ func rawDocWithSyncMeta() string {
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
 	xattr := map[string]interface{}{}
-	_, err := dataStore.GetWithXattr(key, base.SyncXattrName, "", nil, &xattr, nil)
+	_, err := dataStore.GetWithXattr(base.TestCtx(t), key, base.SyncXattrName, "", nil, &xattr, nil)
 	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
 	assert.True(t, ok)
@@ -2725,9 +2734,10 @@ func TestUserXattrAutoImport(t *testing.T) {
 	// Ensure sync function has ran twice (once for PUT and once for xattr addition)
 	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
+	ctx := base.TestCtx(t)
 	// Get Xattr and ensure channel value set correctly
 	var syncData db.SyncData
-	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err = dataStore.GetXattr(ctx, docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
@@ -2742,7 +2752,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.NoError(t, err)
 
 	var syncData2 db.SyncData
-	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = dataStore.GetXattr(ctx, docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
@@ -2760,7 +2770,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.NoError(t, err)
 
 	var syncData3 db.SyncData
-	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData3)
+	_, err = dataStore.GetXattr(ctx, docKey, base.SyncXattrName, &syncData3)
 	assert.NoError(t, err)
 
 	assert.Equal(t, syncData2.Crc32c, syncData3.Crc32c)
@@ -2781,7 +2791,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	var syncData4 db.SyncData
-	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData4)
+	_, err = dataStore.GetXattr(ctx, docKey, base.SyncXattrName, &syncData4)
 	assert.NoError(t, err)
 
 	assert.Equal(t, base.Crc32cHashString(updateVal), syncData4.Crc32c)
@@ -2860,9 +2870,10 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	// Ensure sync function has ran on import
 	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
+	ctx := base.TestCtx(t)
 	// Get sync data for doc and ensure user xattr has been used correctly to set channel
 	var syncData db.SyncData
-	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err = dataStore.GetXattr(ctx, docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
@@ -2876,7 +2887,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	var syncData2 db.SyncData
-	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = dataStore.GetXattr(ctx, docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
@@ -2960,8 +2971,9 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	// Ensure sync function has ran on import
 	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
+	ctx := base.TestCtx(t)
 	var syncData db.SyncData
-	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err = dataStore.GetXattr(ctx, docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())

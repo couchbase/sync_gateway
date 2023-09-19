@@ -29,8 +29,9 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 		t.Skip("CBS required")
 	}
 
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	config := fmt.Sprintf(`{
 	"server_tls_skip_verify": %t,
@@ -58,7 +59,6 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	err := os.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
-	ctx := base.TestCtx(t)
 	startupConfig, _, _, _, err := automaticConfigUpgrade(ctx, configPath)
 	require.NoError(t, err)
 
@@ -153,8 +153,9 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 		tmpDir := t.TempDir()
 
 		t.Run(testCase.Name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
-			defer tb.Close()
+			defer tb.Close(ctx)
 
 			config := fmt.Sprintf(testCase.Config, base.TestTLSSkipVerify(), base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), tb.GetName())
 
@@ -173,8 +174,9 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("CBS required")
 	}
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
@@ -186,7 +188,6 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 	)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	ctx := base.TestCtx(t)
 	// Use underlying connection to unmarshal to untyped config
 	cnf := make(map[string]interface{}, 1)
 	key := PersistentConfigKey(ctx, rt.ServerContext().Config.Bootstrap.ConfigGroupID, "newdb")
@@ -213,8 +214,9 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 		t.Skip("CBS required")
 	}
 
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	tmpDir := t.TempDir()
 
@@ -239,7 +241,6 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	err := os.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
-	ctx := base.TestCtx(t)
 	// Run migration once
 	_, _, _, _, err = automaticConfigUpgrade(ctx, configPath)
 	require.NoError(t, err)
@@ -369,7 +370,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 	resp := BootstrapAdminRequest(t, http.MethodPut, "/db1/",
 		fmt.Sprintf(
@@ -444,7 +445,7 @@ func TestPersistentConfigWithCollectionConflicts(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 
 	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
@@ -594,7 +595,7 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 
 	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
@@ -741,7 +742,7 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 
 	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
@@ -895,7 +896,7 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 
 	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
@@ -1012,7 +1013,7 @@ func TestPersistentConfigSlowCreateFailure(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 
 	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
@@ -1090,7 +1091,7 @@ func TestMigratev30PersistentConfig(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 
 	bucketName := tb.GetName()
@@ -1172,7 +1173,7 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 
 	bucketName := tb.GetName()

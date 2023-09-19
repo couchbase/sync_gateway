@@ -79,8 +79,7 @@ func (c *Collection) GetDDocs() (ddocs map[string]sgbucket.DesignDoc, err error)
 	return ddocs, err
 }
 
-func (c *Collection) PutDDoc(docname string, sgDesignDoc *sgbucket.DesignDoc) error {
-	ctx := context.TODO() // fix in sg-bucket
+func (c *Collection) PutDDoc(ctx context.Context, docname string, sgDesignDoc *sgbucket.DesignDoc) error {
 	if !c.IsDefaultScopeCollection() {
 		return fmt.Errorf("views not supported for non-default collection")
 	}
@@ -190,8 +189,7 @@ func (c *Collection) DeleteDDoc(docname string) error {
 	return c.Collection.Bucket().ViewIndexes().DropDesignDocument(docname, gocb.DesignDocumentNamespaceProduction, nil)
 }
 
-func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
-	ctx := context.TODO() // fix in sg-bucket
+func (c *Collection) View(ctx context.Context, ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 	var viewResult sgbucket.ViewResult
 	gocbViewResult, err := c.executeViewQuery(ctx, ddoc, name, params)
 	if err != nil {
@@ -205,7 +203,7 @@ func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgb
 		}
 		for {
 			viewRow := sgbucket.ViewRow{}
-			if gotRow := viewResultIterator.Next(&viewRow); gotRow == false {
+			if gotRow := viewResultIterator.Next(ctx, &viewRow); gotRow == false {
 				break
 			}
 			viewResult.Rows = append(viewResult.Rows, &viewRow)
@@ -248,8 +246,7 @@ func unmarshalViewMetadata(viewResult *gocb.ViewResultRaw) (viewMetadata, error)
 	return viewMeta, err
 }
 
-func (c *Collection) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
-	ctx := context.TODO() // fix in sg-bucket
+func (c *Collection) ViewQuery(ctx context.Context, ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
 	gocbViewResult, err := c.executeViewQuery(ctx, ddoc, name, params)
 	if err != nil {
 		return nil, err

@@ -410,10 +410,9 @@ func (c *Collection) isRecoverableWriteError(err error) bool {
 // GetExpiry requires a full document retrieval in order to obtain the expiry, which is reasonable for
 // current use cases (on-demand import).  If there's a need for expiry as part of normal get, this shouldn't be
 // used - an enhanced version of Get() should be implemented to avoid two ops
-func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
+func (c *Collection) GetExpiry(ctx context.Context, k string) (expiry uint32, getMetaError error) {
 	agent, err := c.Bucket.getGoCBAgent()
 	if err != nil {
-		ctx := context.TODO() // fix in sg-bucket
 		WarnfCtx(ctx, "Unable to obtain gocbcore.Agent while retrieving expiry:%v", err)
 		return 0, err
 	}

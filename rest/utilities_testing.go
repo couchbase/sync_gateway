@@ -571,7 +571,7 @@ func (rt *RestTester) Close() {
 		rt.RestTesterServerContext.Close(ctx)
 	}
 	if rt.TestBucket != nil {
-		rt.TestBucket.Close()
+		rt.TestBucket.Close(ctx)
 		rt.TestBucket = nil
 	}
 }

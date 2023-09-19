@@ -67,7 +67,7 @@ func TestAttachmentMark(t *testing.T) {
 
 	for _, attDocKey := range attKeys {
 		var attachmentData Body
-		_, err = dataStore.GetXattr(attDocKey, base.AttachmentCompactionXattrName, &attachmentData)
+		_, err = dataStore.GetXattr(ctx, attDocKey, base.AttachmentCompactionXattrName, &attachmentData)
 		assert.NoError(t, err)
 
 		compactIDSection, ok := attachmentData[CompactionIDKey]
@@ -96,7 +96,7 @@ func TestAttachmentSweep(t *testing.T) {
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
-		_, err = dataStore.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
+		_, err = dataStore.SetXattr(ctx, docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
 		assert.NoError(t, err)
 	}
 
@@ -143,7 +143,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
-		_, err = dataStore.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
+		_, err = dataStore.SetXattr(ctx, docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
 		assert.NoError(t, err)
 	}
 
@@ -152,7 +152,7 @@ func TestAttachmentCleanup(t *testing.T) {
 		assert.NoError(t, err)
 		compactIDsJSON, err := base.JSONMarshal(compactIDs)
 		assert.NoError(t, err)
-		_, err = dataStore.SetXattr(docid, base.AttachmentCompactionXattrName+"."+CompactionIDKey, compactIDsJSON)
+		_, err = dataStore.SetXattr(ctx, docid, base.AttachmentCompactionXattrName+"."+CompactionIDKey, compactIDsJSON)
 		assert.NoError(t, err)
 	}
 
@@ -202,14 +202,14 @@ func TestAttachmentCleanup(t *testing.T) {
 
 	for _, docID := range singleMarkedAttIDs {
 		var xattr map[string]interface{}
-		_, err := dataStore.GetXattr(docID, base.AttachmentCompactionXattrName, &xattr)
+		_, err := dataStore.GetXattr(ctx, docID, base.AttachmentCompactionXattrName, &xattr)
 		assert.Error(t, err)
 		assert.True(t, errors.Is(err, base.ErrXattrNotFound))
 	}
 
 	for _, docID := range recentMultiMarkedAttIDs {
 		var xattr map[string]interface{}
-		_, err := dataStore.GetXattr(docID, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
+		_, err := dataStore.GetXattr(ctx, docID, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
 		assert.NoError(t, err)
 
 		assert.NotContains(t, xattr, t.Name())
@@ -218,14 +218,14 @@ func TestAttachmentCleanup(t *testing.T) {
 
 	for _, docID := range oldMultiMarkedAttIDs {
 		var xattr map[string]interface{}
-		_, err := dataStore.GetXattr(docID, CompactionIDKey, &xattr)
+		_, err := dataStore.GetXattr(ctx, docID, CompactionIDKey, &xattr)
 		assert.Error(t, err)
 		assert.True(t, errors.Is(err, base.ErrXattrNotFound))
 	}
 
 	for _, docID := range oneRecentOneOldMultiMarkedAttIDs {
 		var xattr map[string]interface{}
-		_, err := dataStore.GetXattr(docID, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
+		_, err := dataStore.GetXattr(ctx, docID, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
 		assert.NoError(t, err)
 
 		assert.NotContains(t, xattr, t.Name())
@@ -254,7 +254,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
-		_, err = dataStore.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
+		_, err = dataStore.SetXattr(ctx, docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
 		assert.NoError(t, err)
 	}
 
@@ -269,7 +269,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	// assert there are marked attachments to clean up
 	for _, docID := range singleMarkedAttIDs {
 		var xattr map[string]interface{}
-		_, err := dataStore.GetXattr(docID, base.AttachmentCompactionXattrName, &xattr)
+		_, err := dataStore.GetXattr(ctx, docID, base.AttachmentCompactionXattrName, &xattr)
 		assert.NoError(t, err)
 	}
 
@@ -296,7 +296,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 
 	err = WaitForConditionWithOptions(t, func() bool {
 		var status AttachmentManagerResponse
-		rawStatus, err := testDb.AttachmentCompactionManager.GetStatus()
+		rawStatus, err := testDb.AttachmentCompactionManager.GetStatus(ctx)
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
 		require.NoError(t, err)
@@ -312,7 +312,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	// assert that the marked attachments have been "cleaned up"
 	for _, docID := range singleMarkedAttIDs {
 		var xattr map[string]interface{}
-		_, err := dataStore.GetXattr(docID, base.AttachmentCompactionXattrName, &xattr)
+		_, err := dataStore.GetXattr(ctx, docID, base.AttachmentCompactionXattrName, &xattr)
 		assert.Error(t, err)
 		assert.True(t, errors.Is(err, base.ErrXattrNotFound))
 	}
@@ -372,7 +372,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		} else {
 			assert.NoError(t, err)
 			var xattr map[string]interface{}
-			_, err = dataStore.GetXattr(attDocKey, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
+			_, err = dataStore.GetXattr(ctx, attDocKey, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
 			assert.NoError(t, err)
 			assert.Contains(t, xattr, t.Name())
 		}
@@ -387,7 +387,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		if !strings.Contains(attDocKey, "unmarked") {
 			assert.NoError(t, err)
 			var xattr map[string]interface{}
-			_, err = dataStore.GetXattr(attDocKey, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
+			_, err = dataStore.GetXattr(ctx, attDocKey, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
 			assert.Error(t, err)
 			assert.True(t, errors.Is(err, base.ErrXattrNotFound))
 		}
@@ -404,7 +404,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	}
 
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
-	defer b.Close()
+	defer b.Close(base.TestCtx(t))
 
 	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
@@ -442,7 +442,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	err = WaitForConditionWithOptions(t, func() bool {
 		var status AttachmentManagerResponse
-		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
+		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
 		require.NoError(t, err)
@@ -456,7 +456,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	assert.NoError(t, err)
 
 	var testStatus AttachmentManagerResponse
-	testRawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
+	testRawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
 	assert.NoError(t, err)
 	err = base.JSONUnmarshal(testRawStatus, &testStatus)
 	require.NoError(t, err)
@@ -467,7 +467,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	err = WaitForConditionWithOptions(t, func() bool {
 		var status AttachmentManagerResponse
-		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
+		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
 		require.NoError(t, err)
@@ -480,7 +480,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	}, 200, 1000)
 	assert.NoError(t, err)
 
-	testRawStatus, err = testDB2.AttachmentCompactionManager.GetStatus()
+	testRawStatus, err = testDB2.AttachmentCompactionManager.GetStatus(ctx2)
 	assert.NoError(t, err)
 	err = base.JSONUnmarshal(testRawStatus, &testStatus)
 	require.NoError(t, err)
@@ -493,7 +493,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	err = WaitForConditionWithOptions(t, func() bool {
 		var status AttachmentManagerResponse
-		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
+		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus(ctx1)
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
 		require.NoError(t, err)
@@ -512,7 +512,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	err = WaitForConditionWithOptions(t, func() bool {
 		var status AttachmentManagerResponse
-		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
+		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus(ctx1)
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
 		require.NoError(t, err)
@@ -528,9 +528,9 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	var testDB1Status AttachmentManagerResponse
 	var testDB2Status AttachmentManagerResponse
 
-	testDB1RawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
+	testDB1RawStatus, err := testDB1.AttachmentCompactionManager.GetStatus(ctx1)
 	assert.NoError(t, err)
-	testDB2RawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
+	testDB2RawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
 	assert.NoError(t, err)
 
 	err = base.JSONUnmarshal(testDB1RawStatus, &testDB1Status)
@@ -554,7 +554,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	}
 
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
-	defer b.Close()
+	defer b.Close(base.TestCtx(t))
 
 	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
@@ -592,7 +592,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 
 	err = WaitForConditionWithOptions(t, func() bool {
 		var status AttachmentManagerResponse
-		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
+		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
 		require.NoError(t, err)
@@ -606,7 +606,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	assert.NoError(t, err)
 
 	var testStatus AttachmentManagerResponse
-	testRawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
+	testRawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
 	assert.NoError(t, err)
 	err = base.JSONUnmarshal(testRawStatus, &testStatus)
 	require.NoError(t, err)
@@ -617,7 +617,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 
 	err = WaitForConditionWithOptions(t, func() bool {
 		var status AttachmentManagerResponse
-		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus()
+		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
 		require.NoError(t, err)
@@ -630,7 +630,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	}, 200, 1000)
 	assert.NoError(t, err)
 
-	testRawStatus, err = testDB2.AttachmentCompactionManager.GetStatus()
+	testRawStatus, err = testDB2.AttachmentCompactionManager.GetStatus(ctx2)
 	assert.NoError(t, err)
 	err = base.JSONUnmarshal(testRawStatus, &testStatus)
 	require.NoError(t, err)
@@ -664,7 +664,7 @@ func TestAttachmentProcessError(t *testing.T) {
 			return fmt.Errorf("some error")
 		},
 	})
-	defer b.Close()
+	defer b.Close(base.TestCtx(t))
 
 	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
@@ -677,7 +677,7 @@ func TestAttachmentProcessError(t *testing.T) {
 
 	var status AttachmentManagerResponse
 	err = WaitForConditionWithOptions(t, func() bool {
-		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus()
+		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus(ctx1)
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal(rawStatus, &status)
 		assert.NoError(t, err)
@@ -751,7 +751,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCo
 	_, _, err = db.Put(ctx, docID, unmarshalledBody)
 	require.NoError(t, err)
 
-	_, err = db.dataStore.WriteUpdateWithXattr(docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
+	_, err = db.dataStore.WriteUpdateWithXattr(ctx, docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
 		attachmentSyncData := map[string]interface{}{
 			attID: map[string]interface{}{
 				"content_type": "application/json",
@@ -816,7 +816,7 @@ func createConflictingDocOneLeafHasAttachmentBodyMap(t *testing.T, docID string,
       "time_saved": "2021-10-14T16:38:11.359443+01:00"
     }`
 
-	_, err := db.dataStore.WriteWithXattr(docID, base.SyncXattrName, 0, 0, nil, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
+	_, err := db.dataStore.WriteWithXattr(base.TestCtx(t), docID, base.SyncXattrName, 0, 0, nil, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
 	assert.NoError(t, err)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
@@ -865,7 +865,7 @@ func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string,
       "time_saved": "2021-10-21T12:48:39.549095+01:00"
     }`
 
-	_, err := db.dataStore.WriteWithXattr(docID, base.SyncXattrName, 0, 0, nil, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
+	_, err := db.dataStore.WriteWithXattr(base.TestCtx(t), docID, base.SyncXattrName, 0, 0, nil, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
 	assert.NoError(t, err)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)

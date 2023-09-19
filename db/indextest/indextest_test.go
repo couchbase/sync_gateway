@@ -78,7 +78,7 @@ func TestRoleQuery(t *testing.T) {
 			}()
 			var row map[string]interface{}
 			rowCount := 0
-			for results.Next(&row) {
+			for results.Next(ctx, &row) {
 				rowCount++
 			}
 
@@ -229,7 +229,7 @@ func TestQueryAllRoles(t *testing.T) {
 
 			var row map[string]interface{}
 			rowCount := 0
-			for results.Next(&row) {
+			for results.Next(ctx, &row) {
 				rowCount++
 			}
 			require.Equal(t, 5, rowCount)
