@@ -231,20 +231,20 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		importFilter := db.importFilter()
 		if importFilter != nil {
 			var shouldImport bool
-			var importErr error
+			var err error
 
 			if isDelete && body == nil {
 				deleteBody := Body{BodyDeleted: true}
-				shouldImport, importErr = importFilter.EvaluateFunction(ctx, deleteBody)
+				shouldImport, err = importFilter.EvaluateFunction(ctx, deleteBody)
 			} else if isDelete && body != nil {
 				deleteBody := body.ShallowCopy()
 				deleteBody[BodyDeleted] = true
-				shouldImport, importErr = importFilter.EvaluateFunction(ctx, deleteBody)
+				shouldImport, err = importFilter.EvaluateFunction(ctx, deleteBody)
 			} else {
-				shouldImport, importErr = importFilter.EvaluateFunction(ctx, body)
+				shouldImport, err = importFilter.EvaluateFunction(ctx, body)
 			}
 
-			if importErr != nil {
+			if err != nil {
 				base.InfofCtx(ctx, base.KeyImport, "Error returned for doc %s while evaluating import function - will not be imported. %s", base.UD(docid), err)
 				return nil, nil, false, updatedExpiry, base.ErrImportCancelledFilter
 			}
