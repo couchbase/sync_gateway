@@ -65,7 +65,7 @@ post:
       in: query
       description: This forces a fresh resync run instead of trying to resume the previous resync operation
       schema:
-        type : bool
+        type: boolean
         default: false
   requestBody:
     content:
