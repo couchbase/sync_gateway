@@ -245,7 +245,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			}
 
 			if importErr != nil {
-				base.InfofCtx(ctx, base.KeyImport, "Error returned for doc %s while evaluating import function - will not be imported.", base.UD(docid))
+				base.InfofCtx(ctx, base.KeyImport, "Error returned for doc %s while evaluating import function - will not be imported. %s", base.UD(docid), err)
 				return nil, nil, false, updatedExpiry, base.ErrImportCancelledFilter
 			}
 			if !shouldImport {
