@@ -899,6 +899,71 @@ func TestResyncUsingDCPStream(t *testing.T) {
 	}
 }
 
+func TestResyncUsingDCPStreamReset(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with walrus")
+	}
+	base.LongRunningTest(t)
+
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			SyncFn: syncFn,
+		},
+	)
+	defer rt.Close()
+
+	const numDocs = 1000
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+	if !ok {
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs(), rt.GetDatabase().MetadataKeys)
+	}
+
+	// create some docs
+	for i := 0; i < numDocs; i++ {
+		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+	}
+
+	// take db offline to run resync against it
+	response := rt.SendAdminRequest("POST", "/db/_offline", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	// wait for db to be offline
+	err := rt.WaitForDBState(db.RunStateString[db.DBOffline])
+	require.NoError(t, err)
+
+	// start a resync run
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
+	resyncID := resyncManagerStatus.ResyncID
+
+	// stop resync before it completes, assert it has been aborted
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
+
+	// reset the resync process through the endpoint
+	response = rt.SendAdminRequest("POST", "/db/_resync?reset=true", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	// grab new resync status from rest run, assert the resync if is not the same as the first
+	// run and that the docs processed is equal to number of docs we have created
+	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
+	assert.NotEqual(t, resyncID, resyncManagerStatus.ResyncID)
+
+	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+	assert.Equal(t, int64(numDocs), resyncManagerStatus.DocsProcessed)
+
+}
+
 func TestResyncForNamedCollection(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("DCP client doesn't work with walrus. Waiting on CBG-2661")
