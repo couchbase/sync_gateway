@@ -25,9 +25,9 @@ func TestCollectionsSyncImportFunctions(t *testing.T) {
 
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
-
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb,

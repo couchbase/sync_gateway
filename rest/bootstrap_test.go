@@ -49,7 +49,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 	resp := BootstrapAdminRequest(t, http.MethodPut, "/db1/",
 		fmt.Sprintf(
@@ -166,7 +166,7 @@ func TestBootstrapDuplicateCollections(t *testing.T) {
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	defer tb.Close(ctx)
 	resp := BootstrapAdminRequest(t, http.MethodPut, "/db1/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
@@ -213,7 +213,7 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	defer tb.Close(ctx)
 
 	dbConfig := fmt.Sprintf(
 		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,

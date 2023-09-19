@@ -106,8 +106,9 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 
 	keyprefix := SyncDocPrefix + t.Name()
 
+	ctx := TestCtx(t)
 	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 
 	dataStore := testBucket.GetSingleDataStore()
 
@@ -115,7 +116,6 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 	nodeCount := 3
 	nodes := make([]*couchbaseHeartBeater, nodeCount)
 	listeners := make([]*documentBackedListener, nodeCount)
-	ctx := TestCtx(t)
 	for i := 0; i < nodeCount; i++ {
 		nodeUUID := fmt.Sprintf("node%d", i)
 		node, err := NewCouchbaseHeartbeater(dataStore, keyprefix, nodeUUID)
@@ -186,9 +186,10 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 		t.Skip("Skipping heartbeattest in short mode")
 	}
 
+	ctx := TestCtx(t)
 	keyprefix := SyncDocPrefix + t.Name()
 	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 
 	dataStore := testBucket.GetSingleDataStore()
 
@@ -197,7 +198,6 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 	nodes := make([]*couchbaseHeartBeater, nodeCount)
 	importListeners := make([]*documentBackedListener, nodeCount)
 	sgrListeners := make([]*documentBackedListener, nodeCount)
-	ctx := TestCtx(t)
 	for i := 0; i < nodeCount; i++ {
 		nodeUUID := fmt.Sprintf("node%d", i)
 		node, err := NewCouchbaseHeartbeater(dataStore, keyprefix, nodeUUID)
@@ -299,8 +299,9 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 
 	keyprefix := SyncDocPrefix + t.Name()
 
+	ctx := TestCtx(t)
 	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 
 	// Initialize cfgCB
 	cfgCB, err := initCfgCB(testBucket, testBucket.BucketSpec)
@@ -328,7 +329,6 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	assert.NoError(t, node2.SetExpirySeconds(2))
 	assert.NoError(t, node3.SetExpirySeconds(2))
 
-	ctx := TestCtx(t)
 	assert.NoError(t, node1.Start(ctx))
 	assert.NoError(t, node2.Start(ctx))
 	assert.NoError(t, node3.Start(ctx))

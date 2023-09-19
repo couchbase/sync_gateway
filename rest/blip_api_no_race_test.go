@@ -35,8 +35,9 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp, base.KeySync)
 
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rtConfig := RestTesterConfig{
 		DatabaseConfig:   &DatabaseConfig{},

@@ -1712,9 +1712,9 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	defer func() {
 		base.SkipPrometheusStatsRegistration = true
 	}()
-
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			PersistentConfig: true,
@@ -1735,7 +1735,7 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	tb2 := base.GetTestBucket(t)
-	defer tb2.Close()
+	defer tb2.Close(ctx)
 	resp = rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
 				"bucket": "%s",
 				"use_views": %t,
@@ -7765,10 +7765,10 @@ func TestGroupIDReplications(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
+	ctx := base.TestCtx(t)
 	// Create test buckets to replicate between
 	activeBucket := base.GetTestBucket(t)
-	defer activeBucket.Close()
+	defer activeBucket.Close(ctx)
 
 	// Set up passive bucket RT
 	rt := rest.NewRestTester(t, nil)

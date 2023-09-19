@@ -245,9 +245,9 @@ func (b *BackgroundManager) markStart(ctx context.Context) error {
 	return nil
 }
 
-func (b *BackgroundManager) GetStatus() ([]byte, error) {
+func (b *BackgroundManager) GetStatus(ctx context.Context) ([]byte, error) {
 	if b.isClusterAware() {
-		status, err := b.getStatusFromCluster()
+		status, err := b.getStatusFromCluster(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -282,8 +282,8 @@ func (b *BackgroundManager) getStatusLocal() ([]byte, []byte, error) {
 	return b.Process.GetProcessStatus(backgroundStatus)
 }
 
-func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
-	status, statusCas, err := b.clusterAwareOptions.metadataStore.GetSubDocRaw(b.clusterAwareOptions.StatusDocID(), "status")
+func (b *BackgroundManager) getStatusFromCluster(ctx context.Context) ([]byte, error) {
+	status, statusCas, err := b.clusterAwareOptions.metadataStore.GetSubDocRaw(ctx, b.clusterAwareOptions.StatusDocID(), "status")
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			return nil, nil
@@ -317,9 +317,9 @@ func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
 				// avoid this unmarshal / marshal work from having to happen again, next time GET is called.
 				// If there is an error we can just ignore it as worst case we run this unmarshal / marshal again on
 				// next request
-				_, err = b.clusterAwareOptions.metadataStore.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", statusCas, status)
+				_, err = b.clusterAwareOptions.metadataStore.WriteSubDoc(ctx, b.clusterAwareOptions.StatusDocID(), "status", statusCas, status)
 				if err != nil {
-					status, _, err = b.clusterAwareOptions.metadataStore.GetSubDocRaw(b.clusterAwareOptions.StatusDocID(), "status")
+					status, _, err = b.clusterAwareOptions.metadataStore.GetSubDocRaw(ctx, b.clusterAwareOptions.StatusDocID(), "status")
 					if err != nil {
 						return nil, err
 					}
@@ -449,12 +449,12 @@ func (b *BackgroundManager) UpdateStatusClusterAware(ctx context.Context) error 
 			return true, err, nil
 		}
 
-		_, err = b.clusterAwareOptions.metadataStore.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", 0, status)
+		_, err = b.clusterAwareOptions.metadataStore.WriteSubDoc(ctx, b.clusterAwareOptions.StatusDocID(), "status", 0, status)
 		if err != nil {
 			return true, err, nil
 		}
 
-		_, err = b.clusterAwareOptions.metadataStore.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "meta", 0, metadata)
+		_, err = b.clusterAwareOptions.metadataStore.WriteSubDoc(ctx, b.clusterAwareOptions.StatusDocID(), "meta", 0, metadata)
 		if err != nil {
 			return true, err, nil
 		}

@@ -471,7 +471,7 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, scope st
 	}
 
 	if subdocStore, ok := base.AsSubdocStore(auth.datastore); ok {
-		err := subdocStore.SubdocInsert(docID, subdocPath, 0, invalSeq)
+		err := subdocStore.SubdocInsert(auth.LogCtx, docID, subdocPath, 0, invalSeq)
 		if err != nil && err != base.ErrNotFound && err != base.ErrAlreadyExists && err != base.ErrPathNotFound {
 			return err
 		}
@@ -513,7 +513,7 @@ func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) err
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate roles of %q", base.UD(username))
 
 	if subdocStore, ok := base.AsSubdocStore(auth.datastore); ok {
-		err := subdocStore.SubdocInsert(docID, "role_inval_seq", 0, invalSeq)
+		err := subdocStore.SubdocInsert(auth.LogCtx, docID, "role_inval_seq", 0, invalSeq)
 		if err != nil && err != base.ErrNotFound && err != base.ErrAlreadyExists {
 			return err
 		}

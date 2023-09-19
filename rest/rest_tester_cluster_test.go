@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -63,11 +64,11 @@ func (rtc *RestTesterCluster) Node(i int) *RestTester {
 }
 
 // Close closes all of RestTester nodes and the shared TestBucket.
-func (rtc *RestTesterCluster) Close() {
+func (rtc *RestTesterCluster) Close(ctx context.Context) {
 	for _, rt := range rtc.restTesters {
 		rt.Close()
 	}
-	rtc.testBucket.Close()
+	rtc.testBucket.Close(ctx)
 }
 
 // var _ base.BootstrapConnection = &testBootstrapConnection{}
@@ -153,8 +154,9 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
+	ctx := base.TestCtx(t)
 	rtc := NewRestTesterCluster(t, nil)
-	defer rtc.Close()
+	defer rtc.Close(ctx)
 
 	const db = "db"
 

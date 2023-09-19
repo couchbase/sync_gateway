@@ -2488,7 +2488,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	defer tb.Close(ctx)
 
 	oidcOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.StringPtr(providerName)}
 	dbConfig := `{
@@ -2596,10 +2596,11 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 		subject     = "frodo"
 	)
 
+	ctx := base.TestCtx(t)
 	// We need to create two different sync gateways, so that we have two different OIDC issuers to test with.
 	// Note that we set the OIDC config after the mock SG is running, because we need to know its URL for the issuer field
 	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+	defer tb1.Close(ctx)
 	rt1Config := RestTesterConfig{
 		DatabaseConfig:   &DatabaseConfig{DbConfig: DbConfig{}},
 		CustomTestBucket: tb1,

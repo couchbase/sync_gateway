@@ -266,35 +266,35 @@ func TestUserGraphQL(t *testing.T) {
 
 func testUserGraphQLCommon(t *testing.T, ctx context.Context, db *db.Database) {
 	// Successful query:
-	result, err := db.UserGraphQLQuery(`query{ square(n: 12) }`, "", nil, false, ctx)
+	result, err := db.UserGraphQLQuery(ctx, `query{ square(n: 12) }`, "", nil, false)
 	assertGraphQLResult(t, `{"square":144}`, result, err)
 
-	result, err = db.UserGraphQLQuery(`query($num:Int!){ square(n: $num) }`, "",
-		map[string]any{"num": 12}, false, ctx)
+	result, err = db.UserGraphQLQuery(ctx, `query($num:Int!){ square(n: $num) }`, "",
+		map[string]any{"num": 12}, false)
 	assertGraphQLResult(t, `{"square":144}`, result, err)
 
-	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {id,title,done} }`, "", nil, false, ctx)
+	result, err = db.UserGraphQLQuery(ctx, `query{ task(id:"a") {id,title,done} }`, "", nil, false)
 	assertGraphQLResult(t, `{"task":{"done":true,"id":"a","title":"Applesauce"}}`, result, err)
 
-	result, err = db.UserGraphQLQuery(`query{ tasks {title} }`, "", nil, false, ctx)
+	result, err = db.UserGraphQLQuery(ctx, `query{ tasks {title} }`, "", nil, false)
 	assertGraphQLResult(t, `{"tasks":[{"title":"Applesauce"},{"title":"Beer"},{"title":"Mangoes"}]}`, result, err)
 
 	// ERRORS:
 
 	// Nonexistent query:
-	result, err = db.UserGraphQLQuery(`query{ bogus(id:"a") {id} }`, "", nil, false, ctx)
+	result, err = db.UserGraphQLQuery(ctx, `query{ bogus(id:"a") {id} }`, "", nil, false)
 	assertGraphQLError(t, "Cannot query field \"bogus\" on type \"Query\"", result, err)
 
 	// Invalid argument:
-	result, err = db.UserGraphQLQuery(`query{ task(foo:69) {id,title,done} }`, "", nil, false, ctx)
+	result, err = db.UserGraphQLQuery(ctx, `query{ task(foo:69) {id,title,done} }`, "", nil, false)
 	assertGraphQLError(t, "Unknown argument \"foo\"", result, err)
 
 	// Mutation when no mutations allowed (mutationAllowed = false):
-	result, err = db.UserGraphQLQuery(`mutation{ complete(id:"b") {done} }`, "", nil, false, ctx)
+	result, err = db.UserGraphQLQuery(ctx, `mutation{ complete(id:"b") {done} }`, "", nil, false)
 	assertGraphQLError(t, "403", result, err)
 
 	// Infinite regress:
-	result, err = db.UserGraphQLQuery(`query{ infinite }`, "", nil, false, ctx)
+	result, err = db.UserGraphQLQuery(ctx, `query{ infinite }`, "", nil, false)
 	assertGraphQLError(t, "508", result, err)
 }
 
@@ -302,11 +302,11 @@ func testUserGraphQLAsAdmin(t *testing.T, ctx context.Context, db *db.Database) 
 	testUserGraphQLCommon(t, ctx, db)
 
 	// Admin tests updating "a":
-	result, err := db.UserGraphQLQuery(`mutation{ addTag(id:"a", tag:"cold") {id,title,done,tags} }`, "", nil, true, ctx)
+	result, err := db.UserGraphQLQuery(ctx, `mutation{ addTag(id:"a", tag:"cold") {id,title,done,tags} }`, "", nil, true)
 	assertGraphQLResult(t, `{"addTag":{"done":true,"id":"a","tags":["fruit","soft","cold"],"title":"Applesauce"}}`, result, err)
 
 	// Admin-only field:
-	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {secretNotes} }`, "", nil, false, ctx)
+	result, err = db.UserGraphQLQuery(ctx, `query{ task(id:"a") {secretNotes} }`, "", nil, false)
 	assertGraphQLResult(t, `{"task":{"secretNotes":"TOP SECRET!"}}`, result, err)
 }
 
@@ -314,13 +314,13 @@ func testUserGraphQLAsUser(t *testing.T, ctx context.Context, db *db.Database) {
 	testUserGraphQLCommon(t, ctx, db)
 
 	// Regular user tests updating "m":
-	result, err := db.UserGraphQLQuery(`mutation{ addTag(id:"m", tag:"ripe") {id,title,done,tags} }`, "", nil, true, ctx)
+	result, err := db.UserGraphQLQuery(ctx, `mutation{ addTag(id:"m", tag:"ripe") {id,title,done,tags} }`, "", nil, true)
 	assertGraphQLResult(t, `{"addTag":{"done":null,"id":"m","tags":["ripe"],"title":"Mangoes"}}`, result, err)
 
 	// ERRORS:
 
 	// Can't get admin-only field:
-	result, err = db.UserGraphQLQuery(`query{ task(id:"a") {secretNotes} }`, "", nil, false, ctx)
+	result, err = db.UserGraphQLQuery(ctx, `query{ task(id:"a") {secretNotes} }`, "", nil, false)
 	assertGraphQLError(t, "403", result, err)
 }
 
@@ -455,7 +455,7 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 	t.Run("AsUser", func(t *testing.T) { testUserGraphQLAsUser(t, ctx, db) })
 
 	// Test the N1QL resolver that uses $parent:
-	result, err := db.UserGraphQLQuery(`query{ task(id:"b") {description,title} }`, "", nil, false, ctx)
+	result, err := db.UserGraphQLQuery(ctx, `query{ task(id:"b") {description,title} }`, "", nil, false)
 	assertGraphQLResult(t, `{"task":{"description":"Bass ale please","title":"Beer"}}`, result, err)
 }
 
@@ -703,7 +703,7 @@ func TestTypenameResolver(t *testing.T) {
 		assert.NoError(t, err)
 		db, ctx := setupTestDBWithFunctions(t, nil, &config)
 		defer db.Close(ctx)
-		result, err := db.UserGraphQLQuery(kTestTypenameResolverQuery, "", nil, false, ctx)
+		result, err := db.UserGraphQLQuery(ctx, kTestTypenameResolverQuery, "", nil, false)
 		assertGraphQLResult(t, `{"books":[{"courses":["science"],"id":"abc"},{"colors":["red"],"id":"efg"}]}`, result, err)
 	})
 }

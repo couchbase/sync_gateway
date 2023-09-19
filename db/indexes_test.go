@@ -232,7 +232,7 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 	}
 
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(base.TestCtx(t))
 
 	dbOptions := DatabaseContextOptions{}
 	if base.TestsUseNamedCollections() {

@@ -26,10 +26,11 @@ func TestCreateSession(t *testing.T) {
 	const username = "Alice"
 	const invalidSessionTTLError = "400 Invalid session time-to-live"
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
+	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 	dataStore := testBucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(ctx))
 
 	user, err := auth.NewUser(username, "password", base.Set{})
 	require.NoError(t, err)
@@ -70,11 +71,12 @@ func TestCreateSession(t *testing.T) {
 
 func TestDeleteSession(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
+	ctx := base.TestCtx(t)
 	const username = "Alice"
 	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 	dataStore := testBucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(ctx))
 
 	id, err := base.GenerateRandomSecret()
 	require.NoError(t, err)
@@ -100,10 +102,11 @@ func TestDeleteSession(t *testing.T) {
 // If nil is provided instead of valid login session, nil must be returned.
 func TestMakeSessionCookie(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
+	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 	dataStore := testBucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(ctx))
 
 	sessionID, err := base.GenerateRandomSecret()
 	require.NoError(t, err)
@@ -126,10 +129,11 @@ func TestMakeSessionCookie(t *testing.T) {
 }
 
 func TestMakeSessionCookieProperties(t *testing.T) {
+	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 	dataStore := testBucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(ctx))
 
 	sessionID, err := base.GenerateRandomSecret()
 	require.NoError(t, err)
@@ -161,10 +165,11 @@ func TestMakeSessionCookieProperties(t *testing.T) {
 func TestDeleteSessionForCookie(t *testing.T) {
 	const defaultEndpoint = "http://localhost/"
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
+	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 	dataStore := testBucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(ctx))
 
 	sessionID, err := base.GenerateRandomSecret()
 	require.NoError(t, err)
@@ -224,10 +229,11 @@ func TestCreateSessionChangePassword(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 
+			ctx := base.TestCtx(t)
 			testBucket := base.GetTestBucket(t)
-			defer testBucket.Close()
+			defer testBucket.Close(ctx)
 			dataStore := testBucket.GetSingleDataStore()
-			auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
+			auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(ctx))
 
 			user, err := auth.NewUser(test.username, test.password, base.Set{})
 			require.NoError(t, err)
@@ -263,10 +269,11 @@ func TestCreateSessionChangePassword(t *testing.T) {
 
 // TestUserWithoutSessionUUID tests users that existed before we stamped SessionUUID into user docs
 func TestUserWithoutSessionUUID(t *testing.T) {
+	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 	dataStore := testBucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(ctx))
 	const username = "Alice"
 	user, err := auth.NewUser(username, "password", base.Set{})
 	require.NoError(t, err)

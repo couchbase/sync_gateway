@@ -565,6 +565,7 @@ func ensureBodyClosed(ctx context.Context, body io.ReadCloser) {
 // AsViewStore returns a ViewStore if the underlying dataStore implements ViewStore.
 func AsViewStore(ds DataStore) (sgbucket.ViewStore, bool) {
 	viewStore, ok := ds.(sgbucket.ViewStore)
+	fmt.Printf("found view store %T ok %v\n", viewStore, ok)
 	return viewStore, ok
 }
 

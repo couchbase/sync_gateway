@@ -122,7 +122,7 @@ func (wh *Webhook) HandleEvent(ctx context.Context, event Event) bool {
 
 	if wh.filter != nil {
 		// If filter function is defined, use it to determine whether to post
-		success, err := wh.filter.CallValidateFunction(event)
+		success, err := wh.filter.CallValidateFunction(ctx, event)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error calling webhook filter function: %v", err)
 		}

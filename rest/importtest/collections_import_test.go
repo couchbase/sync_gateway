@@ -27,8 +27,9 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 	base.RequireNumTestDataStores(t, 3)
 
+	ctx := base.TestCtx(t)
 	testBucket := base.GetPersistentTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 
 	scopesConfig := rest.GetCollectionsConfig(t, testBucket, 2)
 	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
@@ -248,8 +249,9 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 	base.RequireNumTestDataStores(t, 2)
 
+	ctx := base.TestCtx(t)
 	testBucket := base.GetPersistentTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: testBucket.NoCloseClone(),
@@ -343,8 +345,9 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
 
+	ctx := base.TestCtx(t)
 	testBucket := base.GetPersistentTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: testBucket.NoCloseClone(),
@@ -411,7 +414,7 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 
 func requireSyncData(rt *rest.RestTester, dataStore base.DataStore, docName string, hasSyncData bool) {
 	var rawDoc, rawXattr, rawUserXattr []byte
-	_, err := dataStore.GetWithXattr(docName, base.SyncXattrName, rt.GetDatabase().Options.UserXattrKey, &rawDoc, &rawXattr, &rawUserXattr)
+	_, err := dataStore.GetWithXattr(rt.Context(), docName, base.SyncXattrName, rt.GetDatabase().Options.UserXattrKey, &rawDoc, &rawXattr, &rawUserXattr)
 	require.NoError(rt.TB, err)
 	if hasSyncData {
 		require.NotEqual(rt.TB, "", string(rawXattr), "Expected data for %s %s", dataStore.GetName(), docName)

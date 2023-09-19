@@ -1115,7 +1115,7 @@ func TestLocalDocExpiry(t *testing.T) {
 
 	localDocKey := db.RealSpecialDocID(db.DocTypeLocal, "loc1")
 	dataStore := rt.GetSingleDataStore()
-	expiry, getMetaError := dataStore.GetExpiry(localDocKey)
+	expiry, getMetaError := dataStore.GetExpiry(rt.Context(), localDocKey)
 	log.Printf("Expiry after PUT is %v", expiry)
 	assert.True(t, expiry > timeNow, "expiry is not greater than current time")
 	assert.True(t, expiry < oneMoreHour, "expiry is not greater than current time")
@@ -1124,7 +1124,7 @@ func TestLocalDocExpiry(t *testing.T) {
 	// Retrieve local doc, ensure non-zero expiry is preserved
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/loc1", "")
 	RequireStatus(t, response, 200)
-	expiry, getMetaError = dataStore.GetExpiry(localDocKey)
+	expiry, getMetaError = dataStore.GetExpiry(rt.Context(), localDocKey)
 	log.Printf("Expiry after GET is %v", expiry)
 	assert.True(t, expiry > timeNow, "expiry is not greater than current time")
 	assert.True(t, expiry < oneMoreHour, "expiry is not greater than current time")
@@ -1593,12 +1593,12 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 			t.Errorf("The bulk docs response had an embedded error: %v.  Response for this doc: %+v", bulkDocErr, bulkDocsResponse)
 		}
 	}
-
+	ctx := base.TestCtx(t)
 	// Fetch the xattr and make sure it contains the above value
 	subdocXattrStore, _ := base.AsSubdocXattrStore(rt.GetSingleDataStore())
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	_, err = subdocXattrStore.SubdocGetBodyAndXattr("-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, "", &retrievedVal, &retrievedXattr, nil)
+	_, err = subdocXattrStore.SubdocGetBodyAndXattr(ctx, "-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, "", &retrievedVal, &retrievedXattr, nil)
 	assert.NoError(t, err, "Unexpected Error")
 	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedXattr["rev"])
 

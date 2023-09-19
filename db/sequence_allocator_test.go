@@ -22,8 +22,9 @@ import (
 
 func TestSequenceAllocator(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -45,8 +46,6 @@ func TestSequenceAllocator(t *testing.T) {
 	oldFrequency := MaxSequenceIncrFrequency
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
 	MaxSequenceIncrFrequency = 60 * time.Second
-
-	ctx := base.TestCtx(t)
 
 	initSequence, err := a.lastSequence(ctx)
 	assert.Equal(t, uint64(0), initSequence)
@@ -93,8 +92,9 @@ func TestSequenceAllocator(t *testing.T) {
 
 func TestReleaseSequencesOnStop(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -105,7 +105,6 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 	oldFrequency := MaxSequenceIncrFrequency
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
 	MaxSequenceIncrFrequency = 1000 * time.Millisecond
-	ctx := base.TestCtx(t)
 	a, err := newSequenceAllocator(ctx, bucket.GetSingleDataStore(), testStats, base.DefaultMetadataKeys)
 	// Reduce sequence wait for Stop testing
 	a.releaseSequenceWait = 10 * time.Millisecond
@@ -124,7 +123,7 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 	assertNewAllocatorStats(t, testStats, 2, 3, 2, 0)
 
 	// Stop the allocator
-	a.Stop(base.TestCtx(t))
+	a.Stop(ctx)
 
 	releasedCount := 0
 	// Ensure unused sequence is released on Stop
@@ -172,7 +171,7 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 	}
 
 	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{IncrCallback: incrCallback})
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -184,7 +183,7 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
 	MaxSequenceIncrFrequency = 1000 * time.Millisecond
 
-	a, err = newSequenceAllocator(base.TestCtx(t), bucket.DefaultDataStore(), testStats, base.DefaultMetadataKeys)
+	a, err = newSequenceAllocator(ctx, bucket.DefaultDataStore(), testStats, base.DefaultMetadataKeys)
 	// Reduce sequence wait for Stop testing
 	a.releaseSequenceWait = 10 * time.Millisecond
 	assert.NoError(t, err, "error creating allocator")
@@ -199,22 +198,22 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 
 	wg.Wait()
 
-	a.Stop(base.TestCtx(t))
+	a.Stop(ctx)
 }
 
 func TestReleaseSequenceWait(t *testing.T) {
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 	testStats := dbstats.Database()
-	ctx := base.TestCtx(t)
 	a, err := newSequenceAllocator(ctx, bucket.GetSingleDataStore(), testStats, base.DefaultMetadataKeys)
 	require.NoError(t, err)
-	defer a.Stop(base.TestCtx(t))
+	defer a.Stop(ctx)
 
 	startTime := time.Now().Add(-1 * time.Second)
 	amountWaited := a.waitForReleasedSequences(ctx, startTime)

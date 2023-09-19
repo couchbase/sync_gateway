@@ -30,8 +30,9 @@ import (
 func TestX509RoundtripUsingIP(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
+	ctx := base.TestCtx(t)
 	tb, _, _, _ := setupX509Tests(t, true)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
 	defer rt.Close()
@@ -50,8 +51,9 @@ func TestX509RoundtripUsingIP(t *testing.T) {
 func TestX509RoundtripUsingDomain(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
+	ctx := base.TestCtx(t)
 	tb, _, _, _ := setupX509Tests(t, false)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
 	defer rt.Close()
@@ -68,8 +70,9 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 func TestX509UnknownAuthorityWrap(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
+	ctx := base.TestCtx(t)
 	tb, _, _, _ := setupX509Tests(t, true)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	tb.BucketSpec.CACertPath = ""
 
@@ -89,12 +92,13 @@ func TestX509UnknownAuthorityWrap(t *testing.T) {
 }
 
 func TestAttachmentCompactionRun(t *testing.T) {
+	ctx := base.TestCtx(t)
 	tb, _, _, _ := setupX509Tests(t, true)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
 	defer rt.Close()
-	ctx := rt.Context()
+	ctx = rt.Context()
 
 	collection := &db.DatabaseCollectionWithUser{
 		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),

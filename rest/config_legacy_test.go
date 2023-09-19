@@ -288,13 +288,14 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 		t.Skip("CBS required")
 	}
 
+	ctx := base.TestCtx(t)
 	expected := auth.PrincipalConfig{
 		ExplicitChannels: base.SetFromArray([]string{"*"}),
 		Disabled:         base.BoolPtr(false),
 	}
 
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	config := fmt.Sprintf(`{
 	"server_tls_skip_verify": %t,
@@ -328,7 +329,6 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 	err := os.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
-	ctx := base.TestCtx(t)
 	sc, _, _, _, err := automaticConfigUpgrade(ctx, configPath)
 	require.NoError(t, err)
 
