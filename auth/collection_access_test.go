@@ -30,9 +30,10 @@ func canSeeAllCollectionChannels(scope, collection string, princ Principal, chan
 
 func TestUserCollectionAccess(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	// User with no access:
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	options := DefaultAuthenticatorOptions(base.TestCtx(t))
 	options.Collections = map[string]map[string]struct{}{
 		"scope1": {
@@ -168,8 +169,9 @@ func TestUserCollectionAccess(t *testing.T) {
 
 func TestSerializeUserWithCollections(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	auth := NewAuthenticator(bucket.GetSingleDataStore(), nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
 	user, _ := auth.NewUser("me", "letmein", ch.BaseSetOf(t, "me", "public"))
 	encoded, err := base.JSONMarshal(user)
@@ -210,8 +212,9 @@ func TestSerializeUserWithCollections(t *testing.T) {
 
 func TestPrincipalConfigSetExplicitChannels(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	userName := "bernard"
 	config := &PrincipalConfig{

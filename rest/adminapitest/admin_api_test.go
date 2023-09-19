@@ -1090,7 +1090,7 @@ func TestResyncForNamedCollection(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		log.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 
 	dataStore1, err := tb.GetNamedDataStore(0)
@@ -1224,7 +1224,7 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		log.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 
 	dataStore1, err := tb.GetNamedDataStore(0)
@@ -1739,8 +1739,9 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
 	base.TestsRequireBootstrapConnection(t)
 	base.RequireNumTestBuckets(t, 2)
+	ctx := base.TestCtx(t)
 	tb1 := base.GetPersistentTestBucket(t)
-	defer tb1.Close()
+	defer tb1.Close(ctx)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: base.GetPersistentTestBucket(t),
@@ -1773,12 +1774,13 @@ func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
 func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 	base.TestsRequireBootstrapConnection(t)
 	base.RequireNumTestBuckets(t, 3)
+	ctx := base.TestCtx(t)
 	tb1 := base.GetPersistentTestBucket(t)
-	defer tb1.Close()
+	defer tb1.Close(ctx)
 	tb2 := base.GetPersistentTestBucket(t)
-	defer tb2.Close()
+	defer tb2.Close(ctx)
 	tb3 := base.GetPersistentTestBucket(t)
-	defer tb3.Close()
+	defer tb3.Close(ctx)
 
 	const groupID = "60ce5544-c368-4b08-b0ed-4ca3b37973f9"
 
@@ -1851,10 +1853,11 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 	base.TestsRequireBootstrapConnection(t)
 
 	base.RequireNumTestBuckets(t, 3)
+	ctx := base.TestCtx(t)
 	tb1 := base.GetPersistentTestBucket(t)
-	defer tb1.Close()
+	defer tb1.Close(ctx)
 	tb2 := base.GetPersistentTestBucket(t)
-	defer tb2.Close()
+	defer tb2.Close(ctx)
 
 	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb1,
@@ -1920,10 +1923,11 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 	base.TestsRequireBootstrapConnection(t)
 
+	ctx := base.TestCtx(t)
 	tb1 := base.GetPersistentTestBucket(t)
-	defer tb1.Close()
+	defer tb1.Close(ctx)
 	tb2 := base.GetPersistentTestBucket(t)
-	defer tb2.Close()
+	defer tb2.Close(ctx)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb1,
@@ -2531,8 +2535,9 @@ func TestHandleCreateDBJsonName(t *testing.T) {
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
-			defer tb.Close()
+			defer tb.Close(ctx)
 
 			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 				CustomTestBucket: tb,
@@ -3364,7 +3369,7 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
@@ -3427,7 +3432,7 @@ func TestDbConfigCredentials(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
@@ -3492,7 +3497,7 @@ func TestInvalidDBConfig(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
@@ -3578,7 +3583,7 @@ func TestPutDbConfigChangeName(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
@@ -3622,7 +3627,7 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		log.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 
 	dataStore1, err := tb.GetNamedDataStore(0)
@@ -3697,7 +3702,7 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
@@ -3796,15 +3801,15 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 
 	serverErr := make(chan error, 0)
 
+	ctx := base.TestCtx(t)
 	// Get a test bucket, to use to create the database.
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 
 	// Start SG with no databases
-	ctx := base.TestCtx(t)
 	config := rest.BootstrapStartupConfigForTest(t)
 	sc, err := rest.SetupServerContext(ctx, &config, true)
 	config.Logging.Console.LogKeys = []string{base.KeyDCP.String()}
@@ -3862,7 +3867,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket 2")
-		tb2.Close()
+		tb2.Close(ctx)
 	}()
 	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/",
 		`{"bucket": "`+tb2.GetName()+`", "num_index_replicas": 0, "unsupported": {"disable_clean_skipped_query": true}}`,
@@ -3905,7 +3910,7 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	defer tb.Close(ctx)
 
 	// No credentials should fail
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db1/",
@@ -3984,7 +3989,7 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	defer tb.Close(ctx)
 
 	importFilter := "function(doc) { return true }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
@@ -4059,7 +4064,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	defer tb.Close(ctx)
 
 	dbName := "db"
 	dbConfig := rest.DatabaseConfig{
@@ -4179,7 +4184,7 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	// Get a test bucket, and use it to create the database.
 	// FIXME: CBG-2266 this test reads in persistent config
 	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	defer tb.Close(ctx)
 
 	// Initial DB config
 	dbConfig := `{
@@ -4266,7 +4271,7 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	defer tb.Close(ctx)
 
 	importFilter := "function(doc){ return true; }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
@@ -4379,7 +4384,7 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 
 	// db put with empty sync func and import filter
@@ -4477,7 +4482,7 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 
 	dbConfig := `{
@@ -4791,9 +4796,10 @@ func TestPerDBCredsOverride(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := base.TestCtx(t)
 	// Get test bucket
 	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+	defer tb1.Close(ctx)
 
 	config := rest.BootstrapStartupConfigForTest(t)
 	config.BucketCredentials = map[string]*base.CredentialsConfig{
@@ -4809,7 +4815,6 @@ func TestPerDBCredsOverride(t *testing.T) {
 		},
 	}
 
-	ctx := base.TestCtx(t)
 	sc, err := rest.SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 

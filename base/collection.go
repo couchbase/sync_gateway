@@ -215,9 +215,9 @@ func (b *GocbV2Bucket) GetCluster() *gocb.Cluster {
 	return b.cluster
 }
 
-func (b *GocbV2Bucket) Close() {
+func (b *GocbV2Bucket) Close(ctx context.Context) {
 	if err := b.cluster.Close(nil); err != nil {
-		WarnfCtx(context.TODO(), "Error closing cluster for bucket %s: %v", MD(b.BucketName()), err)
+		WarnfCtx(ctx, "Error closing cluster for bucket %s: %v", MD(b.BucketName()), err)
 	}
 }
 
@@ -600,8 +600,7 @@ func (b *GocbV2Bucket) DropDataStore(name sgbucket.DataStoreName) error {
 	return b.bucket.Collections().DropCollection(gocb.CollectionSpec{Name: name.CollectionName(), ScopeName: name.ScopeName()}, nil)
 }
 
-func (b *GocbV2Bucket) CreateDataStore(name sgbucket.DataStoreName) error {
-	ctx := context.TODO() // fix in sg-bucket
+func (b *GocbV2Bucket) CreateDataStore(ctx context.Context, name sgbucket.DataStoreName) error {
 	// create scope first (if it doesn't already exist)
 	if name.ScopeName() != DefaultScope {
 		err := b.bucket.Collections().CreateScope(name.ScopeName(), nil)

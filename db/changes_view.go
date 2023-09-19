@@ -38,10 +38,10 @@ type channelsViewRow struct {
 	}
 }
 
-func nextChannelViewEntry(results sgbucket.QueryResultIterator, collectionID uint32) (*LogEntry, bool) {
+func nextChannelViewEntry(ctx context.Context, results sgbucket.QueryResultIterator, collectionID uint32) (*LogEntry, bool) {
 
 	var viewRow channelsViewRow
-	found := results.Next(&viewRow)
+	found := results.Next(ctx, &viewRow)
 	if !found {
 		return nil, false
 	}
@@ -59,10 +59,10 @@ func nextChannelViewEntry(results sgbucket.QueryResultIterator, collectionID uin
 
 }
 
-func nextChannelQueryEntry(results sgbucket.QueryResultIterator, collectionID uint32) (*LogEntry, bool) {
+func nextChannelQueryEntry(ctx context.Context, results sgbucket.QueryResultIterator, collectionID uint32) (*LogEntry, bool) {
 
 	var queryRow QueryChannelsRow
-	found := results.Next(&queryRow)
+	found := results.Next(ctx, &queryRow)
 	if !found {
 		return nil, false
 	}
@@ -126,9 +126,9 @@ func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, c
 			var entry *LogEntry
 			var found bool
 			if usingViews {
-				entry, found = nextChannelViewEntry(queryResults, collectionID)
+				entry, found = nextChannelViewEntry(ctx, queryResults, collectionID)
 			} else {
-				entry, found = nextChannelQueryEntry(queryResults, collectionID)
+				entry, found = nextChannelQueryEntry(ctx, queryResults, collectionID)
 			}
 
 			if !found {

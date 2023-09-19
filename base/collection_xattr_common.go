@@ -37,7 +37,7 @@ func WriteCasWithXattr(ctx context.Context, store *Collection, k string, xattrKe
 
 		// cas=0 specifies an insert
 		if cas == 0 {
-			casOut, err = store.InsertBodyAndXattr(k, xattrKey, exp, v, xv)
+			casOut, err = store.InsertBodyAndXattr(ctx, k, xattrKey, exp, v, xv)
 			if err != nil {
 				shouldRetry = store.isRecoverableWriteError(err)
 				return shouldRetry, err, uint64(0)
@@ -48,14 +48,14 @@ func WriteCasWithXattr(ctx context.Context, store *Collection, k string, xattrKe
 		// Otherwise, replace existing value
 		if v != nil {
 			// Have value and xattr value - update both
-			casOut, err = store.UpdateBodyAndXattr(k, xattrKey, exp, cas, opts, v, xv)
+			casOut, err = store.UpdateBodyAndXattr(ctx, k, xattrKey, exp, cas, opts, v, xv)
 			if err != nil {
 				shouldRetry = store.isRecoverableWriteError(err)
 				return shouldRetry, err, uint64(0)
 			}
 		} else {
 			// Update xattr only
-			casOut, err = store.UpdateXattr(k, xattrKey, exp, cas, xv)
+			casOut, err = store.UpdateXattr(ctx, k, xattrKey, exp, cas, xv)
 			if err != nil {
 				shouldRetry = store.isRecoverableWriteError(err)
 				return shouldRetry, err, uint64(0)
@@ -97,16 +97,16 @@ func UpdateTombstoneXattr(ctx context.Context, store *Collection, k string, xatt
 
 		// If deleteBody == true, remove the body and update xattr
 		if deleteBody {
-			casOut, tombstoneErr = store.UpdateXattrDeleteBody(k, xattrKey, exp, cas, xv)
+			casOut, tombstoneErr = store.UpdateXattrDeleteBody(ctx, k, xattrKey, exp, cas, xv)
 		} else {
 			if cas == 0 {
 				// if cas == 0, create a new server tombstone with xattr
-				casOut, tombstoneErr = store.InsertXattr(k, xattrKey, exp, cas, xv)
+				casOut, tombstoneErr = store.InsertXattr(ctx, k, xattrKey, exp, cas, xv)
 				// If one-step tombstone creation is not supported, set flag for document body removal
 				requiresBodyRemoval = !store.IsSupported(sgbucket.BucketStoreFeatureCreateDeletedWithXattr)
 			} else {
 				// If cas is non-zero, this is an already existing tombstone.  Update xattr only
-				casOut, tombstoneErr = store.UpdateXattr(k, xattrKey, exp, cas, xv)
+				casOut, tombstoneErr = store.UpdateXattr(ctx, k, xattrKey, exp, cas, xv)
 			}
 		}
 
@@ -131,7 +131,7 @@ func UpdateTombstoneXattr(ctx context.Context, store *Collection, k string, xatt
 	if requiresBodyRemoval {
 		worker := func() (shouldRetry bool, err error, value uint64) {
 
-			casOut, removeErr := store.DeleteBody(k, xattrKey, exp, cas)
+			casOut, removeErr := store.DeleteBody(ctx, k, xattrKey, exp, cas)
 			if removeErr != nil {
 				// If there is a cas mismatch the body has since been updated and so we don't need to bother removing
 				// body in this operation
@@ -187,7 +187,7 @@ func WriteUpdateWithXattr(ctx context.Context, store *Collection, k string, xatt
 		} else {
 			// If no existing value has been provided, or on a retry,
 			// retrieve the current value from the bucket
-			cas, err = store.SubdocGetBodyAndXattr(k, xattrKey, userXattrKey, &value, &xattrValue, &userXattrValue)
+			cas, err = store.SubdocGetBodyAndXattr(ctx, k, xattrKey, userXattrKey, &value, &xattrValue, &userXattrValue)
 
 			if err != nil {
 				if pkgerrors.Cause(err) != ErrNotFound {
@@ -348,14 +348,14 @@ func deleteWithXattrInternal(ctx context.Context, store *Collection, k string, x
 	// NOTE: ongoing discussion w/ KV Engine team on whether this should handle cases where the body
 	// doesn't exist (eg, a tombstoned xattr doc) by just ignoring the "delete body" mutation, rather
 	// than current behavior of returning gocb.ErrKeyNotFound
-	mutateErr := store.DeleteBodyAndXattr(k, xattrKey)
+	mutateErr := store.DeleteBodyAndXattr(ctx, k, xattrKey)
 	if IsDocNotFoundError(mutateErr) {
 		// Invoke the testing related callback.  This is a no-op in non-test contexts.
 		if callback != nil {
 			callback(k, xattrKey)
 		}
 		// KeyNotFound indicates there is no doc body.  Try to delete only the xattr.
-		return deleteDocXattrOnly(store, k, xattrKey, callback)
+		return deleteDocXattrOnly(ctx, store, k, xattrKey, callback)
 	} else if IsXattrNotFoundError(mutateErr) {
 		// Invoke the testing related callback.  This is a no-op in non-test contexts.
 		if callback != nil {
@@ -370,12 +370,12 @@ func deleteWithXattrInternal(ctx context.Context, store *Collection, k string, x
 
 }
 
-func deleteDocXattrOnly(store *Collection, k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
+func deleteDocXattrOnly(ctx context.Context, store *Collection, k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
 
 	//  Do get w/ xattr in order to get cas
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	getCas, err := store.SubdocGetBodyAndXattr(k, xattrKey, "", &retrievedVal, &retrievedXattr, nil)
+	getCas, err := store.SubdocGetBodyAndXattr(ctx, k, xattrKey, "", &retrievedVal, &retrievedXattr, nil)
 	if err != nil {
 		return err
 	}

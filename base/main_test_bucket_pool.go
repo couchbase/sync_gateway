@@ -188,7 +188,7 @@ func (tbp *TestBucketPool) checkForViewOpsQueueEmptied(ctx context.Context, buck
 	}
 }
 
-func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Bucket, s BucketSpec, teardown func()) {
+func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Bucket, s BucketSpec, teardown func(context.Context)) {
 	testCtx := TestCtx(t)
 	if !UnitTestUrlIsWalrus() {
 		tbp.Fatalf(testCtx, "nil TestBucketPool, but not using a Walrus test URL")
@@ -248,7 +248,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	bucketSpec := getTestBucketSpec(tbpBucketName(b.GetName()))
 	bucketSpec.Server = url
 
-	return b, bucketSpec, func() {
+	return b, bucketSpec, func(ctx context.Context) {
 		if !bucketClosed.CompareAndSwap(false, true) {
 			tbp.Logf(ctx, "Bucket teardown was already called. Ignoring.")
 			return
@@ -259,7 +259,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 		atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(openedStart).Nanoseconds())
 		tbp.markBucketClosed(t, b)
 		if url == kTestWalrusURL {
-			b.Close()
+			b.Close(ctx)
 		} else {
 			// Persisted buckets should call close and delete
 			closeErr := walrusBucket.CloseAndDelete()
@@ -272,7 +272,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 }
 
 // GetExistingBucket opens a bucket conection to an existing bucket
-func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSpec, teardown func()) {
+func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSpec, teardown func(context.Context)) {
 	ctx := TestCtx(t)
 
 	bucketCluster := initV2Cluster(ctx, UnitTestUrl())
@@ -286,9 +286,9 @@ func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSp
 	}
 	DebugfCtx(ctx, KeySGTest, "opened bucket %s", bucketName)
 
-	return bucketFromSpec, bucketSpec, func() {
+	return bucketFromSpec, bucketSpec, func(ctx context.Context) {
 		tbp.Logf(ctx, "Teardown called - Closing connection to existing bucket")
-		bucketFromSpec.Close()
+		bucketFromSpec.Close(ctx)
 	}
 }
 
@@ -297,7 +297,7 @@ func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSp
 // which closes the bucket, readies it for a new test, and releases back into the pool.
 // persistentBucket flag determines behaviour for walrus buckets only; Couchbase bucket
 // behaviour is defined by the bucket pool readier/init.
-func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, persistentBucket bool) (b Bucket, s BucketSpec, teardownFn func()) {
+func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, persistentBucket bool) (b Bucket, s BucketSpec, teardownFn func(context.Context)) {
 
 	ctx := TestCtx(t)
 
@@ -343,7 +343,7 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, persistentBucket b
 	atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
 	bucketOpenStart := time.Now()
 	bucketClosed := &AtomicBool{}
-	return bucket, getTestBucketSpec(tbpBucketName(bucket.GetName())), func() {
+	return bucket, getTestBucketSpec(tbpBucketName(bucket.GetName())), func(ctx context.Context) {
 		if !bucketClosed.CompareAndSwap(false, true) {
 			tbp.Logf(ctx, "Bucket teardown was already called. Ignoring.")
 			return
@@ -353,7 +353,7 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, persistentBucket b
 		atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
 		atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(bucketOpenStart).Nanoseconds())
 		tbp.markBucketClosed(t, bucket)
-		bucket.Close()
+		bucket.Close(ctx)
 
 		if tbp.preserveBuckets && t.Failed() {
 			tbp.Logf(ctx, "Test using bucket failed. Preserving bucket for later inspection")
@@ -467,7 +467,7 @@ func (tbp *TestBucketPool) createCollections(ctx context.Context, bucket Bucket)
 
 		tbp.Logf(ctx, "Creating new collection: %s.%s", scopeName, collectionName)
 		dataStoreName := ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
-		err := dynamicDataStore.CreateDataStore(dataStoreName)
+		err := dynamicDataStore.CreateDataStore(ctx, dataStoreName)
 		if err != nil {
 			tbp.Fatalf(ctx, "Couldn't create datastore %v.%v: %v", scopeName, collectionName, err)
 		}
@@ -547,7 +547,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, buck
 			tbp.Fatalf(ctx, "Couldn't init %s, got error: %v - Aborting", itemName, err)
 		}
 
-		b.Close()
+		b.Close(ctx)
 		tbp.addBucketToReadierQueue(ctx, tbpBucketName(testBucketName))
 	}
 
@@ -655,7 +655,7 @@ var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Buc
 			return errors.New("N1QLBucketEmptierFunc used with non-N1QL store")
 		}
 
-		if hasPrimary, _, err := getIndexMetaWithoutRetry(n1qlStore, PrimaryIndexName); err != nil {
+		if hasPrimary, _, err := getIndexMetaWithoutRetry(ctx, n1qlStore, PrimaryIndexName); err != nil {
 			return err
 		} else if !hasPrimary {
 			return fmt.Errorf("bucket does not have primary index, so can't empty bucket using N1QL")

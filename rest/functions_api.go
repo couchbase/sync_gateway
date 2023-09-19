@@ -41,7 +41,7 @@ func (h *handler) handleFunctionCall() error {
 	canMutate := h.rq.Method != "GET"
 
 	return db.WithTimeout(h.ctx(), h.db.UserFunctionTimeout, func(ctx context.Context) error {
-		fn, err := h.db.GetUserFunction(fnName, fnParams, canMutate, ctx)
+		fn, err := h.db.GetUserFunction(ctx, fnName, fnParams, canMutate)
 		if err != nil {
 			return err
 		} else if rows, err := fn.Iterate(); err != nil {
@@ -50,7 +50,7 @@ func (h *handler) handleFunctionCall() error {
 			return h.writeQueryRows(rows)
 		} else {
 			// Write the single result to the response:
-			result, err := fn.Run()
+			result, err := fn.Run(ctx)
 			if err == nil {
 				h.writeJSON(result)
 			}
@@ -128,7 +128,7 @@ func (h *handler) writeQueryRows(rows sgbucket.QueryResultIterator) error {
 	}
 	first := true
 	var row interface{}
-	for rows.Next(&row) {
+	for rows.Next(h.ctx(), &row) {
 		if first {
 			first = false
 		} else {
@@ -225,7 +225,7 @@ func (h *handler) handleGraphQL() error {
 	}
 
 	return db.WithTimeout(h.ctx(), h.db.UserFunctionTimeout, func(ctx context.Context) error {
-		result, err := h.db.UserGraphQLQuery(queryString, operationName, variables, canMutate, ctx)
+		result, err := h.db.UserGraphQLQuery(ctx, queryString, operationName, variables, canMutate)
 		if err == nil {
 			h.writeJSON(result)
 		}

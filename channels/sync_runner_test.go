@@ -20,56 +20,60 @@ import (
 )
 
 func TestRequireUser(t *testing.T) {
+	ctx := base.TestCtx(t)
 	const funcSource = `function(doc, oldDoc) { requireUser(oldDoc._names) }`
-	runner, err := NewSyncRunner(base.TestCtx(t), funcSource, 0)
+	runner, err := NewSyncRunner(ctx, funcSource, 0)
 	require.NoError(t, err)
 	var result interface{}
-	result, _ = runner.Call(parse(`{}`), parse(`{"_names": "alpha"}`), emptyMetaMap(), parse(`{"name": "alpha"}`))
+	result, _ = runner.Call(ctx, parse(`{}`), parse(`{"_names": "alpha"}`), emptyMetaMap(), parse(`{"name": "alpha"}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_names": ["beta", "gamma"]}`), emptyMetaMap(), parse(`{"name": "beta"}`))
+	result, _ = runner.Call(ctx, parse(`{}`), parse(`{"_names": ["beta", "gamma"]}`), emptyMetaMap(), parse(`{"name": "beta"}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_names": ["delta"]}`), emptyMetaMap(), parse(`{"name": "beta"}`))
+	result, _ = runner.Call(ctx, parse(`{}`), parse(`{"_names": ["delta"]}`), emptyMetaMap(), parse(`{"name": "beta"}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorWrongUser))
 }
 
 func TestRequireRole(t *testing.T) {
+	ctx := base.TestCtx(t)
 	const funcSource = `function(doc, oldDoc) { requireRole(oldDoc._roles) }`
-	runner, err := NewSyncRunner(base.TestCtx(t), funcSource, 0)
+	runner, err := NewSyncRunner(ctx, funcSource, 0)
 	require.NoError(t, err)
 	var result interface{}
-	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["alpha"]}`), emptyMetaMap(), parse(`{"name": "", "roles": {"alpha":""}}`))
+	result, _ = runner.Call(ctx, parse(`{}`), parse(`{"_roles": ["alpha"]}`), emptyMetaMap(), parse(`{"name": "", "roles": {"alpha":""}}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["beta", "gamma"]}`), emptyMetaMap(), parse(`{"name": "", "roles": {"beta": ""}}`))
+	result, _ = runner.Call(ctx, parse(`{}`), parse(`{"_roles": ["beta", "gamma"]}`), emptyMetaMap(), parse(`{"name": "", "roles": {"beta": ""}}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["delta"]}`), emptyMetaMap(), parse(`{"name": "", "roles": {"beta":""}}`))
+	result, _ = runner.Call(ctx, parse(`{}`), parse(`{"_roles": ["delta"]}`), emptyMetaMap(), parse(`{"name": "", "roles": {"beta":""}}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorMissingRole))
 }
 
 func TestRequireAccess(t *testing.T) {
+	ctx := base.TestCtx(t)
 	const funcSource = `function(doc, oldDoc) { requireAccess(oldDoc._access) }`
-	runner, err := NewSyncRunner(base.TestCtx(t), funcSource, 0)
+	runner, err := NewSyncRunner(ctx, funcSource, 0)
 	require.NoError(t, err)
 	var result interface{}
-	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["alpha"]}`), emptyMetaMap(), parse(`{"name": "", "channels": ["alpha"]}`))
+	result, _ = runner.Call(ctx, parse(`{}`), parse(`{"_access": ["alpha"]}`), emptyMetaMap(), parse(`{"name": "", "channels": ["alpha"]}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["beta", "gamma"]}`), emptyMetaMap(), parse(`{"name": "", "channels": ["beta"]}`))
+	result, _ = runner.Call(ctx, parse(`{}`), parse(`{"_access": ["beta", "gamma"]}`), emptyMetaMap(), parse(`{"name": "", "channels": ["beta"]}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["delta"]}`), emptyMetaMap(), parse(`{"name": "", "channels": ["beta"]}`))
+	result, _ = runner.Call(ctx, parse(`{}`), parse(`{"_access": ["delta"]}`), emptyMetaMap(), parse(`{"name": "", "channels": ["beta"]}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorMissingChannelAccess))
 }
 
 func TestRequireAdmin(t *testing.T) {
+	ctx := base.TestCtx(t)
 	const funcSource = `function(doc, oldDoc) { requireAdmin() }`
-	runner, err := NewSyncRunner(base.TestCtx(t), funcSource, 0)
+	runner, err := NewSyncRunner(ctx, funcSource, 0)
 	require.NoError(t, err)
 	var result interface{}
-	result, _ = runner.Call(parse(`{}`), parse(`{}`), emptyMetaMap(), parse(`{}`))
+	result, _ = runner.Call(ctx, parse(`{}`), parse(`{}`), emptyMetaMap(), parse(`{}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{}`), emptyMetaMap(), parse(`{"name": ""}`))
+	result, _ = runner.Call(ctx, parse(`{}`), parse(`{}`), emptyMetaMap(), parse(`{"name": ""}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorAdminRequired))
-	result, _ = runner.Call(parse(`{}`), parse(`{}`), emptyMetaMap(), parse(`{"name": "GUEST"}`))
+	result, _ = runner.Call(ctx, parse(`{}`), parse(`{}`), emptyMetaMap(), parse(`{"name": "GUEST"}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorAdminRequired))
-	result, _ = runner.Call(parse(`{}`), parse(`{}`), emptyMetaMap(), parse(`{"name": "beta"}`))
+	result, _ = runner.Call(ctx, parse(`{}`), parse(`{}`), emptyMetaMap(), parse(`{"name": "beta"}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorAdminRequired))
 }
 
