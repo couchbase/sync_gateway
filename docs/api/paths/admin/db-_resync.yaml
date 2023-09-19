@@ -61,6 +61,12 @@ post:
       description: '**Use this only when requested to do so by the Couchbase support team** This request will regenerate the sequence numbers for each document processed.'
       schema:
         type: boolean
+    - name: reset
+      in: query
+      description: This forces a fresh resync run instead of trying to resume the previous resync operation
+      schema:
+        type: boolean
+        default: false
   requestBody:
     content:
       application/json:
