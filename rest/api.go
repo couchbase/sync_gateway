@@ -319,6 +319,7 @@ func (h *handler) handlePostResync() error {
 				"database":            h.db,
 				"regenerateSequences": regenerateSequences,
 				"collections":         resyncPostReqBody.Scope,
+				"reset":               h.getBoolQuery("reset"),
 			})
 			if err != nil {
 				return err
