@@ -47,7 +47,7 @@ func initExternalLoggers() {
 
 func updateExternalLoggers() {
 	if consoleLogger != nil && consoleLogger.shouldLog(nil, LevelDebug, KeyWalrus) {
-		rosmar.SetLogLevel(rosmar.LevelTrace)
+		rosmar.SetLogLevel(rosmar.LevelDebug)
 	} else {
 		rosmar.SetLogLevel(rosmar.LevelInfo)
 	}
@@ -250,10 +250,15 @@ func (CBGoUtilsLogger) warnNotImplemented(name string, f func() string) {
 // Log callback for Rosmar
 // **************************************************************************
 func rosmarLogger(level rosmar.LogLevel, fmt string, args ...any) {
+	sgLevel := LogLevel(level)
+	// info logging in Rosmar is extremely verbose (view queried, dcp message sent, etc.) - drop down to debug
+	if level == rosmar.LevelInfo {
+		sgLevel = LevelDebug
+	}
 	key := KeyWalrus
-	if level <= rosmar.LevelWarn {
+	if sgLevel <= LevelWarn {
 		key = KeyAll
 		fmt = "Rosmar: " + fmt
 	}
-	logTo(context.TODO(), LogLevel(level), key, fmt, args...)
+	logTo(context.TODO(), sgLevel, key, fmt, args...)
 }
