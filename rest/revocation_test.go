@@ -2479,7 +2479,7 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// 1. Create user with admin_roles including two roles not previously defined (a1 and a2, for example)
 	res := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_user/bilbo", rt.GetDatabase().Name), GetUserPayload(t, "bilbo", "test", "", collection, []string{"c1"}, []string{"a1", "a2"}))
