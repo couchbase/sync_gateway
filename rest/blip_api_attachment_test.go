@@ -181,7 +181,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 
 // TestBlipProveAttachmentV2 ensures that CBL's proveAttachment for deduplication is working correctly even for v2 attachments which aren't de-duped on the server side.
 func TestBlipProveAttachmentV2(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -243,7 +243,7 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 
 // TestBlipProveAttachmentV2Push ensures that CBL's attachment deduplication is ignored for push replications - resulting in new server-side digests and duplicated attachment data (v2 attachment format).
 func TestBlipProveAttachmentV2Push(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -535,7 +535,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer client1.Close()
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
 
 	attachmentA := []byte("attachmentA")
 	attachmentAData := base64.StdEncoding.EncodeToString(attachmentA)
@@ -577,7 +577,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer client1.Close()
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
 
 	// Create document in the bucket with a legacy attachment
 	docID := "doc"
@@ -629,7 +629,7 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer client1.Close()
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
 
 	// Create document in the bucket with a legacy attachment.  Properties here align with rawDocWithAttachmentAndSyncMeta
 	docID := "doc"
