@@ -1283,6 +1283,18 @@ func TestGet1xRevAndChannels(t *testing.T) {
 	assert.Equal(t, []interface{}{"a", "a"}, revisions[RevisionsIds])
 }
 
+func TestNullDocHandlingForMutable1xBody(t *testing.T) {
+
+	db := setupTestDB(t)
+
+	documentRev := DocumentRevision{DocID: "doc1", BodyBytes: []byte("null")}
+
+	body, err := documentRev.Mutable1xBody(db, nil, nil, false)
+	require.Error(t, err)
+	require.Nil(t, body)
+	assert.Contains(t, err.Error(), "null doc body for doc")
+}
+
 func TestGet1xRevFromDoc(t *testing.T) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
