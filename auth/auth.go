@@ -787,12 +787,12 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) (U
 func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProviders OIDCProviderMap, localJWT LocalJWTProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, PrincipalConfig, error) {
 	token, err := jwt.ParseSigned(rawToken)
 	if err != nil {
-		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error parsing JWT in AuthenticateUntrustedJWT: %v", err)
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error parsing JWT in AuthenticateUntrustedJWT: %v", err)
 		return nil, PrincipalConfig{}, err
 	}
 	issuer, audiences, err := getIssuerWithAudience(token)
 	if err != nil {
-		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error extracting issuer/audiences in AuthenticateUntrustedJWT: %v", err)
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error extracting issuer/audiences in AuthenticateUntrustedJWT: %v", err)
 		return nil, PrincipalConfig{}, err
 	}
 
@@ -820,14 +820,14 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProvide
 		}
 	}
 	if authenticator == nil {
-		base.InfofCtx(auth.LogCtx, base.KeyAuth, "No matching JWT/OIDC provider for issuer %v and audiences %v", base.UD(issuer), base.UD(audiences))
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "No matching JWT/OIDC provider for issuer %v and audiences %v", base.UD(issuer), base.UD(audiences))
 		return nil, PrincipalConfig{}, ErrNoMatchingProvider
 	}
 
 	var identity *Identity
 	identity, err = authenticator.verifyToken(auth.LogCtx, rawToken, callbackURLFunc)
 	if err != nil {
-		base.InfofCtx(auth.LogCtx, base.KeyAuth, "JWT invalid: %v", err)
+		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "JWT invalid: %v", err)
 		return nil, PrincipalConfig{}, base.HTTPErrorf(http.StatusUnauthorized, "Invalid JWT")
 	}
 
