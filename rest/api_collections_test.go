@@ -235,52 +235,37 @@ func TestMultiCollectionDCP(t *testing.T) {
 		t.Skip("Test relies on import - needs xattrs")
 	}
 
-	t.Skip("Skip until CBG-2266 is implemented")
+	const numCollections = 2
+
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	ctx := base.TestCtx(t)
-	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, map[string][]string{
-		"foo": {
-			"bar",
-			"baz",
-		},
-	})
-	require.NoError(t, err)
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				AutoImport: true,
-				Scopes: ScopesConfig{
-					"foo": ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							"bar": {},
-							"baz": {},
-						},
-					},
-				},
-			},
-		},
-	})
+		DatabaseConfig:   &DatabaseConfig{DbConfig: DbConfig{AutoImport: true}},
+	}, numCollections)
 	defer rt.Close()
 
-	underlying, ok := rt.Bucket().DefaultDataStore().(*base.Collection)
-	require.True(t, ok, "rt bucket was not a Collection")
+	colls := rt.GetDbCollections()
+	require.Len(t, colls, numCollections)
 
-	_, err = underlying.Collection.Bucket().Scope("foo").Collection("bar").Insert("testDocBar", map[string]any{"test": true}, nil)
-	require.NoError(t, err)
-	_, err = underlying.Collection.Bucket().Scope("foo").Collection("baz").Insert("testDocBaz", map[string]any{"test": true}, nil)
-	require.NoError(t, err)
+	for _, c := range colls {
+		_, err := c.GetCollectionDatastore().Add(t.Name(), 0, map[string]any{"test": true})
+		require.NoError(t, err)
+	}
 
-	// ensure the doc is picked up by the import DCP feed and actually gets imported
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
+	// ensure the docs are picked up by the import DCP feed and actually gets imported
+	err := rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == numCollections
 	})
 	require.NoError(t, err)
 
-	// TODO(CBG-2329): collection-aware caching
-	// require.NoError(t, rt.WaitForDoc(docID))
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	for _, ks := range rt.GetKeyspaces() {
+		_, err = rt.WaitForChanges(1, fmt.Sprintf("/%s/_changes", ks), "", true)
+		require.NoError(t, err)
+	}
 }
 
 func TestMultiCollectionChannelAccess(t *testing.T) {
