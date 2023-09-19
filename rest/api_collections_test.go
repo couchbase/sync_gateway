@@ -230,19 +230,12 @@ func TestSingleCollectionDCP(t *testing.T) {
 
 func TestMultiCollectionDCP(t *testing.T) {
 	base.TestRequiresCollections(t)
-
-	if !base.TestUseXattrs() {
-		t.Skip("Test relies on import - needs xattrs")
-	}
+	base.SkipImportTestsIfNotEnabled(t)
 
 	const numCollections = 2
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
 	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		DatabaseConfig:   &DatabaseConfig{DbConfig: DbConfig{AutoImport: true}},
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AutoImport: true}},
 	}, numCollections)
 	defer rt.Close()
 
