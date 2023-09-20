@@ -816,7 +816,7 @@ func createConflictingDocOneLeafHasAttachmentBodyMap(t *testing.T, docID string,
       "time_saved": "2021-10-14T16:38:11.359443+01:00"
     }`
 
-	_, err := db.dataStore.WriteWithXattr(base.TestCtx(t), docID, base.SyncXattrName, 0, 0, nil, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
+	_, err := db.dataStore.WriteWithXattr(base.TestCtx(t), docID, base.SyncXattrName, 0, 0, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false, nil)
 	assert.NoError(t, err)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
@@ -865,7 +865,7 @@ func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string,
       "time_saved": "2021-10-21T12:48:39.549095+01:00"
     }`
 
-	_, err := db.dataStore.WriteWithXattr(base.TestCtx(t), docID, base.SyncXattrName, 0, 0, nil, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
+	_, err := db.dataStore.WriteWithXattr(base.TestCtx(t), docID, base.SyncXattrName, 0, 0, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false, nil)
 	assert.NoError(t, err)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)

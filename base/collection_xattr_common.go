@@ -163,7 +163,7 @@ func UpdateTombstoneXattr(ctx context.Context, store *Collection, k string, xatt
 // If previous document is provided, will use it on 1st iteration instead of retrieving from bucket.
 // A zero CAS in `previous` is interpreted as no document existing; this can be used to short-
 // circuit the initial Get when the document is unlikely to already exist.
-func WriteUpdateWithXattr(ctx context.Context, store *Collection, k string, xattrKey string, userXattrKey string, exp uint32, opts *sgbucket.MutateInOptions, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func WriteUpdateWithXattr(ctx context.Context, store *Collection, k string, xattrKey string, userXattrKey string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 
 	var value []byte
 	var xattrValue []byte

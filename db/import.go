@@ -387,7 +387,7 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
 	isDelete := doc.hasFlag(channels.Deleted)
 	deleteBody := isDelete && len(existingDoc.Body) > 0
-	casOut, writeErr := db.dataStore.WriteWithXattr(ctx, docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, opts, value, xattrValue, isDelete, deleteBody)
+	casOut, writeErr := db.dataStore.WriteWithXattr(ctx, docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, value, xattrValue, isDelete, deleteBody, opts)
 	if writeErr == nil {
 		doc.Cas = casOut
 		base.InfofCtx(ctx, base.KeyMigrate, "Successfully migrated doc %q", base.UD(docid))

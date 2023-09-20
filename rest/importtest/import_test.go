@@ -1109,7 +1109,7 @@ func TestCheckForUpgradeOnRead(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	// Create via the SDK with sync metadata intact
-	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, nil, []byte(bodyString), []byte(xattrString))
+	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString), nil)
 	assert.NoError(t, err, "Error writing doc w/ xattr")
 
 	// Attempt to get the documents via Sync Gateway.  Should successfully retrieve doc by triggering
@@ -1186,7 +1186,7 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	// Create via the SDK with sync metadata intact
-	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, nil, []byte(bodyString), []byte(xattrString))
+	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString), nil)
 	assert.NoError(t, err, "Error writing doc w/ xattr")
 	require.NoError(t, rt.WaitForSequence(5))
 
@@ -1255,7 +1255,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	// Create via the SDK with sync metadata intact
-	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, nil, []byte(bodyString), []byte(xattrString))
+	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString), nil)
 	assert.NoError(t, err, "Error writing doc w/ xattr")
 	require.NoError(t, rt.WaitForSequence(1))
 

@@ -1903,7 +1903,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			opts = &sgbucket.MutateInOptions{}
 		}
 		opts.MacroExpansion = macroExpandSpec(base.SyncXattrName)
-		casOut, err = db.dataStore.WriteUpdateWithXattr(ctx, key, base.SyncXattrName, db.userXattrKey(), expiry, opts, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
+		casOut, err = db.dataStore.WriteUpdateWithXattr(ctx, key, base.SyncXattrName, db.userXattrKey(), expiry, existingDoc, opts, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(ctx, docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll); err != nil {
 				return

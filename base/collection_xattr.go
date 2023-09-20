@@ -44,11 +44,11 @@ func (c *Collection) GetSpec() BucketSpec {
 }
 
 // Implementation of the XattrStore interface primarily invokes common wrappers that in turn invoke SDK-specific SubdocXattrStore API
-func (c *Collection) WriteCasWithXattr(ctx context.Context, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
+func (c *Collection) WriteCasWithXattr(ctx context.Context, k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 	return WriteCasWithXattr(ctx, c, k, xattrKey, exp, cas, opts, v, xv)
 }
 
-func (c *Collection) WriteWithXattr(ctx context.Context, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v []byte, xv []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
+func (c *Collection) WriteWithXattr(ctx context.Context, k string, xattrKey string, exp uint32, cas uint64, v []byte, xv []byte, isDelete bool, deleteBody bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
 	return WriteWithXattr(ctx, c, k, xattrKey, exp, cas, opts, v, xv, isDelete, deleteBody)
 }
 
@@ -72,8 +72,8 @@ func (c *Collection) GetWithXattr(ctx context.Context, k string, xattrKey string
 	return c.SubdocGetBodyAndXattr(ctx, k, xattrKey, userXattrKey, rv, xv, uxv)
 }
 
-func (c *Collection) WriteUpdateWithXattr(ctx context.Context, k string, xattrKey string, userXattrKey string, exp uint32, opts *sgbucket.MutateInOptions, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
-	return WriteUpdateWithXattr(ctx, c, k, xattrKey, userXattrKey, exp, opts, previous, callback)
+func (c *Collection) WriteUpdateWithXattr(ctx context.Context, k string, xattrKey string, userXattrKey string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+	return WriteUpdateWithXattr(ctx, c, k, xattrKey, userXattrKey, exp, previous, opts, callback)
 }
 
 func (c *Collection) SetXattr(ctx context.Context, k string, xattrKey string, xv []byte) (casOut uint64, err error) {
@@ -298,7 +298,7 @@ func (c *Collection) InsertXattr(_ context.Context, k string, xattrKey string, e
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
 	}
-	mutateOps = c.appendMacroExpansions(mutateOps, opts)
+	mutateOps = appendMacroExpansions(mutateOps, opts)
 	options := &gocb.MutateInOptions{
 		StoreSemantic: gocb.StoreSemanticsReplace, // set replace here, as we're explicitly setting SubdocDocFlagMkDoc above if tombstone creation is not supported
 		Expiry:        CbsExpiryToDuration(exp),
@@ -322,7 +322,7 @@ func (c *Collection) InsertBodyAndXattr(_ context.Context, k string, xattrKey st
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
 		gocb.ReplaceSpec("", bytesToRawMessage(v), nil),
 	}
-	mutateOps = c.appendMacroExpansions(mutateOps, opts)
+	mutateOps = appendMacroExpansions(mutateOps, opts)
 	options := &gocb.MutateInOptions{
 		Expiry:        CbsExpiryToDuration(exp),
 		StoreSemantic: gocb.StoreSemanticsInsert,
@@ -391,7 +391,7 @@ func (c *Collection) UpdateXattr(_ context.Context, k string, xattrKey string, e
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
 	}
-	mutateOps = c.appendMacroExpansions(mutateOps, opts)
+	mutateOps = appendMacroExpansions(mutateOps, opts)
 
 	options := &gocb.MutateInOptions{
 		Expiry:        CbsExpiryToDuration(exp),
@@ -417,7 +417,7 @@ func (c *Collection) UpdateBodyAndXattr(_ context.Context, k string, xattrKey st
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
 		gocb.ReplaceSpec("", bytesToRawMessage(v), nil),
 	}
-	mutateOps = c.appendMacroExpansions(mutateOps, opts)
+	mutateOps = appendMacroExpansions(mutateOps, opts)
 
 	options := &gocb.MutateInOptions{
 		Expiry:        CbsExpiryToDuration(exp),
@@ -442,7 +442,7 @@ func (c *Collection) UpdateXattrDeleteBody(_ context.Context, k, xattrKey string
 		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
 		gocb.RemoveSpec("", nil),
 	}
-	mutateOps = c.appendMacroExpansions(mutateOps, opts)
+	mutateOps = appendMacroExpansions(mutateOps, opts)
 	options := &gocb.MutateInOptions{
 		StoreSemantic: gocb.StoreSemanticsReplace,
 		Expiry:        CbsExpiryToDuration(exp),
@@ -524,7 +524,7 @@ func (c *Collection) DeleteBody(_ context.Context, k string, xattrKey string, ex
 	mutateOps := []gocb.MutateInSpec{
 		gocb.RemoveSpec("", nil),
 	}
-	mutateOps = c.appendMacroExpansions(mutateOps, opts)
+	mutateOps = appendMacroExpansions(mutateOps, opts)
 	options := &gocb.MutateInOptions{
 		StoreSemantic: gocb.StoreSemanticsReplace,
 		Expiry:        CbsExpiryToDuration(exp),
@@ -616,9 +616,9 @@ func (c *Collection) DeleteUserXattr(k string, xattrKey string) (uint64, error) 
 	return uint64(result.Cas()), nil
 }
 
-// initializeMutateInSpec will append macro expansions defined in MutateInOptions to the provided
+// appendMacroExpansions will append macro expansions defined in MutateInOptions to the provided
 // gocb MutateInSpec.
-func (c *Collection) appendMacroExpansions(mutateInSpec []gocb.MutateInSpec, opts *sgbucket.MutateInOptions) []gocb.MutateInSpec {
+func appendMacroExpansions(mutateInSpec []gocb.MutateInSpec, opts *sgbucket.MutateInOptions) []gocb.MutateInSpec {
 
 	if opts == nil {
 		return mutateInSpec
