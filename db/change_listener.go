@@ -279,19 +279,22 @@ type ChangeWaiter struct {
 	lastCounter               uint64
 	lastTerminateCheckCounter uint64
 	lastUserCount             uint64
+	trackUnusedSequences      bool // track unused sequences in Wait functions
 }
 
-// Creates a new ChangeWaiter that will wait for changes for the given document keys.
-func (listener *changeListener) NewWaiter(keys []string) *ChangeWaiter {
+// NewWaiter a new ChangeWaiter that will wait for changes for the given document keys, and will optionally track unused sequences.
+func (listener *changeListener) NewWaiter(keys []string, trackUnusedSequences bool) *ChangeWaiter {
 	return &ChangeWaiter{
 		listener:                  listener,
 		keys:                      keys,
 		lastCounter:               listener.CurrentCount(keys),
 		lastTerminateCheckCounter: listener.terminateCheckCounter,
+		trackUnusedSequences:      trackUnusedSequences,
 	}
 }
 
-func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.User) *ChangeWaiter {
+// NewWaiterWithChannels creates ChangeWaiter for a given channel and user, and will optionally track unused sequences.
+func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.User, trackUnusedSequences bool) *ChangeWaiter {
 	waitKeys := make([]string, 0, 5)
 	for channel := range chans {
 		waitKeys = append(waitKeys, channel)
@@ -304,7 +307,8 @@ func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.
 		}
 		waitKeys = append(waitKeys, userKeys...)
 	}
-	waiter := listener.NewWaiter(waitKeys)
+	waiter := listener.NewWaiter(waitKeys, trackUnusedSequences)
+
 	waiter.userKeys = userKeys
 	if userKeys != nil {
 		waiter.lastUserCount = listener.CurrentCount(userKeys)
@@ -355,6 +359,9 @@ func (waiter *ChangeWaiter) UpdateChannels(chans channels.TimedSet) {
 	for channel := range chans {
 		updatedKeys = append(updatedKeys, channel)
 	}
+	if waiter.trackUnusedSequences {
+		updatedKeys = append(updatedKeys, unusedSeqKey)
+	}
 	if len(waiter.userKeys) > 0 {
 		updatedKeys = append(updatedKeys, waiter.userKeys...)
 	}
@@ -392,6 +399,8 @@ func (waiter *ChangeWaiter) RefreshUserKeys(user auth.User) {
 	}
 }
 
+// NewUserWaiter creates a change waiter with all keys for the matching user.
 func (db *Database) NewUserWaiter() *ChangeWaiter {
-	return db.mutationListener.NewWaiterWithChannels(base.Set{}, db.User())
+	trackUnusedSequences := false
+	return db.mutationListener.NewWaiterWithChannels(base.Set{}, db.User(), trackUnusedSequences)
 }

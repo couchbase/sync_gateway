@@ -535,12 +535,8 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 
 }
 
-func (db *Database) startChangeWaiter(chans base.Set) *ChangeWaiter {
-	waitChans := chans
-	if db.user != nil {
-		waitChans = db.user.ExpandWildCardChannel(chans)
-	}
-	return db.mutationListener.NewWaiterWithChannels(waitChans, db.user)
+func (db *Database) startChangeWaiter(trackUnusedSequences bool) *ChangeWaiter {
+	return db.mutationListener.NewWaiterWithChannels(base.Set{}, db.user, trackUnusedSequences)
 }
 
 func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, options ChangesOptions) []<-chan *ChangeEntry {
@@ -634,7 +630,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 		// If changes feed requires more than one ChangesLoop iteration, initialize changeWaiter
 		if options.Wait || options.RequestPlusSeq > currentCachedSequence {
-			changeWaiter = db.startChangeWaiter(nil) // Waiter is updated with the actual channel set (post-user reload) at the start of the outer changes loop
+			trackUnusedSequences := options.RequestPlusSeq > 0
+			changeWaiter = db.startChangeWaiter(trackUnusedSequences) // Waiter is updated with the actual channel set (post-user reload) at the start of the outer changes loop
 			userCounter = changeWaiter.CurrentUserCount()
 			// Reload user to pick up user changes that happened between auth and the change waiter
 			// initialization.  Without this, notification for user doc changes in that window (a) won't be
@@ -1040,7 +1037,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 		}
 	}()
-
 	return output, nil
 }
 
