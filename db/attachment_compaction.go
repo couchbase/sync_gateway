@@ -49,13 +49,9 @@ func processAttachmentCompactMarkCallback(ctx context.Context, dataStore base.Da
 	// We will build up a list of attachment names which map to attachment doc IDs. Avoids doing multiple KV ops
 	// when marking if multiple leaves are referencing the same attachment.
 	attachmentKeys := make(map[string]string)
-	attachmentData, err := getAttachmentSyncData(event.DataType, event.Value)
+	attachmentData, err := getAttachmentSyncData(ctx, docID, event.DataType, event.Value, compactionLoggingID)
 	if err != nil {
-		if errors.Is(err, base.ErrXattrInvalidLen) {
-			base.WarnfCtx(ctx, "[%s] Unexpected error occurred attempting to parse %s attachment xattr: %v", compactionLoggingID, base.UD(docID), err)
-		} else {
-			return base.RedactErrorf("[%s] Failed to obtain required sync data from doc %s from feed. Err: %w", compactionID, base.UD(docID), err)
-		}
+		return base.RedactErrorf("[%s] Failed to obtain required sync data from doc %s from feed. Err: %w", compactionID, base.UD(docID), err)
 	}
 
 	// Its possible a doc doesn't have sync data. If not a sync gateway doc we can skip it.
@@ -297,7 +293,7 @@ type AttachmentCompactionData struct {
 
 // getAttachmentSyncData takes the data type and data from the DCP feed and will return a AttachmentCompactionData
 // struct containing data needed to process attachments on a document.
-func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionData, error) {
+func getAttachmentSyncData(ctx context.Context, docID string, dataType uint8, data []byte, compactionLoggingID string) (*AttachmentCompactionData, error) {
 	var attachmentData *AttachmentCompactionData
 	var documentBody []byte
 
@@ -305,6 +301,9 @@ func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionDa
 		body, xattr, _, err := parseXattrStreamData(base.SyncXattrName, "", data)
 		if err != nil {
 			if errors.Is(err, base.ErrXattrNotFound) {
+				return nil, nil
+			} else if errors.Is(err, base.ErrXattrInvalidLen) {
+				base.WarnfCtx(ctx, "[%s] Unexpected error occurred attempting to parse %s attachment xattr: %v", compactionLoggingID, base.UD(docID), err)
 				return nil, nil
 			}
 			return nil, err
@@ -405,6 +404,7 @@ func processAttachmentCompactSweepCallback(ctx context.Context, dataStore base.D
 				base.WarnfCtx(ctx, "[%s] Unexpected error occurred attempting to parse %s attachment xattr: %v", compactionLoggingID, base.UD(event.Key), err)
 				return
 			} else if !errors.Is(err, base.ErrXattrNotFound) {
+				// don't log if xattr not found, look for inline
 				base.WarnfCtx(ctx, "[%s] Unexpected error occurred attempting to parse %s attachment xattr: %v", compactionLoggingID, base.UD(event.Key), err)
 				return
 			}
