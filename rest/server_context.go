@@ -910,12 +910,16 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 	if err != nil {
 		base.ErrorfCtx(ctx, "Error starting online processes after async initialization: %v", err)
 		atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
+		return
+	}
+
+	if !atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOnline) {
+		// 2nd atomic might end up being Starting here if there's a legitimate race, but it's the most we can do for CAS
+		base.PanicfCtx(ctx, "database state wasn't Starting during asyncDatabaseOnline Online transition... now %q", db.RunStateString[atomic.LoadUint32(&dbc.State)])
 	}
 
 	stateChangeMsg := "DB loaded from config"
-	atomic.StoreUint32(&dbc.State, db.DBOnline)
 	_ = dbc.EventMgr.RaiseDBStateChangeEvent(ctx, dbc.Name, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
-
 }
 
 func (sc *ServerContext) GetDbVersion(dbName string) string {

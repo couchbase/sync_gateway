@@ -14,7 +14,9 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -214,4 +216,39 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 		RequireStatus(t, resp, http.StatusNotFound)
 	})
 
+}
+
+// Ensures that a database remains offline when using async online with an invalid config that causes StartOnlineProcesses to fail.
+func TestPersistentDbConfigAsyncOnlineWithInvalidConfig(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.StartOffline = base.BoolPtr(true)
+	resp := rt.CreateDatabase("db", dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// create invalid user to cause asyncDatabaseOnline -> StartOnlineProcesses error
+	rt.GetDatabase().Options.ConfigPrincipals.Users = map[string]*auth.PrincipalConfig{
+		"alice": {
+			JWTChannels: base.SetOf("asdf"),
+		},
+	}
+
+	// simulate regular startup
+	atomic.StoreUint32(&rt.GetDatabase().State, db.DBStarting)
+	err := rt.WaitForDBState(db.RunStateString[db.DBStarting])
+	require.NoError(t, err)
+
+	// Can't trigger error case from REST API - requires incompatible or difficult to test configurations (persistent config, offline, active async init)
+	rt.ServerContext().asyncDatabaseOnline(base.NewNonCancelCtx(), rt.GetDatabase(), nil, rt.ServerContext().GetDbVersion("db"))
+
+	// Error should cause db to stay offline - originally a bug caused it to go offline then back to online.
+	// Since we're not running asyncDatabaseOnline inside a goroutine, we don't see the Starting->Offline->Online transition, only the final state
+	err = rt.WaitForDBState(db.RunStateString[db.DBOffline])
+	require.NoError(t, err)
 }
