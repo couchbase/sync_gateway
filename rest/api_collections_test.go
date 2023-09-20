@@ -741,6 +741,46 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	)
 }
 
+func TestCollectionsAddNamedCollectionToImplicitDefaultScope(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 1)
+	defer rt.Close()
+
+	const dbName = "db"
+
+	// implicit default scope/collection
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = nil
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	expectedKeyspaces := []string{
+		dbName,
+	}
+	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
+
+	newCollection := base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: t.Name()}
+	require.NoError(t, rt.TestBucket.CreateDataStore(base.TestCtx(t), newCollection))
+	defer func() {
+		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
+	}()
+
+	resp = rt.UpsertDbConfig(dbName, DbConfig{Scopes: ScopesConfig{
+		base.DefaultScope: {Collections: CollectionsConfig{
+			base.DefaultCollection:         {},
+			newCollection.CollectionName(): {},
+		}},
+	}})
+	RequireStatus(t, resp, http.StatusCreated)
+
+	expectedKeyspaces = []string{
+		dbName,
+		fmt.Sprintf("%s.%s.%s", dbName, newCollection.ScopeName(), newCollection.CollectionName()),
+	}
+	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
+}
+
 // TestCollecitonStats ensures that stats are specific to each collection.
 func TestCollectionStats(t *testing.T) {
 	base.TestRequiresCollections(t)
