@@ -615,7 +615,7 @@ func (dbConfig *DbConfig) validateConfigUpdate(ctx context.Context, old DbConfig
 func (dbConfig *DbConfig) validateChanges(ctx context.Context, old DbConfig) error {
 	// allow switching from implicit `_default` to explicit `_default` scope
 	_, newIsDefaultScope := dbConfig.Scopes[base.DefaultScope]
-	if old.Scopes == nil && newIsDefaultScope {
+	if old.Scopes == nil && len(dbConfig.Scopes) == 1 && newIsDefaultScope {
 		return nil
 	}
 	// early exit
