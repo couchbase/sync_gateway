@@ -339,6 +339,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	}
 
 	for _, dataStoreName := range dataStores {
+		ctx := base.KeyspaceLogCtx(ctx, b.GetName(), dataStoreName.ScopeName(), dataStoreName.CollectionName())
 		dataStore, err := b.NamedDataStore(dataStoreName)
 		if err != nil {
 			return err
