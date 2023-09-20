@@ -143,21 +143,21 @@ func bucketNameCtx(parent context.Context, bucketName string) context.Context {
 	return LogContextWith(parent, &newCtx)
 }
 
-// CollectionCtx extends the parent context with a collection name.
+// CollectionCtx extends the parent context with a collection name. Used when bucket and scope are implicit (e.g. in the context of a SG database)
 func CollectionLogCtx(parent context.Context, collectionName string) context.Context {
 	newCtx := getLogCtx(parent)
 	newCtx.Collection = collectionName
 	return LogContextWith(parent, &newCtx)
 }
 
-// CorrelationIDCtx extends the parent context with a collection name.
+// CorrelationIDCtx extends the parent context with a correlation ID (HTTP request ID, BLIP context ID, etc.)
 func CorrelationIDLogCtx(parent context.Context, correlationID string) context.Context {
 	newCtx := getLogCtx(parent)
 	newCtx.CorrelationID = correlationID
 	return LogContextWith(parent, &newCtx)
 }
 
-// DatabaseLogCtx extends the parent context with a database.
+// DatabaseLogCtx extends the parent context with a database name.
 func DatabaseLogCtx(parent context.Context, databaseName string, config *DbConsoleLogConfig) context.Context {
 	newCtx := getLogCtx(parent)
 	newCtx.Database = databaseName
@@ -165,7 +165,7 @@ func DatabaseLogCtx(parent context.Context, databaseName string, config *DbConso
 	return LogContextWith(parent, &newCtx)
 }
 
-// KeyspaceLogCtx extends the parent context with a bucket name.
+// KeyspaceLogCtx extends the parent context with a fully qualified keyspace (bucket.scope.collection)
 func KeyspaceLogCtx(parent context.Context, bucketName, scopeName, collectionName string) context.Context {
 	newCtx := getLogCtx(parent)
 	newCtx.Bucket = bucketName
