@@ -108,7 +108,7 @@ type handler struct {
 	rqCtx                 context.Context
 }
 
-type authScopeFunc func(ctx context.Context, bodyJSON []byte) (string, error)
+type authScopeFunc func(context.Context, *handler) (string, error)
 
 type handlerPrivs int
 
@@ -271,6 +271,8 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 // validateAndWriteHeaders sets up handler.db and validates the permission of the user and returns an error if there is not permission.
 func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
+	ctx := h.ctx()
+
 	var isRequestLogged bool
 	defer func() {
 		if !isRequestLogged {
@@ -356,7 +358,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 					}
 				}
 				var dbConfigFound bool
-				dbContext, dbConfigFound, err = h.server.GetInactiveDatabase(h.ctx(), keyspaceDb)
+				dbContext, dbConfigFound, err = h.server.GetInactiveDatabase(ctx, keyspaceDb)
 				if err != nil {
 					if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
 						if shouldCheckAdminAuth && (!h.allowNilDBContext || !dbConfigFound) {
@@ -370,10 +372,10 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 						}
 					}
 					if !h.allowNilDBContext || !dbConfigFound {
-						base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
+						base.InfofCtx(ctx, base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 						return err
 					}
-					bucketName, _ = h.server.bucketNameFromDbName(h.ctx(), keyspaceDb)
+					bucketName, _ = h.server.bucketNameFromDbName(ctx, keyspaceDb)
 				}
 			} else {
 				return err
@@ -434,14 +436,14 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	// Note: checkAuth already does this check if the user authenticates with a bearer token, but we still need to recheck
 	// for users using session tokens / basic auth. However, updatePrincipal will be idempotent.
 	if h.user != nil && h.user.JWTIssuer() != "" {
-		updates := checkJWTIssuerStillValid(h.ctx(), dbContext, h.user)
+		updates := checkJWTIssuerStillValid(ctx, dbContext, h.user)
 		if updates != nil {
-			_, err := dbContext.UpdatePrincipal(h.ctx(), updates, true, true)
+			_, err := dbContext.UpdatePrincipal(ctx, updates, true, true)
 			if err != nil {
 				return fmt.Errorf("failed to revoke stale OIDC roles/channels: %w", err)
 			}
 			// TODO: could avoid this extra fetch if UpdatePrincipal returned the new principal
-			h.user, err = dbContext.Authenticator(h.ctx()).GetUser(*updates.Name)
+			h.user, err = dbContext.Authenticator(ctx).GetUser(*updates.Name)
 			if err != nil {
 				return err
 			}
@@ -469,27 +471,18 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 		var err error
 		if dbContext != nil {
-			managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient(h.ctx())
+			managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient(ctx)
 			authScope = dbContext.Bucket.GetName()
 		} else {
 			managementEndpoints, httpClient, err = h.server.ObtainManagementEndpointsAndHTTPClient()
 			authScope = bucketName
 		}
 		if err != nil {
-			base.WarnfCtx(h.ctx(), "An error occurred whilst obtaining management endpoints: %v", err)
+			base.WarnfCtx(ctx, "An error occurred whilst obtaining management endpoints: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
 		if h.authScopeFunc != nil {
-			body, err := h.readBody()
-			if err != nil {
-				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
-			}
-			// mark the body as read so we won't count bytes twice
-			h.requestBody.bodyRead = true
-			// The above readBody() will end up clearing the body which the later handler will require. Re-populate this
-			// for the later handler.
-			h.requestBody.reader = io.NopCloser(bytes.NewReader(body))
-			authScope, err = h.authScopeFunc(h.ctx(), body)
+			authScope, err = h.authScopeFunc(ctx, h)
 			if err != nil {
 				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
 			}
@@ -498,16 +491,16 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			}
 		}
 
-		permissions, statusCode, err := checkAdminAuth(h.ctx(), authScope, username, password, h.rq.Method, httpClient,
+		permissions, statusCode, err := checkAdminAuth(ctx, authScope, username, password, h.rq.Method, httpClient,
 			managementEndpoints, *h.server.Config.API.EnableAdminAuthenticationPermissionsCheck, accessPermissions,
 			responsePermissions)
 		if err != nil {
-			base.WarnfCtx(h.ctx(), "An error occurred whilst checking whether a user was authorized: %v", err)
+			base.WarnfCtx(ctx, "An error occurred whilst checking whether a user was authorized: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
 
 		if statusCode != http.StatusOK {
-			base.InfofCtx(h.ctx(), base.KeyAuth, "%s: User %s failed to auth as an admin statusCode: %d", h.formatSerialNumber(), base.UD(username), statusCode)
+			base.InfofCtx(ctx, base.KeyAuth, "%s: User %s failed to auth as an admin statusCode: %d", h.formatSerialNumber(), base.UD(username), statusCode)
 			if statusCode == http.StatusUnauthorized {
 				return ErrInvalidLogin
 			}
@@ -517,7 +510,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
 
-		base.DebugfCtx(h.ctx(), base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
+		base.DebugfCtx(ctx, base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
 	} else {
 		// If admin auth is not enabled we should set any responsePermissions to true so that any handlers checking for
 		// these still pass
