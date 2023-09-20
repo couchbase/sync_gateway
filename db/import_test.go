@@ -188,7 +188,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			assertXattrSyncMetaRevGeneration(t, collection.dataStore, key, testCase.expectedGeneration)
 
 			// Verify the expiry has been preserved after the import
-			expiry, err = collection.dataStore.GetExpiry(key)
+			expiry, err = collection.dataStore.GetExpiry(ctx, key)
 			require.NoError(t, err, "Error calling GetExpiry()")
 			updatedExpiryDuration := base.CbsExpiryToDuration(expiry)
 			assert.True(t, updatedExpiryDuration > expiryDuration)
@@ -288,8 +288,8 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			}`
 
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
-			cas, _ := collection.dataStore.GetWithXattr(key, base.SyncXattrName, "", &body, &xattr, nil)
-			_, err := collection.dataStore.WriteCasWithXattr(key, base.SyncXattrName, 0, cas, nil, []byte(valStr), []byte(xattrStr))
+			cas, _ := collection.dataStore.GetWithXattr(ctx, key, base.SyncXattrName, "", &body, &xattr, nil)
+			_, err := collection.dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, cas, nil, []byte(valStr), []byte(xattrStr))
 			assert.NoError(t, err)
 		}
 	}
@@ -340,7 +340,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			var bodyOut map[string]interface{}
 			var xattrOut map[string]interface{}
 
-			_, err = collection.dataStore.GetWithXattr(testcase.docname, base.SyncXattrName, "", &bodyOut, &xattrOut, nil)
+			_, err = collection.dataStore.GetWithXattr(ctx, testcase.docname, base.SyncXattrName, "", &bodyOut, &xattrOut, nil)
 			assert.NoError(t, err)
 
 			assert.Equal(t, "2-abc", xattrOut["rev"])
@@ -425,7 +425,7 @@ func TestImportNullDocRaw(t *testing.T) {
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
 	xattr := map[string]interface{}{}
-	_, err := dataStore.GetWithXattr(key, base.SyncXattrName, "", nil, &xattr, nil)
+	_, err := dataStore.GetWithXattr(base.TestCtx(t), key, base.SyncXattrName, "", nil, &xattr, nil)
 	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
 	assert.True(t, ok)
@@ -524,7 +524,7 @@ func TestImportStampClusterUUID(t *testing.T) {
 	}
 
 	var xattr map[string]string
-	_, err = collection.dataStore.GetWithXattr(key, base.SyncXattrName, "", &body, &xattr, nil)
+	_, err = collection.dataStore.GetWithXattr(ctx, key, base.SyncXattrName, "", &body, &xattr, nil)
 	require.NoError(t, err)
 	require.Equal(t, 32, len(xattr["cluster_uuid"]))
 }
@@ -561,7 +561,7 @@ func TestImportNonZeroStart(t *testing.T) {
 func TestImportInvalidMetadata(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(base.TestCtx(t))
 
 	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
 	defer db.Close(ctx)

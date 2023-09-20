@@ -84,7 +84,7 @@ func (fn *n1qlInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 	return iter, db.CheckTimeout(fn.ctx)
 }
 
-func (fn *n1qlInvocation) Run() (any, error) {
+func (fn *n1qlInvocation) Run(ctx context.Context) (any, error) {
 	rows, err := fn.Iterate()
 	if err != nil {
 		return nil, err
@@ -96,7 +96,7 @@ func (fn *n1qlInvocation) Run() (any, error) {
 	}()
 	result := []any{}
 	var row any
-	for rows.Next(&row) {
+	for rows.Next(ctx, &row) {
 		result = append(result, row)
 	}
 	err = rows.Close()
@@ -104,13 +104,13 @@ func (fn *n1qlInvocation) Run() (any, error) {
 	return result, err
 }
 
-func (fn *n1qlInvocation) Resolve(params graphql.ResolveParams) (any, error) {
+func (fn *n1qlInvocation) Resolve(ctx context.Context, params graphql.ResolveParams) (any, error) {
 	fn.n1qlArgs = map[string]any{
 		"parent": params.Source,
 		"info":   resolverInfo(params),
 	}
 	// Run the query:
-	result, err := fn.Run()
+	result, err := fn.Run(ctx)
 	if err != nil {
 		return nil, err
 	}

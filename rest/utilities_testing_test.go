@@ -260,8 +260,9 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 		})
 	}
 	base.RequireNumTestBuckets(t, 2)
+	ctx := base.TestCtx(t)
 	bucket2 := base.GetPersistentTestBucket(t)
-	defer bucket2.Close()
+	defer bucket2.Close(ctx)
 	dbConfig = DbConfig{
 		Scopes: GetCollectionsConfigWithSyncFn(rt.TB, bucket2, nil, numCollections),
 		BucketConfig: BucketConfig{

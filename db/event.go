@@ -157,17 +157,15 @@ func NewJSEventFunction(ctx context.Context, fnSource string) *JSEventFunction {
 
 	base.InfofCtx(ctx, base.KeyEvents, "Creating new JSEventFunction")
 	return &JSEventFunction{
-		JSServer: sgbucket.NewJSServer(fnSource, 0, kTaskCacheSize,
-			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
+		JSServer: sgbucket.NewJSServer(ctx, fnSource, 0, kTaskCacheSize,
+			func(ctx context.Context, fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
 				return newJsEventTask(ctx, fnSource)
 			}),
 	}
 }
 
 // Calls a jsEventFunction returning an interface{}
-func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
-
-	ctx := context.TODO() // fix in sg-bucket
+func (ef *JSEventFunction) CallFunction(ctx context.Context, event Event) (interface{}, error) {
 
 	var err error
 	var result interface{}
@@ -176,9 +174,9 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	switch event := event.(type) {
 
 	case *DocumentChangeEvent:
-		result, err = ef.Call(sgbucket.JSONString(event.DocBytes), sgbucket.JSONString(event.OldDoc))
+		result, err = ef.Call(ctx, sgbucket.JSONString(event.DocBytes), sgbucket.JSONString(event.OldDoc))
 	case *DBStateChangeEvent:
-		result, err = ef.Call(event.Doc)
+		result, err = ef.Call(ctx, event.Doc)
 	default:
 		base.WarnfCtx(ctx, "unknown event %v tried to call function", event.EventType())
 		return "", fmt.Errorf("unknown event %v tried to call function", event.EventType())
@@ -193,9 +191,9 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 }
 
 // Calls a jsEventFunction returning bool.
-func (ef *JSEventFunction) CallValidateFunction(event Event) (bool, error) {
+func (ef *JSEventFunction) CallValidateFunction(ctx context.Context, event Event) (bool, error) {
 
-	result, err := ef.CallFunction(event)
+	result, err := ef.CallFunction(ctx, event)
 	if err != nil {
 		return false, err
 	}
@@ -210,7 +208,7 @@ func (ef *JSEventFunction) CallValidateFunction(event Event) (bool, error) {
 		}
 		return boolResult, nil
 	default:
-		base.WarnfCtx(context.TODO(), "Event validate function returned non-boolean result %T %v", result, result)
+		base.WarnfCtx(ctx, "Event validate function returned non-boolean result %T %v", result, result)
 		return false, errors.New("Validate function returned non-boolean value.")
 	}
 

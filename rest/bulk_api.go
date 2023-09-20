@@ -236,7 +236,7 @@ func (h *handler) handleDump() error {
 	if !ok {
 		return base.HTTPErrorf(http.StatusInternalServerError, "bucket does not support views")
 	}
-	result, err := vs.View(db.DesignDocSyncGateway(), viewName, opts)
+	result, err := vs.View(h.ctx(), db.DesignDocSyncGateway(), viewName, opts)
 	if err != nil {
 		return err
 	}

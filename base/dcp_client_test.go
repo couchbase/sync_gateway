@@ -32,8 +32,9 @@ func TestOneShotDCP(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -115,8 +116,9 @@ func TestTerminateDCPFeed(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -203,8 +205,9 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(fmt.Sprintf("metadata mismatch start at %d", test.startSeqNo), func(t *testing.T) {
 
+			ctx := TestCtx(t)
 			bucket := GetTestBucket(t)
-			defer bucket.Close()
+			defer bucket.Close(ctx)
 
 			dataStore := bucket.GetSingleDataStore()
 
@@ -245,7 +248,6 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 			}
 
-			ctx := TestCtx(t)
 			gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 			require.NoError(t, err)
 			dcpClient, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
@@ -333,8 +335,9 @@ func TestContinuousDCPRollback(t *testing.T) {
 	var vbUUID gocbcore.VbUUID = 1234
 	c := make(chan bool)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	// create callback
@@ -372,7 +375,6 @@ func TestContinuousDCPRollback(t *testing.T) {
 	// timeout for feed to complete
 	timeout := time.After(20 * time.Second)
 
-	ctx := TestCtx(t)
 	dcpClient, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
@@ -450,8 +452,9 @@ func TestResumeStoppedFeed(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyAll)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -499,7 +502,6 @@ func TestResumeStoppedFeed(t *testing.T) {
 		CheckpointPrefix:           DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
 
-	ctx := TestCtx(t)
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 	require.NoError(t, err)
 
@@ -565,8 +567,9 @@ func TestBadAgentPriority(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server, since DCPClient requires a base.Collection")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	feedID := "fakeID"
 	panicCallback := func(event sgbucket.FeedEvent) bool {
@@ -591,8 +594,9 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 		t.Skip("This test requires DCP feed from gocb and therefore Couchbase Sever")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	// create callback
 	callback := func(event sgbucket.FeedEvent) bool {
@@ -612,7 +616,6 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 	// timeout for feed to complete
 	timeout := time.After(20 * time.Second)
 
-	ctx := TestCtx(t)
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket)
 	require.NoError(t, err)
 
