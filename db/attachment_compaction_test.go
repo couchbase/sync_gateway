@@ -1076,6 +1076,7 @@ func TestProcessAttachmentCompactMarkCallback(t *testing.T) {
 	compactionLoggingID := "compactionLoggingID"
 	purgedAttachmentCount := &base.AtomicInt{}
 	err := processAttachmentCompactMarkCallback(ctx, db.Bucket.DefaultDataStore(), compactionID, compactionLoggingID, purgedAttachmentCount, docFeedEventWithInvalidXattrLen())
+	// this should warn but not error
 	require.NoError(t, err)
 }
 
