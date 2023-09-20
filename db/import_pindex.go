@@ -56,7 +56,7 @@ func getListenerImportDest(ctx context.Context, indexParams string) (cbgt.Dest, 
 		return nil, fmt.Errorf("error unmarshalling dbname from cbgt index params: %w", err)
 	}
 
-	base.DebugfCtx(ctx, base.KeyDCP, "Fetching listener import dest for %v", base.MD(sgIndexParams.DestKey))
+	base.DebugfCtx(ctx, base.KeyImport, "Fetching listener import dest for %v", base.MD(sgIndexParams.DestKey))
 	destFactory, fetchErr := base.FetchDestFactory(sgIndexParams.DestKey)
 	if fetchErr != nil {
 		return nil, fmt.Errorf("error retrieving listener for indexParams %v: %v", indexParams, fetchErr)

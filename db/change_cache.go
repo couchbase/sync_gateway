@@ -499,9 +499,9 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// If latency is larger than 1 minute or is negative there is likely an issue and this should be clear to the user
 	if millisecondLatency >= 60*1000 {
-		base.InfofCtx(ctx, base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
+		base.InfofCtx(ctx, base.KeyChanges, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
 	} else {
-		base.DebugfCtx(ctx, base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
+		base.DebugfCtx(ctx, base.KeyChanges, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
 	}
 
 	changedChannels := c.processEntry(ctx, change)
@@ -619,7 +619,7 @@ func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, doc
 		change.DocID = "_role/" + princ.Name
 	}
 
-	base.InfofCtx(ctx, base.KeyDCP, "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
+	base.InfofCtx(ctx, base.KeyChanges, "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
 
 	changedChannels := c.processEntry(ctx, change)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
@@ -725,8 +725,8 @@ func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) []chann
 	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
 	// the change's active channels, as well as any channel removals for the active revision.
 	updatedChannels := c.channelCache.AddToCache(ctx, change)
-	if base.LogDebugEnabled(base.KeyDCP) {
-		base.DebugfCtx(ctx, base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
+	if base.LogDebugEnabled(base.KeyChanges) {
+		base.DebugfCtx(ctx, base.KeyChanges, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
 	}
 
 	if !change.TimeReceived.IsZero() {

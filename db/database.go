@@ -2214,7 +2214,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		db.Options.CacheOptions,
 		db.MetadataKeys,
 	); err != nil {
-		base.DebugfCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)
+		base.DebugfCtx(ctx, base.KeyCache, "Error initializing the change cache", err)
 		return err
 	}
 
