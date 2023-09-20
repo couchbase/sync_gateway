@@ -18,6 +18,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TODO: Could consider checking this in as a file and include it into the compiled test binary using something like https://github.com/jteeuwen/go-bindata
@@ -290,4 +291,14 @@ func TestGetDeepMutableBody(t *testing.T) {
 			assert.Equal(t, *test.expected, body)
 		})
 	}
+}
+
+func TestUnmarshalDocumentSyncDataFromFeedwithInvalidXattr(t *testing.T) {
+	// attachmentFeedEventWithInvalidXattrLen return an invalid document with name of attachment. It has DataType of xattrs but doesn't have correct xattr bytes.
+	result, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed([]byte("abcde"), base.MemcachedDataTypeXattr, "", false)
+	require.ErrorIs(t, err, base.ErrXattrInvalidLen)
+	require.Nil(t, result)
+	require.Nil(t, rawBody)
+	require.Nil(t, rawXattr)
+	require.Nil(t, rawUserXattr)
 }

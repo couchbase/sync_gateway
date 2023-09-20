@@ -2255,3 +2255,12 @@ func BenchmarkDocChanged(b *testing.B) {
 		})
 	}
 }
+
+func TestInvalidXattrStream(t *testing.T) {
+
+	body, xattr, userXattr, err := parseXattrStreamData(base.SyncXattrName, "", []byte("abcde"))
+	require.Error(t, err)
+	require.Nil(t, body)
+	require.Nil(t, xattr)
+	require.Nil(t, userXattr)
+}

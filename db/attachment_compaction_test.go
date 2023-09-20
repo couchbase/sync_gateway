@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/couchbase/gocbcore/v10"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1036,4 +1037,53 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	require.Equal(t, count, stat.Value())
 	require.False(t, count == docsToCreate && stat.Value() == docsToCreate,
 		"Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
+}
+
+// attachmentFeedEventWithInvalidXattrLen return an invalid document with name of attachment. It has DataType of xattrs but doesn't have correct xattr bytes.
+func attachmentFeedEventWithInvalidXattrLen() sgbucket.FeedEvent {
+	return sgbucket.FeedEvent{
+		Key:      []byte(base.AttPrefix + "testDocID"),
+		DataType: base.MemcachedDataTypeXattr,
+		Value:    []byte(`{"foo": "bar"}`),
+	}
+}
+
+// docFeedEventWithInvalidXattrLen returns an invalid document. It has DataType of xattrs but doesn't have correct xattr bytes.
+func docFeedEventWithInvalidXattrLen() sgbucket.FeedEvent {
+	return sgbucket.FeedEvent{
+		Key:      []byte("testDocID"),
+		DataType: base.MemcachedDataTypeXattr,
+		Value:    []byte(`{"foo": "bar"}`),
+	}
+}
+
+func TestProcessAttachmentCompactSweepCallback(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	compactionID := "compactionID"
+	compactionLoggingID := "compactionLoggingID"
+	purgedAttachmentCount := &base.AtomicInt{}
+	dryRun := false
+	processAttachmentCompactSweepCallback(ctx, db.Bucket.DefaultDataStore(), db, compactionID, compactionLoggingID, dryRun, purgedAttachmentCount, attachmentFeedEventWithInvalidXattrLen())
+}
+
+func TestProcessAttachmentCompactMarkCallback(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	compactionID := "compactionID"
+	compactionLoggingID := "compactionLoggingID"
+	purgedAttachmentCount := &base.AtomicInt{}
+	err := processAttachmentCompactMarkCallback(ctx, db.Bucket.DefaultDataStore(), compactionID, compactionLoggingID, purgedAttachmentCount, docFeedEventWithInvalidXattrLen())
+	require.NoError(t, err)
+}
+
+func TestProcessAttachmentCleanupCallback(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	compactionID := "compactionID"
+	compactionLoggingID := "compactionLoggingID"
+	processAttachmentCleanupCallback(ctx, db.Bucket.DefaultDataStore(), compactionID, compactionLoggingID, attachmentFeedEventWithInvalidXattrLen())
 }
