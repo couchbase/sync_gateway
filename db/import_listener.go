@@ -102,7 +102,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	base.StoreDestFactory(il.loggingCtx, il.importDestKey, il.NewImportDest)
 
 	// Start DCP mutation feed
-	base.InfofCtx(il.loggingCtx, base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(il.bucket.GetName()))
+	base.InfofCtx(il.loggingCtx, base.KeyImport, "Starting DCP import feed for bucket: %q ", base.UD(il.bucket.GetName()))
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
 	cbStore, ok := base.AsCouchbaseBucketStore(il.bucket)
