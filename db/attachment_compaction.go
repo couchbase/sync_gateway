@@ -277,8 +277,6 @@ func processAttachmentCleanupCallback(ctx context.Context, dataStore base.DataSt
 			return
 		}
 	}
-
-	return
 }
 
 // AttachmentsMetaMap struct is a very minimal struct to unmarshal into when getting attachments from bodies
@@ -448,7 +446,6 @@ func processAttachmentCompactSweepCallback(ctx context.Context, dataStore base.D
 	}
 
 	purgedAttachmentCount.Add(1)
-	return
 }
 
 func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, vbUUIDs []uint64, dryRun bool, terminator *base.SafeTerminator, purgedAttachmentCount *base.AtomicInt) (int64, error) {
