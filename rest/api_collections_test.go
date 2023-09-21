@@ -10,8 +10,10 @@ package rest
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -781,7 +783,12 @@ func TestCollectionsAddNamedCollectionToImplicitDefaultScope(t *testing.T) {
 	newCollection := base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: t.Name()}
 	require.NoError(t, rt.TestBucket.CreateDataStore(newCollection))
 	defer func() {
-		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
+		err := rt.TestBucket.DropDataStore(newCollection)
+		// Walrus doesn't write to disk if it has had no documents - ignore this error
+		// Not a problem in Rosmar or Couchbase Server...
+		if !errors.Is(err, os.ErrNotExist) {
+			assert.NoError(t, err)
+		}
 	}()
 
 	resp = rt.UpsertDbConfig(dbName, DbConfig{Scopes: ScopesConfig{
@@ -821,7 +828,12 @@ func TestCollectionsChangeConfigScopeFromImplicitDefault(t *testing.T) {
 	newCollection := base.ScopeAndCollectionName{Scope: t.Name(), Collection: t.Name()}
 	require.NoError(t, rt.TestBucket.CreateDataStore(newCollection))
 	defer func() {
-		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
+		err := rt.TestBucket.DropDataStore(newCollection)
+		// Walrus doesn't write to disk if it has had no documents - ignore this error
+		// Not a problem in Rosmar or Couchbase Server...
+		if !errors.Is(err, os.ErrNotExist) {
+			assert.NoError(t, err)
+		}
 	}()
 
 	resp = rt.UpsertDbConfig(dbName, DbConfig{Scopes: ScopesConfig{
