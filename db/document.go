@@ -515,6 +515,9 @@ func parseXattrStreamData(xattrName string, userXattrName string, data []byte) (
 	}
 
 	xattrsLen := binary.BigEndian.Uint32(data[0:4])
+	if int(xattrsLen+4) > len(data) {
+		return nil, nil, nil, fmt.Errorf("%w (%d) from bytes %+v", base.ErrXattrInvalidLen, xattrsLen, data[0:4])
+	}
 	body = data[xattrsLen+4:]
 	if xattrsLen == 0 {
 		return body, nil, nil, nil
