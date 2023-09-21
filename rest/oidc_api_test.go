@@ -1126,6 +1126,7 @@ func TestOpenIDConnectImplicitFlowInitWithKeyspace(t *testing.T) {
 // TestOpenIDConnectImplicitFlowReuseToken ensures that requests that use the same token containing channel grants don't end up recomputing or updating the user for each use.
 func TestOpenIDConnectImplicitFlowReuseToken(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
+	defer db.SuspendSequenceBatching()() // allows assertions on last sequence of the database to hold true when request plus is used
 
 	testProviders := auth.OIDCProviderMap{
 		"foo": mockProviderWith("foo", mockProviderUserPrefix{"foo"}, mockProviderChannelsClaim{"channels"}),
@@ -1198,7 +1199,8 @@ func TestOpenIDConnectImplicitFlowReuseToken(t *testing.T) {
 	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
 	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
 
-	resp = restTester.SendRequestWithHeaders(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", docSeq), ``, map[string]string{"Authorization": BearerToken + " " + token})
+	// request_plus used here after CBG-3164 found race where grant for channel is after the current sequence at cache
+	resp = restTester.SendRequestWithHeaders(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/_changes?request_plus=true&since=%d", docSeq), ``, map[string]string{"Authorization": BearerToken + " " + token})
 	RequireStatus(t, resp, http.StatusOK)
 	var changesResp ChangesResults
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &changesResp))
