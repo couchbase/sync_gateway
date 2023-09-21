@@ -661,7 +661,7 @@ func (auth *Authenticator) casUpdatePrincipal(p Principal, callback casUpdatePri
 func (auth *Authenticator) DeleteUser(user User) error {
 	if user.Email() != "" {
 		if err := auth.datastore.Delete(auth.MetaKeys.UserEmailKey(user.Email())); err != nil {
-			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error deleting document ID for user email %s. Error: %v", base.UD(user.Email()), err)
+			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error deleting document ID for user email %s. Error: %v", base.UD(user.Email()), err)
 		}
 	}
 	return auth.datastore.Delete(user.DocID())
@@ -767,7 +767,7 @@ func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCPr
 		// Verify claims - ensures that the token we received from the provider is valid for Sync Gateway
 		identity, err = VerifyClaims(token, base.StringDefault(provider.ClientID, ""), provider.Issuer)
 		if err != nil {
-			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
+			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
 			return nil, PrincipalConfig{}, time.Time{}, err
 		}
 	} else {
@@ -788,12 +788,12 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 	// Note: any errors returned from this function will be converted to 403s with a generic message, so we need to
 	// separately log them to ensure they're preserved for debugging.
 	if identity == nil || identity.Subject == "" {
-		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Empty subject found in OIDC identity: %v", base.UD(identity))
+		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Empty subject found in OIDC identity: %v", base.UD(identity))
 		return nil, PrincipalConfig{}, time.Time{}, errors.New("subject not found in OIDC identity")
 	}
 	username, err := getJWTUsername(provider, identity)
 	if err != nil {
-		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error retrieving OIDCUsername: %v", err)
+		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error retrieving OIDCUsername: %v", err)
 		return nil, PrincipalConfig{}, time.Time{}, err
 	}
 	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "OIDCUsername: %v", base.UD(username))
@@ -818,7 +818,7 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 
 	user, err = auth.GetUser(username)
 	if err != nil {
-		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error retrieving user for username %q: %v", base.UD(username), err)
+		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error retrieving user for username %q: %v", base.UD(username), err)
 		return nil, PrincipalConfig{}, time.Time{}, err
 	}
 
@@ -829,7 +829,7 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 		var err error
 		user, err = auth.RegisterNewUser(username, identity.Email)
 		if err != nil && !base.IsCasMismatch(err) {
-			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error registering new user: %v", err)
+			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error registering new user: %v", err)
 			return nil, PrincipalConfig{}, time.Time{}, err
 		}
 	}
