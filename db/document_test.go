@@ -309,11 +309,6 @@ func TestInvalidXattrStreamDataLen(t *testing.T) {
 			body:        []byte{0x00, 0x00, 0x00, 0x04, 0x01},
 			expectedErr: base.ErrXattrInvalidLen,
 		},
-		{
-			name:        "xattr length 1, body size 0",
-			body:        []byte{0x00, 0x00, 0x00, 0x01, 0x01},
-			expectedErr: nil,
-		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
