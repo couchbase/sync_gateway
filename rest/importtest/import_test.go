@@ -656,7 +656,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	xattrVal["actor"] = "not mobile"
 
 	ctx := base.TestCtx(t)
-	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal, nil)
 
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
@@ -711,7 +711,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal, nil)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to update the document again via Sync Gateway.  Should not trigger import, PUT should be successful,
@@ -772,7 +772,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal, nil)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Wait until crc match count changes
@@ -1109,7 +1109,7 @@ func TestCheckForUpgradeOnRead(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	// Create via the SDK with sync metadata intact
-	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, nil, []byte(bodyString), []byte(xattrString))
+	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString), nil)
 	assert.NoError(t, err, "Error writing doc w/ xattr")
 
 	// Attempt to get the documents via Sync Gateway.  Should successfully retrieve doc by triggering
@@ -1186,7 +1186,7 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	// Create via the SDK with sync metadata intact
-	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, nil, []byte(bodyString), []byte(xattrString))
+	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString), nil)
 	assert.NoError(t, err, "Error writing doc w/ xattr")
 	require.NoError(t, rt.WaitForSequence(5))
 
@@ -1255,7 +1255,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	// Create via the SDK with sync metadata intact
-	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, nil, []byte(bodyString), []byte(xattrString))
+	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString), nil)
 	assert.NoError(t, err, "Error writing doc w/ xattr")
 	require.NoError(t, rt.WaitForSequence(1))
 
@@ -2291,7 +2291,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	// Modify the document via the SDK to add the body back
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal, nil)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to get the document again via Sync Gateway.  Should not trigger import.
