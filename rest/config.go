@@ -552,6 +552,12 @@ func (dbConfig *DbConfig) validateConfigUpdate(ctx context.Context, old DbConfig
 // validateChanges compares the current DbConfig with the "old" config, and returns an error if any disallowed changes
 // are attempted.
 func (dbConfig *DbConfig) validateChanges(ctx context.Context, old DbConfig) error {
+	// allow switching from implicit `_default` to explicit `_default` scope
+	_, newIsDefaultScope := dbConfig.Scopes[base.DefaultScope]
+	if old.Scopes == nil && len(dbConfig.Scopes) == 1 && newIsDefaultScope {
+		return nil
+	}
+	// early exit
 	if len(dbConfig.Scopes) != len(old.Scopes) {
 		return fmt.Errorf("cannot change scopes after database creation")
 	}
