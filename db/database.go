@@ -2197,7 +2197,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		db.Options.CacheOptions,
 		db.MetadataKeys,
 	); err != nil {
-		base.DebugfCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)
+		base.DebugfCtx(ctx, base.KeyCache, "Error initializing the change cache", err)
 		return err
 	}
 
@@ -2246,7 +2246,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	}
 
 	// Start DCP feed
-	base.InfofCtx(ctx, base.KeyDCP, "Starting mutation feed on bucket %v", base.MD(db.Bucket.GetName()))
+	base.InfofCtx(ctx, base.KeyChanges, "Starting mutation feed on bucket %v", base.MD(db.Bucket.GetName()))
 	cacheFeedStatsMap := db.DbStats.Database().CacheFeedMapStats
 	if err := db.mutationListener.Start(ctx, db.Bucket, cacheFeedStatsMap.Map, db.Scopes, db.MetadataStore); err != nil {
 		db.channelCache = nil
