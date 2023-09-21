@@ -57,7 +57,7 @@ type UserFunctionInvocation interface {
 
 	// Calls a user function, returning the entire result.
 	// (If this is a N1QL query it will return all the result rows in an array, which is less efficient than iterating them, so try calling `Iterate` first.)
-	Run() (interface{}, error)
+	Run(context.Context) (interface{}, error)
 }
 
 //////// GRAPHQL
@@ -78,7 +78,7 @@ type GraphQL interface {
 //////// DATABASE API FOR USER FUNCTIONS:
 
 // Looks up a UserFunction by name and returns an Invocation.
-func (db *Database) GetUserFunction(name string, args map[string]interface{}, mutationAllowed bool, ctx context.Context) (UserFunctionInvocation, error) {
+func (db *Database) GetUserFunction(ctx context.Context, name string, args map[string]interface{}, mutationAllowed bool) (UserFunctionInvocation, error) {
 	if db.Options.UserFunctions != nil {
 		if fn, found := db.Options.UserFunctions.Definitions[name]; found {
 			return fn.Invoke(db, args, mutationAllowed, ctx)
@@ -88,16 +88,16 @@ func (db *Database) GetUserFunction(name string, args map[string]interface{}, mu
 }
 
 // Calls a user function by name, returning all the results at once.
-func (db *Database) CallUserFunction(name string, args map[string]interface{}, mutationAllowed bool, ctx context.Context) (interface{}, error) {
-	invocation, err := db.GetUserFunction(name, args, mutationAllowed, ctx)
+func (db *Database) CallUserFunction(ctx context.Context, name string, args map[string]interface{}, mutationAllowed bool) (interface{}, error) {
+	invocation, err := db.GetUserFunction(ctx, name, args, mutationAllowed)
 	if err != nil {
 		return nil, err
 	}
-	return invocation.Run()
+	return invocation.Run(ctx)
 }
 
 // Top-level public method to run a GraphQL query on a db.Database.
-func (db *Database) UserGraphQLQuery(query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*graphql.Result, error) {
+func (db *Database) UserGraphQLQuery(ctx context.Context, query string, operationName string, variables map[string]interface{}, mutationAllowed bool) (*graphql.Result, error) {
 	if graphql := db.Options.GraphQL; graphql == nil {
 		return nil, base.HTTPErrorf(http.StatusServiceUnavailable, "GraphQL is not configured")
 	} else {

@@ -159,13 +159,14 @@ func TestCBGTIndexCreation(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx := TestCtx(t)
 			bucket := GetTestBucket(t)
-			defer bucket.Close()
+			defer bucket.Close(ctx)
 
 			spec := bucket.BucketSpec
 
 			// Use an in-memory cfg, set up cbgt manager
-			ctx := DatabaseLogCtx(TestCtx(t), tc.dbName, nil)
+			ctx = DatabaseLogCtx(ctx, tc.dbName, nil)
 			cfg, err := NewCbgtCfgMem()
 			require.NoError(t, err)
 			context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", tc.dbName)
@@ -217,7 +218,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			if tc.existingCurrentIndex {
 				// Define an existing CBGT index with current naming
 				bucketUUID, _ := bucket.UUID()
-				sourceParams, err := cbgtFeedParams(spec, "", nil, tc.dbName)
+				sourceParams, err := cbgtFeedParams(ctx, spec, "", nil, tc.dbName)
 				require.NoError(t, err)
 				legacyIndexName := GenerateIndexName(tc.dbName)
 				indexParams := `{"name": "` + tc.dbName + `"}`
@@ -263,14 +264,14 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server bucket")
 	}
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	spec := bucket.BucketSpec
 	testDbName := "testDB"
 
 	// Use an in-memory cfg, set up cbgt manager
-	ctx := TestCtx(t)
 	cfg, err := NewCbgtCfgMem()
 	require.NoError(t, err)
 	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", testDbName)
@@ -290,7 +291,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 
 	// Define a CBGT index with legacy naming within safe limits
 	bucketUUID, _ := bucket.UUID()
-	sourceParams, err := cbgtFeedParams(spec, "", nil, testDbName)
+	sourceParams, err := cbgtFeedParams(ctx, spec, "", nil, testDbName)
 	require.NoError(t, err)
 	legacyIndexName := GenerateLegacyIndexName(testDbName)
 	indexParams := `{"name": "` + testDbName + `"}`
@@ -338,8 +339,9 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server bucket")
 	}
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	spec := bucket.BucketSpec
 	unsafeTestDBName := "testDB" +
@@ -348,7 +350,6 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 		"01234567890123456789012345678901234567890123456789"
 
 	// Use an in-memory cfg, set up cbgt manager
-	ctx := TestCtx(t)
 	cfg, err := NewCbgtCfgMem()
 	require.NoError(t, err)
 	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", unsafeTestDBName)
@@ -368,7 +369,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 
 	// Define a CBGT index with legacy naming not within safe limits
 	bucketUUID, _ := bucket.UUID()
-	sourceParams, err := cbgtFeedParams(spec, "", nil, unsafeTestDBName)
+	sourceParams, err := cbgtFeedParams(ctx, spec, "", nil, unsafeTestDBName)
 	require.NoError(t, err)
 	legacyIndexName := GenerateLegacyIndexName(unsafeTestDBName)
 	indexParams := `{"name": "` + unsafeTestDBName + `"}`
@@ -418,8 +419,9 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server bucket")
 	}
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -427,7 +429,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	testDBName := "testDB"
 
 	// Use an bucket-backed cfg
-	cfg, err := NewCfgSG(TestCtx(t), dataStore, "")
+	cfg, err := NewCfgSG(ctx, dataStore, "")
 	require.NoError(t, err)
 
 	// Define index type for db name

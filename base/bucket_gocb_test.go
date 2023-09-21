@@ -9,6 +9,7 @@
 package base
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -25,8 +26,9 @@ import (
 )
 
 func TestSetGet(t *testing.T) {
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -54,8 +56,9 @@ func TestSetGet(t *testing.T) {
 
 func TestSetGetRaw(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -84,8 +87,9 @@ func TestSetGetRaw(t *testing.T) {
 
 func TestAddRaw(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	val := []byte("bar")
@@ -122,8 +126,9 @@ func TestAddRaw(t *testing.T) {
 
 func TestWriteCasBasic(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	val := []byte("bar2")
@@ -161,8 +166,9 @@ func TestWriteCasBasic(t *testing.T) {
 
 func TestWriteCasAdvanced(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 
@@ -196,8 +202,9 @@ func TestWriteCasAdvanced(t *testing.T) {
 
 func TestUpdate(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	valInitial := []byte(`{"state":"initial"}`)
@@ -253,8 +260,9 @@ func TestUpdate(t *testing.T) {
 
 func TestUpdateCASFailure(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	valInitial := []byte(`{"state":"initial"}`)
@@ -302,8 +310,9 @@ func TestUpdateCASFailure(t *testing.T) {
 
 func TestUpdateCASFailureOnInsert(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	valCasMismatch := []byte(`{"state":"casMismatch"}`)
@@ -347,8 +356,9 @@ func TestUpdateCASFailureOnInsert(t *testing.T) {
 
 func TestIncrCounter(t *testing.T) {
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 
@@ -385,8 +395,9 @@ func TestGetAndTouchRaw(t *testing.T) {
 	key := t.Name()
 	val := []byte("bar")
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	defer func() {
@@ -436,8 +447,9 @@ func TestXattrWriteCasSimple(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	xattrName := SyncXattrName
@@ -455,17 +467,18 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	_, err := dataStore.Get(key, existsVal)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
-		err = dataStore.DeleteWithXattr(key, xattrName)
+		err = dataStore.DeleteWithXattr(ctx, key, xattrName)
+		require.NoError(t, err)
 	}
 
 	cas := uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
+	cas, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, val, xattrVal)
 	assert.NoError(t, err, "WriteCasWithXattr error")
 	log.Printf("Post-write, cas is %d", cas)
 
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	getCas, err := dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	getCas, err := dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
@@ -483,7 +496,8 @@ func TestXattrWriteCasSimple(t *testing.T) {
 
 	// Validate against $document.value_crc32c
 	var retrievedVxattr map[string]interface{}
-	_, err = dataStore.GetWithXattr(key, "$document", "", retrievedVal, &retrievedVxattr, nil)
+	_, err = dataStore.GetWithXattr(ctx, key, "$document", "", &retrievedVal, &retrievedVxattr, nil)
+	require.NoError(t, err)
 	vxattrCrc32c, ok := retrievedVxattr["value_crc32c"].(string)
 	assert.True(t, ok, "Unable to retrieve virtual xattr crc32c as string")
 
@@ -497,8 +511,9 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -514,17 +529,18 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 	_, err := dataStore.Get(key, existsVal)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
-		err = dataStore.DeleteWithXattr(key, xattrName)
+		err = dataStore.DeleteWithXattr(ctx, key, xattrName)
+		require.NoError(t, err)
 	}
 
 	cas := uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
+	cas, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, val, xattrVal)
 	assert.NoError(t, err, "WriteCasWithXattr error")
 	log.Printf("Post-write, cas is %d", cas)
 
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	getCas, err := dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	getCas, err := dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
@@ -540,13 +556,13 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 	xattrVal2 := make(map[string]interface{})
 	xattrVal2["seq"] = float64(124)
 	xattrVal2["rev"] = "2-5678"
-	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, getCas, nil, val2, xattrVal2)
+	cas, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, getCas, nil, val2, xattrVal2)
 	assert.NoError(t, err, "WriteCasWithXattr error")
 	log.Printf("Post-write, cas is %d", cas)
 
 	var retrievedVal2 map[string]interface{}
 	var retrievedXattr2 map[string]interface{}
-	getCas, err = dataStore.GetWithXattr(key, xattrName, "", &retrievedVal2, &retrievedXattr2, nil)
+	getCas, err = dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal2, &retrievedXattr2, nil)
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
@@ -563,8 +579,9 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -580,17 +597,18 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 	_, err := dataStore.Get(key, existsVal)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
-		err = dataStore.DeleteWithXattr(key, xattrName)
+		err = dataStore.DeleteWithXattr(ctx, key, xattrName)
+		require.NoError(t, err)
 	}
 
 	cas := uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
+	cas, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, val, xattrVal)
 	assert.NoError(t, err, "WriteCasWithXattr error")
 	log.Printf("Post-write, cas is %d", cas)
 
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	getCas, err := dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, "")
+	getCas, err := dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, "")
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
@@ -608,13 +626,13 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 	// Attempt to update with the previous CAS
 	val["sg_field"] = "sg_value_mod"
 	xattrVal["rev"] = "2-1234"
-	_, err = dataStore.WriteCasWithXattr(key, xattrName, 0, getCas, nil, val, xattrVal)
-	assert.True(t, IsCasMismatch(err))
+	_, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, getCas, nil, val, xattrVal)
+	assert.True(t, IsCasMismatch(err), "error is %v", err)
 
 	// Retrieve again, ensure we get the SDK value, SG xattr
 	retrievedVal = nil
 	retrievedXattr = nil
-	_, err = dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	_, err = dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
@@ -631,8 +649,9 @@ func TestXattrWriteCasRaw(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -650,18 +669,19 @@ func TestXattrWriteCasRaw(t *testing.T) {
 	_, err := dataStore.Get(key, existsVal)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
-		err = dataStore.DeleteWithXattr(key, xattrName)
+		err = dataStore.DeleteWithXattr(ctx, key, xattrName)
+		require.NoError(t, err)
 	}
 
 	cas := uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, valRaw, xattrValRaw)
+	cas, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, valRaw, xattrValRaw)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
 
 	var retrievedValByte []byte
 	var retrievedXattrByte []byte
-	getCas, err := dataStore.GetWithXattr(key, xattrName, "", &retrievedValByte, &retrievedXattrByte, nil)
+	getCas, err := dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedValByte, &retrievedXattrByte, nil)
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
@@ -682,8 +702,9 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	xattrName := SyncXattrName
@@ -698,23 +719,20 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	_, err := dataStore.Get(key, existsVal)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
-		err = dataStore.DeleteWithXattr(key, xattrName)
+		err = dataStore.DeleteWithXattr(ctx, key, xattrName)
+		require.NoError(t, err)
 	}
 
 	// Write document with xattr
 	cas := uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
-	if err != nil {
-		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
-	}
+	cas, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, val, xattrVal)
+	assert.NoError(t, err, "WriteCasWithXattr")
 	log.Printf("Post-write, cas is %d", cas)
 
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	getCas, err := dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
-	if err != nil {
-		t.Errorf("Error doing GetWithXattr: %+v", err)
-	}
+	getCas, err := dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	assert.NoError(t, err, "GetWithXattr")
 	// TODO: Cas check fails, pending xattr code to make it to gocb master
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
 	assert.Equal(t, cas, getCas)
@@ -734,16 +752,13 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	xattrVal = make(map[string]interface{})
 	xattrVal["seq"] = float64(456)
 	xattrVal["rev"] = "2-2345"
-	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
-	if err != nil {
-		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
-	}
+	_, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, val, xattrVal)
+	assert.NoError(t, err, "WriteCasWithXattr")
 
 	// Verify retrieval
-	getCas, err = dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
-	if err != nil {
-		t.Errorf("Error doing GetWithXattr: %+v", err)
-	}
+	_, err = dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	assert.NoError(t, err, "GetWithXattr")
+
 	// TODO: Cas check fails, pending xattr code to make it to gocb master
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
 	assert.Equal(t, val["body_field"], retrievedVal["body_field"])
@@ -758,8 +773,9 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	xattrName := SyncXattrName
@@ -774,12 +790,13 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 	_, err := dataStore.Get(key, existsVal)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
-		err = dataStore.DeleteWithXattr(key, xattrName)
+		err = dataStore.DeleteWithXattr(ctx, key, xattrName)
+		require.NoError(t, err)
 	}
 
 	// Write document with xattr
 	cas := uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
+	cas, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -788,7 +805,7 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	getCas, err := dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	getCas, err := dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
@@ -810,7 +827,7 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 	xattrVal = make(map[string]interface{})
 	xattrVal["seq"] = float64(456)
 	xattrVal["rev"] = "2-2345"
-	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, nil, xattrVal)
+	_, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, nil, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -819,7 +836,7 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 	// Verify retrieval
 	var modifiedVal map[string]interface{}
 	var modifiedXattr map[string]interface{}
-	getCas, err = dataStore.GetWithXattr(key, xattrName, "", &modifiedVal, &modifiedXattr, nil)
+	_, err = dataStore.GetWithXattr(ctx, key, xattrName, "", &modifiedVal, &modifiedXattr, nil)
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
@@ -835,8 +852,9 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -850,10 +868,10 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 	var existsVal map[string]interface{}
 	var existsXattr map[string]interface{}
-	_, err := dataStore.GetWithXattr(key, xattrName, "", &existsVal, &existsXattr, nil)
+	_, err := dataStore.GetWithXattr(ctx, key, xattrName, "", &existsVal, &existsXattr, nil)
 	if err == nil {
 		log.Printf("Key should not exist yet, but get succeeded.  Doing cleanup, assuming couchbase bucket testing")
-		err := dataStore.DeleteWithXattr(key, xattrName)
+		err := dataStore.DeleteWithXattr(ctx, key, xattrName)
 		if err != nil {
 			log.Printf("Got error trying to do pre-test cleanup:%v", err)
 		}
@@ -909,14 +927,14 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	}
 
 	// Insert
-	_, err = dataStore.WriteUpdateWithXattr(key, xattrName, "", 0, nil, nil, writeUpdateFunc)
+	_, err = dataStore.WriteUpdateWithXattr(ctx, key, xattrName, "", 0, nil, nil, writeUpdateFunc)
 	if err != nil {
 		t.Errorf("Error doing WriteUpdateWithXattr: %+v", err)
 	}
 
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	_, err = dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	_, err = dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
 	log.Printf("Retrieval after WriteUpdate insert: doc: %v, xattr: %v", retrievedVal, retrievedXattr)
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
@@ -925,11 +943,11 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	assert.Equal(t, float64(1), retrievedXattr["seq"])
 
 	// Update
-	_, err = dataStore.WriteUpdateWithXattr(key, xattrName, "", 0, nil, nil, writeUpdateFunc)
+	_, err = dataStore.WriteUpdateWithXattr(ctx, key, xattrName, "", 0, nil, nil, writeUpdateFunc)
 	if err != nil {
 		t.Errorf("Error doing WriteUpdateWithXattr: %+v", err)
 	}
-	_, err = dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	_, err = dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
@@ -943,8 +961,9 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	xattrKey := SyncXattrName
@@ -991,7 +1010,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 		return updatedDoc, updatedXattr, false, nil, nil
 	}
 
-	_, err := dataStore.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, nil, writeUpdateFunc)
+	_, err := dataStore.WriteUpdateWithXattr(ctx, key, xattrKey, userXattrKey, 0, nil, nil, writeUpdateFunc)
 	assert.NoError(t, err)
 
 	var gotBody map[string]interface{}
@@ -1006,7 +1025,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 	_, err = userXattrStore.WriteUserXattr(key, userXattrKey, userXattrVal)
 	assert.NoError(t, err)
 
-	_, err = dataStore.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, nil, writeUpdateFunc)
+	_, err = dataStore.WriteUpdateWithXattr(ctx, key, xattrKey, userXattrKey, 0, nil, nil, writeUpdateFunc)
 	assert.NoError(t, err)
 
 	_, err = dataStore.Get(key, &gotBody)
@@ -1020,8 +1039,9 @@ func TestXattrDeleteDocument(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	// Create document with XATTR
 	xattrName := SyncXattrName
@@ -1041,7 +1061,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect success)
 	cas := uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
+	_, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -1055,7 +1075,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 	// Verify delete of body was successful, retrieve XATTR
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	_, err = dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	_, err = dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
@@ -1069,8 +1089,9 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	// Create document with XATTR
@@ -1091,7 +1112,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect success)
 	cas := uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
+	_, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -1105,7 +1126,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	// Verify delete of body was successful, retrieve XATTR
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	getCas, err := dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	getCas, err := dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
@@ -1117,14 +1138,14 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	// Update the xattr only
 	xattrVal["seq"] = 2
 	xattrVal["rev"] = "1-1234"
-	casOut, writeErr := dataStore.WriteCasWithXattr(key, xattrName, 0, getCas, nil, nil, xattrVal)
+	casOut, writeErr := dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, getCas, nil, nil, xattrVal)
 	assert.NoError(t, writeErr, "Error updating xattr post-delete")
 	log.Printf("WriteCasWithXattr cas: %d", casOut)
 
 	// Retrieve the document, validate cas values
 	var postDeleteVal map[string]interface{}
 	var postDeleteXattr map[string]interface{}
-	getCas2, err := dataStore.GetWithXattr(key, xattrName, "", &postDeleteVal, &postDeleteXattr, nil)
+	getCas2, err := dataStore.GetWithXattr(ctx, key, xattrName, "", &postDeleteVal, &postDeleteXattr, nil)
 	assert.NoError(t, err, "Error getting document post-delete")
 	assert.Equal(t, float64(2), postDeleteXattr["seq"])
 	assert.Equal(t, 0, len(postDeleteVal))
@@ -1137,9 +1158,9 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
-
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	// Create document with XATTR
 	xattrName := SyncXattrName
@@ -1154,12 +1175,12 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 	_, _, err := dataStore.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
-		require.NoError(t, dataStore.DeleteWithXattr(key, xattrName))
+		require.NoError(t, dataStore.DeleteWithXattr(ctx, key, xattrName))
 	}
 
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect fail)
 	cas := uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
+	cas, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -1173,7 +1194,8 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 	// Verify delete of body and update of XATTR
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	mutateCas, err := dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	mutateCas, err := dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	require.NoError(t, err)
 	assert.Equal(t, 0, len(retrievedVal))
 	assert.Equal(t, float64(123), retrievedXattr["seq"])
 	log.Printf("value: %v, xattr: %v", retrievedVal, retrievedXattr)
@@ -1188,8 +1210,9 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key1 := t.Name() + "DocExistsXattrExists"
@@ -1210,7 +1233,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas1 := uint64(0)
-	cas1, err = dataStore.WriteCasWithXattr(key1, xattrName, 0, cas1, nil, val, xattrVal)
+	cas1, err = dataStore.WriteCasWithXattr(ctx, key1, xattrName, 0, cas1, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -1231,7 +1254,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas3int := uint64(0)
-	cas3int, err = dataStore.WriteCasWithXattr(key3, xattrName, 0, cas3int, nil, val, xattrVal)
+	cas3int, err = dataStore.WriteCasWithXattr(ctx, key3, xattrName, 0, cas3int, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -1256,7 +1279,6 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 	shouldDeleteBody := []bool{true, true, false}
 	subdocStore, ok := AsSubdocXattrStore(dataStore)
 	require.True(t, ok)
-	ctx := TestCtx(t)
 	for i, key := range keys {
 
 		log.Printf("Delete testing for key: %v", key)
@@ -1268,14 +1290,14 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 		log.Printf("Delete error: %v", errDelete)
 
 		assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
-		assert.True(t, verifyDocDeletedXattrExists(dataStore, key, xattrName), fmt.Sprintf("Expected doc %s to be deleted", key))
+		assert.True(t, verifyDocDeletedXattrExists(ctx, dataStore, key, xattrName), fmt.Sprintf("Expected doc %s to be deleted", key))
 	}
 
 	// Now attempt to tombstone key4 (NoDocNoXattr), should not return an error (per SG #3307).  Should save xattr metadata.
 	log.Printf("Deleting key: %v", key4)
 	_, errDelete := UpdateTombstoneXattr(ctx, subdocStore, key4, xattrName, 0, uint64(0), &updatedXattrVal, false)
 	assert.NoError(t, errDelete, "Unexpected error tombstoning non-existent doc")
-	assert.True(t, verifyDocDeletedXattrExists(dataStore, key4, xattrName), "Expected doc to be deleted, but xattrs to exist")
+	assert.True(t, verifyDocDeletedXattrExists(ctx, dataStore, key4, xattrName), "Expected doc to be deleted, but xattrs to exist")
 
 }
 
@@ -1286,8 +1308,9 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key1 := t.Name() + "DocExistsXattrExists"
@@ -1308,7 +1331,7 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas1 := uint64(0)
-	cas1, err = dataStore.WriteCasWithXattr(key1, xattrName, 0, cas1, nil, val, xattrVal)
+	_, err = dataStore.WriteCasWithXattr(ctx, key1, xattrName, 0, cas1, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -1329,7 +1352,7 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas3int := uint64(0)
-	cas3int, err = dataStore.WriteCasWithXattr(key3, xattrName, 0, cas3int, nil, val, xattrVal)
+	_, err = dataStore.WriteCasWithXattr(ctx, key3, xattrName, 0, cas3int, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -1346,17 +1369,17 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 	keys := []string{key1, key2, key3}
 	for _, key := range keys {
 		log.Printf("Deleting key: %v", key)
-		errDelete := dataStore.DeleteWithXattr(key, xattrName)
+		errDelete := dataStore.DeleteWithXattr(ctx, key, xattrName)
 		assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
-		assert.True(t, verifyDocAndXattrDeleted(dataStore, key, xattrName), "Expected doc to be deleted")
+		assert.True(t, verifyDocAndXattrDeleted(ctx, dataStore, key, xattrName), "Expected doc to be deleted")
 	}
 
 	// Now attempt to delete key4 (NoDocNoXattr), which is expected to return a Key Not Found error
 	log.Printf("Deleting key: %v", key4)
-	errDelete := dataStore.DeleteWithXattr(key4, xattrName)
+	errDelete := dataStore.DeleteWithXattr(ctx, key4, xattrName)
 	assert.Error(t, errDelete, "Expected error when calling dataStore.DeleteWithXattr")
 	assert.Truef(t, pkgerrors.Cause(errDelete) == ErrNotFound, "Exepcted keynotfound error but got %v", errDelete)
-	assert.True(t, verifyDocAndXattrDeleted(dataStore, key4, xattrName), "Expected doc to be deleted")
+	assert.True(t, verifyDocAndXattrDeleted(ctx, dataStore, key4, xattrName), "Expected doc to be deleted")
 }
 
 // This simulates a race condition by calling deleteWithXattrInternal() and passing a custom
@@ -1365,13 +1388,14 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
 	xattrName := SyncXattrName
-	createTombstonedDoc(dataStore, key, xattrName)
+	createTombstonedDoc(t, dataStore, key, xattrName)
 
 	numTimesCalledBack := 0
 	callback := func(k string, xattrKey string) {
@@ -1389,7 +1413,7 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 		xattrVal := make(map[string]interface{})
 		xattrVal["seq"] = float64(456)
 		xattrVal["rev"] = "2-2345"
-		_, writeErr := dataStore.WriteCasWithXattr(k, xattrKey, 0, 0, nil, updatedVal, xattrVal)
+		_, writeErr := dataStore.WriteCasWithXattr(ctx, k, xattrKey, 0, 0, nil, updatedVal, xattrVal)
 		if writeErr != nil {
 			panic(fmt.Sprintf("Unexpected error in WriteCasWithXattr: %v", writeErr))
 
@@ -1403,9 +1427,8 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 	require.True(t, ok)
 	kvXattrStore, ok := subdocStore.(KvXattrStore)
 	require.True(t, ok)
-	ctx := TestCtx(t)
 	deleteErr := deleteWithXattrInternal(ctx, kvXattrStore, key, xattrName, callback)
-
+	assert.Equal(t, 1, numTimesCalledBack)
 	assert.True(t, deleteErr != nil, "We expected an error here, because deleteWithXattrInternal should have "+
 		" detected that the doc was resurrected during its execution")
 
@@ -1416,8 +1439,9 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key1 := t.Name() + "DocExistsXattrExists"
@@ -1438,7 +1462,7 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas := uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(key1, xattrName, 0, cas, nil, val, xattrVal)
+	_, err = dataStore.WriteCasWithXattr(ctx, key1, xattrName, 0, cas, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -1458,7 +1482,7 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas = uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(key3, xattrName, 0, cas, nil, val, xattrVal)
+	_, err = dataStore.WriteCasWithXattr(ctx, key3, xattrName, 0, cas, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -1470,29 +1494,29 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 	// Attempt to retrieve all 4 docs
 	var key1DocResult map[string]interface{}
 	var key1XattrResult map[string]interface{}
-	_, key1err := dataStore.GetWithXattr(key1, xattrName, "", &key1DocResult, &key1XattrResult, nil)
+	_, key1err := dataStore.GetWithXattr(ctx, key1, xattrName, "", &key1DocResult, &key1XattrResult, nil)
 	assert.NoError(t, key1err, "Unexpected error retrieving doc w/ xattr")
 	assert.Equal(t, key1, key1DocResult["type"])
 	assert.Equal(t, "1-1234", key1XattrResult["rev"])
 
 	var key2DocResult map[string]interface{}
 	var key2XattrResult map[string]interface{}
-	_, key2err := dataStore.GetWithXattr(key2, xattrName, "", &key2DocResult, &key2XattrResult, nil)
+	_, key2err := dataStore.GetWithXattr(ctx, key2, xattrName, "", &key2DocResult, &key2XattrResult, nil)
 	assert.NoError(t, key2err, "Unexpected error retrieving doc w/out xattr")
 	assert.Equal(t, key2, key2DocResult["type"])
 	assert.Nil(t, key2XattrResult)
 
 	var key3DocResult map[string]interface{}
 	var key3XattrResult map[string]interface{}
-	_, key3err := dataStore.GetWithXattr(key3, xattrName, "", &key3DocResult, &key3XattrResult, nil)
+	_, key3err := dataStore.GetWithXattr(ctx, key3, xattrName, "", &key3DocResult, &key3XattrResult, nil)
 	assert.NoError(t, key3err, "Unexpected error retrieving doc w/out xattr")
 	assert.Nil(t, key3DocResult)
 	assert.Equal(t, "1-1234", key3XattrResult["rev"])
 
 	var key4DocResult map[string]interface{}
 	var key4XattrResult map[string]interface{}
-	_, key4err := dataStore.GetWithXattr(key4, xattrName, "", &key4DocResult, &key4XattrResult, nil)
-	assert.Equal(t, ErrNotFound, pkgerrors.Cause(key4err))
+	_, key4err := dataStore.GetWithXattr(ctx, key4, xattrName, "", &key4DocResult, &key4XattrResult, nil)
+	assert.True(t, IsDocNotFoundError(key4err))
 	assert.Nil(t, key4DocResult)
 	assert.Nil(t, key4XattrResult)
 
@@ -1503,8 +1527,9 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key1 := t.Name() + "DocExistsXattrExists"
@@ -1525,7 +1550,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas1 := uint64(0)
-	cas1, err = dataStore.WriteCasWithXattr(key1, xattrName, 0, cas1, nil, val, xattrVal)
+	cas1, err = dataStore.WriteCasWithXattr(ctx, key1, xattrName, 0, cas1, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -1546,7 +1571,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas3int := uint64(0)
-	cas3int, err = dataStore.WriteCasWithXattr(key3, xattrName, 0, cas3int, nil, val, xattrVal)
+	cas3int, err = dataStore.WriteCasWithXattr(ctx, key3, xattrName, 0, cas3int, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -1568,38 +1593,42 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	// Attempt to mutate all 4 docs
 	exp := uint32(0)
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key1)
-	_, key1err := dataStore.WriteCasWithXattr(key1, xattrName, exp, cas1, nil, &updatedVal, &updatedXattrVal)
+	_, key1err := dataStore.WriteCasWithXattr(ctx, key1, xattrName, exp, cas1, nil, &updatedVal, &updatedXattrVal)
 	assert.NoError(t, key1err, fmt.Sprintf("Unexpected error mutating %s", key1))
 	var key1DocResult map[string]interface{}
 	var key1XattrResult map[string]interface{}
-	_, key1err = dataStore.GetWithXattr(key1, xattrName, "", &key1DocResult, &key1XattrResult, nil)
+	_, key1err = dataStore.GetWithXattr(ctx, key1, xattrName, "", &key1DocResult, &key1XattrResult, nil)
+	require.NoError(t, key1err)
 	assert.Equal(t, fmt.Sprintf("updated_%s", key1), key1DocResult["type"])
 	assert.Equal(t, "2-1234", key1XattrResult["rev"])
 
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key2)
-	_, key2err := dataStore.WriteCasWithXattr(key2, xattrName, exp, uint64(cas2), nil, &updatedVal, &updatedXattrVal)
+	_, key2err := dataStore.WriteCasWithXattr(ctx, key2, xattrName, exp, uint64(cas2), nil, &updatedVal, &updatedXattrVal)
 	assert.NoError(t, key2err, fmt.Sprintf("Unexpected error mutating %s", key2))
 	var key2DocResult map[string]interface{}
 	var key2XattrResult map[string]interface{}
-	_, key2err = dataStore.GetWithXattr(key2, xattrName, "", &key2DocResult, &key2XattrResult, nil)
+	_, key2err = dataStore.GetWithXattr(ctx, key2, xattrName, "", &key2DocResult, &key2XattrResult, nil)
+	require.NoError(t, key2err)
 	assert.Equal(t, fmt.Sprintf("updated_%s", key2), key2DocResult["type"])
 	assert.Equal(t, "2-1234", key2XattrResult["rev"])
 
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key3)
-	_, key3err := dataStore.WriteCasWithXattr(key3, xattrName, exp, cas3int, nil, &updatedVal, &updatedXattrVal)
+	_, key3err := dataStore.WriteCasWithXattr(ctx, key3, xattrName, exp, cas3int, nil, &updatedVal, &updatedXattrVal)
 	assert.NoError(t, key3err, fmt.Sprintf("Unexpected error mutating %s", key3))
 	var key3DocResult map[string]interface{}
 	var key3XattrResult map[string]interface{}
-	_, key3err = dataStore.GetWithXattr(key3, xattrName, "", &key3DocResult, &key3XattrResult, nil)
+	_, key3err = dataStore.GetWithXattr(ctx, key3, xattrName, "", &key3DocResult, &key3XattrResult, nil)
+	require.NoError(t, key3err)
 	assert.Equal(t, fmt.Sprintf("updated_%s", key3), key3DocResult["type"])
 	assert.Equal(t, "2-1234", key3XattrResult["rev"])
 
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key4)
-	_, key4err := dataStore.WriteCasWithXattr(key4, xattrName, exp, uint64(cas4), nil, &updatedVal, &updatedXattrVal)
+	_, key4err := dataStore.WriteCasWithXattr(ctx, key4, xattrName, exp, uint64(cas4), nil, &updatedVal, &updatedXattrVal)
 	assert.NoError(t, key4err, fmt.Sprintf("Unexpected error mutating %s", key4))
 	var key4DocResult map[string]interface{}
 	var key4XattrResult map[string]interface{}
-	_, key4err = dataStore.GetWithXattr(key4, xattrName, "", &key4DocResult, &key4XattrResult, nil)
+	_, key4err = dataStore.GetWithXattr(ctx, key4, xattrName, "", &key4DocResult, &key4XattrResult, nil)
+	require.NoError(t, key4err)
 	assert.Equal(t, fmt.Sprintf("updated_%s", key4), key4DocResult["type"])
 	assert.Equal(t, "2-1234", key4XattrResult["rev"])
 
@@ -1610,8 +1639,9 @@ func TestGetXattr(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyAll)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	// Doc 1
@@ -1644,7 +1674,7 @@ func TestGetXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas := uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(key1, xattrName1, 0, cas, nil, val1, xattrVal1)
+	_, err = dataStore.WriteCasWithXattr(ctx, key1, xattrName1, 0, cas, nil, val1, xattrVal1)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -1654,46 +1684,48 @@ func TestGetXattr(t *testing.T) {
 	subdocStore, ok := AsSubdocXattrStore(dataStore)
 
 	// Get Xattr From Existing Doc with Existing Xattr
-	_, err = dataStore.GetXattr(key1, xattrName1, &response)
+	_, err = dataStore.GetXattr(ctx, key1, xattrName1, &response)
 	assert.NoError(t, err)
 
 	assert.Equal(t, xattrVal1["seq"], response["seq"])
 	assert.Equal(t, xattrVal1["rev"], response["rev"])
 
 	// Get Xattr From Existing Doc With Non-Existent Xattr -> ErrSubDocBadMulti
-	_, err = dataStore.GetXattr(key1, "non-exist", &response)
+	_, err = dataStore.GetXattr(ctx, key1, "non-exist", &response)
 	assert.Error(t, err)
 	assert.Equal(t, ErrXattrNotFound, pkgerrors.Cause(err))
 
 	// Get Xattr From Non-Existent Doc With Non-Existent Xattr
-	_, err = dataStore.GetXattr("non-exist", "non-exist", &response)
+	_, err = dataStore.GetXattr(ctx, "non-exist", "non-exist", &response)
 	assert.Error(t, err)
 	assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 
 	// Get Xattr From Tombstoned Doc With Existing System Xattr (ErrSubDocSuccessDeleted)
-	cas, err = dataStore.WriteCasWithXattr(key2, SyncXattrName, 0, uint64(0), nil, val2, xattrVal2)
+	cas, err = dataStore.WriteCasWithXattr(ctx, key2, SyncXattrName, 0, uint64(0), nil, val2, xattrVal2)
+	require.NoError(t, err)
 	_, err = dataStore.Remove(key2, cas)
 	require.NoError(t, err)
-	_, err = dataStore.GetXattr(key2, SyncXattrName, &response)
+	_, err = dataStore.GetXattr(ctx, key2, SyncXattrName, &response)
 	assert.NoError(t, err)
 
 	// Get Xattr From Tombstoned Doc With Non-Existent System Xattr -> SubDocMultiPathFailureDeleted
-	_, err = dataStore.GetXattr(key2, "_non-exist", &response)
+	_, err = dataStore.GetXattr(ctx, key2, "_non-exist", &response)
 	assert.Error(t, err)
 	assert.Equal(t, ErrXattrNotFound, pkgerrors.Cause(err))
 
 	// Get Xattr and Body From Tombstoned Doc With Non-Existent System Xattr -> SubDocMultiPathFailureDeleted
 	var v, xv, userXv map[string]interface{}
 	require.True(t, ok)
-	_, err = subdocStore.SubdocGetBodyAndXattr(key2, "_non-exist", "", &v, &xv, &userXv)
+	_, err = subdocStore.SubdocGetBodyAndXattr(ctx, key2, "_non-exist", "", &v, &xv, &userXv)
 	assert.Error(t, err)
 	assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 
 	// Get Xattr From Tombstoned Doc With Deleted User Xattr
-	cas, err = dataStore.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), nil, val3, xattrVal3)
+	cas, err = dataStore.WriteCasWithXattr(ctx, key3, xattrName3, 0, uint64(0), nil, val3, xattrVal3)
+	require.NoError(t, err)
 	_, err = dataStore.Remove(key3, cas)
 	require.NoError(t, err)
-	_, err = dataStore.GetXattr(key3, xattrName3, &response)
+	_, err = dataStore.GetXattr(ctx, key3, xattrName3, &response)
 	assert.Error(t, err)
 	assert.Equal(t, ErrXattrNotFound, pkgerrors.Cause(err))
 }
@@ -1703,8 +1735,9 @@ func TestGetXattrAndBody(t *testing.T) {
 
 	SetUpTestLogging(t, LevelDebug, KeyAll)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	// Doc 1
@@ -1737,7 +1770,7 @@ func TestGetXattrAndBody(t *testing.T) {
 
 	// Create w/ XATTR
 	cas := uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(key1, xattrName1, 0, cas, nil, val1, xattrVal1)
+	_, err = dataStore.WriteCasWithXattr(ctx, key1, xattrName1, 0, cas, nil, val1, xattrVal1)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
@@ -1747,39 +1780,39 @@ func TestGetXattrAndBody(t *testing.T) {
 
 	// Get Xattr From Existing Doc with Existing Xattr
 	var v, xv, userXv map[string]interface{}
-	_, err = subdocStore.SubdocGetBodyAndXattr(key1, xattrName1, "", &v, &xv, &userXv)
+	_, err = subdocStore.SubdocGetBodyAndXattr(ctx, key1, xattrName1, "", &v, &xv, &userXv)
 	assert.NoError(t, err)
 
 	assert.Equal(t, xattrVal1["seq"], xv["seq"])
 	assert.Equal(t, xattrVal1["rev"], xv["rev"])
 
 	// Get body and Xattr From Existing Doc With Non-Existent Xattr -> returns body only
-	_, err = subdocStore.SubdocGetBodyAndXattr(key1, "non-exist", "", &v, &xv, &userXv)
+	_, err = subdocStore.SubdocGetBodyAndXattr(ctx, key1, "non-exist", "", &v, &xv, &userXv)
 	assert.NoError(t, err)
 	assert.Equal(t, val1["type"], v["type"])
 
 	// Get Xattr From Non-Existent Doc With Non-Existent Xattr
-	_, err = subdocStore.SubdocGetBodyAndXattr("non-exist", "non-exist", "", &v, &xv, &userXv)
+	_, err = subdocStore.SubdocGetBodyAndXattr(ctx, "non-exist", "non-exist", "", &v, &xv, &userXv)
 	assert.Error(t, err)
 	assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 
 	// Get Xattr From Tombstoned Doc With Existing System Xattr (ErrSubDocSuccessDeleted)
-	cas, err = dataStore.WriteCasWithXattr(key2, SyncXattrName, 0, uint64(0), nil, val2, xattrVal2)
+	cas, err = dataStore.WriteCasWithXattr(ctx, key2, SyncXattrName, 0, uint64(0), nil, val2, xattrVal2)
 	_, err = dataStore.Remove(key2, cas)
 	require.NoError(t, err)
-	_, err = subdocStore.SubdocGetBodyAndXattr(key2, SyncXattrName, "", &v, &xv, &userXv)
+	_, err = subdocStore.SubdocGetBodyAndXattr(ctx, key2, SyncXattrName, "", &v, &xv, &userXv)
 	assert.NoError(t, err)
 
 	// Get Xattr From Tombstoned Doc With Non-Existent System Xattr -> returns not found
-	_, err = subdocStore.SubdocGetBodyAndXattr(key2, "_non-exist", "", &v, &xv, &userXv)
+	_, err = subdocStore.SubdocGetBodyAndXattr(ctx, key2, "_non-exist", "", &v, &xv, &userXv)
 	assert.Error(t, err)
 	assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 
 	// Get Xattr From Tombstoned Doc With Deleted User Xattr -> returns not found
-	cas, err = dataStore.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), nil, val3, xattrVal3)
+	cas, err = dataStore.WriteCasWithXattr(ctx, key3, xattrName3, 0, uint64(0), nil, val3, xattrVal3)
 	_, err = dataStore.Remove(key3, cas)
 	require.NoError(t, err)
-	_, err = subdocStore.SubdocGetBodyAndXattr(key3, xattrName3, "", &v, &xv, &userXv)
+	_, err = subdocStore.SubdocGetBodyAndXattr(ctx, key3, xattrName3, "", &v, &xv, &userXv)
 	assert.Error(t, err)
 	assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 }
@@ -1918,8 +1951,9 @@ func TestCouchbaseServerMaxTTL(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	cbStore, ok := AsCouchbaseBucketStore(bucket)
 	require.True(t, ok)
@@ -1935,8 +1969,9 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := TestCtx(t)
 	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 
 	// Override test bucket spec with invalid creds
 	testBucket.BucketSpec.Auth = TestAuthenticator{
@@ -1956,8 +1991,9 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 	t.Skip("Disabled pending CBG-2473")
 
+	ctx := TestCtx(t)
 	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 
 	// Remove existing password-based authentication
 	testBucket.BucketSpec.Auth = nil
@@ -2041,7 +2077,7 @@ EKTcWGekdmdDPsHloRNtsiCa697B2O9IFA==
 	return certPath, keyPath, cleanupFn
 }
 
-func createTombstonedDoc(dataStore sgbucket.DataStore, key, xattrName string) {
+func createTombstonedDoc(t testing.TB, dataStore sgbucket.DataStore, key, xattrName string) {
 
 	// Create document with XATTR
 
@@ -2052,6 +2088,7 @@ func createTombstonedDoc(dataStore sgbucket.DataStore, key, xattrName string) {
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"
 
+	ctx := TestCtx(t)
 	_, _, err := dataStore.GetRaw(key)
 	if err == nil {
 		panic(fmt.Sprintf("Expected empty bucket"))
@@ -2059,7 +2096,7 @@ func createTombstonedDoc(dataStore sgbucket.DataStore, key, xattrName string) {
 
 	// Create w/ doc and XATTR
 	cas := uint64(0)
-	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
+	cas, err = dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, nil, val, xattrVal)
 	if err != nil {
 		panic(fmt.Sprintf("Error doing WriteCasWithXattr: %+v", err))
 	}
@@ -2082,7 +2119,8 @@ func createTombstonedDoc(dataStore sgbucket.DataStore, key, xattrName string) {
 	// Verify delete of body and XATTR
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	_, err = dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	_, err = dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	require.NoError(t, err)
 
 	if len(retrievedVal) != 0 {
 		panic(fmt.Sprintf("len(retrievedVal) should be 0"))
@@ -2094,19 +2132,19 @@ func createTombstonedDoc(dataStore sgbucket.DataStore, key, xattrName string) {
 
 }
 
-func verifyDocAndXattrDeleted(store sgbucket.XattrStore, key, xattrName string) bool {
+func verifyDocAndXattrDeleted(ctx context.Context, store sgbucket.XattrStore, key, xattrName string) bool {
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	_, err := store.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	_, err := store.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
 	notFound := pkgerrors.Cause(err) == ErrNotFound
 
 	return notFound
 }
 
-func verifyDocDeletedXattrExists(store sgbucket.XattrStore, key, xattrName string) bool {
+func verifyDocDeletedXattrExists(ctx context.Context, store sgbucket.XattrStore, key, xattrName string) bool {
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	_, err := store.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	_, err := store.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
 
 	log.Printf("verification for key: %s   body: %s  xattr: %s", key, retrievedVal, retrievedXattr)
 	if err != nil || len(retrievedVal) > 0 || len(retrievedXattr) == 0 {
@@ -2119,8 +2157,9 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	subdocXattrStore, ok := AsSubdocXattrStore(dataStore)
@@ -2138,7 +2177,7 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 
 	cas := uint64(0)
 	// CAS-safe write of the document and it's associated named extended attributes
-	cas, err := dataStore.WriteCasWithXattr(key, xattrKey, 0, cas, nil, val, xattrVal)
+	cas, err := dataStore.WriteCasWithXattr(ctx, key, xattrKey, 0, cas, nil, val, xattrVal)
 	require.NoError(t, err, "Error doing WriteCasWithXattr")
 
 	updatedXattrVal := make(map[string]interface{})
@@ -2146,14 +2185,13 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 	updatedXattrVal["rev"] = "2-EmDC"
 
 	// Attempt to delete the document body (deleteBody = true); isDelete is true to mark this doc as a tombstone.
-	ctx := TestCtx(t)
 	_, errDelete := UpdateTombstoneXattr(ctx, subdocXattrStore, key, xattrKey, 0, cas, &updatedXattrVal, true)
 	assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
-	assert.True(t, verifyDocDeletedXattrExists(dataStore, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
+	assert.True(t, verifyDocDeletedXattrExists(ctx, dataStore, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
 
 	var docResult map[string]interface{}
 	var xattrResult map[string]interface{}
-	_, err = dataStore.GetWithXattr(key, xattrKey, "", &docResult, &xattrResult, nil)
+	_, err = dataStore.GetWithXattr(ctx, key, xattrKey, "", &docResult, &xattrResult, nil)
 	assert.NoError(t, err)
 	assert.Len(t, docResult, 0)
 	assert.Equal(t, "2-EmDC", xattrResult["rev"])
@@ -2164,8 +2202,9 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	userXattrStore, ok := AsUserXattrStore(dataStore)
@@ -2187,7 +2226,7 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 	assert.NoError(t, err)
 
 	var docValRet, syncXattrValRet, userXattrValRet map[string]interface{}
-	_, err = dataStore.GetWithXattr(docKey, SyncXattrName, "test", &docValRet, &syncXattrValRet, &userXattrValRet)
+	_, err = dataStore.GetWithXattr(ctx, docKey, SyncXattrName, "test", &docValRet, &syncXattrValRet, &userXattrValRet)
 	assert.NoError(t, err)
 	assert.Equal(t, docVal, docValRet)
 	assert.Equal(t, syncXattrVal, syncXattrValRet)
@@ -2198,8 +2237,9 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	docKey := t.Name()
@@ -2216,7 +2256,7 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 	assert.NoError(t, err)
 
 	var docValRet, syncXattrValRet, userXattrValRet map[string]interface{}
-	_, err = dataStore.GetWithXattr(docKey, SyncXattrName, "test", &docValRet, &syncXattrValRet, &userXattrValRet)
+	_, err = dataStore.GetWithXattr(ctx, docKey, SyncXattrName, "test", &docValRet, &syncXattrValRet, &userXattrValRet)
 	assert.NoError(t, err)
 	assert.Equal(t, docVal, docValRet)
 	assert.Equal(t, syncXattrVal, syncXattrValRet)
@@ -2226,8 +2266,9 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	subdocXattrStore, ok := AsSubdocXattrStore(dataStore)
@@ -2243,16 +2284,15 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-EmDC"
 
-	ctx := TestCtx(t)
 	cas := uint64(0)
 	// Attempt to delete the document body (deleteBody = true); isDelete is true to mark this doc as a tombstone.
 	_, errDelete := UpdateTombstoneXattr(ctx, subdocXattrStore, key, xattrKey, 0, cas, &xattrVal, false)
 	assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
-	assert.True(t, verifyDocDeletedXattrExists(dataStore, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
+	assert.True(t, verifyDocDeletedXattrExists(ctx, dataStore, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
 
 	var docResult map[string]interface{}
 	var xattrResult map[string]interface{}
-	_, err := dataStore.GetWithXattr(key, xattrKey, "", &docResult, &xattrResult, nil)
+	_, err := dataStore.GetWithXattr(ctx, key, xattrKey, "", &docResult, &xattrResult, nil)
 	assert.NoError(t, err)
 	assert.Len(t, docResult, 0)
 	assert.Equal(t, "1-EmDC", xattrResult["rev"])
@@ -2268,8 +2308,9 @@ func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
 		t.Skip("RawBackwardCompatibility tests depend on couchbase transcoding")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -2307,8 +2348,9 @@ func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 		t.Skip("RawBackwardCompatibility tests depend on couchbase transcoding")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -2344,8 +2386,9 @@ func TestGetExpiry(t *testing.T) {
 		t.Skip("Walrus doesn't support expiry")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
@@ -2356,7 +2399,7 @@ func TestGetExpiry(t *testing.T) {
 	err := dataStore.Set(key, expiryValue, nil, val)
 	assert.NoError(t, err, "Error calling Set()")
 
-	expiry, expiryErr := dataStore.GetExpiry(key)
+	expiry, expiryErr := dataStore.GetExpiry(ctx, key)
 	assert.NoError(t, expiryErr)
 
 	// gocb v2 expiry does an expiry-to-duration conversion which results in non-exact equality,
@@ -2371,12 +2414,12 @@ func TestGetExpiry(t *testing.T) {
 	}
 
 	// ensure expiry retrieval on tombstone doesn't return error
-	tombstoneExpiry, tombstoneExpiryErr := dataStore.GetExpiry(key)
+	tombstoneExpiry, tombstoneExpiryErr := dataStore.GetExpiry(ctx, key)
 	assert.NoError(t, tombstoneExpiryErr)
 	log.Printf("tombstoneExpiry: %d", tombstoneExpiry)
 
 	// ensure expiry retrieval on non-existent doc returns key not found
-	_, nonExistentExpiryErr := dataStore.GetExpiry("nonExistentKey")
+	_, nonExistentExpiryErr := dataStore.GetExpiry(ctx, "nonExistentKey")
 	assert.Error(t, nonExistentExpiryErr)
 	assert.True(t, IsKeyNotFoundError(dataStore, nonExistentExpiryErr))
 }
@@ -2387,8 +2430,9 @@ func TestGetStatsVbSeqNo(t *testing.T) {
 		t.Skip("Walrus doesn't support stats-vbseqno")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
 	cbstore, ok := AsCouchbaseBucketStore(bucket)
@@ -2420,8 +2464,9 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 	if !TestUseCouchbaseServer() {
 		t.Skip("Test can only be ran against CBS due to GoCB v2 use")
 	}
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	if !bucket.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) {
 		t.Skip("Preserve expiry is not supported with this CBS version. Skipping test...")
@@ -2463,7 +2508,8 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 			err = dataStore.Set(key, DurationToCbsExpiry(time.Hour*24), nil, val)
 			assert.NoError(t, err, "Error calling Set()")
 
-			beforeExp, err := dataStore.GetExpiry(key)
+			ctx := TestCtx(t)
+			beforeExp, err := dataStore.GetExpiry(ctx, key)
 			require.NoError(t, err)
 			require.NotEqual(t, 0, beforeExp)
 
@@ -2471,7 +2517,7 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 			err = dataStore.Set(key, 0, test.upsertOptions, val)
 			assert.NoError(t, err, "Error calling Set()")
 
-			afterExp, err := dataStore.GetExpiry(key)
+			afterExp, err := dataStore.GetExpiry(ctx, key)
 			assert.NoError(t, err)
 			if test.expectMatch {
 				assert.Equal(t, beforeExp, afterExp) // Make sure both expiry timestamps match

@@ -189,7 +189,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 
 	// Use default collection namespace since this will make sure we are upgrading from 3.0 -> post 3.0
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(base.TestCtx(t))
 
 	dataStore := tb.Bucket.DefaultDataStore()
 	bucketUUID, err := tb.UUID()

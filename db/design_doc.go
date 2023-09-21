@@ -94,7 +94,7 @@ func (db *Database) GetDesignDoc(ddocName string) (ddoc sgbucket.DesignDoc, err 
 	return vs.GetDDoc(ddocName)
 }
 
-func (db *Database) PutDesignDoc(ddocName string, ddoc sgbucket.DesignDoc) (err error) {
+func (db *Database) PutDesignDoc(ctx context.Context, ddocName string, ddoc sgbucket.DesignDoc) (err error) {
 	wrap := true
 	if opts := ddoc.Options; opts != nil {
 		if opts.Raw == true {
@@ -110,7 +110,7 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc sgbucket.DesignDoc) (err 
 		return err
 	}
 	if err = db.checkDDocAccess(ddocName); err == nil {
-		err = vs.PutDDoc(ddocName, &ddoc)
+		err = vs.PutDDoc(ctx, ddocName, &ddoc)
 	}
 	return
 }
@@ -240,7 +240,7 @@ func (db *Database) DeleteDesignDoc(ddocName string) (err error) {
 	return
 }
 
-func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map[string]interface{}) (*sgbucket.ViewResult, error) {
+func (db *Database) QueryDesignDoc(ctx context.Context, ddocName string, viewName string, options map[string]interface{}) (*sgbucket.ViewResult, error) {
 
 	// Regular users have limitations on what they can query
 	if db.user != nil {
@@ -258,7 +258,7 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 	if err != nil {
 		return nil, err
 	}
-	result, err := vs.View(ddocName, viewName, options)
+	result, err := vs.View(ctx, ddocName, viewName, options)
 	if err != nil {
 		return nil, err
 	}
@@ -614,7 +614,7 @@ func installViews(ctx context.Context, viewStore sgbucket.ViewStore) error {
 
 		// start a retry loop to put design document backing off double the delay each time
 		worker := func() (shouldRetry bool, err error, value interface{}) {
-			err = viewStore.PutDDoc(designDocName, designDoc)
+			err = viewStore.PutDDoc(ctx, designDocName, designDoc)
 			if err != nil {
 				base.WarnfCtx(ctx, "Error installing Couchbase design doc: %v", err)
 			}
@@ -679,7 +679,7 @@ func waitForViewIndexing(ctx context.Context, viewStore sgbucket.ViewStore, buck
 	retrySleep := float64(100)
 	maxRetry := 18
 	for {
-		results, err := viewStore.ViewQuery(ddocName, viewName, opts)
+		results, err := viewStore.ViewQuery(ctx, ddocName, viewName, opts)
 		if results != nil {
 			_ = results.Close()
 		}

@@ -67,7 +67,7 @@ func isPrimaryIndexEmpty(ctx context.Context, store base.N1QLStore) (bool, error
 
 	// If it's empty, we're done
 	var queryRow map[string]interface{}
-	found := results.Next(&queryRow)
+	found := results.Next(ctx, &queryRow)
 	resultsCloseErr := results.Close()
 	if resultsCloseErr != nil {
 		return false, err
@@ -222,11 +222,11 @@ WHERE META(ks).xattrs._sync.sequence >= 0
 	}
 
 	var tombstonesRow QueryIdRow
-	for results.Next(&tombstonesRow) {
+	for results.Next(ctx, &tombstonesRow) {
 		// First, attempt to purge.
 		var purgeErr error
 		if base.TestUseXattrs() {
-			purgeErr = dataStore.DeleteWithXattr(tombstonesRow.Id, base.SyncXattrName)
+			purgeErr = dataStore.DeleteWithXattr(ctx, tombstonesRow.Id, base.SyncXattrName)
 		} else {
 			purgeErr = dataStore.Delete(tombstonesRow.Id)
 		}

@@ -31,16 +31,16 @@ func RegisterImportPindexImpl(ctx context.Context, configGroup string) {
 	base.InfofCtx(ctx, base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
 	cbgt.RegisterPIndexImplType(pIndexType,
 		&cbgt.PIndexImplType{
-			New:       NewImportPIndexImpl,
+			New:       getNewPIndexImplType(ctx),
 			Open:      OpenImportPIndexImpl,
-			OpenUsing: OpenImportPIndexImplUsing,
+			OpenUsing: getOpenImportPIndexImplUsing(ctx),
 			Description: "general/syncGateway-import " +
 				" - import processing for shared bucket access",
 		})
 }
 
 // getListenerForIndex looks up the importListener for the dbName specified in the index params
-func getListenerImportDest(indexParams string) (cbgt.Dest, error) {
+func getListenerImportDest(ctx context.Context, indexParams string) (cbgt.Dest, error) {
 
 	var outerParams struct {
 		Params string `json:"params"`
@@ -56,7 +56,7 @@ func getListenerImportDest(indexParams string) (cbgt.Dest, error) {
 		return nil, fmt.Errorf("error unmarshalling dbname from cbgt index params: %w", err)
 	}
 
-	base.DebugfCtx(context.TODO(), base.KeyDCP, "Fetching listener import dest for %v", base.MD(sgIndexParams.DestKey))
+	base.DebugfCtx(ctx, base.KeyDCP, "Fetching listener import dest for %v", base.MD(sgIndexParams.DestKey))
 	destFactory, fetchErr := base.FetchDestFactory(sgIndexParams.DestKey)
 	if fetchErr != nil {
 		return nil, fmt.Errorf("error retrieving listener for indexParams %v: %v", indexParams, fetchErr)
@@ -64,25 +64,31 @@ func getListenerImportDest(indexParams string) (cbgt.Dest, error) {
 	return destFactory()
 }
 
-// NewImportPIndexImpl is called when the node is first added to the cbgt cfg.  On a node restart,
-// OpenImportPindexImplUsing is called.
-func NewImportPIndexImpl(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-	defer base.FatalPanicHandler()
+func getNewPIndexImplType(ctx context.Context) func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+	// NewImportPIndexImpl is called when the node is first added to the cbgt cfg.  On a node restart,
+	// OpenImportPindexImplUsing is called.
+	newImportPIndexImpl := func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+		defer base.FatalPanicHandler()
 
-	importDest, err := getListenerImportDest(indexParams)
-	if err != nil {
-		base.ErrorfCtx(context.TODO(), "Error creating NewImportDest during NewImportPIndexImpl: %v", err)
+		importDest, err := getListenerImportDest(ctx, indexParams)
+		if err != nil {
+			base.ErrorfCtx(ctx, "Error creating NewImportDest during NewImportPIndexImpl: %v", err)
+		}
+		return nil, importDest, err
 	}
-	return nil, importDest, err
+	return newImportPIndexImpl
 }
-
 func OpenImportPIndexImpl(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 	return nil, nil, errors.New("Open PIndexImpl not supported for SG 3.0 databases - must provide index params")
 }
 
-func OpenImportPIndexImplUsing(indexType, path, indexParams string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-	importDest, err := getListenerImportDest(indexParams)
-	return nil, importDest, err
+func getOpenImportPIndexImplUsing(ctx context.Context) func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+
+	openImportPIndexImplUsing := func(indexType, path, indexParams string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+		importDest, err := getListenerImportDest(ctx, indexParams)
+		return nil, importDest, err
+	}
+	return openImportPIndexImplUsing
 }
 
 // Returns a cbgt.Dest targeting the importListener's ProcessFeedEvent

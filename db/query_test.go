@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -59,7 +60,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	results, queryErr := collection.QueryChannels(base.TestCtx(t), "ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
 	assert.NoError(t, queryErr, "Query error")
 
-	assert.Equal(t, 3, countQueryResults(results))
+	assert.Equal(t, 3, countQueryResults(ctx, results))
 
 	closeErr := results.Close()
 	assert.NoError(t, closeErr, "Close error")
@@ -109,7 +110,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	results, queryErr := collection.QueryChannels(base.TestCtx(t), "ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
 	assert.NoError(t, queryErr, "Query error")
 
-	assert.Equal(t, 3, countQueryResults(results))
+	assert.Equal(t, 3, countQueryResults(ctx, results))
 
 	closeErr := results.Close()
 	assert.NoError(t, closeErr, "Close error")
@@ -202,7 +203,7 @@ func TestAllDocsQuery(t *testing.T) {
 	assert.NoError(t, queryErr, "Query error")
 	var row map[string]interface{}
 	rowCount := 0
-	for results.Next(&row) {
+	for results.Next(ctx, &row) {
 		t.Logf("row[%d]: %v", rowCount, row)
 		rowCount++
 	}
@@ -215,7 +216,7 @@ func TestAllDocsQuery(t *testing.T) {
 	results, queryErr = collection.QueryAllDocs(base.TestCtx(t), startKey, endKey)
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
-	for results.Next(&row) {
+	for results.Next(ctx, &row) {
 		t.Logf("row[%d]: %v", rowCount, row)
 		rowCount++
 	}
@@ -228,7 +229,7 @@ func TestAllDocsQuery(t *testing.T) {
 	results, queryErr = collection.QueryAllDocs(base.TestCtx(t), startKey, endKey)
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
-	for results.Next(&row) {
+	for results.Next(ctx, &row) {
 		t.Logf("row[%d]: %v", rowCount, row)
 		assert.NotEqual(t, row["id"], "InvalidData")
 		rowCount++
@@ -242,7 +243,7 @@ func TestAllDocsQuery(t *testing.T) {
 	results, queryErr = collection.QueryAllDocs(base.TestCtx(t), startKey, endKey)
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
-	for results.Next(&row) {
+	for results.Next(ctx, &row) {
 		t.Logf("row[%d]: %v", rowCount, row)
 		rowCount++
 	}
@@ -278,7 +279,7 @@ func TestAccessQuery(t *testing.T) {
 	assert.NoError(t, queryErr, "Query error")
 	var row map[string]interface{}
 	rowCount := 0
-	for results.Next(&row) {
+	for results.Next(ctx, &row) {
 		rowCount++
 	}
 	assert.Equal(t, 5, rowCount)
@@ -292,7 +293,7 @@ func TestAccessQuery(t *testing.T) {
 		results, queryErr = collection.QueryAccess(base.TestCtx(t), username)
 		assert.NoError(t, queryErr, "Query error")
 		rowCount = 0
-		for results.Next(&row) {
+		for results.Next(ctx, &row) {
 			rowCount++
 		}
 		assert.Equal(t, 0, rowCount)
@@ -326,7 +327,7 @@ func TestRoleAccessQuery(t *testing.T) {
 	assert.NoError(t, queryErr, "Query error")
 	var row map[string]interface{}
 	rowCount := 0
-	for results.Next(&row) {
+	for results.Next(ctx, &row) {
 		rowCount++
 	}
 	assert.Equal(t, 5, rowCount)
@@ -340,7 +341,7 @@ func TestRoleAccessQuery(t *testing.T) {
 		results, queryErr = collection.QueryRoleAccess(base.TestCtx(t), username)
 		assert.NoError(t, queryErr, "Query error")
 		rowCount = 0
-		for results.Next(&row) {
+		for results.Next(ctx, &row) {
 			rowCount++
 		}
 		assert.Equal(t, 0, rowCount)
@@ -348,11 +349,11 @@ func TestRoleAccessQuery(t *testing.T) {
 	}
 }
 
-func countQueryResults(results sgbucket.QueryResultIterator) int {
+func countQueryResults(ctx context.Context, results sgbucket.QueryResultIterator) int {
 
 	count := 0
 	var row map[string]interface{}
-	for results.Next(&row) {
+	for results.Next(ctx, &row) {
 		count++
 	}
 	return count

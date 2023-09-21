@@ -641,14 +641,14 @@ func TestPostInstallCleanup(t *testing.T) {
 	require.True(t, ok)
 
 	// Create design docs in obsolete format
-	err = viewStore.PutDDoc(db.DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(rt.Context(), db.DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
 	assert.NoError(t, err, "Unable to create design doc (DesignDocSyncGatewayPrefix)")
 
-	err = viewStore.PutDDoc(db.DesignDocSyncHousekeepingPrefix, &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(rt.Context(), db.DesignDocSyncHousekeepingPrefix, &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"all_docs": sgbucket.ViewDef{Map: mapFunction},
 		},

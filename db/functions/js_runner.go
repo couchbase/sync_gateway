@@ -44,13 +44,13 @@ var kJavaScriptWrapper string
 // Creates a JSServer instance wrapping a userJSRunner, for user JS functions and GraphQL resolvers.
 func newFunctionJSServer(ctx context.Context, name string, what string, sourceCode string) (*sgbucket.JSServer, error) {
 	js := fmt.Sprintf(kJavaScriptWrapper, sourceCode)
-	jsServer := sgbucket.NewJSServer(js, 0, kUserFunctionCacheSize,
-		func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
+	jsServer := sgbucket.NewJSServer(ctx, js, 0, kUserFunctionCacheSize,
+		func(ctx context.Context, fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
 			return newJSRunner(ctx, name, what, fnSource)
 		})
 	// Call WithTask to force a task to be instantiated, which will detect syntax errors in the script. Otherwise the error only gets detected the first time a client calls the function.
 	var err error
-	_, err = jsServer.WithTask(func(sgbucket.JSServerTask) (any, error) {
+	_, err = jsServer.WithTask(ctx, func(sgbucket.JSServerTask) (any, error) {
 		return nil, nil
 	})
 	return jsServer, err
@@ -84,7 +84,7 @@ func newJSRunner(ctx context.Context, name string, kind string, funcSource strin
 	}
 
 	// Define the `get`, `save`, etc. function callbacks:
-	runner.defineNativeCallbacks()
+	runner.defineNativeCallbacks(ctx)
 
 	// Set (and compile) the JS function:
 	if _, err := runner.JSRunner.SetFunction(funcSource); err != nil {
@@ -143,7 +143,7 @@ func (runner *jsRunner) CallWithDB(db *db.Database, ctx context.Context, jsArgs 
 	runner.SetTimeout(timeout)
 	runner.currentDB = db
 	runner.ctx = ctx
-	return runner.Call(jsArgs...)
+	return runner.Call(ctx, jsArgs...)
 }
 
 // JavaScript error returned by a jsRunner

@@ -22,8 +22,9 @@ func TestConfigPersistence(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -125,8 +126,9 @@ func TestXattrConfigPersistence(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
@@ -155,7 +157,6 @@ func TestXattrConfigPersistence(t *testing.T) {
 	_, reinsertErr := cp.insertConfig(c, configKey, configBody)
 	require.Equal(t, ErrAlreadyExists, reinsertErr)
 
-	ctx := TestCtx(t)
 	// Retrieve the config, cas should still match insertCas
 	var loadedConfig map[string]interface{}
 	loadCas, loadErr := cp.loadConfig(ctx, c, configKey, &loadedConfig)

@@ -46,56 +46,47 @@ func (c *Collection) GetSpec() BucketSpec {
 }
 
 // Implementation of the XattrStore interface primarily invokes common wrappers that in turn invoke SDK-specific SubdocXattrStore API
-func (c *Collection) WriteCasWithXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
-	ctx := context.TODO() // fix in sg-bucket
+func (c *Collection) WriteCasWithXattr(ctx context.Context, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
 	return WriteCasWithXattr(ctx, c, k, xattrKey, exp, cas, opts, v, xv)
 }
 
-func (c *Collection) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v []byte, xv []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
-	ctx := context.TODO() // fix in sg-bucket
+func (c *Collection) WriteWithXattr(ctx context.Context, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v []byte, xv []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) { // If this is a tombstone, we want to delete the document and update the xattr
 	return WriteWithXattr(ctx, c, k, xattrKey, exp, cas, opts, v, xv, isDelete, deleteBody)
 }
 
-func (c *Collection) DeleteWithXattr(k string, xattrKey string) error {
-	ctx := context.TODO() // fix in sg-bucket
+func (c *Collection) DeleteWithXattr(ctx context.Context, k string, xattrKey string) error {
 	return DeleteWithXattr(ctx, c, k, xattrKey)
 }
 
-func (c *Collection) GetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
-	return c.SubdocGetXattr(k, xattrKey, xv)
+func (c *Collection) GetXattr(ctx context.Context, k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
+	return c.SubdocGetXattr(ctx, k, xattrKey, xv)
 }
 
-func (c *Collection) GetSubDocRaw(k string, subdocKey string) ([]byte, uint64, error) {
-	ctx := context.TODO() // fix in sg-bucket
+func (c *Collection) GetSubDocRaw(ctx context.Context, k string, subdocKey string) ([]byte, uint64, error) {
 	return c.SubdocGetRaw(ctx, k, subdocKey)
 }
 
-func (c *Collection) WriteSubDoc(k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
-	ctx := context.TODO() // fix in sg-bucket
+func (c *Collection) WriteSubDoc(ctx context.Context, k string, subdocKey string, cas uint64, value []byte) (uint64, error) {
 	return c.SubdocWrite(ctx, k, subdocKey, cas, value)
 }
 
-func (c *Collection) GetWithXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
-	return c.SubdocGetBodyAndXattr(k, xattrKey, userXattrKey, rv, xv, uxv)
+func (c *Collection) GetWithXattr(ctx context.Context, k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
+	return c.SubdocGetBodyAndXattr(ctx, k, xattrKey, userXattrKey, rv, xv, uxv)
 }
 
-func (c *Collection) WriteUpdateWithXattr(k string, xattrKey string, userXattrKey string, exp uint32, opts *sgbucket.MutateInOptions, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
-	ctx := context.TODO() // fix in sg-bucket
+func (c *Collection) WriteUpdateWithXattr(ctx context.Context, k string, xattrKey string, userXattrKey string, exp uint32, opts *sgbucket.MutateInOptions, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	return WriteUpdateWithXattr(ctx, c, k, xattrKey, userXattrKey, exp, opts, previous, callback)
 }
 
-func (c *Collection) SetXattr(k string, xattrKey string, xv []byte) (casOut uint64, err error) {
-	ctx := context.TODO() // fix in sg-bucket
+func (c *Collection) SetXattr(ctx context.Context, k string, xattrKey string, xv []byte) (casOut uint64, err error) {
 	return SetXattr(ctx, c, k, xattrKey, xv)
 }
 
-func (c *Collection) RemoveXattr(k string, xattrKey string, cas uint64) (err error) {
-	ctx := context.TODO() // fix in sg-bucket
+func (c *Collection) RemoveXattr(ctx context.Context, k string, xattrKey string, cas uint64) (err error) {
 	return RemoveXattr(ctx, c, k, xattrKey, cas)
 }
 
-func (c *Collection) DeleteXattrs(k string, xattrKeys ...string) (err error) {
-	ctx := context.TODO() // fix in sg-bucket
+func (c *Collection) DeleteXattrs(ctx context.Context, k string, xattrKeys ...string) (err error) {
 	return DeleteXattrs(ctx, c, k, xattrKeys...)
 }
 
@@ -108,11 +99,10 @@ func (c *Collection) UpdateXattr(k string, xattrKey string, exp uint32, cas uint
 // Notes on error handling
 //   - gocb v2 returns subdoc errors at the op level, in the ContentAt response
 //   - 'successful' error codes, like SucDocSuccessDeleted, aren't returned, and instead just set the internal.Deleted property on the response
-func (c *Collection) SubdocGetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
+func (c *Collection) SubdocGetXattr(ctx context.Context, k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
-	ctx := context.TODO() // fix in sg-bucket
 	ops := []gocb.LookupInSpec{
 		gocb.GetSpec(xattrKey, GetSpecXattr),
 	}
@@ -209,8 +199,7 @@ func (c *Collection) SubdocWrite(ctx context.Context, k string, subdocKey string
 }
 
 // SubdocGetBodyAndXattr retrieves the document body and xattr in a single LookupIn subdoc operation.  Does not require both to exist.
-func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
-	ctx := context.TODO() // fix in sg-bucket
+func (c *Collection) SubdocGetBodyAndXattr(ctx context.Context, k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
 	worker := func() (shouldRetry bool, err error, value uint64) {
 
 		c.Bucket.waitForAvailKvOp()
@@ -269,7 +258,7 @@ func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrK
 		// TODO: We may be able to improve in the future by having this secondary op as part of the first. At present
 		// there is no support to obtain more than one xattr in a single operation however MB-28041 is filed for this.
 		if userXattrKey != "" {
-			userXattrCas, userXattrErr := c.SubdocGetXattr(k, userXattrKey, uxv)
+			userXattrCas, userXattrErr := c.SubdocGetXattr(ctx, k, userXattrKey, uxv)
 			switch pkgerrors.Cause(userXattrErr) {
 			case gocb.ErrDocumentNotFound:
 				// If key not found it has been deleted in between the first op and this op.
@@ -356,7 +345,7 @@ func (c *Collection) SubdocInsertBodyAndXattr(k string, xattrKey string, exp uin
 }
 
 // SubdocInsert performs a subdoc insert operation to the specified path in the document body.
-func (c *Collection) SubdocInsert(k string, fieldPath string, cas uint64, value interface{}) error {
+func (c *Collection) SubdocInsert(_ context.Context, k string, fieldPath string, cas uint64, value interface{}) error {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 

@@ -117,7 +117,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 func (c *DatabaseCollection) GetDocWithXattr(ctx context.Context, key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
-	rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattr(key, base.SyncXattrName, c.userXattrKey(), &rawBucketDoc.Body, &rawBucketDoc.Xattr, &rawBucketDoc.UserXattr)
+	rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattr(ctx, key, base.SyncXattrName, c.userXattrKey(), &rawBucketDoc.Body, &rawBucketDoc.Xattr, &rawBucketDoc.UserXattr)
 	if getErr != nil {
 		return nil, nil, getErr
 	}
@@ -144,7 +144,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 		// Retrieve doc and xattr from bucket, unmarshal only xattr.
 		// Triggers on-demand import when document xattr doesn't match cas.
 		var rawDoc, rawXattr, rawUserXattr []byte
-		cas, getErr := c.dataStore.GetWithXattr(key, base.SyncXattrName, c.userXattrKey(), &rawDoc, &rawXattr, &rawUserXattr)
+		cas, getErr := c.dataStore.GetWithXattr(ctx, key, base.SyncXattrName, c.userXattrKey(), &rawDoc, &rawXattr, &rawUserXattr)
 		if getErr != nil {
 			return emptySyncData, getErr
 		}
@@ -1832,7 +1832,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
 		// Update the document, storing metadata in extended attribute
-		casOut, err = db.dataStore.WriteUpdateWithXattr(key, base.SyncXattrName, db.userXattrKey(), expiry, opts, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
+		casOut, err = db.dataStore.WriteUpdateWithXattr(ctx, key, base.SyncXattrName, db.userXattrKey(), expiry, opts, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(ctx, docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll); err != nil {
 				return
@@ -2201,7 +2201,7 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) err
 	}
 
 	if db.UseXattrs() {
-		return db.dataStore.DeleteWithXattr(key, base.SyncXattrName)
+		return db.dataStore.DeleteWithXattr(ctx, key, base.SyncXattrName)
 	} else {
 		return db.dataStore.Delete(key)
 	}
@@ -2240,7 +2240,7 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 		var output *channels.ChannelMapperOutput
 
 		startTime := time.Now()
-		output, err = col.ChannelMapper.MapToChannelsAndAccess(body, oldJson, metaMap,
+		output, err = col.ChannelMapper.MapToChannelsAndAccess(ctx, body, oldJson, metaMap,
 			MakeUserCtx(col.user, col.ScopeName, col.Name))
 		syncFunctionTimeNano := time.Since(startTime).Nanoseconds()
 
@@ -2359,7 +2359,7 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(ctx context.Context,
 
 	var accessRow QueryAccessRow
 	channelSet := channels.TimedSet{}
-	for results.Next(&accessRow) {
+	for results.Next(ctx, &accessRow) {
 		channelSet.Add(accessRow.Value)
 	}
 
@@ -2397,7 +2397,7 @@ func (c *DatabaseCollection) ComputeRolesForUser(ctx context.Context, user auth.
 	// Merge the TimedSets from the view result:
 	roleChannelSet := channels.TimedSet{}
 	var roleAccessRow QueryAccessRow
-	for results.Next(&roleAccessRow) {
+	for results.Next(ctx, &roleAccessRow) {
 		roleChannelSet.Add(roleAccessRow.Value)
 	}
 	closeErr := results.Close()
@@ -2435,7 +2435,7 @@ func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string,
 
 	if db.UseXattrs() {
 		var xattrValue []byte
-		cas, err := db.dataStore.GetXattr(docid, base.SyncXattrName, &xattrValue)
+		cas, err := db.dataStore.GetXattr(ctx, docid, base.SyncXattrName, &xattrValue)
 
 		if err != nil {
 			if !base.IsDocNotFoundError(err) {

@@ -1214,11 +1214,12 @@ func TestRemovingUserXattr(t *testing.T) {
 			})
 			assert.NoError(t, err)
 
+			ctx := base.TestCtx(t)
 			// Get sync data for doc and ensure user xattr has been used correctly to set channel
 			var syncData db.SyncData
 			subdocStore, ok := base.AsSubdocXattrStore(rt.GetSingleDataStore())
 			require.True(t, ok)
-			_, err = subdocStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+			_, err = subdocStore.SubdocGetXattr(ctx, docKey, base.SyncXattrName, &syncData)
 			assert.NoError(t, err)
 
 			assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
@@ -1236,7 +1237,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Ensure old channel set with user xattr has been removed
 			var syncData2 db.SyncData
-			_, err = subdocStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
+			_, err = subdocStore.SubdocGetXattr(ctx, docKey, base.SyncXattrName, &syncData2)
 			assert.NoError(t, err)
 
 			assert.Equal(t, uint64(3), syncData2.Channels[channelName].Seq)
@@ -1255,7 +1256,6 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only - user xattrs")
 	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	docKey := t.Name()
@@ -1294,9 +1294,10 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	require.NoError(t, rt.WaitForPendingChanges())
 
+	ctx := base.TestCtx(t)
 	// Get current sync data
 	var syncData db.SyncData
-	_, err := subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err := subdocXattrStore.SubdocGetXattr(ctx, docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	docRev, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
@@ -1316,7 +1317,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	// Ensure import worked and sequence incremented but that sequence did not
 	var syncData2 db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = subdocXattrStore.SubdocGetXattr(ctx, docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	docRev2, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
@@ -1338,7 +1339,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.NoError(t, err)
 
 	var syncData3 db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = subdocXattrStore.SubdocGetXattr(ctx, docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	assert.NotEqual(t, syncData2.CurrentRev, syncData3.CurrentRev)
@@ -1349,8 +1350,9 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	base.RequireNumTestDataStores(t, numCollections)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
+	ctx := base.TestCtx(t)
 	testBucket := base.GetPersistentTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
 
 	rtConfig := &RestTesterConfig{

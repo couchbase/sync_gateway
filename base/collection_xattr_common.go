@@ -24,8 +24,8 @@ const (
 
 // SubdocXattrStore interface defines the set of operations Sync Gateway uses to manage and interact with xattrs
 type SubdocXattrStore interface {
-	SubdocGetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error)
-	SubdocGetBodyAndXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error)
+	SubdocGetXattr(ctx context.Context, k string, xattrKey string, xv interface{}) (casOut uint64, err error)
+	SubdocGetBodyAndXattr(ctx context.Context, k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error)
 	SubdocInsertXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error)
 	SubdocInsertBodyAndXattr(k string, xattrKey string, exp uint32, v interface{}, xv interface{}) (casOut uint64, err error)
 	SubdocSetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error)
@@ -205,8 +205,7 @@ func WriteUpdateWithXattr(ctx context.Context, store SubdocXattrStore, k string,
 		// If no existing value has been provided, retrieve the current value from the bucket
 		if cas == 0 {
 			// Load the existing value.
-			cas, err = store.SubdocGetBodyAndXattr(k, xattrKey, userXattrKey, &value, &xattrValue, &userXattrValue)
-
+			cas, err = store.SubdocGetBodyAndXattr(ctx, k, xattrKey, userXattrKey, &value, &xattrValue, &userXattrValue)
 			if err != nil {
 				if pkgerrors.Cause(err) != ErrNotFound {
 					// Unexpected error, cancel writeupdate
@@ -376,7 +375,7 @@ func deleteWithXattrInternal(ctx context.Context, store KvXattrStore, k string, 
 			callback(k, xattrKey)
 		}
 		// KeyNotFound indicates there is no doc body.  Try to delete only the xattr.
-		return deleteDocXattrOnly(store, k, xattrKey, callback)
+		return deleteDocXattrOnly(ctx, store, k, xattrKey, callback)
 	case mutateErr == ErrXattrNotFound:
 		// Invoke the testing related callback.  This is a no-op in non-test contexts.
 		if callback != nil {
@@ -392,12 +391,12 @@ func deleteWithXattrInternal(ctx context.Context, store KvXattrStore, k string, 
 
 }
 
-func deleteDocXattrOnly(store SubdocXattrStore, k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
+func deleteDocXattrOnly(ctx context.Context, store SubdocXattrStore, k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
 
 	//  Do get w/ xattr in order to get cas
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	getCas, err := store.SubdocGetBodyAndXattr(k, xattrKey, "", &retrievedVal, &retrievedXattr, nil)
+	getCas, err := store.SubdocGetBodyAndXattr(ctx, k, xattrKey, "", &retrievedVal, &retrievedXattr, nil)
 	if err != nil {
 		return err
 	}

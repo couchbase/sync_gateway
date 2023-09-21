@@ -413,7 +413,7 @@ func (context *DatabaseContext) ViewQueryWithStats(ctx context.Context, dataStor
 		return results, fmt.Errorf("Datastore does not support views")
 	}
 
-	results, err = viewStore.ViewQuery(ddoc, viewName, params)
+	results, err = viewStore.ViewQuery(ctx, ddoc, viewName, params)
 	if err != nil {
 		queryStat.QueryErrorCount.Add(1)
 	}
@@ -784,11 +784,11 @@ func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) 
 
 type EmptyResultIterator struct{}
 
-func (e *EmptyResultIterator) One(valuePtr interface{}) error {
+func (e *EmptyResultIterator) One(_ context.Context, valuePtr interface{}) error {
 	return nil
 }
 
-func (e *EmptyResultIterator) Next(valuePtr interface{}) bool {
+func (e *EmptyResultIterator) Next(_ context.Context, valuePtr interface{}) bool {
 	return false
 }
 

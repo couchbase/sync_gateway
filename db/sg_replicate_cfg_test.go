@@ -23,10 +23,10 @@ import (
 // Test node operations on SGReplicateManager
 func TestReplicateManagerReplications(t *testing.T) {
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-
 	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
 	testCfg, err := base.NewCfgSG(ctx, testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
@@ -87,10 +87,10 @@ func TestReplicateManagerReplications(t *testing.T) {
 // Test node operations on SGReplicateManager
 func TestReplicateManagerNodes(t *testing.T) {
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-
 	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
 	testCfg, err := base.NewCfgSG(ctx, testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
@@ -143,10 +143,10 @@ func TestReplicateManagerNodes(t *testing.T) {
 // Test concurrent node operations on SGReplicateManager
 func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-
 	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
 	testCfg, err := base.NewCfgSG(ctx, testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
@@ -188,10 +188,10 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 // Test concurrent replication operations on SGReplicateManager
 func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-
 	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
 	testCfg, err := base.NewCfgSG(ctx, testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
@@ -639,10 +639,10 @@ func TestIsCfgChanged(t *testing.T) {
 		},
 	}
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-
 	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
 	testCfg, err := base.NewCfgSG(ctx, testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
@@ -656,7 +656,7 @@ func TestIsCfgChanged(t *testing.T) {
 			replicatorConfig, err := mgr.NewActiveReplicatorConfig(replicationCfg)
 			require.NoError(t, err)
 
-			replicationCfg.Upsert(base.TestCtx(t), testCase.updatedConfig)
+			replicationCfg.Upsert(ctx, testCase.updatedConfig)
 
 			isChanged, err := mgr.isCfgChanged(replicationCfg, replicatorConfig)
 			assert.NoError(t, err)
@@ -669,9 +669,9 @@ func TestIsCfgChanged(t *testing.T) {
 // Test replicators assigned nodes with different group IDs
 func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
 	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 
 	// scopes config will set up from test environment whether backed by default or non default collection
 	scopesConfig := GetScopesOptions(t, tb, 1)

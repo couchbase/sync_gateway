@@ -25,9 +25,10 @@ func TestServerlessPollBuckets(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := base.TestCtx(t)
 	// Get test bucket
 	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+	defer tb1.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1.NoCloseClone(),
@@ -39,7 +40,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	})
 	defer rt.Close()
 	sc := rt.ServerContext()
-	ctx := rt.Context()
+	ctx = rt.Context()
 
 	// Blank out all per-bucket creds
 	perBucketCreds := sc.Config.BucketCredentials
@@ -94,8 +95,9 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := base.TestCtx(t)
 	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+	defer tb1.Close(ctx)
 
 	testCases := []struct {
 		name                  string
@@ -147,15 +149,16 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := base.TestCtx(t)
 	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+	defer tb1.Close(ctx)
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1.NoCloseClone(), PersistentConfig: true, serverless: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
 		},
 	})
 	defer rt.Close()
-	ctx := rt.Context()
+	ctx = rt.Context()
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
 				"bucket": "%s",
@@ -201,8 +204,9 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
-			defer tb.Close()
+			defer tb.Close(ctx)
 			bucketServer := tb.BucketSpec.Server
 			test.expectedConnStr = bucketServer + test.expectedConnStr
 
@@ -250,8 +254,9 @@ func TestServerlessUnsupportedOptions(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
-			defer tb.Close()
+			defer tb.Close(ctx)
 			bucketServer := tb.BucketSpec.Server
 			test.expectedConnStr = bucketServer + test.expectedConnStr
 
@@ -281,9 +286,10 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server due to updating database config using a Bootstrap connection")
 	}
 
+	ctx := base.TestCtx(t)
 	// Get test bucket
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true})
 	defer rt.Close()
@@ -352,8 +358,9 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
@@ -398,10 +405,9 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
 	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
@@ -479,8 +485,9 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
@@ -564,8 +571,9 @@ func TestSuspendingFlags(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
-			defer tb.Close()
+			defer tb.Close(ctx)
 
 			rt := NewRestTester(t,
 				&RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: test.serverlessMode})
@@ -607,9 +615,10 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+	ctx := base.TestCtx(t)
 	// Get test bucket
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true})
 	defer rt.Close()
@@ -644,9 +653,10 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+	ctx := base.TestCtx(t)
 	// Get test bucket
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
 	defer rt.Close()
@@ -720,8 +730,9 @@ func TestImportPartitionsServerless(t *testing.T) {
 				expectedPartitions = nil
 			}
 
+			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
-			defer tb.Close()
+			defer tb.Close(ctx)
 			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: test.serverless})
 			defer rt.Close()
 			sc := rt.ServerContext()

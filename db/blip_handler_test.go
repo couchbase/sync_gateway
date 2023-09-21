@@ -24,7 +24,7 @@ func TestCollectionBlipHandler(t *testing.T) {
 	require.NoError(t, err)
 	allDBContext.DbStats = dbStats
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 	allDBCollection, err := newDatabaseCollection(ctx, allDBContext, bucket.GetSingleDataStore(), nil)
 	require.NoError(t, err)
 	allDBContext.CollectionByID = map[uint32]*DatabaseCollection{

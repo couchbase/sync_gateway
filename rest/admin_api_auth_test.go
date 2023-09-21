@@ -142,10 +142,10 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	if !base.ServerIsTLS(serverURL) {
 		t.Skipf("URI %s needs to start with couchbases://", serverURL)
 	}
-	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
-	defer tb.Close()
-
 	ctx := base.TestCtx(t)
+	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
+	defer tb.Close(ctx)
+
 	svrctx := NewServerContext(ctx, &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			Server:       serverURL,
@@ -440,10 +440,10 @@ func TestAdminAuthWithX509(t *testing.T) {
 	if !base.ServerIsTLS(serverURL) {
 		t.Skipf("URI %s needs to start with couchbases://", serverURL)
 	}
-	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
-	defer tb.Close()
-
 	ctx := base.TestCtx(t)
+	tb, caCertPath, certPath, keyPath := setupX509Tests(t, true)
+	defer tb.Close(ctx)
+
 	svrctx := NewServerContext(ctx, &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			Server:       serverURL,
@@ -1463,7 +1463,8 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	ctx := base.TestCtx(t)
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		AdminInterfaceAuthentication: true,

@@ -41,7 +41,7 @@ func TestBootstrapConfig(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 	bucketName := tb.GetName()
 	db1Name := "db"
@@ -75,7 +75,7 @@ func TestComputeMetadataID(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
-		tb.Close()
+		tb.Close(ctx)
 	}()
 	bucketName := tb.GetName()
 
