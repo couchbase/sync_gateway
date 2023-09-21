@@ -293,12 +293,65 @@ func TestGetDeepMutableBody(t *testing.T) {
 	}
 }
 
-func TestUnmarshalDocumentSyncDataFromFeedwithInvalidXattr(t *testing.T) {
-	// attachmentFeedEventWithInvalidXattrLen return an invalid document with name of attachment. It has DataType of xattrs but doesn't have correct xattr bytes.
-	result, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed([]byte("abcde"), base.MemcachedDataTypeXattr, "", false)
-	require.ErrorIs(t, err, base.ErrXattrInvalidLen)
+func TestInvalidXattrStreamDataLen(t *testing.T) {
+	testCases := []struct {
+		name        string
+		body        []byte
+		expectedErr error
+	}{
+		{
+			name:        "bad value",
+			body:        []byte("abcde"),
+			expectedErr: base.ErrXattrInvalidLen,
+		},
+		{
+			name:        "xattr length 4, overflow",
+			body:        []byte{0x00, 0x00, 0x00, 0x04, 0x01},
+			expectedErr: base.ErrXattrInvalidLen,
+		},
+		{
+			name:        "xattr length 1, body size 0",
+			body:        []byte{0x00, 0x00, 0x00, 0x01, 0x01},
+			expectedErr: nil,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			// parseXattrStreamData is the underlying function
+			body, xattr, userXattr, err := parseXattrStreamData(base.SyncXattrName, "", test.body)
+			require.Error(t, err)
+			require.ErrorIs(t, err, test.expectedErr)
+			require.Nil(t, body)
+			require.Nil(t, xattr)
+			require.Nil(t, userXattr)
+			// UnmarshalDocumentSyncData wraps parseXattrStreamData
+			result, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(test.body, base.MemcachedDataTypeXattr, "", false)
+			require.ErrorIs(t, err, base.ErrXattrInvalidLen)
+			require.Nil(t, result)
+			require.Nil(t, rawBody)
+			require.Nil(t, rawXattr)
+			require.Nil(t, rawUserXattr)
+
+		})
+	}
+}
+
+func TestInvalidXattrStreamEmptyBody(t *testing.T) {
+	inputStream := []byte{0x00, 0x00, 0x00, 0x01, 0x01}
+	emptyBody := []byte{}
+	// parseXattrStreamData is the underlying function
+	body, xattr, userXattr, err := parseXattrStreamData(base.SyncXattrName, "", inputStream)
+	require.NoError(t, err)
+	require.Equal(t, emptyBody, body)
+	require.Nil(t, xattr)
+	require.Nil(t, userXattr)
+
+	// UnmarshalDocumentSyncData wraps parseXattrStreamData
+	result, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(inputStream, base.MemcachedDataTypeXattr, "", false)
+	require.Error(t, err) // unexpected end of JSON input
 	require.Nil(t, result)
-	require.Nil(t, rawBody)
+	require.Equal(t, emptyBody, rawBody)
 	require.Nil(t, rawXattr)
 	require.Nil(t, rawUserXattr)
+
 }

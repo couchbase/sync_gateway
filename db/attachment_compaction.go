@@ -211,7 +211,7 @@ func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionDa
 	if dataType&base.MemcachedDataTypeXattr != 0 {
 		body, xattr, _, err := parseXattrStreamData(base.SyncXattrName, "", data)
 		if err != nil {
-			if errors.Is(err, base.ErrXattrNotFound) {
+			if errors.Is(err, base.ErrXattrNotFound) || errors.Is(err, base.ErrXattrInvalidLen) {
 				return nil, nil
 			}
 			return nil, err
