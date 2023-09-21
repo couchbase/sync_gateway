@@ -779,7 +779,7 @@ func TestCollectionsAddNamedCollectionToImplicitDefaultScope(t *testing.T) {
 	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
 
 	newCollection := base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: t.Name()}
-	require.NoError(t, rt.TestBucket.CreateDataStore(base.TestCtx(t), newCollection))
+	require.NoError(t, rt.TestBucket.CreateDataStore(newCollection))
 	defer func() {
 		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
 	}()
@@ -819,7 +819,7 @@ func TestCollectionsChangeConfigScopeFromImplicitDefault(t *testing.T) {
 	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
 
 	newCollection := base.ScopeAndCollectionName{Scope: t.Name(), Collection: t.Name()}
-	require.NoError(t, rt.TestBucket.CreateDataStore(base.TestCtx(t), newCollection))
+	require.NoError(t, rt.TestBucket.CreateDataStore(newCollection))
 	defer func() {
 		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
 	}()
