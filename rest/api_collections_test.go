@@ -10,8 +10,10 @@ package rest
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -762,6 +764,89 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, res.StatusCode, "should not be able to change scope"),
 		assert.Contains(t, res.Body, "cannot change scopes after database creation"),
 	)
+}
+
+func TestCollectionsAddNamedCollectionToImplicitDefaultScope(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 1)
+	defer rt.Close()
+
+	const dbName = "db"
+
+	// implicit default scope/collection
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = nil
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	expectedKeyspaces := []string{
+		dbName,
+	}
+	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
+
+	newCollection := base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: t.Name()}
+	require.NoError(t, rt.TestBucket.CreateDataStore(newCollection))
+	defer func() {
+		err := rt.TestBucket.DropDataStore(newCollection)
+		// Walrus doesn't write to disk if it has had no documents - ignore this error
+		// Not a problem in Rosmar or Couchbase Server...
+		if !errors.Is(err, os.ErrNotExist) {
+			assert.NoError(t, err)
+		}
+	}()
+
+	resp = rt.UpsertDbConfig(dbName, DbConfig{Scopes: ScopesConfig{
+		base.DefaultScope: {Collections: CollectionsConfig{
+			base.DefaultCollection:         {},
+			newCollection.CollectionName(): {},
+		}},
+	}})
+	RequireStatus(t, resp, http.StatusCreated)
+
+	expectedKeyspaces = []string{
+		dbName,
+		fmt.Sprintf("%s.%s.%s", dbName, newCollection.ScopeName(), newCollection.CollectionName()),
+	}
+	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
+}
+
+func TestCollectionsChangeConfigScopeFromImplicitDefault(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 1)
+	defer rt.Close()
+
+	const dbName = "db"
+
+	// implicit default scope/collection
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = nil
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	expectedKeyspaces := []string{
+		dbName,
+	}
+	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
+
+	newCollection := base.ScopeAndCollectionName{Scope: t.Name(), Collection: t.Name()}
+	require.NoError(t, rt.TestBucket.CreateDataStore(newCollection))
+	defer func() {
+		err := rt.TestBucket.DropDataStore(newCollection)
+		// Walrus doesn't write to disk if it has had no documents - ignore this error
+		// Not a problem in Rosmar or Couchbase Server...
+		if !errors.Is(err, os.ErrNotExist) {
+			assert.NoError(t, err)
+		}
+	}()
+
+	resp = rt.UpsertDbConfig(dbName, DbConfig{Scopes: ScopesConfig{
+		newCollection.ScopeName(): {Collections: CollectionsConfig{
+			newCollection.CollectionName(): {},
+		}},
+	}})
+	assertHTTPErrorReason(t, resp, http.StatusBadRequest, "1 errors:\ncannot change scopes after database creation")
 }
 
 // TestCollecitonStats ensures that stats are specific to each collection.
