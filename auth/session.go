@@ -138,7 +138,7 @@ func (auth Authenticator) DeleteSessionForCookie(rq *http.Request) *http.Cookie 
 	}
 
 	if err := auth.datastore.Delete(auth.DocIDForSession(cookie.Value)); err != nil {
-		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error while deleting session for cookie %s, Error: %v", base.UD(cookie.Value), err)
+		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error while deleting session for cookie %s, Error: %v", base.UD(cookie.Value), err)
 	}
 
 	newCookie := *cookie

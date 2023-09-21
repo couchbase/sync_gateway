@@ -464,7 +464,7 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) error {
 			WarnfCtx(dc.ctx, "Closing stream for vbID %d, agent has been shut down", vbID)
 			return openStreamErr
 		case errors.Is(openStreamErr, ErrTimeout):
-			DebugfCtx(dc.ctx, KeyDCP, "Timeout attempting to open stream for vb %d, will retry", vbID)
+			InfofCtx(dc.ctx, KeyDCP, "Timeout attempting to open stream for vb %d, will retry", vbID)
 		default:
 			WarnfCtx(dc.ctx, "Unknown error opening stream for vbID %d: %v", vbID, openStreamErr)
 		}

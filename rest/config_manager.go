@@ -412,7 +412,7 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 			// requested a stale version.
 			return false, base.ErrConfigVersionMismatch, config
 		} else {
-			base.DebugfCtx(ctx, base.KeyConfig, "getConfigVersionWithRetry for key %s found version mismatch, retrying.  Requested: %s, Found: %s", metadataKey, version, config.Version)
+			base.InfofCtx(ctx, base.KeyConfig, "getConfigVersionWithRetry for key %s found version mismatch, retrying.  Requested: %s, Found: %s", metadataKey, version, config.Version)
 			return true, base.ErrConfigRegistryRollback, config
 		}
 	}
