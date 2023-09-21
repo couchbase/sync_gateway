@@ -403,7 +403,6 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 
 	// Remove collection and update the db config
 	scopesConfig = GetCollectionsConfig(t, tb, 2)
-	dataStoreNames = GetDataStoreNamesFromScopesConfig(scopesConfig)
 
 	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}
 	scopesConfig[scope].Collections[collection2] = CollectionConfig{SyncFn: &c1SyncFunction}
@@ -786,7 +785,7 @@ func TestCollectionsAddNamedCollectionToImplicitDefaultScope(t *testing.T) {
 	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
 
 	newCollection := base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: t.Name()}
-	require.NoError(t, rt.TestBucket.CreateDataStore(newCollection))
+	require.NoError(t, rt.TestBucket.CreateDataStore(rt.Context(), newCollection))
 	defer func() {
 		err := rt.TestBucket.DropDataStore(newCollection)
 		// Walrus doesn't write to disk if it has had no documents - ignore this error
@@ -831,7 +830,7 @@ func TestCollectionsChangeConfigScopeFromImplicitDefault(t *testing.T) {
 	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
 
 	newCollection := base.ScopeAndCollectionName{Scope: t.Name(), Collection: t.Name()}
-	require.NoError(t, rt.TestBucket.CreateDataStore(newCollection))
+	require.NoError(t, rt.TestBucket.CreateDataStore(rt.Context(), newCollection))
 	defer func() {
 		err := rt.TestBucket.DropDataStore(newCollection)
 		// Walrus doesn't write to disk if it has had no documents - ignore this error
