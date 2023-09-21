@@ -48,6 +48,9 @@ var (
 	ErrTimeout               = &sgError{"Operation timed out"}
 	ErrPathNotFound          = &sgError{"Path not found"}
 
+	// ErrXattrInvalidLen is returned if the xattr is corrupt.
+	ErrXattrInvalidLen = &sgError{"Xattr stream length"}
+
 	// ErrPartialViewErrors is returned if the view call contains any partial errors.
 	// This is more of a warning, and inspecting ViewResult.Errors is required for detail.
 	ErrPartialViewErrors = &sgError{"Partial errors in view"}

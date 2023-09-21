@@ -18,6 +18,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TODO: Could consider checking this in as a file and include it into the compiled test binary using something like https://github.com/jteeuwen/go-bindata
@@ -290,4 +291,62 @@ func TestGetDeepMutableBody(t *testing.T) {
 			assert.Equal(t, *test.expected, body)
 		})
 	}
+}
+
+func TestInvalidXattrStreamDataLen(t *testing.T) {
+	testCases := []struct {
+		name        string
+		body        []byte
+		expectedErr error
+	}{
+		{
+			name:        "bad value",
+			body:        []byte("abcde"),
+			expectedErr: base.ErrXattrInvalidLen,
+		},
+		{
+			name:        "xattr length 4, overflow",
+			body:        []byte{0x00, 0x00, 0x00, 0x04, 0x01},
+			expectedErr: base.ErrXattrInvalidLen,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			// parseXattrStreamData is the underlying function
+			body, xattr, userXattr, err := parseXattrStreamData(base.SyncXattrName, "", test.body)
+			require.Error(t, err)
+			require.ErrorIs(t, err, test.expectedErr)
+			require.Nil(t, body)
+			require.Nil(t, xattr)
+			require.Nil(t, userXattr)
+			// UnmarshalDocumentSyncData wraps parseXattrStreamData
+			result, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(test.body, base.MemcachedDataTypeXattr, "", false)
+			require.ErrorIs(t, err, base.ErrXattrInvalidLen)
+			require.Nil(t, result)
+			require.Nil(t, rawBody)
+			require.Nil(t, rawXattr)
+			require.Nil(t, rawUserXattr)
+
+		})
+	}
+}
+
+func TestInvalidXattrStreamEmptyBody(t *testing.T) {
+	inputStream := []byte{0x00, 0x00, 0x00, 0x01, 0x01}
+	emptyBody := []byte{}
+	// parseXattrStreamData is the underlying function
+	body, xattr, userXattr, err := parseXattrStreamData(base.SyncXattrName, "", inputStream)
+	require.NoError(t, err)
+	require.Equal(t, emptyBody, body)
+	require.Nil(t, xattr)
+	require.Nil(t, userXattr)
+
+	// UnmarshalDocumentSyncData wraps parseXattrStreamData
+	result, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(inputStream, base.MemcachedDataTypeXattr, "", false)
+	require.Error(t, err) // unexpected end of JSON input
+	require.Nil(t, result)
+	require.Equal(t, emptyBody, rawBody)
+	require.Nil(t, rawXattr)
+	require.Nil(t, rawUserXattr)
+
 }
