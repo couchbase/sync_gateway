@@ -821,7 +821,7 @@ func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) err
 		atomic.StoreUint32(&dc.State, DBOffline)
 
 		if err := dc.EventMgr.RaiseDBStateChangeEvent(ctx, dc.Name, "offline", reason, dc.Options.AdminInterface); err != nil {
-			base.DebugfCtx(ctx, base.KeyCRUD, "Error raising database state change event: %v", err)
+			base.InfofCtx(ctx, base.KeyCRUD, "Error raising database state change event: %v", err)
 		}
 
 		return nil
@@ -1501,7 +1501,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 				collection.RemoveFromChangeCache(ctx, purgedDocs, startTime)
 				collection.dbStats().Database().NumTombstonesCompacted.Add(int64(count))
 			}
-			base.DebugfCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
+			base.InfofCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
 
 			callback(&purgedDocCount)
 
@@ -2197,7 +2197,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		db.Options.CacheOptions,
 		db.MetadataKeys,
 	); err != nil {
-		base.DebugfCtx(ctx, base.KeyCache, "Error initializing the change cache", err)
+		base.InfofCtx(ctx, base.KeyCache, "Error initializing the change cache", err)
 		return err
 	}
 

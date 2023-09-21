@@ -228,7 +228,7 @@ func (opm OIDCProviderMap) GetProviderForIssuer(ctx context.Context, issuer stri
 			}
 		}
 	}
-	base.DebugfCtx(ctx, base.KeyAuth, "No provider match found")
+	base.InfofCtx(ctx, base.KeyAuth, "No provider match found")
 	return nil
 }
 
@@ -407,7 +407,7 @@ func (op *OIDCProvider) standardDiscovery(ctx context.Context, discoveryURL stri
 			}
 			break
 		}
-		base.DebugfCtx(ctx, base.KeyAuth, "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v", base.UD(op.Issuer), i, maxRetryAttempts, err)
+		base.InfofCtx(ctx, base.KeyAuth, "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v", base.UD(op.Issuer), i, maxRetryAttempts, err)
 		time.Sleep(OIDCDiscoveryRetryWait)
 	}
 	return metadata, verifier, err
@@ -470,13 +470,13 @@ func (op *OIDCProvider) fetchCustomProviderConfig(ctx context.Context, discovery
 	base.DebugfCtx(ctx, base.KeyAuth, "Fetching custom provider config from %s", base.UD(discoveryURL))
 	req, err := http.NewRequest(http.MethodGet, discoveryURL, nil)
 	if err != nil {
-		base.DebugfCtx(ctx, base.KeyAuth, "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
+		base.InfofCtx(ctx, base.KeyAuth, "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
 		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
 	}
 	client := base.GetHttpClient(op.InsecureSkipVerify)
 	resp, err := client.Do(req)
 	if err != nil {
-		base.DebugfCtx(ctx, base.KeyAuth, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
+		base.InfofCtx(ctx, base.KeyAuth, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
 		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
 	}
 
@@ -513,12 +513,12 @@ func (op *OIDCProvider) fetchCustomProviderConfig(ctx context.Context, discovery
 	}
 
 	if err := base.JSONUnmarshal(bodyBytes, &metadata); err != nil {
-		base.DebugfCtx(ctx, base.KeyAuth, "Error parsing body during discovery sync: %v", err)
+		base.InfofCtx(ctx, base.KeyAuth, "Error parsing body during discovery sync: %v", err)
 		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
 	}
 
 	if reflect.DeepEqual(op.metadata, metadata) {
-		base.DebugfCtx(ctx, base.KeyAuth, "No change in discovery config detected at this time, next sync will be after %v", ttl)
+		base.InfofCtx(ctx, base.KeyAuth, "No change in discovery config detected at this time, next sync will be after %v", ttl)
 		return metadata, ttl, false, nil
 	}
 
@@ -626,13 +626,13 @@ func (op *OIDCProvider) verifyToken(ctx context.Context, token string, callbackU
 	// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
 	idToken, err := client.verifyJWT(ctx, token)
 	if err != nil {
-		base.DebugfCtx(ctx, base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
+		base.InfofCtx(ctx, base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
 		return nil, err
 	}
 
 	identity, ok, err := getIdentity(idToken)
 	if err != nil {
-		base.DebugfCtx(ctx, base.KeyAuth, "Error getting identity from token (Identity: %v, Error: %v)", base.UD(identity), err)
+		base.InfofCtx(ctx, base.KeyAuth, "Error getting identity from token (Identity: %v, Error: %v)", base.UD(identity), err)
 	}
 	if !ok {
 		return nil, err

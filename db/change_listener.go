@@ -209,7 +209,7 @@ func (listener *changeListener) Stop(ctx context.Context) {
 	if listener.tapFeed != nil {
 		err := listener.tapFeed.Close()
 		if err != nil {
-			base.DebugfCtx(ctx, base.KeyChanges, "Error closing listener tap feed: %v", err)
+			base.InfofCtx(ctx, base.KeyChanges, "Error closing listener tap feed: %v", err)
 		}
 	}
 
