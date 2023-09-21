@@ -67,7 +67,7 @@ func isPrimaryIndexEmpty(ctx context.Context, store base.N1QLStore) (bool, error
 
 	// If it's empty, we're done
 	var queryRow map[string]interface{}
-	found := results.Next(&queryRow)
+	found := results.Next(ctx, &queryRow)
 	resultsCloseErr := results.Close()
 	if resultsCloseErr != nil {
 		return false, err
@@ -222,11 +222,11 @@ WHERE META(ks).xattrs._sync.sequence IS NOT MISSING
 
 	var purgeErrors *base.MultiError
 	var row QueryIdRow
-	for results.Next(&row) {
+	for results.Next(ctx, &row) {
 		// First, attempt to purge.
 		var purgeErr error
 		if base.TestUseXattrs() {
-			purgeErr = dataStore.DeleteWithXattr(row.Id, base.SyncXattrName)
+			purgeErr = dataStore.DeleteWithXattr(ctx, row.Id, base.SyncXattrName)
 		} else {
 			purgeErr = dataStore.Delete(row.Id)
 		}
@@ -339,6 +339,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	}
 
 	for _, dataStoreName := range dataStores {
+		ctx := base.KeyspaceLogCtx(ctx, b.GetName(), dataStoreName.ScopeName(), dataStoreName.CollectionName())
 		dataStore, err := b.NamedDataStore(dataStoreName)
 		if err != nil {
 			return err

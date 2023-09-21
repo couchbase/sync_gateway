@@ -59,7 +59,7 @@ func (h *handler) handlePutDesignDoc() error {
 	if err != nil {
 		return err
 	}
-	if err = h.db.PutDesignDoc(ddocID, ddoc); err != nil {
+	if err = h.db.PutDesignDoc(h.ctx(), ddocID, ddoc); err != nil {
 		return err
 	}
 	h.writeStatus(http.StatusCreated, "OK")
@@ -117,7 +117,7 @@ func (h *handler) handleView() error {
 
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "JSON view %q/%q - opts %v", base.MD(ddocName), base.MD(viewName), base.MD(opts))
 
-	result, err := h.db.QueryDesignDoc(ddocName, viewName, opts)
+	result, err := h.db.QueryDesignDoc(h.ctx(), ddocName, viewName, opts)
 	if err != nil {
 		return err
 	}

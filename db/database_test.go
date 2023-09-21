@@ -139,7 +139,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 	leakyBucket := base.NewLeakyBucket(testBucket, leakyOptions)
 	dbCtx, err := NewDatabaseContext(ctx, "db", leakyBucket, false, dbcOptions)
 	if err != nil {
-		testBucket.Close()
+		testBucket.Close(ctx)
 		t.Fatalf("Unable to create database context: %v", err)
 	}
 	err = dbCtx.StartOnlineProcesses(ctx)
@@ -1597,7 +1597,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 	defer db.Close(ctx)
 
 	mapFunction := `function (doc, meta) { emit(); }`
-	err := db.PutDesignDoc("official", sgbucket.DesignDoc{
+	err := db.PutDesignDoc(ctx, "official", sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"TestView": sgbucket.ViewDef{Map: mapFunction},
 		},
@@ -1617,7 +1617,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 
 	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions(ctx))
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
-	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
+	err = db.PutDesignDoc(ctx, "_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
 }
 
@@ -2500,7 +2500,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 
 	// Ensure document has been added
 	waitAndAssertCondition(t, func() bool {
-		_, err = collection.dataStore.GetWithXattr("doc", "_sync", "", &doc, &xattr, nil)
+		_, err = collection.dataStore.GetWithXattr(ctx, "doc", "_sync", "", &doc, &xattr, nil)
 		return err == nil
 	})
 
@@ -2604,7 +2604,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	}, 60, 1000)
 
 	var tombstoneCompactionStatus TombstoneManagerResponse
-	status, err := db.TombstoneCompactionManager.GetStatus()
+	status, err := db.TombstoneCompactionManager.GetStatus(ctx)
 	assert.NoError(t, err)
 	err = base.JSONUnmarshal(status, &tombstoneCompactionStatus)
 	assert.NoError(t, err)
@@ -2744,7 +2744,7 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 
 func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(base.TestCtx(t))
 
 	db, ctx := setupTestDBForBucket(t, bucket)
 	defer db.Close(ctx)
@@ -3068,7 +3068,7 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 	base.RequireNumTestDataStores(t, 1)
 
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(base.TestCtx(t))
 
 	ds, err := bucket.GetNamedDataStore(0)
 	require.NoError(t, err)

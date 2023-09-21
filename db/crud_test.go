@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"testing"
@@ -30,11 +31,11 @@ type treeMeta struct {
 }
 
 // Retrieve the raw doc from the bucket, and unmarshal sync history as revTreeList, to validate low-level  storage
-func getRevTreeList(dataStore sgbucket.DataStore, key string, useXattrs bool) (revTreeList, error) {
+func getRevTreeList(ctx context.Context, dataStore sgbucket.DataStore, key string, useXattrs bool) (revTreeList, error) {
 	switch useXattrs {
 	case true:
 		var rawDoc, rawXattr []byte
-		_, getErr := dataStore.GetWithXattr(key, base.SyncXattrName, "", &rawDoc, &rawXattr, nil)
+		_, getErr := dataStore.GetWithXattr(ctx, key, base.SyncXattrName, "", &rawDoc, &rawXattr, nil)
 		if getErr != nil {
 			return revTreeList{}, getErr
 		}
@@ -171,7 +172,7 @@ func TestHasAttachmentsFlag(t *testing.T) {
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
-	revTree, err := getRevTreeList(collection.dataStore, "doc1", db.UseXattrs())
+	revTree, err := getRevTreeList(ctx, collection.dataStore, "doc1", db.UseXattrs())
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equal(t, 0, len(revTree.BodyMap))
 	assert.Equal(t, 1, len(revTree.BodyKeyMap))
@@ -291,7 +292,7 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
-	revTree, err := getRevTreeList(collection.dataStore, "doc1", db.UseXattrs())
+	revTree, err := getRevTreeList(ctx, collection.dataStore, "doc1", db.UseXattrs())
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equal(t, 0, len(revTree.HasAttachments))
 }
@@ -356,7 +357,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
-	revTree, err := getRevTreeList(collection.dataStore, "doc1", db.UseXattrs())
+	revTree, err := getRevTreeList(ctx, collection.dataStore, "doc1", db.UseXattrs())
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equal(t, 0, len(revTree.BodyMap))
 	assert.Equal(t, 1, len(revTree.BodyKeyMap))
@@ -408,7 +409,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	assert.True(t, base.IsKeyNotFoundError(collection.dataStore, err), "Revision should be not found")
 
 	// Validate the tombstone is stored inline (due to small size)
-	revTree, err = getRevTreeList(collection.dataStore, "doc1", db.UseXattrs())
+	revTree, err = getRevTreeList(ctx, collection.dataStore, "doc1", db.UseXattrs())
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equal(t, 1, len(revTree.BodyMap))
 	assert.Equal(t, 0, len(revTree.BodyKeyMap))
@@ -453,7 +454,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Validate the tombstone is not stored inline (due to small size)
 	log.Printf("Verify raw revtree w/ tombstone 3-c in key map")
-	newRevTree, err := getRevTreeList(collection.dataStore, "doc1", db.UseXattrs())
+	newRevTree, err := getRevTreeList(ctx, collection.dataStore, "doc1", db.UseXattrs())
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equal(t, 1, len(newRevTree.BodyMap))    // tombstone 3-b
 	assert.Equal(t, 1, len(newRevTree.BodyKeyMap)) // tombstone 3-c
@@ -477,7 +478,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2c_body, []string{"3-a", "2-a"}, false)
 	assert.NoError(t, err, "add 3-a")
 
-	revTree, err = getRevTreeList(collection.dataStore, "doc1", db.UseXattrs())
+	revTree, err = getRevTreeList(ctx, collection.dataStore, "doc1", db.UseXattrs())
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equal(t, 1, len(revTree.BodyMap))    // tombstone 3-b
 	assert.Equal(t, 1, len(revTree.BodyKeyMap)) // tombstone 3-c
@@ -540,7 +541,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
-	revTree, err := getRevTreeList(collection.dataStore, "doc1", db.UseXattrs())
+	revTree, err := getRevTreeList(ctx, collection.dataStore, "doc1", db.UseXattrs())
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equal(t, 0, len(revTree.BodyMap))
 	assert.Equal(t, 1, len(revTree.BodyKeyMap))
@@ -592,13 +593,13 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
-	revTree, err = getRevTreeList(collection.dataStore, "doc1", db.UseXattrs())
+	revTree, err = getRevTreeList(ctx, collection.dataStore, "doc1", db.UseXattrs())
 	assert.NoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equal(t, 0, len(revTree.BodyMap))
 	assert.Equal(t, 1, len(revTree.BodyKeyMap))
 	log.Printf("revTree.BodyKeyMap:%v", revTree.BodyKeyMap)
 
-	revTree, err = getRevTreeList(collection.dataStore, "doc1", db.UseXattrs())
+	revTree, err = getRevTreeList(ctx, collection.dataStore, "doc1", db.UseXattrs())
 	require.NoError(t, err)
 	log.Printf("revtree before additional revisions: %v", revTree.BodyKeyMap)
 
@@ -1623,7 +1624,7 @@ func TestPutStampClusterUUID(t *testing.T) {
 	require.Equal(t, 32, len(doc.ClusterUUID))
 
 	var xattr map[string]string
-	_, err = collection.dataStore.GetWithXattr(key, base.SyncXattrName, "", &body, &xattr, nil)
+	_, err = collection.dataStore.GetWithXattr(ctx, key, base.SyncXattrName, "", &body, &xattr, nil)
 	require.NoError(t, err)
 	require.Equal(t, 32, len(xattr["cluster_uuid"]))
 }

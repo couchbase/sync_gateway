@@ -161,8 +161,9 @@ func TestCollectionsPublicChannel(t *testing.T) {
 
 // TestNoCollectionsPutDocWithKeyspace ensures that a keyspace can't be used to insert a doc on a database not configured for collections.
 func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	// Force use of no scopes intentionally
 	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
@@ -230,65 +231,44 @@ func TestSingleCollectionDCP(t *testing.T) {
 
 func TestMultiCollectionDCP(t *testing.T) {
 	base.TestRequiresCollections(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
-	if !base.TestUseXattrs() {
-		t.Skip("Test relies on import - needs xattrs")
-	}
+	const numCollections = 2
 
-	t.Skip("Skip until CBG-2266 is implemented")
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	ctx := base.TestCtx(t)
-	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, map[string][]string{
-		"foo": {
-			"bar",
-			"baz",
-		},
-	})
-	require.NoError(t, err)
-	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				AutoImport: true,
-				Scopes: ScopesConfig{
-					"foo": ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							"bar": {},
-							"baz": {},
-						},
-					},
-				},
-			},
-		},
-	})
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AutoImport: true}},
+	}, numCollections)
 	defer rt.Close()
 
-	underlying, ok := rt.Bucket().DefaultDataStore().(*base.Collection)
-	require.True(t, ok, "rt bucket was not a Collection")
+	colls := rt.GetDbCollections()
+	require.Len(t, colls, numCollections)
 
-	_, err = underlying.Collection.Bucket().Scope("foo").Collection("bar").Insert("testDocBar", map[string]any{"test": true}, nil)
-	require.NoError(t, err)
-	_, err = underlying.Collection.Bucket().Scope("foo").Collection("baz").Insert("testDocBaz", map[string]any{"test": true}, nil)
-	require.NoError(t, err)
+	for _, c := range colls {
+		_, err := c.GetCollectionDatastore().Add(t.Name(), 0, map[string]any{"test": true})
+		require.NoError(t, err)
+	}
 
-	// ensure the doc is picked up by the import DCP feed and actually gets imported
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
+	// ensure the docs are picked up by the import DCP feed and actually gets imported
+	err := rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == numCollections
 	})
 	require.NoError(t, err)
 
-	// TODO(CBG-2329): collection-aware caching
-	// require.NoError(t, rt.WaitForDoc(docID))
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	for _, ks := range rt.GetKeyspaces() {
+		_, err = rt.WaitForChanges(1, fmt.Sprintf("/%s/_changes", ks), "", true)
+		require.NoError(t, err)
+	}
 }
 
 func TestMultiCollectionChannelAccess(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
+	ctx := base.TestCtx(t)
 	tb := base.GetPersistentTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	scopesConfig := GetCollectionsConfig(t, tb, 2)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
@@ -421,8 +401,9 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 
 func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
 	base.TestRequiresCollections(t)
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	scopesConfig := GetCollectionsConfig(t, tb, 2)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
@@ -528,7 +509,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 		ScopeID    *string `json:"scope_id"`
 		KeyspaceID *string `json:"keyspace_id"`
 	}
-	require.NoError(t, res.One(&indexMetaResult))
+	require.NoError(t, res.One(ctx, &indexMetaResult))
 	require.NotNil(t, indexMetaResult)
 
 	// if the index was created on the _default collection in the bucket, keyspace_id is the bucket name, and the other fields are not present.
@@ -549,7 +530,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	var primaryQueryResult struct {
 		Test *bool `json:"test"`
 	}
-	require.NoError(t, res.One(&primaryQueryResult))
+	require.NoError(t, res.One(ctx, &primaryQueryResult))
 	require.NotNil(t, primaryQueryResult)
 
 	assert.True(t, *primaryQueryResult.Test)
@@ -623,8 +604,9 @@ func TestCollectionsPutDBInexistentCollection(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: tb,
@@ -645,13 +627,14 @@ func TestCollectionsPutDocInDefaultCollectionWithNamedCollections(t *testing.T) 
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	// create named collection in the default scope
 	const customCollectionName = "new_collection"
 	dBucket := tb.GetUnderlyingBucket().(sgbucket.DynamicDataStoreBucket)
-	require.NoError(t, dBucket.CreateDataStore(base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
+	require.NoError(t, dBucket.CreateDataStore(base.TestCtx(t), base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
 	defer func() {
 		assert.NoError(t, dBucket.DropDataStore(base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
 	}()
@@ -684,9 +667,9 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 
 	base.TestRequiresCollections(t)
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
 	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
 
 	scopesAndCollections := map[string][]string{
 		"fooScope": {
@@ -758,12 +741,86 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	)
 }
 
+func TestCollectionsAddNamedCollectionToImplicitDefaultScope(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 1)
+	defer rt.Close()
+
+	const dbName = "db"
+
+	// implicit default scope/collection
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = nil
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	expectedKeyspaces := []string{
+		dbName,
+	}
+	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
+
+	newCollection := base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: t.Name()}
+	require.NoError(t, rt.TestBucket.CreateDataStore(base.TestCtx(t), newCollection))
+	defer func() {
+		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
+	}()
+
+	resp = rt.UpsertDbConfig(dbName, DbConfig{Scopes: ScopesConfig{
+		base.DefaultScope: {Collections: CollectionsConfig{
+			base.DefaultCollection:         {},
+			newCollection.CollectionName(): {},
+		}},
+	}})
+	RequireStatus(t, resp, http.StatusCreated)
+
+	expectedKeyspaces = []string{
+		dbName,
+		fmt.Sprintf("%s.%s.%s", dbName, newCollection.ScopeName(), newCollection.CollectionName()),
+	}
+	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
+}
+
+func TestCollectionsChangeConfigScopeFromImplicitDefault(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 1)
+	defer rt.Close()
+
+	const dbName = "db"
+
+	// implicit default scope/collection
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = nil
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	expectedKeyspaces := []string{
+		dbName,
+	}
+	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
+
+	newCollection := base.ScopeAndCollectionName{Scope: t.Name(), Collection: t.Name()}
+	require.NoError(t, rt.TestBucket.CreateDataStore(base.TestCtx(t), newCollection))
+	defer func() {
+		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
+	}()
+
+	resp = rt.UpsertDbConfig(dbName, DbConfig{Scopes: ScopesConfig{
+		newCollection.ScopeName(): {Collections: CollectionsConfig{
+			newCollection.CollectionName(): {},
+		}},
+	}})
+	assertHTTPErrorReason(t, resp, http.StatusBadRequest, "1 errors:\ncannot change scopes after database creation")
+}
+
 // TestCollecitonStats ensures that stats are specific to each collection.
 func TestCollectionStats(t *testing.T) {
 	base.TestRequiresCollections(t)
 
+	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	scopesConfig := GetCollectionsConfig(t, tb, 2)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)

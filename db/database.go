@@ -613,7 +613,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 	waitForBackgroundManagersToStop(ctx, BGTCompletionMaxWait, bgManagers)
 
-	context.Bucket.Close()
+	context.Bucket.Close(ctx)
 	context.Bucket = nil
 
 	base.RemovePerDbStats(context.Name)
@@ -951,7 +951,7 @@ func (c *DatabaseCollection) ForEachDocID(ctx context.Context, callback ForEachD
 		return err
 	}
 
-	err = c.processForEachDocIDResults(callback, resultsOpts.Limit, results)
+	err = c.processForEachDocIDResults(ctx, callback, resultsOpts.Limit, results)
 	if err != nil {
 		return err
 	}
@@ -959,7 +959,7 @@ func (c *DatabaseCollection) ForEachDocID(ctx context.Context, callback ForEachD
 }
 
 // Iterate over the results of an AllDocs query, performing ForEachDocID handling for each row
-func (c *DatabaseCollection) processForEachDocIDResults(callback ForEachDocIDFunc, limit uint64, results sgbucket.QueryResultIterator) error {
+func (c *DatabaseCollection) processForEachDocIDResults(ctx context.Context, callback ForEachDocIDFunc, limit uint64, results sgbucket.QueryResultIterator) error {
 
 	count := uint64(0)
 	for {
@@ -970,7 +970,7 @@ func (c *DatabaseCollection) processForEachDocIDResults(callback ForEachDocIDFun
 		var channels []string
 		if c.useViews() {
 			var viewRow AllDocsViewQueryRow
-			found = results.Next(&viewRow)
+			found = results.Next(ctx, &viewRow)
 			if found {
 				docid = viewRow.Key
 				revid = viewRow.Value.RevID
@@ -978,7 +978,7 @@ func (c *DatabaseCollection) processForEachDocIDResults(callback ForEachDocIDFun
 				channels = viewRow.Value.Channels
 			}
 		} else {
-			found = results.Next(&queryRow)
+			found = results.Next(ctx, &queryRow)
 			if found {
 				docid = queryRow.Id
 				revid = queryRow.RevID
@@ -1097,7 +1097,7 @@ outerLoop:
 			}
 
 			var queryRow QueryUsersRow
-			found := results.Next(&queryRow)
+			found := results.Next(ctx, &queryRow)
 			if !found {
 				break
 			}
@@ -1165,7 +1165,7 @@ outerLoop:
 			var rowID string
 			if db.Options.UseViews {
 				var viewRow principalsViewRow
-				found := results.Next(&viewRow)
+				found := results.Next(ctx, &viewRow)
 				if !found {
 					break
 				}
@@ -1175,7 +1175,7 @@ outerLoop:
 				startKey = viewRow.Key
 			} else {
 				var queryRow principalRow
-				found := results.Next(&queryRow)
+				found := results.Next(ctx, &queryRow)
 				if !found {
 					break
 				}
@@ -1267,7 +1267,7 @@ outerLoop:
 			}
 
 			var queryRow QueryUsersRow
-			found := results.Next(&queryRow)
+			found := results.Next(ctx, &queryRow)
 			if !found {
 				break
 			}
@@ -1343,7 +1343,7 @@ outerLoop:
 			}
 
 			var queryRow principalRow
-			found := results.Next(&queryRow)
+			found := results.Next(ctx, &queryRow)
 			if !found {
 				break
 			}
@@ -1457,7 +1457,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 			}
 			var tombstonesRow QueryIdRow
 			var resultCount int
-			for results.Next(&tombstonesRow) {
+			for results.Next(ctx, &tombstonesRow) {
 				select {
 				case <-terminator.Done():
 					closeErr := results.Close()
@@ -1584,7 +1584,7 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 			var found bool
 			if db.useViews() {
 				var viewRow channelsViewRow
-				found = results.Next(&viewRow)
+				found = results.Next(ctx, &viewRow)
 				if !found {
 					break
 				}
@@ -1593,7 +1593,7 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 					Id:  viewRow.ID,
 				}
 			} else {
-				found = results.Next(&importRow)
+				found = results.Next(ctx, &importRow)
 				if !found {
 					break
 				}
@@ -1827,7 +1827,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 				return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 			}
 		}
-		_, err = db.dataStore.WriteUpdateWithXattr(key, base.SyncXattrName, db.userXattrKey(), 0, nil, nil, writeUpdateFunc)
+		_, err = db.dataStore.WriteUpdateWithXattr(ctx, key, base.SyncXattrName, db.userXattrKey(), 0, nil, nil, writeUpdateFunc)
 	} else {
 		_, err = db.dataStore.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 			// Be careful: this block can be invoked multiple times if there are races!
@@ -2214,7 +2214,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		db.Options.CacheOptions,
 		db.MetadataKeys,
 	); err != nil {
-		base.InfofCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)
+		base.InfofCtx(ctx, base.KeyCache, "Error initializing the change cache", err)
 		return err
 	}
 
@@ -2263,7 +2263,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	}
 
 	// Start DCP feed
-	base.InfofCtx(ctx, base.KeyDCP, "Starting mutation feed on bucket %v", base.MD(db.Bucket.GetName()))
+	base.InfofCtx(ctx, base.KeyChanges, "Starting mutation feed on bucket %v", base.MD(db.Bucket.GetName()))
 	cacheFeedStatsMap := db.DbStats.Database().CacheFeedMapStats
 	if err := db.mutationListener.Start(ctx, db.Bucket, cacheFeedStatsMap.Map, db.Scopes, db.MetadataStore); err != nil {
 		db.channelCache = nil

@@ -21,7 +21,7 @@ import (
 	"github.com/robertkrimen/otto"
 )
 
-func (runner *jsRunner) defineNativeCallbacks() {
+func (runner *jsRunner) defineNativeCallbacks(_ context.Context) {
 	// Implementation of the 'delete(docID)' callback:
 	runner.DefineNativeFunction("_delete", func(call otto.FunctionCall) otto.Value {
 		var docID string
@@ -43,7 +43,7 @@ func (runner *jsRunner) defineNativeCallbacks() {
 		funcName := ottoStringParam(call, 0, "user.function")
 		params := ottoObjectParam(call, 1, true, "user.function")
 		sudo := ottoBoolParam(call, 2)
-		result, err := runner.do_func(funcName, params, sudo)
+		result, err := runner.do_func(runner.ctx, funcName, params, sudo)
 		return ottoJSONResult(call, result, err)
 	})
 
@@ -134,12 +134,13 @@ func (runner *jsRunner) do_delete(docID string, body map[string]any, sudo bool) 
 }
 
 // Implementation of JS `user.function(name, params)` function
-func (runner *jsRunner) do_func(funcName string, params map[string]any, sudo bool) (any, error) {
+func (runner *jsRunner) do_func(ctx context.Context, funcName string, params map[string]any, sudo bool) (any, error) {
 	if sudo {
 		exitSudo := runner.enterSudo()
+		ctx = runner.ctx
 		defer exitSudo()
 	}
-	return runner.currentDB.CallUserFunction(funcName, params, true, runner.ctx)
+	return runner.currentDB.CallUserFunction(ctx, funcName, params, true)
 }
 
 // Implementation of JS `user.get(docID, docType?)` function
@@ -182,7 +183,7 @@ func (runner *jsRunner) do_graphql(query string, params map[string]any, sudo boo
 		exitSudo := runner.enterSudo()
 		defer exitSudo()
 	}
-	return runner.currentDB.UserGraphQLQuery(query, "", params, true, runner.ctx)
+	return runner.currentDB.UserGraphQLQuery(runner.ctx, query, "", params, true)
 }
 
 // Implementation of JS `user.save(body, docID?)` function

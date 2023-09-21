@@ -226,7 +226,7 @@ func BuildDeferredIndexes(ctx context.Context, s N1QLStore, indexSet []string) e
 		Name  string `json:"name"`
 		State string `json:"state"`
 	}
-	for results.Next(&indexInfo) {
+	for results.Next(ctx, &indexInfo) {
 		// If index is deferred (not built), add to set of deferred indexes
 		if indexInfo.State == IndexStateDeferred {
 			deferredIndexes = append(deferredIndexes, indexInfo.Name)
@@ -289,7 +289,7 @@ type getIndexMetaRetryValues struct {
 func GetIndexMeta(ctx context.Context, store N1QLStore, indexName string) (exists bool, meta *IndexMeta, err error) {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		exists, meta, err := getIndexMetaWithoutRetry(store, indexName)
+		exists, meta, err := getIndexMetaWithoutRetry(ctx, store, indexName)
 		if err != nil {
 			// retry
 			WarnfCtx(ctx, "Error from GetIndexMeta for index %s: %v will retry", indexName, err)
@@ -315,7 +315,7 @@ func GetIndexMeta(ctx context.Context, store N1QLStore, indexName string) (exist
 	return valTyped.exists, valTyped.meta, nil
 }
 
-func getIndexMetaWithoutRetry(store N1QLStore, indexName string) (exists bool, meta *IndexMeta, err error) {
+func getIndexMetaWithoutRetry(ctx context.Context, store N1QLStore, indexName string) (exists bool, meta *IndexMeta, err error) {
 	statement := fmt.Sprintf("SELECT state FROM system:indexes WHERE indexes.name = '%s' AND indexes.keyspace_id = '%s'", indexName, store.IndexMetaKeyspaceID())
 	if store.IndexMetaBucketID() != "" {
 		statement += fmt.Sprintf(" AND indexes.bucket_id = '%s'", store.IndexMetaBucketID())
@@ -329,7 +329,7 @@ func getIndexMetaWithoutRetry(store N1QLStore, indexName string) (exists bool, m
 	}
 
 	indexInfo := &IndexMeta{}
-	err = results.One(indexInfo)
+	err = results.One(ctx, indexInfo)
 	if err != nil {
 		if store.IsErrNoResults(err) {
 			return false, nil, nil
@@ -472,8 +472,8 @@ type gocbRawIterator struct {
 }
 
 // Unmarshal a single result row into valuePtr, and then close the iterator
-func (i *gocbRawIterator) One(valuePtr interface{}) error {
-	if !i.Next(valuePtr) {
+func (i *gocbRawIterator) One(ctx context.Context, valuePtr interface{}) error {
+	if !i.Next(ctx, valuePtr) {
 		err := i.Close()
 		if err != nil {
 			return nil
@@ -488,14 +488,13 @@ func (i *gocbRawIterator) One(valuePtr interface{}) error {
 }
 
 // Unmarshal the next result row into valuePtr.  Returns false when reaching end of result set
-func (i *gocbRawIterator) Next(valuePtr interface{}) bool {
+func (i *gocbRawIterator) Next(ctx context.Context, valuePtr interface{}) bool {
 
 	nextBytes := i.rawResult.NextBytes()
 	if nextBytes == nil {
 		return false
 	}
 
-	ctx := context.TODO() // fix in sg-bucket
 	err := JSONUnmarshal(nextBytes, &valuePtr)
 	if err != nil {
 		WarnfCtx(ctx, "Unable to marshal view result row into value: %v", err)

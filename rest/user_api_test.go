@@ -1220,7 +1220,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			var syncData db.SyncData
 			dataStore := rt.GetSingleDataStore()
 			require.True(t, ok)
-			_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData)
+			_, err = dataStore.GetXattr(rt.Context(), docKey, base.SyncXattrName, &syncData)
 			assert.NoError(t, err)
 
 			assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
@@ -1238,7 +1238,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Ensure old channel set with user xattr has been removed
 			var syncData2 db.SyncData
-			_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData2)
+			_, err = dataStore.GetXattr(rt.Context(), docKey, base.SyncXattrName, &syncData2)
 			assert.NoError(t, err)
 
 			assert.Equal(t, uint64(3), syncData2.Channels[channelName].Seq)
@@ -1257,11 +1257,12 @@ func TestUserXattrRevCache(t *testing.T) {
 		t.Skipf("test is EE only - user xattrs")
 	}
 
+	ctx := base.TestCtx(t)
 	docKey := t.Name()
 	xattrKey := "channels"
 	channelName := []string{"ABC", "DEF"}
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 	syncFn := `function (doc, oldDoc, meta){
 				if (meta.xattrs.channels !== undefined){
 					channel(meta.xattrs.channels);
@@ -1297,7 +1298,7 @@ func TestUserXattrRevCache(t *testing.T) {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
-	ctx := rt2.Context()
+	ctx = rt2.Context()
 	a := rt2.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	userABC, err := a.NewUser("userABC", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
@@ -1349,7 +1350,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only - user xattrs")
 	}
-
+	ctx := base.TestCtx(t)
 	// Sync function to set channel access to a channels UserXattrKey
 	syncFn := `
 			function (doc, oldDoc, meta){
@@ -1362,7 +1363,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	docKey := t.Name()
 	xattrKey := "channels"
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
+	defer tb.Close(ctx)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
@@ -1390,7 +1391,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
-	ctx := rt2.Context()
+	ctx = rt2.Context()
 	a := rt2.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
 	userDEF, err := a.NewUser("userDEF", "letmein", channels.BaseSetOf(t, "DEF"))
@@ -1474,7 +1475,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	// Get current sync data
 	var syncData db.SyncData
-	_, err := dataStore.GetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err := dataStore.GetXattr(rt.Context(), docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	docRev, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
@@ -1494,7 +1495,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	// Ensure import worked and sequence incremented but that sequence did not
 	var syncData2 db.SyncData
-	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = dataStore.GetXattr(rt.Context(), docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	docRev2, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
@@ -1516,7 +1517,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.NoError(t, err)
 
 	var syncData3 db.SyncData
-	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = dataStore.GetXattr(rt.Context(), docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	assert.NotEqual(t, syncData2.CurrentRev, syncData3.CurrentRev)
@@ -1527,8 +1528,9 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	base.RequireNumTestDataStores(t, numCollections)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
+	ctx := base.TestCtx(t)
 	testBucket := base.GetPersistentTestBucket(t)
-	defer testBucket.Close()
+	defer testBucket.Close(ctx)
 	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
 
 	rtConfig := &RestTesterConfig{

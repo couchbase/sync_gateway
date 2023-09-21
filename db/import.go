@@ -130,7 +130,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 	} else {
 		// Get the doc expiry if it wasn't passed in and preserve expiry is not supported
 		if expiry == nil {
-			getExpiry, getExpiryErr := db.dataStore.GetExpiry(docid)
+			getExpiry, getExpiryErr := db.dataStore.GetExpiry(ctx, docid)
 			if getExpiryErr != nil {
 				return nil, getExpiryErr
 			}
@@ -161,7 +161,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 				if !mutationOptions.PreserveExpiry {
 					// Reload the doc expiry if GoCB is not preserving expiry
-					expiry, getExpiryErr := db.dataStore.GetExpiry(newDoc.ID)
+					expiry, getExpiryErr := db.dataStore.GetExpiry(ctx, newDoc.ID)
 					if getExpiryErr != nil {
 						return nil, nil, false, nil, getExpiryErr
 					}
@@ -387,7 +387,7 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
 	isDelete := doc.hasFlag(channels.Deleted)
 	deleteBody := isDelete && len(existingDoc.Body) > 0
-	casOut, writeErr := db.dataStore.WriteWithXattr(docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, opts, value, xattrValue, isDelete, deleteBody)
+	casOut, writeErr := db.dataStore.WriteWithXattr(ctx, docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, opts, value, xattrValue, isDelete, deleteBody)
 	if writeErr == nil {
 		doc.Cas = casOut
 		base.InfofCtx(ctx, base.KeyMigrate, "Successfully migrated doc %q", base.UD(docid))
@@ -478,8 +478,8 @@ func NewImportFilterFunction(ctx context.Context, fnSource string, timeout time.
 
 	base.DebugfCtx(ctx, base.KeyImport, "Creating new ImportFilterFunction")
 	return &ImportFilterFunction{
-		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize,
-			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
+		JSServer: sgbucket.NewJSServer(ctx, fnSource, timeout, kTaskCacheSize,
+			func(ctx context.Context, fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
 				return newImportFilterRunner(ctx, fnSource, timeout)
 			}),
 	}
@@ -488,7 +488,7 @@ func NewImportFilterFunction(ctx context.Context, fnSource string, timeout time.
 // Calls a jsEventFunction returning an interface{}
 func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body) (bool, error) {
 
-	result, err := i.Call(doc)
+	result, err := i.Call(ctx, doc)
 	if err != nil {
 		base.WarnfCtx(ctx, "Unexpected error invoking import filter for document %s - processing aborted, document will not be imported.  Error: %v", base.UD(doc), err)
 		return false, err

@@ -34,8 +34,9 @@ func requireNoIndexes(t *testing.T, dataStore base.DataStore) {
 }
 
 func TestSyncGatewayStartupIndexes(t *testing.T) {
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
+	defer bucket.Close(ctx)
 
 	// Assert there are no indexes on the datastores, to test server startup
 	dsNames, err := bucket.ListDataStores()
@@ -158,7 +159,7 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	defer tb.Close(ctx)
 
 	importFilter := "function(doc) { return true }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
@@ -257,7 +258,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 
 	// Seed the bucket with some documents
 	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	defer tb.Close(ctx)
 
 	syncFunc := "function(doc){ channel(doc.channel1); }"
 	dbConfig := makeDbConfig(t, tb, syncFunc, "")
@@ -401,7 +402,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	defer tb.Close(ctx)
 
 	importFilter := "function(doc) { return true }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
@@ -533,7 +534,7 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	defer tb.Close(ctx)
 
 	importFilter := "function(doc) { return true }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
@@ -635,7 +636,7 @@ func TestSyncOnline(t *testing.T) {
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() { tb.Close() }()
+	defer tb.Close(ctx)
 
 	importFilter := "function(doc) { return true }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
@@ -719,7 +720,7 @@ func waitAndRequireDBState(t *testing.T, dbName string, targetState uint32) {
 
 func requireActiveChannel(t *testing.T, dataStore base.DataStore, key string, channelName string) {
 	xattr := db.SyncData{}
-	_, err := dataStore.GetWithXattr(key, base.SyncXattrName, "", nil, &xattr, nil)
+	_, err := dataStore.GetWithXattr(base.TestCtx(t), key, base.SyncXattrName, "", nil, &xattr, nil)
 	require.NoError(t, err, "Error Getting Xattr as sync data")
 	channel, ok := xattr.Channels[channelName]
 	require.True(t, ok)

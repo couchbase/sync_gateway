@@ -940,12 +940,13 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	ctx := base.TestCtx(t)
 
 	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+	defer tb1.Close(ctx)
 
 	tb2 := base.GetTestBucket(t)
-	defer tb2.Close()
+	defer tb2.Close(ctx)
 
 	tb1User, tb1Password, _ := tb1.BucketSpec.Auth.GetCredentials()
 	tb2User, tb2Password, _ := tb2.BucketSpec.Auth.GetCredentials()
@@ -992,7 +993,6 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 			NumIndexReplicas: base.UintPtr(0),
 		},
 	}
-	ctx := base.TestCtx(t)
 
 	require.Nil(t, setupAndValidateDatabases(ctx, databases), "Unexpected error while validating databases")
 

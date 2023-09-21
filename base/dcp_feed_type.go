@@ -57,12 +57,14 @@ func cbgtRootCAsProvider(bucketName, bucketUUID string) func() *x509.CertPool {
 			return pool
 		}
 	}
-	TracefCtx(context.TODO(), KeyDCP, "Bucket %v not found in root cert pools, not using TLS.", MD(bucketName))
+	ctx := bucketNameCtx(context.Background(), bucketName) // this function is global, so reconstruct context
+	TracefCtx(ctx, KeyDCP, "Bucket %v not found in root cert pools, not using TLS.", MD(bucketName))
 	return nil
 }
 
 // cbgt's default GetPoolsDefaultForBucket only works with cbauth
 func cbgtGetPoolsDefaultForBucket(server, bucket string, scopes bool) ([]byte, error) {
+	ctx := bucketNameCtx(context.Background(), bucket) // this function is global, so reconstruct context
 	cbgtGlobalsLock.Lock()
 	dbName, ok := cbgtBucketToDBName[bucket]
 	if !ok {
@@ -94,7 +96,7 @@ func cbgtGetPoolsDefaultForBucket(server, bucket string, scopes bool) ([]byte, e
 	}
 	defer func() {
 		if err := res.Body.Close(); err != nil {
-			WarnfCtx(context.TODO(), "Failed to close %v request body: %v", MD(url).Redact(), err)
+			WarnfCtx(ctx, "Failed to close %v request body: %v", MD(url).Redact(), err)
 		}
 	}()
 
@@ -159,7 +161,7 @@ type SGFeedIndexParams struct {
 
 // cbgtFeedParams returns marshalled cbgt.DCPFeedParams as string, to be passed as feedparams during cbgt.Manager init.
 // Used to pass basic auth credentials and xattr flag to cbgt.
-func cbgtFeedParams(spec BucketSpec, scope string, collections []string, dbName string) (string, error) {
+func cbgtFeedParams(ctx context.Context, spec BucketSpec, scope string, collections []string, dbName string) (string, error) {
 	feedParams := &SGFeedSourceParams{}
 	feedParams.DbName = dbName
 
@@ -176,7 +178,7 @@ func cbgtFeedParams(spec BucketSpec, scope string, collections []string, dbName 
 	if err != nil {
 		return "", err
 	}
-	TracefCtx(context.TODO(), KeyDCP, "CBGT feed params: %v", UD(string(paramBytes)))
+	TracefCtx(ctx, KeyDCP, "CBGT feed params: %v", UD(string(paramBytes)))
 	return string(paramBytes), nil
 }
 
@@ -196,8 +198,8 @@ func cbgtIndexParams(destKey string) (string, error) {
 func SGGoCBFeedStartDCPFeed(mgr *cbgt.Manager, feedName, indexName, indexUUID,
 	sourceType, sourceName, bucketUUID, params string,
 	dests map[string]cbgt.Dest) error {
-
-	paramsWithAuth := addCbgtAuthToDCPParams(params)
+	ctx := context.TODO() // this global and we don't have bucket name here to add to context
+	paramsWithAuth := addCbgtAuthToDCPParams(ctx, params)
 	return cbgt.StartGocbcoreDCPFeed(mgr, feedName, indexName, indexUUID, sourceType, sourceName, bucketUUID,
 		paramsWithAuth, dests)
 }
@@ -205,7 +207,8 @@ func SGGoCBFeedStartDCPFeed(mgr *cbgt.Manager, feedName, indexName, indexUUID,
 func SGGoCBFeedPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	serverIn string, options map[string]string) (partitions []string, err error) {
 
-	sourceParamsWithAuth := addCbgtAuthToDCPParams(sourceParams)
+	ctx := context.TODO() // this global and we don't have bucket name here to add to context
+	sourceParamsWithAuth := addCbgtAuthToDCPParams(ctx, sourceParams)
 	return cbgt.CBPartitions(sourceType, sourceName, sourceUUID, sourceParamsWithAuth,
 		serverIn, options)
 }
@@ -218,31 +221,31 @@ func SGGocbSourceUUIDLookup(sourceName, sourceParams, serverIn string,
 // addCbgtAuthToDCPParams gets the dbName from the incoming dcpParams, and checks for credentials
 // stored in databaseCredentials.  If found, adds those to the params as authUser/authPassword.
 // If dbname is present,
-func addCbgtAuthToDCPParams(dcpParams string) string {
+func addCbgtAuthToDCPParams(ctx context.Context, dcpParams string) string {
 
 	var sgSourceParams SGFeedSourceParams
 
 	unmarshalErr := JSONUnmarshal([]byte(dcpParams), &sgSourceParams)
 	if unmarshalErr != nil {
-		WarnfCtx(context.Background(), "Unable to unmarshal params provided by cbgt as sgSourceParams: %v", unmarshalErr)
+		WarnfCtx(ctx, "Unable to unmarshal params provided by cbgt as sgSourceParams: %v", unmarshalErr)
 		return dcpParams
 	}
 
 	if sgSourceParams.DbName == "" {
-		InfofCtx(context.Background(), KeyImport, "Database name not specified in dcp params, feed credentials not added")
+		InfofCtx(ctx, KeyImport, "Database name not specified in dcp params, feed credentials not added")
 		return dcpParams
 	}
 
 	creds, ok := getCbgtCredentials(sgSourceParams.DbName)
 	if !ok {
-		InfofCtx(context.Background(), KeyImport, "No feed credentials stored for db from sourceParams: %s", MD(sgSourceParams.DbName))
+		InfofCtx(ctx, KeyImport, "No feed credentials stored for db from sourceParams: %s", MD(sgSourceParams.DbName))
 		return dcpParams
 	}
 
 	var feedParamsWithAuth cbgt.DCPFeedParams
 	unmarshalDCPErr := JSONUnmarshal([]byte(dcpParams), &feedParamsWithAuth)
 	if unmarshalDCPErr != nil {
-		WarnfCtx(context.Background(), "Unable to unmarshal params provided by cbgt as dcpFeedParams: %v", unmarshalDCPErr)
+		WarnfCtx(ctx, "Unable to unmarshal params provided by cbgt as dcpFeedParams: %v", unmarshalDCPErr)
 	}
 
 	// Add creds to params
@@ -256,7 +259,7 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 
 	marshalledParamsWithAuth, marshalErr := JSONMarshal(feedParamsWithAuth)
 	if marshalErr != nil {
-		WarnfCtx(context.Background(), "Unable to marshal updated cbgt dcp params: %v", marshalErr)
+		WarnfCtx(ctx, "Unable to marshal updated cbgt dcp params: %v", marshalErr)
 		return dcpParams
 	}
 

@@ -92,11 +92,11 @@ func (h *handler) handleGetCompact() error {
 	var status []byte
 	var err error
 	if compactionType == "tombstone" {
-		status, err = h.db.TombstoneCompactionManager.GetStatus()
+		status, err = h.db.TombstoneCompactionManager.GetStatus(h.ctx())
 	}
 
 	if compactionType == "attachment" {
-		status, err = h.db.AttachmentCompactionManager.GetStatus()
+		status, err = h.db.AttachmentCompactionManager.GetStatus(h.ctx())
 	}
 
 	if err != nil {
@@ -136,7 +136,7 @@ func (h *handler) handleCompact() error {
 					return err
 				}
 
-				status, err := h.db.TombstoneCompactionManager.GetStatus()
+				status, err := h.db.TombstoneCompactionManager.GetStatus(h.ctx())
 				if err != nil {
 					return err
 				}
@@ -155,7 +155,7 @@ func (h *handler) handleCompact() error {
 			if err != nil {
 				return err
 			}
-			status, err := h.db.TombstoneCompactionManager.GetStatus()
+			status, err := h.db.TombstoneCompactionManager.GetStatus(h.ctx())
 			if err != nil {
 				return err
 			}
@@ -174,7 +174,7 @@ func (h *handler) handleCompact() error {
 				return err
 			}
 
-			status, err := h.db.AttachmentCompactionManager.GetStatus()
+			status, err := h.db.AttachmentCompactionManager.GetStatus(h.ctx())
 			if err != nil {
 				return err
 			}
@@ -185,7 +185,7 @@ func (h *handler) handleCompact() error {
 				return err
 			}
 
-			status, err := h.db.AttachmentCompactionManager.GetStatus()
+			status, err := h.db.AttachmentCompactionManager.GetStatus(h.ctx())
 			if err != nil {
 				return err
 			}
@@ -228,7 +228,7 @@ func (h *handler) handleFlush() error {
 		if err != nil {
 			return err
 		}
-		defer tempBucketForFlush.Close() // Close the temporary connection to the bucket that was just for purposes of flushing it
+		defer tempBucketForFlush.Close(h.ctx()) // Close the temporary connection to the bucket that was just for purposes of flushing it
 
 		// Flush the bucket (assuming it conforms to sgbucket.DeleteableStore interface
 		if tempBucketForFlush, ok := tempBucketForFlush.(sgbucket.FlushableStore); ok {
@@ -272,7 +272,7 @@ func (h *handler) handleFlush() error {
 }
 
 func (h *handler) handleGetResync() error {
-	status, err := h.db.ResyncManager.GetStatus()
+	status, err := h.db.ResyncManager.GetStatus(h.ctx())
 	if err != nil {
 		return err
 	}
@@ -319,12 +319,13 @@ func (h *handler) handlePostResync() error {
 				"database":            h.db,
 				"regenerateSequences": regenerateSequences,
 				"collections":         resyncPostReqBody.Scope,
+				"reset":               h.getBoolQuery("reset"),
 			})
 			if err != nil {
 				return err
 			}
 
-			status, err := h.db.ResyncManager.GetStatus()
+			status, err := h.db.ResyncManager.GetStatus(h.ctx())
 			if err != nil {
 				return err
 			}
@@ -351,7 +352,7 @@ func (h *handler) handlePostResync() error {
 			return err
 		}
 
-		status, err := h.db.ResyncManager.GetStatus()
+		status, err := h.db.ResyncManager.GetStatus(h.ctx())
 		if err != nil {
 			return err
 		}

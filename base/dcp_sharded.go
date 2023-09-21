@@ -120,7 +120,7 @@ func GenerateLegacyIndexName(dbName string) string {
 func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16) error {
 	sourceType := SOURCE_DCP_SG
 
-	sourceParams, err := cbgtFeedParams(spec, scope, collections, dbName)
+	sourceParams, err := cbgtFeedParams(ctx, spec, scope, collections, dbName)
 	if err != nil {
 		return err
 	}
