@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/url"
 	"reflect"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -306,6 +307,7 @@ func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
 		bucketList = append(bucketList, bucketName)
 	}
 
+	sort.Strings(bucketList)
 	cc.cachedBucketConnections.removeOutdatedBuckets(SetOf(bucketList...))
 
 	return bucketList, nil
