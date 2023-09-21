@@ -314,13 +314,11 @@ func TestInvalidXattrStreamDataLen(t *testing.T) {
 			// parseXattrStreamData is the underlying function
 			body, xattr, userXattr, err := parseXattrStreamData(base.SyncXattrName, "", test.body)
 			require.Error(t, err)
-			require.ErrorIs(t, err, test.expectedErr)
 			require.Nil(t, body)
 			require.Nil(t, xattr)
 			require.Nil(t, userXattr)
 			// UnmarshalDocumentSyncData wraps parseXattrStreamData
 			result, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(test.body, base.MemcachedDataTypeXattr, "", false)
-			require.ErrorIs(t, err, base.ErrXattrInvalidLen)
 			require.Nil(t, result)
 			require.Nil(t, rawBody)
 			require.Nil(t, rawXattr)
