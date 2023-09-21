@@ -289,7 +289,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
 			cas, _ := collection.dataStore.GetWithXattr(ctx, key, base.SyncXattrName, "", &body, &xattr, nil)
-			_, err := collection.dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, cas, nil, []byte(valStr), []byte(xattrStr))
+			_, err := collection.dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, cas, []byte(valStr), []byte(xattrStr), DefaultMutateInOpts())
 			assert.NoError(t, err)
 		}
 	}
