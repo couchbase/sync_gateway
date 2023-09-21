@@ -2770,3 +2770,54 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 	assert.Equal(t, `{"channel":["PBS"]}`, string(data))
 
 }
+
+// TestBlipRefreshUser makes sure there is no panic if a user gets deleted during a replication
+func TestBlipRefreshUser(t *testing.T) {
+
+	rtConfig := RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	const username = "bernard"
+	// Initialize blip tester client (will create user)
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Username: "bernard",
+		Channels: []string{"chan1"},
+	})
+
+	require.NoError(t, err)
+	defer btc.Close()
+
+	// add chan1 explicitly
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB, "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"chan1"}, nil))
+
+	docID := "doc1"
+
+	RequireStatus(t, response, http.StatusOK)
+	response = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"channels":["chan1"]}`)
+	RequireStatus(t, response, http.StatusCreated)
+
+	response = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "", username)
+	RequireStatus(t, response, http.StatusOK)
+
+	// Start a regular one-shot pull
+	err = btc.StartPullSince("true", "0", "false")
+	require.NoError(t, err)
+
+	_, ok := btc.WaitForDoc(docID)
+	require.True(t, ok)
+
+	_, ok = btc.GetRev(docID, "1-78211b5eedea356c9693e08bc68b93ce")
+	require.True(t, ok)
+
+	response = rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_user/"+username, "")
+	RequireStatus(t, response, http.StatusOK)
+
+	time.Sleep(1 * time.Second)
+	// would expect this to fail because this user doesn't exist anymore
+	_, ok = btc.GetRev(docID, "1-78211b5eedea356c9693e08bc68b93ce")
+	require.True(t, ok)
+
+}

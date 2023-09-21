@@ -128,6 +128,7 @@ func (bh *blipHandler) refreshUser() error {
 			// Refresh the BlipSyncContext database
 			newUser, err := bc.blipContextDb.Authenticator(bh.loggingCtx).GetUser(bc.userName)
 			if err != nil {
+				panic("here")
 				return err
 			}
 			newUser.InitializeRoles()
