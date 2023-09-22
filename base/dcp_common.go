@@ -25,9 +25,9 @@ import (
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	memcached "github.com/couchbase/gomemcached/client"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/google/uuid"
 	pkgerrors "github.com/pkg/errors"
-	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
 // Number of non-checkpoint updates per vbucket required to trigger metadata persistence.  Must be greater than zero to avoid
