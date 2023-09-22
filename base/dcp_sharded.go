@@ -455,10 +455,8 @@ func getMinNodeVersion(cfg cbgt.Cfg) (*ComparableVersion, error) {
 func (c *CbgtContext) Stop() {
 	if c.eventHandlers != nil {
 		c.eventHandlers.ctxCancel()
-		fmt.Println("ctx cancel")
 	}
 
-	fmt.Println("inside stop")
 	if c.heartbeatListener != nil {
 		c.heartbeater.UnregisterListener(c.heartbeatListener.Name())
 		c.heartbeatListener.Stop()
