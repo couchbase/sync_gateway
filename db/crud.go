@@ -869,6 +869,22 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 	return nil
 }
 
+func (db *DatabaseCollectionWithUser) hlvLogicTemp(d *Document) (*Document, error) {
+	newVVEntry := CurrentVersionVector{}
+	bucketUUID, err := db.dbCtx.Bucket.UUID()
+	if err != nil {
+		return nil, err
+	}
+	newVVEntry.SourceID = bucketUUID
+	// add cas here
+	//newVVEntry.VersionCAS = 0 // this will become gocb.MutationMacroCAS
+	err = d.VersionVector.AddVersion(newVVEntry)
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
 // Updates or creates a document.
 // The new body's BodyRev property must match the current revision's, if any.
 func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, body Body) (newRevID string, doc *Document, err error) {
@@ -1908,6 +1924,11 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				return
 			}
 			prevCurrentRev = doc.CurrentRev
+
+			doc, err = db.hlvLogicTemp(doc)
+			if err != nil {
+				return
+			}
 
 			// Check whether Sync Data originated in body
 			if currentXattr == nil && doc.Sequence > 0 {
