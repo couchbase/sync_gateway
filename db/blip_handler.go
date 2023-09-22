@@ -86,6 +86,9 @@ const (
 type blipHandlerFunc func(*blipHandler, *blip.Message) error
 
 var (
+	// CBLReconnectErrorCode is the error code that CBL will use to trigger a reconnect
+	CBLReconnectErrorCode = http.StatusServiceUnavailable
+
 	ErrUseProposeChanges = base.HTTPErrorf(http.StatusConflict, "Use 'proposeChanges' instead")
 
 	// ErrDatabaseWentAway is returned when a replication tries to use a closed database.
@@ -128,7 +131,7 @@ func (bh *blipHandler) refreshUser() error {
 			// Refresh the BlipSyncContext database
 			err := bc.blipContextDb.ReloadUser(bh.loggingCtx)
 			if err != nil {
-				return err
+				return base.HTTPErrorf(CBLReconnectErrorCode, fmt.Sprintf("%s", err))
 			}
 			newUser := bc.blipContextDb.User()
 			newUser.InitializeRoles()

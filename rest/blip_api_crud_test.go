@@ -2826,7 +2826,7 @@ func TestBlipRefreshUser(t *testing.T) {
 	require.NoError(t, err)
 
 	testResponse := unsubChangesRequest.Response()
-	require.Equal(t, strconv.Itoa(http.StatusInternalServerError), testResponse.Properties[db.BlipErrorCode])
+	require.Equal(t, strconv.Itoa(db.CBLReconnectErrorCode), testResponse.Properties[db.BlipErrorCode])
 	body, err := testResponse.Body()
 	require.NoError(t, err)
 	require.NotContains(t, string(body), "Panic:")
