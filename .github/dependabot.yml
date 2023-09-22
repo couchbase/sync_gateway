@@ -16,5 +16,6 @@ registries:
 updates:
   - package-ecosystem: "gomod"
     directory: "/"
+    registries: "*"
     schedule:
       interval: "weekly"
