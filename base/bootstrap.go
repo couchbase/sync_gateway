@@ -3,6 +3,7 @@ package base
 import (
 	"errors"
 	"reflect"
+	"sort"
 	"sync"
 	"time"
 
@@ -170,6 +171,7 @@ func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
 		bucketList = append(bucketList, bucketName)
 	}
 
+	sort.Strings(bucketList)
 	return bucketList, nil
 }
 
