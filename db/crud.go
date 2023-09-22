@@ -876,8 +876,9 @@ func (db *DatabaseCollectionWithUser) computeHLVLogic(d *Document) (*Document, e
 		return nil, err
 	}
 	newVVEntry.SourceID = bucketUUID
-	// add cas here
-	//newVVEntry.VersionCAS = 0 // this will become gocb.MutationMacroCAS
+	// add cas here this will be macro expanded
+	// need to keep same value for now or adding new version vector entry will fail with new cas < than old cas
+	newVVEntry.VersionCAS = d.VersionVector.Version // this will be macro expanded, need to keep same value for now
 	err = d.VersionVector.AddVersion(newVVEntry)
 	if err != nil {
 		return nil, err

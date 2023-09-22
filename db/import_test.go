@@ -283,6 +283,11 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 						null
 					]
 				},
+				"_vv":{
+   					"cvCas":"0x0",
+   					"src":"abc",
+   					"vrs":"0x0"
+				},
 				"cas": "",
 				"time_saved": "2017-11-29T12:46:13.456631-08:00"
 			}`
