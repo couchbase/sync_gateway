@@ -9,6 +9,7 @@
 package base
 
 import (
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -60,6 +61,12 @@ func TestBootstrapRefCounting(t *testing.T) {
 
 	buckets, err := cluster.GetConfigBuckets()
 	require.NoError(t, err)
+	// ensure these are sorted for determinstic bootstraping
+	sortedBuckets := make([]string, len(buckets))
+	copy(sortedBuckets, buckets)
+	sort.Strings(sortedBuckets)
+	require.Equal(t, sortedBuckets, buckets)
+
 	var testBuckets []string
 	for _, bucket := range buckets {
 		if strings.HasPrefix(bucket, tbpBucketNamePrefix) {
