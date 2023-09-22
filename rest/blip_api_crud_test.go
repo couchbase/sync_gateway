@@ -17,6 +17,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2769,4 +2770,64 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{"channel":["PBS"]}`, string(data))
 
+}
+
+// TestBlipRefreshUser makes sure there is no panic if a user gets deleted during a replication
+func TestBlipRefreshUser(t *testing.T) {
+
+	rtConfig := RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	const username = "bernard"
+	// Initialize blip tester client (will create user)
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Username: "bernard",
+		Channels: []string{"chan1"},
+	})
+
+	require.NoError(t, err)
+	defer btc.Close()
+
+	// add chan1 explicitly
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB, "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"chan1"}, nil))
+
+	docID := "doc1"
+
+	RequireStatus(t, response, http.StatusOK)
+	response = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"channels":["chan1"]}`)
+	RequireStatus(t, response, http.StatusCreated)
+
+	response = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "", username)
+	RequireStatus(t, response, http.StatusOK)
+
+	// Start a regular one-shot pull
+	err = btc.StartPullSince("true", "0", "false")
+	require.NoError(t, err)
+
+	_, ok := btc.WaitForDoc(docID)
+	require.True(t, ok)
+
+	_, ok = btc.GetRev(docID, "1-78211b5eedea356c9693e08bc68b93ce")
+	require.True(t, ok)
+
+	// delete user with an active blip connection
+	response = rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_user/"+username, "")
+	RequireStatus(t, response, http.StatusOK)
+
+	// further requests will 500, but shouldn't panic
+	unsubChangesRequest := blip.NewRequest()
+	unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
+	btc.addCollectionProperty(unsubChangesRequest)
+
+	err = btc.pullReplication.sendMsg(unsubChangesRequest)
+	require.NoError(t, err)
+
+	testResponse := unsubChangesRequest.Response()
+	require.Equal(t, strconv.Itoa(db.CBLReconnectErrorCode), testResponse.Properties[db.BlipErrorCode])
+	body, err := testResponse.Body()
+	require.NoError(t, err)
+	require.NotContains(t, string(body), "Panic:")
 }
