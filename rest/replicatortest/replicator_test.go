@@ -8459,3 +8459,46 @@ func TestReplicatorWithCollectionsFailWithoutCollectionsEnabled(t *testing.T) {
 	}
 
 }
+
+// TestReplicatorUpdateHLVOnPut:
+//   - For purpose of testing the PutExistingRev code path
+//   - Put a doc on a active rest tester
+//   - Create replication and wait for the doc to be replicated ot passive node
+//   - Assert on the HLV in the metadata of teh replicated document
+func TestReplicatorUpdateHLVOnPut(t *testing.T) {
+
+	activeRT, passiveRT, remoteURL, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+
+	// Grab the bucket UUIDs for both rest testers
+	activeBucketUUID, err := activeRT.GetDatabase().Bucket.UUID()
+	require.NoError(t, err)
+
+	passiveBucketUUID, err := passiveRT.GetDatabase().Bucket.UUID()
+	require.NoError(t, err)
+
+	const rep = "replication"
+
+	// Put a doc and assert on the HLV update in the sync data
+	resp := activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"source": "activeRT"}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	syncData, err := activeRT.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+
+	assert.Equal(t, activeBucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
+
+	// create the replication to push the doc to the passive node and wait for the doc to be replicated
+	activeRT.CreateReplication(rep, remoteURL, db.ActiveReplicatorTypePush, nil, false, db.ConflictResolverDefault)
+
+	_, err = passiveRT.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+
+	// assert on the HLV update on the passive node
+	syncData, err = passiveRT.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+
+	assert.Equal(t, passiveBucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
+}

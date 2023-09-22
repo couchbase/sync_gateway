@@ -2747,6 +2747,8 @@ func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 
 // TestPutDocUpdateVersionVector:
 //   - Put a doc and assert that the versions and the source for the hlv is correctly updated
+//   - Update that doc and assert HLV has also been updated
+//   - Delete the doc and assert that the HLV has been updated in deletion event
 func TestPutDocUpdateVersionVector(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
