@@ -9,6 +9,8 @@
 package base
 
 import (
+	"sort"
+	"strings"
 	"sync"
 	"testing"
 
@@ -60,6 +62,20 @@ func TestBootstrapRefCounting(t *testing.T) {
 	buckets, err := cluster.GetConfigBuckets()
 	require.NoError(t, err)
 	require.Len(t, buckets, tbpNumBuckets(ctx))
+	// ensure these are sorted for determinstic bootstraping
+	sortedBuckets := make([]string, len(buckets))
+	copy(sortedBuckets, buckets)
+	sort.Strings(sortedBuckets)
+	require.Equal(t, sortedBuckets, buckets)
+
+	var testBuckets []string
+	for _, bucket := range buckets {
+		if strings.HasPrefix(bucket, tbpBucketNamePrefix) {
+			testBuckets = append(testBuckets, bucket)
+		}
+
+	}
+	require.Len(t, testBuckets, tbpNumBuckets(ctx))
 	// GetConfigBuckets doesn't cache connections, it uses cluster connection to determine number of buckets
 	require.Len(t, cluster.cachedBucketConnections.buckets, 0)
 
