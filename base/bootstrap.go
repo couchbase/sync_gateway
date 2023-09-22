@@ -21,7 +21,7 @@ import (
 
 	"dario.cat/mergo"
 	"github.com/couchbase/gocb/v2"
-	"gopkg.in/couchbaselabs/gocbconnstr.v1"
+	"github.com/couchbaselabs/gocbconnstr"
 )
 
 // BootstrapConnection is the interface that can be used to bootstrap Sync Gateway against a Couchbase Server cluster.

@@ -23,8 +23,8 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/pkg/errors"
-	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
