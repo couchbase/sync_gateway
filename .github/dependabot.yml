@@ -7,6 +7,12 @@
 # licenses/APL2.txt.
 
 version: 2
+registries:
+  github:
+    type: git
+    url: https://github.com
+    username: x-access-token
+    password: ${{secrets.GH_PERSONAL_ACCESS_TOKEN_CBROBOTSG}}
 updates:
   - package-ecosystem: "gomod"
     directory: "/"
