@@ -15,6 +15,7 @@ require (
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20230921161645-dd0fa1dd0802
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
+	github.com/couchbaselabs/gocbconnstr v1.0.5
 	github.com/couchbaselabs/rosmar v0.0.0-20230921163813-6cdbac2ce2bc
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
@@ -35,7 +36,6 @@ require (
 	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b
 	golang.org/x/net v0.13.0
 	golang.org/x/oauth2 v0.0.0-20220718184931-c8730f7fcb92
-	gopkg.in/couchbaselabs/gocbconnstr.v1 v1.0.4
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 

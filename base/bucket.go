@@ -26,9 +26,9 @@ import (
 	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/couchbaselabs/rosmar"
 	pkgerrors "github.com/pkg/errors"
-	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
 const (
