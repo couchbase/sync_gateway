@@ -869,7 +869,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 	return nil
 }
 
-func (db *DatabaseCollectionWithUser) hlvLogicTemp(d *Document) (*Document, error) {
+func (db *DatabaseCollectionWithUser) computeHLVLogic(d *Document) (*Document, error) {
 	newVVEntry := CurrentVersionVector{}
 	bucketUUID, err := db.dbCtx.Bucket.UUID()
 	if err != nil {
@@ -882,6 +882,13 @@ func (db *DatabaseCollectionWithUser) hlvLogicTemp(d *Document) (*Document, erro
 	if err != nil {
 		return nil, err
 	}
+
+	persistedHLV, err := d.VersionVector.convertHLVToPersistedFormat()
+	if err != nil {
+		return nil, err
+	}
+	d.SyncData.HLV = persistedHLV.PersistedHybridLogicalVector
+
 	return d, nil
 }
 
@@ -1925,7 +1932,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 			prevCurrentRev = doc.CurrentRev
 
-			doc, err = db.hlvLogicTemp(doc)
+			doc, err = db.computeHLVLogic(doc)
 			if err != nil {
 				return
 			}
@@ -2605,11 +2612,14 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 const (
 	xattrMacroCas         = "cas"
 	xattrMacroValueCrc32c = "value_crc32c"
+	versionVectorMacro    = "._vv."
+	xattrMacroVersion     = "vrs"
 )
 
 func macroExpandSpec(xattrName string) []sgbucket.MacroExpansionSpec {
 	macroExpansion := []sgbucket.MacroExpansionSpec{
 		sgbucket.NewMacroExpansionSpec(xattrCasPath(xattrName), sgbucket.MacroCas),
+		sgbucket.NewMacroExpansionSpec(xattrVersionPath(xattrName), sgbucket.MacroCas),
 		sgbucket.NewMacroExpansionSpec(xattrCrc32cPath(xattrName), sgbucket.MacroCrc32c),
 	}
 
@@ -2622,4 +2632,8 @@ func xattrCasPath(xattrKey string) string {
 
 func xattrCrc32cPath(xattrKey string) string {
 	return xattrKey + "." + xattrMacroValueCrc32c
+}
+
+func xattrVersionPath(xattrKey string) string {
+	return xattrKey + versionVectorMacro + xattrMacroVersion
 }

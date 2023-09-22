@@ -2762,6 +2762,26 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 
 	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
 	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
+
+	// Put a new revision of this doc and assert that the version vector SourceID and Version is updated
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev="+syncData.CurrentRev, `{"key1": "value1"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
+
+	// Delete doc and assert that the version vector SourceID and Version is updated
+	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev="+syncData.CurrentRev, "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
 }
 
 func TestTombstoneCompactionAPI(t *testing.T) {
