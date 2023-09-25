@@ -67,7 +67,7 @@ func (hlv *HybridLogicalVector) IsInConflict(otherVector HybridLogicalVector) bo
 // previous versions on the HLV if needed
 func (hlv *HybridLogicalVector) AddVersion(newVersion CurrentVersionVector) error {
 	if newVersion.VersionCAS < hlv.Version {
-		return fmt.Errorf("attempting to add new verison vector entry with a CAS that is less than the current version CAS value. Current cas: %v new cas %v", hlv.Version, newVersion.VersionCAS)
+		return fmt.Errorf("attempting to add new verison vector entry with a CAS that is less than the current version CAS value. Current cas: %d new cas %d", hlv.Version, newVersion.VersionCAS)
 	}
 	// if new entry has the same source we simple just update the version
 	if newVersion.SourceID == hlv.SourceID {

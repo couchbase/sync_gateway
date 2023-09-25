@@ -8463,8 +8463,8 @@ func TestReplicatorWithCollectionsFailWithoutCollectionsEnabled(t *testing.T) {
 // TestReplicatorUpdateHLVOnPut:
 //   - For purpose of testing the PutExistingRev code path
 //   - Put a doc on a active rest tester
-//   - Create replication and wait for the doc to be replicated ot passive node
-//   - Assert on the HLV in the metadata of teh replicated document
+//   - Create replication and wait for the doc to be replicated to passive node
+//   - Assert on the HLV in the metadata of the replicated document
 func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 
 	activeRT, passiveRT, remoteURL, teardown := rest.SetupSGRPeers(t)
