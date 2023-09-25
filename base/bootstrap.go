@@ -42,8 +42,12 @@ type BootstrapConnection interface {
 	// TouchMetadataDocument sets the specified property in a bootstrap metadata document for a given bucket and key.  Used to
 	// trigger CAS update on the document, to block any racing updates. Does not retry on CAS failure.
 	TouchMetadataDocument(ctx context.Context, bucket, key string, property string, value string, cas uint64) (casOut uint64, err error)
-	// KeyExists checks whether the specified key exists
+	// KeyExists checks whether the specified key exists in the bucket's default collection
 	KeyExists(ctx context.Context, bucket, key string) (exists bool, err error)
+	// GetDocument retrieves the document with the specified key from the bucket's default collection.
+	// Returns exists=false if key is not found, returns error for any other error.
+	GetDocument(ctx context.Context, bucket, docID string, rv interface{}) (exists bool, err error)
+
 	// Returns the bootstrap connection's cluster connection as N1QLStore for the specified bucket/scope/collection.
 	// Does NOT establish a bucket connection, the bucketName/scopeName/collectionName is for query scoping only
 	GetClusterN1QLStore(bucketName, scopeName, collectionName string) (*ClusterOnlyN1QLStore, error)
@@ -447,6 +451,7 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(ctx context.Context, location
 
 }
 
+// KeyExists checks whether a key exists in the default collection for the specified bucket
 func (cc *CouchbaseCluster) KeyExists(ctx context.Context, location, docID string) (exists bool, err error) {
 	if cc == nil {
 		return false, errors.New("nil CouchbaseCluster")
@@ -461,6 +466,34 @@ func (cc *CouchbaseCluster) KeyExists(ctx context.Context, location, docID strin
 	defer teardown()
 
 	return cc.configPersistence.keyExists(b.DefaultCollection(), docID)
+}
+
+// GetDocument fetches a document from the default collection.  Does not use configPersistence - callers
+// requiring configPersistence handling should use GetMetadataDocument.
+func (cc *CouchbaseCluster) GetDocument(ctx context.Context, bucketName, docID string, rv interface{}) (exists bool, err error) {
+	if cc == nil {
+		return false, errors.New("nil CouchbaseCluster")
+	}
+
+	b, teardown, err := cc.getBucket(ctx, bucketName)
+	if err != nil {
+		return false, err
+	}
+
+	defer teardown()
+
+	getOptions := &gocb.GetOptions{
+		Transcoder: NewSGJSONTranscoder(),
+	}
+	getResult, err := b.DefaultCollection().Get(docID, getOptions)
+	if err != nil {
+		if errors.Is(err, gocb.ErrDocumentNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	err = getResult.Content(rv)
+	return true, nil
 }
 
 // Close calls teardown for any cached buckets and removes from cachedBucketConnections

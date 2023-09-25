@@ -375,6 +375,9 @@ func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, err err
 	var syncInfo SyncInfo
 	_, fetchErr := ds.Get(SGSyncInfo, &syncInfo)
 	if IsKeyNotFoundError(ds, fetchErr) {
+		if metadataID == "" {
+			return false, nil
+		}
 		newSyncInfo := &SyncInfo{MetadataID: metadataID}
 		_, addErr := ds.Add(SGSyncInfo, 0, newSyncInfo)
 		if IsCasMismatch(addErr) {
@@ -397,6 +400,9 @@ func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, err err
 
 // SetSyncInfo sets syncInfo in a DataStore to the specified metadataID
 func SetSyncInfo(ds DataStore, metadataID string) error {
+	if metadataID == "" {
+		return nil
+	}
 	syncInfo := &SyncInfo{
 		MetadataID: metadataID,
 	}

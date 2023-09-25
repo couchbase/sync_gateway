@@ -721,10 +721,9 @@ func (b *bootstrapContext) ComputeMetadataIDForDbConfig(ctx context.Context, con
 // computeMetadataID determines whether the database should use the default metadata storage location (to support configurations upgrading with
 // existing sync metadata in the default collection).  The default metadataID is only used when all of the following
 // conditions are met:
-//  1. The default metadataID isn't already in use by another database
+//  1. The default metadataID isn't already in use by another database in the registry
 //  2. The database includes _default._default
-//  3. The _default._default collection isn't already associated with a different metadata ID (_sync:syncInfo is not present)
-//  4. The _default._default collection has legacy data (_sync:seq is present)
+//  3. The _default._default collection isn't already associated with a different metadata ID (syncInfo document is not present, or has a value of defaultMetadataID)
 func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *GatewayRegistry, config *DbConfig) string {
 
 	standardMetadataID := b.standardMetadataID(config.Name)
@@ -753,21 +752,19 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 		}
 	}
 
+	// If _default._default is already associated with a non-default metadataID, use the standard ID
 	bucketName := config.GetBucketName()
-	exists, err := b.Connection.KeyExists(ctx, bucketName, base.SGSyncInfo)
+	var syncInfo base.SyncInfo
+	exists, err := b.Connection.GetDocument(ctx, bucketName, base.SGSyncInfo, &syncInfo)
 	if err != nil {
-		base.WarnfCtx(ctx, "Error checking whether metadataID is already defined for default collection - using standard metadataID.  Error: %v", err)
-		return standardMetadataID
-	}
-	if exists {
+		base.WarnfCtx(ctx, "Error checking syncInfo metadataID in default collection - using standard metadataID.  Error: %v", err)
 		return standardMetadataID
 	}
 
-	// If legacy _sync:seq doesn't exist, use the standard ID
-	legacySyncSeqExists, _ := b.Connection.KeyExists(ctx, bucketName, base.DefaultMetadataKeys.SyncSeqKey())
-	if !legacySyncSeqExists {
+	if exists && syncInfo.MetadataID != defaultMetadataID {
 		return standardMetadataID
 	}
+
 	return defaultMetadataID
 
 }
