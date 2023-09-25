@@ -1238,3 +1238,30 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) D
 	}
 	return dbConfig
 }
+
+func TestPersistentConfigCreateNoBucketField(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	bucketName := rt.Bucket().GetName()
+	dbName := bucketName
+
+	dbConfig := rt.NewDbConfig()
+	// will infer from db name in handler and stamp into config (as of CBG-3353)
+	dbConfig.Bucket = nil
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// read back config in bucket to see if bucket exists in there
+	var databaseConfig DatabaseConfig
+	groupID := rt.ServerContext().Config.Bootstrap.ConfigGroupID
+	configDocID := PersistentConfigKey(base.TestCtx(t), groupID, bucketName)
+	_, err := rt.GetDatabase().MetadataStore.Get(configDocID, &databaseConfig)
+	require.NoError(t, err)
+	require.NotNil(t, databaseConfig.Bucket)
+	assert.Equal(t, bucketName, *databaseConfig.Bucket, "bucket field should be stamped into config")
+}
