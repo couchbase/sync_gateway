@@ -501,36 +501,6 @@ func ImportDestKey(dbName string, scope string, collections []string) string {
 	return fmt.Sprintf("%s_import_%x", dbName, sha256.Sum256([]byte(collectionString)))
 }
 
-func initCfgCB(bucket Bucket, spec BucketSpec) (*cbgt.CfgCB, error) {
-
-	// cfg: Implementation of cbgt.Cfg interface.  Responsible for configuration management
-	//      Sync Gateway uses bucket-based config management
-	options := map[string]interface{}{
-		"keyPrefix": SyncDocPrefix,
-	}
-	urls, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server, nil)
-	if errConvertServerSpec != nil {
-		return nil, errConvertServerSpec
-	}
-
-	// TODO: Until we switch to a gocb-backed CfgCB, need to manage credentials in URL
-	basicAuthUrls, err := ServerUrlsWithAuth(urls, spec)
-	if err != nil {
-		return nil, err
-	}
-
-	cfgCB, err := cbgt.NewCfgCBEx(
-		strings.Join(basicAuthUrls, ";"),
-		spec.BucketName,
-		options,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return cfgCB, nil
-}
-
 func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbgtContext *CbgtContext) (*importHeartbeatListener, error) {
 
 	if cbgtContext == nil || cbgtContext.Manager == nil || cbgtContext.Cfg == nil || heartbeater == nil {

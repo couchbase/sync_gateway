@@ -27,7 +27,6 @@ import (
 type TestHeartbeatListener struct {
 	name             string
 	nodeStore        *TestHeartbeatNodeStore // shared definition of nodes
-	nodeUUIDs        map[string]struct{}
 	staleDetectCount uint32
 }
 
@@ -287,10 +286,8 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 // one second, so retry polling is required.
 func TestCBGTManagerHeartbeater(t *testing.T) {
 
-	SetUpTestLogging(t, LevelDebug, KeyDCP)
-
 	if UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus - no expiry, required for heartbeats")
+		t.Skip("This test requires cbgt and CBS")
 	}
 
 	if testing.Short() {
@@ -303,11 +300,10 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close(ctx)
 
-	// Initialize cfgCB
-	cfgCB, err := initCfgCB(testBucket, testBucket.BucketSpec)
-	require.NoError(t, err)
-
 	dataStore := testBucket.GetSingleDataStore()
+
+	cfgCB, err := NewCbgtCfgMem()
+	require.NoError(t, err)
 
 	// Simulate the three nodes self-registering into the cfg
 	nodeDefs := cbgt.NewNodeDefs("1.0.0")
@@ -381,8 +377,8 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 		return node1.checkCount > 0 && node1.sendCount > 0
 	}
 	testRetryUntilTrue(t, retryUntilFunc)
-	assert.True(t, node1.checkCount > 0)
-	assert.True(t, node1.sendCount > 0)
+	assert.Greater(t, 0, node1.checkCount)
+	assert.Greater(t, 0, node1.sendCount)
 
 	// Stop node 1
 	node1.Stop(ctx)
