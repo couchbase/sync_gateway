@@ -1287,6 +1287,7 @@ func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 
 	db := setupTestDB(t)
 
+	defer db.Close()
 	documentRev := DocumentRevision{DocID: "doc1", BodyBytes: []byte("null")}
 
 	body, err := documentRev.Mutable1xBody(db, nil, nil, false)
