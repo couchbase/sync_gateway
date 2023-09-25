@@ -183,7 +183,8 @@ func TestBlipRefreshUser(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodDelete, "/db/_user/"+username, "")
 	RequireStatus(t, response, http.StatusOK)
 
-	rt.WaitForPendingChanges()
+	err = rt.WaitForPendingChanges()
+	require.NoError(t, err)
 	msg := blip.NewRequest()
 	msg.SetProfile(db.MessageRev)
 	msg.Properties[db.RevMessageId] = "doesnotexist"
