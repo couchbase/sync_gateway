@@ -7949,8 +7949,8 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	defer teardown()
 	activeCtx := activeRT.Context()
 
-	// Disable checkpointing at an interval
-	activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 0
+	// reduce checkpointing interval temporarily to ensure there is a checkpoint to assert against later in test
+	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
 
 	rev, doc, err := activeRT.GetSingleTestDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
 	require.NoError(t, err)
