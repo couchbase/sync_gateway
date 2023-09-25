@@ -80,6 +80,11 @@ func (h *handler) handleCreateDB() error {
 			metadataID = h.server.BootstrapContext.standardMetadataID(config.Name)
 		}
 
+		// Before taking a copy of the "persistedDbConfig", stamp bucket if missing
+		if config.Bucket == nil {
+			config.Bucket = &dbName
+		}
+
 		// copy config before setup to persist the raw config the user supplied
 		var persistedDbConfig DbConfig
 		if err := base.DeepCopyInefficient(&persistedDbConfig, config); err != nil {
@@ -95,7 +100,8 @@ func (h *handler) handleCreateDB() error {
 		loadedConfig := DatabaseConfig{
 			Version:    version,
 			MetadataID: metadataID,
-			DbConfig:   *config}
+			DbConfig:   *config,
+		}
 
 		persistedConfig := DatabaseConfig{
 			Version:    version,

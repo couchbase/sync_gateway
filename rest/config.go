@@ -364,6 +364,8 @@ func (dbConfig *DbConfig) setDatabaseCredentials(credentials base.CredentialsCon
 // setup populates fields in the dbConfig
 func (dbConfig *DbConfig) setup(ctx context.Context, dbName string, bootstrapConfig BootstrapConfig, dbCredentials, bucketCredentials *base.CredentialsConfig, forcePerBucketAuth bool) error {
 	dbConfig.Name = dbName
+
+	// use db name as bucket if absent from config
 	if dbConfig.Bucket == nil {
 		dbConfig.Bucket = &dbConfig.Name
 	}
