@@ -1239,7 +1239,7 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) D
 	return dbConfig
 }
 
-func TestPersistentConfigCreateNoBucketField(t *testing.T) {
+func TestPersistentConfigNoBucketField(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -1264,4 +1264,28 @@ func TestPersistentConfigCreateNoBucketField(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, databaseConfig.Bucket)
 	assert.Equal(t, bucketName, *databaseConfig.Bucket, "bucket field should be stamped into config")
+
+	// strip out bucket to test backwards compatibility (older configs don't always have this field set)
+	_, err = rt.GetDatabase().MetadataStore.Update(configDocID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		var d DatabaseConfig
+		require.NoError(t, base.JSONUnmarshal(current, &d))
+		d.Bucket = nil
+		newConfig, err := base.JSONMarshal(d)
+		return newConfig, nil, false, err
+	})
+	require.NoError(t, err)
+
+	count, err := rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "should have loaded 1 config")
+
+	bucket2 := base.GetTestBucket(t)
+	defer bucket2.Close(base.TestCtx(t))
+
+	_, err = rt.UpdatePersistedBucketName(&databaseConfig, base.StringPtr(bucket2.GetName()))
+	require.NoError(t, err)
+
+	count, err = rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "should have loaded 1 config")
 }
