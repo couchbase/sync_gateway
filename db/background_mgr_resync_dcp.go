@@ -330,7 +330,7 @@ type ResyncManagerStatusDocDCP struct {
 func getReSyncDCPClientOptions(collectionIDs []uint32, groupID string, prefix string) *base.DCPClientOptions {
 	return &base.DCPClientOptions{
 		OneShot:           true,
-		FailOnRollback:    true,
+		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
 		GroupID:           groupID,
 		CollectionIDs:     collectionIDs,
