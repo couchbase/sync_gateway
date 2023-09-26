@@ -7944,14 +7944,15 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 // CBG-1581: Ensure activeReplicatorCommon does final checkpoint on stop/disconnect
 func TestReplicatorCheckpointOnStop(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyReplicate)
 
 	activeRT, passiveRT, remoteURL, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 	activeCtx := activeRT.Context()
 
-	// increase checkpointing interval temporarily to ensure there is a checkpoint to assert against later
-	defer reduceTestCheckpointInterval(50 * time.Second)()
+	// increase checkpointing interval temporarily to ensure the checkpointer doesn't fiore on an
+	// interval during the running of the test
+	defer reduceTestCheckpointInterval(9999 * time.Hour)()
 
 	rev, doc, err := activeRT.GetSingleTestDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
 	require.NoError(t, err)
