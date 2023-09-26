@@ -7944,6 +7944,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 // CBG-1581: Ensure activeReplicatorCommon does final checkpoint on stop/disconnect
 func TestReplicatorCheckpointOnStop(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 
 	activeRT, passiveRT, remoteURL, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
