@@ -22,8 +22,10 @@ import (
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
+	// Exit early when the connection can't be switched to websocket protocol.
 	if _, ok := h.response.(http.Hijacker); !ok {
 		base.InfofCtx(h.ctx(), base.KeyHTTP, "Non-upgradable request received for BLIP+WebSocket protocol")
+		return base.HTTPErrorf(http.StatusUpgradeRequired, "Can't upgrade this request to websocket connection")
 	}
 
 	h.db.DatabaseContext.DbStats.Database().NumReplicationsActive.Add(1)
