@@ -398,6 +398,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	// Config to migrate to persistent config on bucket
 	config := `
 	{
+		"server_tls_skip_verify": %t,
 		"databases": {
 			"db": {
 				"server": "%s",
@@ -424,7 +425,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 			}
 		}
 	}`
-	config = fmt.Sprintf(config, base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), rt.Bucket().GetName())
+	config = fmt.Sprintf(config, base.TestTLSSkipVerify(), base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), rt.Bucket().GetName())
 
 	tmpDir := t.TempDir()
 
