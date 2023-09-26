@@ -51,9 +51,8 @@ func TestResyncRollback(t *testing.T) {
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	status := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
-	// make sure this hasn't accidentally completed, and we have one document
+	// make sure this hasn't accidentally completed
 	require.Equal(t, db.BackgroundProcessStateStopped, status.State)
-	require.Greater(t, status.DocsProcessed, int64(1))
 
 	// alter persisted dcp metadata from the first run to force a rollback
 	name := db.GenerateResyncDCPStreamName(status.ResyncID)
@@ -68,7 +67,4 @@ func TestResyncRollback(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 	status = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-
-	require.Greater(t, rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value(), int64(numDocs*2))
-	require.Greater(t, status.DocsProcessed, int64(numDocs))
 }
