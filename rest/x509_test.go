@@ -187,7 +187,6 @@ func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucke
 	keyPath = sgPair.KeyFilePath
 
 	// use x509 for auth
-	tb.BucketSpec.Auth = base.NoPasswordAuthHandler{Handler: tb.BucketSpec.Auth}
 	tb.BucketSpec.CACertPath = caCertPath
 	tb.BucketSpec.Certpath = certPath
 	tb.BucketSpec.Keypath = keyPath

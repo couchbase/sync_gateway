@@ -17,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbase/go-couchbase"
 	_ "github.com/couchbase/gomemcached/debug"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/samuel/go-metrics/metrics"
@@ -37,9 +36,6 @@ var (
 )
 
 func init() {
-	couchbase.ConnPoolCallback = recordConnPoolStat
-	couchbase.ClientOpCallback = recordCBClientStat
-
 	expCb := expvar.NewMap("cb")
 	expPoolHistos = &expvar.Map{}
 	expPoolHistos.Init()

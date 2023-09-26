@@ -14,7 +14,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -247,11 +246,6 @@ func setGlobalConfig(ctx context.Context, sc *StartupConfig) error {
 
 	if _, err := base.SetMaxFileDescriptors(ctx, sc.MaxFileDescriptors); err != nil {
 		base.ErrorfCtx(ctx, "Error setting MaxFileDescriptors to %d: %v", sc.MaxFileDescriptors, err)
-	}
-
-	// TODO: Remove with GoCB DCP switch
-	if sc.CouchbaseKeepaliveInterval != nil {
-		couchbase.SetTcpKeepalive(true, *sc.CouchbaseKeepaliveInterval)
 	}
 
 	// Given unscoped usage of base.JSON functions, this can't be scoped.

@@ -17,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbase/go-couchbase"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -1988,10 +1987,6 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 	if err == base.ErrUpdateCancel {
 		return nil, "", nil
-	} else if err == couchbase.ErrOverwritten {
-		// ErrOverwritten is ok; if a later revision got persisted, that's fine too
-		base.DebugfCtx(ctx, base.KeyCRUD, "Note: Rev %q/%q was overwritten in RAM before becoming indexable",
-			base.UD(docid), newRevID)
 	} else if err != nil {
 		return nil, "", err
 	}
