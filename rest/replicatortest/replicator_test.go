@@ -7950,7 +7950,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	defer teardown()
 	activeCtx := activeRT.Context()
 
-	// increase checkpointing interval temporarily to ensure the checkpointer doesn't fiore on an
+	// increase checkpointing interval temporarily to ensure the checkpointer doesn't fire on an
 	// interval during the running of the test
 	defer reduceTestCheckpointInterval(9999 * time.Hour)()
 
