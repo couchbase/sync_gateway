@@ -377,8 +377,8 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 		return node1.checkCount > 0 && node1.sendCount > 0
 	}
 	testRetryUntilTrue(t, retryUntilFunc)
-	assert.Greater(t, 0, node1.checkCount)
-	assert.Greater(t, 0, node1.sendCount)
+	assert.Greater(t, node1.checkCount, 0)
+	assert.Greater(t, node1.sendCount, 0)
 
 	// Stop node 1
 	node1.Stop(ctx)
@@ -386,10 +386,7 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	// Wait for another node to detect node1 has stopped sending heartbeats
 	retryUntilFunc = func() bool {
 		nodeSet, err := listener2.GetNodes()
-		if err != nil {
-			log.Printf("getNodes error: %v", err)
-			return false
-		}
+		require.NoError(t, err)
 		return len(nodeSet) < 3
 	}
 	testRetryUntilTrue(t, retryUntilFunc)
