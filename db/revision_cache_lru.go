@@ -68,8 +68,8 @@ func (sc *ShardedLRURevisionCache) Upsert(docRev DocumentRevision) {
 	sc.getShard(docRev.DocID).Upsert(docRev)
 }
 
-func (sc *ShardedLRURevisionCache) Invalidate(docID, revID string) {
-	sc.getShard(docID).Invalidate(docID, revID)
+func (sc *ShardedLRURevisionCache) Remove(docID, revID string) {
+	sc.getShard(docID).Remove(docID, revID)
 }
 
 // An LRU cache of document revision bodies, together with their channel access.
@@ -269,13 +269,6 @@ func (rc *LRURevisionCache) Upsert(docRev DocumentRevision) {
 	value.store(docRev)
 }
 
-func (rc *LRURevisionCache) Invalidate(docID, revID string) {
-	value := rc.getValue(docID, revID, false)
-	if value != nil {
-		value.setInvalidFlag()
-	}
-}
-
 func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *revCacheValue) {
 	if docID == "" || revID == "" {
 		panic("RevisionCache: invalid empty doc/rev id")
@@ -296,6 +289,20 @@ func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *r
 	return
 }
 
+// Remove removes a value from the revision cache, if present.
+func (rc *LRURevisionCache) Remove(docID, revID string) {
+	key := IDAndRev{DocID: docID, RevID: revID}
+	rc.lock.Lock()
+	defer rc.lock.Unlock()
+	element, ok := rc.cache[key]
+	if !ok {
+		return
+	}
+	rc.lruList.Remove(element)
+	delete(rc.cache, key)
+}
+
+// removeValue removes a value from the revision cache, if present and the value matches the the value. If there's an item in the revision cache with a matching docID and revID but the document is different, this item will not be removed from the rev cache.
 func (rc *LRURevisionCache) removeValue(value *revCacheValue) {
 	rc.lock.Lock()
 	if element := rc.cache[value.key]; element != nil && element.Value == value {
@@ -400,7 +407,6 @@ func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) 
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 		Deleted:     value.deleted,
 		Removed:     value.removed,
-		Invalid:     value.invalid,
 	}
 	if body != nil {
 		docRev._shallowCopyBody = body.ShallowCopy()

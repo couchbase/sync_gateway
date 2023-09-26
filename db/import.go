@@ -274,7 +274,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			}
 		}
 
-		shouldGenerateNewRev := bodyChanged
+		shouldGenerateNewRev := bodyChanged || len(existingDoc.UserXattr) == 0
 
 		// If the body has changed then the document has been updated and we should generate a new revision. Otherwise
 		// the import was triggered by a user xattr mutation and therefore should not generate a new revision.

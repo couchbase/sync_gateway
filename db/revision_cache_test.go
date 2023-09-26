@@ -436,7 +436,7 @@ func TestConcurrentLoad(t *testing.T) {
 
 }
 
-func TestInvalidate(t *testing.T) {
+func TestRevisionCacheRemove(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
@@ -446,34 +446,29 @@ func TestInvalidate(t *testing.T) {
 	docRev, err := db.revisionCache.Get("doc", rev1id, true, true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
-	assert.False(t, docRev.Invalid)
 	assert.Equal(t, int64(0), db.DbStats.Cache().RevisionCacheMisses.Value())
 
-	db.revisionCache.Invalidate("doc", rev1id)
+	db.revisionCache.Remove("doc", rev1id)
 
 	docRev, err = db.revisionCache.Get("doc", rev1id, true, true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
-	assert.True(t, docRev.Invalid)
 	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
 
 	docRev, err = db.revisionCache.GetActive("doc", true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
-	assert.True(t, docRev.Invalid)
-	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
 
 	docRev, err = db.GetRev("doc", docRev.RevID, true, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
-	assert.True(t, docRev.Invalid)
-	assert.Equal(t, int64(3), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
 
 	docRev, err = db.GetRev("doc", "", true, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
-	assert.True(t, docRev.Invalid)
-	assert.Equal(t, int64(4), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
 }
 
 func BenchmarkRevisionCacheRead(b *testing.B) {

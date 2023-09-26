@@ -94,7 +94,7 @@ func (rc *BypassRevisionCache) Upsert(docRev DocumentRevision) {
 	// no-op
 }
 
-func (rc *BypassRevisionCache) Invalidate(docID, revID string) {
+func (rc *BypassRevisionCache) Remove(docID, revID string) {
 	// nop
 }
 
