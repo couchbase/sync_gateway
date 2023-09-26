@@ -47,7 +47,7 @@ func TestBootstrapRefCounting(t *testing.T) {
 	x509KeyPath := ""
 	caCertPath := ""
 	forcePerBucketAuth := false
-	tlsSkipVerify := BoolPtr(false)
+	tlsSkipVerify := BoolPtr(TestTLSSkipVerify())
 	var perBucketCredentialsConfig map[string]*CredentialsConfig
 	ctx := TestCtx(t)
 	cluster, err := NewCouchbaseCluster(ctx, UnitTestUrl(), TestClusterUsername(), TestClusterPassword(), x509CertPath, x509KeyPath, caCertPath, forcePerBucketAuth, perBucketCredentialsConfig, tlsSkipVerify, BoolPtr(TestUseXattrs()), CachedClusterConnections)

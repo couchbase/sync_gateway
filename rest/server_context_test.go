@@ -786,8 +786,14 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 			t.Run(fmt.Sprintf("persistent_config=%t", persistentConfig), func(t *testing.T) {
 
 				ctx := base.TestCtx(t)
-				serverConfig := &StartupConfig{}
-				serverContext := NewServerContext(ctx, serverConfig, persistentConfig)
+				startupConfig := &StartupConfig{
+					Bootstrap: BootstrapConfig{
+						UseTLSServer:        base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())),
+						ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify()),
+					},
+				}
+
+				serverContext := NewServerContext(ctx, startupConfig, persistentConfig)
 				defer serverContext.Close(ctx)
 
 				dbConfig := DbConfig{
