@@ -334,7 +334,7 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 	base.DebugfCtx(h.ctx(), base.KeyAuth, "handleOidcTestProviderAuthenticate() called.  username: %s authenticated: %s", username, authenticated)
 
 	if username == "" || authenticated == "" {
-		base.DebugfCtx(h.ctx(), base.KeyAuth, "user did not enter valid credentials -- username or authenticated is empty")
+		base.InfofCtx(h.ctx(), base.KeyAuth, "user did not enter valid credentials -- username or authenticated is empty")
 		error := "?error=invalid_request&error_description=User failed authentication"
 		h.setHeader(headerLocation, requestParams.Get(requestParamRedirectURI)+error)
 		h.response.WriteHeader(http.StatusFound)
@@ -545,7 +545,7 @@ func writeTokenResponse(h *handler, subject string, issuerUrl string, authState 
 func extractSubjectFromRefreshToken(ctx context.Context, refreshToken string) (string, error) {
 	decodedToken, err := base64.StdEncoding.DecodeString(refreshToken)
 	if err != nil {
-		base.DebugfCtx(ctx, base.KeyAuth, "invalid refresh token provided, error: %v", err)
+		base.InfofCtx(ctx, base.KeyAuth, "invalid refresh token provided, error: %v", err)
 		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid OIDC Refresh Token")
 	}
 
