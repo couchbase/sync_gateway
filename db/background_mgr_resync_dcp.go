@@ -157,9 +157,9 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections", resyncLoggingID)
 	}
 
-	clientOptions := getReSyncDCPClientOptions(collectionIDs, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
+	clientOptions := getResyncDCPClientOptions(collectionIDs, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
 
-	dcpFeedKey := generateResyncDCPStreamName(r.ResyncID)
+	dcpFeedKey := GenerateResyncDCPStreamName(r.ResyncID)
 	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
@@ -326,11 +326,11 @@ type ResyncManagerStatusDocDCP struct {
 	ResyncManagerMeta        `json:"meta"`
 }
 
-// getReSyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync
-func getReSyncDCPClientOptions(collectionIDs []uint32, groupID string, prefix string) *base.DCPClientOptions {
+// getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync
+func getResyncDCPClientOptions(collectionIDs []uint32, groupID string, prefix string) *base.DCPClientOptions {
 	return &base.DCPClientOptions{
 		OneShot:           true,
-		FailOnRollback:    true,
+		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
 		GroupID:           groupID,
 		CollectionIDs:     collectionIDs,
@@ -338,7 +338,8 @@ func getReSyncDCPClientOptions(collectionIDs []uint32, groupID string, prefix st
 	}
 }
 
-func generateResyncDCPStreamName(resyncID string) string {
+// GenerateResyncDCPStreamName returns the DCP stream name for a resync.
+func GenerateResyncDCPStreamName(resyncID string) string {
 	return fmt.Sprintf(
 		"sg-%v:resync:%v",
 		base.ProductAPIVersion,
