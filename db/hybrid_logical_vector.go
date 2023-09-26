@@ -36,10 +36,6 @@ type PersistedHybridLogicalVector struct {
 	PreviousVersions  map[string]string `json:"pv,omitempty"`
 }
 
-type PersistedVersionVector struct {
-	PersistedHybridLogicalVector `json:"_vv"`
-}
-
 // NewHybridLogicalVector returns a HybridLogicalVector struct with maps initialised in the struct
 func NewHybridLogicalVector() HybridLogicalVector {
 	return HybridLogicalVector{
@@ -69,15 +65,15 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion CurrentVersionVector) erro
 	if newVersion.VersionCAS < hlv.Version {
 		return fmt.Errorf("attempting to add new verison vector entry with a CAS that is less than the current version CAS value. Current cas: %d new cas %d", hlv.Version, newVersion.VersionCAS)
 	}
-	// if new entry has the same source we simple just update the version
-	if newVersion.SourceID == hlv.SourceID {
-		hlv.Version = newVersion.VersionCAS
-		return nil
-	}
 	// check if this is the first time we're adding a source - version pair
 	if hlv.SourceID == "" {
 		hlv.Version = newVersion.VersionCAS
 		hlv.SourceID = newVersion.SourceID
+		return nil
+	}
+	// if new entry has the same source we simple just update the version
+	if newVersion.SourceID == hlv.SourceID {
+		hlv.Version = newVersion.VersionCAS
 		return nil
 	}
 	// if we get here this is a new version from a different sourceID thus need to move current sourceID to previous versions and update current version
@@ -187,7 +183,7 @@ func (hlv *HybridLogicalVector) MarshalJSON() ([]byte, error) {
 }
 
 func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
-	persistedJSON := PersistedVersionVector{}
+	persistedJSON := PersistedHybridLogicalVector{}
 	err := base.JSONUnmarshal(inputjson, &persistedJSON)
 	if err != nil {
 		return err
@@ -197,8 +193,8 @@ func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
 	return nil
 }
 
-func (hlv *HybridLogicalVector) convertHLVToPersistedFormat() (*PersistedVersionVector, error) {
-	persistedHLV := PersistedVersionVector{}
+func (hlv *HybridLogicalVector) convertHLVToPersistedFormat() (*PersistedHybridLogicalVector, error) {
+	persistedHLV := PersistedHybridLogicalVector{}
 	var cvCasByteArray []byte
 	if hlv.CurrentVersionCAS != 0 {
 		cvCasByteArray = base.Uint64CASToLittleEndianHex(hlv.CurrentVersionCAS)
@@ -222,7 +218,7 @@ func (hlv *HybridLogicalVector) convertHLVToPersistedFormat() (*PersistedVersion
 	return &persistedHLV, nil
 }
 
-func (hlv *HybridLogicalVector) convertPersistedHLVToInMemoryHLV(persistedJSON PersistedVersionVector) {
+func (hlv *HybridLogicalVector) convertPersistedHLVToInMemoryHLV(persistedJSON PersistedHybridLogicalVector) {
 	hlv.CurrentVersionCAS = base.HexCasToUint64(persistedJSON.CurrentVersionCAS)
 	hlv.SourceID = persistedJSON.SourceID
 	// convert the hex cas to uint64 cas

@@ -264,31 +264,31 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert on doc version vector values
-	assert.Equal(t, uint64(123456), doc.VersionVector.CurrentVersionCAS)
-	assert.Equal(t, uint64(123456), doc.VersionVector.Version)
-	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.VersionVector.SourceID)
-	assert.True(t, reflect.DeepEqual(mv, doc.VersionVector.MergeVersions))
-	assert.True(t, reflect.DeepEqual(pv, doc.VersionVector.PreviousVersions))
+	assert.Equal(t, uint64(123456), doc.SyncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, uint64(123456), doc.SyncData.HLV.Version)
+	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
+	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
+	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
 
 	doc, err = unmarshalDocumentWithXattr(ctx, "doc1", nil, doc_meta, nil, 1, DocUnmarshalAll)
 	require.NoError(t, err)
 
 	// assert on doc version vector values
-	assert.Equal(t, uint64(123456), doc.VersionVector.CurrentVersionCAS)
-	assert.Equal(t, uint64(123456), doc.VersionVector.Version)
-	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.VersionVector.SourceID)
-	assert.True(t, reflect.DeepEqual(mv, doc.VersionVector.MergeVersions))
-	assert.True(t, reflect.DeepEqual(pv, doc.VersionVector.PreviousVersions))
+	assert.Equal(t, uint64(123456), doc.SyncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, uint64(123456), doc.SyncData.HLV.Version)
+	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
+	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
+	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
 
 	doc, err = unmarshalDocumentWithXattr(ctx, "doc1", nil, doc_meta, nil, 1, DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
 	// assert on doc version vector values
-	assert.Equal(t, uint64(123456), doc.VersionVector.CurrentVersionCAS)
-	assert.Equal(t, uint64(123456), doc.VersionVector.Version)
-	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.VersionVector.SourceID)
-	assert.True(t, reflect.DeepEqual(mv, doc.VersionVector.MergeVersions))
-	assert.True(t, reflect.DeepEqual(pv, doc.VersionVector.PreviousVersions))
+	assert.Equal(t, uint64(123456), doc.SyncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, uint64(123456), doc.SyncData.HLV.Version)
+	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
+	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
+	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
 }
 
 func TestParseXattr(t *testing.T) {
