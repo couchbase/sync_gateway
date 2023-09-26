@@ -3000,3 +3000,106 @@ func TestImportFilterTimeout(t *testing.T) {
 	timeoutErr := rest.WaitWithTimeout(&syncFnFinishedWG, time.Second*15)
 	assert.NoError(t, timeoutErr)
 }
+
+func TestImportRollback(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server - needs cbgt and import checkpointing")
+	}
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP)
+
+	ctx := base.TestCtx(t)
+	bucket := base.GetPersistentTestBucket(t)
+	defer bucket.Close(ctx)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: bucket.NoCloseClone(),
+		PersistentConfig: false,
+	})
+
+	key := "importRollbackTest"
+	lastSeq := "0"
+	var checkpointPrefix string
+	// do some setup work in an anonymous function so that we can be sure to close the rest tester on unexpected error
+	func() {
+		defer rt.Close()
+
+		// Create a document
+		added, err := rt.GetSingleDataStore().AddRaw(key, 0, []byte(fmt.Sprintf(`{"star": "6"}`)))
+		require.True(t, added)
+		require.NoError(t, err)
+
+		// wait for doc to be imported
+		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
+		require.NoError(t, err)
+		log.Printf("got changes: %v", changes)
+		var ok bool
+		lastSeq, ok = changes.Last_Seq.(string)
+		require.True(t, ok)
+
+		// Close db while we mess with checkpoints
+		db := rt.GetDatabase()
+		checkpointPrefix = rt.GetDatabase().MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID)
+	}()
+
+	// fetch the checkpoint for the document's vbucket
+	vbNo, err := base.GetVbucketForKey(bucket, key)
+	require.NoError(t, err)
+	log.Printf("got vbno: %v", vbNo)
+
+	// modify the checkpoint to a seq
+
+	metaStore := bucket.GetMetadataStore()
+	checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
+	var checkpointData dcpMetaData
+	checkpointBytes, _, err := metaStore.GetRaw(checkpointKey)
+	require.NoError(t, err)
+	base.JSONUnmarshal(checkpointBytes, &checkpointData)
+
+	checkpointData.SnapStart = 3000 + checkpointData.SnapStart
+	checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
+	checkpointData.SeqStart = 3000 + checkpointData.SeqStart
+	checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
+	updatedBytes, err := base.JSONMarshal(checkpointData)
+	err = metaStore.SetRaw(checkpointKey, 0, nil, updatedBytes)
+	require.NoError(t, err)
+
+	// Reopen the db, expect DCP rollback
+	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: bucket.NoCloseClone(),
+		PersistentConfig: false,
+	})
+	defer rt2.Close()
+
+	err = rt2.GetSingleDataStore().SetRaw(key, 0, nil, []byte(fmt.Sprintf(`{"star": "7 8 9"}`)))
+	require.NoError(t, err)
+
+	// on new RT, may be import latency until old RT heartbeat expires and partitions are assigned.  Wait for all import partitions
+	// to be assigned to the new db before waiting for changes
+	err = rt2.WaitForCondition(func() bool {
+		database := rt2.GetDatabase()
+		expectedPartitions := int64(database.Options.ImportOptions.ImportPartitions)
+		partitions := database.DbStats.SharedBucketImportStats.ImportPartitions.Value()
+		if partitions < expectedPartitions {
+			log.Printf("waiting for %d partitions to be assigned to RT (have %d)", expectedPartitions, partitions)
+		}
+		return partitions >= expectedPartitions
+	})
+	require.NoError(t, err)
+
+	// wait for doc update to be imported
+	changes, err := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
+	require.NoError(t, err)
+
+	time.Sleep(10 * time.Minute)
+	log.Printf("updated changes: %v", changes)
+}
+
+type dcpMetaData struct {
+	SeqStart    uint64     `json:"seqStart"`
+	SeqEnd      uint64     `json:"seqEnd"`
+	SnapStart   uint64     `json:"snapStart"`
+	SnapEnd     uint64     `json:"snapEnd"`
+	FailOverLog [][]uint64 `json:"failOverLog"`
+}
