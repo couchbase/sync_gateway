@@ -2817,6 +2817,8 @@ func TestBlipRefreshUser(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_user/"+username, "")
 	RequireStatus(t, response, http.StatusOK)
 
+	require.NoError(t, rt.WaitForPendingChanges())
+
 	// further requests will 500, but shouldn't panic
 	unsubChangesRequest := blip.NewRequest()
 	unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
