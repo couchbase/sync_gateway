@@ -117,27 +117,32 @@ func (l *ConsoleLogger) shouldLog(ctx context.Context, logLevel LogLevel, logKey
 		return false
 	}
 
-	return shouldLogConsoleDatabase(ctx, logLevel, logKey) ||
-		shouldLog(l.LogLevel, l.LogKeyMask, logLevel, logKey)
+	// database overrides console if set
+	shouldLogDb, ok := shouldLogConsoleDatabase(ctx, logLevel, logKey)
+	if ok {
+		return shouldLogDb
+	}
+
+	return shouldLog(l.LogLevel, l.LogKeyMask, logLevel, logKey)
 }
 
 // shouldLogConsoleDatabase extracts the database's log settings from the context (if set) to determine whether to log
-func shouldLogConsoleDatabase(ctx context.Context, logLevel LogLevel, logKey LogKey) bool {
+func shouldLogConsoleDatabase(ctx context.Context, logLevel LogLevel, logKey LogKey) (willLog, ok bool) {
 	if ctx == nil {
-		return false
+		return false, false
 	}
 
 	logCtx, ok := ctx.Value(requestContextKey).(*LogContext)
 	if !ok {
-		return false
+		return false, false
 	}
 
 	config := logCtx.DbConsoleLogConfig
 	if config == nil {
-		return false
+		return false, false
 	}
 
-	return shouldLog(config.LogLevel, config.LogKeys, logLevel, logKey)
+	return shouldLog(config.LogLevel, config.LogKeys, logLevel, logKey), true
 }
 
 // shouldLog returns true if a log at the given logLineLevel/logLineKey should get logged for the given logger levels/keys.
