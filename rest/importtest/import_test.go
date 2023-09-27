@@ -3033,7 +3033,6 @@ func TestImportRollback(t *testing.T) {
 		// wait for doc to be imported
 		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
 		require.NoError(t, err)
-		log.Printf("got changes: %v", changes)
 		var ok bool
 		lastSeq, ok = changes.Last_Seq.(string)
 		require.True(t, ok)
@@ -3043,13 +3042,9 @@ func TestImportRollback(t *testing.T) {
 		checkpointPrefix = rt.GetDatabase().MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID)
 	}()
 
-	// fetch the checkpoint for the document's vbucket
+	// fetch the checkpoint for the document's vbucket, modify the checkpoint values to a higher sequence
 	vbNo, err := base.GetVbucketForKey(bucket, key)
 	require.NoError(t, err)
-	log.Printf("got vbno: %v", vbNo)
-
-	// modify the checkpoint to a seq
-
 	metaStore := bucket.GetMetadataStore()
 	checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
 	var checkpointData dcpMetaData
