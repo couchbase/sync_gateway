@@ -136,6 +136,80 @@ func BenchmarkConsoleShouldLog(b *testing.B) {
 	}
 }
 
+// TestConsoleShouldLogWithDatabase ensures that if set, database log config takes precedence over console config.
+func TestConsoleShouldLogWithDatabase(t *testing.T) {
+	for _, test := range consoleShouldLogTests {
+		for _, dbConfig := range []struct {
+			config   *DbConsoleLogConfig
+			expected bool
+		}{
+			{
+				config:   nil,
+				expected: test.expected, // fully inherit from console logger when dbConfig nil
+			},
+			{
+				config: &DbConsoleLogConfig{
+					LogLevel: logLevelPtr(LevelNone),
+					LogKeys:  logKeyMask(KeyAll),
+				},
+				expected: false, // log nothing from db
+			},
+			{
+				config: &DbConsoleLogConfig{
+					LogLevel: logLevelPtr(LevelTrace),
+					LogKeys:  logKeyMask(KeyAll),
+				},
+				expected: true, // log everything from db
+			},
+			{
+				config: &DbConsoleLogConfig{
+					LogLevel: logLevelPtr(LevelInfo),
+					LogKeys:  logKeyMask(KeyDCP),
+				},
+				// log DCP only from db (overrides console key)
+				expected: test.logToKey == KeyDCP && test.logToLevel <= LevelInfo,
+			},
+			{
+				config: &DbConsoleLogConfig{
+					LogLevel: logLevelPtr(LevelInfo),
+					LogKeys:  logKeyMask(KeyHTTP),
+				},
+				// Still expect the HTTP warnings when Info is set on db
+				expected: test.logToKey == KeyHTTP && test.logToLevel <= LevelInfo,
+			},
+		} {
+			dbConfigLevel := "<nil>"
+			if dbConfig.config != nil && dbConfig.config.LogLevel != nil {
+				dbConfigLevel = dbConfig.config.LogLevel.StringShort()
+			}
+			dbConfigKeys := "<nil>"
+			if dbConfig.config != nil && dbConfig.config.LogKeys != nil {
+				dbConfigKeys = dbConfig.config.LogKeys.String()
+			}
+
+			name := fmt.Sprintf("logger{%s,%s}.shouldLog(dbConfig(%s,%s), %s,%s)",
+				test.loggerLevel.StringShort(), test.loggerKeys,
+				dbConfigLevel, dbConfigKeys,
+				test.logToLevel.StringShort(), test.logToKey)
+
+			level := test.loggerLevel
+			l := mustInitConsoleLogger(TestCtx(t), &ConsoleLoggerConfig{
+				LogLevel: &level,
+				LogKeys:  test.loggerKeys,
+				FileLoggerConfig: FileLoggerConfig{
+					Enabled: BoolPtr(true),
+					Output:  io.Discard,
+				}})
+
+			t.Run(name, func(ts *testing.T) {
+				ctx := DatabaseLogCtx(TestCtx(ts), "db", dbConfig.config)
+				got := l.shouldLog(ctx, test.logToLevel, test.logToKey)
+				assert.Equal(ts, dbConfig.expected, got)
+			})
+		}
+	}
+}
+
 func TestConsoleLogDefaults(t *testing.T) {
 	tests := []struct {
 		name     string
