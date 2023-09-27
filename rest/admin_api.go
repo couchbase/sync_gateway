@@ -1045,9 +1045,8 @@ func (h *handler) handleGetRevTree() error {
 }
 
 func (h *handler) handleGetLogging() error {
+	base.WarnfCtx(h.ctx(), "Using deprecated /_logging endpoint. Use /_config endpoints instead.")
 	h.writeJSON(base.GetLogKeys())
-	base.WarnfCtx(h.ctx(), "Deprecation notice: Current _logging endpoints are now deprecated. Using _config endpoints "+
-		"instead")
 	return nil
 }
 
@@ -1115,8 +1114,7 @@ func (h *handler) handleGetStatus() error {
 }
 
 func (h *handler) handleSetLogging() error {
-	base.WarnfCtx(h.ctx(), "Deprecation notice: Current _logging endpoints are now deprecated. Using _config endpoints "+
-		"instead")
+	base.WarnfCtx(h.ctx(), "Using deprecated /_logging endpoint. Use /_config endpoints instead.")
 
 	body, err := h.readBody()
 	if err != nil {
