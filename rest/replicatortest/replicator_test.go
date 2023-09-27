@@ -7966,6 +7966,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 	// assert on the processed seq list being updated before stopping the active replicator
 	ar, ok := activeRT.GetDatabase().SGReplicateMgr.GetLocalActiveReplicatorForTest(t, t.Name())
+	assert.True(t, ok)
 	pullCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
 	_, ok = base.WaitForStat(t, func() int64 {
 		return pullCheckpointer.Stats().ProcessedSequenceCount
@@ -7973,7 +7974,6 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	require.True(t, ok)
 
 	// stop active replicator explicitly
-	assert.True(t, ok)
 	require.NoError(t, ar.Stop())
 
 	// Check checkpoint document was wrote to bucket with correct status
