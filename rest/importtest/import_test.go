@@ -3055,13 +3055,15 @@ func TestImportRollback(t *testing.T) {
 	var checkpointData dcpMetaData
 	checkpointBytes, _, err := metaStore.GetRaw(checkpointKey)
 	require.NoError(t, err)
-	base.JSONUnmarshal(checkpointBytes, &checkpointData)
+	require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
 
 	checkpointData.SnapStart = 3000 + checkpointData.SnapStart
 	checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 	checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 	checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
 	updatedBytes, err := base.JSONMarshal(checkpointData)
+	require.NoError(t, err)
+
 	err = metaStore.SetRaw(checkpointKey, 0, nil, updatedBytes)
 	require.NoError(t, err)
 
@@ -3075,7 +3077,7 @@ func TestImportRollback(t *testing.T) {
 	err = rt2.GetSingleDataStore().SetRaw(key, 0, nil, []byte(fmt.Sprintf(`{"star": "7 8 9"}`)))
 	require.NoError(t, err)
 
-	// on new RT, may be import latency until old RT heartbeat expires and partitions are assigned.  Wait for all import partitions
+	// New RT may have import latency until old RT heartbeat expires and partitions are assigned.  Wait for all import partitions
 	// to be assigned to the new db before waiting for changes
 	err = rt2.WaitForCondition(func() bool {
 		database := rt2.GetDatabase()
@@ -3089,11 +3091,8 @@ func TestImportRollback(t *testing.T) {
 	require.NoError(t, err)
 
 	// wait for doc update to be imported
-	changes, err := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
+	_, err = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
 	require.NoError(t, err)
-
-	time.Sleep(10 * time.Minute)
-	log.Printf("updated changes: %v", changes)
 }
 
 type dcpMetaData struct {

@@ -191,7 +191,7 @@ func (c *DCPCommon) rollback(vbucketId uint16, rollbackSeq uint64) error {
 	WarnfCtx(c.loggingCtx, "DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0.", vbucketId)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	c.updateSeq(vbucketId, 0, false)
-	err := c.setMetaData(vbucketId, nil, false)
+	err := c.setMetaData(vbucketId, nil, true)
 	return err
 }
 
@@ -200,7 +200,7 @@ func (c *DCPCommon) rollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq
 	WarnfCtx(c.loggingCtx, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	c.updateSeq(vbucketId, rollbackSeq, false)
-	err := c.setMetaData(vbucketId, rollbackMetaData, false)
+	err := c.setMetaData(vbucketId, rollbackMetaData, true)
 	return err
 }
 
