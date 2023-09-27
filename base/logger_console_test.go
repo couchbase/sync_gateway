@@ -97,8 +97,9 @@ func TestConsoleShouldLog(t *testing.T) {
 			test.loggerLevel.StringShort(), test.loggerKeys,
 			test.logToLevel.StringShort(), test.logToKey)
 
+		level := test.loggerLevel
 		l := mustInitConsoleLogger(TestCtx(t), &ConsoleLoggerConfig{
-			LogLevel: &test.loggerLevel,
+			LogLevel: &level,
 			LogKeys:  test.loggerKeys,
 			FileLoggerConfig: FileLoggerConfig{
 				Enabled: BoolPtr(true),
@@ -118,8 +119,9 @@ func BenchmarkConsoleShouldLog(b *testing.B) {
 			test.loggerLevel.StringShort(), test.loggerKeys,
 			test.logToLevel.StringShort(), test.logToKey)
 
+		level := test.loggerLevel
 		l := mustInitConsoleLogger(TestCtx(b), &ConsoleLoggerConfig{
-			LogLevel: &test.loggerLevel,
+			LogLevel: &level,
 			LogKeys:  test.loggerKeys,
 			FileLoggerConfig: FileLoggerConfig{
 				Enabled: BoolPtr(true),
@@ -183,8 +185,9 @@ func TestConsoleLogDefaults(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		config := test.config
 		t.Run(test.name, func(tt *testing.T) {
-			logger, err := NewConsoleLogger(TestCtx(tt), false, &test.config)
+			logger, err := NewConsoleLogger(TestCtx(tt), false, &config)
 			assert.NoError(tt, err)
 			assert.Equal(tt, test.expected.Enabled, logger.Enabled)
 			assert.Equal(tt, *test.expected.LogLevel, *logger.LogLevel)
