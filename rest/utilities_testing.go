@@ -328,7 +328,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled(ctx)
 		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
-			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(2)
+			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
 		}
 
 		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
