@@ -7954,14 +7954,14 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	// interval during the running of the test
 	defer reduceTestCheckpointInterval(9999 * time.Hour)()
 
-	rev, doc, err := activeRT.GetSingleTestDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
+	_, doc, err := activeRT.GetSingleTestDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
 	require.NoError(t, err)
 	seq := strconv.FormatUint(doc.Sequence, 10)
 
 	activeRT.CreateReplication(t.Name(), remoteURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 
-	err = passiveRT.WaitForRev("test", rev)
+	_, err = passiveRT.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 
 	// stop active replicator explicitly
