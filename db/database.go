@@ -49,6 +49,16 @@ const (
 )
 
 const (
+	ImportEvent uint32 = iota
+	SGWriteEvent
+	BlipWriteEvent
+)
+
+type DocUpdateEvent struct {
+	eventType uint32
+}
+
+const (
 	DefaultRevsLimitNoConflicts = 50
 	DefaultRevsLimitConflicts   = 100
 

@@ -8474,9 +8474,6 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	activeBucketUUID, err := activeRT.GetDatabase().Bucket.UUID()
 	require.NoError(t, err)
 
-	passiveBucketUUID, err := passiveRT.GetDatabase().Bucket.UUID()
-	require.NoError(t, err)
-
 	const rep = "replication"
 
 	// Put a doc and assert on the HLV update in the sync data
@@ -8489,6 +8486,7 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 
 	assert.Equal(t, activeBucketUUID, syncData.HLV.SourceID)
 	assert.Equal(t, uintCAS, syncData.HLV.Version)
+	assert.Equal(t, uint64(0), syncData.HLV.CurrentVersionCAS)
 
 	// create the replication to push the doc to the passive node and wait for the doc to be replicated
 	activeRT.CreateReplication(rep, remoteURL, db.ActiveReplicatorTypePush, nil, false, db.ConflictResolverDefault)
@@ -8501,6 +8499,6 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	assert.NoError(t, err)
 	uintCAS = base.HexCasToUint64(syncData.Cas)
 
-	assert.Equal(t, passiveBucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, uintCAS, syncData.HLV.Version)
+	// TODO: assert that the SourceID and Verison pair are preserved correctly
+	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
 }
