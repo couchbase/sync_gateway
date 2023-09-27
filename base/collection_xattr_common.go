@@ -201,7 +201,7 @@ func WriteUpdateWithXattr(ctx context.Context, store *Collection, k string, xatt
 		}
 
 		// Invoke callback to get updated value
-		updatedValue, updatedXattrValue, isDelete, callbackExpiry, macroOpts, err := callback(value, xattrValue, userXattrValue, cas)
+		updatedValue, updatedXattrValue, isDelete, callbackExpiry, updatedOpts, err := callback(value, xattrValue, userXattrValue, opts, cas)
 
 		// If it's an ErrCasFailureShouldRetry, then retry by going back through the for loop
 		if err == ErrCasFailureShouldRetry {
@@ -215,8 +215,8 @@ func WriteUpdateWithXattr(ctx context.Context, store *Collection, k string, xatt
 		if callbackExpiry != nil {
 			exp = *callbackExpiry
 		}
-		if len(macroOpts) != 0 {
-			opts.MacroExpansion = append(opts.MacroExpansion, macroOpts...)
+		if updatedOpts != nil {
+			opts = updatedOpts
 		}
 
 		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty

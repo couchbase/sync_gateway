@@ -1902,7 +1902,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			opts = &sgbucket.MutateInOptions{}
 		}
 		opts.MacroExpansion = macroExpandSpec(base.SyncXattrName)
-		casOut, err = db.dataStore.WriteUpdateWithXattr(ctx, key, base.SyncXattrName, db.userXattrKey(), expiry, existingDoc, opts, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, macroOpts []sgbucket.MacroExpansionSpec, err error) {
+		casOut, err = db.dataStore.WriteUpdateWithXattr(ctx, key, base.SyncXattrName, db.userXattrKey(), expiry, existingDoc, opts, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, inputOpts *sgbucket.MutateInOptions, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, opts *sgbucket.MutateInOptions, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(ctx, docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll); err != nil {
 				return
@@ -1957,7 +1957,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			base.DebugfCtx(ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
-			return raw, rawXattr, deleteDoc, syncFuncExpiry, macroOpts, err
+			return raw, rawXattr, deleteDoc, syncFuncExpiry, opts, err
 		})
 		if err != nil {
 			if err == base.ErrDocumentMigrated {
