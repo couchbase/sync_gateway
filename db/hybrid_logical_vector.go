@@ -175,7 +175,7 @@ func (hlv *HybridLogicalVector) GetVersion(sourceID string) uint64 {
 	return latestVersion
 }
 
-func (hlv *HybridLogicalVector) MarshalJSON() ([]byte, error) {
+func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
 
 	persistedHLV, err := hlv.convertHLVToPersistedFormat()
 	if err != nil {
