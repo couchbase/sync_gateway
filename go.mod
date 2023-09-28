@@ -9,8 +9,8 @@ require (
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20221021161139-215cbac22bd7
 	github.com/couchbase/go-couchbase v0.1.1
-	github.com/couchbase/gocb/v2 v2.6.2
-	github.com/couchbase/gocbcore/v10 v10.2.4-0.20230511103754-8dd1a95f5f33
+	github.com/couchbase/gocb/v2 v2.6.4
+	github.com/couchbase/gocbcore/v10 v10.2.8
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20230921135347-7836915124be
@@ -18,7 +18,7 @@ require (
 	github.com/couchbaselabs/walrus v0.0.0-20230921140809-247491ab229b
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.3.1
 	github.com/gorilla/mux v1.8.0
 	github.com/graphql-go/graphql v0.8.0
 	github.com/imdario/mergo v0.3.12
