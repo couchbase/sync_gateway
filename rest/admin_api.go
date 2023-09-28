@@ -50,7 +50,7 @@ func (h *handler) handleCreateDB() error {
 
 	validateOIDC := !h.getBoolQuery(paramDisableOIDCValidation)
 
-	if dbName != config.Name && config.Name != "" {
+	if config.Name != "" && dbName != config.Name {
 		return base.HTTPErrorf(http.StatusBadRequest, "When providing a name in the JSON body (%s), ensure it matches the name in the path (%s).", config.Name, dbName)
 	}
 
@@ -69,20 +69,18 @@ func (h *handler) handleCreateDB() error {
 			return err
 		}
 
-		bucket := dbName
-		if config.Bucket != nil {
-			bucket = *config.Bucket
+		bucket := config.GetBucketName()
+
+		// Before computing metadata ID or taking a copy of the "persistedDbConfig", stamp bucket if missing...
+		// Ensures all newly persisted configs have a bucket field set to detect bucket moves via backup/restore or XDCR
+		if config.Bucket == nil {
+			config.Bucket = &bucket
 		}
 
 		metadataID, metadataIDError := h.server.BootstrapContext.ComputeMetadataIDForDbConfig(h.ctx(), config)
 		if metadataIDError != nil {
 			base.WarnfCtx(h.ctx(), "Unable to compute metadata ID - using standard metadataID.  Error: %v", metadataIDError)
 			metadataID = h.server.BootstrapContext.standardMetadataID(config.Name)
-		}
-
-		// Before taking a copy of the "persistedDbConfig", stamp bucket if missing
-		if config.Bucket == nil {
-			config.Bucket = &dbName
 		}
 
 		// copy config before setup to persist the raw config the user supplied

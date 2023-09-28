@@ -1287,5 +1287,5 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 
 	count, err = rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)
 	require.NoError(t, err)
-	assert.Equal(t, 1, count, "should have loaded 1 config")
+	assert.Equal(t, 0, count)
 }
