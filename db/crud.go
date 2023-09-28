@@ -870,19 +870,17 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 }
 
 // updateMutateInSpec updates the mutate in options with the appropriate mutate in spec needed based off the outcome in updateHLV
-func updateMutateInSpec(hlv HybridLogicalVector, opts *sgbucket.MutateInOptions) *sgbucket.MutateInOptions {
-	if opts == nil {
-		return nil
-	}
+func updateMutateInSpec(hlv HybridLogicalVector) []sgbucket.MacroExpansionSpec {
+	var outputSpec []sgbucket.MacroExpansionSpec
 	if hlv.Version == math.MaxUint64 {
 		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionPath(base.SyncXattrName), sgbucket.MacroCas)
-		opts.MacroExpansion = append(opts.MacroExpansion, spec)
+		outputSpec = append(outputSpec, spec)
 	}
 	if hlv.CurrentVersionCAS == math.MaxUint64 {
 		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(base.SyncXattrName), sgbucket.MacroCas)
-		opts.MacroExpansion = append(opts.MacroExpansion, spec)
+		outputSpec = append(outputSpec, spec)
 	}
-	return opts
+	return outputSpec
 }
 
 // updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering
@@ -1962,7 +1960,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				return
 			}
 			// update the mutate in options based on the above logic
-			opts = updateMutateInSpec(doc.SyncData.HLV, inputOpts)
+			updatedSpec = updateMutateInSpec(doc.SyncData.HLV)
 
 			// Check whether Sync Data originated in body
 			if currentXattr == nil && doc.Sequence > 0 {
