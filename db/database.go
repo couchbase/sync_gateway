@@ -1799,8 +1799,8 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 		db.dbStats().DatabaseStats.ImportProcessCompute.Add(stat)
 	}()
 	if db.UseXattrs() {
-		writeUpdateFunc := func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, inputOpts *sgbucket.MutateInOptions, cas uint64) (
-			raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, opts *sgbucket.MutateInOptions, err error) {
+		writeUpdateFunc := func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (
+			raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, updatedSpec []sgbucket.MacroExpansionSpec, err error) {
 			// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
 			// so deleteDoc is always returned as false.
 			if currentValue == nil || len(currentValue) == 0 {
@@ -1821,7 +1821,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 				}
 				doc.SetCrc32cUserXattrHash()
 				raw, rawXattr, err = updatedDoc.MarshalWithXattr()
-				return raw, rawXattr, deleteDoc, updatedExpiry, inputOpts, err
+				return raw, rawXattr, deleteDoc, updatedExpiry, updatedSpec, err
 			} else {
 				return nil, nil, deleteDoc, nil, nil, base.ErrUpdateCancel
 			}
