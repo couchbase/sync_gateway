@@ -1307,7 +1307,6 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 
 	// Move config docs from original bucket to b2 and force a fetch/load (simulate backup/restore or XDCR to different bucket)
 	base.MoveDocument(t, base.SGRegistryKey, b2.GetMetadataStore(), b1.GetMetadataStore())
-	base.MoveDocument(t, base.SGSyncInfo, b2.GetMetadataStore(), b1.GetMetadataStore())
 	base.MoveDocument(t, configDocID, b2.GetMetadataStore(), b1.GetMetadataStore())
 
 	// put the bucket for the config back to b1 so we can use the admin API to repair the config (like a real user would have to do)
