@@ -1340,6 +1340,5 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 	count, err = rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
-	dbBucketMismatch, _ = base.WaitForStat(t, base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Value, dbBucketMismatch+1)
-
+	_, _ = base.WaitForStat(t, base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Value, dbBucketMismatch+1)
 }
