@@ -1274,8 +1274,9 @@ func TestUserXattrRevCache(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			AutoImport:   true,
-			UserXattrKey: xattrKey,
+			AutoImport:       true,
+			UserXattrKey:     xattrKey,
+			ImportPartitions: base.Uint16Ptr(2), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 		}},
 		SyncFn: syncFn,
 	})
@@ -1285,8 +1286,9 @@ func TestUserXattrRevCache(t *testing.T) {
 		CustomTestBucket: tb.NoCloseClone(),
 
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			AutoImport:   true,
-			UserXattrKey: xattrKey,
+			AutoImport:       true,
+			UserXattrKey:     xattrKey,
+			ImportPartitions: base.Uint16Ptr(2), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 		}},
 		SyncFn: syncFn,
 	})
