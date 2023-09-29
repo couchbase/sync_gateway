@@ -1472,9 +1472,9 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 		if insertErr != nil {
 			if insertErr == base.ErrAlreadyExists {
 				base.DebugfCtx(ctx, base.KeyConfig, "Found legacy config for database %s, but already exists in registry.", base.MD(dbConfig.Name))
-				continue
+			} else {
+				return fmt.Errorf("Error migrating v3.0 config for bucket %s groupID %s: %w", base.MD(bucketName), base.MD(groupID), insertErr)
 			}
-			return fmt.Errorf("Error migrating v3.0 config for bucket %s groupID %s: %w", base.MD(bucketName), base.MD(groupID), insertErr)
 		}
 		removeErr := sc.BootstrapContext.Connection.DeleteMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), legacyCas)
 		if removeErr != nil {
