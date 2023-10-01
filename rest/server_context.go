@@ -90,9 +90,10 @@ const defaultConfigRetryTimeout = 3 * base.DefaultGocbV2OperationTimeout
 
 type bootstrapContext struct {
 	Connection         base.BootstrapConnection
-	configRetryTimeout time.Duration // configRetryTimeout defines the total amount of time to retry on a registry/config mismatch
-	terminator         chan struct{} // Used to stop the goroutine handling the bootstrap polling
-	doneChan           chan struct{} // doneChan is closed when the bootstrap polling goroutine finishes.
+	configRetryTimeout time.Duration          // configRetryTimeout defines the total amount of time to retry on a registry/config mismatch
+	terminator         chan struct{}          // Used to stop the goroutine handling the bootstrap polling
+	doneChan           chan struct{}          // doneChan is closed when the bootstrap polling goroutine finishes.
+	sgVersion          base.ComparableVersion // version of Sync Gateway
 }
 
 type getOrAddDatabaseConfigOptions struct {
@@ -142,7 +143,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		databases_:         map[string]*db.DatabaseContext{},
 		HTTPClient:         http.DefaultClient,
 		statsContext:       &statsContext{},
-		BootstrapContext:   &bootstrapContext{},
+		BootstrapContext:   &bootstrapContext{sgVersion: *base.ProductVersion},
 		hasStarted:         make(chan struct{}),
 	}
 	sc.invalidDatabaseConfigTracking = invalidDatabaseConfigs{
@@ -2014,6 +2015,11 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 
 		// Check for v3.0 persisted configs, migrate to registry format if found
 		err = sc.migrateV30Configs(ctx)
+		if err != nil {
+			base.InfofCtx(ctx, base.KeyConfig, "Unable to migrate v3.0 config to registry - will not be migrated: %v", err)
+		}
+
+		err = sc.stampSGVersion(ctx)
 		if err != nil {
 			base.InfofCtx(ctx, base.KeyConfig, "Unable to migrate v3.0 config to registry - will not be migrated: %v", err)
 		}

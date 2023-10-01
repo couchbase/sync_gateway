@@ -1439,6 +1439,36 @@ func (sc *ServerContext) _fetchAndLoadDatabase(nonContextStruct base.NonCancella
 	return true, nil
 }
 
+// stampSGVersion looks at each of the GatewayRegistry and updates the Sync Gateway version to start them on
+func (sc *ServerContext) stampSGVersion(ctx context.Context) error {
+	buckets, err := sc.BootstrapContext.Connection.GetConfigBuckets()
+	if err != nil {
+		base.WarnfCtx(ctx, "Error looking for buckets in while examining persisted Sync Gateway version numbers: %s", err)
+		return err
+	}
+
+	for _, bucketName := range buckets {
+		registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+		if err != nil {
+			base.WarnfCtx(ctx, "Error retrieving gateway registry in bucket %q: %q", base.MD(bucketName), err)
+			return err
+		}
+
+		if registry.SGVersion.Less(&sc.BootstrapContext.sgVersion) {
+			registry.SGVersion = sc.BootstrapContext.sgVersion
+			err := sc.BootstrapContext.setGatewayRegistry(ctx, bucketName, registry)
+			if err != nil {
+				base.WarnfCtx(ctx, "Error setting gateway registry in bucket %q: %q", base.MD(bucketName), err)
+				return err
+			}
+			base.InfofCtx(ctx, base.KeyConfig, "Updated Sync Gateway version number in bucket %q from %s to %s", base.MD(bucketName), registry.SGVersion, sc.BootstrapContext.sgVersion)
+			continue
+		}
+
+	}
+	return nil
+}
+
 // migrateV30Configs checks for configs stored in the 3.0 location, and migrates them to the db registry
 func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 	groupID := sc.Config.Bootstrap.ConfigGroupID
@@ -1751,6 +1781,21 @@ func (sc *ServerContext) applyConfigs(ctx context.Context, dbNameConfigs map[str
 
 // _applyConfig loads the given database, failFast=true will not attempt to retry connecting/loading
 func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContext, cnf DatabaseConfig, failFast, isInitialStartup bool) (applied bool, err error) {
+	ctx := nonContextStruct.Ctx
+
+	registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, *cnf.Bucket)
+	if err != nil {
+		return false, err
+	}
+
+	nodeSGVersion := sc.BootstrapContext.sgVersion
+	registrySGVersion := registry.SGVersion
+
+	if registrySGVersion.AtLeastMinorDowngrade(&nodeSGVersion) {
+		err := base.RedactErrorf("Can not load a database %q from bucket %q with which has metadata from a newer Sync Gateway %s. Current version of Sync Gateway is %s.", base.MD(cnf.Name), base.MD(*cnf.Bucket), registrySGVersion, nodeSGVersion)
+		base.WarnfCtx(ctx, "%s", err)
+		return false, err
+	}
 	// 3.0.0 doesn't write a SGVersion, but everything else will
 	configSGVersionStr := "3.0.0"
 	if cnf.SGVersion != "" {
@@ -1764,9 +1809,8 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 
 	if !isInitialStartup {
 		// Skip applying if the config is from a newer SG version than this node and we're not just starting up
-		nodeSGVersion := base.ProductVersion
 		if nodeSGVersion.Less(configSGVersion) {
-			base.WarnfCtx(nonContextStruct.Ctx, "Cannot apply config update from server for db %q, this SG version is older than config's SG version (%s < %s)", cnf.Name, nodeSGVersion.String(), configSGVersion.String())
+			base.WarnfCtx(ctx, "Cannot apply config update from server for db %q, this SG version is older than config's SG version (%s < %s)", cnf.Name, nodeSGVersion.String(), configSGVersion.String())
 			return false, nil
 		}
 	}
@@ -1782,13 +1826,13 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	if exists {
 		if cnf.cfgCas == 0 {
 			// force an update when the new config's cas was set to zero prior to load
-			base.InfofCtx(nonContextStruct.Ctx, base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
+			base.InfofCtx(ctx, base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
 		} else {
 			if sc.dbConfigs[cnf.Name].cfgCas >= cnf.cfgCas {
-				base.DebugfCtx(nonContextStruct.Ctx, base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
+				base.DebugfCtx(ctx, base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
 				return false, nil
 			}
-			base.InfofCtx(nonContextStruct.Ctx, base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
+			base.InfofCtx(ctx, base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
 		}
 	}
 
@@ -1802,7 +1846,7 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	}
 
 	// TODO: Dynamic update instead of reload
-	if err := sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, cnf, failFast, false); err != nil {
+	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast, false); err != nil {
 		// remove these entries we just created above if the database hasn't loaded properly
 		return false, fmt.Errorf("couldn't reload database: %w", err)
 	}

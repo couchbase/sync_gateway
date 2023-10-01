@@ -124,7 +124,7 @@ func TestRegistryHelpers(t *testing.T) {
 func TestUpsertDatabaseConfig(t *testing.T) {
 
 	ctx := base.TestCtx(t)
-	registry := NewGatewayRegistry()
+	registry := NewGatewayRegistry(*base.ProductVersion)
 	dbConfig := makeDatabaseConfig("db1", "scope1", []string{"c1", "c2", "c3"}) // in cg1
 	dbConfig.Version = "1"
 	_, err := registry.upsertDatabaseConfig(ctx, "cg1", dbConfig)
@@ -189,7 +189,7 @@ func TestRegistryConflicts(t *testing.T) {
 	defaultConfig := &DatabaseConfig{DbConfig: DbConfig{Name: "defaultDb"}}
 
 	ctx := base.TestCtx(t)
-	registry := NewGatewayRegistry()
+	registry := NewGatewayRegistry(*base.ProductVersion)
 	_, err := registry.upsertDatabaseConfig(ctx, "cg1", dbConfig1)
 	require.NoError(t, err)
 	_, err = registry.upsertDatabaseConfig(ctx, "cg2", dbConfig2)

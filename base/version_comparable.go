@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 const (
@@ -28,7 +27,6 @@ type ComparableVersion struct {
 	epoch, major, minor, patch, other uint8
 	build                             uint16
 	edition                           productEdition
-	strOnce                           sync.Once
 	str                               string
 }
 
@@ -49,7 +47,7 @@ func NewComparableVersionFromString(version string) (*ComparableVersion, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &ComparableVersion{
+	v := &ComparableVersion{
 		epoch:   epoch,
 		major:   major,
 		minor:   minor,
@@ -57,7 +55,9 @@ func NewComparableVersionFromString(version string) (*ComparableVersion, error) 
 		other:   other,
 		build:   build,
 		edition: edition,
-	}, nil
+	}
+	v.str = v.formatComparableVersion()
+	return v, nil
 }
 
 func NewComparableVersion(majorStr, minorStr, patchStr, otherStr, buildStr, editionStr string) (*ComparableVersion, error) {
@@ -65,7 +65,7 @@ func NewComparableVersion(majorStr, minorStr, patchStr, otherStr, buildStr, edit
 	if err != nil {
 		return nil, err
 	}
-	return &ComparableVersion{
+	v := &ComparableVersion{
 		epoch:   comparableVersionEpoch,
 		major:   major,
 		minor:   minor,
@@ -73,7 +73,9 @@ func NewComparableVersion(majorStr, minorStr, patchStr, otherStr, buildStr, edit
 		other:   other,
 		build:   build,
 		edition: edition,
-	}, nil
+	}
+	v.str = v.formatComparableVersion()
+	return v, nil
 }
 
 // Equal returns true if pv is equal to b
@@ -129,10 +131,21 @@ func (a *ComparableVersion) Less(b *ComparableVersion) bool {
 	return false
 }
 
-func (pv *ComparableVersion) String() string {
-	pv.strOnce.Do(func() {
-		pv.str = pv.formatComparableVersion()
-	})
+// AtLeastMinor returns true there is a major or minor downgrade.
+func (a *ComparableVersion) AtLeastMinorDowngrade(b *ComparableVersion) bool {
+	if a.epoch > b.epoch {
+		return true
+	}
+	if a.major > b.major {
+		return true
+	}
+	if a.minor > b.minor {
+		return true
+	}
+	return false
+}
+
+func (pv ComparableVersion) String() string {
 	return pv.str
 }
 
@@ -148,6 +161,7 @@ func (pv *ComparableVersion) UnmarshalJSON(val []byte) error {
 		return err
 	}
 	pv.epoch, pv.major, pv.minor, pv.patch, pv.other, pv.build, pv.edition, err = parseComparableVersion(strVal)
+	pv.str = pv.formatComparableVersion()
 	return err
 }
 

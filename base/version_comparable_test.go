@@ -1,5 +1,4 @@
 // Copyright 2022-Present Couchbase, Inc.
-//
 // Use of this software is governed by the Business Source License included
 // in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
 // in that file, in accordance with the Business Source License, use of this
@@ -9,6 +8,7 @@
 package base
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -111,6 +111,71 @@ func TestInvalidComparableVersion(t *testing.T) {
 			ver, err := NewComparableVersionFromString(test.ver)
 			assert.Error(t, err)
 			assert.Nil(t, ver)
+		})
+	}
+}
+
+func TestJSONRoundTrip(t *testing.T) {
+	json, err := JSONMarshal(ProductVersion)
+	require.NoError(t, err)
+	var version ComparableVersion
+	err = JSONUnmarshal(json, &version)
+	require.NoError(t, err)
+	require.True(t, ProductVersion.Equal(&version))
+	require.Equal(t, ProductVersion.String(), version.String())
+}
+
+func TestAtLeastMinorDowngradeVersion(t *testing.T) {
+	testCases := []struct {
+		versionA       string
+		versionB       string
+		minorDowngrade bool
+	}{
+		{
+			versionA:       "1.0.0",
+			versionB:       "1.0.0",
+			minorDowngrade: false,
+		},
+		{
+			versionA:       "1.0.0",
+			versionB:       "2.0.0",
+			minorDowngrade: false,
+		},
+		{
+			versionA:       "2.0.0",
+			versionB:       "1.0.0",
+			minorDowngrade: true,
+		},
+		{
+			versionA:       "1.0.0",
+			versionB:       "1.0.1",
+			minorDowngrade: false,
+		},
+		{
+			versionA:       "1.0.1",
+			versionB:       "1.0.0",
+			minorDowngrade: false,
+		},
+		{
+			versionA:       "1.1.0",
+			versionB:       "1.0.0",
+			minorDowngrade: true,
+		},
+		{
+			versionA:       "1.0.0",
+			versionB:       "1.1.0",
+			minorDowngrade: false,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(fmt.Sprintf("%s->%s", test.versionA, test.versionB), func(t *testing.T) {
+			versionA, err := NewComparableVersionFromString(test.versionA)
+			require.NoError(t, err)
+
+			versionB, err := NewComparableVersionFromString(test.versionB)
+			require.NoError(t, err)
+			require.Equal(t, test.minorDowngrade, versionA.AtLeastMinorDowngrade(versionB))
 		})
 	}
 }

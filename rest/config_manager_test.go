@@ -10,6 +10,7 @@ package rest
 
 import (
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -157,4 +158,70 @@ func TestLongMetadataID(t *testing.T) {
 	rehashMetadataID := bootstrapContext.standardMetadataID(longMetadataID)
 	assert.NotEqual(t, rehashMetadataID, longMetadataID)
 
+}
+
+func TestVersionDowngrade(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	// rely on AtLeastMinorDowngrade unit test to cover all cases, starting up a db is slow
+	testCases := []struct {
+		syncGatewayVersion    string
+		metadataConfigVersion string
+		name                  string
+		hasError              bool
+	}{
+		{
+			name:                  "equal versions",
+			syncGatewayVersion:    "10.0.0",
+			metadataConfigVersion: "10.0.0",
+			hasError:              false,
+		},
+		{
+			name:                  "minor upgrade",
+			syncGatewayVersion:    "10.1.0",
+			metadataConfigVersion: "10.0.0",
+			hasError:              false,
+		},
+		{
+			name:                  "minor downgrade",
+			syncGatewayVersion:    "10.0.0",
+			metadataConfigVersion: "10.1.0",
+			hasError:              true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			syncGatewayVersion, err := base.NewComparableVersionFromString(test.syncGatewayVersion)
+			require.NoError(t, err)
+			rt := NewRestTester(t, &RestTesterConfig{
+				PersistentConfig:   true,
+				syncGatewayVersion: syncGatewayVersion,
+			})
+			defer rt.Close()
+
+			_ = rt.Bucket()
+			bootstrapContext := rt.RestTesterServerContext.BootstrapContext
+			registry, err := bootstrapContext.getGatewayRegistry(rt.Context(), rt.Bucket().GetName())
+			require.NoError(t, err)
+			require.True(t, syncGatewayVersion.Equal(&registry.SGVersion), "%+v != %+v", syncGatewayVersion, registry.SGVersion)
+
+			metadataConfigVersion, err := base.NewComparableVersionFromString(test.metadataConfigVersion)
+			registry.SGVersion = *metadataConfigVersion
+			require.NoError(t, err)
+			require.NoError(t, bootstrapContext.setGatewayRegistry(rt.Context(), rt.Bucket().GetName(), registry))
+
+			config := rt.NewDbConfig()
+			config.StartOffline = base.BoolPtr(true) // start offline to make test faster
+
+			resp := rt.CreateDatabase("db1", config)
+			if test.hasError {
+				RequireStatus(t, resp, http.StatusInternalServerError)
+				require.Contains(t, resp.Body.String(), "has metadata from")
+			} else {
+				RequireStatus(t, resp, http.StatusCreated)
+			}
+		})
+	}
 }

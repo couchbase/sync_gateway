@@ -577,10 +577,21 @@ func (b *bootstrapContext) getGatewayRegistry(ctx context.Context, bucketName st
 	cas, getErr := b.Connection.GetMetadataDocument(ctx, bucketName, base.SGRegistryKey, registry)
 	if getErr != nil {
 		if getErr == base.ErrNotFound {
-			return NewGatewayRegistry(), nil
+			return NewGatewayRegistry(b.sgVersion), nil
 		}
 		return nil, getErr
 	}
+	if registry.SGVersion.String() == "" {
+		// 3.1.0 and 3.1.1 don't write a SGVersion, but everything else will
+		configSGVersionStr := "3.1.0"
+		v, err := base.NewComparableVersionFromString(configSGVersionStr)
+		if err != nil {
+			return nil, err
+		}
+		registry.SGVersion = *v
+
+	}
+
 	registry.cas = cas
 
 	return registry, nil
