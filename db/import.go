@@ -446,12 +446,6 @@ func (db *DatabaseCollectionWithUser) backupPreImportRevision(ctx context.Contex
 
 // ////// Import Filter Function
 
-// A compiled JavaScript event function.
-type jsImportFilterRunner struct {
-	sgbucket.JSRunner
-	response bool
-}
-
 // Compiles a JavaScript event function to a jsImportFilterRunner object.
 func newImportFilterRunner(ctx context.Context, funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
 	importFilterRunner := &jsEventTask{}

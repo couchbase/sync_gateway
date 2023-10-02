@@ -32,8 +32,6 @@ const DefaultWaitForWebhook = time.Second * 5
 
 // Testing handler tracks received events in ResultChannel
 type TestingHandler struct {
-	receivedType  EventType
-	payload       Body
 	ResultChannel chan interface{} // channel for tracking async results
 	HandledEvent  EventType
 	handleDelay   int        // long running handler execution

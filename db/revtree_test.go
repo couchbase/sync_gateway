@@ -51,25 +51,6 @@ type BranchSpec struct {
 	Digest                  string
 }
 
-//	/ 3-a -- 4-a -- 5-a ...... etc (winning branch)
-//	1-a -- 2-a
-//	\ 3-b -- 4-b ... etc (losing branch)
-//
-// NOTE: the 1-a -- 2-a unconflicted branch can be longer, depending on value of unconflictedBranchNumRevs
-func getTwoBranchTestRevtree1(ctx context.Context, unconflictedBranchNumRevs, winningBranchNumRevs, losingBranchNumRevs int, tombstoneLosingBranch bool) RevTree {
-
-	branchSpecs := []BranchSpec{
-		{
-			NumRevs:                 losingBranchNumRevs,
-			Digest:                  "b",
-			LastRevisionIsTombstone: tombstoneLosingBranch,
-		},
-	}
-
-	return getMultiBranchTestRevtree1(ctx, unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
-
-}
-
 //	           / 3-a -- 4-a -- 5-a ...... etc (winning branch)
 //	1-a -- 2-a
 //	           \ 3-b -- 4-b ... etc (losing branch #1)

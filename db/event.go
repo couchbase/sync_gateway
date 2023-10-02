@@ -108,7 +108,6 @@ const (
 // A compiled JavaScript event function.
 type jsEventTask struct {
 	sgbucket.JSRunner
-	responseType ResponseType
 }
 
 // Compiles a JavaScript event function to a jsEventTask object.

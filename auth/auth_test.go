@@ -1444,7 +1444,6 @@ type mockComputerV2 struct {
 	channels     map[string]ch.TimedSet
 	roles        map[string]ch.TimedSet
 	roleChannels map[string]ch.TimedSet
-	err          error
 }
 
 func (m mockComputerV2) ComputeChannelsForPrincipal(ctx context.Context, principal Principal, scope, collection string) (ch.TimedSet, error) {

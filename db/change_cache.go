@@ -913,12 +913,6 @@ func (c *changeCache) waitForSequenceNotSkipped(ctx context.Context, sequence ui
 	return err
 }
 
-func (c *changeCache) getMaxStableCached(ctx context.Context) uint64 {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c._getMaxStableCached(ctx)
-}
-
 func (c *changeCache) _getMaxStableCached(ctx context.Context) uint64 {
 	oldestSkipped := c.getOldestSkippedSequence(ctx)
 	if oldestSkipped > 0 {

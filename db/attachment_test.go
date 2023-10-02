@@ -36,11 +36,6 @@ func unjson(j string) Body {
 	return body
 }
 
-func tojson(obj interface{}) string {
-	j, _ := base.JSONMarshal(obj)
-	return string(j)
-}
-
 func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 

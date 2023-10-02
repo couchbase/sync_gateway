@@ -1934,28 +1934,6 @@ func mockOIDCProviderWithCallbackURLQuery() auth.OIDCProvider {
 	}
 }
 
-func mockOIDCProviderWithNoIss() auth.OIDCProvider {
-	return auth.OIDCProvider{
-		JWTConfigCommon: auth.JWTConfigCommon{
-			ClientID: base.StringPtr(clientID),
-		},
-		Name:          "Microsoft",
-		CallbackURL:   &callbackURL,
-		ValidationKey: &validationKey,
-	}
-}
-
-func mockOIDCProviderWithNoClientID() auth.OIDCProvider {
-	return auth.OIDCProvider{
-		JWTConfigCommon: auth.JWTConfigCommon{
-			Issuer: "https://accounts.google.com",
-		},
-		Name:          "Amazon",
-		CallbackURL:   &callbackURL,
-		ValidationKey: &validationKey,
-	}
-}
-
 func mockOIDCProviderWithNoValidationKey() auth.OIDCProvider {
 	return auth.OIDCProvider{
 		Name:        "Yahoo",
@@ -1993,27 +1971,9 @@ func mockOIDCOptionsWithMultipleProvidersCBQ() *auth.OIDCOptions {
 	return &auth.OIDCOptions{DefaultProvider: &differentProvider, Providers: providers}
 }
 
-func mockOIDCOptionsWithNoIss() *auth.OIDCOptions {
-	provider := mockOIDCProviderWithNoIss()
-	providers := auth.OIDCProviderMap{provider.Name: &provider}
-	return &auth.OIDCOptions{DefaultProvider: &defaultProvider, Providers: providers}
-}
-
-func mockOIDCOptionsWithNoClientID() *auth.OIDCOptions {
-	provider := mockOIDCProviderWithNoClientID()
-	providers := auth.OIDCProviderMap{provider.Name: &provider}
-	return &auth.OIDCOptions{DefaultProvider: &defaultProvider, Providers: providers}
-}
-
 func mockOIDCOptionsWithNoValidationKey() *auth.OIDCOptions {
 	provider := mockOIDCProviderWithNoValidationKey()
 	providers := auth.OIDCProviderMap{provider.Name: &provider}
-	return &auth.OIDCOptions{DefaultProvider: &defaultProvider, Providers: providers}
-}
-
-func mockOIDCOptionsWithBadName() *auth.OIDCOptions {
-	provider := mockOIDCProvider()
-	providers := auth.OIDCProviderMap{provider.Name + "_": &provider}
 	return &auth.OIDCOptions{DefaultProvider: &defaultProvider, Providers: providers}
 }
 
