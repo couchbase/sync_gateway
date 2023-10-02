@@ -1240,22 +1240,19 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) D
 }
 
 func TestPersistentConfigNoBucketField(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
+	base.TestsRequireBootstrapConnection(t)
+	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyConfig)
 
 	b1 := base.GetTestBucket(t)
 	defer b1.Close(base.TestCtx(t))
 	b1Name := b1.GetName()
-	t.Logf("b1: %s", b1Name)
 
 	// at the end of the test we'll move config from b1 into b2 to test backup/restore-type migration
 	b2 := base.GetTestBucket(t)
 	defer b2.Close(base.TestCtx(t))
 	b2Name := b2.GetName()
-	t.Logf("b2: %s", b2Name)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
