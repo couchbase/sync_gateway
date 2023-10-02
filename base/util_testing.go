@@ -891,3 +891,18 @@ func AssertTimestampGreaterThan(t *testing.T, e1, e2 int64, msgAndArgs ...interf
 	}
 	return assert.Greater(t, e1, e2, msgAndArgs...)
 }
+
+func GetVbucketForKey(bucket Bucket, key string) (vbNo uint32, err error) {
+
+	cbBucket, ok := AsCouchbaseBucketStore(bucket)
+	if !ok {
+		return 0, fmt.Errorf("GetVbucketForKey not supported for non-Couchbase bucket")
+	}
+
+	maxVbNo, err := cbBucket.GetMaxVbno()
+	if err != nil {
+		return 0, err
+	}
+
+	return sgbucket.VBHash(key, maxVbNo), nil
+}
