@@ -22,9 +22,12 @@ package db
 // Update database-specific stats that are more efficiently calculated at stats collection time
 func (db *DatabaseContext) UpdateCalculatedStats() {
 
-	if db.changeCache != nil {
-		db.changeCache.updateStats()
-		channelCache := db.changeCache.getChannelCache()
+	if db == nil || db.DbStats == nil || db.changeCache == nil {
+		return
+	}
+	db.changeCache.updateStats()
+	channelCache := db.changeCache.getChannelCache()
+	if channelCache != nil {
 		db.DbStats.Cache().ChannelCacheMaxEntries.Set(int64(channelCache.MaxCacheSize()))
 		db.DbStats.Cache().HighSeqCached.Set(int64(channelCache.GetHighCacheSequence()))
 	}
