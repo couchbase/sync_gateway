@@ -108,7 +108,7 @@ type handler struct {
 	rqCtx                 context.Context
 }
 
-type authScopeFunc func(ctx context.Context, bodyJSON []byte) (string, error)
+type authScopeFunc func(context.Context, *handler) (string, error)
 
 type handlerPrivs int
 
@@ -480,16 +480,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
 		if h.authScopeFunc != nil {
-			body, err := h.readBody()
-			if err != nil {
-				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
-			}
-			// mark the body as read so we won't count bytes twice
-			h.requestBody.bodyRead = true
-			// The above readBody() will end up clearing the body which the later handler will require. Re-populate this
-			// for the later handler.
-			h.requestBody.reader = io.NopCloser(bytes.NewReader(body))
-			authScope, err = h.authScopeFunc(h.ctx(), body)
+			authScope, err = h.authScopeFunc(h.ctx(), h)
 			if err != nil {
 				return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
 			}

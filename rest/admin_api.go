@@ -50,7 +50,7 @@ func (h *handler) handleCreateDB() error {
 
 	validateOIDC := !h.getBoolQuery(paramDisableOIDCValidation)
 
-	if dbName != config.Name && config.Name != "" {
+	if config.Name != "" && dbName != config.Name {
 		return base.HTTPErrorf(http.StatusBadRequest, "When providing a name in the JSON body (%s), ensure it matches the name in the path (%s).", config.Name, dbName)
 	}
 
@@ -69,9 +69,12 @@ func (h *handler) handleCreateDB() error {
 			return err
 		}
 
-		bucket := dbName
-		if config.Bucket != nil {
-			bucket = *config.Bucket
+		bucket := config.GetBucketName()
+
+		// Before computing metadata ID or taking a copy of the "persistedDbConfig", stamp bucket if missing...
+		// Ensures all newly persisted configs have a bucket field set to detect bucket moves via backup/restore or XDCR
+		if config.Bucket == nil {
+			config.Bucket = &bucket
 		}
 
 		metadataID, metadataIDError := h.server.BootstrapContext.ComputeMetadataIDForDbConfig(h.ctx(), config)
@@ -95,7 +98,8 @@ func (h *handler) handleCreateDB() error {
 		loadedConfig := DatabaseConfig{
 			Version:    version,
 			MetadataID: metadataID,
-			DbConfig:   *config}
+			DbConfig:   *config,
+		}
 
 		persistedConfig := DatabaseConfig{
 			Version:    version,
@@ -173,22 +177,38 @@ func (h *handler) handleCreateDB() error {
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
-// getAuthScopeHandleCreateDB is used in the router to supply an auth scope for the admin api auth. Takes the JSON body
-// from the payload, pulls out bucket and returns this as the auth scope.
-func getAuthScopeHandleCreateDB(ctx context.Context, bodyJSON []byte) (string, error) {
-	var body struct {
+// getAuthScopeHandleCreateDB determines the auth scope for a PUT /{db}/ request.
+// This is a special case because we don't have a database initialized yet, so we need to infer the bucket from db config.
+func getAuthScopeHandleCreateDB(ctx context.Context, h *handler) (bucketName string, err error) {
+
+	// grab a copy of the request body and restore body buffer for later handlers
+	bodyJSON, err := h.readBody()
+	if err != nil {
+		return "", base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
+	}
+	// mark the body as already read to avoid double-counting bytes for stats once it gets read again
+	h.requestBody.bodyRead = true
+	h.requestBody.reader = io.NopCloser(bytes.NewReader(bodyJSON))
+
+	var dbConfigBody struct {
 		Bucket string `json:"bucket"`
 	}
 	reader := bytes.NewReader(bodyJSON)
-	err := DecodeAndSanitiseConfig(ctx, reader, &body, false)
+	err = DecodeAndSanitiseConfig(ctx, reader, &dbConfigBody, false)
 	if err != nil {
 		return "", err
 	}
-	if body.Bucket == "" {
-		return "", nil
+
+	if dbConfigBody.Bucket == "" {
+		dbName := h.PathVar("newdb")
+		if dbName == "" {
+			return "", base.HTTPErrorf(http.StatusBadRequest, "bucket or db name not specified in request")
+		}
+		// imply bucket name from db name in path if not in body
+		return dbName, nil
 	}
 
-	return body.Bucket, nil
+	return dbConfigBody.Bucket, nil
 }
 
 // Take a DB online, first reload the DB config
