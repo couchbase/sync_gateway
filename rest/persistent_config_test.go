@@ -1236,3 +1236,103 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) D
 	}
 	return dbConfig
 }
+
+func TestPersistentConfigNoBucketField(t *testing.T) {
+	base.TestsRequireBootstrapConnection(t)
+	base.RequireNumTestBuckets(t, 2)
+
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyConfig)
+
+	b1 := base.GetTestBucket(t)
+	defer b1.Close(base.TestCtx(t))
+	b1Name := b1.GetName()
+
+	// at the end of the test we'll move config from b1 into b2 to test backup/restore-type migration
+	b2 := base.GetTestBucket(t)
+	defer b2.Close(base.TestCtx(t))
+	b2Name := b2.GetName()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		CustomTestBucket: b1.NoCloseClone(),
+	})
+	defer rt.Close()
+
+	dbName := b1Name
+
+	dbConfig := rt.NewDbConfig()
+	// will infer from db name in handler and stamp into config (as of CBG-3353)
+	dbConfig.Bucket = nil
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// read back config in bucket to see if bucket field was stamped into the config
+	var databaseConfig DatabaseConfig
+	groupID := rt.ServerContext().Config.Bootstrap.ConfigGroupID
+	configDocID := PersistentConfigKey(base.TestCtx(t), groupID, b1Name)
+	_, err := rt.GetDatabase().MetadataStore.Get(configDocID, &databaseConfig)
+	require.NoError(t, err)
+	require.NotNil(t, databaseConfig.Bucket)
+	assert.Equal(t, b1Name, *databaseConfig.Bucket, "bucket field should be stamped into config")
+
+	// manually strip out bucket to test backwards compatibility (older configs don't always have this field set)
+	_, err = rt.GetDatabase().MetadataStore.Update(configDocID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		var d DatabaseConfig
+		require.NoError(t, base.JSONUnmarshal(current, &d))
+		d.Bucket = nil
+		newConfig, err := base.JSONMarshal(d)
+		return newConfig, nil, false, err
+	})
+	require.NoError(t, err)
+
+	count, err := rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "should have loaded 1 config")
+
+	_, err = rt.UpdatePersistedBucketName(&databaseConfig, &b2Name)
+	require.NoError(t, err)
+
+	dbBucketMismatch := base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Value()
+
+	// expect config to fail to load due to bucket mismatch
+	count, err = rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+	dbBucketMismatch, _ = base.WaitForStat(t, base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Value, dbBucketMismatch+1)
+
+	// Move config docs from original bucket to b2 and force a fetch/load (simulate backup/restore or XDCR to different bucket)
+	base.MoveDocument(t, base.SGRegistryKey, b2.GetMetadataStore(), b1.GetMetadataStore())
+	base.MoveDocument(t, configDocID, b2.GetMetadataStore(), b1.GetMetadataStore())
+
+	// put the bucket for the config back to b1 so we can use the admin API to repair the config (like a real user would have to do)
+	_, err = b2.GetMetadataStore().Update(configDocID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		var d DatabaseConfig
+		require.NoError(t, base.JSONUnmarshal(current, &d))
+		d.Bucket = &b1Name
+		newConfig, err := base.JSONMarshal(d)
+		return newConfig, nil, false, err
+	})
+	require.NoError(t, err)
+
+	count, err = rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+	dbBucketMismatch, _ = base.WaitForStat(t, base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Value, dbBucketMismatch+1)
+
+	// repair config
+	dbConfig.Bucket = &b2Name
+
+	// /db/_config won't work because db isn't actually loaded
+	resp = rt.UpsertDbConfig(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusNotFound)
+
+	// PUT /db/ will work to repair config
+	resp = rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// do another fetch just to be sure that the config won't be unloaded again
+	count, err = rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+	_, _ = base.WaitForStat(t, base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Value, dbBucketMismatch+1)
+}
