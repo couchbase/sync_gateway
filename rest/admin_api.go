@@ -200,8 +200,12 @@ func getAuthScopeHandleCreateDB(ctx context.Context, h *handler) (bucketName str
 	}
 
 	if dbConfigBody.Bucket == "" {
+		dbName := h.PathVar("newdb")
+		if dbName == "" {
+			return "", base.HTTPErrorf(http.StatusBadRequest, "bucket or db name not specified in request")
+		}
 		// imply bucket name from db name in path if not in body
-		return h.PathVar("newdb"), nil
+		return dbName, nil
 	}
 
 	return dbConfigBody.Bucket, nil
