@@ -364,6 +364,8 @@ func (dbConfig *DbConfig) setDatabaseCredentials(credentials base.CredentialsCon
 // setup populates fields in the dbConfig
 func (dbConfig *DbConfig) setup(ctx context.Context, dbName string, bootstrapConfig BootstrapConfig, dbCredentials, bucketCredentials *base.CredentialsConfig, forcePerBucketAuth bool) error {
 	dbConfig.Name = dbName
+
+	// use db name as bucket if absent from config (handling for old non-stamped configs)
 	if dbConfig.Bucket == nil {
 		dbConfig.Bucket = &dbConfig.Name
 	}
@@ -544,6 +546,15 @@ func readFromPath(ctx context.Context, path string, insecureSkipVerify bool) (rc
 		return nil, ErrPathNotFound
 	}
 	return rc, nil
+}
+
+// GetBucketName returns the bucket name associated with the database config.
+func (dbConfig *DbConfig) GetBucketName() string {
+	if dbConfig.Bucket != nil {
+		return *dbConfig.Bucket
+	}
+	// db name as fallback in the case of a `nil` bucket.
+	return dbConfig.Name
 }
 
 func (dbConfig *DbConfig) AutoImportEnabled(ctx context.Context) (bool, error) {
@@ -1537,7 +1548,7 @@ func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (fou
 		// We need to check for corruption in the database config (CC. CBG-3292). If the fetched config doesn't match the
 		// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
 		// in memory representation on the server context.
-		if bucket != *cnf.Bucket {
+		if bucket != cnf.GetBucketName() {
 			sc._handleInvalidDatabaseConfig(ctx, bucket, cnf)
 			return true, fmt.Errorf("mismatch in persisted database bucket name %q vs the actual bucket name %q. Please correct db %q's config, groupID %q.", base.MD(cnf.Bucket), base.MD(bucket), base.MD(cnf.Name), base.MD(sc.Config.Bootstrap.ConfigGroupID))
 		}
@@ -1698,7 +1709,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			// We need to check for corruption in the database config (CC. CBG-3292). If the fetched config doesn't match the
 			// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
 			// in memory representation on the server context.
-			if bucket != *cnf.Bucket {
+			if bucket != cnf.GetBucketName() {
 				sc.handleInvalidDatabaseConfig(ctx, bucket, *cnf)
 				continue
 			}

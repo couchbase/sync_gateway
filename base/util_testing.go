@@ -906,3 +906,19 @@ func GetVbucketForKey(bucket Bucket, key string) (vbNo uint32, err error) {
 
 	return sgbucket.VBHash(key, maxVbNo), nil
 }
+
+// MoveDocument moves the document from src to dst
+// Note: does not handle xattr contents
+func MoveDocument(t testing.TB, docID string, dst, src DataStore) {
+	var data interface{}
+
+	srcCAS, err := src.Get(docID, &data)
+	require.NoError(t, err)
+
+	ok, err := dst.Add(docID, 0, data)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	_, err = src.Remove(docID, srcCAS)
+	require.NoError(t, err)
+}
