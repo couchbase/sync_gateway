@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -2553,4 +2554,28 @@ func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount,
 
 func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
 	waitAndAssertConditionWithOptions(t, fn, 20, 100, failureMsgAndArgs...)
+}
+
+func TestUpdateCalculatedStatsPanic(t *testing.T) {
+
+	var dbc *DatabaseContext
+
+	defer func() {
+		r := recover()
+		if r != nil {
+			t.Errorf("UpdateCalculatedStats panic recovered, stack trace: %s", debug.Stack())
+		}
+	}()
+
+	// nil DatabaseContext check
+	dbc.UpdateCalculatedStats()
+
+	// non-nil DatabaseContext, nil stats
+	dbc = &DatabaseContext{}
+	dbc.UpdateCalculatedStats()
+
+	// non-nil DatabaseContext and stats, nil channel cache.
+	dbStats := initDatabaseStats("db", false, DatabaseContextOptions{})
+	dbc.DbStats = dbStats
+	dbc.UpdateCalculatedStats()
 }
