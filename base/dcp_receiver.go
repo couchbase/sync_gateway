@@ -104,7 +104,7 @@ func (r *DCPReceiver) SnapshotStart(vbNo uint16,
 }
 
 func (r *DCPReceiver) SetMetaData(vbucketId uint16, value []byte) error {
-	r.setMetaData(vbucketId, value)
+	_ = r.setMetaData(vbucketId, value, false)
 	return nil
 }
 
