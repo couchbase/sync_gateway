@@ -1534,7 +1534,7 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 		"max_backoff":100
 	}`, DBURL.String())
 
-	response := rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", string(replicationConfig))
+	response := rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", replicationConfig)
 	rest.RequireStatus(t, response, http.StatusCreated)
 
 	response = rt.SendAdminRequest("GET", "/{{.db}}/_replicationStatus/", "")
@@ -1554,7 +1554,7 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 		"max_backoff":100
 	}`, DBURL.String())
 
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", string(replicationConfigUpdate))
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", replicationConfigUpdate)
 	rest.RequireStatus(t, response, http.StatusBadRequest)
 
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication1?action=stop", "")
@@ -1562,7 +1562,7 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 
 	rt.WaitForReplicationStatus("replication1", db.ReplicationStateStopped)
 
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", string(replicationConfigUpdate))
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", replicationConfigUpdate)
 	rest.RequireStatus(t, response, http.StatusOK)
 
 }

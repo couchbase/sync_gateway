@@ -493,7 +493,7 @@ func BenchmarkPartitionToVbNo(b *testing.B) {
 
 	b.Run("map", func(bn *testing.B) {
 		for i := 0; i < bn.N; i++ {
-			value := uint16(vbNos["23"])
+			value := vbNos["23"]
 			if value != uint16(23) {
 				b.Fail()
 			}

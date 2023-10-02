@@ -1198,7 +1198,7 @@ func (tree RevTree) LongestBranch() int {
 // Create body content as map of 100 byte entries.  Rounds up to the nearest 100 bytes
 func createBodyContentAsMapWithSize(docSizeBytes int) map[string]string {
 
-	numEntries := int(docSizeBytes/100) + 1
+	numEntries := (docSizeBytes / 100) + 1
 	body := make(map[string]string, numEntries)
 	for i := 0; i < numEntries; i++ {
 		key := fmt.Sprintf("field_%d", i)

@@ -1088,8 +1088,8 @@ func TestResyncForNamedCollection(t *testing.T) {
 	}, 200, 200)
 	require.NoError(t, err)
 
-	assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
-	assert.Equal(t, 10, int(resyncManagerStatus.DocsProcessed))
+	assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
+	assert.Equal(t, 10, resyncManagerStatus.DocsProcessed)
 
 	// Run resync for all collections
 	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
@@ -1109,8 +1109,8 @@ func TestResyncForNamedCollection(t *testing.T) {
 	}, 200, 200)
 	require.NoError(t, err)
 
-	assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
-	assert.Equal(t, 20, int(resyncManagerStatus.DocsProcessed))
+	assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
+	assert.Equal(t, 20, resyncManagerStatus.DocsProcessed)
 }
 
 func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
@@ -2349,7 +2349,7 @@ func TestRawRedaction(t *testing.T) {
 	assert.NoError(t, err)
 	syncData := body[base.SyncPropertyName]
 	assert.Equal(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
-	assert.Equal(t, []interface{}([]interface{}{[]interface{}{"achannel"}}), syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
+	assert.Equal(t, []interface{}{[]interface{}{"achannel"}}, syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
 
 	// Test redacted
 	body = map[string]interface{}{}
@@ -2359,7 +2359,7 @@ func TestRawRedaction(t *testing.T) {
 	syncData = body[base.SyncPropertyName]
 	require.NotNil(t, syncData)
 	assert.NotEqual(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
-	assert.NotEqual(t, []interface{}([]interface{}{[]interface{}{"achannel"}}), syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
+	assert.NotEqual(t, []interface{}{[]interface{}{"achannel"}}, syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
 
 	// Test include doc false doesn't return doc
 	body = map[string]interface{}{}

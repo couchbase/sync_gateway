@@ -198,7 +198,7 @@ func TestConfigValidationCache(t *testing.T) {
 	require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig)
 	if base.IsEnterpriseEdition() {
 		require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.MaxNumber)
-		assert.Equal(t, 100, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.MaxNumber))
+		assert.Equal(t, 100, *config.Databases["db"].CacheConfig.ChannelCacheConfig.MaxNumber)
 	} else {
 		// CE disallowed - should be nil
 		assert.Nil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.MaxNumber)
@@ -206,7 +206,7 @@ func TestConfigValidationCache(t *testing.T) {
 
 	if base.IsEnterpriseEdition() {
 		require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.HighWatermarkPercent)
-		assert.Equal(t, 95, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.HighWatermarkPercent))
+		assert.Equal(t, 95, *config.Databases["db"].CacheConfig.ChannelCacheConfig.HighWatermarkPercent)
 	} else {
 		// CE disallowed - should be nil
 		assert.Nil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.HighWatermarkPercent)
@@ -214,7 +214,7 @@ func TestConfigValidationCache(t *testing.T) {
 
 	if base.IsEnterpriseEdition() {
 		require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent)
-		assert.Equal(t, 25, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent))
+		assert.Equal(t, 25, *config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent)
 	} else {
 		// CE disallowed - should be nil
 		assert.Nil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent)

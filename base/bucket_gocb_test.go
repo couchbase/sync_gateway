@@ -1299,7 +1299,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 		assert.True(t, IsCasMismatch(errCasMismatch), fmt.Sprintf("Expected cas mismatch for %s", key))
 
-		_, errDelete := dataStore.WriteWithXattr(ctx, key, xattrName, 0, uint64(casValues[i]), nil, xattrValBytes, true, shouldDeleteBody[i], nil)
+		_, errDelete := dataStore.WriteWithXattr(ctx, key, xattrName, 0, casValues[i], nil, xattrValBytes, true, shouldDeleteBody[i], nil)
 		log.Printf("Delete error: %v", errDelete)
 
 		assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
@@ -1622,7 +1622,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	assert.Equal(t, "2-1234", key1XattrResult["rev"])
 
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key2)
-	_, key2err := dataStore.WriteCasWithXattr(ctx, key2, xattrName, exp, uint64(cas2), &updatedVal, &updatedXattrVal, nil)
+	_, key2err := dataStore.WriteCasWithXattr(ctx, key2, xattrName, exp, cas2, &updatedVal, &updatedXattrVal, nil)
 	assert.NoError(t, key2err, fmt.Sprintf("Unexpected error mutating %s", key2))
 	var key2DocResult map[string]interface{}
 	var key2XattrResult map[string]interface{}

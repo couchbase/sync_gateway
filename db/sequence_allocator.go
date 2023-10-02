@@ -192,7 +192,7 @@ func (s *sequenceAllocator) _reserveSequenceRange(ctx context.Context) error {
 	// this indicates we're making an incr call more frequently than we want to.  Triggers an increase in batch size to
 	// reduce incr frequency.
 	if time.Since(s.lastSequenceReserveTime) < MaxSequenceIncrFrequency {
-		s.sequenceBatchSize = uint64(s.sequenceBatchSize * sequenceBatchMultiplier)
+		s.sequenceBatchSize = s.sequenceBatchSize * sequenceBatchMultiplier
 		if s.sequenceBatchSize > maxBatchSize {
 			s.sequenceBatchSize = maxBatchSize
 		}
