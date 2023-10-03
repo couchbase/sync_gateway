@@ -1307,6 +1307,17 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig, failFast bool) (applie
 		}
 	}
 
+	if sc.bootstrapContext.connection != nil {
+		hasDBRegistry, err := sc.bootstrapContext.connection.HasPost30Config(*cnf.Bucket)
+		if err != nil {
+			return false, fmt.Errorf("Could not determine whether bucket %q has a newer config than 3.0. Error: %w", *cnf.Bucket, err)
+		}
+		if hasDBRegistry {
+			return false, fmt.Errorf("database %q from bucket %q cannot be added. Has a config newer than Sync Gateway version 3.0", cnf.Name, *cnf.Bucket)
+		}
+
+	}
+
 	// Strip out version as we have no use for this locally and we want to prevent it being stored and being returned
 	// by any output
 	cnf.Version = ""

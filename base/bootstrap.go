@@ -17,7 +17,10 @@ type BootstrapConnection interface {
 	GetConfigBuckets() ([]string, error)
 	// GetConfig fetches a database config for a given bucket and config group ID, along with the CAS of the config document.
 	GetConfig(bucket, groupID string, valuePtr interface{}) (cas uint64, err error)
+	// HasPost30Config returns true if the bucket has a database registry from 3.1 or greater.
+	HasPost30Config(bucket string) (bool, error)
 	// InsertConfig saves a new database config for a given bucket and config group ID.
+
 	InsertConfig(bucket, groupID string, value interface{}) (newCAS uint64, err error)
 	// UpdateConfig updates an existing database config for a given bucket and config group ID. updateCallback can return nil to remove the config.
 	UpdateConfig(bucket, groupID string, updateCallback func(rawBucketConfig []byte) (updatedConfig []byte, err error)) (newCAS uint64, err error)
@@ -189,6 +192,24 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 	defer teardown()
 
 	return cc.configPersistence.loadConfig(b.DefaultCollection(), PersistentConfigPrefix+groupID, valuePtr)
+}
+
+func (cc *CouchbaseCluster) HasPost30Config(bucket string) (bool, error) {
+	if cc == nil {
+		return false, errors.New("nil CouchbaseCluster")
+	}
+
+	b, teardown, err := cc.getBucket(bucket)
+
+	if err != nil {
+		return false, err
+	}
+
+	defer teardown()
+
+	var valuePtr interface{}
+	_, err = cc.configPersistence.loadConfig(b.DefaultCollection(), "_sync:registry", valuePtr)
+	return !IsDocNotFoundError(err), nil
 }
 
 func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interface{}) (newCAS uint64, err error) {
