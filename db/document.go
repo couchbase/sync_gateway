@@ -190,11 +190,6 @@ type historyOnlySyncData struct {
 	History RevTree `json:"history"`
 }
 
-type hlvOnlySyncData struct {
-	HybridLogicalVector          //`json:"_vv"`
-	PersistedHybridLogicalVector `json:"_vv"`
-}
-
 type revOnlySyncData struct {
 	casOnlySyncData
 	CurrentRev string `json:"rev"`

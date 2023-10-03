@@ -8499,6 +8499,6 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	assert.NoError(t, err)
 	uintCAS = base.HexCasToUint64(syncData.Cas)
 
-	// TODO: assert that the SourceID and Verison pair are preserved correctly
+	// TODO: assert that the SourceID and Verison pair are preserved correctly pending CBG-3211
 	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
 }
