@@ -1440,32 +1440,17 @@ func (sc *ServerContext) _fetchAndLoadDatabase(nonContextStruct base.NonCancella
 }
 
 // stampSGVersion looks at each of the GatewayRegistry and updates the Sync Gateway version to start them on
-func (sc *ServerContext) stampSGVersion(ctx context.Context) error {
-	buckets, err := sc.BootstrapContext.Connection.GetConfigBuckets()
+func (sc *ServerContext) stampSGVersion(ctx context.Context, bucketName string, registry *GatewayRegistry) error {
+	if !registry.SGVersion.Less(&sc.BootstrapContext.sgVersion) {
+		return nil
+	}
+	registry.SGVersion = sc.BootstrapContext.sgVersion
+	err := sc.BootstrapContext.setGatewayRegistry(ctx, bucketName, registry)
 	if err != nil {
-		base.WarnfCtx(ctx, "Error looking for buckets in while examining persisted Sync Gateway version numbers: %s", err)
+		base.WarnfCtx(ctx, "Error setting gateway registry in bucket %q: %q", base.MD(bucketName), err)
 		return err
 	}
-
-	for _, bucketName := range buckets {
-		registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
-		if err != nil {
-			base.WarnfCtx(ctx, "Error retrieving gateway registry in bucket %q: %q", base.MD(bucketName), err)
-			return err
-		}
-
-		if registry.SGVersion.Less(&sc.BootstrapContext.sgVersion) {
-			registry.SGVersion = sc.BootstrapContext.sgVersion
-			err := sc.BootstrapContext.setGatewayRegistry(ctx, bucketName, registry)
-			if err != nil {
-				base.WarnfCtx(ctx, "Error setting gateway registry in bucket %q: %q", base.MD(bucketName), err)
-				return err
-			}
-			base.InfofCtx(ctx, base.KeyConfig, "Updated Sync Gateway version number in bucket %q from %s to %s", base.MD(bucketName), registry.SGVersion, sc.BootstrapContext.sgVersion)
-			continue
-		}
-
-	}
+	base.InfofCtx(ctx, base.KeyConfig, "Updated Sync Gateway version number in bucket %q from %s to %s", base.MD(bucketName), registry.SGVersion, sc.BootstrapContext.sgVersion)
 	return nil
 }
 
@@ -1839,6 +1824,11 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	// Strip out version as we have no use for this locally and we want to prevent it being stored and being returned
 	// by any output
 	cnf.Version = ""
+
+	err = sc.stampSGVersion(ctx, *cnf.Bucket, registry)
+	if err != nil {
+		return false, err
+	}
 
 	// Prevent database from being unsuspended when it is suspended
 	if sc._isDatabaseSuspended(cnf.Name) {

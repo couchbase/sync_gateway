@@ -167,28 +167,46 @@ func TestVersionDowngrade(t *testing.T) {
 
 	// rely on AtLeastMinorDowngrade unit test to cover all cases, starting up a db is slow
 	testCases := []struct {
-		syncGatewayVersion    string
-		metadataConfigVersion string
-		name                  string
-		hasError              bool
+		syncGatewayVersion      string
+		metadataConfigVersion   string
+		expectedRegistryVersion string
+		name                    string
+		hasError                bool
 	}{
 		{
-			name:                  "equal versions",
-			syncGatewayVersion:    "10.0.0",
-			metadataConfigVersion: "10.0.0",
-			hasError:              false,
+			name:                    "equal versions",
+			syncGatewayVersion:      "10.0.0",
+			metadataConfigVersion:   "10.0.0",
+			expectedRegistryVersion: "10.0.0",
+			hasError:                false,
 		},
 		{
-			name:                  "minor upgrade",
-			syncGatewayVersion:    "10.1.0",
-			metadataConfigVersion: "10.0.0",
-			hasError:              false,
+			name:                    "minor upgrade",
+			syncGatewayVersion:      "10.1.0",
+			metadataConfigVersion:   "10.0.0",
+			expectedRegistryVersion: "10.1.0",
+			hasError:                false,
 		},
 		{
-			name:                  "minor downgrade",
-			syncGatewayVersion:    "10.0.0",
-			metadataConfigVersion: "10.1.0",
-			hasError:              true,
+			name:                    "patch upgrade",
+			syncGatewayVersion:      "10.0.1",
+			metadataConfigVersion:   "10.0.0",
+			expectedRegistryVersion: "10.0.1",
+			hasError:                false,
+		},
+		{
+			name:                    "patch downgrade",
+			syncGatewayVersion:      "10.0.1",
+			metadataConfigVersion:   "10.0.2",
+			expectedRegistryVersion: "10.0.2",
+			hasError:                false,
+		},
+		{
+			name:                    "minor downgrade",
+			syncGatewayVersion:      "10.0.0",
+			metadataConfigVersion:   "10.1.0",
+			expectedRegistryVersion: "10.1.0",
+			hasError:                true,
 		},
 	}
 	for _, test := range testCases {
@@ -222,6 +240,14 @@ func TestVersionDowngrade(t *testing.T) {
 			} else {
 				RequireStatus(t, resp, http.StatusCreated)
 			}
+			registry, err = bootstrapContext.getGatewayRegistry(rt.Context(), rt.Bucket().GetName())
+			require.NoError(t, err)
+
+			expectedRegistryVersion, err := base.NewComparableVersionFromString(test.expectedRegistryVersion)
+			require.NoError(t, err)
+
+			require.True(t, expectedRegistryVersion.Equal(&registry.SGVersion), "%+v != %+v", expectedRegistryVersion, registry.SGVersion)
+
 		})
 	}
 }

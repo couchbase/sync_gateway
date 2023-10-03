@@ -2019,11 +2019,6 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 			base.InfofCtx(ctx, base.KeyConfig, "Unable to migrate v3.0 config to registry - will not be migrated: %v", err)
 		}
 
-		err = sc.stampSGVersion(ctx)
-		if err != nil {
-			base.InfofCtx(ctx, base.KeyConfig, "Unable to migrate v3.0 config to registry - will not be migrated: %v", err)
-		}
-
 		count, err := sc.fetchAndLoadConfigs(ctx, true)
 		if err != nil {
 			return err
