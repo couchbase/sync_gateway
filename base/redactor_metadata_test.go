@@ -18,6 +18,8 @@ import (
 )
 
 func TestMetadataRedact(t *testing.T) {
+	defer func() { RedactMetadata = defaultRedactMetadata }()
+
 	clusterName := "My Super Secret Cluster"
 	metadata := Metadata(clusterName)
 
@@ -29,8 +31,8 @@ func TestMetadataRedact(t *testing.T) {
 }
 
 func TestMD(t *testing.T) {
+	defer func() { RedactMetadata = defaultRedactMetadata }()
 	RedactMetadata = true
-	defer func() { RedactMetadata = false }()
 
 	// Base string test
 	md := MD("hello world")
