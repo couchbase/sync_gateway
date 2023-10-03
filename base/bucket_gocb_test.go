@@ -894,7 +894,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 	// Dummy write update function that increments 'counter' in the doc and 'seq' in the xattr
 	writeUpdateFunc := func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (
-		updatedDoc []byte, updatedXattr []byte, isDelete bool, updatedExpiry *uint32, err error) {
+		updatedDoc []byte, updatedXattr []byte, isDelete bool, updatedExpiry *uint32, updatedSpec []sgbucket.MacroExpansionSpec, err error) {
 
 		var docMap map[string]interface{}
 		var xattrMap map[string]interface{}
@@ -902,7 +902,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 		if len(doc) > 0 {
 			err = JSONUnmarshal(doc, &docMap)
 			if err != nil {
-				return nil, nil, false, nil, pkgerrors.Wrapf(err, "Unable to unmarshal incoming doc")
+				return nil, nil, false, nil, nil, pkgerrors.Wrapf(err, "Unable to unmarshal incoming doc")
 			}
 		} else {
 			// No incoming doc, treat as insert.
@@ -913,7 +913,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 		if len(xattr) > 0 {
 			err = JSONUnmarshal(xattr, &xattrMap)
 			if err != nil {
-				return nil, nil, false, nil, pkgerrors.Wrapf(err, "Unable to unmarshal incoming xattr")
+				return nil, nil, false, nil, nil, pkgerrors.Wrapf(err, "Unable to unmarshal incoming xattr")
 			}
 		} else {
 			// No incoming xattr, treat as insert.
@@ -938,7 +938,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 		updatedDoc, _ = JSONMarshal(docMap)
 		updatedXattr, _ = JSONMarshal(xattrMap)
-		return updatedDoc, updatedXattr, false, nil, nil
+		return updatedDoc, updatedXattr, false, nil, updatedSpec, nil
 	}
 
 	// Insert
@@ -984,7 +984,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 	xattrKey := SyncXattrName
 	userXattrKey := "UserXattr"
 
-	writeUpdateFunc := func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, isDelete bool, updatedExpiry *uint32, err error) {
+	writeUpdateFunc := func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, isDelete bool, updatedExpiry *uint32, updatedSpec []sgbucket.MacroExpansionSpec, err error) {
 
 		var docMap map[string]interface{}
 		var xattrMap map[string]interface{}
@@ -992,7 +992,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 		if len(doc) > 0 {
 			err = JSONUnmarshal(xattr, &docMap)
 			if err != nil {
-				return nil, nil, false, nil, err
+				return nil, nil, false, nil, nil, err
 			}
 		} else {
 			docMap = make(map[string]interface{})
@@ -1001,7 +1001,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 		if len(xattr) > 0 {
 			err = JSONUnmarshal(xattr, &xattrMap)
 			if err != nil {
-				return nil, nil, false, nil, err
+				return nil, nil, false, nil, nil, err
 			}
 		} else {
 			xattrMap = make(map[string]interface{})
@@ -1011,7 +1011,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 		if len(userXattr) > 0 {
 			err = JSONUnmarshal(userXattr, &userXattrMap)
 			if err != nil {
-				return nil, nil, false, nil, err
+				return nil, nil, false, nil, nil, err
 			}
 		} else {
 			userXattrMap = nil
@@ -1022,7 +1022,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 		updatedDoc, _ = JSONMarshal(docMap)
 		updatedXattr, _ = JSONMarshal(xattrMap)
 
-		return updatedDoc, updatedXattr, false, nil, nil
+		return updatedDoc, updatedXattr, false, nil, updatedSpec, nil
 	}
 
 	_, err := dataStore.WriteUpdateWithXattr(ctx, key, xattrKey, userXattrKey, 0, nil, nil, writeUpdateFunc)
