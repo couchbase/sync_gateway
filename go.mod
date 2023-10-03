@@ -9,12 +9,11 @@ require (
 	github.com/couchbase/cbgt v1.3.4
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20230915152802-f184aec55962
-	github.com/couchbase/go-couchbase v0.1.1
 	github.com/couchbase/gocb/v2 v2.6.4
 	github.com/couchbase/gocbcore/v10 v10.2.8
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20230921161645-dd0fa1dd0802
+	github.com/couchbase/sg-bucket v0.0.0-20230929163612-8f8844395aa5
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
 	github.com/couchbaselabs/gocbconnstr v1.0.5
 	github.com/couchbaselabs/rosmar v0.0.0-20230921163940-606a53cd621f
@@ -46,6 +45,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/couchbase/blance v0.1.3 // indirect
 	github.com/couchbase/cbauth v0.1.10 // indirect
+	github.com/couchbase/go-couchbase v0.1.1 // indirect
 	github.com/couchbase/tools-common v0.0.0-20220810163003-4c3c185822d4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
@@ -57,7 +57,6 @@ require (
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
-	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/pquerna/cachecontrol v0.2.0 // indirect
 	github.com/prometheus/client_model v0.3.0 // indirect
@@ -73,10 +72,6 @@ require (
 	golang.org/x/text v0.13.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
-	gopkg.in/couchbase/gocb.v1 v1.6.7 // indirect
-	gopkg.in/couchbase/gocbcore.v7 v7.1.18 // indirect
-	gopkg.in/couchbaselabs/gocbconnstr.v1 v1.0.4 // indirect
-	gopkg.in/couchbaselabs/jsonx.v1 v1.0.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

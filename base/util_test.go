@@ -254,47 +254,6 @@ func TestValueToStringArray(t *testing.T) {
 	assert.Equal(t, []interface{}{1, true}, nonStrings)
 }
 
-func TestCouchbaseURIToHttpURL(t *testing.T) {
-
-	inputsAndExpected := []struct {
-		input    string
-		expected []string
-	}{
-		{
-			input: "http://host1:8091",
-			expected: []string{
-				"http://host1:8091",
-			},
-		},
-		{
-			input: "http://host1,host2:8091",
-			expected: []string{
-				"http://host1:8091",
-				"http://host2:8091",
-			},
-		},
-		{
-			input: "http://foo:bar@host1:8091",
-			expected: []string{
-				"http://foo:bar@host1:8091",
-			},
-		},
-	}
-
-	for _, inputAndExpected := range inputsAndExpected {
-		actual, err := CouchbaseURIToHttpURL(nil, inputAndExpected.input, nil)
-		assert.NoError(t, err, "Unexpected error")
-		assert.Equal(t, inputAndExpected.expected, actual)
-	}
-
-	// With a nil (or walrus bucket) and a couchbase or couchbases url, expect errors
-	_, err := CouchbaseURIToHttpURL(nil, "couchbases://host1:18191,host2:18191", nil)
-	assert.True(t, err != nil)
-	_, err = CouchbaseURIToHttpURL(nil, "couchbase://host1", nil)
-	assert.True(t, err != nil)
-
-}
-
 func TestReflectExpiry(t *testing.T) {
 	exp := time.Now().Add(time.Hour)
 

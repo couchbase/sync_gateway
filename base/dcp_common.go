@@ -13,19 +13,13 @@ package base
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"errors"
 	"expvar"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
-	"github.com/couchbase/go-couchbase"
-	"github.com/couchbase/go-couchbase/cbdatasource"
-	memcached "github.com/couchbase/gomemcached/client"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/google/uuid"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -45,24 +39,6 @@ const kBackfillPersistInterval = 10 * time.Second
 // DCP Feed IDs are used to build unique DCP identifiers
 const DCPCachingFeedID = "SG"
 const DCPImportFeedID = "SGI"
-
-type SimpleFeed struct {
-	eventFeed  chan sgbucket.FeedEvent
-	terminator chan bool
-}
-
-func (s *SimpleFeed) Events() <-chan sgbucket.FeedEvent {
-	return s.eventFeed
-}
-
-func (s *SimpleFeed) WriteEvents() chan<- sgbucket.FeedEvent {
-	return s.eventFeed
-}
-
-func (s *SimpleFeed) Close() error {
-	close(s.terminator)
-	return nil
-}
 
 type DCPCommon struct {
 	dbStatsExpvars         *expvar.Map
@@ -228,7 +204,7 @@ func (c *DCPCommon) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStar
 		}
 	}
 
-	var snapshotMetadata cbdatasource.VBucketMetaData
+	var snapshotMetadata vBucketMetaData
 	unmarshalErr := JSONUnmarshal(rawValue, &snapshotMetadata)
 	if unmarshalErr != nil {
 		return []byte{}, 0, 0, err
@@ -595,200 +571,4 @@ func GenerateDcpStreamName(feedID string) (string, error) {
 		u.String(),
 	), nil
 
-}
-
-// getExternalAlternateAddress returns a external alternate address for a given dest
-func getExternalAlternateAddress(loggingCtx context.Context, alternateAddressMap map[string]string, dest string) (string, error) {
-	if len(alternateAddressMap) == 0 {
-		// early exit if we know we've got nothing to find
-		return dest, nil
-	}
-
-	destHost, destPort, err := SplitHostPort(dest)
-	if err != nil {
-		return "", err
-	}
-
-	// Map the given destination to an external alternate address hostname if available
-	if extHostname, foundAltAddress := alternateAddressMap[destHost]; foundAltAddress {
-		host, port, _ := SplitHostPort(extHostname)
-		if port == "" {
-			port = destPort
-		}
-		if host == "" {
-			host = extHostname
-		}
-
-		InfofCtx(loggingCtx, KeyDCP, "Using alternate address %s => %s", MD(dest), MD(host+":"+port))
-		dest = host + ":" + port
-	}
-
-	return dest, nil
-}
-
-type clusterNetworkType string
-
-const (
-	// clusterNetworkAuto applies a heuristic to determine which network to use (based on bootstrap hosts)
-	clusterNetworkAuto clusterNetworkType = "auto"
-	// clusterNetworkDefault uses the default (internal) network
-	clusterNetworkDefault clusterNetworkType = "default"
-	// clusterNetworkExternal will use the external network
-	clusterNetworkExternal clusterNetworkType = "external"
-)
-
-// getNetworkTypeFromConnSpec returns the configured network type, or clusterNetworkAuto if nothing is defined.
-func getNetworkTypeFromConnSpec(ctx context.Context, spec gocbconnstr.ConnSpec) clusterNetworkType {
-	networkType := clusterNetworkAuto
-	if networkOpt, ok := spec.Options["network"]; ok && len(networkOpt) > 0 {
-		if len(networkOpt) > 1 {
-			WarnfCtx(ctx, "multiple 'network' options found in connection string - using first one: %q", networkOpt[0])
-		}
-		networkType = clusterNetworkType(networkOpt[0])
-	}
-	return networkType
-}
-
-// alternateAddressShims returns the 3 functions that wrap around ConnectBucket/Connect/ConnectTLS to provide alternate address support.
-func alternateAddressShims(loggingCtx context.Context, bucketSpecTLS bool, connSpecAddresses []gocbconnstr.Address, networkType clusterNetworkType) (
-	connectBucketShim func(serverURL, poolName, bucketName string, auth couchbase.AuthHandler) (cbdatasource.Bucket, error),
-	connectShim func(protocol, dest string) (*memcached.Client, error),
-	connectTLSShim func(protocol, dest string, tlsConfig *tls.Config) (*memcached.Client, error),
-) {
-
-	// A map of dest URL (which may be an internal-only address) to external alternate address.
-	var externalAlternateAddresses map[string]string
-
-	// Copy of cbdatasource's default ConnectBucket function, which maps internal addresses to alternate addresses
-	connectBucketShim = func(serverURL, poolName, bucketName string, auth couchbase.AuthHandler) (cbdatasource.Bucket, error) {
-		TracefCtx(loggingCtx, KeyDCP, "ConnectBucket callback: %s %s %s", MD(serverURL), poolName, MD(bucketName))
-
-		var (
-			err    error
-			client couchbase.Client
-		)
-
-		if auth != nil {
-			client, err = couchbase.ConnectWithAuth(serverURL, auth)
-		} else {
-			client, err = couchbase.Connect(serverURL)
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		// Fetch any alternate external addresses/ports and store them in the externalAlternateAddresses map
-		poolServices, err := client.GetPoolServices(poolName)
-		if err != nil {
-			return nil, err
-		}
-
-		connSpecAddressesHostMap := make(map[string]struct{}, len(connSpecAddresses))
-		for _, connSpecAddress := range connSpecAddresses {
-			connSpecAddressesHostMap[connSpecAddress.Host] = struct{}{}
-		}
-
-		// Recreate the map to forget about previous clustermap information.
-		externalAlternateAddresses = make(map[string]string, len(poolServices.NodesExt))
-		for _, node := range poolServices.NodesExt {
-
-			// apply heuristic if auto to select between "default" and "external"
-			if networkType == clusterNetworkAuto {
-				if _, ok := connSpecAddressesHostMap[node.Hostname]; ok {
-					DebugfCtx(loggingCtx, KeyDCP, "Matched host %s in connection string - using default/internal networking.", MD(node.Hostname))
-					// Found default hostname in connSpec - abort all alternate address behaviour.
-					// The client MUST use the default/internal network.
-					externalAlternateAddresses = nil
-					break
-				}
-				// select external network now heuristic failed
-				networkType = clusterNetworkExternal
-			}
-
-			DebugfCtx(loggingCtx, KeyDCP, "Finding alternate addresses for network %s", networkType)
-
-			// only try to map alternate addresses if an alternate hostname is present
-			if alt, ok := node.AlternateNames[string(networkType)]; ok && alt.Hostname != "" {
-				var port string
-				if bucketSpecTLS {
-					extPort, ok := alt.Ports["kvSSL"]
-					if !ok {
-						TracefCtx(loggingCtx, KeyDCP, "kvSSL port was not exposed for %s alternate address. Skipping remapping of this node.", networkType)
-						continue
-					}
-
-					// found exposed kvSSL port, use when connecting
-					port = ":" + strconv.Itoa(extPort)
-					DebugfCtx(loggingCtx, KeyDCP, "Storing alternate address for kvSSL: %s => %s", MD(node.Hostname), MD(alt.Hostname+port))
-				} else {
-					extPort, ok := alt.Ports["kv"]
-					if !ok {
-						TracefCtx(loggingCtx, KeyDCP, "kv port was not exposed for %s alternate address. Skipping remapping of this node.", networkType)
-						continue
-					}
-
-					// found exposed kv port, use when connecting
-					port = ":" + strconv.Itoa(extPort)
-					DebugfCtx(loggingCtx, KeyDCP, "Storing alternate address for kv: %s => %s", MD(node.Hostname), MD(alt.Hostname+port))
-				}
-
-				externalAlternateAddresses[node.Hostname] = alt.Hostname + port
-			}
-		}
-
-		var bucket *couchbase.Bucket
-		if auth != nil {
-			bucket, err = couchbase.ConnectWithAuthAndGetBucket(serverURL, poolName, bucketName, auth)
-		} else {
-			bucket, err = couchbase.GetBucket(serverURL, poolName, bucketName)
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		if bucket == nil {
-			return nil, fmt.Errorf("unknown bucket,"+
-				" serverURL: %s, bucketName: %s", serverURL, bucketName)
-		}
-
-		return bucket, nil
-	}
-
-	// Copy of cbdatasource's default Connect function, which swaps the given destination, with alternate addresses we found in ConnectBucket.
-	connectShim = func(protocol, dest string) (client *memcached.Client, err error) {
-		TracefCtx(loggingCtx, KeyDCP, "Connect mutationCallback: %s %s", protocol, MD(dest))
-
-		dest, err = getExternalAlternateAddress(loggingCtx, externalAlternateAddresses, dest)
-		if err != nil {
-			return nil, err
-		}
-
-		return memcached.Connect(protocol, dest)
-	}
-
-	// Copy of cbdatasource's default ConnectTLS function, which swaps the given destination, with alternate addresses we found in ConnectBucket.
-	connectTLSShim = func(protocol, dest string, tlsConfig *tls.Config) (client *memcached.Client, err error) {
-		TracefCtx(loggingCtx, KeyDCP, "ConnectTLS mutationCallback: %s %s", protocol, MD(dest))
-
-		newDest, err := getExternalAlternateAddress(loggingCtx, externalAlternateAddresses, dest)
-		if err != nil {
-			return nil, err
-		}
-		if newDest == dest {
-			// skip unnecessary tls reconfiguration if no alternate was found
-			return memcached.ConnectTLS(protocol, dest, tlsConfig)
-		}
-
-		// extract the new host and insert into the tlsConfig
-		host, _, err := SplitHostPort(dest)
-		if err != nil {
-			return nil, err
-		}
-		tlsConfigCopy := tlsConfig.Clone()
-		tlsConfigCopy.ServerName = host
-
-		return memcached.ConnectTLS(protocol, dest, tlsConfigCopy)
-	}
-
-	return connectBucketShim, connectShim, connectTLSShim
 }
