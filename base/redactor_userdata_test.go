@@ -19,6 +19,8 @@ import (
 )
 
 func TestUserDataRedact(t *testing.T) {
+	defer func() { RedactUserData = defaultRedactUserData }()
+
 	username := "alice"
 	userdata := UserData(username)
 
@@ -31,7 +33,7 @@ func TestUserDataRedact(t *testing.T) {
 
 func TestUD(t *testing.T) {
 	RedactUserData = true
-	defer func() { RedactUserData = false }()
+	defer func() { RedactUserData = defaultRedactUserData }()
 
 	// Straight-forward string test.
 	ud := UD("hello world")
@@ -60,6 +62,8 @@ func TestUD(t *testing.T) {
 }
 
 func BenchmarkUserDataRedact(b *testing.B) {
+	defer func() { RedactUserData = defaultRedactUserData }()
+
 	username := UserData("alice")
 	usernameSlice := UD([]string{"adam", "ben", "jacques"})
 
@@ -96,8 +100,9 @@ func (fakeLogger FakeLogger) String() string {
 }
 
 func BenchmarkRedactOnLog(b *testing.B) {
-
 	SetUpBenchmarkLogging(b, LevelWarn, KeyAll)
+
+	defer func() { RedactUserData = defaultRedactUserData }()
 
 	b.Run("WarnPlain", func(b *testing.B) {
 		ctx := TestCtx(b)

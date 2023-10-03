@@ -20,8 +20,10 @@ const (
 	UserDataSuffix = "</ud>"
 )
 
+const defaultRedactUserData = true
+
 // RedactUserData is a global toggle for user data redaction.
-var RedactUserData = true
+var RedactUserData = defaultRedactUserData
 
 // UserData is a type which implements the Redactor interface for logging purposes of user data.
 //
