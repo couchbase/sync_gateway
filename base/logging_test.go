@@ -30,7 +30,8 @@ func TestRedactedLogFuncs(t *testing.T) {
 	username := UD("alice")
 	ctx := TestCtx(t)
 
-	defer func() { RedactUserData = false }()
+	originalRedactUserData := RedactUserData
+	defer func() { RedactUserData = originalRedactUserData }()
 
 	RedactUserData = false
 	AssertLogContains(t, "Username: alice", func() { InfofCtx(ctx, KeyAll, "Username: %s", username) })
