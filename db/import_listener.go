@@ -24,7 +24,7 @@ import (
 // and invokes ImportFeedEvent for any event that's eligible for import handling.
 type importListener struct {
 	bucketName       string                                // Used for logging
-	terminator       chan bool                             // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	terminator       chan bool                             // Signal to cause DCP Client.Close() to be called, which removes dcp receiver
 	dbName           string                                // used for naming the DCP feed
 	bucket           base.Bucket                           // bucket to get vb stats for feed
 	collections      map[uint32]DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
