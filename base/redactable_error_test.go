@@ -37,3 +37,23 @@ func TestRedactErrorf(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkRedactErrorf(b *testing.B) {
+	fmt := "Couldn't get user %q: "
+	fmtVerbs := []string{"%s", "%w"}
+	args := []interface{}{UD("Bob"), ErrNotFound}
+
+	for _, verb := range fmtVerbs {
+		err := RedactErrorf(fmt+verb, args...)
+		b.Run(verb+" String()", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = err.String()
+			}
+		})
+		b.Run(verb+" Redact()", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = err.Redact()
+			}
+		})
+	}
+}
