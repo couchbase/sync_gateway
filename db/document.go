@@ -177,10 +177,9 @@ type Document struct {
 	Cas          uint64 // Document cas
 	rawUserXattr []byte // Raw user xattr as retrieved from the bucket
 
-	Deleted   bool
-	DocExpiry uint32
-	RevID     string
-	//VersionVector  HybridLogicalVector
+	Deleted        bool
+	DocExpiry      uint32
+	RevID          string
 	DocAttachments AttachmentsMeta
 	inlineSyncData bool
 }
