@@ -18,8 +18,10 @@ import (
 )
 
 func TestRedactHelper(t *testing.T) {
+	originalRedactUserData := RedactUserData
+	defer func() { RedactUserData = originalRedactUserData }()
+
 	RedactUserData = true
-	defer func() { RedactUserData = false }()
 
 	ptr := UserData("hello")
 
