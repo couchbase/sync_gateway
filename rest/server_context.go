@@ -337,6 +337,21 @@ func (sc *ServerContext) AllDatabaseNames() []string {
 	return names
 }
 
+func (sc *ServerContext) allDatabaseSummaries() []dbSummary {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+
+	dbs := make([]dbSummary, 0, len(sc.databases_))
+	for name, dbctx := range sc.databases_ {
+		dbs = append(dbs, dbSummary{
+			DBName: name,
+			Bucket: dbctx.Bucket.GetName(),
+			State:  db.RunStateString[atomic.LoadUint32(&dbctx.State)],
+		})
+	}
+	return dbs
+}
+
 // AllDatabases returns a copy of the databases_ map.
 func (sc *ServerContext) AllDatabases() map[string]*db.DatabaseContext {
 	sc.lock.RLock()

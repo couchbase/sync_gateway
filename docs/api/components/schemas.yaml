@@ -2360,6 +2360,9 @@ Status:
             enum:
               - Online
               - Offline
+              - Starting
+              - Stopping
+              - Resyncing
           replication_status:
             type: array
             items:
@@ -2446,3 +2449,29 @@ CollectionNames:
   type: array
   items:
     type: string
+"All DBs":
+  description: "The names of all databases."
+  type: array
+  items:
+    type: string
+"All DBs Verbose":
+  description: "Description of all databases."
+  type: array
+  items:
+    type: object
+    properties:
+      db_name:
+        type: string
+        description: The name of the database.
+      bucket:
+        type: string
+        description: The Couchbase Server backing bucket for the database.
+      state:
+        description: Whether the database is online or offline.
+        type: string
+        enum:
+          - Online
+          - Offline
+          - Starting
+          - Stopping
+          - Resyncing
