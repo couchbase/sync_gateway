@@ -1300,6 +1300,68 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 	require.Equal(t, "1-a", migratedDb.Version)
 }
 
+// TestLegacyDuplicate tests the behaviour of GetDatabaseConfigs when the same database exists in legacy and non-legacy format
+func TestLegacyDuplicate(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	base.TestRequiresCollections(t)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
+
+	serverErr := make(chan error, 0)
+
+	// Set up test for persistent config
+	config := BootstrapStartupConfigForTest(t)
+	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
+	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
+	ctx := base.TestCtx(t)
+	sc, err := SetupServerContext(ctx, &config, true)
+	require.NoError(t, err)
+	defer func() {
+		sc.Close(ctx)
+		require.NoError(t, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- StartServer(ctx, &config, sc)
+	}()
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() {
+		fmt.Println("closing test bucket")
+		tb.Close(ctx)
+	}()
+
+	bucketName := tb.GetName()
+	groupID := sc.Config.Bootstrap.ConfigGroupID
+
+	// Set up a 3.1 database targeting the default collection
+	defaultDbName := "defaultDb"
+	newDefaultDbConfig := getTestDatabaseConfig(bucketName, defaultDbName, DefaultOnlyScopesConfig, "3.1")
+	_, err = sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, newDefaultDbConfig)
+	require.NoError(t, err)
+
+	// Insert a 3.0 db config for the same database name directly to the bucket
+	legacyVersion := "3.0"
+	legacyDbConfig := makeDbConfig(tb.GetName(), defaultDbName, nil)
+	legacyDatabaseConfig := &DatabaseConfig{
+		DbConfig: legacyDbConfig,
+		Version:  legacyVersion,
+	}
+	_, insertError := sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), legacyDatabaseConfig)
+	require.NoError(t, insertError)
+
+	// Fetch the registry, verify newDefaultDb still exists and defaultDb30 has not been migrated due to collection conflict
+	configs, err := sc.BootstrapContext.GetDatabaseConfigs(ctx, tb.GetName(), groupID)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(configs))
+	dbConfig := configs[0]
+	assert.Equal(t, "3.1", dbConfig.Version)
+}
+
 func getTestDatabaseConfig(bucketName string, dbName string, scopesConfig ScopesConfig, version string) *DatabaseConfig {
 	dbConfig := makeDbConfig(bucketName, dbName, scopesConfig)
 	return &DatabaseConfig{
