@@ -51,6 +51,9 @@ func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, cv 
 		}
 	} else {
 		docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocumentCV(ctx, rc.backingStore, doc, *cv)
+		if err != nil {
+			return DocumentRevision{}, err
+		}
 	}
 
 	rc.bypassStat.Add(1)
