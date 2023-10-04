@@ -135,6 +135,7 @@ const (
 	UnusedSeqRangePrefix   = SyncPrefix + "unusedSeqs:"
 
 	DCPBackfillSeqKey = SyncPrefix + "dcp_backfill"
+	SGRegistryKey     = SyncPrefix + "registry" // Registry of all SG databases defined for the bucket (for all group IDs)
 	SyncDataKey       = SyncPrefix + "syncdata"
 	SyncSeqKey        = SyncPrefix + "seq"
 

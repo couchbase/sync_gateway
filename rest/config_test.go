@@ -2272,7 +2272,7 @@ func TestPost30Config(t *testing.T) {
 				EnableXattrs:       &xattrs,
 				UseViews:           &useViews,
 			}
-			err = tb.Set("_sync:registry", 0, `{"foo":"bar"}`)
+			err = tb.Set(base.SGRegistryKey, 0, `{"foo":"bar"}`)
 			require.NoError(t, err)
 			_, err = sc.applyConfig(DatabaseConfig{DbConfig: dbConfig})
 			if persistentConfig {

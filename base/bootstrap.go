@@ -208,7 +208,7 @@ func (cc *CouchbaseCluster) HasPost30Config(bucket string) (bool, error) {
 	defer teardown()
 
 	var valuePtr interface{}
-	_, err = cc.configPersistence.loadConfig(b.DefaultCollection(), "_sync:registry", valuePtr)
+	_, err = cc.configPersistence.loadConfig(b.DefaultCollection(), SGRegistryKey, valuePtr)
 	return !IsDocNotFoundError(err), nil
 }
 
