@@ -2236,3 +2236,55 @@ func requireErrorWithX509UnknownAuthority(t testing.TB, actual, expected error) 
 		t.FailNow()
 	}
 }
+
+func TestPost30Config(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("test requires bootstrap connection and doesn't work with walrus")
+	}
+
+	for _, persistentConfig := range []bool{true, false} {
+		t.Run(fmt.Sprintf("persistentConfig=%v", persistentConfig), func(t *testing.T) {
+			config := bootstrapStartupConfigForTest(t)
+			sc, err := setupServerContext(&config, persistentConfig)
+			require.NoError(t, err)
+
+			serverErr := make(chan error)
+			defer func() {
+				sc.Close()
+				require.NoError(t, <-serverErr)
+			}()
+
+			go func() {
+				serverErr <- startServer(&config, sc)
+			}()
+			require.NoError(t, sc.waitForRESTAPIs())
+
+			xattrs := base.TestUseXattrs()
+			useViews := base.TestsDisableGSI()
+			tb := base.GetTestBucket(t)
+			defer tb.Close()
+
+			dbConfig := DbConfig{
+				BucketConfig:       bucketConfigFromTestBucket(tb),
+				Name:               "db",
+				AllowEmptyPassword: base.BoolPtr(true),
+				NumIndexReplicas:   base.UintPtr(0),
+				EnableXattrs:       &xattrs,
+				UseViews:           &useViews,
+			}
+			err = tb.Set(base.SGRegistryKey, 0, `{"foo":"bar"}`)
+			require.NoError(t, err)
+			_, err = sc.applyConfig(DatabaseConfig{DbConfig: dbConfig})
+			if persistentConfig {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "newer than Sync Gateway version 3.0")
+				require.Len(t, sc.AllDatabaseNames(), 0)
+			} else {
+				require.NoError(t, err)
+				require.Len(t, sc.AllDatabaseNames(), 1)
+				require.Contains(t, sc.AllDatabaseNames(), "db")
+
+			}
+		})
+	}
+}
