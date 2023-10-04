@@ -30,7 +30,7 @@ type ComparableVersion struct {
 }
 
 func zeroComparableVersion() *ComparableVersion {
-	return &ComparableVersion{
+	v := &ComparableVersion{
 		epoch:   0,
 		major:   0,
 		minor:   0,
@@ -39,6 +39,8 @@ func zeroComparableVersion() *ComparableVersion {
 		build:   0,
 		edition: "",
 	}
+	v.str = v.formatComparableVersion()
+	return v
 }
 
 // NewComparableVersionFromString parses a ComparableVersion from the given version string.
@@ -135,13 +137,17 @@ func (a *ComparableVersion) Less(b *ComparableVersion) bool {
 	return false
 }
 
-// AtLeastMinor returns true there is a major or minor downgrade.
+// AtLeastMinorDowngrade returns true there is a major or minor downgrade from a to b.
 func (a *ComparableVersion) AtLeastMinorDowngrade(b *ComparableVersion) bool {
 	if a.epoch > b.epoch {
 		return true
+	} else if a.epoch < b.epoch {
+		return false
 	}
 	if a.major > b.major {
 		return true
+	} else if a.major < b.major {
+		return false
 	}
 	if a.minor > b.minor {
 		return true
@@ -164,11 +170,10 @@ func (pv *ComparableVersion) UnmarshalJSON(val []byte) error {
 	if err != nil {
 		return err
 	}
-	if strVal == "" {
-		pv = zeroComparableVersion()
-		return nil
+	if strVal != "" {
+		pv.epoch, pv.major, pv.minor, pv.patch, pv.other, pv.build, pv.edition, err = parseComparableVersion(strVal)
 	}
-	pv.epoch, pv.major, pv.minor, pv.patch, pv.other, pv.build, pv.edition, err = parseComparableVersion(strVal)
+
 	pv.str = pv.formatComparableVersion()
 	return err
 }

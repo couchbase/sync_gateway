@@ -130,6 +130,8 @@ func TestComparableVersionEmptyStringJSON(t *testing.T) {
 	err := JSONUnmarshal([]byte(`""`), &version)
 	require.NoError(t, err)
 	require.True(t, zeroComparableVersion().Equal(&version))
+	require.Equal(t, "0.0.0", zeroComparableVersion().String())
+	require.Equal(t, "0.0.0", version.String())
 }
 
 func TestAtLeastMinorDowngradeVersion(t *testing.T) {
@@ -193,10 +195,19 @@ func TestAtLeastMinorDowngradeVersion(t *testing.T) {
 			versionB:       "1.0.0.1",
 			minorDowngrade: false,
 		},
-
 		{
 			versionA:       "1.0.0-EE",
 			versionB:       "1.1.0-CE",
+			minorDowngrade: false,
+		},
+		{
+			versionA:       "2.2.0",
+			versionB:       "1.1.0",
+			minorDowngrade: true,
+		},
+		{
+			versionA:       "1.1.0",
+			versionB:       "2.2.0",
 			minorDowngrade: false,
 		},
 	}
