@@ -62,33 +62,6 @@ const (
 
 const StatsGroupKeySyncGateway = "syncgateway"
 
-const (
-	PrometheusValueTypeGauge   = "gauge"
-	PrometheusValueTypeCounter = "counter"
-
-	StatUnitNoUnits       = ""
-	StatUnitPercent       = "percent"
-	StatUnitBytes         = "bytes"
-	StatUnitNanoseconds   = "nanoseconds"
-	StatUnitSeconds       = "seconds"
-	StatUnitUnixTimestamp = "unix timestamp"
-
-	StatFormatInt      = "int"
-	StatFormatFloat    = "float"
-	StatFormatDuration = "duration"
-	StatFormatBool     = "bool"
-
-	StatAddedVersion3dot0dot0 = "3.0.0"
-	StatAddedVersion3dot1dot0 = "3.1.0"
-	StatAddedVersion3dot2dot0 = "3.2.0"
-
-	StatDeprecatedVersionNotDeprecated = ""
-
-	StatStabilityCommitted = "committed"
-	StatStabilityVolatile  = "volatile"
-	StatStabilityInternal  = "internal"
-)
-
 type SgwStats struct {
 	GlobalStats     *GlobalStat         `json:"global"`
 	DbStats         map[string]*DbStats `json:"per_db"`
