@@ -1197,7 +1197,7 @@ func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata 
 		tmpData := SyncData{}
 		unmarshalErr := base.JSONUnmarshal(xdata, &tmpData)
 		if unmarshalErr != nil {
-			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalVV).  Error: %v", base.UD(doc.ID), unmarshalErr))
+			return base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalVV).  Error: %w", base.UD(doc.ID), unmarshalErr)
 		}
 		doc.SyncData.HLV = tmpData.HLV
 		doc._rawBody = data

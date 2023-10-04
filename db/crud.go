@@ -26,6 +26,8 @@ import (
 
 const (
 	kMaxRecentSequences = 20 // Maximum number of sequences stored in RecentSequences before pruning is triggered
+	// hlvExpandMacroCASValue causes the field to be populated by CAS value by macro expansion
+	hlvExpandMacroCASValue = math.MaxUint64
 )
 
 // ErrForbidden is returned when the user requests a document without a revision that they do not have access to.
@@ -869,7 +871,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 	return nil
 }
 
-// updateMutateInSpec updates the mutate in options with the appropriate mutate in spec needed based off the outcome in updateHLV
+// updateMutateInSpec returns the mutate in spec needed for the document update based off the outcome in updateHLV
 func updateMutateInSpec(hlv HybridLogicalVector) []sgbucket.MacroExpansionSpec {
 	var outputSpec []sgbucket.MacroExpansionSpec
 	if hlv.Version == math.MaxUint64 {
@@ -889,19 +891,15 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 	switch docUpdateEvent.eventType {
 	case BlipWriteEvent:
 		// preserve any other logic on the HLV that has been done by the client, only update to cvCAS will be needed
-		d.HLV.CurrentVersionCAS = math.MaxUint64 // this will be an alias to "should macro expand"
+		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
 	case ImportEvent:
 		// VV should remain unchanged
 	case SGWriteEvent:
 		// add a new entry to the version vector
 		newVVEntry := CurrentVersionVector{}
-		bucketUUID, err := db.dbCtx.Bucket.UUID()
-		if err != nil {
-			return nil, err
-		}
-		newVVEntry.SourceID = bucketUUID
-		newVVEntry.VersionCAS = math.MaxUint64 // this will be an alias to "should macro expand"
-		err = d.SyncData.HLV.AddVersion(newVVEntry)
+		newVVEntry.SourceID = db.dbCtx.BucketUUID
+		newVVEntry.VersionCAS = hlvExpandMacroCASValue
+		err := d.SyncData.HLV.AddVersion(newVVEntry)
 		if err != nil {
 			return nil, err
 		}
