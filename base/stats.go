@@ -30,6 +30,7 @@ const (
 
 	NamespaceKey                 = "sgw"
 	ResourceUtilizationSubsystem = "resource_utilization"
+	ConfigSubsystem              = "config"
 
 	SubsystemCacheKey           = "cache"
 	SubsystemDatabaseKey        = "database"
@@ -78,15 +79,15 @@ var SyncGatewayStats *SgwStats
 var SkipPrometheusStatsRegistration bool
 
 func NewSyncGatewayStats() (*SgwStats, error) {
-	sgwStats := SgwStats{
-		GlobalStats: &GlobalStat{},
-		DbStats:     map[string]*DbStats{},
-	}
-
-	err := sgwStats.GlobalStats.initResourceUtilizationStats()
+	globalStats, err := newGlobalStat()
 	if err != nil {
 		return nil, err
 	}
+	sgwStats := SgwStats{
+		GlobalStats: globalStats,
+		DbStats:     map[string]*DbStats{},
+	}
+
 	err = sgwStats.initReplicationStats()
 	if err != nil {
 		return nil, err
@@ -131,6 +132,31 @@ func (s *SgwStats) String() string {
 
 type GlobalStat struct {
 	ResourceUtilization *ResourceUtilization `json:"resource_utilization"`
+	ConfigStat          *ConfigStat          `json:"config"`
+}
+
+func newGlobalStat() (*GlobalStat, error) {
+	g := &GlobalStat{}
+	err := g.initResourceUtilizationStats()
+	if err != nil {
+		return nil, err
+	}
+	err = g.initConfigStats()
+	if err != nil {
+		return nil, err
+	}
+	return g, nil
+}
+
+func (g *GlobalStat) initConfigStats() error {
+	configStat := &ConfigStat{}
+	var err error
+	configStat.DatabaseBucketMismatches, err = NewIntStat(ConfigSubsystem, "database_config_bucket_mismatches", nil, nil, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	g.ConfigStat = configStat
+	return nil
 }
 
 func (g *GlobalStat) initResourceUtilizationStats() error {
@@ -274,6 +300,11 @@ type ResourceUtilization struct {
 	WarnCount *SgwIntStat `json:"warn_count"`
 	// The total uptime.
 	Uptime *SgwDurStat `json:"uptime"`
+}
+
+type ConfigStat struct {
+	// The number of times the bucket specified in a database config doesn't match the bucket it's found in.
+	DatabaseBucketMismatches *SgwIntStat `json:"database_config_bucket_mismatches"`
 }
 
 type DbStats struct {

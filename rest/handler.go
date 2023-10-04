@@ -570,6 +570,24 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	return nil
 }
 
+// removeCorruptConfigIfExists will remove the config from the bucket and remove it from the map if it exists on the invalid database config map
+func (h *handler) removeCorruptConfigIfExists(ctx context.Context, bucket, configGroupID, dbName string) error {
+	_, ok := h.server.invalidDatabaseConfigTracking.exists(dbName)
+	if !ok {
+		// exit early of it doesn't exist
+		return nil
+	}
+	// remove the bad config from the bucket
+	err := h.server.BootstrapContext.DeleteConfig(ctx, bucket, configGroupID, dbName)
+	if err != nil {
+		return err
+	}
+	// delete the database name form the invalid database map on server context
+	h.server.invalidDatabaseConfigTracking.remove(dbName)
+
+	return nil
+}
+
 func (h *handler) logRequestLine() {
 	// Check Log Level first, as SanitizeRequestURL is expensive to evaluate.
 	if !base.LogInfoEnabled(base.KeyHTTP) {
