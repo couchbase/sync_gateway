@@ -442,7 +442,7 @@ func getMinNodeVersion(cfg cbgt.Cfg) (*ComparableVersion, error) {
 			return nil, fmt.Errorf("failed to get version of node %v: %w", MD(node.HostPort).Redact(), err)
 		}
 		if nodeVersion == nil {
-			nodeVersion = zeroComparableVersion
+			nodeVersion = zeroComparableVersion()
 		}
 		if minVersion == nil || nodeVersion.Less(minVersion) {
 			minVersion = nodeVersion

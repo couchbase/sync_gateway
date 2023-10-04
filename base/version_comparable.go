@@ -9,7 +9,6 @@
 package base
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -30,14 +29,16 @@ type ComparableVersion struct {
 	str                               string
 }
 
-var zeroComparableVersion = &ComparableVersion{
-	epoch:   0,
-	major:   0,
-	minor:   0,
-	patch:   0,
-	other:   0,
-	build:   0,
-	edition: "",
+func zeroComparableVersion() *ComparableVersion {
+	return &ComparableVersion{
+		epoch:   0,
+		major:   0,
+		minor:   0,
+		patch:   0,
+		other:   0,
+		build:   0,
+		edition: "",
+	}
 }
 
 // NewComparableVersionFromString parses a ComparableVersion from the given version string.
@@ -162,6 +163,10 @@ func (pv *ComparableVersion) UnmarshalJSON(val []byte) error {
 	err := JSONUnmarshal(val, &strVal)
 	if err != nil {
 		return err
+	}
+	if strVal == "" {
+		pv = zeroComparableVersion()
+		return nil
 	}
 	pv.epoch, pv.major, pv.minor, pv.patch, pv.other, pv.build, pv.edition, err = parseComparableVersion(strVal)
 	pv.str = pv.formatComparableVersion()
@@ -307,7 +312,7 @@ func extractComparableVersionComponents(version string) (epoch, major, minor, pa
 	}
 
 	if major == "" || minor == "" || patch == "" {
-		return "", "", "", "", "", "", "", errors.New("version requires at least major.minor.patch components")
+		return "", "", "", "", "", "", "", fmt.Errorf("version %q requires at least major.minor.patch components", version)
 	}
 
 	return epoch, major, minor, patch, other, build, edition, nil

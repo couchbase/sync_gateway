@@ -115,7 +115,7 @@ func TestInvalidComparableVersion(t *testing.T) {
 	}
 }
 
-func TestJSONRoundTrip(t *testing.T) {
+func TestComparableVersionJSONRoundTrip(t *testing.T) {
 	json, err := JSONMarshal(ProductVersion)
 	require.NoError(t, err)
 	var version ComparableVersion
@@ -123,6 +123,13 @@ func TestJSONRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ProductVersion.Equal(&version))
 	require.Equal(t, ProductVersion.String(), version.String())
+}
+
+func TestComparableVersionEmptyStringJSON(t *testing.T) {
+	var version ComparableVersion
+	err := JSONUnmarshal([]byte(`""`), &version)
+	require.NoError(t, err)
+	require.True(t, zeroComparableVersion().Equal(&version))
 }
 
 func TestAtLeastMinorDowngradeVersion(t *testing.T) {
