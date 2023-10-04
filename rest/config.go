@@ -1464,7 +1464,8 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 		if getErr == base.ErrNotFound {
 			continue
 		} else if getErr != nil {
-			return fmt.Errorf("Error retrieving 3.0 config for bucket: %s, groupID: %s: %w", bucketName, groupID, getErr)
+			base.InfofCtx(ctx, base.KeyConfig, "Unable to retrieve 3.0 config during config migration for bucket: %s, groupID: %s: %w", base.MD(bucketName), base.MD(groupID), getErr)
+			continue
 		}
 
 		base.InfofCtx(ctx, base.KeyConfig, "Found legacy persisted config for database %s - migrating to db registry.", base.MD(dbConfig.Name))
@@ -1472,9 +1473,10 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 		if insertErr != nil {
 			if insertErr == base.ErrAlreadyExists {
 				base.DebugfCtx(ctx, base.KeyConfig, "Found legacy config for database %s, but already exists in registry.", base.MD(dbConfig.Name))
+			} else {
+				base.InfofCtx(ctx, base.KeyConfig, "Unable to persist migrated v3.0 config for bucket %s groupID %s: %w", base.MD(bucketName), base.MD(groupID), insertErr)
 				continue
 			}
-			return fmt.Errorf("Error migrating v3.0 config for bucket %s groupID %s: %w", base.MD(bucketName), base.MD(groupID), insertErr)
 		}
 		removeErr := sc.BootstrapContext.Connection.DeleteMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), legacyCas)
 		if removeErr != nil {
