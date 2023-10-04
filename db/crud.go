@@ -317,7 +317,7 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		revision, err = db.revisionCache.Get(ctx, docid, revid, includeBody, RevCacheOmitDelta)
+		revision, err = db.revisionCache.Get(ctx, docid, revid, nil, includeBody, RevCacheOmitDelta)
 	} else {
 		// No rev ID given, so load active revision
 		revision, err = db.revisionCache.GetActive(ctx, docid, includeBody)
@@ -381,7 +381,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		return nil, nil, nil
 	}
 
-	fromRevision, err := db.revisionCache.Get(ctx, docID, fromRevID, RevCacheOmitBody, RevCacheIncludeDelta)
+	fromRevision, err := db.revisionCache.Get(ctx, docID, fromRevID, nil, RevCacheOmitBody, RevCacheIncludeDelta)
 
 	// If the fromRevision is a removal cache entry (no body), but the user has access to that removal, then just
 	// return 404 missing to indicate that the body of the revision is no longer available.
@@ -424,7 +424,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
 		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)
-		toRevision, err := db.revisionCache.Get(ctx, docID, toRevID, RevCacheOmitBody, RevCacheIncludeDelta)
+		toRevision, err := db.revisionCache.Get(ctx, docID, toRevID, nil, RevCacheOmitBody, RevCacheIncludeDelta)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -442,7 +442,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
 		if deleted {
 			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRevID, toRevision, deleted, nil)
-			db.revisionCache.UpdateDelta(ctx, docID, fromRevID, revCacheDelta)
+			db.revisionCache.UpdateDelta(ctx, docID, fromRevID, nil, revCacheDelta)
 			return &revCacheDelta, nil, nil
 		}
 
@@ -482,7 +482,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		revCacheDelta := newRevCacheDelta(deltaBytes, fromRevID, toRevision, deleted, toRevAttStorageMeta)
 
 		// Write the newly calculated delta back into the cache before returning
-		db.revisionCache.UpdateDelta(ctx, docID, fromRevID, revCacheDelta)
+		db.revisionCache.UpdateDelta(ctx, docID, fromRevID, nil, revCacheDelta)
 		return &revCacheDelta, nil, nil
 	}
 
@@ -556,6 +556,28 @@ func (col *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string)
 		// No such revision; let the caller proceed and return a 404
 		return nil
 	}
+}
+
+func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Document) (bodyBytes []byte, body Body, attachments AttachmentsMeta, err error) {
+	bodyBytes, err = doc.BodyBytes(ctx)
+	if err != nil {
+		base.WarnfCtx(ctx, "Marshal error when retrieving active current revision body: %v", err)
+		return nil, nil, nil, err
+	}
+
+	body = doc._body
+	attachments = doc.Attachments
+
+	// handle backup revision inline attachments, or pre-2.5 meta
+	if inlineAtts, cleanBodyBytes, cleanBody, err := extractInlineAttachments(bodyBytes); err != nil {
+		return nil, nil, nil, err
+	} else if len(inlineAtts) > 0 {
+		// we found some inline attachments, so merge them with attachments, and update the bodies
+		attachments = mergeAttachments(inlineAtts, attachments)
+		bodyBytes = cleanBodyBytes
+		body = cleanBody
+	}
+	return bodyBytes, body, attachments, err
 }
 
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
@@ -1987,10 +2009,10 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 					}
 				}
 			}
-
+			// possible here we need to identify if we are removing from cv cache or rev cache
 			// Prior to saving doc, remove the revision in cache
 			if createNewRevIDSkipped {
-				db.revisionCache.Remove(doc.ID, doc.CurrentRev)
+				db.revisionCache.Remove(doc.ID, doc.CurrentRev, nil)
 			}
 
 			base.DebugfCtx(ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
@@ -2061,6 +2083,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Expiry:           doc.Expiry,
 			Deleted:          doc.History[newRevID].Deleted,
 			_shallowCopyBody: storedDoc.Body(ctx),
+			//CV:               &CurrentVersionVector{SourceID: doc.HLV.SourceID, VersionCAS: doc.HLV.Version}, // currently nil this as work to add update to HKLv is on another branch
+			CV: nil,
 		}
 
 		if createNewRevIDSkipped {

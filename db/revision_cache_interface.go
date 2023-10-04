@@ -31,14 +31,14 @@ type RevisionCache interface {
 	// Get returns the given revision, and stores if not already cached.
 	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
 	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
-	Get(ctx context.Context, docID, revID string, includeBody bool, includeDelta bool) (DocumentRevision, error)
+	Get(ctx context.Context, docID, revID string, cv *CurrentVersionVector, includeBody, includeDelta bool) (DocumentRevision, error)
 
 	// GetActive returns the current revision for the given doc ID, and stores if not already cached.
 	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
 	GetActive(ctx context.Context, docID string, includeBody bool) (docRev DocumentRevision, err error)
 
 	// Peek returns the given revision if present in the cache
-	Peek(ctx context.Context, docID, revID string) (docRev DocumentRevision, found bool)
+	Peek(ctx context.Context, docID, revID string, cv *CurrentVersionVector) (docRev DocumentRevision, found bool)
 
 	// Put will store the given docRev in the cache
 	Put(ctx context.Context, docRev DocumentRevision)
@@ -47,10 +47,10 @@ type RevisionCache interface {
 	Upsert(ctx context.Context, docRev DocumentRevision)
 
 	// Remove eliminates a revision in the cache.
-	Remove(docID, revID string)
+	Remove(docID, revID string, cv *CurrentVersionVector)
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
-	UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta)
+	UpdateDelta(ctx context.Context, docID, revID string, cv *CurrentVersionVector, toDelta RevisionDelta)
 }
 
 const (
@@ -104,6 +104,7 @@ func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 type RevisionCacheBackingStore interface {
 	GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error)
 	getRevision(ctx context.Context, doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error)
+	getCurrentVersion(ctx context.Context, doc *Document) ([]byte, Body, AttachmentsMeta, error)
 }
 
 // DocumentRevision stored and returned by the rev cache
@@ -119,6 +120,7 @@ type DocumentRevision struct {
 	Delta       *RevisionDelta
 	Deleted     bool
 	Removed     bool // True if the revision is a removal.
+	CV          *CurrentVersionVector
 
 	_shallowCopyBody Body // an unmarshalled body that can produce shallow copies
 }
@@ -223,6 +225,12 @@ type IDAndRev struct {
 	RevID string
 }
 
+type IDandCV struct {
+	DocID   string
+	Version uint64
+	Source  string
+}
+
 // RevisionDelta stores data about a delta between a revision and ToRevID.
 type RevisionDelta struct {
 	ToRevID               string                  // Target revID for the delta
@@ -259,6 +267,22 @@ func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore,
 	return revCacheLoaderForDocument(ctx, backingStore, doc, id.RevID)
 }
 
+func revCacheLoaderForCv(ctx context.Context, backingStore RevisionCacheBackingStore, id IDandCV, unmarshalBody bool) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
+	cv := CurrentVersionVector{
+		VersionCAS: id.Version,
+		SourceID:   id.Source,
+	}
+	var doc *Document
+	unmarshalLevel := DocUnmarshalSync
+	if unmarshalBody {
+		unmarshalLevel = DocUnmarshalAll
+	}
+	if doc, err = backingStore.GetDocument(ctx, id.DocID, unmarshalLevel); doc == nil {
+		return bodyBytes, body, history, channels, removed, attachments, deleted, expiry, err
+	}
+	return revCacheLoaderForDocumentCV(ctx, backingStore, doc, cv)
+}
+
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
 func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, revid string) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
 	if bodyBytes, body, attachments, err = backingStore.getRevision(ctx, doc, revid); err != nil {
@@ -284,6 +308,16 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 	}
 	history = encodeRevisions(ctx, doc.ID, validatedHistory)
 	channels = doc.History[revid].Channels
+
+	return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, err
+}
+
+func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, cv CurrentVersionVector) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
+	if bodyBytes, body, attachments, err = backingStore.getCurrentVersion(ctx, doc); err != nil {
+		// we need implementation of IsChannelRemoval for CV here.
+		// pending CBG-3213 support of channel removal for CV
+	}
+	channels = doc.currentChannels()
 
 	return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, err
 }

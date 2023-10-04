@@ -31,7 +31,7 @@ func NewBypassRevisionCache(backingStore RevisionCacheBackingStore, bypassStat *
 }
 
 // Get fetches the revision for the given docID and revID immediately from the bucket.
-func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, includeBody bool, includeDelta bool) (docRev DocumentRevision, err error) {
+func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, cv *CurrentVersionVector, includeBody, includeDelta bool) (docRev DocumentRevision, err error) {
 
 	unmarshalLevel := DocUnmarshalSync
 	if includeBody {
@@ -41,13 +41,16 @@ func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, inc
 	if err != nil {
 		return DocumentRevision{}, err
 	}
-
-	docRev = DocumentRevision{
-		RevID: revID,
-	}
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, revID)
-	if err != nil {
-		return DocumentRevision{}, err
+	if cv == nil {
+		docRev = DocumentRevision{
+			RevID: revID,
+		}
+		docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, revID)
+		if err != nil {
+			return DocumentRevision{}, err
+		}
+	} else {
+		docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocumentCV(ctx, rc.backingStore, doc, *cv)
 	}
 
 	rc.bypassStat.Add(1)
@@ -82,7 +85,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, incl
 }
 
 // Peek is a no-op for a BypassRevisionCache, and always returns a false 'found' value.
-func (rc *BypassRevisionCache) Peek(ctx context.Context, docID, revID string) (docRev DocumentRevision, found bool) {
+func (rc *BypassRevisionCache) Peek(ctx context.Context, docID, revID string, cv *CurrentVersionVector) (docRev DocumentRevision, found bool) {
 	return DocumentRevision{}, false
 }
 
@@ -96,11 +99,11 @@ func (rc *BypassRevisionCache) Upsert(ctx context.Context, docRev DocumentRevisi
 	// no-op
 }
 
-func (rc *BypassRevisionCache) Remove(docID, revID string) {
+func (rc *BypassRevisionCache) Remove(docID, revID string, cv *CurrentVersionVector) {
 	// nop
 }
 
 // UpdateDelta is a no-op for a BypassRevisionCache
-func (rc *BypassRevisionCache) UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta) {
+func (rc *BypassRevisionCache) UpdateDelta(ctx context.Context, docID, revID string, cv *CurrentVersionVector, toDelta RevisionDelta) {
 	// no-op
 }
