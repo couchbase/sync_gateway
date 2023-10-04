@@ -28,6 +28,12 @@ type ConfigManager interface {
 	UpdateConfig(ctx context.Context, bucket, groupID, dbName string, updateCallback func(bucketConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error)) (newCAS uint64, err error)
 	// DeleteConfig removes a database config for a given bucket, config group ID and database name.
 	DeleteConfig(ctx context.Context, bucket, dbName, groupID string) (err error)
+
+	// CheckMinorDowngrade returns an error the sgVersion represents at least minor version downgrade from the version in the bucket.
+	CheckMinorDowngrade(ctx context.Context, bucketName string, sgVersion base.ComparableVersion) error
+
+	// SetSGVersion updates the Sync Gateway version in the bucket registry
+	SetSGVersion(ctx context.Context, bucketName string, sgVersion base.ComparableVersion) error
 }
 
 type dbConfigNameOnly struct {
@@ -774,4 +780,39 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 // standardMetadataID returns either the dbName or a base64 encoded SHA256 hash of the dbName, whichever is shorter.
 func (b *bootstrapContext) standardMetadataID(dbName string) string {
 	return base.SerializeIfLonger(dbName, 40)
+}
+
+// CheckMinorDowngrade returns an error the sgVersion represents at least minor version downgrade from the version in the bucket.
+func (b *bootstrapContext) CheckMinorDowngrade(ctx context.Context, bucketName string, sgVersion base.ComparableVersion) error {
+	registry, err := b.getGatewayRegistry(ctx, bucketName)
+	if err != nil {
+		return err
+	}
+
+	if registry.SGVersion.AtLeastMinorDowngrade(&sgVersion) {
+		err := base.RedactErrorf("Bucket %q has metadata from a newer Sync Gateway %s. Current version of Sync Gateway is %s.", base.MD(bucketName), registry.SGVersion, sgVersion)
+		return err
+	}
+
+	return nil
+}
+
+// SetSGVersion will update the registry in a bucket with a version of Sync Gateway. This will not perform a write if the version is already up to date.
+func (b *bootstrapContext) SetSGVersion(ctx context.Context, bucketName string, sgVersion base.ComparableVersion) error {
+	registry, err := b.getGatewayRegistry(ctx, bucketName)
+	if err != nil {
+		return err
+	}
+	if !registry.SGVersion.Less(&sgVersion) {
+		return nil
+	}
+	originalRegistryVersion := registry.SGVersion
+	registry.SGVersion = sgVersion
+	err = b.setGatewayRegistry(ctx, bucketName, registry)
+	if err != nil {
+		base.WarnfCtx(ctx, "Error setting gateway registry in bucket %q: %q", base.MD(bucketName), err)
+		return err
+	}
+	base.InfofCtx(ctx, base.KeyConfig, "Updated Sync Gateway version number in bucket %q from %s to %s", base.MD(bucketName), originalRegistryVersion, sgVersion)
+	return nil
 }

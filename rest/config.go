@@ -1439,21 +1439,6 @@ func (sc *ServerContext) _fetchAndLoadDatabase(nonContextStruct base.NonCancella
 	return true, nil
 }
 
-// stampSGVersion looks at each of the GatewayRegistry and updates the Sync Gateway version to start them on
-func (sc *ServerContext) stampSGVersion(ctx context.Context, bucketName string, registry *GatewayRegistry) error {
-	if !registry.SGVersion.Less(&sc.BootstrapContext.sgVersion) {
-		return nil
-	}
-	registry.SGVersion = sc.BootstrapContext.sgVersion
-	err := sc.BootstrapContext.setGatewayRegistry(ctx, bucketName, registry)
-	if err != nil {
-		base.WarnfCtx(ctx, "Error setting gateway registry in bucket %q: %q", base.MD(bucketName), err)
-		return err
-	}
-	base.InfofCtx(ctx, base.KeyConfig, "Updated Sync Gateway version number in bucket %q from %s to %s", base.MD(bucketName), registry.SGVersion, sc.BootstrapContext.sgVersion)
-	return nil
-}
-
 // migrateV30Configs checks for configs stored in the 3.0 location, and migrates them to the db registry
 func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 	groupID := sc.Config.Bootstrap.ConfigGroupID
@@ -1768,17 +1753,9 @@ func (sc *ServerContext) applyConfigs(ctx context.Context, dbNameConfigs map[str
 func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContext, cnf DatabaseConfig, failFast, isInitialStartup bool) (applied bool, err error) {
 	ctx := nonContextStruct.Ctx
 
-	registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, *cnf.Bucket)
-	if err != nil {
-		return false, err
-	}
-
 	nodeSGVersion := sc.BootstrapContext.sgVersion
-	registrySGVersion := registry.SGVersion
-
-	if registrySGVersion.AtLeastMinorDowngrade(&nodeSGVersion) {
-		err := base.RedactErrorf("Can not load a database %q from bucket %q with which has metadata from a newer Sync Gateway %s. Current version of Sync Gateway is %s.", base.MD(cnf.Name), base.MD(*cnf.Bucket), registrySGVersion, nodeSGVersion)
-		base.WarnfCtx(ctx, "%s", err)
+	err = sc.BootstrapContext.CheckMinorDowngrade(ctx, *cnf.Bucket, nodeSGVersion)
+	if err != nil {
 		return false, err
 	}
 	// 3.0.0 doesn't write a SGVersion, but everything else will
@@ -1825,9 +1802,9 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	// by any output
 	cnf.Version = ""
 
-	err = sc.stampSGVersion(ctx, *cnf.Bucket, registry)
+	err = sc.BootstrapContext.SetSGVersion(ctx, *cnf.Bucket, nodeSGVersion)
 	if err != nil {
-		return false, err
+		return false, nil
 	}
 
 	// Prevent database from being unsuspended when it is suspended

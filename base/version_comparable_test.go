@@ -166,6 +166,32 @@ func TestAtLeastMinorDowngradeVersion(t *testing.T) {
 			versionB:       "1.1.0",
 			minorDowngrade: false,
 		},
+		{
+			versionA:       "1.0.0",
+			versionB:       "1.0.0.1",
+			minorDowngrade: false,
+		},
+		{
+			versionA:       "1.0.0.1",
+			versionB:       "1.0.0",
+			minorDowngrade: false,
+		},
+		{
+			versionA:       "1.0.0.1",
+			versionB:       "1.0.0.2",
+			minorDowngrade: false,
+		},
+		{
+			versionA:       "1.0.0.2",
+			versionB:       "1.0.0.1",
+			minorDowngrade: false,
+		},
+
+		{
+			versionA:       "1.0.0-EE",
+			versionB:       "1.1.0-CE",
+			minorDowngrade: false,
+		},
 	}
 
 	for _, test := range testCases {

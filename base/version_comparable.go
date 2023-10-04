@@ -57,6 +57,9 @@ func NewComparableVersionFromString(version string) (*ComparableVersion, error) 
 		edition: edition,
 	}
 	v.str = v.formatComparableVersion()
+	if v.str != version {
+		return nil, fmt.Errorf("version string %q is not equal to formatted version string %q", version, v.str)
+	}
 	return v, nil
 }
 
