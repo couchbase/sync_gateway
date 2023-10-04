@@ -298,6 +298,7 @@ func (rc *LRURevisionCache) upsertRevIDCache(ctx context.Context, docRev Documen
 	value.store(docRev)
 }
 
+// upsertHLVCache will upsert a value to the cache updating both the CV lookup map and the revID lookup map
 func (rc *LRURevisionCache) upsertHLVCache(ctx context.Context, docRev DocumentRevision) {
 	key := IDandCV{DocID: docRev.DocID, Source: docRev.CV.SourceID, Version: docRev.CV.VersionCAS}
 	legacyKey := IDAndRev{DocID: docRev.DocID, RevID: docRev.RevID}
@@ -341,6 +342,7 @@ func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *r
 	return
 }
 
+// getValueByCV gets a value from rev cache by CV, if not found and create is true, will add the value to cache and both lookup maps
 func (rc *LRURevisionCache) getValueByCV(docID string, revID string, cv *CurrentVersionVector, create bool) (value *revCacheValue) {
 	if docID == "" || cv == nil {
 		return nil
@@ -376,6 +378,7 @@ func (rc *LRURevisionCache) Remove(docID, revID string, cv *CurrentVersionVector
 	rc.removeFromCacheIDRev(docID, revID)
 }
 
+// removeFromCacheCV removes an entry from rev cache by CV
 func (rc *LRURevisionCache) removeFromCacheCV(docID string, cv *CurrentVersionVector) {
 	key := IDandCV{DocID: docID, Source: cv.SourceID, Version: cv.VersionCAS}
 	rc.lock.Lock()
@@ -388,6 +391,7 @@ func (rc *LRURevisionCache) removeFromCacheCV(docID string, cv *CurrentVersionVe
 	delete(rc.hlvCache, key)
 }
 
+// removeFromCacheIDRev removes an entry from rev cache by revID
 func (rc *LRURevisionCache) removeFromCacheIDRev(docID, revID string) {
 	key := IDAndRev{DocID: docID, RevID: revID}
 	rc.lock.Lock()

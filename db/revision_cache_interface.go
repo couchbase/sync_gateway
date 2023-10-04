@@ -312,6 +312,7 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 	return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, err
 }
 
+// revCacheLoaderForDocumentCV used either during cache miss (from revCacheLoaderForCv), or used directly when getting current active CV from cache
 func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, cv CurrentVersionVector) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
 	if bodyBytes, body, attachments, err = backingStore.getCurrentVersion(ctx, doc); err != nil {
 		// we need implementation of IsChannelRemoval for CV here.

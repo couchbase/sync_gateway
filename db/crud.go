@@ -2009,7 +2009,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 					}
 				}
 			}
-			// possible here we need to identify if we are removing from cv cache or rev cache
+
 			// Prior to saving doc, remove the revision in cache
 			if createNewRevIDSkipped {
 				db.revisionCache.Remove(doc.ID, doc.CurrentRev, nil)
@@ -2083,8 +2083,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Expiry:           doc.Expiry,
 			Deleted:          doc.History[newRevID].Deleted,
 			_shallowCopyBody: storedDoc.Body(ctx),
-			//CV:               &CurrentVersionVector{SourceID: doc.HLV.SourceID, VersionCAS: doc.HLV.Version}, // currently nil this as work to add update to HKLv is on another branch
-			CV: nil,
+			CV:               nil, // currently nil this as work to add update to HLV is on another branch
 		}
 
 		if createNewRevIDSkipped {
