@@ -70,6 +70,7 @@ type RestTesterConfig struct {
 	serverless                      bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
 	collectionConfig                collectionConfiguration
 	numCollections                  int
+	syncGatewayVersion              *base.ComparableVersion // alternate version of Sync Gateway to use on startup
 	allowDbConfigEnvVars            *bool
 }
 
@@ -260,6 +261,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB), &sc, rt.RestTesterConfig.PersistentConfig)
 	rt.RestTesterServerContext.allowScopesInPersistentConfig = true
+	if rt.RestTesterConfig.syncGatewayVersion != nil {
+		rt.RestTesterServerContext.BootstrapContext.sgVersion = *rt.RestTesterConfig.syncGatewayVersion
+	}
 	ctx := rt.Context()
 
 	if !base.ServerIsWalrus(sc.Bootstrap.Server) {
