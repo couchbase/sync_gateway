@@ -9,11 +9,9 @@
 package base
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 const (
@@ -28,18 +26,21 @@ type ComparableVersion struct {
 	epoch, major, minor, patch, other uint8
 	build                             uint16
 	edition                           productEdition
-	strOnce                           sync.Once
 	str                               string
 }
 
-var zeroComparableVersion = &ComparableVersion{
-	epoch:   0,
-	major:   0,
-	minor:   0,
-	patch:   0,
-	other:   0,
-	build:   0,
-	edition: "",
+func zeroComparableVersion() *ComparableVersion {
+	v := &ComparableVersion{
+		epoch:   0,
+		major:   0,
+		minor:   0,
+		patch:   0,
+		other:   0,
+		build:   0,
+		edition: "",
+	}
+	v.str = v.formatComparableVersion()
+	return v
 }
 
 // NewComparableVersionFromString parses a ComparableVersion from the given version string.
@@ -49,7 +50,7 @@ func NewComparableVersionFromString(version string) (*ComparableVersion, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &ComparableVersion{
+	v := &ComparableVersion{
 		epoch:   epoch,
 		major:   major,
 		minor:   minor,
@@ -57,7 +58,12 @@ func NewComparableVersionFromString(version string) (*ComparableVersion, error) 
 		other:   other,
 		build:   build,
 		edition: edition,
-	}, nil
+	}
+	v.str = v.formatComparableVersion()
+	if v.str != version {
+		return nil, fmt.Errorf("version string %q is not equal to formatted version string %q", version, v.str)
+	}
+	return v, nil
 }
 
 func NewComparableVersion(majorStr, minorStr, patchStr, otherStr, buildStr, editionStr string) (*ComparableVersion, error) {
@@ -65,7 +71,7 @@ func NewComparableVersion(majorStr, minorStr, patchStr, otherStr, buildStr, edit
 	if err != nil {
 		return nil, err
 	}
-	return &ComparableVersion{
+	v := &ComparableVersion{
 		epoch:   comparableVersionEpoch,
 		major:   major,
 		minor:   minor,
@@ -73,7 +79,9 @@ func NewComparableVersion(majorStr, minorStr, patchStr, otherStr, buildStr, edit
 		other:   other,
 		build:   build,
 		edition: edition,
-	}, nil
+	}
+	v.str = v.formatComparableVersion()
+	return v, nil
 }
 
 // Equal returns true if pv is equal to b
@@ -129,10 +137,18 @@ func (a *ComparableVersion) Less(b *ComparableVersion) bool {
 	return false
 }
 
-func (pv *ComparableVersion) String() string {
-	pv.strOnce.Do(func() {
-		pv.str = pv.formatComparableVersion()
-	})
+// AtLeastMinorDowngrade returns true there is a major or minor downgrade from a to b.
+func (a *ComparableVersion) AtLeastMinorDowngrade(b *ComparableVersion) bool {
+	if a.epoch != b.epoch {
+		return a.epoch > b.epoch
+	}
+	if a.major != b.major {
+		return a.major > b.major
+	}
+	return a.minor > b.minor
+}
+
+func (pv ComparableVersion) String() string {
 	return pv.str
 }
 
@@ -147,7 +163,11 @@ func (pv *ComparableVersion) UnmarshalJSON(val []byte) error {
 	if err != nil {
 		return err
 	}
-	pv.epoch, pv.major, pv.minor, pv.patch, pv.other, pv.build, pv.edition, err = parseComparableVersion(strVal)
+	if strVal != "" {
+		pv.epoch, pv.major, pv.minor, pv.patch, pv.other, pv.build, pv.edition, err = parseComparableVersion(strVal)
+	}
+
+	pv.str = pv.formatComparableVersion()
 	return err
 }
 
@@ -290,7 +310,7 @@ func extractComparableVersionComponents(version string) (epoch, major, minor, pa
 	}
 
 	if major == "" || minor == "" || patch == "" {
-		return "", "", "", "", "", "", "", errors.New("version requires at least major.minor.patch components")
+		return "", "", "", "", "", "", "", fmt.Errorf("version %q requires at least major.minor.patch components", version)
 	}
 
 	return epoch, major, minor, patch, other, build, edition, nil
