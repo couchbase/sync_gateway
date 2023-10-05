@@ -206,14 +206,14 @@ func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ct
 		// to rollback any phase for attachment compaction we need to purge all persisted dcp metadata
 		err = a.PurgeDCPMetadata(ctx, dataStore, database, keyPrefix)
 		if err != nil {
-			base.WarnfCtx(ctx, "error occurred during purging of dcp metadata: %w", err)
+			base.WarnfCtx(ctx, "error occurred during purging of dcp metadata: %s", err)
 			return false, err
 		}
 		if phase == MarkPhase {
 			// initialise new compaction run as we want to start the phase mark again in event of rollback
 			err = a.Init(ctx, options, nil)
 			if err != nil {
-				base.WarnfCtx(ctx, "error on initialization of new run after rollback has been indicated, %w", err)
+				base.WarnfCtx(ctx, "error on initialization of new run after rollback has been indicated: %s", err)
 				return false, err
 			}
 		} else {
