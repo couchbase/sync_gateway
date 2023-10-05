@@ -8,7 +8,7 @@
 get:
   summary: Get a list of all the databases
   description: |-
-    This retrieves all the databases that are in the current Sync Gateway node. If verbose, return bucket and status information about the databases, otherwise return the names.
+    This retrieves all the databases that are in the current Sync Gateway node. If verbose, returns bucket and state information for each database, otherwise returns names only.
 
     Required Sync Gateway RBAC roles:
 

@@ -2467,7 +2467,7 @@ CollectionNames:
         type: string
         description: The Couchbase Server backing bucket for the database.
       state:
-        description: Whether the database is online or offline.
+        description: The database state.
         type: string
         enum:
           - Online
