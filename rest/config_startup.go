@@ -63,6 +63,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 				Enabled:                base.BoolPtr(false),
 				MinConfigFetchInterval: base.NewConfigDuration(DefaultMinConfigFetchInterval),
 			},
+			AllowDbConfigEnvVars: base.BoolPtr(true),
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
 	}
@@ -141,12 +142,13 @@ type ReplicatorConfig struct {
 }
 
 type UnsupportedConfig struct {
-	StatsLogFrequency *base.ConfigDuration `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
-	UseStdlibJSON     *bool                `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
-	Serverless        ServerlessConfig     `json:"serverless,omitempty"`
-	HTTP2             *HTTP2Config         `json:"http2,omitempty"`
-	UserQueries       *bool                `json:"user_queries,omitempty" help:"Feature flag for user N1QL/JS/GraphQL queries"`
-	UseXattrConfig    *bool                `json:"use_xattr_config,omitempty"       help:"Store database configurations in system xattrs"`
+	StatsLogFrequency    *base.ConfigDuration `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
+	UseStdlibJSON        *bool                `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
+	Serverless           ServerlessConfig     `json:"serverless,omitempty"`
+	HTTP2                *HTTP2Config         `json:"http2,omitempty"`
+	UserQueries          *bool                `json:"user_queries,omitempty"            help:"Feature flag for user N1QL/JS/GraphQL queries"`
+	UseXattrConfig       *bool                `json:"use_xattr_config,omitempty"        help:"Store database configurations in system xattrs"`
+	AllowDbConfigEnvVars *bool                `json:"allow_dbconfig_env_vars,omitempty" help:"Can be set to false to skip environment variable expansion in database configs"`
 }
 
 type ServerlessConfig struct {
