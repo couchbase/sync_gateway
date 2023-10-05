@@ -66,6 +66,10 @@ func (h *handler) handleRoot() error {
 }
 
 func (h *handler) handleAllDbs() error {
+	if h.getBoolQuery("verbose") {
+		h.writeJSON(h.server.allDatabaseSummaries())
+		return nil
+	}
 	h.writeJSON(h.server.AllDatabaseNames())
 	return nil
 }
@@ -367,6 +371,12 @@ type DatabaseRoot struct {
 	DiskFormatVersion             uint64 `json:"disk_format_version"`
 	State                         string `json:"state"`
 	ServerUUID                    string `json:"server_uuid,omitempty"`
+}
+
+type dbSummary struct {
+	DBName string `json:"db_name"`
+	Bucket string `json:"bucket"`
+	State  string `json:"state"`
 }
 
 func (h *handler) handleGetDB() error {
