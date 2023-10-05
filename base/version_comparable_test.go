@@ -210,6 +210,16 @@ func TestAtLeastMinorDowngradeVersion(t *testing.T) {
 			versionB:       "2.2.0",
 			minorDowngrade: false,
 		},
+		{
+			versionA:       "2.1.0",
+			versionB:       "1.2.0",
+			minorDowngrade: true,
+		},
+		{
+			versionA:       "1.2.0",
+			versionB:       "2.1.0",
+			minorDowngrade: false,
+		},
 	}
 
 	for _, test := range testCases {

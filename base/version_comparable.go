@@ -139,20 +139,13 @@ func (a *ComparableVersion) Less(b *ComparableVersion) bool {
 
 // AtLeastMinorDowngrade returns true there is a major or minor downgrade from a to b.
 func (a *ComparableVersion) AtLeastMinorDowngrade(b *ComparableVersion) bool {
-	if a.epoch > b.epoch {
-		return true
-	} else if a.epoch < b.epoch {
-		return false
+	if a.epoch != b.epoch {
+		return a.epoch > b.epoch
 	}
-	if a.major > b.major {
-		return true
-	} else if a.major < b.major {
-		return false
+	if a.major != b.major {
+		return a.major > b.major
 	}
-	if a.minor > b.minor {
-		return true
-	}
-	return false
+	return a.minor > b.minor
 }
 
 func (pv ComparableVersion) String() string {
