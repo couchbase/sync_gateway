@@ -2301,10 +2301,6 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 //   - write as JSON, read as binary, (re-)write as binary
 func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
 
-	if UnitTestUrlIsWalrus() {
-		t.Skip("RawBackwardCompatibility tests depend on couchbase transcoding")
-	}
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -2341,10 +2337,6 @@ func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
 //   - write as binary, read as raw JSON, rewrite as raw JSON
 func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 
-	if UnitTestUrlIsWalrus() {
-		t.Skip("RawBackwardCompatibility tests depend on couchbase transcoding")
-	}
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -2378,10 +2370,6 @@ func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 }
 
 func TestGetExpiry(t *testing.T) {
-
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Walrus doesn't support expiry")
-	}
 
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
