@@ -871,9 +871,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 
 // updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering
 func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent uint32) (*Document, error) {
-	if d.HLV == nil {
-		d.HLV = &HybridLogicalVector{}
-	}
+
 	switch docUpdateEvent {
 	case BlipWriteEvent:
 		// preserve any other logic on the HLV that has been done by the client, only update to cvCAS will be needed

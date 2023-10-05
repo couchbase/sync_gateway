@@ -204,10 +204,13 @@ func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
 func (hlv *HybridLogicalVector) convertHLVToPersistedFormat() (*PersistedHybridLogicalVector, error) {
 	persistedHLV := PersistedHybridLogicalVector{}
 	var cvCasByteArray []byte
+	var vrsCasByteArray []byte
 	if hlv.CurrentVersionCAS != 0 {
 		cvCasByteArray = base.Uint64CASToLittleEndianHex(hlv.CurrentVersionCAS)
 	}
-	vrsCasByteArray := base.Uint64CASToLittleEndianHex(hlv.Version)
+	if hlv.Version != 0 {
+		vrsCasByteArray = base.Uint64CASToLittleEndianHex(hlv.Version)
+	}
 
 	pvPersistedFormat, err := convertMapToPersistedFormat(hlv.PreviousVersions)
 	if err != nil {
