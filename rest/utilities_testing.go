@@ -59,6 +59,7 @@ type RestTesterConfig struct {
 	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
 	persistentConfig                bool
 	groupID                         *string
+	allowDbConfigEnvVars            *bool
 }
 
 var defaultTestingCORSOrigin = []string{"http://example.com", "*", "http://staging.example.com"}
@@ -155,6 +156,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
+	sc.Unsupported.AllowDbConfigEnvVars = rt.RestTesterConfig.allowDbConfigEnvVars
 
 	if rt.RestTesterConfig.groupID != nil {
 		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.groupID
