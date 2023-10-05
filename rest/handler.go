@@ -761,7 +761,7 @@ func (h *handler) readSanitizeJSON(val interface{}) error {
 	}
 
 	// Expand environment variables.
-	if base.BoolDefault(h.server.Config.Unsupported.AllowDbConfigEnvVars, true) {
+	if base.BoolDefault(h.server.config.Unsupported.AllowDbConfigEnvVars, true) {
 		content, err = expandEnv(content)
 		if err != nil {
 			return err
