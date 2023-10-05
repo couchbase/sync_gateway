@@ -132,7 +132,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"unsupported.serverless.enabled":                   {&config.Unsupported.Serverless.Enabled, fs.Bool("unsupported.serverless.enabled", false, "Settings for running Sync Gateway in serverless mode.")},
 		"unsupported.serverless.min_config_fetch_interval": {&config.Unsupported.Serverless.MinConfigFetchInterval, fs.String("unsupported.serverless.min_config_fetch_interval", "", "How long to cache configs fetched from the buckets for. This cache is used for requested databases that SG does not know about.")},
 		"unsupported.use_xattr_config":                     {&config.Unsupported.UseXattrConfig, fs.Bool("unsupported.use_xattr_config", false, "Store database configurations in system xattrs")},
-		"unsupported.disallow_dbconfig_env_vars":           {&config.Unsupported.DisallowDbConfigEnvVars, fs.Bool("unsupported.disallow_dbconfig_env_vars", false, "Skips environment variable expansion in database configs")},
+		"unsupported.allow_dbconfig_env_vars":              {&config.Unsupported.AllowDbConfigEnvVars, fs.Bool("unsupported.allow_dbconfig_env_vars", true, "Can be set to false to skip environment variable expansion in database configs")},
 
 		"unsupported.user_queries": {&config.Unsupported.UserQueries, fs.Bool("unsupported.user_queries", false, "Whether user-query APIs are enabled")},
 

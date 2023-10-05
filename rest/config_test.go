@@ -1306,7 +1306,7 @@ func TestExpandEnv(t *testing.T) {
 	}
 }
 
-// TestDbConfigEnvVarsToggle ensures that DisallowDbConfigEnvVars toggles the ability to use env vars in db config.
+// TestDbConfigEnvVarsToggle ensures that AllowDbConfigEnvVars toggles the ability to use env vars in db config.
 func TestDbConfigEnvVarsToggle(t *testing.T) {
 	// Set up an env var with a secret value and use it as a channel name to assert its value.
 	const (
@@ -1318,36 +1318,36 @@ func TestDbConfigEnvVarsToggle(t *testing.T) {
 	unexpandedVal := fmt.Sprintf("${%s:-%s}", varName, defaultVal)
 
 	tests := []struct {
-		disallowDbConfigEnvVars bool
-		setEnvVar               bool
-		expectedChannel         string
-		unexpectedChannels      []string
+		allowDbConfigEnvVars *bool
+		setEnvVar            bool
+		expectedChannel      string
+		unexpectedChannels   []string
 	}{
 		{
-			disallowDbConfigEnvVars: false,
-			setEnvVar:               true,
-			expectedChannel:         secretVal,
-			unexpectedChannels:      []string{defaultVal, unexpandedVal},
+			allowDbConfigEnvVars: nil, // defaults to true - so use nil to check default handling
+			setEnvVar:            true,
+			expectedChannel:      secretVal,
+			unexpectedChannels:   []string{defaultVal, unexpandedVal},
 		},
 		{
-			disallowDbConfigEnvVars: false,
-			setEnvVar:               false,
-			expectedChannel:         defaultVal,
-			unexpectedChannels:      []string{secretVal, unexpandedVal},
+			allowDbConfigEnvVars: base.BoolPtr(true),
+			setEnvVar:            false,
+			expectedChannel:      defaultVal,
+			unexpectedChannels:   []string{secretVal, unexpandedVal},
 		},
 		{
-			disallowDbConfigEnvVars: true,
-			setEnvVar:               true,
-			expectedChannel:         unexpandedVal,
-			unexpectedChannels:      []string{secretVal, defaultVal},
+			allowDbConfigEnvVars: base.BoolPtr(false),
+			setEnvVar:            true,
+			expectedChannel:      unexpandedVal,
+			unexpectedChannels:   []string{secretVal, defaultVal},
 		},
 	}
 
 	for _, test := range tests {
-		t.Run(fmt.Sprintf("disallowDbConfigEnvVars=%v_setEnvVar=%v", test.disallowDbConfigEnvVars, test.setEnvVar), func(t *testing.T) {
+		t.Run(fmt.Sprintf("allowDbConfigEnvVars=%v_setEnvVar=%v", test.allowDbConfigEnvVars, test.setEnvVar), func(t *testing.T) {
 			rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
-				PersistentConfig:        true,
-				disallowDbConfigEnvVars: test.disallowDbConfigEnvVars,
+				PersistentConfig:     true,
+				allowDbConfigEnvVars: test.allowDbConfigEnvVars,
 			})
 			defer rt.Close()
 
