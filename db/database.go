@@ -54,9 +54,7 @@ const (
 	BlipWriteEvent
 )
 
-type DocUpdateEvent struct {
-	eventType uint32
-}
+var eventType uint32
 
 const (
 	DefaultRevsLimitNoConflicts = 50

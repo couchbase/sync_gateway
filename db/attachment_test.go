@@ -807,12 +807,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
   },
   "channels": {
     "ABC": null
-  },
-  "_vv":{
-   		"cvCas":"0x0",
-   		"src":"abc",
-   		"vrs":"0x0"
-	}
+  }
 }`
 
 		var bodyVal map[string]interface{}
@@ -1099,11 +1094,6 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
   "channels": {
     "ABC": null
   },
-  "_vv":{
-   		"cvCas":"0x0",
-   		"src":"abc",
-   		"vrs":"0x0"
-	},
   "attachments": {
     "bye.txt": {
       "digest": "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",

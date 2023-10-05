@@ -10,9 +10,14 @@ package db
 
 import (
 	"fmt"
+	"math"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
+
+// hlvExpandMacroCASValue causes the field to be populated by CAS value by macro expansion
+const hlvExpandMacroCASValue = math.MaxUint64
 
 type HybridLogicalVector struct {
 	CurrentVersionCAS uint64            // current version cas (or cvCAS) stores the current CAS at the time of replication
@@ -260,4 +265,18 @@ func convertMapToInMemoryFormat(persistedMap map[string]string) map[string]uint6
 		returnedMap[key] = base.HexCasToUint64(value)
 	}
 	return returnedMap
+}
+
+// computeMacroExpansions returns the mutate in spec needed for the document update based off the outcome in updateHLV
+func (hlv *HybridLogicalVector) computeMacroExpansions() []sgbucket.MacroExpansionSpec {
+	var outputSpec []sgbucket.MacroExpansionSpec
+	if hlv.Version == hlvExpandMacroCASValue {
+		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionPath(base.SyncXattrName), sgbucket.MacroCas)
+		outputSpec = append(outputSpec, spec)
+	}
+	if hlv.CurrentVersionCAS == hlvExpandMacroCASValue {
+		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(base.SyncXattrName), sgbucket.MacroCas)
+		outputSpec = append(outputSpec, spec)
+	}
+	return outputSpec
 }

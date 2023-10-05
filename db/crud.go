@@ -26,8 +26,6 @@ import (
 
 const (
 	kMaxRecentSequences = 20 // Maximum number of sequences stored in RecentSequences before pruning is triggered
-	// hlvExpandMacroCASValue causes the field to be populated by CAS value by macro expansion
-	hlvExpandMacroCASValue = math.MaxUint64
 )
 
 // ErrForbidden is returned when the user requests a document without a revision that they do not have access to.
@@ -871,29 +869,17 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 	return nil
 }
 
-// updateMutateInSpec returns the mutate in spec needed for the document update based off the outcome in updateHLV
-func updateMutateInSpec(hlv HybridLogicalVector) []sgbucket.MacroExpansionSpec {
-	var outputSpec []sgbucket.MacroExpansionSpec
-	if hlv.Version == math.MaxUint64 {
-		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionPath(base.SyncXattrName), sgbucket.MacroCas)
-		outputSpec = append(outputSpec, spec)
-	}
-	if hlv.CurrentVersionCAS == math.MaxUint64 {
-		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(base.SyncXattrName), sgbucket.MacroCas)
-		outputSpec = append(outputSpec, spec)
-	}
-	return outputSpec
-}
-
 // updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering
-func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocUpdateEvent) (*Document, error) {
-
-	switch docUpdateEvent.eventType {
+func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent uint32) (*Document, error) {
+	if d.HLV == nil {
+		d.HLV = &HybridLogicalVector{}
+	}
+	switch docUpdateEvent {
 	case BlipWriteEvent:
 		// preserve any other logic on the HLV that has been done by the client, only update to cvCAS will be needed
 		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
 	case ImportEvent:
-		// VV should remain unchanged
+		// work to be done to decide if the VV needs updating here, pending CBG-3503
 	case SGWriteEvent:
 		// add a new entry to the version vector
 		newVVEntry := CurrentVersionVector{}
@@ -903,6 +889,8 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 		if err != nil {
 			return nil, err
 		}
+		// update the cvCAS on the SGWrite event too
+		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
 	}
 	return d, nil
 }
@@ -946,9 +934,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		return "", nil, err
 	}
 
-	docUpdateEvent := DocUpdateEvent{
-		SGWriteEvent,
-	}
+	docUpdateEvent := SGWriteEvent
 	allowImport := db.UseXattrs()
 	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, expiry, nil, docUpdateEvent, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		var isSgWrite bool
@@ -1074,9 +1060,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 		return nil, "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 
-	docUpdateEvent := DocUpdateEvent{
-		BlipWriteEvent,
-	}
+	docUpdateEvent := BlipWriteEvent
 	allowImport := db.UseXattrs()
 	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, newDoc.DocExpiry, nil, docUpdateEvent, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
@@ -1878,7 +1862,7 @@ type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAtta
 //  1. Receive the updated document body in the response
 //  2. Specify the existing document body/xattr/cas, to avoid initial retrieval of the doc in cases that the current contents are already known (e.g. import).
 //     On cas failure, the document will still be reloaded from the bucket as usual.
-func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry uint32, opts *sgbucket.MutateInOptions, docUpdateEvent DocUpdateEvent, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry uint32, opts *sgbucket.MutateInOptions, docUpdateEvent uint32, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
 
 	key := realDocID(docid)
 	if key == "" {
@@ -1958,7 +1942,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				return
 			}
 			// update the mutate in options based on the above logic
-			updatedSpec = updateMutateInSpec(doc.SyncData.HLV)
+			updatedSpec = doc.SyncData.HLV.computeMacroExpansions()
 
 			// Check whether Sync Data originated in body
 			if currentXattr == nil && doc.Sequence > 0 {
