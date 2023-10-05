@@ -1800,19 +1800,19 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 	}()
 	if db.UseXattrs() {
 		writeUpdateFunc := func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (
-			raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
+			raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, updatedSpec []sgbucket.MacroExpansionSpec, err error) {
 			// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
 			// so deleteDoc is always returned as false.
 			if currentValue == nil || len(currentValue) == 0 {
-				return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
+				return nil, nil, deleteDoc, nil, nil, base.ErrUpdateCancel
 			}
 			doc, err := unmarshalDocumentWithXattr(ctx, docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
 			if err != nil {
-				return nil, nil, deleteDoc, nil, err
+				return nil, nil, deleteDoc, nil, nil, err
 			}
 			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences)
 			if err != nil {
-				return nil, nil, deleteDoc, nil, err
+				return nil, nil, deleteDoc, nil, nil, err
 			}
 			if shouldUpdate {
 				base.InfofCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
@@ -1821,9 +1821,9 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 				}
 				doc.SetCrc32cUserXattrHash()
 				raw, rawXattr, err = updatedDoc.MarshalWithXattr()
-				return raw, rawXattr, deleteDoc, updatedExpiry, err
+				return raw, rawXattr, deleteDoc, updatedExpiry, updatedSpec, err
 			} else {
-				return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
+				return nil, nil, deleteDoc, nil, nil, base.ErrUpdateCancel
 			}
 		}
 		opts := &sgbucket.MutateInOptions{

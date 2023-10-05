@@ -13,17 +13,13 @@ package base
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"fmt"
 	"sort"
 	"strings"
 	"sync"
 
 	"github.com/couchbase/cbgt"
-	"github.com/couchbase/go-couchbase"
-	"github.com/couchbase/go-couchbase/cbdatasource"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/pkg/errors"
 )
 
@@ -147,43 +143,9 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configG
 		NumReplicas:            0,                        // No replicas required for SG sharded feed
 	}
 
-	// Required for initial pools request, before BucketDataSourceOptions kick in.
-	// go-couchbase doesn't support handling x509 auth and root ca verification as separate concerns.
-	if spec.Certpath != "" && spec.Keypath != "" {
-		couchbase.SetCertFile(spec.Certpath)
-		couchbase.SetKeyFile(spec.Keypath)
-		couchbase.SetRootFile(spec.CACertPath)
-		couchbase.SetSkipVerify(false)
-	}
-
-	connSpec, err := gocbconnstr.Parse(spec.Server)
-	if err != nil {
-		return err
-	}
-
 	// Determine index name and UUID
 	indexName, previousIndexUUID := dcpSafeIndexName(ctx, c, dbName)
 	InfofCtx(ctx, KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(dbName))
-
-	// Register bucketDataSource callback for new index if we need to configure TLS
-	cbgt.RegisterBucketDataSourceOptionsCallback(indexName, c.Manager.UUID(), func(options *cbdatasource.BucketDataSourceOptions) *cbdatasource.BucketDataSourceOptions {
-		if spec.IsTLS() {
-			options.TLSConfig = func() *tls.Config {
-				return spec.TLSConfig(ctx)
-			}
-		}
-
-		networkType := getNetworkTypeFromConnSpec(ctx, connSpec)
-		InfofCtx(ctx, KeyDCP, "Using network type: %s", networkType)
-
-		// default (aka internal) networking is handled by cbdatasource, so we can avoid the shims altogether in this case, for all other cases we need shims to remap hosts.
-		if networkType != clusterNetworkDefault {
-			// A lookup of host dest to external alternate address hostnames
-			options.ConnectBucket, options.Connect, options.ConnectTLS = alternateAddressShims(ctx, spec.IsTLS(), connSpec.Addresses, networkType)
-		}
-
-		return options
-	})
 
 	// Index types are namespaced by configGroupID to support delete and create of a database targeting the
 	// same bucket in a config group
@@ -216,8 +178,8 @@ func dcpSafeIndexName(ctx context.Context, c *CbgtContext, dbName string) (safeI
 	indexName := GenerateIndexName(dbName)
 	legacyIndexName := GenerateLegacyIndexName(dbName)
 
-	_, indexUUID, _ := getCBGTIndexUUID(c.Manager, indexName)
-	_, legacyIndexUUID, _ := getCBGTIndexUUID(c.Manager, legacyIndexName)
+	indexUUID, _ := getCBGTIndexUUID(c.Manager, indexName)
+	legacyIndexUUID, _ := getCBGTIndexUUID(c.Manager, legacyIndexName)
 
 	// 200 is the recommended maximum DCP stream name length
 	// cbgt adds 41 characters to index name we provide when naming the DCP stream, rounding up to 50 defensively
@@ -239,18 +201,18 @@ func dcpSafeIndexName(ctx context.Context, c *CbgtContext, dbName string) (safeI
 }
 
 // Check if this CBGT index already exists.
-func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, previousUUID string, err error) {
+func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (previousUUID string, err error) {
 
 	_, indexDefsMap, err := manager.GetIndexDefs(true)
 	if err != nil {
-		return false, "", errors.Wrapf(err, "Error calling CBGT GetIndexDefs() on index: %s", indexName)
+		return "", errors.Wrapf(err, "Error calling CBGT GetIndexDefs() on index: %s", indexName)
 	}
 
 	indexDef, ok := indexDefsMap[indexName]
 	if ok {
-		return true, indexDef.UUID, nil
+		return indexDef.UUID, nil
 	} else {
-		return false, "", nil
+		return "", nil
 	}
 }
 

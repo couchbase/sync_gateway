@@ -18,8 +18,9 @@ import (
 )
 
 func TestRedactHelper(t *testing.T) {
+	defer func() { RedactUserData = defaultRedactUserData }()
+
 	RedactUserData = true
-	defer func() { RedactUserData = false }()
 
 	ptr := UserData("hello")
 
@@ -110,9 +111,9 @@ func TestMixedTypeSliceRedaction(t *testing.T) {
 	RedactSystemData = true
 	RedactUserData = true
 	defer func() {
-		RedactMetadata = false
-		RedactSystemData = false
-		RedactUserData = false
+		RedactMetadata = defaultRedactMetadata
+		RedactSystemData = defaultRedactSystemData
+		RedactUserData = defaultRedactUserData
 	}()
 
 	slice := RedactorSlice{MD("cluster name"), SD("server ip"), UD("username")}
@@ -121,7 +122,7 @@ func TestMixedTypeSliceRedaction(t *testing.T) {
 
 func BenchmarkRedactHelper(b *testing.B) {
 	RedactUserData = true
-	defer func() { RedactUserData = false }()
+	defer func() { RedactUserData = defaultRedactUserData }()
 
 	var data = []interface{}{
 		UserData("alice"),

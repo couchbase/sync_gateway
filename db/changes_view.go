@@ -16,17 +16,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/couchbase/go-couchbase"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
-
-// Unmarshaled JSON structure for "changes" view results
-type channelsViewResult struct {
-	TotalRows int `json:"total_rows"`
-	Rows      []channelsViewRow
-	Errors    []couchbase.ViewError
-}
 
 // One "changes" row in a channelsViewResult
 type channelsViewRow struct {

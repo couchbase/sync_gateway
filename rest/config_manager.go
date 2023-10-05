@@ -366,7 +366,7 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 			}
 			dbConfigs = append(dbConfigs, dbConfig)
 			if dbConfig.Name == legacyDbName {
-				legacyFoundInRegistry = false
+				legacyFoundInRegistry = true
 			}
 		}
 
@@ -710,11 +710,7 @@ func (b *bootstrapContext) addDatabaseLogContext(ctx context.Context, config *Db
 }
 
 func (b *bootstrapContext) ComputeMetadataIDForDbConfig(ctx context.Context, config *DbConfig) (string, error) {
-	bucketName := config.Bucket
-	if bucketName == nil {
-		return "", fmt.Errorf("No bucket defined in dbConfig, cannot compute metadataID")
-	}
-	registry, err := b.getGatewayRegistry(ctx, *bucketName)
+	registry, err := b.getGatewayRegistry(ctx, config.GetBucketName())
 	if err != nil {
 		return "", err
 	}
@@ -757,8 +753,7 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 		}
 	}
 
-	// If _default._default is already associated with a metadataID, return standard metadata ID
-	bucketName := *config.Bucket
+	bucketName := config.GetBucketName()
 	exists, err := b.Connection.KeyExists(ctx, bucketName, base.SGSyncInfo)
 	if err != nil {
 		base.WarnfCtx(ctx, "Error checking whether metadataID is already defined for default collection - using standard metadataID.  Error: %v", err)

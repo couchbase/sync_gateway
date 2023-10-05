@@ -17,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbase/go-couchbase"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -1903,7 +1902,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			opts = &sgbucket.MutateInOptions{}
 		}
 		opts.MacroExpansion = macroExpandSpec(base.SyncXattrName)
-		casOut, err = db.dataStore.WriteUpdateWithXattr(ctx, key, base.SyncXattrName, db.userXattrKey(), expiry, existingDoc, opts, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
+		casOut, err = db.dataStore.WriteUpdateWithXattr(ctx, key, base.SyncXattrName, db.userXattrKey(), expiry, existingDoc, opts, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, updatedSpec []sgbucket.MacroExpansionSpec, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(ctx, docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll); err != nil {
 				return
@@ -1958,7 +1957,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			base.DebugfCtx(ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
-			return raw, rawXattr, deleteDoc, syncFuncExpiry, err
+			return raw, rawXattr, deleteDoc, syncFuncExpiry, updatedSpec, err
 		})
 		if err != nil {
 			if err == base.ErrDocumentMigrated {
@@ -1988,10 +1987,6 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 	if err == base.ErrUpdateCancel {
 		return nil, "", nil
-	} else if err == couchbase.ErrOverwritten {
-		// ErrOverwritten is ok; if a later revision got persisted, that's fine too
-		base.DebugfCtx(ctx, base.KeyCRUD, "Note: Rev %q/%q was overwritten in RAM before becoming indexable",
-			base.UD(docid), newRevID)
 	} else if err != nil {
 		return nil, "", err
 	}
