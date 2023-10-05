@@ -343,21 +343,17 @@ func (sc *ServerContext) allDatabaseSummaries() []dbSummary {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
 
-	names := make([]string, 0, len(sc.databases_))
-	for name := range sc.databases_ {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-
 	dbs := make([]dbSummary, 0, len(sc.databases_))
-	for _, name := range names {
-		dbctx := sc.databases_[name]
+	for name, dbctx := range sc.databases_ {
 		dbs = append(dbs, dbSummary{
 			DBName: name,
 			Bucket: dbctx.Bucket.GetName(),
 			State:  db.RunStateString[atomic.LoadUint32(&dbctx.State)],
 		})
 	}
+	sort.Slice(dbs, func(i, j int) bool {
+		return dbs[i].DBName < dbs[j].DBName
+	})
 	return dbs
 }
 
