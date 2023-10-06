@@ -2802,3 +2802,16 @@ func TestPing(t *testing.T) {
 		}
 	}
 }
+
+func TestAllDbs(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/_all_dbs", "")
+	RequireStatus(t, resp, http.StatusOK)
+	require.Equal(t, fmt.Sprintf(`["%s"]`, rt.GetDatabase().Name), resp.Body.String())
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/_all_dbs?verbose=true", "")
+	RequireStatus(t, resp, http.StatusOK)
+	require.Equal(t, fmt.Sprintf(`[{"db_name":"%s","bucket":"%s","state":"Online"}]`, rt.GetDatabase().Name, rt.GetDatabase().Bucket.GetName()), resp.Body.String())
+}

@@ -20,6 +20,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/db/functions"
+	"golang.org/x/exp/slices"
 
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -316,7 +318,26 @@ func (sc *ServerContext) AllDatabaseNames() []string {
 	for name := range sc.databases_ {
 		names = append(names, name)
 	}
+	slices.Sort(names)
 	return names
+}
+
+func (sc *ServerContext) allDatabaseSummaries() []dbSummary {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+
+	dbs := make([]dbSummary, 0, len(sc.databases_))
+	for name, dbctx := range sc.databases_ {
+		dbs = append(dbs, dbSummary{
+			DBName: name,
+			Bucket: dbctx.Bucket.GetName(),
+			State:  db.RunStateString[atomic.LoadUint32(&dbctx.State)],
+		})
+	}
+	sort.Slice(dbs, func(i, j int) bool {
+		return dbs[i].DBName < dbs[j].DBName
+	})
+	return dbs
 }
 
 // AllDatabases returns a copy of the databases_ map.
