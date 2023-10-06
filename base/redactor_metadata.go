@@ -20,8 +20,10 @@ const (
 	metaDataSuffix = "</md>"
 )
 
+const defaultRedactMetadata = false
+
 // RedactMetadata is a global toggle for system data redaction.
-var RedactMetadata = false
+var RedactMetadata = defaultRedactMetadata
 
 // Metadata is a type which implements the Redactor interface for logging purposes of metadata.
 //

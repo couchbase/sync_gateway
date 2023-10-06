@@ -18,6 +18,8 @@ import (
 )
 
 func TestSystemDataRedact(t *testing.T) {
+	defer func() { RedactSystemData = defaultRedactSystemData }()
+
 	clusterName := "My Super Secret IP"
 	systemdata := SystemData(clusterName)
 
@@ -30,7 +32,7 @@ func TestSystemDataRedact(t *testing.T) {
 
 func TestSD(t *testing.T) {
 	RedactSystemData = true
-	defer func() { RedactSystemData = false }()
+	defer func() { RedactSystemData = defaultRedactSystemData }()
 
 	// Base string test
 	sd := SD("hello world")

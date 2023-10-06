@@ -20,8 +20,10 @@ const (
 	systemDataSuffix = "</sd>"
 )
 
+const defaultRedactSystemData = false
+
 // RedactSystemData is a global toggle for system data redaction.
-var RedactSystemData = false
+var RedactSystemData = defaultRedactSystemData
 
 // SystemData is a type which implements the Redactor interface for logging purposes of system data.
 //

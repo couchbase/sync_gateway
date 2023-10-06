@@ -12,15 +12,19 @@ package base
 
 import "fmt"
 
-// A redactable error can be used as a drop-in replacement for a base error (as would have been created via
-// fmt.Errorf), which has the ability to redact any sensitive user data by calling redact() on all if it's
-// stored args.
+// RedactableError is an error that can be used as a drop-in replacement for an error,
+// which has the ability to redact any sensitive data by calling redact() on all of its args.
 type RedactableError struct {
 	fmt  string
 	args []interface{}
 }
 
-// Create a new redactable error.  Same signature as fmt.Errorf() for easy drop-in replacement.
+var (
+	_ error    = &RedactableError{}
+	_ Redactor = &RedactableError{}
+)
+
+// RedactErrorf creates a new redactable error.  Same signature as fmt.Errorf() for easy drop-in replacement.
 func RedactErrorf(fmt string, args ...interface{}) *RedactableError {
 	return &RedactableError{
 		fmt:  fmt,
@@ -28,13 +32,20 @@ func RedactErrorf(fmt string, args ...interface{}) *RedactableError {
 	}
 }
 
-// Satisfy error interface
+// Error satisfies the error interface
 func (re *RedactableError) Error() string {
-	return fmt.Sprintf(re.fmt, re.args...)
+	return re.String()
 }
 
-// Satisfy redact interface
+// String returns a non-redacted version of the error - satisfies the Redactor interface.
+func (re *RedactableError) String() string {
+	// can't use Sprintf as it doesn't support `%w`
+	return fmt.Errorf(re.fmt, re.args...).Error()
+}
+
+// Redact returns a redacted version of the error - satisfies the Redactor interface.
 func (re *RedactableError) Redact() string {
 	redactedArgs := redact(re.args)
-	return fmt.Sprintf(re.fmt, redactedArgs...)
+	// can't use Sprintf as it doesn't support `%w`
+	return fmt.Errorf(re.fmt, redactedArgs...).Error()
 }
