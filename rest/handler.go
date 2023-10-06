@@ -1036,10 +1036,13 @@ func (h *handler) readSanitizeJSON(val interface{}) error {
 	}
 
 	// Expand environment variables.
-	content, err = expandEnv(h.ctx(), content)
-	if err != nil {
-		return err
+	if base.BoolDefault(h.server.Config.Unsupported.AllowDbConfigEnvVars, true) {
+		content, err = expandEnv(h.ctx(), content)
+		if err != nil {
+			return err
+		}
 	}
+
 	// Convert the back quotes into double-quotes, escapes literal
 	// backslashes, newlines or double-quotes with backslashes.
 	content = base.ConvertBackQuotedStrings(content)
