@@ -1341,9 +1341,6 @@ func TestUserXattrRevCache(t *testing.T) {
 
 func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
 
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")

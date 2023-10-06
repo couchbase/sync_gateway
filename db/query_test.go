@@ -182,12 +182,6 @@ func TestCoveringQueries(t *testing.T) {
 
 func TestAllDocsQuery(t *testing.T) {
 
-	// if base.TestsDisableGSI() {
-	// 	t.Skip("This test is Couchbase Server and UseViews=false only")
-	// }
-
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyWalrus)
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)

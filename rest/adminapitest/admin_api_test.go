@@ -383,10 +383,6 @@ func TestGetStatus(t *testing.T) {
 
 func TestFlush(t *testing.T) {
 
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("sgbucket.DeleteableBucket inteface only supported by Walrus")
-	}
-
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -2443,9 +2439,6 @@ func TestHandleCreateDB(t *testing.T) {
 }
 
 func TestHandleCreateDBJsonName(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
 	testCases := []struct {
 		name        string
 		JSONname    string
@@ -2759,13 +2752,6 @@ func TestConfigRedaction(t *testing.T) {
 }
 
 func TestSoftDeleteCasMismatch(t *testing.T) {
-	// FIXME: LeakyBucket not supported for metadata collection
-	t.Skip("LeakyBucket not supported for metadata collection")
-
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Skip LeakyBucket test when running in integration")
-	}
-
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
