@@ -1160,10 +1160,6 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 // TestMigrateBodyAttachmentsMergeConflicting will set up a document with the same attachment name in both pre-2.5 and post-2.5 metadata, making sure that the metadata with the most recent revpos is chosen.
 func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 
-	if base.TestUseXattrs() {
-		t.Skip("Test requires Couchbase Server bucket when using xattrs")
-	}
-
 	const docKey = "TestAttachmentMigrate"
 
 	db, ctx := setupTestDB(t)
