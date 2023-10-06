@@ -872,6 +872,9 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 // updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering
 func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent uint32) (*Document, error) {
 
+	if d.HLV == nil {
+		d.HLV = &HybridLogicalVector{}
+	}
 	switch docUpdateEvent {
 	case BlipWriteEvent:
 		// preserve any other logic on the HLV that has been done by the client, only update to cvCAS will be needed
@@ -1935,13 +1938,6 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 			prevCurrentRev = doc.CurrentRev
 
-			doc, err = db.updateHLV(doc, docUpdateEvent)
-			if err != nil {
-				return
-			}
-			// update the mutate in options based on the above logic
-			updatedSpec = doc.SyncData.HLV.computeMacroExpansions()
-
 			// Check whether Sync Data originated in body
 			if currentXattr == nil && doc.Sequence > 0 {
 				doc.inlineSyncData = true
@@ -1965,6 +1961,14 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				err = base.RedactErrorf("WriteUpdateWithXattr() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", doc.CurrentRev, base.UD(doc))
 				return
 			}
+
+			// update the HLV values
+			doc, err = db.updateHLV(doc, docUpdateEvent)
+			if err != nil {
+				return
+			}
+			// update the mutate in options based on the above logic
+			updatedSpec = doc.SyncData.HLV.computeMacroExpansions()
 
 			deleteDoc = currentRevFromHistory.Deleted
 
