@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package upgradetest
 
 import (
-	"log"
 	"net/http"
 	"testing"
 
@@ -185,14 +184,11 @@ func TestLegacyMetadataID(t *testing.T) {
 	// Get the legacy config for upgrade test below
 	resp = legacyRT.SendAdminRequest("GET", "/_config?include_runtime=true", "")
 	legacyConfigBytes := resp.BodyBytes()
-	log.Printf("Received legacy config: %s", legacyConfigBytes)
+
 	var legacyConfig rest.LegacyServerConfig
 	err := base.JSONUnmarshal(legacyConfigBytes, &legacyConfig)
-	require.NoError(t, err)
-
+	assert.NoError(t, err)
 	legacyRT.Close()
-
-	log.Printf("testing")
 
 	persistentRT := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb1,
