@@ -811,7 +811,7 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 					if !base.TestsUseNamedCollections() {
 						t.Skip("can not run collections tests in non collections configuration")
 					}
-					dbConfig.Scopes = GetCollectionsConfigWithSyncFn(t, bucket, nil, 1)
+					dbConfig.Scopes = GetCollectionsConfig(t, bucket, 1)
 				}
 				dbContext, err := serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig},
 					getOrAddDatabaseConfigOptions{

@@ -419,7 +419,6 @@ func (dbConfig *DbConfig) setup(ctx context.Context, dbName string, bootstrapCon
 		}
 		dbConfig.Sync = &sync
 	}
-
 	// Load Import Filter Function.
 	if dbConfig.ImportFilter != nil {
 		importFilter, err := loadJavaScript(ctx, *dbConfig.ImportFilter, insecureSkipVerify)

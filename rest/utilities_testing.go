@@ -51,6 +51,7 @@ import (
 type RestTesterConfig struct {
 	GuestEnabled                    bool                        // If this is true, Admin Party is in full effect
 	SyncFn                          string                      // put the sync() function source in here (optional)
+	ImportFilter                    string                      // put the import filter function source in here (optional)
 	DatabaseConfig                  *DatabaseConfig             // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	MutateStartupConfig             func(config *StartupConfig) // Function to mutate the startup configuration before the server context gets created. This overrides options the RT sets.
 	InitSyncSeq                     uint64                      // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
@@ -105,6 +106,16 @@ const RestTesterDefaultUserPassword = "letmein"
 // NewRestTester returns a rest tester and corresponding keyspace backed by a single database and a single collection. This collection may be named or default collection based on global test configuration.
 func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	return newRestTester(tb, restConfig, useSingleCollection, 1)
+}
+
+// NewRestTesterPersistentConfig returns a rest tester with persistent config setup and a single database. A convenience function for NewRestTester.
+func NewRestTesterPersistentConfig(tb testing.TB) *RestTester {
+	config := &RestTesterConfig{
+		PersistentConfig: true,
+	}
+	rt := newRestTester(tb, config, useSingleCollection, 1)
+	RequireStatus(tb, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	return rt
 }
 
 // newRestTester creates the underlying rest testers, use public functions.
@@ -305,7 +316,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 				if rt.SyncFn != "" {
 					syncFn = base.StringPtr(rt.SyncFn)
 				}
-				rt.DatabaseConfig.Scopes = GetCollectionsConfigWithSyncFn(rt.TB, testBucket, syncFn, rt.numCollections)
+				var importFilter *string
+				if rt.ImportFilter != "" {
+					importFilter = base.StringPtr(rt.ImportFilter)
+				}
+				rt.DatabaseConfig.Scopes = GetCollectionsConfigWithFiltering(rt.TB, testBucket, rt.numCollections, syncFn, importFilter)
 			}
 		}
 
@@ -373,11 +388,11 @@ func (rt *RestTester) MetadataStore() base.DataStore {
 
 // GetCollectionsConfig sets up a ScopesConfig from a TestBucket for use with non default collections.
 func GetCollectionsConfig(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesConfig {
-	return GetCollectionsConfigWithSyncFn(t, testBucket, nil, numCollections)
+	return GetCollectionsConfigWithFiltering(t, testBucket, numCollections, nil, nil)
 }
 
-// GetCollectionsConfigWithSyncFn sets up a ScopesConfig from a TestBucket for use with non default collections. The sync function will be passed for all collections.
-func GetCollectionsConfigWithSyncFn(t testing.TB, testBucket *base.TestBucket, syncFn *string, numCollections int) ScopesConfig {
+// GetCollectionsConfigWithFiltering sets up a ScopesConfig from a TestBucket for use with non default collections. The sync function will be passed for all collections.
+func GetCollectionsConfigWithFiltering(t testing.TB, testBucket *base.TestBucket, numCollections int, syncFn *string, importFilter *string) ScopesConfig {
 	// Get a datastore as provided by the test
 	stores := testBucket.GetNonDefaultDatastoreNames()
 	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
@@ -385,6 +400,10 @@ func GetCollectionsConfigWithSyncFn(t testing.TB, testBucket *base.TestBucket, s
 	if syncFn != nil {
 		defaultCollectionConfig.SyncFn = syncFn
 	}
+	if importFilter != nil {
+		defaultCollectionConfig.ImportFilter = importFilter
+	}
+
 	scopesConfig := ScopesConfig{}
 	for i := 0; i < numCollections; i++ {
 		dataStoreName := stores[i]
@@ -631,15 +650,15 @@ func (rt *RestTester) templateResource(resource string) (string, error) {
 				dbPrefix = fmt.Sprintf("db%d", i+1)
 				data[dbPrefix] = database.Name
 			}
-			if len(database.CollectionByID) == 1 {
+			if len(database.CollectionByID) == 1 && !multipleDatabases {
 				data["keyspace"] = rt.GetSingleKeyspace()
-			} else {
-				for j, keyspace := range getKeyspaces(rt.TB, database) {
-					if !multipleDatabases {
-						data[fmt.Sprintf("keyspace%d", j+1)] = keyspace
-					} else {
-						data[fmt.Sprintf("db%dkeyspace%d", i+1, j+1)] = keyspace
-					}
+				continue
+			}
+			for j, keyspace := range getKeyspaces(rt.TB, database) {
+				if !multipleDatabases {
+					data[fmt.Sprintf("keyspace%d", j+1)] = keyspace
+				} else {
+					data[fmt.Sprintf("db%dkeyspace%d", i+1, j+1)] = keyspace
 				}
 			}
 		}
@@ -2258,7 +2277,7 @@ func WaitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...
 	}
 }
 
-func WaitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+func WaitAndAssertCondition(t testing.TB, fn func() bool, failureMsgAndArgs ...interface{}) {
 	t.Helper()
 	t.Log("starting WaitAndAssertCondition")
 	for i := 0; i <= 20; i++ {
@@ -2500,7 +2519,19 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 		if rt.SyncFn != "" {
 			syncFn = base.StringPtr(rt.SyncFn)
 		}
-		config.Scopes = GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, syncFn, rt.numCollections)
+		var importFilter *string
+		if rt.ImportFilter != "" {
+			importFilter = base.StringPtr(rt.ImportFilter)
+		}
+
+		config.Scopes = GetCollectionsConfigWithFiltering(rt.TB, rt.TestBucket, rt.numCollections, syncFn, importFilter)
+	} else {
+		if rt.SyncFn != "" {
+			config.Sync = base.StringPtr(rt.SyncFn)
+		}
+		if rt.ImportFilter != "" {
+			config.ImportFilter = base.StringPtr(rt.ImportFilter)
+		}
 	}
 
 	return config

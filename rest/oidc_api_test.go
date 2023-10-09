@@ -23,7 +23,6 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -2474,36 +2473,14 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	mockAuthServer.options.issuer = mockAuthServer.URL + "/" + providerName
 	refreshProviderConfig(providers, mockAuthServer.URL)
 
-	ctx := base.TestCtx(t)
-	startupConfig := BootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &startupConfig, true)
-	require.NoError(t, err)
-	serverErr := make(chan error, 0)
-	go func() {
-		serverErr <- StartServer(ctx, &startupConfig, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
 
 	oidcOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.StringPtr(providerName)}
-	dbConfig := `{
-	"bucket": "` + tb.GetName() + `",
-	"name": "db",
-	"offline": false,
-	"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
-	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
-	"num_index_replicas": 0,
-	"oidc":` + string(mustMarshalJSON(t, &oidcOptions)) + `}`
+	dbConfig := rt.NewDbConfig()
+	dbConfig.OIDCConfig = &oidcOptions
 
-	res := BootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
-	require.Equal(t, http.StatusCreated, res.StatusCode)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	// Sanity check that we can authenticate properly
 	jwt, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{
@@ -2511,22 +2488,14 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 		channelsClaim: []string{testChannelName},
 	}))
 	require.NoError(t, err, "Failed to create test JWT")
-	base.DebugfCtx(base.TestCtx(t), base.KeyAll, "Test JWT: %v", jwt)
 
-	req, err := http.NewRequest(http.MethodPost, bootstrapURL(publicPort)+"/db/_session", bytes.NewBufferString("{}"))
-	require.NoError(t, err, "Initializing auth request")
-	req.Header.Set("Authorization", BearerToken+" "+jwt)
-	httpRes, err := http.DefaultClient.Do(req)
-	require.NoError(t, err, "Performing auth request")
-	assert.NoError(t, httpRes.Body.Close())
-	require.Equal(t, http.StatusOK, httpRes.StatusCode)
+	RequireStatus(t, rt.SendRequestWithHeaders(http.MethodPost, "/{{.db}}/_session", "{}", map[string]string{"Authorization": BearerToken + " " + jwt}), http.StatusOK)
 
 	// Check that the user is present in the admin API
-	res = BootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/db/_user/%s", subject), "")
-	require.Equal(t, http.StatusOK, res.StatusCode)
+	res := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/"+subject, "")
+	RequireStatus(t, res, http.StatusOK)
 	var adminResult db.Body
-	require.NoError(t, base.JSONUnmarshal([]byte(res.Body), &adminResult))
-	base.DebugfCtx(base.TestCtx(t), base.KeyAll, "User data from admin API: %v", adminResult)
+	require.NoError(t, base.JSONUnmarshal(res.Body.Bytes(), &adminResult))
 
 	assert.Equal(t, subject, adminResult["name"])
 	assert.Equal(t, mockAuthServer.options.issuer, adminResult["jwt_issuer"])
@@ -2538,53 +2507,35 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 
 	// Now simulate deleting the provider from the config.
 	// Need to do this get-then-replace because of CBG-2122
+	dbConfig = rt.NewDbConfig()
 	delete(oidcOptions.Providers, providerName)
 	providers["INVALID"] = mockProviderWith("INVALID")
 	providers["INVALID"].Issuer = "INVALID"
-	dbConfig = `{
-	"bucket": "` + tb.GetName() + `",
-	"name": "db",
-	"offline": false,
-	"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
-	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
-	"num_index_replicas": 0,
-	"oidc":` + string(mustMarshalJSON(t, &oidcOptions)) + `}`
-	res = BootstrapAdminRequest(t, http.MethodPut, "/db/_config?disable_oidc_validation=true", dbConfig)
-	res.RequireStatus(http.StatusCreated)
+
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config?disable_oidc_validation=true", string(mustMarshalJSON(t, &dbConfig))), http.StatusCreated)
 
 	// Check that the user is still present, but with no OIDC info
-	res = BootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/db/_user/%s", subject), "")
-	require.Equal(t, http.StatusOK, res.StatusCode)
+	res = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/"+subject, "")
+	RequireStatus(t, res, http.StatusOK)
 	adminResult = db.Body{}
-	require.NoError(t, base.JSONUnmarshal([]byte(res.Body), &adminResult))
-	base.DebugfCtx(base.TestCtx(t), base.KeyAll, "User data from admin API: %v", adminResult)
+	require.NoError(t, base.JSONUnmarshal(res.Body.Bytes(), &adminResult))
 
 	assert.NotContains(t, adminResult, "jwt_issuer", "Expected to not have jwt_issuer in /_user response")
 
 	// Check that the user can't authenticate anymore
-	req, err = http.NewRequest(http.MethodPost, bootstrapURL(publicPort)+"/db/_session", bytes.NewBufferString("{}"))
-	require.NoError(t, err, "Initializing second auth request")
-	req.Header.Set("Authorization", BearerToken+" "+jwt)
-	httpRes, err = http.DefaultClient.Do(req)
-	require.NoError(t, err, "Performing second auth request")
-	assert.Equal(t, http.StatusUnauthorized, httpRes.StatusCode)
+	RequireStatus(t, rt.SendRequestWithHeaders(http.MethodPost, "/{{.db}}/_session", "{}", map[string]string{"Authorization": BearerToken + " " + jwt}), http.StatusUnauthorized)
 
 	// Finally, check that the user can sign in through basic auth, but their OIDC roles/channels get revoked
-	res = BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/db/_user/%s", subject), `{"password": "hunter2"}`)
-	require.Equal(t, http.StatusOK, res.StatusCode)
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+subject, GetUserPayload(t, "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), nil, nil)), http.StatusOK)
 
-	req, err = http.NewRequest(http.MethodPost, bootstrapURL(publicPort)+"/db/_session", bytes.NewBufferString("{}"))
-	require.NoError(t, err, "Initializing basic auth request")
-	req.SetBasicAuth(subject, "hunter2")
-	httpRes, err = http.DefaultClient.Do(req)
-	require.NoError(t, err, "Performing basic auth request")
-	assert.Equal(t, http.StatusOK, httpRes.StatusCode)
+	res = rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "{}", subject)
+	RequireStatus(t, res, http.StatusOK)
 
 	var sessionResponse struct {
 		UserCtx db.Body `json:"userCtx"`
 	}
-	require.NoError(t, json.NewDecoder(httpRes.Body).Decode(&sessionResponse))
-	require.NotContains(t, sessionResponse.UserCtx["channels"], testChannelName)
+	require.NoError(t, base.JSONUnmarshal(res.Body.Bytes(), &sessionResponse))
+	require.Nil(t, sessionResponse.UserCtx["channels"])
 }
 
 // This test verifies the edge case of having two different OIDC providers with different role/channel configurations

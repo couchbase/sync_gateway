@@ -691,22 +691,14 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 
 	}()
 
-	serverErr := make(chan error)
-	config := BootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		CustomTestBucket: tb.NoCloseClone(),
+	})
+	defer rt.Close()
 
 	// Create a DB configured with one scope
-	res := BootstrapAdminRequest(t, http.MethodPut, "/db/", string(mustMarshalJSON(t, map[string]any{
+	res := rt.SendAdminRequest(http.MethodPut, "/db/", string(mustMarshalJSON(t, map[string]any{
 		"bucket":                      tb.GetName(),
 		"num_index_replicas":          0,
 		"enable_shared_bucket_access": base.TestUseXattrs(),
@@ -719,10 +711,10 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 			},
 		},
 	})))
-	require.Equal(t, http.StatusCreated, res.StatusCode, "failed to create DB")
+	RequireStatus(t, res, http.StatusCreated)
 
 	// Try updating its scopes
-	res = BootstrapAdminRequest(t, http.MethodPut, "/db/_config", string(mustMarshalJSON(t, map[string]any{
+	res = rt.SendAdminRequest(http.MethodPut, "/db/_config", string(mustMarshalJSON(t, map[string]any{
 		"bucket":                      tb.GetName(),
 		"num_index_replicas":          0,
 		"enable_shared_bucket_access": base.TestUseXattrs(),
@@ -735,10 +727,8 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 			},
 		},
 	})))
-	base.RequireAllAssertions(t,
-		assert.Equal(t, http.StatusBadRequest, res.StatusCode, "should not be able to change scope"),
-		assert.Contains(t, res.Body, "cannot change scopes after database creation"),
-	)
+	assert.Contains(t, res.Body.String(), "cannot change scopes after database creation")
+	RequireStatus(t, res, http.StatusBadRequest)
 }
 
 func TestCollectionsAddNamedCollectionToImplicitDefaultScope(t *testing.T) {
