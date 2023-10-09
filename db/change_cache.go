@@ -366,7 +366,19 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	collection, exists := c.db.CollectionByID[event.CollectionID]
 	if !exists {
-		base.WarnfCtx(ctx, "DocChanged: could not find collection with kv ID: %d", event.CollectionID)
+		cID := event.CollectionID
+		if cID == base.DefaultCollectionID {
+			// It's possible for the `_default` collection to be associated with other databases writing non-principal documents,
+			// but we still need this collection's feed for the MetadataStore docs. Conditionally drop log level to avoid spurious warnings.
+			base.DebugfCtx(ctx, base.KeyCache, "DocChanged(): Ignoring non-metadata mutation for doc %q in the default collection - kv ID: %d", base.UD(docID), cID)
+		} else if cID == base.MetadataCollectionID {
+			// When Metadata moves to a different collection, we should start to warn again - we don't expect non-metadata mutations here!
+			base.WarnfCtx(ctx, "DocChanged(): Non-metadata mutation for doc %q in MetadataStore - kv ID: %d", base.UD(docID), cID)
+		} else {
+			// Unrecognised collection
+			// we shouldn't be receiving mutations for a collection we're not running a database for (barring the metadata store)
+			base.WarnfCtx(ctx, "DocChanged(): Could not find collection for doc %q - kv ID: %d", base.UD(docID), cID)
+		}
 		return
 	}
 	// If this is a binary document (and not one of the above types), we can ignore.  Currently only performing this check when xattrs
