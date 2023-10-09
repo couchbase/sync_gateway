@@ -2755,6 +2755,9 @@ func TestConfigRedaction(t *testing.T) {
 }
 
 func TestSoftDeleteCasMismatch(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip LeakyBucket test when running in integration")
+	}
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
