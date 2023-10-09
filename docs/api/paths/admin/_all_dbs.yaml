@@ -8,32 +8,25 @@
 get:
   summary: Get a list of all the databases
   description: |-
-    This retrieves all the database's names that are in the current Sync Gateway node.
+    This retrieves all the databases that are in the current Sync Gateway node. If verbose, returns bucket and state information for each database, otherwise returns names only.
 
     Required Sync Gateway RBAC roles:
 
     * Sync Gateway Dev Ops
+  parameters:
+    - name: verbose
+      in: query
+      schema:
+        type: boolean
   responses:
     '200':
       description: Successfully retrieved all database names
       content:
         application/json:
           schema:
-            type: array
-            items:
-              type: string
+            oneOf:
+              - $ref: "../../components/schemas.yaml#/All DBs"
+              - $ref: "../../components/schemas.yaml#/All DBs Verbose"
   tags:
     - Database Management
   operationId: get__all_dbs
-head:
-  summary: /_all_dbs
-  description: |-
-    Required Sync Gateway RBAC roles:
-
-    * Sync Gateway Dev Ops
-  responses:
-    '200':
-      description: OK
-  tags:
-    - Database Management
-  operationId: head__all_dbs

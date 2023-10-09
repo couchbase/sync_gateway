@@ -2423,13 +2423,6 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 
 func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 
-	// TODO: re-enable after adding ability to override bucket capabilities (CBG-1593)
-	t.Skip("GoCB bucket required for cluster compatibility override")
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Requires gocb bucket")
-	}
-
 	if !base.TestUseXattrs() {
 		t.Skip("Xattrs required")
 	}
@@ -2437,11 +2430,6 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-
-	// gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
-
-	// Set something lower than version required for CreateAsDeleted subdoc flag
-	// gocbBucket.OverrideClusterCompatVersion(5, 5)
 
 	// Ensure empty doc is imported correctly
 	added, err := collection.dataStore.Add("doc1", 0, map[string]interface{}{})
@@ -2819,7 +2807,7 @@ func Test_resyncDocument(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprintf("Test_resyncDocument with useXattr: %t", testCase.useXattr), func(t *testing.T) {
 			if !base.TestUseXattrs() && testCase.useXattr {
-				t.Skip("Walrus doesn't support xattr")
+				t.Skip("Don't run xattr tests on non xattr tests")
 			}
 			db, ctx := setupTestDB(t)
 			defer db.Close(ctx)

@@ -1001,10 +1001,6 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 //     - since it's been terminated, should return error before executing a second view query
 func TestChannelQueryCancellation(t *testing.T) {
 
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Skip test with LeakyBucket dependency test when running in integration")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
 	// Set up PostQueryCallback on bucket - will be invoked when changes triggers the cache backfill view query

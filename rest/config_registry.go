@@ -46,6 +46,7 @@ type GatewayRegistry struct {
 	cas          uint64
 	Version      string                          `json:"version"`       // Registry version
 	ConfigGroups map[string]*RegistryConfigGroup `json:"config_groups"` // Map of config groups, keyed by config group ID
+	SGVersion    base.ComparableVersion          `json:"sg_version"`    // Latest patch version of Sync Gateway that touched the registry
 }
 
 const GatewayRegistryVersion = "1.0"
@@ -83,10 +84,11 @@ type RegistryScope struct {
 var defaultOnlyRegistryScopes = map[string]RegistryScope{base.DefaultScope: {Collections: []string{base.DefaultCollection}}}
 var DefaultOnlyScopesConfig = ScopesConfig{base.DefaultScope: {Collections: map[string]CollectionConfig{base.DefaultCollection: {}}}}
 
-func NewGatewayRegistry() *GatewayRegistry {
+func NewGatewayRegistry(syncGatewayVersion base.ComparableVersion) *GatewayRegistry {
 	return &GatewayRegistry{
 		ConfigGroups: make(map[string]*RegistryConfigGroup),
 		Version:      GatewayRegistryVersion,
+		SGVersion:    syncGatewayVersion,
 	}
 }
 
@@ -108,6 +110,13 @@ func (r *GatewayRegistry) getCollectionsByDatabase(ctx context.Context) map[base
 		}
 	}
 	return collectionsByDatabase
+}
+
+// updateVersionNumber changes the version number in the gateway registry, if it is greater than the previous version number
+func (r *GatewayRegistry) updateVersionNumber() {
+	if r.SGVersion.Less(base.ProductVersion) {
+		r.SGVersion = *base.ProductVersion
+	}
 }
 
 // deleteDatabase deletes the current version of the db from the registry, updating previous version

@@ -1306,6 +1306,86 @@ func TestExpandEnv(t *testing.T) {
 	}
 }
 
+// TestDbConfigEnvVarsToggle ensures that AllowDbConfigEnvVars toggles the ability to use env vars in db config.
+func TestDbConfigEnvVarsToggle(t *testing.T) {
+	// Set up an env var with a secret value and use it as a channel name to assert its value.
+	const (
+		varName    = "SECRET_SG_TEST_VAR"
+		secretVal  = "secret"
+		defaultVal = "substitute"
+	)
+	// ${SECRET_SG_TEST_VAR:-substitute}
+	unexpandedVal := fmt.Sprintf("${%s:-%s}", varName, defaultVal)
+
+	tests := []struct {
+		allowDbConfigEnvVars *bool
+		setEnvVar            bool
+		expectedChannel      string
+		unexpectedChannels   []string
+	}{
+		{
+			allowDbConfigEnvVars: nil, // defaults to true - so use nil to check default handling
+			setEnvVar:            true,
+			expectedChannel:      secretVal,
+			unexpectedChannels:   []string{defaultVal, unexpandedVal},
+		},
+		{
+			allowDbConfigEnvVars: base.BoolPtr(true),
+			setEnvVar:            false,
+			expectedChannel:      defaultVal,
+			unexpectedChannels:   []string{secretVal, unexpandedVal},
+		},
+		{
+			allowDbConfigEnvVars: base.BoolPtr(false),
+			setEnvVar:            true,
+			expectedChannel:      unexpandedVal,
+			unexpectedChannels:   []string{secretVal, defaultVal},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("allowDbConfigEnvVars=%v_setEnvVar=%v", test.allowDbConfigEnvVars, test.setEnvVar), func(t *testing.T) {
+			rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
+				PersistentConfig:     true,
+				allowDbConfigEnvVars: test.allowDbConfigEnvVars,
+			})
+			defer rt.Close()
+
+			if test.setEnvVar {
+				require.NoError(t, os.Setenv(varName, secretVal))
+				t.Cleanup(func() {
+					require.NoError(t, os.Unsetenv(varName))
+				})
+			}
+
+			dbc := rt.NewDbConfig()
+			dbc.Sync = base.StringPtr(fmt.Sprintf(
+				"function(doc) {channel('%s');}",
+				unexpandedVal,
+			))
+
+			resp := rt.CreateDatabase("db", dbc)
+			AssertStatus(t, resp, http.StatusCreated)
+
+			docID := "doc"
+			putDocResp := rt.PutDoc(docID, `{"foo":"bar"}`)
+			require.True(t, putDocResp.Ok)
+
+			require.NoError(t, rt.WaitForPendingChanges())
+
+			// ensure doc is in expected channel and is not in the unexpected channels
+			changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+test.expectedChannel, "", true)
+			require.NoError(t, err)
+			changes.RequireDocIDs(t, []string{docID})
+
+			channels := strings.Join(test.unexpectedChannels, ",")
+			changes, err = rt.WaitForChanges(0, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+channels, "", true)
+			require.NoError(t, err)
+			changes.RequireDocIDs(t, []string{})
+		})
+	}
+}
+
 // createTempFile creates a temporary file with the given content.
 func createTempFile(t *testing.T, content []byte) *os.File {
 	file, err := os.CreateTemp("", "*-sync_gateway.conf")

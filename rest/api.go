@@ -75,6 +75,10 @@ func (h *handler) handlePing() error {
 }
 
 func (h *handler) handleAllDbs() error {
+	if h.getBoolQuery("verbose") {
+		h.writeJSON(h.server.allDatabaseSummaries())
+		return nil
+	}
 	h.writeJSON(h.server.AllDatabaseNames())
 	return nil
 }
@@ -401,6 +405,12 @@ type DatabaseRoot struct {
 	ServerUUID                    string                       `json:"server_uuid,omitempty"`
 	RequireResync                 []string                     `json:"require_resync,omitempty"`
 	Scopes                        map[string]databaseRootScope `json:"scopes,omitempty"` // stats for each scope/collection
+}
+
+type dbSummary struct {
+	DBName string `json:"db_name"`
+	Bucket string `json:"bucket"`
+	State  string `json:"state"`
 }
 
 type databaseRootScope struct {
