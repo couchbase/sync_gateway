@@ -383,6 +383,9 @@ func TestGetStatus(t *testing.T) {
 
 func TestFlush(t *testing.T) {
 
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("sgbucket.DeleteableBucket inteface only supported by Walrus")
+	}
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
