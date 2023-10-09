@@ -870,18 +870,18 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 }
 
 // updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering
-func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent uint32) (*Document, error) {
+func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocUpdateType) (*Document, error) {
 
 	if d.HLV == nil {
 		d.HLV = &HybridLogicalVector{}
 	}
 	switch docUpdateEvent {
-	case BlipWriteEvent:
+	case ExistingVersion:
 		// preserve any other logic on the HLV that has been done by the client, only update to cvCAS will be needed
 		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
-	case ImportEvent:
+	case Import:
 		// work to be done to decide if the VV needs updating here, pending CBG-3503
-	case SGWriteEvent:
+	case NewVersion:
 		// add a new entry to the version vector
 		newVVEntry := CurrentVersionVector{}
 		newVVEntry.SourceID = db.dbCtx.BucketUUID
@@ -935,7 +935,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		return "", nil, err
 	}
 
-	docUpdateEvent := SGWriteEvent
+	docUpdateEvent := NewVersion
 	allowImport := db.UseXattrs()
 	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, expiry, nil, docUpdateEvent, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		var isSgWrite bool
@@ -1061,7 +1061,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 		return nil, "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 
-	docUpdateEvent := BlipWriteEvent
+	docUpdateEvent := ExistingVersion
 	allowImport := db.UseXattrs()
 	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, newDoc.DocExpiry, nil, docUpdateEvent, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
@@ -1863,7 +1863,7 @@ type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAtta
 //  1. Receive the updated document body in the response
 //  2. Specify the existing document body/xattr/cas, to avoid initial retrieval of the doc in cases that the current contents are already known (e.g. import).
 //     On cas failure, the document will still be reloaded from the bucket as usual.
-func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry uint32, opts *sgbucket.MutateInOptions, docUpdateEvent uint32, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry uint32, opts *sgbucket.MutateInOptions, docUpdateEvent DocUpdateType, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
 
 	key := realDocID(docid)
 	if key == "" {

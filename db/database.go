@@ -49,12 +49,12 @@ const (
 )
 
 const (
-	ImportEvent uint32 = iota
-	SGWriteEvent
-	BlipWriteEvent
+	Import DocUpdateType = iota
+	NewVersion
+	ExistingVersion
 )
 
-var eventType uint32
+type DocUpdateType uint32
 
 const (
 	DefaultRevsLimitNoConflicts = 50
