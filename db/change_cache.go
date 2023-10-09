@@ -358,12 +358,6 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		return
 	}
 
-	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
-	if event.Opcode == sgbucket.FeedOpDeletion && len(docJSON) == 0 {
-		base.DebugfCtx(ctx, base.KeyImport, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))
-		return
-	}
-
 	collection, exists := c.db.CollectionByID[event.CollectionID]
 	if !exists {
 		cID := event.CollectionID
@@ -381,6 +375,15 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		}
 		return
 	}
+
+	ctx = base.CollectionLogCtx(ctx, collection.Name)
+
+	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
+	if event.Opcode == sgbucket.FeedOpDeletion && len(docJSON) == 0 {
+		base.DebugfCtx(ctx, base.KeyImport, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))
+		return
+	}
+
 	// If this is a binary document (and not one of the above types), we can ignore.  Currently only performing this check when xattrs
 	// are enabled, because walrus doesn't support DataType on feed.
 	if collection.UseXattrs() && event.DataType == base.MemcachedDataTypeRaw {
