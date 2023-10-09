@@ -1231,6 +1231,9 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 }
 
 func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip test with LeakyBucket dependency when running in integration")
+	}
 
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
