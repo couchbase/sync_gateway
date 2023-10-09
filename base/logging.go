@@ -387,11 +387,14 @@ func LogTraceEnabled(logKey LogKey) bool {
 
 // AssertLogContains asserts that the logs produced by function f contain string s.
 func AssertLogContains(t *testing.T, s string, f func()) {
+	// Temporarily override logger output
 	b := bytes.Buffer{}
+	mw := io.MultiWriter(&b, os.Stderr)
+	consoleLogger.logger.SetOutput(mw)
 
-	// Temporarily override logger output for the given function call
-	consoleLogger.logger.SetOutput(&b)
+	// Call the given function
 	f()
+
 	// Allow time for logs to be printed
 	retry := func() (shouldRetry bool, err error, value interface{}) {
 		if strings.Contains(b.String(), s) {
