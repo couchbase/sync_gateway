@@ -370,7 +370,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 			base.WarnfCtx(ctx, "DocChanged(): Non-metadata mutation for doc %q in MetadataStore - kv ID: %d", base.UD(docID), cID)
 		} else {
 			// Unrecognised collection
-			// we shouldn't be receiving mutations for a collection we're not running a database for (barring the metadata store)
+			// we shouldn't be receiving mutations for a collection we're not running a database for (except the metadata store)
 			base.WarnfCtx(ctx, "DocChanged(): Could not find collection for doc %q - kv ID: %d", base.UD(docID), cID)
 		}
 		return
