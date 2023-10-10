@@ -25,6 +25,12 @@ import (
 // DefaultCollectionID represents _default._default collection
 const DefaultCollectionID = uint32(0)
 
+const (
+	// MetadataCollectionID is the KV collection ID for the SG Metadata store.
+	// Subject to change when we move to system collections. Might not be possible to declare as const (need to retrieve from server?)
+	MetadataCollectionID = DefaultCollectionID
+)
+
 type Collection struct {
 	Bucket         *GocbV2Bucket
 	Collection     *gocb.Collection
