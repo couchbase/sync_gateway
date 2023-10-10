@@ -391,6 +391,7 @@ func AssertLogContains(t *testing.T, s string, f func()) {
 	b := bytes.Buffer{}
 	mw := io.MultiWriter(&b, os.Stderr)
 	consoleLogger.logger.SetOutput(mw)
+	defer func() { consoleLogger.logger.SetOutput(os.Stderr) }()
 
 	// Call the given function
 	f()
@@ -403,7 +404,6 @@ func AssertLogContains(t *testing.T, s string, f func()) {
 		return true, nil, nil
 	}
 	err, _ := RetryLoop(TestCtx(t), "wait for logs", retry, CreateSleeperFunc(10, 100))
-	consoleLogger.logger.SetOutput(os.Stderr)
 
 	assert.NoError(t, err, "Console logs did not contain %q", s)
 }
