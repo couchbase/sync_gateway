@@ -278,8 +278,8 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	collection1 := dataStoreNames[0].CollectionName()
 	collection2 := dataStoreNames[1].CollectionName()
 
-	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[scope].Collections[collection2] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection1] = &CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection2] = &CollectionConfig{SyncFn: &c1SyncFunction}
 
 	fmt.Println(scopesConfig)
 	rtConfig := &RestTesterConfig{
@@ -341,9 +341,9 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	dataStoreNames = GetDataStoreNamesFromScopesConfig(scopesConfig)
 
 	collection3 := dataStoreNames[2].CollectionName()
-	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[scope].Collections[collection2] = CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[scope].Collections[collection3] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection1] = &CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection2] = &CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection3] = &CollectionConfig{SyncFn: &c1SyncFunction}
 	scopesConfigString, err := json.Marshal(scopesConfig)
 	require.NoError(t, err)
 
@@ -380,8 +380,8 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	// Remove collection and update the db config
 	scopesConfig = GetCollectionsConfig(t, tb, 2)
 
-	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[scope].Collections[collection2] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection1] = &CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection2] = &CollectionConfig{SyncFn: &c1SyncFunction}
 	scopesConfigString, err = json.Marshal(scopesConfig)
 	require.NoError(t, err)
 
@@ -411,8 +411,8 @@ func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
                   channel(doc.chan);
             }`
 
-	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = &CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = &CollectionConfig{SyncFn: &c1SyncFunction}
 
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: tb,
@@ -836,8 +836,8 @@ func TestCollectionStats(t *testing.T) {
 
 	scope1Name, collection1Name := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
 	scope2Name, collection2Name := dataStoreNames[1].ScopeName(), dataStoreNames[1].CollectionName()
-	scopesConfig[scope1Name].Collections[collection1Name] = CollectionConfig{SyncFn: &syncFn}
-	scopesConfig[scope2Name].Collections[collection2Name] = CollectionConfig{SyncFn: &syncFn}
+	scopesConfig[scope1Name].Collections[collection1Name] = &CollectionConfig{SyncFn: &syncFn}
+	scopesConfig[scope2Name].Collections[collection2Name] = &CollectionConfig{SyncFn: &syncFn}
 
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: tb,

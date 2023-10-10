@@ -339,82 +339,46 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 }
 
 func TestImportFilterEndpoint(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Bootstrap works with Couchbase Server only")
-	}
+	base.TestsRequireBootstrapConnection(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
-	if !base.TestUseXattrs() {
-		t.Skip("Test requires xattrs")
-	}
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
-
-	serverErr := make(chan error, 0)
-
-	// Start SG with no databases
-	ctx := base.TestCtx(t)
-	config := BootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
-	resp := BootstrapAdminRequest(t, http.MethodPut, "/db1/",
-		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": %t}`,
-			tb.GetName(), base.TestsDisableGSI(),
-		),
-	)
-	resp.RequireStatus(http.StatusCreated)
+	rt.CreateDatabase("db1", rt.NewDbConfig())
 
 	// Ensure we won't fail with an empty import filter
-	resp = BootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", "")
-	resp.RequireStatus(http.StatusOK)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/import_filter", "")
+	RequireStatus(t, resp, http.StatusOK)
 
 	// Add a document
-	err = tb.Bucket.DefaultDataStore().Set("importDoc1", 0, nil, []byte("{}"))
-	assert.NoError(t, err)
+	require.NoError(t, rt.GetSingleDataStore().Set("importDoc1", 0, nil, []byte("{}")))
 
 	// Ensure document is imported based on default import filter
-	resp = BootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc1", "")
-	resp.RequireStatus(http.StatusOK)
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/importDoc1", "")
+	RequireStatus(t, resp, http.StatusOK)
 
 	// Modify the import filter to always reject import
-	resp = BootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", `function(){return false}`)
-	resp.RequireStatus(http.StatusOK)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/import_filter", `function(){return false}`)
+	RequireStatus(t, resp, http.StatusOK)
 
 	// Add a document
-	err = tb.Bucket.DefaultDataStore().Set("importDoc2", 0, nil, []byte("{}"))
-	assert.NoError(t, err)
+	require.NoError(t, rt.GetSingleDataStore().Set("importDoc2", 0, nil, []byte("{}")))
 
 	// Ensure document is not imported and is rejected based on updated filter
-	resp = BootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc2", "")
-	resp.RequireStatus(http.StatusNotFound)
-	assert.Contains(t, resp.Body, "Not imported")
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/importDoc2", "")
+	RequireStatus(t, resp, http.StatusNotFound)
+	assert.Contains(t, resp.Body.String(), "Not imported")
 
-	resp = BootstrapAdminRequest(t, http.MethodDelete, "/db1/_config/import_filter", "")
-	resp.RequireStatus(http.StatusOK)
+	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/_config/import_filter", "")
+	RequireStatus(t, resp, http.StatusOK)
 
 	// Add a document
-	err = tb.Bucket.DefaultDataStore().Set("importDoc3", 0, nil, []byte("{}"))
-	assert.NoError(t, err)
+	require.NoError(t, rt.GetSingleDataStore().Set("importDoc3", 0, nil, []byte("{}")))
 
 	// Ensure document is imported based on default import filter
-	resp = BootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc3", "")
-	resp.RequireStatus(http.StatusOK)
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/importDoc3", "")
+	RequireStatus(t, resp, http.StatusOK)
 }
 
 func TestPersistentConfigWithCollectionConflicts(t *testing.T) {
@@ -455,11 +419,11 @@ func TestPersistentConfigWithCollectionConflicts(t *testing.T) {
 	collection1Name := dataStoreNames[0].CollectionName()
 	collection2Name := dataStoreNames[1].CollectionName()
 	collection3Name := dataStoreNames[2].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection1Name: {}}}}
-	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection2Name: {}}}}
-	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection3Name: {}}}}
-	collection1and2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection1Name: {}, collection2Name: {}}}}
-	collection2and3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection2Name: {}, collection3Name: {}}}}
+	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
+	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection3Name: {}}}}
+	collection1and2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}, collection2Name: {}}}}
+	collection2and3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}, collection3Name: {}}}}
 	log.Printf("dataStoreNames: %v", dataStoreNames)
 
 	bucketName := tb.GetName()
@@ -622,10 +586,10 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 	collection1Name := dataStoreNames[0].CollectionName()
 	collection2Name := dataStoreNames[1].CollectionName()
 	collection3Name := dataStoreNames[2].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection1Name: {}}}}
-	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection2Name: {}}}}
-	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection3Name: {}}}}
-	collection1and2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection1Name: {}, collection2Name: {}}}}
+	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
+	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection3Name: {}}}}
+	collection1and2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}, collection2Name: {}}}}
 
 	// Case 1. GetDatabaseConfigs should roll back registry after create failure
 	collection1db1Config := getTestDatabaseConfig(bucketName, "c1_db1", collection1ScopesConfig, "1-a")
@@ -755,9 +719,9 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 	collection1Name := dataStoreNames[0].CollectionName()
 	collection2Name := dataStoreNames[1].CollectionName()
 	collection3Name := dataStoreNames[2].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection1Name: {}}}}
-	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection2Name: {}}}}
-	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection3Name: {}}}}
+	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
+	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection3Name: {}}}}
 
 	bc := sc.BootstrapContext
 	// reduce retry timeout for testing
@@ -908,8 +872,8 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 
 	collection1Name := dataStoreNames[0].CollectionName()
 	collection2Name := dataStoreNames[1].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection1Name: {}}}}
-	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection2Name: {}}}}
+	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
 
 	// SimulateDeleteFailure updates the registry with a new config, but doesn't create the associated config file
 	bc := sc.BootstrapContext
@@ -1043,7 +1007,7 @@ func TestPersistentConfigSlowCreateFailure(t *testing.T) {
 
 	// set up ScopesConfigs used by tests
 	collection1Name := dataStoreNames[0].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection1Name: {}}}}
+	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
 
 	// Case 1. Complete slow create after rollback
 	collection1db1Config := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "1-a")

@@ -119,13 +119,13 @@ func TestComputeMetadataID(t *testing.T) {
 	require.True(t, registry.removeDatabase(t.Name(), existingDbName))
 
 	// Database that includes the default collection (where _sync:seq exists) should use default metadata ID
-	defaultAndNamedScopesConfig := ScopesConfig{base.DefaultScope: ScopeConfig{map[string]CollectionConfig{base.DefaultCollection: {}, "collection1": {}}}}
+	defaultAndNamedScopesConfig := ScopesConfig{base.DefaultScope: ScopeConfig{map[string]*CollectionConfig{base.DefaultCollection: {}, "collection1": {}}}}
 	defaultDbConfig.Scopes = defaultAndNamedScopesConfig
 	metadataID = bootstrapContext.computeMetadataID(ctx, registry, &defaultDbConfig)
 	assert.Equal(t, defaultMetadataID, metadataID)
 
 	// Single, non-default collection should use standard metadata ID
-	namedOnlyScopesConfig := ScopesConfig{base.DefaultScope: ScopeConfig{map[string]CollectionConfig{"collection1": {}}}}
+	namedOnlyScopesConfig := ScopesConfig{base.DefaultScope: ScopeConfig{map[string]*CollectionConfig{"collection1": {}}}}
 	defaultDbConfig.Scopes = namedOnlyScopesConfig
 	metadataID = bootstrapContext.computeMetadataID(ctx, registry, &defaultDbConfig)
 	assert.Equal(t, standardMetadataID, metadataID)
