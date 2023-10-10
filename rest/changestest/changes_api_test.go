@@ -4319,3 +4319,25 @@ func WriteDirectWithKey(t *testing.T, key string, channelArray []string, sequenc
 	require.NoError(t, err)
 
 }
+
+// TestDocChangedLogging exercises some of the logging in DocChanged
+func TestDocChangedLogging(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyCache, base.KeyChanges)
+
+	rt := rest.NewRestTesterMultipleCollections(t, nil, 2)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/doc1", `{"foo":"bar"}`)
+	rest.RequireStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/doc1", `{"foo":"bar"}`)
+	rest.RequireStatus(t, response, http.StatusCreated)
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	warnCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+	base.AssertLogContains(t, "Ignoring non-metadata mutation for doc", func() {
+		err := rt.GetDatabase().MetadataStore.Set("doc1", 0, nil, db.Body{"foo": "bar"})
+		require.NoError(t, err)
+		require.NoError(t, rt.WaitForPendingChanges())
+	})
+	assert.Equal(t, warnCountBefore, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
+}
