@@ -30,6 +30,10 @@ const (
 	SystemScope = "_system"
 	// SystemCollectionMobile is the place to store Sync Gateway metadata on a system-collections-enabled Couchbase Server (7.6+)
 	SystemCollectionMobile = "_mobile"
+
+	// MetadataCollectionID is the KV collection ID for the SG Metadata store.
+	// Subject to change when we move to system collections. Might not be possible to declare as const (need to retrieve from server?)
+	MetadataCollectionID = DefaultCollectionID
 )
 
 type Collection struct {
