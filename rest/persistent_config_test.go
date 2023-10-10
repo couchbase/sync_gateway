@@ -1136,6 +1136,95 @@ func TestMigratev30PersistentConfig(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, "2-abc", migratedDb.Version)
 
+	// Verify legacy config has been removed
+	_, getError = sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
+	require.Equal(t, base.ErrNotFound, getError)
+
+}
+
+func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	base.TestRequiresCollections(t)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
+
+	serverErr := make(chan error, 0)
+
+	// Set up test for persistent config
+	config := BootstrapStartupConfigForTest(t)
+	config.Unsupported.UseXattrConfig = base.BoolPtr(true)
+	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
+	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
+	ctx := base.TestCtx(t)
+	sc, err := SetupServerContext(ctx, &config, true)
+	require.NoError(t, err)
+	defer func() {
+		sc.Close(ctx)
+		require.NoError(t, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- StartServer(ctx, &config, sc)
+	}()
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() {
+		fmt.Println("closing test bucket")
+		tb.Close(ctx)
+	}()
+
+	bucketName := tb.GetName()
+	groupID := sc.Config.Bootstrap.ConfigGroupID
+	defaultDbName := "defaultDb"
+	defaultVersion := "1-abc"
+	defaultDbConfig := makeDbConfig(tb.GetName(), defaultDbName, nil)
+	defaultDatabaseConfig := &DatabaseConfig{
+		DbConfig: defaultDbConfig,
+		Version:  defaultVersion,
+	}
+
+	_, insertError := sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
+	require.NoError(t, insertError)
+
+	migrateErr := sc.migrateV30Configs(ctx)
+	require.NoError(t, migrateErr)
+
+	// Fetch the registry, verify database has been migrated
+	registry, registryErr := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, registryErr)
+	require.NotNil(t, registry)
+	migratedDb, found := registry.getRegistryDatabase(groupID, defaultDbName)
+	require.True(t, found)
+	require.Equal(t, "1-abc", migratedDb.Version)
+	// Verify legacy config has been removed
+	_, getError := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
+	require.Equal(t, base.ErrNotFound, getError)
+
+	// Update the db in the registry, and recreate legacy config.  Verify migration doesn't overwrite
+	_, insertError = sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
+	require.NoError(t, insertError)
+	_, updateError := sc.BootstrapContext.UpdateConfig(ctx, bucketName, groupID, defaultDbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		bucketDbConfig.Version = "2-abc"
+		return bucketDbConfig, nil
+	})
+	require.NoError(t, updateError)
+	migrateErr = sc.migrateV30Configs(ctx)
+	require.NoError(t, migrateErr)
+	registry, registryErr = sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, registryErr)
+	require.NotNil(t, registry)
+	migratedDb, found = registry.getRegistryDatabase(groupID, defaultDbName)
+	require.True(t, found)
+	require.Equal(t, "2-abc", migratedDb.Version)
+
+	// Verify legacy config has been removed
+	_, getError = sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
+	require.Equal(t, base.ErrNotFound, getError)
+
 }
 
 // TestMigratev30PersistentConfigCollision sets up a 3.1 database targeting the default collection, then attempts
