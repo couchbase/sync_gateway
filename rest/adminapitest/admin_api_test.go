@@ -1579,6 +1579,8 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	responseConfig := rt.ServerContext().GetDbConfig("db1")
 	assert.Nil(t, responseConfig)
 
+	require.Equal(t, 1, len(rt.ServerContext().AllInvalidDatabases()))
+
 	// assert that fetching config fails with the correct error message to the user
 	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
 	rest.RequireStatus(t, resp, http.StatusNotFound)
@@ -1601,7 +1603,8 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	// wait some time for interval to pick up change
 	err = rt.WaitForConditionWithOptions(func() bool {
 		list := rt.ServerContext().AllDatabaseNames()
-		return len(list) == 1
+		numInvalid := len(rt.ServerContext().AllInvalidDatabases())
+		return len(list) == 1 && numInvalid == 0
 	}, 200, 1000)
 	require.NoError(t, err)
 
