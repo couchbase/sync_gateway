@@ -1285,11 +1285,9 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 	_, insertError := sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
 	require.NoError(t, insertError)
 
+	// migration should not return error, but legacy config will not be migrated due to collection conflict
 	migrateErr := sc.migrateV30Configs(ctx)
-	require.Error(t, migrateErr)
-	var httpErr *base.HTTPError
-	require.ErrorAs(t, migrateErr, &httpErr)
-	require.Equal(t, 409, httpErr.Status)
+	require.NoError(t, migrateErr)
 
 	// Fetch the registry, verify newDefaultDb still exists and defaultDb30 has not been migrated due to collection conflict
 	registry, registryErr := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
@@ -1298,6 +1296,10 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 	migratedDb, found := registry.getRegistryDatabase(groupID, newDefaultDbName)
 	require.True(t, found)
 	require.Equal(t, "1-a", migratedDb.Version)
+
+	// Verify non-migrated legacy config has not been deleted (since it wasn't successfully migrated)
+	_, getErr := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
+	require.NoError(t, getErr)
 }
 
 // TestLegacyDuplicate tests the behaviour of GetDatabaseConfigs when the same database exists in legacy and non-legacy format
