@@ -147,7 +147,8 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		existingDoc.Expiry = *expiry
 	}
 
-	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, expiry, mutationOptions, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	docUpdateEvent := Import
+	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, expiry, mutationOptions, docUpdateEvent, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
 		if doc.Cas != existingDoc.Cas {
