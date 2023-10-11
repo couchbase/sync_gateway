@@ -463,8 +463,8 @@ func TestMultiCollectionChangesCustomSyncFunctions(t *testing.T) {
 			channel("!")
 		}
 	}`
-	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = rest.CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = rest.CollectionConfig{SyncFn: &c2SyncFunction}
+	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = &rest.CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = &rest.CollectionConfig{SyncFn: &c2SyncFunction}
 
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: testBucket,
