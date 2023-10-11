@@ -869,6 +869,33 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 	return nil
 }
 
+// updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering
+func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocUpdateType) (*Document, error) {
+
+	if d.HLV == nil {
+		d.HLV = &HybridLogicalVector{}
+	}
+	switch docUpdateEvent {
+	case ExistingVersion:
+		// preserve any other logic on the HLV that has been done by the client, only update to cvCAS will be needed
+		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
+	case Import:
+		// work to be done to decide if the VV needs updating here, pending CBG-3503
+	case NewVersion:
+		// add a new entry to the version vector
+		newVVEntry := CurrentVersionVector{}
+		newVVEntry.SourceID = db.dbCtx.BucketUUID
+		newVVEntry.VersionCAS = hlvExpandMacroCASValue
+		err := d.SyncData.HLV.AddVersion(newVVEntry)
+		if err != nil {
+			return nil, err
+		}
+		// update the cvCAS on the SGWrite event too
+		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
+	}
+	return d, nil
+}
+
 // Updates or creates a document.
 // The new body's BodyRev property must match the current revision's, if any.
 func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, body Body) (newRevID string, doc *Document, err error) {
@@ -908,8 +935,9 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		return "", nil, err
 	}
 
+	docUpdateEvent := NewVersion
 	allowImport := db.UseXattrs()
-	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, expiry, nil, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, expiry, nil, docUpdateEvent, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		var isSgWrite bool
 		var crc32Match bool
 
@@ -1033,8 +1061,9 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 		return nil, "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 
+	docUpdateEvent := ExistingVersion
 	allowImport := db.UseXattrs()
-	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, newDoc.DocExpiry, nil, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, newDoc.DocExpiry, nil, docUpdateEvent, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -1834,7 +1863,7 @@ type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAtta
 //  1. Receive the updated document body in the response
 //  2. Specify the existing document body/xattr/cas, to avoid initial retrieval of the doc in cases that the current contents are already known (e.g. import).
 //     On cas failure, the document will still be reloaded from the bucket as usual.
-func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry uint32, opts *sgbucket.MutateInOptions, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry uint32, opts *sgbucket.MutateInOptions, docUpdateEvent DocUpdateType, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
 
 	key := realDocID(docid)
 	if key == "" {
@@ -1932,6 +1961,14 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				err = base.RedactErrorf("WriteUpdateWithXattr() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", doc.CurrentRev, base.UD(doc))
 				return
 			}
+
+			// update the HLV values
+			doc, err = db.updateHLV(doc, docUpdateEvent)
+			if err != nil {
+				return
+			}
+			// update the mutate in options based on the above logic
+			updatedSpec = doc.SyncData.HLV.computeMacroExpansions()
 
 			deleteDoc = currentRevFromHistory.Deleted
 
@@ -2582,8 +2619,10 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 }
 
 const (
-	xattrMacroCas         = "cas"
-	xattrMacroValueCrc32c = "value_crc32c"
+	xattrMacroCas           = "cas"
+	xattrMacroValueCrc32c   = "value_crc32c"
+	versionVectorVrsMacro   = "_vv.vrs"
+	versionVectorCVCASMacro = "_vv.cvCas"
 )
 
 func macroExpandSpec(xattrName string) []sgbucket.MacroExpansionSpec {
@@ -2601,4 +2640,12 @@ func xattrCasPath(xattrKey string) string {
 
 func xattrCrc32cPath(xattrKey string) string {
 	return xattrKey + "." + xattrMacroValueCrc32c
+}
+
+func xattrCurrentVersionPath(xattrKey string) string {
+	return xattrKey + "." + versionVectorVrsMacro
+}
+
+func xattrCurrentVersionCASPath(xattrKey string) string {
+	return xattrKey + "." + versionVectorCVCASMacro
 }
