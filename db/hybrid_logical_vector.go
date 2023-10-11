@@ -331,13 +331,7 @@ func (hlv *HybridLogicalVector) computeMacroExpansions() []sgbucket.MacroExpansi
 	return outputSpec
 }
 
-func (hlv *HybridLogicalVector) addMergeVersion(source string, version uint64) {
-	if hlv.MergeVersions == nil {
-		hlv.MergeVersions = make(map[string]uint64)
-	}
-	hlv.MergeVersions[source] = version
-}
-
+// addToPreviousVersions will take a source/version pair and add it to the HLV previous versions map
 func (hlv *HybridLogicalVector) addToPreviousVersions(source string, version uint64) {
 	if hlv.MergeVersions == nil {
 		hlv.MergeVersions = make(map[string]uint64)
