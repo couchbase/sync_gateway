@@ -4284,6 +4284,10 @@ func TestDocChangedLogging(t *testing.T) {
 	base.AssertLogContains(t, "Ignoring non-metadata mutation for doc", func() {
 		err := rt.GetDatabase().MetadataStore.Set("doc1", 0, nil, db.Body{"foo": "bar"})
 		require.NoError(t, err)
+		// write another doc to ensure the previous non-metadata doc has been seen...
+		// no other way of synchronising this no-op as no stats to wait on
+		response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/doc2", `{"foo":"bar"}`)
+		rest.RequireStatus(t, response, http.StatusCreated)
 		require.NoError(t, rt.WaitForPendingChanges())
 	})
 	assert.Equal(t, warnCountBefore, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
