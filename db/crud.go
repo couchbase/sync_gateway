@@ -1062,6 +1062,105 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	return newRevID, doc, err
 }
 
+func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, docHistory []string, docHLV HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *CurrentVersionVector, newRevID string, err error) {
+	newRev := docHistory[0]
+	generation, _ := ParseRevID(ctx, newRev)
+	if generation < 0 {
+		return nil, nil, "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
+	}
+
+	docUpdateEvent := ExistingVersion
+	allowImport := db.UseXattrs()
+	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, newDoc.DocExpiry, nil, docUpdateEvent, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+		// (Be careful: this block can be invoked multiple times if there are races!)
+
+		var isSgWrite bool
+		var crc32Match bool
+
+		// Is this doc an sgWrite?
+		if doc != nil {
+			isSgWrite, crc32Match, _ = doc.IsSGWrite(ctx, nil)
+			if crc32Match {
+				db.dbStats().Database().Crc32MatchCount.Add(1)
+			}
+		}
+
+		// If the existing doc isn't an SG write, import prior to updating
+		if doc != nil && !isSgWrite && db.UseXattrs() {
+			err := db.OnDemandImportForWrite(ctx, newDoc.ID, doc, newDoc.Deleted)
+			if err != nil {
+				return nil, nil, false, nil, err
+			}
+		}
+
+		// Find the point where this doc's history branches from the current rev:
+		currentRevIndex := len(docHistory)
+		parent := ""
+		for i, revid := range docHistory {
+			if doc.History.contains(revid) {
+				currentRevIndex = i
+				parent = revid
+				break
+			}
+		}
+		if currentRevIndex == 0 {
+			base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingRevWithBody(%q): No new revisions to add", base.UD(newDoc.ID))
+			newDoc.RevID = newRev
+			return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
+		}
+
+		// Conflict check here
+		if doc.HLV == nil {
+			doc.HLV = &HybridLogicalVector{}
+		}
+		if !docHLV.IsInConflict(*doc.HLV) {
+			// update hlv for all newer incoming source version pairs
+			doc.HLV.AddNewerVersions(docHLV)
+		} else {
+			base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s", base.UD(doc.ID))
+			// cancel rest of update, HLV needs to be sent back to client with merge versions populated
+			return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+		}
+
+		// Add all the new-to-me revisions to the rev tree:
+		for i := currentRevIndex - 1; i >= 0; i-- {
+			err := doc.History.addRevision(newDoc.ID,
+				RevInfo{
+					ID:      docHistory[i],
+					Parent:  parent,
+					Deleted: i == 0 && newDoc.Deleted})
+
+			if err != nil {
+				return nil, nil, false, nil, err
+			}
+			parent = docHistory[i]
+		}
+
+		parentRevID := doc.History[newRev].Parent
+		// Process the attachments, replacing bodies with digests.
+		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.DocAttachments, generation, parentRevID, docHistory)
+		if err != nil {
+			return nil, nil, false, nil, err
+		}
+
+		newDoc.RevID = newRev
+		newDoc.Deleted = newDoc.Deleted
+
+		return newDoc, newAttachments, false, nil, nil
+	})
+
+	if doc != nil && doc.HLV != nil {
+		if cv == nil {
+			cv = &CurrentVersionVector{}
+		}
+		source, version := doc.HLV.GetCurrentVersion()
+		cv.SourceID = source
+		cv.VersionCAS = version
+	}
+
+	return doc, cv, newRev, err
+}
+
 // Adds an existing revision to a document along with its history (list of rev IDs.)
 func (db *DatabaseCollectionWithUser) PutExistingRev(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, forceAllConflicts bool, existingDoc *sgbucket.BucketDocument, docUpdateEvent DocUpdateType) (doc *Document, newRevID string, err error) {
 	return db.PutExistingRevWithConflictResolution(ctx, newDoc, docHistory, noConflicts, nil, forceAllConflicts, existingDoc, docUpdateEvent)

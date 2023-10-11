@@ -644,3 +644,25 @@ func DefaultMutateInOpts() *sgbucket.MutateInOptions {
 		MacroExpansion: macroExpandSpec(base.SyncXattrName),
 	}
 }
+
+func constructDocumentFromBody(docID string, body Body) (newDoc *Document) {
+	expiry, _ := body.ExtractExpiry()
+	deleted := body.ExtractDeleted()
+	revid := body.ExtractRev()
+
+	newDoc = &Document{
+		ID:        docID,
+		Deleted:   deleted,
+		DocExpiry: expiry,
+		RevID:     revid,
+	}
+
+	delete(body, BodyId)
+	delete(body, BodyRevisions)
+
+	newDoc.DocAttachments = GetBodyAttachments(body)
+	delete(body, BodyAttachments)
+
+	newDoc.UpdateBody(body)
+	return newDoc
+}
