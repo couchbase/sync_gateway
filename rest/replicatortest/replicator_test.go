@@ -8324,3 +8324,46 @@ func requireBodyEqual(t *testing.T, expected string, doc *db.Document) {
 	require.NoError(t, base.JSONUnmarshal([]byte(expected), &expectedBody))
 	require.Equal(t, expectedBody, doc.Body(base.TestCtx(t)))
 }
+
+// TestReplicatorUpdateHLVOnPut:
+//   - For purpose of testing the PutExistingRev code path
+//   - Put a doc on a active rest tester
+//   - Create replication and wait for the doc to be replicated to passive node
+//   - Assert on the HLV in the metadata of the replicated document
+func TestReplicatorUpdateHLVOnPut(t *testing.T) {
+
+	activeRT, passiveRT, remoteURL, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+
+	// Grab the bucket UUIDs for both rest testers
+	activeBucketUUID, err := activeRT.GetDatabase().Bucket.UUID()
+	require.NoError(t, err)
+
+	const rep = "replication"
+
+	// Put a doc and assert on the HLV update in the sync data
+	resp := activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"source": "activeRT"}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	syncData, err := activeRT.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+	uintCAS := base.HexCasToUint64(syncData.Cas)
+
+	assert.Equal(t, activeBucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, uintCAS, syncData.HLV.Version)
+	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
+
+	// create the replication to push the doc to the passive node and wait for the doc to be replicated
+	activeRT.CreateReplication(rep, remoteURL, db.ActiveReplicatorTypePush, nil, false, db.ConflictResolverDefault)
+
+	_, err = passiveRT.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+
+	// assert on the HLV update on the passive node
+	syncData, err = passiveRT.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+	uintCAS = base.HexCasToUint64(syncData.Cas)
+
+	// TODO: assert that the SourceID and Verison pair are preserved correctly pending CBG-3211
+	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
+}
