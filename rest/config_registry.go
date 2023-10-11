@@ -82,7 +82,7 @@ type RegistryScope struct {
 }
 
 var defaultOnlyRegistryScopes = map[string]RegistryScope{base.DefaultScope: {Collections: []string{base.DefaultCollection}}}
-var DefaultOnlyScopesConfig = ScopesConfig{base.DefaultScope: {Collections: map[string]CollectionConfig{base.DefaultCollection: {}}}}
+var DefaultOnlyScopesConfig = ScopesConfig{base.DefaultScope: {Collections: map[string]*CollectionConfig{base.DefaultCollection: {}}}}
 
 func NewGatewayRegistry(syncGatewayVersion base.ComparableVersion) *GatewayRegistry {
 	return &GatewayRegistry{

@@ -1545,7 +1545,7 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	scope1Name := rt.GetDbCollections()[0].ScopeName
 	collection1Name := rt.GetDbCollections()[0].Name
 	collection2Name := rt.GetDbCollections()[1].Name
-	scopesConfig[scope1Name].Collections[collection1Name] = CollectionConfig{}
+	scopesConfig[scope1Name].Collections[collection1Name] = &CollectionConfig{}
 
 	collectionPayload := fmt.Sprintf(`,"%s": {
 					"admin_channels":["foo", "bar1"]
@@ -1630,7 +1630,7 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	scopeName := rt.GetDbCollections()[0].ScopeName
 	collection1Name := rt.GetDbCollections()[0].Name
 	collection2Name := rt.GetDbCollections()[1].Name
-	scopesConfig[scopeName].Collections[collection1Name] = CollectionConfig{}
+	scopesConfig[scopeName].Collections[collection1Name] = &CollectionConfig{}
 
 	collectionPayload := fmt.Sprintf(`,"%s": {
 					"admin_channels":["a"]
