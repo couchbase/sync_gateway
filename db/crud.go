@@ -1079,6 +1079,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 		return nil, "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 
+	docUpdateEvent := ExistingVersion
 	allowImport := db.UseXattrs()
 	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, newDoc.DocExpiry, nil, docUpdateEvent, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
@@ -1978,6 +1979,14 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				err = base.RedactErrorf("WriteUpdateWithXattr() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", doc.CurrentRev, base.UD(doc))
 				return
 			}
+
+			// update the HLV values
+			doc, err = db.updateHLV(doc, docUpdateEvent)
+			if err != nil {
+				return
+			}
+			// update the mutate in options based on the above logic
+			updatedSpec = doc.SyncData.HLV.computeMacroExpansions()
 
 			// update the HLV values
 			doc, err = db.updateHLV(doc, docUpdateEvent)
