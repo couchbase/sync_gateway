@@ -85,19 +85,10 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion SourceAndVersion) error {
 		hlv.SourceID = newVersion.SourceID
 		return nil
 	}
-	// check if this is the first time we're adding a source - version pair
-	if hlv.SourceID == "" {
-		hlv.Version = newVersion.VersionCAS
-		hlv.SourceID = newVersion.SourceID
-		return nil
-	}
 	// if new entry has the same source we simple just update the version
 	if newVersion.SourceID == hlv.SourceID {
 		hlv.Version = newVersion.Version
 		return nil
-	}
-	if hlv.PreviousVersions == nil {
-		hlv.PreviousVersions = make(map[string]uint64)
 	}
 	// if we get here this is a new version from a different sourceID thus need to move current sourceID to previous versions and update current version
 	if hlv.PreviousVersions == nil {
