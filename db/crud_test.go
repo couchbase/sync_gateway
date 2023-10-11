@@ -1739,11 +1739,12 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	_, rawDoc, err := collection.GetDocumentWithRaw(ctx, key, DocUnmarshalSync)
 	require.NoError(t, err)
 
-	_, cv, rev, err := collection.PutExistingCurrentVersion(ctx, newDoc, []string{"3-c", rev2, rev}, incomingHLV, rawDoc)
+	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, []string{"3-c", rev2, rev}, incomingHLV, rawDoc)
 	require.NoError(t, err)
 	// assert on returned CV
 	assert.Equal(t, "test", cv.SourceID)
 	assert.Equal(t, incomingVersion, cv.VersionCAS)
+	assert.Equal(t, []byte(`{"key1":"value2"}`), doc._rawBody)
 
 	// assert on the sync data from the above update to the doc
 	// CV should be equal to CV of update on client but the cvCAS should be updated with the new update and
@@ -1879,6 +1880,7 @@ func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 	// assert on returned CV value
 	assert.Equal(t, "test", cv.SourceID)
 	assert.Equal(t, incomingVersion, cv.VersionCAS)
+	assert.Equal(t, []byte(`{"key1":"value2"}`), doc._rawBody)
 
 	// assert on the sync data from the above update to the doc
 	// CV should be equal to CV of update on client but the cvCAS should be updated with the new update and

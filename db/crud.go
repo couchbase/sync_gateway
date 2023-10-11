@@ -1144,7 +1144,6 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		}
 
 		newDoc.RevID = newRev
-		newDoc.Deleted = newDoc.Deleted
 
 		return newDoc, newAttachments, false, nil, nil
 	})
