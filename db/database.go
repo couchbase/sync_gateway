@@ -49,6 +49,14 @@ const (
 )
 
 const (
+	Import DocUpdateType = iota
+	NewVersion
+	ExistingVersion
+)
+
+type DocUpdateType uint32
+
+const (
 	DefaultRevsLimitNoConflicts = 50
 	DefaultRevsLimitConflicts   = 100
 
@@ -88,6 +96,7 @@ type DatabaseContext struct {
 	MetadataStore               base.DataStore     // Storage for database metadata (anything that isn't an end-user's/customer's documents)
 	Bucket                      base.Bucket        // Storage
 	BucketSpec                  base.BucketSpec    // The BucketSpec
+	BucketUUID                  string             // The bucket UUID for the bucket the database is created against
 	BucketLock                  sync.RWMutex       // Control Access to the underlying bucket object
 	mutationListener            changeListener     // Caching feed listener
 	ImportListener              *importListener    // Import feed listener
@@ -415,6 +424,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		metadataStore = bucket.DefaultDataStore()
 	}
 
+	bucketUUID, err := bucket.UUID()
+	if err != nil {
+		return nil, err
+	}
+
 	// Register the cbgt pindex type for the configGroup
 	RegisterImportPindexImpl(ctx, options.GroupID)
 
@@ -423,6 +437,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		UUID:                cbgt.NewUUID(),
 		MetadataStore:       metadataStore,
 		Bucket:              bucket,
+		BucketUUID:          bucketUUID,
 		StartTime:           time.Now(),
 		autoImport:          autoImport,
 		Options:             options,
