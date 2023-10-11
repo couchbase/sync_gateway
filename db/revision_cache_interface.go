@@ -288,8 +288,14 @@ func revCacheLoaderForCv(ctx context.Context, backingStore RevisionCacheBackingS
 	if doc, err = backingStore.GetDocument(ctx, id.DocID, unmarshalLevel); doc == nil {
 		return bodyBytes, body, history, channels, removed, attachments, deleted, expiry, err
 	}
-	fetchedDocSource, fetchedDocVersion := doc.HLV.GetCurrentVersion()
-	if fetchedDocSource != cv.SourceID || fetchedDocVersion != cv.VersionCAS {
+	// nil check to be panic safe
+	if doc.HLV != nil {
+		// fetch the current version for the loaded doc and compare against the CV specified in the IDandCV key
+		fetchedDocSource, fetchedDocVersion := doc.HLV.GetCurrentVersion()
+		if fetchedDocSource != cv.SourceID || fetchedDocVersion != cv.VersionCAS {
+			return bodyBytes, body, history, channels, removed, attachments, deleted, expiry, base.RedactErrorf("mismatch between specified current version and fetched document current version for doc %s", base.UD(id.DocID))
+		}
+	} else {
 		return bodyBytes, body, history, channels, removed, attachments, deleted, expiry, base.RedactErrorf("mismatch between specified current version and fetched document current version for doc %s", base.UD(id.DocID))
 	}
 
