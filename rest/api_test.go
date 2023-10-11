@@ -2746,6 +2746,97 @@ func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 	assert.Contains(t, err.Error(), "null doc body for doc")
 }
 
+// TestPutDocUpdateVersionVector:
+//   - Put a doc and assert that the versions and the source for the hlv is correctly updated
+//   - Update that doc and assert HLV has also been updated
+//   - Delete the doc and assert that the HLV has been updated in deletion event
+func TestPutDocUpdateVersionVector(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	bucketUUID, err := rt.GetDatabase().Bucket.UUID()
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"key": "value"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+	uintCAS := base.HexCasToUint64(syncData.Cas)
+
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, uintCAS, syncData.HLV.Version)
+	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
+
+	// Put a new revision of this doc and assert that the version vector SourceID and Version is updated
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev="+syncData.CurrentRev, `{"key1": "value1"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+	uintCAS = base.HexCasToUint64(syncData.Cas)
+
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, uintCAS, syncData.HLV.Version)
+	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
+
+	// Delete doc and assert that the version vector SourceID and Version is updated
+	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev="+syncData.CurrentRev, "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+	uintCAS = base.HexCasToUint64(syncData.Cas)
+
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, uintCAS, syncData.HLV.Version)
+	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
+}
+
+// TestHLVOnPutWithImportRejection:
+//   - Put a doc successfully and assert the HLV is updated correctly
+//   - Put a doc that will be rejected by the custom import filter
+//   - Assert that the HLV values on the sync data are still correctly updated/preserved
+func TestHLVOnPutWithImportRejection(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
+	importFilter := `function (doc) { return doc.type == "mobile"}`
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport:   false,
+			ImportFilter: &importFilter,
+		}},
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	bucketUUID, err := rt.GetDatabase().Bucket.UUID()
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"type": "mobile"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	assert.NoError(t, err)
+	uintCAS := base.HexCasToUint64(syncData.Cas)
+
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, uintCAS, syncData.HLV.Version)
+	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
+
+	// Put a doc that will be rejected by the import filter on the attempt to perform on demand import for write
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"type": "not-mobile"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// assert that the hlv is correctly updated and in tact after the import was cancelled on the doc
+	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc2")
+	assert.NoError(t, err)
+	uintCAS = base.HexCasToUint64(syncData.Cas)
+
+	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
+	assert.Equal(t, uintCAS, syncData.HLV.Version)
+	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
+}
+
 func TestTombstoneCompactionAPI(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
