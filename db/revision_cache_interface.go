@@ -28,17 +28,22 @@ const (
 
 // RevisionCache is an interface that can be used to fetch a DocumentRevision for a Doc ID and Rev ID pair.
 type RevisionCache interface {
-	// Get returns the given revision, and stores if not already cached.
+	// GetWithRev returns the given revision, and stores if not already cached.
 	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
 	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
-	Get(ctx context.Context, docID, revID string, cv *CurrentVersionVector, includeBody, includeDelta bool) (DocumentRevision, error)
+	GetWithRev(ctx context.Context, docID, revID string, includeBody, includeDelta bool) (DocumentRevision, error)
+
+	// GetWithCV returns the given revision by the CV, and stores if not already cached.
+	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
+	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
+	GetWithCV(ctx context.Context, docID string, cv *CurrentVersionVector, includeBody, includeDelta bool) (DocumentRevision, error)
 
 	// GetActive returns the current revision for the given doc ID, and stores if not already cached.
 	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
 	GetActive(ctx context.Context, docID string, includeBody bool) (docRev DocumentRevision, err error)
 
 	// Peek returns the given revision if present in the cache
-	Peek(ctx context.Context, docID, revID string, cv *CurrentVersionVector) (docRev DocumentRevision, found bool)
+	Peek(ctx context.Context, docID, revID string) (docRev DocumentRevision, found bool)
 
 	// Put will store the given docRev in the cache
 	Put(ctx context.Context, docRev DocumentRevision)
@@ -46,11 +51,14 @@ type RevisionCache interface {
 	// Update will remove existing value and re-create new one
 	Upsert(ctx context.Context, docRev DocumentRevision)
 
-	// Remove eliminates a revision in the cache.
-	Remove(docID, revID string, cv *CurrentVersionVector)
+	// RemoveWithRev eliminates a revision in the cache using its revID.
+	RemoveWithRev(docID, revID string)
+
+	// RemoveWithCV eliminates a revision in the cache using its current version.
+	RemoveWithCV(docID string, cv *CurrentVersionVector)
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
-	UpdateDelta(ctx context.Context, docID, revID string, cv *CurrentVersionVector, toDelta RevisionDelta)
+	UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta)
 }
 
 const (
@@ -280,6 +288,11 @@ func revCacheLoaderForCv(ctx context.Context, backingStore RevisionCacheBackingS
 	if doc, err = backingStore.GetDocument(ctx, id.DocID, unmarshalLevel); doc == nil {
 		return bodyBytes, body, history, channels, removed, attachments, deleted, expiry, err
 	}
+	fetchedDocSource, fetchedDocVersion := doc.HLV.GetCurrentVersion()
+	if fetchedDocSource != cv.SourceID || fetchedDocVersion != cv.VersionCAS {
+		return bodyBytes, body, history, channels, removed, attachments, deleted, expiry, base.RedactErrorf("mismatch between specified current version and fetched document current version for doc %s", base.UD(id.DocID))
+	}
+
 	return revCacheLoaderForDocumentCV(ctx, backingStore, doc, cv)
 }
 
