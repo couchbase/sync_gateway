@@ -4434,19 +4434,6 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
 	resp.RequireStatus(http.StatusCreated)
 
-	// because we moved database - resync is required for the default collection before we're able to bring db2 online
-	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db2/_resync?regenerate_sequences=true", "")
-	resp.RequireStatus(http.StatusOK)
-
-	// after resync is done, state will flip back to offline
-	BootstrapWaitForDatabaseState(t, "db2", db.DBOffline)
-
-	// now bring the db online so we're able to check dest factory
-	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db2/_online", "")
-	resp.RequireStatus(http.StatusOK)
-
-	BootstrapWaitForDatabaseState(t, "db2", db.DBOnline)
-
 	scopeName := ""
 	collectionNames := []string{}
 	// Validate that deleted database is no longer in dest factory set

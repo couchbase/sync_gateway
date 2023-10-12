@@ -90,8 +90,8 @@ func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
 	_ = rt.Bucket()
 
 	dbName := "db"
-	// Create a database with named collections
-	// Update config to remove named collections
+	// Create a database with default collection,
+	// Update config to switch to named collections
 
 	scopesConfig := rest.GetCollectionsConfig(t, rt.TestBucket, 2)
 	dbConfig := rt.NewDbConfig()
@@ -105,10 +105,10 @@ func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
 
 	putResponse := rt.SendAdminRequest("PUT", "/"+dbName+"/_user/bob", userPayload)
 	rest.RequireStatus(t, putResponse, 201)
-	bobDocName := "_sync:user:db:bob"
+	bobDocName := "_sync:user:bob"
 	requireBobUserLocation(rt, bobDocName)
 
-	// Update database to only target default collection
+	// Update database to only target named collection
 	dbConfig.Scopes = scopesConfig
 	resp = rt.ReplaceDbConfig(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
