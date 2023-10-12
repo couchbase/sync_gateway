@@ -493,7 +493,7 @@ func (cc *CouchbaseCluster) GetDocument(ctx context.Context, bucketName, docID s
 		return false, err
 	}
 	err = getResult.Content(rv)
-	return true, nil
+	return true, err
 }
 
 // Close calls teardown for any cached buckets and removes from cachedBucketConnections

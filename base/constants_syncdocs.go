@@ -400,6 +400,8 @@ func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, err err
 
 // SetSyncInfo sets syncInfo in a DataStore to the specified metadataID
 func SetSyncInfo(ds DataStore, metadataID string) error {
+
+	// If the metadataID isn't defined, don't persist SyncInfo.  Defensive handling for legacy use cases.
 	if metadataID == "" {
 		return nil
 	}

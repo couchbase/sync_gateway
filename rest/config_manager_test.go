@@ -89,11 +89,11 @@ func TestComputeMetadataID(t *testing.T) {
 	defaultVersion := "1-abc"
 	defaultDbConfig := makeDbConfig(tb.GetName(), dbName, nil)
 
-	// No sync data in default collection, so should use standard ID
+	// Use defaultMetadataID if database targets the default collection
 	metadataID := bootstrapContext.computeMetadataID(ctx, registry, &defaultDbConfig)
-	assert.Equal(t, standardMetadataID, metadataID)
+	assert.Equal(t, defaultMetadataID, metadataID)
 
-	// Set _sync:seq in default collection, verify computeMetadataID returns default ID
+	// Set _sync:seq in default collection, verify computeMetadataID still returns default ID
 	defaultStore := tb.Bucket.DefaultDataStore()
 	syncSeqKey := base.DefaultMetadataKeys.SyncSeqKey()
 	_, err = defaultStore.Incr(syncSeqKey, 1, 0, 0)
