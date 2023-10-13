@@ -88,11 +88,11 @@ func TestComputeMetadataID(t *testing.T) {
 	defaultVersion := "1-abc"
 	defaultDbConfig := makeDbConfig(tb.GetName(), dbName, nil)
 
-	// No sync data in default collection, so should use standard ID
+	// Use defaultMetadataID if database targets the default collection
 	metadataID := bootstrapContext.computeMetadataID(ctx, registry, &defaultDbConfig)
-	assert.Equal(t, standardMetadataID, metadataID)
+	assert.Equal(t, defaultMetadataID, metadataID)
 
-	// Set _sync:seq in default collection, verify computeMetadataID returns default ID
+	// Set _sync:seq in default collection, verify computeMetadataID still returns default ID
 	defaultStore := tb.Bucket.DefaultDataStore()
 	syncSeqKey := base.DefaultMetadataKeys.SyncSeqKey()
 	_, err = defaultStore.Incr(syncSeqKey, 1, 0, 0)
@@ -122,6 +122,21 @@ func TestComputeMetadataID(t *testing.T) {
 	defaultDbConfig.Scopes = defaultAndNamedScopesConfig
 	metadataID = bootstrapContext.computeMetadataID(ctx, registry, &defaultDbConfig)
 	assert.Equal(t, defaultMetadataID, metadataID)
+
+	// If the database has been assigned a metadataID in another config group, that should be used
+	multiConfigGroupDbName := "multiConfigGroupDb"
+	existingDbConfigOtherConfigGroup := makeDbConfig(tb.GetName(), multiConfigGroupDbName, nil)
+	existingDatabaseConfigOtherConfigGroup := &DatabaseConfig{
+		DbConfig:   existingDbConfigOtherConfigGroup,
+		Version:    defaultVersion,
+		MetadataID: multiConfigGroupDbName,
+	}
+	_, err = registry.upsertDatabaseConfig(ctx, "differentConfigGroup", existingDatabaseConfigOtherConfigGroup)
+	require.NoError(t, err)
+
+	newDbConfig := makeDbConfig(tb.GetName(), multiConfigGroupDbName, nil)
+	metadataID = bootstrapContext.computeMetadataID(ctx, registry, &newDbConfig)
+	require.Equal(t, multiConfigGroupDbName, metadataID)
 
 	// Single, non-default collection should use standard metadata ID
 	namedOnlyScopesConfig := ScopesConfig{base.DefaultScope: ScopeConfig{map[string]CollectionConfig{"collection1": {}}}}
