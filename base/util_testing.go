@@ -661,7 +661,7 @@ func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardo
 	}
 
 	initialLogLevel := LevelInfo
-	initialLogKey := logKeyMask(KeyHTTP)
+	initialLogKey := logKeyMask(KeyNone)
 
 	// Check that a previous invocation has not forgotten to call teardownFn
 	if *consoleLogger.LogLevel != initialLogLevel ||

@@ -225,9 +225,6 @@ func (lcc *ConsoleLoggerConfig) init() error {
 		return fmt.Errorf("invalid log level: %v", *lcc.LogLevel)
 	}
 
-	// Always enable the HTTP log key
-	lcc.LogKeys = append(lcc.LogKeys, logKeyNames[KeyHTTP])
-
 	// If ColorEnabled is not explicitly set, use the value of $SG_COLOR
 	if lcc.ColorEnabled == nil {
 		// Ignore error parsing this value to treat it as false.
