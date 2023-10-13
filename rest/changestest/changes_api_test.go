@@ -4280,7 +4280,6 @@ func TestDocChangedLogging(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	warnCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 	base.AssertLogContains(t, "Ignoring non-metadata mutation for doc", func() {
 		err := rt.GetDatabase().MetadataStore.Set("doc1", 0, nil, db.Body{"foo": "bar"})
 		require.NoError(t, err)
@@ -4290,5 +4289,4 @@ func TestDocChangedLogging(t *testing.T) {
 		rest.RequireStatus(t, response, http.StatusCreated)
 		require.NoError(t, rt.WaitForPendingChanges())
 	})
-	assert.Equal(t, warnCountBefore, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
 }

@@ -392,6 +392,7 @@ func AssertLogContains(t *testing.T, s string, f func()) {
 	// Call the given function
 	f()
 
+	FlushLogBuffers()
 	consoleLogger.FlushBufferToLog()
-	assert.True(t, strings.Contains(b.String(), s), "Console logs did not contain %q", s)
+	assert.Contains(t, b.String(), s)
 }
