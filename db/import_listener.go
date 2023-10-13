@@ -126,51 +126,54 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 
 // ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed.  It may be
 // executed concurrently for multiple events from different vbuckets.  Filters out
-// internal documents based on key, then checks sync metadata to determine whether document needs to be imported
+// internal documents based on key, then checks sync metadata to determine whether document needs to be imported.
+// Returns true if the checkpoints should be persisted.
 func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPersistCheckpoint bool) {
 
+	ctx := il.loggingCtx
 	// Ignore non-mutation/deletion events
 	if event.Opcode != sgbucket.FeedOpMutation && event.Opcode != sgbucket.FeedOpDeletion {
 		return true
 	}
-	key := string(event.Key)
+	docID := string(event.Key)
+
+	collection, ok := il.collections[event.CollectionID]
+	if !ok {
+		base.WarnfCtx(ctx, "Received import event for unrecognised collection 0x%x", event.CollectionID)
+		return true
+	}
+	ctx = base.CollectionLogCtx(ctx, collection.Name)
 
 	// Ignore internal documents
-	if strings.HasPrefix(key, base.SyncDocPrefix) {
+	if strings.HasPrefix(docID, base.SyncDocPrefix) {
 		// Ignore all DCP checkpoints no matter config group ID
-		return !strings.HasPrefix(key, base.DCPCheckpointRootPrefix)
+		return !strings.HasPrefix(docID, base.DCPCheckpointRootPrefix)
 	}
 
 	// If this is a delete and there are no xattrs (no existing SG revision), we shouldn't import
 	if event.Opcode == sgbucket.FeedOpDeletion && len(event.Value) == 0 {
-		base.DebugfCtx(il.loggingCtx, base.KeyImport, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(event.Key))
+		base.DebugfCtx(ctx, base.KeyImport, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))
 		return true
 	}
 
 	// If this is a binary document we can ignore, but update checkpoint to avoid reprocessing upon restart
 	if event.DataType == base.MemcachedDataTypeRaw {
-		base.InfofCtx(il.loggingCtx, base.KeyImport, "Ignoring binary mutation event for %s.", base.UD(event.Key))
+		base.InfofCtx(ctx, base.KeyImport, "Ignoring binary mutation event for %s.", base.UD(docID))
 		return true
 	}
 
-	il.ImportFeedEvent(event)
+	il.ImportFeedEvent(ctx, &collection, event)
 	return true
 }
 
-func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
-	// Unmarshal the doc metadata (if present) to determine if this mutation requires import.
-	collectionCtx, ok := il.collections[event.CollectionID]
-	if !ok {
-		base.WarnfCtx(il.loggingCtx, "Received import event for unrecognised collection 0x%x", event.CollectionID)
-		return
-	}
-
-	syncData, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collectionCtx.userXattrKey(), false)
+func (il *importListener) ImportFeedEvent(ctx context.Context, collection *DatabaseCollectionWithUser, event sgbucket.FeedEvent) {
+	
+	syncData, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.userXattrKey(), false)
 	if err != nil {
 		if err == base.ErrEmptyMetadata {
-			base.WarnfCtx(il.loggingCtx, "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
+			base.WarnfCtx(ctx, "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
 		} else {
-			base.WarnfCtx(il.loggingCtx, "Found sync metadata, but unable to unmarshal for feed document %q.  Will not be imported.  Error: %v", base.UD(event.Key), err)
+			base.WarnfCtx(ctx, "Found sync metadata, but unable to unmarshal for feed document %q.  Will not be imported.  Error: %v", base.UD(event.Key), err)
 		}
 		il.importStats.ImportErrorCount.Add(1)
 		return
@@ -196,19 +199,19 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 		// last attempt to exit processing if the importListener has been closed before attempting to write to the bucket
 		select {
 		case <-il.terminator:
-			base.InfofCtx(il.loggingCtx, base.KeyImport, "Aborting import for doc %q - importListener.terminator was closed", base.UD(docID))
+			base.InfofCtx(ctx, base.KeyImport, "Aborting import for doc %q - importListener.terminator was closed", base.UD(docID))
 			return
 		default:
 		}
 
-		_, err := collectionCtx.ImportDocRaw(il.loggingCtx, docID, rawBody, rawXattr, rawUserXattr, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
+		_, err := collection.ImportDocRaw(ctx, docID, rawBody, rawXattr, rawUserXattr, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
 		if err != nil {
 			if err == base.ErrImportCasFailure {
-				base.DebugfCtx(il.loggingCtx, base.KeyImport, "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", base.UD(docID))
+				base.DebugfCtx(ctx, base.KeyImport, "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", base.UD(docID))
 			} else if err == base.ErrImportCancelledFilter {
 				// No logging required - filter info already logged during importDoc
 			} else {
-				base.DebugfCtx(il.loggingCtx, base.KeyImport, "Did not import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", base.UD(docID), err)
+				base.DebugfCtx(ctx, base.KeyImport, "Did not import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", base.UD(docID), err)
 			}
 		}
 	}
