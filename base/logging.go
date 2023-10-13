@@ -122,7 +122,7 @@ func init() {
 	// initializing a logging config, and when running under a test scenario.
 	initialCollationBufferSize := 0
 
-	consoleLogger = mustInitConsoleLogger(context.Background(), &ConsoleLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true), CollationBufferSize: &initialCollationBufferSize}})
+	consoleLogger = mustInitConsoleLogger(context.Background(), &ConsoleLoggerConfig{LogKeys: []string{logKeyNames[KeyHTTP]}, FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true), CollationBufferSize: &initialCollationBufferSize}})
 	initExternalLoggers()
 }
 

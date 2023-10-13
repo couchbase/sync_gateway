@@ -222,7 +222,8 @@ func TestConsoleLogDefaults(t *testing.T) {
 			expected: ConsoleLogger{
 				FileLogger: FileLogger{Enabled: AtomicBool{0}},
 				LogLevel:   logLevelPtr(LevelNone),
-				LogKeyMask: logKeyMask(KeyHTTP),
+				LogKeyMask: logKeyMask(KeyNone),
+				config:     ConsoleLoggerConfig{LogKeys: []string{}},
 				isStderr:   false,
 			},
 		},
@@ -232,7 +233,8 @@ func TestConsoleLogDefaults(t *testing.T) {
 			expected: ConsoleLogger{
 				FileLogger: FileLogger{Enabled: AtomicBool{1}},
 				LogLevel:   logLevelPtr(LevelInfo),
-				LogKeyMask: logKeyMask(KeyHTTP, KeyCRUD),
+				LogKeyMask: logKeyMask(KeyCRUD),
+				config:     ConsoleLoggerConfig{LogKeys: []string{"CRUD"}},
 				isStderr:   true,
 			},
 		},
@@ -242,7 +244,8 @@ func TestConsoleLogDefaults(t *testing.T) {
 			expected: ConsoleLogger{
 				FileLogger: FileLogger{Enabled: AtomicBool{1}},
 				LogLevel:   logLevelPtr(LevelWarn),
-				LogKeyMask: logKeyMask(KeyHTTP),
+				LogKeyMask: logKeyMask(KeyNone),
+				config:     ConsoleLoggerConfig{LogKeys: nil},
 				isStderr:   true,
 			},
 		},
@@ -252,7 +255,19 @@ func TestConsoleLogDefaults(t *testing.T) {
 			expected: ConsoleLogger{
 				FileLogger: FileLogger{Enabled: AtomicBool{1}},
 				LogLevel:   logLevelPtr(LevelWarn),
-				LogKeyMask: logKeyMask(KeyHTTP, KeyCRUD),
+				LogKeyMask: logKeyMask(KeyCRUD),
+				config:     ConsoleLoggerConfig{LogKeys: []string{"CRUD"}},
+				isStderr:   true,
+			},
+		},
+		{
+			name:   "http default",
+			config: ConsoleLoggerConfig{LogKeys: []string{"HTTP"}},
+			expected: ConsoleLogger{
+				FileLogger: FileLogger{Enabled: AtomicBool{1}},
+				LogLevel:   logLevelPtr(LevelInfo),
+				LogKeyMask: logKeyMask(KeyHTTP),
+				config:     ConsoleLoggerConfig{LogKeys: []string{"HTTP"}},
 				isStderr:   true,
 			},
 		},
@@ -267,6 +282,7 @@ func TestConsoleLogDefaults(t *testing.T) {
 			assert.Equal(tt, *test.expected.LogLevel, *logger.LogLevel)
 			assert.Equal(tt, *test.expected.LogKeyMask, *logger.LogKeyMask)
 			assert.Equal(tt, test.expected.isStderr, logger.isStderr)
+			assert.Equal(tt, test.expected.config.LogKeys, logger.config.LogKeys)
 		})
 	}
 }
