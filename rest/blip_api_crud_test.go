@@ -2775,6 +2775,18 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 // TestBlipRefreshUser makes sure there is no panic if a user gets deleted during a replication
 func TestBlipRefreshUser(t *testing.T) {
 
+	t.Skip("CBG-3512 known test flake")
+	/*
+		This probably happens because:
+
+		1. The unsubChanges comes in before the delete mutation arrives over the caching DCP feed. This fails the test (doesn’t return 503)
+
+		2. The delete mutation arrives over the caching feed, notifies the changes feed, and the changes feed errors out before the unsubChanges call is made. The test passes in this case
+
+		3. The delete mutation arrives over the caching feed, and the unsubChanges call is made before the changes feed is notified/errors out. The test also passes in this case
+
+			The problem is that adding a doc after the DELETE happens means that it might be guaranteed to hit (2) and never hit (3). I don't see how to make the test as is guarantee to catch this panic.
+	*/
 	rtConfig := RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
