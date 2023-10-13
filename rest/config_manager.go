@@ -366,7 +366,7 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 			}
 			dbConfigs = append(dbConfigs, dbConfig)
 			if dbConfig.Name == legacyDbName {
-				legacyFoundInRegistry = false
+				legacyFoundInRegistry = true
 			}
 		}
 
