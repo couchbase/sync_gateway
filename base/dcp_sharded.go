@@ -467,7 +467,7 @@ func (c *CbgtContext) Stop() {
 	for _, pIndex := range pindexes {
 		err := c.Manager.ClosePIndex(pIndex)
 		if err != nil {
-			DebugfCtx(c.ctx, KeyImport, "Error closing pindex: %v", err)
+			DebugfCtx(c.ctx, KeyDCP, "Error closing pindex: %v", err)
 		}
 	}
 	// ClosePIndex calls are synchronous, so can stop manager once they've completed
