@@ -127,7 +127,8 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 
 // ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed.  It may be
 // executed concurrently for multiple events from different vbuckets.  Filters out
-// internal documents based on key, then checks sync metadata to determine whether document needs to be imported
+// internal documents based on key, then checks sync metadata to determine whether document needs to be imported.
+// Returns true if the checkpoints should be persisted.
 func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPersistCheckpoint bool) {
 
 	ctx := il.loggingCtx
@@ -140,7 +141,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 	collection, ok := il.collections[event.CollectionID]
 	if !ok {
 		base.WarnfCtx(ctx, "Received import event for unrecognised collection 0x%x", event.CollectionID)
-		return
+		return true
 	}
 	ctx = base.CollectionLogCtx(ctx, collection.Name)
 
@@ -162,11 +163,11 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 		return true
 	}
 
-	il.ImportFeedEvent(ctx, collection, event)
+	il.ImportFeedEvent(ctx, &collection, event)
 	return true
 }
 
-func (il *importListener) ImportFeedEvent(ctx context.Context, collection DatabaseCollectionWithUser, event sgbucket.FeedEvent) {
+func (il *importListener) ImportFeedEvent(ctx context.Context, collection *DatabaseCollectionWithUser, event sgbucket.FeedEvent) {
 	var importAttempt bool
 	startTime := time.Now()
 	defer func() {
