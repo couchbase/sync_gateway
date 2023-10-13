@@ -156,7 +156,6 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 				// Until we have a better way of telling a client this has happened and to reconnect, returning a 503 will cause the client to reconnect.
 				if bsc.blipContextDb.DatabaseContext.Bucket == nil {
 					base.InfofCtx(bsc.loggingCtx, base.KeySync, "Database bucket closed underneath request %v - asking client to reconnect", rq)
-					base.DebugfCtx(bsc.loggingCtx, base.KeySync, "PANIC handling BLIP request %v: %v\n%s", rq, err, debug.Stack())
 					// HTTP 503 asks CBL to disconnect and retry.
 					rq.Response().SetError("HTTP", ErrDatabaseWentAway.Status, ErrDatabaseWentAway.Message)
 					return
