@@ -137,8 +137,10 @@ func (c *DCPCommon) snapshotStart(vbNo uint16, snapStart, snapEnd uint64) {
 }
 
 // setMetaData and getMetaData may used internally by dcp clients.  Expects send/receive of opaque
-// []byte data.  May be invoked from multiple goroutines, so need to manage synchronization
-func (c *DCPCommon) setMetaData(vbucketId uint16, value []byte) {
+// []byte data.  May be invoked from multiple goroutines, so need to manage synchronization.
+// Setting mustPersist=true bypasses checkpoint threshold checks and forces persistence as long as
+// persistCheckpoints=true
+func (c *DCPCommon) setMetaData(vbucketId uint16, value []byte, mustPersist bool) error {
 
 	c.m.Lock()
 	defer c.m.Unlock()
@@ -146,20 +148,22 @@ func (c *DCPCommon) setMetaData(vbucketId uint16, value []byte) {
 	c.meta[vbucketId] = value
 
 	// Check persistMeta to avoids persistence if the only feed events we've seen are the DCP echo of DCP checkpoint docs
-	if c.persistCheckpoints && c.updatesSinceCheckpoint[vbucketId] >= kCheckpointThreshold {
+	if c.persistCheckpoints && (mustPersist || c.updatesSinceCheckpoint[vbucketId] >= kCheckpointThreshold) {
 
 		// Don't checkpoint more frequently than kCheckpointTimeThreshold
-		if time.Since(c.lastCheckpointTime[vbucketId]) < kCheckpointTimeThreshold {
-			return
+		if !mustPersist && time.Since(c.lastCheckpointTime[vbucketId]) < kCheckpointTimeThreshold {
+			return nil
 		}
 
 		err := c.persistCheckpoint(vbucketId, value)
 		if err != nil {
 			WarnfCtx(c.loggingCtx, "Unable to persist DCP metadata - will retry next snapshot. Error: %v", err)
+			return fmt.Errorf("Unable to persist DCP metadata")
 		}
 		c.updatesSinceCheckpoint[vbucketId] = 0
 		c.lastCheckpointTime[vbucketId] = time.Now()
 	}
+	return nil
 }
 
 func (c *DCPCommon) getMetaData(vbucketId uint16) (
@@ -181,14 +185,14 @@ func (c *DCPCommon) getMetaData(vbucketId uint16) (
 }
 
 // RollbackEx should be called by cbdatasource - Rollback required to maintain the interface.  In the event
-// it's called, logs warning and does a hard reset on metadata for the vbucket
+// it's called, logs warning and does a hard reset on metadata for the vbucket.  Returns error if metadata
+// persistence fails
 func (c *DCPCommon) rollback(vbucketId uint16, rollbackSeq uint64) error {
 	WarnfCtx(c.loggingCtx, "DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0.", vbucketId)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	c.updateSeq(vbucketId, 0, false)
-	c.setMetaData(vbucketId, nil)
-
-	return nil
+	err := c.setMetaData(vbucketId, nil, true)
+	return err
 }
 
 // RollbackEx includes the vbucketUUID needed to reset the metadata correctly
@@ -196,8 +200,8 @@ func (c *DCPCommon) rollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq
 	WarnfCtx(c.loggingCtx, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	c.updateSeq(vbucketId, rollbackSeq, false)
-	c.setMetaData(vbucketId, rollbackMetaData)
-	return nil
+	err := c.setMetaData(vbucketId, rollbackMetaData, true)
+	return err
 }
 
 func (c *DCPCommon) incrementCheckpointCount(vbucketId uint16) {

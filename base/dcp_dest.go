@@ -207,7 +207,7 @@ func (d *DCPDest) OpaqueSet(partition string, value []byte) error {
 		d.InitVbMeta(vbNo)
 		d.metaInitComplete[vbNo] = true
 	}
-	d.setMetaData(vbNo, value)
+	_ = d.setMetaData(vbNo, value, false)
 	return nil
 }
 
