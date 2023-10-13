@@ -15,7 +15,9 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -88,8 +90,8 @@ func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
 	_ = rt.Bucket()
 
 	dbName := "db"
-	// Create a database with named collections
-	// Update config to remove named collections
+	// Create a database with default collection,
+	// Update config to switch to named collections
 
 	scopesConfig := rest.GetCollectionsConfig(t, rt.TestBucket, 2)
 	dbConfig := rt.NewDbConfig()
@@ -103,10 +105,10 @@ func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
 
 	putResponse := rt.SendAdminRequest("PUT", "/"+dbName+"/_user/bob", userPayload)
 	rest.RequireStatus(t, putResponse, 201)
-	bobDocName := "_sync:user:db:bob"
+	bobDocName := "_sync:user:bob"
 	requireBobUserLocation(rt, bobDocName)
 
-	// Update database to only target default collection
+	// Update database to only target named collection
 	dbConfig.Scopes = scopesConfig
 	resp = rt.ReplaceDbConfig(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
@@ -158,6 +160,171 @@ func TestUpgradeDatabasePreHelium(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 	requireBobUserLocation(rt, bobDocName)
 
+}
+
+func TestLegacyMetadataID(t *testing.T) {
+
+	if base.TestsUseNamedCollections() {
+		t.Skip("This test covers legacy interaction with the default collection")
+	}
+	testCtx := base.TestCtx(t)
+
+	tb1 := base.GetPersistentTestBucket(t)
+	// Create a non-persistent rest tester.  Standard RestTester
+	// creates a database 'db' targeting the default collection (when !TestUseNamedCollections)
+	legacyRT := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb1.NoCloseClone(),
+		PersistentConfig: false,
+	})
+
+	// Create a document in the collection to trigger creation of _sync:seq
+	resp := legacyRT.SendAdminRequest("PUT", "/db/testLegacyMetadataID", `{"test":"test"}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	// Get the legacy config for upgrade test below
+	resp = legacyRT.SendAdminRequest("GET", "/_config?include_runtime=true", "")
+	legacyConfigBytes := resp.BodyBytes()
+
+	var legacyConfig rest.LegacyServerConfig
+	err := base.JSONUnmarshal(legacyConfigBytes, &legacyConfig)
+	assert.NoError(t, err)
+	legacyRT.Close()
+
+	persistentRT := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb1,
+		PersistentConfig: true,
+	})
+	defer persistentRT.Close()
+
+	// Generate a dbConfig from the legacy startup config using ToStartupConfig, and use it to create a database
+	_, dbMap, err := legacyConfig.ToStartupConfig(testCtx)
+	require.NoError(t, err)
+
+	dbConfig, ok := dbMap["db"]
+	require.True(t, ok)
+
+	// Need to sanitize the db config, but can't use sanitizeDbConfigs because it assumes non-empty server address
+	dbConfig.Username = ""
+	dbConfig.Password = ""
+	dbConfigBytes, err := base.JSONMarshal(dbConfig)
+
+	require.NoError(t, err)
+	resp = persistentRT.SendAdminRequest("PUT", "/db/", string(dbConfigBytes))
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	// check if database is online
+	dbRoot := persistentRT.GetDatabaseRoot("db")
+	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State)
+}
+
+// TestMetadataIDRenameDatabase verifies that resync is not required when deleting and recreating a database (with a
+// different name) targeting only the default collection.
+func TestMetadataIDRenameDatabase(t *testing.T) {
+
+	if base.TestsUseNamedCollections() {
+		t.Skip("This test covers legacy interaction with the default collection")
+	}
+
+	// Create a persistent rest tester.
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbName := "db"
+	rt.CreateDatabase(dbName, dbConfig)
+
+	// Write a document to ensure _sync:seq is initialized
+	resp := rt.SendAdminRequest("PUT", "/"+dbName+"/testRenameDatabase", `{"test":"test"}`)
+	require.Equal(t, http.StatusCreated, resp.Code)
+
+	// Delete database
+	resp = rt.SendAdminRequest("DELETE", "/"+dbName+"/", "")
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	newDbName := "newdb"
+	dbConfig.Name = newDbName
+
+	// Create a new db targeting the same bucket
+	rt.CreateDatabase(newDbName, dbConfig)
+
+	// check if database is online
+	dbRoot := rt.GetDatabaseRoot(newDbName)
+	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State)
+}
+
+// Verifies that matching metadataIDs are computed if two config groups for the same database are upgraded
+func TestMetadataIDWithConfigGroups(t *testing.T) {
+
+	if base.TestsUseNamedCollections() {
+		t.Skip("This test covers legacy interaction with the default collection")
+	}
+
+	testCtx := base.TestCtx(t)
+
+	tb1 := base.GetPersistentTestBucket(t)
+	// Create a non-persistent rest tester.  Standard RestTester
+	// creates a database 'db' targeting the default collection (when !TestUseNamedCollections)
+	legacyRT := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb1.NoCloseClone(),
+		PersistentConfig: false,
+	})
+
+	// Create a document in the collection to trigger creation of _sync:seq
+	resp := legacyRT.SendAdminRequest("PUT", "/db/testLegacyMetadataID", `{"test":"test"}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	// Get the legacy config for upgrade test below
+	resp = legacyRT.SendAdminRequest("GET", "/_config?include_runtime=true", "")
+	legacyConfigBytes := resp.BodyBytes()
+
+	var legacyConfig rest.LegacyServerConfig
+	err := base.JSONUnmarshal(legacyConfigBytes, &legacyConfig)
+	assert.NoError(t, err)
+	legacyRT.Close()
+
+	group1RT := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb1,
+		PersistentConfig: true,
+		GroupID:          base.StringPtr("group1"),
+	})
+	defer group1RT.Close()
+
+	group2RT := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb1,
+		PersistentConfig: true,
+		GroupID:          base.StringPtr("group2"),
+	})
+	defer group2RT.Close()
+
+	// Generate a dbConfig from the legacy startup config using ToStartupConfig, and use it to create a database
+	_, dbMap, err := legacyConfig.ToStartupConfig(testCtx)
+	require.NoError(t, err)
+
+	dbConfig, ok := dbMap["db"]
+	require.True(t, ok)
+
+	// Need to sanitize the db config, but can't use sanitizeDbConfigs because it assumes non-empty server address
+	dbConfig.Username = ""
+	dbConfig.Password = ""
+	dbConfigBytes, err := base.JSONMarshal(dbConfig)
+
+	// Create the database in both RTs, verify that it comes online in both with matching metadata IDs
+	require.NoError(t, err)
+	resp = group1RT.SendAdminRequest("PUT", "/db/", string(dbConfigBytes))
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	require.NoError(t, err)
+	resp = group2RT.SendAdminRequest("PUT", "/db/", string(dbConfigBytes))
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	// check if databases are online
+	dbRoot := group1RT.GetDatabaseRoot("db")
+	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State)
+
+	dbRoot = group2RT.GetDatabaseRoot("db")
+	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State)
 }
 
 func requireBobUserLocation(rt *rest.RestTester, docName string) {
