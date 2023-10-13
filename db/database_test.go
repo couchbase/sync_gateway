@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -3166,6 +3167,32 @@ func Test_stopBackgroundManagers(t *testing.T) {
 			assert.Len(t, bgManagers, testCase.expected, "Unexpected Num of BackgroundManagers returned")
 		})
 	}
+}
+
+func TestUpdateCalculatedStatsPanic(t *testing.T) {
+
+	var dbc *DatabaseContext
+
+	defer func() {
+		r := recover()
+		if r != nil {
+			t.Errorf("UpdateCalculatedStats panic recovered, stack trace: %s", debug.Stack())
+		}
+	}()
+
+	// nil DatabaseContext check
+	ctx := base.TestCtx(t)
+	dbc.UpdateCalculatedStats(ctx)
+
+	// non-nil DatabaseContext, nil stats
+	dbc = &DatabaseContext{}
+	dbc.UpdateCalculatedStats(ctx)
+
+	// non-nil DatabaseContext and stats, nil channel cache
+	dbStats, statsError := initDatabaseStats(ctx, "db", false, DatabaseContextOptions{})
+	require.NoError(t, statsError)
+	dbc.DbStats = dbStats
+	dbc.UpdateCalculatedStats(ctx)
 }
 
 func Test_waitForBackgroundManagersToStop(t *testing.T) {
