@@ -760,7 +760,6 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawToken string, oidcProvide
 // creates the user when autoRegister=true.
 func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (user User,
 	updates PrincipalConfig, tokenExpiry time.Time, err error) {
-	base.DebugfCtx(auth.LogCtx, base.KeyAuth, "AuthenticateTrustedJWT called with token: %s", base.UD(token))
 
 	var identity *Identity
 	if provider.AllowUnsignedProviderTokens {
