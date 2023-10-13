@@ -721,20 +721,30 @@ func (b *bootstrapContext) ComputeMetadataIDForDbConfig(ctx context.Context, con
 // computeMetadataID determines whether the database should use the default metadata storage location (to support configurations upgrading with
 // existing sync metadata in the default collection).  The default metadataID is only used when all of the following
 // conditions are met:
-//  1. The default metadataID isn't already in use by another database in the registry
-//  2. The database includes _default._default
-//  3. The _default._default collection isn't already associated with a different metadata ID (syncInfo document is not present, or has a value of defaultMetadataID)
+//  1. There isn't already a metadataID defined for the database name  in another config group
+//  2. The default metadataID isn't already in use by another database in the registry
+//  3. The database includes _default._default
+//  4. The _default._default collection isn't already associated with a different metadata ID (syncInfo document is not present, or has a value of defaultMetadataID)
 func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *GatewayRegistry, config *DbConfig) string {
 
 	standardMetadataID := b.standardMetadataID(config.Name)
 
-	// If the default metadata ID is already in use in the registry, use standard ID
+	// If there's already a metadataID assigned to this database in the registry (including other config groups), use that
+	defaultMetadataIDInUse := false
 	for _, cg := range registry.ConfigGroups {
-		for _, db := range cg.Databases {
+		for dbName, db := range cg.Databases {
+			if dbName == config.Name {
+				return db.MetadataID
+			}
 			if db.MetadataID == defaultMetadataID {
-				return standardMetadataID
+				defaultMetadataIDInUse = true
 			}
 		}
+	}
+
+	// If the default metadata ID is already in use in the registry by a different database, use standard ID.
+	if defaultMetadataIDInUse {
+		return standardMetadataID
 	}
 
 	// If the database config doesn't include _default._default, use standard ID

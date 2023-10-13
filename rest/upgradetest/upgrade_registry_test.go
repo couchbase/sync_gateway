@@ -254,6 +254,79 @@ func TestMetadataIDRenameDatabase(t *testing.T) {
 	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State)
 }
 
+// Verifies that matching metadataIDs are computed if two config groups for the same database are upgraded
+func TestMetadataIDWithConfigGroups(t *testing.T) {
+
+	if base.TestsUseNamedCollections() {
+		t.Skip("This test covers legacy interaction with the default collection")
+	}
+
+	testCtx := base.TestCtx(t)
+
+	tb1 := base.GetPersistentTestBucket(t)
+	// Create a non-persistent rest tester.  Standard RestTester
+	// creates a database 'db' targeting the default collection (when !TestUseNamedCollections)
+	legacyRT := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb1.NoCloseClone(),
+		PersistentConfig: false,
+	})
+
+	// Create a document in the collection to trigger creation of _sync:seq
+	resp := legacyRT.SendAdminRequest("PUT", "/db/testLegacyMetadataID", `{"test":"test"}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	// Get the legacy config for upgrade test below
+	resp = legacyRT.SendAdminRequest("GET", "/_config?include_runtime=true", "")
+	legacyConfigBytes := resp.BodyBytes()
+
+	var legacyConfig rest.LegacyServerConfig
+	err := base.JSONUnmarshal(legacyConfigBytes, &legacyConfig)
+	assert.NoError(t, err)
+	legacyRT.Close()
+
+	group1RT := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb1,
+		PersistentConfig: true,
+		GroupID:          base.StringPtr("group1"),
+	})
+	defer group1RT.Close()
+
+	group2RT := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb1,
+		PersistentConfig: true,
+		GroupID:          base.StringPtr("group2"),
+	})
+	defer group2RT.Close()
+
+	// Generate a dbConfig from the legacy startup config using ToStartupConfig, and use it to create a database
+	_, dbMap, err := legacyConfig.ToStartupConfig(testCtx)
+	require.NoError(t, err)
+
+	dbConfig, ok := dbMap["db"]
+	require.True(t, ok)
+
+	// Need to sanitize the db config, but can't use sanitizeDbConfigs because it assumes non-empty server address
+	dbConfig.Username = ""
+	dbConfig.Password = ""
+	dbConfigBytes, err := base.JSONMarshal(dbConfig)
+
+	// Create the database in both RTs, verify that it comes online in both with matching metadata IDs
+	require.NoError(t, err)
+	resp = group1RT.SendAdminRequest("PUT", "/db/", string(dbConfigBytes))
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	require.NoError(t, err)
+	resp = group2RT.SendAdminRequest("PUT", "/db/", string(dbConfigBytes))
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	// check if databases are online
+	dbRoot := group1RT.GetDatabaseRoot("db")
+	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State)
+
+	dbRoot = group2RT.GetDatabaseRoot("db")
+	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State)
+}
+
 func requireBobUserLocation(rt *rest.RestTester, docName string) {
 	metadataStore := rt.GetDatabase().Bucket.DefaultDataStore()
 

@@ -124,6 +124,21 @@ func TestComputeMetadataID(t *testing.T) {
 	metadataID = bootstrapContext.computeMetadataID(ctx, registry, &defaultDbConfig)
 	assert.Equal(t, defaultMetadataID, metadataID)
 
+	// If the database has been assigned a metadataID in another config group, that should be used
+	multiConfigGroupDbName := "multiConfigGroupDb"
+	existingDbConfigOtherConfigGroup := makeDbConfig(tb.GetName(), multiConfigGroupDbName, nil)
+	existingDatabaseConfigOtherConfigGroup := &DatabaseConfig{
+		DbConfig:   existingDbConfigOtherConfigGroup,
+		Version:    defaultVersion,
+		MetadataID: multiConfigGroupDbName,
+	}
+	_, err = registry.upsertDatabaseConfig(ctx, "differentConfigGroup", existingDatabaseConfigOtherConfigGroup)
+	require.NoError(t, err)
+
+	newDbConfig := makeDbConfig(tb.GetName(), multiConfigGroupDbName, nil)
+	metadataID = bootstrapContext.computeMetadataID(ctx, registry, &newDbConfig)
+	require.Equal(t, multiConfigGroupDbName, metadataID)
+
 	// Single, non-default collection should use standard metadata ID
 	namedOnlyScopesConfig := ScopesConfig{base.DefaultScope: ScopeConfig{map[string]*CollectionConfig{"collection1": {}}}}
 	defaultDbConfig.Scopes = namedOnlyScopesConfig
