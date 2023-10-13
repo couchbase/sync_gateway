@@ -97,7 +97,8 @@ func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bu
 	return d, d.loggingCtx, nil
 }
 
-func (d *DCPDest) Close() error {
+func (d *DCPDest) Close(_ bool) error {
+	// ignore param remove since sync gateway pindexes are not persisted on disk, cbgt.Manager dataDir is set to empty string
 	if d.partitionCountStat != nil {
 		d.partitionCountStat.Add(-1)
 		InfofCtx(d.loggingCtx, KeyDCP, "Closing sharded feed for %s. Total partitions:%v", d.feedID, d.partitionCountStat.String())
@@ -537,8 +538,8 @@ type DCPLoggingDest struct {
 	dest *DCPDest
 }
 
-func (d *DCPLoggingDest) Close() error {
-	return d.dest.Close()
+func (d *DCPLoggingDest) Close(remove bool) error {
+	return d.dest.Close(remove)
 }
 
 func (d *DCPLoggingDest) DataUpdate(partition string, key []byte, seq uint64,
