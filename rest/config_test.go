@@ -1412,13 +1412,13 @@ func TestDefaultLogging(t *testing.T) {
 
 	require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
 	assert.Equal(t, base.LevelNone, *base.ConsoleLogLevel())
-	assert.Equal(t, []string{"HTTP"}, base.ConsoleLogKey().EnabledLogKeys())
+	assert.Equal(t, []string{}, base.ConsoleLogKey().EnabledLogKeys())
 
 	// setting just a log key should enable logging
 	config.Logging.Console = &base.ConsoleLoggerConfig{LogKeys: []string{"CRUD"}}
 	require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
 	assert.Equal(t, base.LevelInfo, *base.ConsoleLogLevel())
-	assert.Equal(t, []string{"CRUD", "HTTP"}, base.ConsoleLogKey().EnabledLogKeys())
+	assert.Equal(t, []string{"CRUD"}, base.ConsoleLogKey().EnabledLogKeys())
 }
 
 func TestSetupServerContext(t *testing.T) {
