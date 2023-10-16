@@ -329,7 +329,9 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 	}
 	history = encodeRevisions(ctx, doc.ID, validatedHistory)
 	channels = doc.History[revid].Channels
-	fetchedCV = CurrentVersionVector{SourceID: doc.HLV.SourceID, VersionCAS: doc.HLV.Version}
+	if doc.HLV != nil {
+		fetchedCV = CurrentVersionVector{SourceID: doc.HLV.SourceID, VersionCAS: doc.HLV.Version}
+	}
 
 	return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, fetchedCV, err
 }
