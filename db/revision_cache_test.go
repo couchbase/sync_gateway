@@ -108,7 +108,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	// Fill up the rev cache with the first 10 docs
 	for docID := 0; docID < 10; docID++ {
 		id := strconv.Itoa(docID)
-		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", History: Revisions{"start": 1}})
+		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", CV: &CurrentVersionVector{VersionCAS: uint64(docID), SourceID: "test"}, History: Revisions{"start": 1}})
 	}
 
 	// Get them back out
@@ -125,7 +125,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	// Add 3 more docs to the now full revcache
 	for i := 10; i < 13; i++ {
 		docID := strconv.Itoa(i)
-		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: docID, RevID: "1-abc", History: Revisions{"start": 1}})
+		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: docID, RevID: "1-abc", CV: &CurrentVersionVector{VersionCAS: uint64(i), SourceID: "test"}, History: Revisions{"start": 1}})
 	}
 
 	// Check that the first 3 docs were evicted
@@ -151,8 +151,15 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	}
 }
 
-// this test need refactoring
-func TestLRURevisionCacheEvictionCVCache(t *testing.T) {
+// TestLRURevisionCacheEvictionMixedRevAndCV:
+//   - Add 10 docs to the cache
+//   - Assert that the cache list and relevant lookup maps have correct lengths
+//   - Add 3 more docs
+//   - Assert that lookup maps and the cache list still only have 10 elements in
+//   - Perform a Get with CV specified on all 10 elements in the cache and assert we get a hit for each element and no misses,
+//     testing the eviction worked correct
+//   - Then do the same but for rev lookup
+func TestLRURevisionCacheEvictionMixedRevAndCV(t *testing.T) {
 	cacheHitCounter, cacheMissCounter := base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &noopBackingStore{}, &cacheHitCounter, &cacheMissCounter)
 
@@ -164,42 +171,23 @@ func TestLRURevisionCacheEvictionCVCache(t *testing.T) {
 		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", CV: &CurrentVersionVector{VersionCAS: uint64(docID), SourceID: "test"}, History: Revisions{"start": 1}})
 	}
 
-	for i := 0; i < 10; i++ {
-		docID := strconv.Itoa(i)
-		cv := CurrentVersionVector{VersionCAS: uint64(i), SourceID: "test"}
-		docRev, err := cache.GetWithCV(ctx, docID, &cv, RevCacheOmitBody, RevCacheOmitDelta)
-		assert.NoError(t, err)
-		assert.NotNil(t, docRev.BodyBytes, "nil body for %s", docID)
-		assert.Equal(t, docID, docRev.DocID)
-		assert.Equal(t, int64(0), cacheMissCounter.Value())
-		assert.Equal(t, int64(i+1), cacheHitCounter.Value())
-	}
+	// assert that the list has 10 elements along with both lookup maps
+	assert.Equal(t, 10, len(cache.hlvCache))
+	assert.Equal(t, 10, len(cache.cache))
+	assert.Equal(t, 10, cache.lruList.Len())
 
-	// Add 3 more docs to the now full revcache
+	// Add 3 more docs to the now full rev cache to trigger eviction
 	for docID := 10; docID < 13; docID++ {
 		id := strconv.Itoa(docID)
 		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", CV: &CurrentVersionVector{VersionCAS: uint64(docID), SourceID: "test"}, History: Revisions{"start": 1}})
 	}
-
-	prevCacheHitCount := cacheHitCounter.Value()
-	/*
-		for i := 0; i < 3; i++ {
-			docID := strconv.Itoa(i)
-			cv := CurrentVersionVector{VersionCAS: uint64(i), SourceID: "test"}
-			docRev, ok := cache.Peek(ctx, docID, "")
-			assert.False(t, ok)
-			assert.Nil(t, docRev.BodyBytes)
-			assert.Equal(t, int64(0), cacheMissCounter.Value()) // peek incurs no cache miss if not found
-			assert.Equal(t, prevCacheHitCount, cacheHitCounter.Value())
-		}
-
-	*/
-	// assert that even after above steps that the capacity of the lookup maps and the cache list itself is 10
-	//assert.Equal(t, 10, len(cache.cache))
+	// assert the cache and associated lookup maps only have 10 items in them (i.e.e is eviction working?)
 	assert.Equal(t, 10, len(cache.hlvCache))
+	assert.Equal(t, 10, len(cache.cache))
 	assert.Equal(t, 10, cache.lruList.Len())
 
-	// and check we can Get up to and including the last 3 we put in
+	// assert we can get a hit on all 10 elements in the cache by CV lookup
+	prevCacheHitCount := cacheHitCounter.Value()
 	for i := 0; i < 10; i++ {
 		id := strconv.Itoa(i + 3)
 		cv := CurrentVersionVector{VersionCAS: uint64(i + 3), SourceID: "test"}
@@ -210,45 +198,18 @@ func TestLRURevisionCacheEvictionCVCache(t *testing.T) {
 		assert.Equal(t, int64(0), cacheMissCounter.Value())
 		assert.Equal(t, prevCacheHitCount+int64(i)+1, cacheHitCounter.Value())
 	}
-}
 
-// TestLRURevisionCacheEvictionMixedRevAndCV:
-//   - Add 10 docs a mixture of docs with CV defined and some without
-//   - Assert that the cache list and relevant lookup maps have correct lengths
-//   - Add 3 more docs with no CV defined
-//   - Assert that the hlv cache lookup mpa size has decreased accordingly due to eviction
-func TestLRURevisionCacheEvictionMixedRevAndCV(t *testing.T) {
-	cacheHitCounter, cacheMissCounter := base.SgwIntStat{}, base.SgwIntStat{}
-	cache := NewLRURevisionCache(10, &noopBackingStore{}, &cacheHitCounter, &cacheMissCounter)
-
-	ctx := base.TestCtx(t)
-
-	// Fill up the rev cache with the first 10 docs
-	// First add 5 docs with a CV defined
-	for docID := 0; docID < 5; docID++ {
-		id := strconv.Itoa(docID)
-		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", CV: &CurrentVersionVector{VersionCAS: uint64(docID), SourceID: "test"}, History: Revisions{"start": 1}})
+	// now do same but for rev lookup
+	prevCacheHitCount = cacheHitCounter.Value()
+	for i := 0; i < 10; i++ {
+		id := strconv.Itoa(i + 3)
+		docRev, err := cache.GetWithRev(ctx, id, "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
+		assert.NoError(t, err)
+		assert.NotNil(t, docRev.BodyBytes, "nil body for %s", id)
+		assert.Equal(t, id, docRev.DocID)
+		assert.Equal(t, int64(0), cacheMissCounter.Value())
+		assert.Equal(t, prevCacheHitCount+int64(i)+1, cacheHitCounter.Value())
 	}
-	// add 5 more docs with no CV defined
-	for docID := 5; docID < 10; docID++ {
-		id := strconv.Itoa(docID)
-		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", CV: nil, History: Revisions{"start": 1}})
-	}
-	// assert that the list has 10 elements along with rev map
-	// and hlv lookup map has 5 elements as 5 elements were added without a CV value
-	assert.Equal(t, 5, len(cache.hlvCache))
-	assert.Equal(t, 5, len(cache.cache))
-	assert.Equal(t, 10, cache.lruList.Len())
-
-	// Add 3 more docs to the now full rev cache with no CV defined
-	for docID := 10; docID < 13; docID++ {
-		id := strconv.Itoa(docID)
-		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", CV: nil, History: Revisions{"start": 1}})
-	}
-	// assert that the hlv cache map size decreases due to elements being evicted from it
-	assert.Equal(t, 2, len(cache.hlvCache))
-	assert.Equal(t, 8, len(cache.cache))
-	assert.Equal(t, 10, cache.lruList.Len())
 }
 
 func TestBackingStore(t *testing.T) {
@@ -299,7 +260,9 @@ func TestBackingStore(t *testing.T) {
 
 // TestBackingStoreCV:
 // - Perform a Get on a doc by cv that is not currently in the rev cache, assert we get cache miss
-// -
+// - Perform a Get again on the same doc and assert we get cache hit
+// - Perform a Get on doc that doesn't exist, so misses cache and will fail on retrieving doc from bucket
+// - Try a Get again on the same doc and assert it wasn't loaded into the cache as it doesn't exist
 func TestBackingStoreCV(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &testBackingStore{[]string{"not_found"}, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
@@ -592,7 +555,7 @@ func TestSingleLoad(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
-	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc123", RevID: "1-abc", History: Revisions{"start": 1}})
+	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc123", RevID: "1-abc", CV: &CurrentVersionVector{VersionCAS: uint64(123), SourceID: "test"}, History: Revisions{"start": 1}})
 	_, err := cache.GetWithRev(base.TestCtx(t), "doc123", "1-abc", true, false)
 	assert.NoError(t, err)
 }
@@ -602,7 +565,7 @@ func TestConcurrentLoad(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
-	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc1", RevID: "1-abc", History: Revisions{"start": 1}})
+	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc1", RevID: "1-abc", CV: &CurrentVersionVector{VersionCAS: uint64(1234), SourceID: "test"}, History: Revisions{"start": 1}})
 
 	// Trigger load into cache
 	var wg sync.WaitGroup
@@ -731,6 +694,10 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 	})
 }
 
+// TestLoaderMismatchInCV:
+//   - Get doc that is not in cache by CV to trigger a load from bucket
+//   - Ensure the CV passed into teh GET operation won't match the doc in teh bucket
+//   - Assert we get error and the value is not loaded into the cache
 func TestLoaderMismatchInCV(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &testBackingStore{[]string{"test_doc"}, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
@@ -745,4 +712,124 @@ func TestLoaderMismatchInCV(t *testing.T) {
 	assert.Equal(t, int64(1), cacheMissCounter.Value())
 	assert.Equal(t, 0, cache.lruList.Len())
 	assert.Equal(t, 0, len(cache.hlvCache))
+	assert.Equal(t, 0, len(cache.cache))
+}
+
+// TestConcurrentLoadByCVAndRevOnCache:
+//   - Create cache
+//   - Now perform two concurrent Gets, one by CV and one by revid on a document that doesn't exist in the cache
+//   - This will trigger two concurrent loads from bucket in the CV code path and revid code path
+//   - In doing so we will have two processes trying to update lookup maps at the same time and a race condition will appear
+//   - In doing so will cause us to potentially have two of teh same elements the cache, one with nothing referencing it
+//   - Assert after both gets are processed, that the cache only has one element in it and that both lookup maps have only one
+//     element
+//   - Grab the single element in the list and assert that both maps point to that element in the cache list
+func TestConcurrentLoadByCVAndRevOnCache(t *testing.T) {
+	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
+	cache := NewLRURevisionCache(10, &testBackingStore{[]string{"test_doc"}, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
+
+	ctx := base.TestCtx(t)
+
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+
+	cv := CurrentVersionVector{SourceID: "test", VersionCAS: 123}
+	go func() {
+		_, err := cache.GetWithRev(ctx, "doc1", "1-abc", RevCacheOmitBody, RevCacheIncludeDelta)
+		require.NoError(t, err)
+		wg.Done()
+	}()
+
+	go func() {
+		_, err := cache.GetWithCV(ctx, "doc1", &cv, RevCacheOmitBody, RevCacheIncludeDelta)
+		require.NoError(t, err)
+		wg.Done()
+	}()
+
+	wg.Wait()
+
+	revElement := cache.cache[IDAndRev{RevID: "1-abc", DocID: "doc1"}]
+	cvElement := cache.hlvCache[IDandCV{DocID: "doc1", Source: "test", Version: 123}]
+	assert.Equal(t, 1, cache.lruList.Len())
+	assert.Equal(t, 1, len(cache.cache))
+	assert.Equal(t, 1, len(cache.hlvCache))
+	// grab the single elem in the cache list
+	cacheElem := cache.lruList.Front()
+	// assert that both maps point to the same element in cache list
+	assert.Equal(t, cacheElem, cvElement)
+	assert.Equal(t, cacheElem, revElement)
+}
+
+// TestGetActive:
+//   - Create db, create a doc on the db
+//   - Call GetActive pn the rev cache and assert that the rev and cv are correct
+func TestGetActive(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+
+	rev1id, doc, err := collection.Put(ctx, "doc", Body{"val": 123})
+	require.NoError(t, err)
+
+	expectedCV := CurrentVersionVector{
+		SourceID:   db.BucketUUID,
+		VersionCAS: doc.Cas,
+	}
+
+	// remove the entry form the rev cache to force teh cache to not have the active version in it
+	collection.revisionCache.RemoveWithCV("doc", &expectedCV)
+
+	// call get active to get teh active version from the bucket
+	docRev, err := collection.revisionCache.GetActive(base.TestCtx(t), "doc", true)
+	assert.NoError(t, err)
+	assert.Equal(t, rev1id, docRev.RevID)
+	assert.Equal(t, expectedCV, *docRev.CV)
+}
+
+// TestConcurrentPutAndGetOnRevCache:
+//   - Perform a Get with rev on the cache for a doc not in the cache
+//   - Concurrently perform a PUT on the cache with doc revision the same as the GET
+//   - Assert we get consistent cache with only 1 entry in lookup maps and the cache itself
+func TestConcurrentPutAndGetOnRevCache(t *testing.T) {
+	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
+	cache := NewLRURevisionCache(10, &testBackingStore{[]string{"test_doc"}, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
+
+	ctx := base.TestCtx(t)
+
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+
+	cv := CurrentVersionVector{SourceID: "test", VersionCAS: 123}
+	docRev := DocumentRevision{
+		DocID:     "doc1",
+		RevID:     "1-abc",
+		BodyBytes: []byte(`{"test":"1234"}`),
+		Channels:  base.SetOf("chan1"),
+		History:   Revisions{"start": 1},
+		CV:        &cv,
+	}
+
+	go func() {
+		_, err := cache.GetWithRev(ctx, "doc1", "1-abc", RevCacheOmitBody, RevCacheIncludeDelta)
+		require.NoError(t, err)
+		wg.Done()
+	}()
+
+	go func() {
+		cache.Put(ctx, docRev)
+		wg.Done()
+	}()
+
+	wg.Wait()
+
+	revElement := cache.cache[IDAndRev{RevID: "1-abc", DocID: "doc1"}]
+	cvElement := cache.hlvCache[IDandCV{DocID: "doc1", Source: "test", Version: 123}]
+
+	assert.Equal(t, 1, cache.lruList.Len())
+	assert.Equal(t, 1, len(cache.cache))
+	assert.Equal(t, 1, len(cache.hlvCache))
+	cacheElem := cache.lruList.Front()
+	// assert that both maps point to the same element in cache list
+	assert.Equal(t, cacheElem, cvElement)
+	assert.Equal(t, cacheElem, revElement)
 }

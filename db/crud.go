@@ -2083,7 +2083,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Expiry:           doc.Expiry,
 			Deleted:          doc.History[newRevID].Deleted,
 			_shallowCopyBody: storedDoc.Body(ctx),
-			CV:               nil, // currently nil this as work to add update to HLV is on another branch
+			CV:               &CurrentVersionVector{VersionCAS: doc.Cas, SourceID: doc.HLV.SourceID},
 		}
 
 		if createNewRevIDSkipped {
