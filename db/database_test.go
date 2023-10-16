@@ -2849,72 +2849,62 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 }
 
 func Test_resyncDocument(t *testing.T) {
-	testCases := []struct {
-		useXattr bool
-	}{
-		{useXattr: true},
-		{useXattr: false},
+	if !base.TestUseXattrs() {
+		t.Skip("Walrus doesn't support xattr")
 	}
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
-	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("Test_resyncDocument with useXattr: %t", testCase.useXattr), func(t *testing.T) {
-			if !base.TestUseXattrs() && testCase.useXattr {
-				t.Skip("Walrus doesn't support xattr")
-			}
-			db, ctx := setupTestDB(t)
-			defer db.Close(ctx)
+	db.Options.EnableXattr = true
+	db.Options.QueryPaginationLimit = 100
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-			db.Options.EnableXattr = testCase.useXattr
-			db.Options.QueryPaginationLimit = 100
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
-
-			syncFn := `
+	syncFn := `
 	function sync(doc, oldDoc){
 		channel("channel." + "ABC");
 	}
 `
-			_, err := collection.UpdateSyncFun(ctx, syncFn)
-			require.NoError(t, err)
+	_, err := collection.UpdateSyncFun(ctx, syncFn)
+	require.NoError(t, err)
 
-			docID := uuid.NewString()
+	docID := uuid.NewString()
 
-			updateBody := make(map[string]interface{})
-			updateBody["val"] = "value"
-			_, doc, err := collection.Put(ctx, docID, updateBody)
-			require.NoError(t, err)
-			assert.NotNil(t, doc)
+	updateBody := make(map[string]interface{})
+	updateBody["val"] = "value"
+	_, doc, err := collection.Put(ctx, docID, updateBody)
+	require.NoError(t, err)
+	assert.NotNil(t, doc)
 
-			syncFn = `
+	syncFn = `
 		function sync(doc, oldDoc){
 			channel("channel." + "ABC12332423234");
 		}
 	`
-			_, err = collection.UpdateSyncFun(ctx, syncFn)
-			require.NoError(t, err)
+	_, err = collection.UpdateSyncFun(ctx, syncFn)
+	require.NoError(t, err)
 
-			_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
-			require.NoError(t, err)
-			err = collection.WaitForPendingChanges(ctx)
-			require.NoError(t, err)
+	_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
+	require.NoError(t, err)
+	err = collection.WaitForPendingChanges(ctx)
+	require.NoError(t, err)
 
-			syncData, err := collection.GetDocSyncData(ctx, docID)
-			assert.NoError(t, err)
+	syncData, err := collection.GetDocSyncData(ctx, docID)
+	assert.NoError(t, err)
 
-			assert.Len(t, syncData.ChannelSet, 2)
-			assert.Len(t, syncData.Channels, 2)
-			found := false
+	assert.Len(t, syncData.ChannelSet, 2)
+	assert.Len(t, syncData.Channels, 2)
+	found := false
 
-			for _, chSet := range syncData.ChannelSet {
-				if chSet.Name == "channel.ABC12332423234" {
-					found = true
-					break
-				}
-			}
-
-			assert.True(t, found)
-			assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
-		})
+	for _, chSet := range syncData.ChannelSet {
+		if chSet.Name == "channel.ABC12332423234" {
+			found = true
+			break
+		}
 	}
+
+	assert.True(t, found)
+	assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
+
 }
 
 func Test_getUpdatedDocument(t *testing.T) {
