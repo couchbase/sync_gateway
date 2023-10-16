@@ -126,8 +126,6 @@ func TestXattrImportOldDoc(t *testing.T) {
 // Test import ancestor handling
 func TestXattrImportOldDocRevHistory(t *testing.T) {
 
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
@@ -146,18 +144,17 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 
 	// 1. Create revision with history
 	docID := t.Name()
-	putResponse := rt.PutDoc(docID, `{"val":-1}`)
-	revID := putResponse.Rev
-
+	version := rt.PutDoc(docID, `{"val":-1}`)
+	revID := version.RevID
 	collection := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	ctx := rt.Context()
 	for i := 0; i < 10; i++ {
-		updateResponse := rt.UpdateDoc(docID, revID, fmt.Sprintf(`{"val":%d}`, i))
+		version = rt.UpdateDoc(version, fmt.Sprintf(`{"val":%d}`, i))
 		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
 		purgeErr := collection.PurgeOldRevisionJSON(ctx, docID, revID)
-		assert.NoError(t, purgeErr)
-		revID = updateResponse.Rev
+		require.NoError(t, purgeErr)
+		revID = version.RevID
 	}
 
 	// 2. Modify doc via SDK

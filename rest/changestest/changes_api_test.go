@@ -586,38 +586,38 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	cacheWaiter.AddAndWait(13)
 
 	// Update some docs to remove channel
-	_ = rt.PutDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.Rev))
-	_ = rt.PutDoc("mix-1", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, mix1.Rev))
-	_ = rt.PutDoc("mix-2", fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix2.Rev))
-	_ = rt.PutDoc("mix-4", fmt.Sprintf(`{"_rev":%q}`, mix4.Rev))
+	_ = rt.PutDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.RevID))
+	_ = rt.PutDoc("mix-1", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, mix1.RevID))
+	_ = rt.PutDoc("mix-2", fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix2.RevID))
+	_ = rt.PutDoc("mix-4", fmt.Sprintf(`{"_rev":%q}`, mix4.RevID))
 
 	// Validate that tombstones are also not sent as part of backfill:
 	//  Case 1: Delete a document in a single channel (e.g. pbs-3), and validate it doesn't get included in backfill
 	//  Case 2: Delete a document in a multiple channels (e.g. mix-3), and validate it doesn't get included in backfill
-	rt.DeleteDoc(pbs3.ID, pbs3.Rev)
-	rt.DeleteDoc(mix3.ID, mix3.Rev)
+	rt.DeleteDoc(pbs3)
+	rt.DeleteDoc(mix3)
 
 	// Test Scenario:
 	//   1. Document mix-5 is in channels PBS, HBO (rev 1)
 	//   2. Document is deleted (rev 2)
 	//   3. Document is recreated, only in channel PBS (rev 3)
 	mix5 := rt.PutDoc("mix-5", `{"channel":["PBS","HBO"]}`)
-	rt.DeleteDoc(mix5.ID, mix5.Rev)
-	_ = rt.PutDoc(mix5.ID, `{"channel":["PBS"]}`)
+	rt.DeleteDoc(mix5)
+	_ = rt.PutDoc(mix5.DocID, `{"channel":["PBS"]}`)
 
 	// Test Scenario:
 	//   1. Document mix-6 is in channels PBS, HBO (rev 1)
 	//   2. Document is updated only be in channel HBO (rev 2)
 	//   3. Document is updated AGAIN to remove all channels (rev 3)
 	mix6 := rt.PutDoc("mix-6", `{"channel":["PBS","HBO"]}`)
-	mix6 = rt.PutDoc(mix6.ID, fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix6.Rev))
-	_ = rt.PutDoc(mix6.ID, fmt.Sprintf(`{"_rev":%q}`, mix6.Rev))
+	mix6 = rt.PutDoc(mix6.DocID, fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix6.RevID))
+	_ = rt.PutDoc(mix6.DocID, fmt.Sprintf(`{"_rev":%q}`, mix6.RevID))
 
 	// Test Scenario:
 	//   1. Delete abc-2 from channel ABC
 	//   2. Update abc-3 to remove from channel ABC
-	rt.DeleteDoc(abc2.ID, abc2.Rev)
-	_ = rt.PutDoc(abc3.ID, fmt.Sprintf(`{"_rev":%q}`, abc3.Rev))
+	rt.DeleteDoc(abc2)
+	_ = rt.PutDoc(abc3.DocID, fmt.Sprintf(`{"_rev":%q}`, abc3.RevID))
 
 	// Issue changes request and check the results
 	expectedResults := []string{
@@ -728,10 +728,10 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(4)
 
 	// Mark the first four PBS docs as removals
-	_ = rt.PutDoc("pbs-1", fmt.Sprintf(`{"_rev":%q}`, pbs1.Rev))
-	_ = rt.PutDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.Rev))
-	_ = rt.PutDoc("pbs-3", fmt.Sprintf(`{"_rev":%q}`, pbs3.Rev))
-	_ = rt.PutDoc("pbs-4", fmt.Sprintf(`{"_rev":%q}`, pbs4.Rev))
+	_ = rt.PutDoc("pbs-1", fmt.Sprintf(`{"_rev":%q}`, pbs1.RevID))
+	_ = rt.PutDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.RevID))
+	_ = rt.PutDoc("pbs-3", fmt.Sprintf(`{"_rev":%q}`, pbs3.RevID))
+	_ = rt.PutDoc("pbs-4", fmt.Sprintf(`{"_rev":%q}`, pbs4.RevID))
 
 	cacheWaiter.AddAndWait(4)
 
@@ -805,8 +805,8 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	cacheWaiter.AddAndWait(4)
 
 	// remove channels/tombstone a couple of docs to ensure they're not backfilled after a dynamic grant
-	_ = rt.PutDoc("hbo-2", fmt.Sprintf(`{"_rev":%q}`, hbo2.Rev))
-	rt.DeleteDoc(pbs2.ID, pbs2.Rev)
+	_ = rt.PutDoc("hbo-2", fmt.Sprintf(`{"_rev":%q}`, hbo2.RevID))
+	rt.DeleteDoc(pbs2)
 	cacheWaiter.AddAndWait(2)
 
 	_ = rt.PutDoc("abc-1", `{"channel":["ABC"]}`)
@@ -3890,9 +3890,8 @@ func TestResyncAllTombstones(t *testing.T) {
 
 			for i := 0; i < numTombstones; i++ {
 				docID := fmt.Sprintf("doc%d", i)
-				resp := rt.PutDoc(docID, `{"foo":"bar"}`)
-				require.True(t, resp.Ok)
-				rt.DeleteDoc(docID, resp.Rev)
+				doc := rt.PutDoc(docID, `{"foo":"bar"}`)
+				rt.DeleteDoc(doc)
 			}
 
 			resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_offline", rt.GetDatabase().Name), "")

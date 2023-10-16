@@ -590,7 +590,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
 
 	// Get the document and grab the revID.
-	responseBody := rt.GetDoc(docID)
+	responseBody := rt.GetDocBody(docID)
 	revID := responseBody["_rev"].(string)
 	require.NotEmpty(t, revID)
 
@@ -643,7 +643,7 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
 
 	// Get the document and grab the revID.
-	responseBody := rt.GetDoc(docID)
+	responseBody := rt.GetDocBody(docID)
 	revID := responseBody["_rev"].(string)
 	require.NotEmpty(t, revID)
 

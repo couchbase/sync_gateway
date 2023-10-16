@@ -19,15 +19,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-type PutDocResponse struct {
-	ID  string
-	Ok  bool
-	Rev string
-}
 
 // Run is equivalent to testing.T.Run() but updates the RestTester's TB to the new testing.T
 // so that checks are made against the right instance (otherwise the outer test complains
@@ -41,67 +34,80 @@ func (rt *RestTester) Run(name string, test func(*testing.T)) {
 	})
 }
 
-func (rt *RestTester) GetDoc(docID string) (body db.Body) {
+// GetDocBody returns the doc body for the given docID. If the document is not found, t.Fail will be called.
+func (rt *RestTester) GetDocBody(docID string) db.Body {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 	RequireStatus(rt.TB, rawResponse, 200)
+	var body db.Body
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
 	return body
 }
 
-func (rt *RestTester) CreateDoc(t *testing.T, docid string) string {
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docid), `{"prop":true}`)
-	RequireStatus(t, response, 201)
+// GetDoc returns the doc body and version for the given docID. If the document is not found, t.Fail will be called.
+func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
+	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
+	RequireStatus(rt.TB, rawResponse, 200)
 	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, true, body["ok"])
-	revid := body["rev"].(string)
-	if revid == "" {
-		t.Fatalf("No revid in response for PUT doc")
+	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
+	var r struct {
+		RevID *string `json:"_rev"`
 	}
-	return revid
+	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &r))
+	return DocVersion{DocID: docID, RevID: *r.RevID}, body
 }
 
-func (rt *RestTester) PutDoc(docID string, body string) (response PutDocResponse) {
+// CreateTestDoc creates a document with an arbitrary body.
+func (rt *RestTester) CreateTestDoc(docid string) DocVersion {
+	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docid), `{"prop":true}`)
+	RequireStatus(rt.TB, response, 201)
+	return DocVersionFromPutResponse(rt.TB, response)
+}
+
+// PutDoc will upsert the document with a given contents.
+func (rt *RestTester) PutDoc(docID string, body string) DocVersion {
 	rawResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), body)
 	RequireStatus(rt.TB, rawResponse, 201)
-	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
-	require.True(rt.TB, response.Ok)
-	require.NotEmpty(rt.TB, response.Rev)
-	return response
+	return DocVersionFromPutResponse(rt.TB, rawResponse)
 }
 
-func (rt *RestTester) UpdateDoc(docID, revID, body string) (response PutDocResponse) {
-	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, revID)
+// UpdateDocRev updates a document at a specific revision and returns the new version. Deprecated for UpdateDoc.
+func (rt *RestTester) UpdateDocRev(docID, revID string, body string) string {
+	version := rt.UpdateDoc(DocVersion{DocID: docID, RevID: revID}, body)
+	return version.RevID
+}
+
+// UpdateDoc updates a document at a specific version and returns the new version.
+func (rt *RestTester) UpdateDoc(version DocVersion, body string) DocVersion {
+	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), version.DocID, version.RevID)
 	rawResponse := rt.SendAdminRequest(http.MethodPut, resource, body)
 	RequireStatus(rt.TB, rawResponse, http.StatusCreated)
-	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
-	require.True(rt.TB, response.Ok)
-	require.NotEmpty(rt.TB, response.Rev)
-	return response
+	return DocVersionFromPutResponse(rt.TB, rawResponse)
 }
 
-func (rt *RestTester) upsertDoc(docID string, body string) (response PutDocResponse) {
-
-	getResponse := rt.SendAdminRequest("GET", "/{{.db}}/"+docID, "")
-	if getResponse.Code == 404 {
-		return rt.PutDoc(docID, body)
+// storeAttachment adds an attachment to a document version and returns the new version.
+func (rt *RestTester) storeAttachment(version DocVersion, attName, attBody string) DocVersion {
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
 	}
-	var getBody db.Body
-	require.NoError(rt.TB, base.JSONUnmarshal(getResponse.Body.Bytes(), &getBody))
-	revID, ok := getBody["revID"].(string)
-	require.True(rt.TB, ok)
-
-	rawResponse := rt.SendAdminRequest("PUT", "/{{.db}}/"+docID+"?rev="+revID, body)
-	RequireStatus(rt.TB, rawResponse, 200)
-	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
-	require.True(rt.TB, response.Ok)
-	require.NotEmpty(rt.TB, response.Rev)
-	return response
+	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", version.DocID, attName, version.RevID)
+	response := rt.SendRequestWithHeaders(http.MethodPut, resource, attBody, reqHeaders)
+	RequireStatus(rt.TB, response, http.StatusCreated)
+	var body db.Body
+	require.NoError(rt.TB, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	require.True(rt.TB, body["ok"].(bool))
+	return DocVersionFromPutResponse(rt.TB, response)
 }
 
-func (rt *RestTester) DeleteDoc(docID, revID string) {
+// DeleteDoc deletes a document at a specific version. The test will fail if the revision does not exist.
+func (rt *RestTester) DeleteDoc(docVersion DocVersion) {
 	RequireStatus(rt.TB, rt.SendAdminRequest(http.MethodDelete,
-		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, revID), ""), http.StatusOK)
+		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docVersion.DocID, docVersion.RevID), ""), http.StatusOK)
+}
+
+// DeleteDocRev removes a document at a specific revision. Deprecated for DeleteDoc.
+func (rt *RestTester) DeleteDocRev(docID, revID string) {
+	rt.DeleteDoc(DocVersion{DocID: docID, RevID: revID})
 }
 
 func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
@@ -112,16 +118,23 @@ func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 	return dbroot
 }
 
-func (rt *RestTester) WaitForRev(docID string, revID string) error {
+// WaitForVersion retries a GET for a given document version until it returns 200 or 201 for a given document and revision. If version is not found, the test will fail.
+func (rt *RestTester) WaitForVersion(version DocVersion) error {
+	require.NotEqual(rt.TB, "", version.RevID)
 	return rt.WaitForCondition(func() bool {
-		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
+		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+version.DocID, "")
 		if rawResponse.Code != 200 && rawResponse.Code != 201 {
 			return false
 		}
 		var body db.Body
 		require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
-		return body.ExtractRev() == revID
+		return body.ExtractRev() == version.RevID
 	})
+}
+
+// WaitForRev retries a GET until it returns 200 or 201. If revision is not found, the test will fail. This function is deprecated for RestTester.WaitForVersion
+func (rt *RestTester) WaitForRev(docID, revID string) error {
+	return rt.WaitForVersion(DocVersion{DocID: docID, RevID: revID})
 }
 
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
@@ -160,6 +173,11 @@ func (rt *RestTester) WaitForPullBlipSenderInitialisation(name string) {
 		return bs != nil
 	}
 	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "blip sender on active replicator not initialized")
+}
+
+// UsingHLV returns true if using HLV vs revision ID
+func (rt *RestTester) UsingHLV() bool {
+	return false
 }
 
 // createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter

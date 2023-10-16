@@ -1368,8 +1368,7 @@ func TestDbConfigEnvVarsToggle(t *testing.T) {
 			AssertStatus(t, resp, http.StatusCreated)
 
 			docID := "doc"
-			putDocResp := rt.PutDoc(docID, `{"foo":"bar"}`)
-			require.True(t, putDocResp.Ok)
+			_ = rt.PutDoc(docID, `{"foo":"bar"}`)
 
 			require.NoError(t, rt.WaitForPendingChanges())
 
