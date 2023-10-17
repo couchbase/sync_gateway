@@ -312,15 +312,15 @@ func (rt *RestTester) Bucket() base.Bucket {
 			// If scopes is already set, assume the caller has a plan
 			if rt.DatabaseConfig.Scopes == nil {
 				// Configure non default collections by default
-				var syncFn *string
-				if rt.SyncFn != "" {
-					syncFn = base.StringPtr(rt.SyncFn)
-				}
-				var importFilter *string
-				if rt.ImportFilter != "" {
-					importFilter = base.StringPtr(rt.ImportFilter)
-				}
-				rt.DatabaseConfig.Scopes = GetCollectionsConfigWithFiltering(rt.TB, testBucket, rt.numCollections, syncFn, importFilter)
+				rt.DatabaseConfig.Scopes = GetCollectionsConfigWithFiltering(rt.TB, testBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
+			}
+		} else {
+			// override SyncFn and ImportFilter if set
+			if rt.SyncFn != "" {
+				rt.DatabaseConfig.Sync = &rt.SyncFn
+			}
+			if rt.ImportFilter != "" {
+				rt.DatabaseConfig.ImportFilter = &rt.ImportFilter
 			}
 		}
 
@@ -337,7 +337,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.Name == "" {
 			rt.DatabaseConfig.Name = "db"
 		}
-		rt.DatabaseConfig.Sync = &rt.SyncFn
 		rt.DatabaseConfig.EnableXattrs = &useXattrs
 		if rt.EnableNoConflictsMode {
 			boolVal := false
@@ -650,8 +649,12 @@ func (rt *RestTester) templateResource(resource string) (string, error) {
 				dbPrefix = fmt.Sprintf("db%d", i+1)
 				data[dbPrefix] = database.Name
 			}
-			if len(database.CollectionByID) == 1 && !multipleDatabases {
-				data["keyspace"] = rt.GetSingleKeyspace()
+			if len(database.CollectionByID) == 1 {
+				if multipleDatabases {
+					data[fmt.Sprintf("db%dkeyspace", i+1)] = getKeyspaces(rt.TB, database)[0]
+				} else {
+					data["keyspace"] = rt.GetSingleKeyspace()
+				}
 				continue
 			}
 			for j, keyspace := range getKeyspaces(rt.TB, database) {
@@ -2500,6 +2503,7 @@ func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int
 	return changesResponse
 }
 
+// NewDbConfig returns a DbConfig for the given RestTester. This sets up a config appropriate to collections, xattrs, import filter and sync function.
 func (rt *RestTester) NewDbConfig() DbConfig {
 	// make sure bucket has been initialized
 	config := DbConfig{
@@ -2515,26 +2519,21 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	}
 	// Setup scopes.
 	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || (config.UseViews != nil && !*config.UseViews)) {
-		var syncFn *string
-		if rt.SyncFn != "" {
-			syncFn = base.StringPtr(rt.SyncFn)
-		}
-		var importFilter *string
-		if rt.ImportFilter != "" {
-			importFilter = base.StringPtr(rt.ImportFilter)
-		}
-
-		config.Scopes = GetCollectionsConfigWithFiltering(rt.TB, rt.TestBucket, rt.numCollections, syncFn, importFilter)
+		config.Scopes = GetCollectionsConfigWithFiltering(rt.TB, rt.TestBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
 	} else {
-		if rt.SyncFn != "" {
-			config.Sync = base.StringPtr(rt.SyncFn)
-		}
-		if rt.ImportFilter != "" {
-			config.ImportFilter = base.StringPtr(rt.ImportFilter)
-		}
+		config.Sync = stringPtrOrNil(rt.SyncFn)
+		config.ImportFilter = stringPtrOrNil(rt.ImportFilter)
 	}
 
 	return config
+}
+
+// stringPtrOrNil returns a stringPtr for the given string, or nil if the string is empty
+func stringPtrOrNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return base.StringPtr(s)
 }
 
 func DropAllTestIndexes(t *testing.T, tb *base.TestBucket) {
