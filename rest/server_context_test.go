@@ -621,7 +621,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 		Scopes: ScopesConfig{
 			"foo": ScopeConfig{
 				Collections: CollectionsConfig{
-					"bar": CollectionConfig{},
+					"bar": &CollectionConfig{},
 				},
 			},
 		},

@@ -105,6 +105,14 @@ func (rt *RestTester) DeleteDoc(docID, revID string) {
 		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, revID), ""), http.StatusOK)
 }
 
+func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
+	var dbroot DatabaseRoot
+	resp := rt.SendAdminRequest("GET", "/"+dbname+"/", "")
+	RequireStatus(rt.TB, resp, 200)
+	require.NoError(rt.TB, base.JSONUnmarshal(resp.BodyBytes(), &dbroot))
+	return dbroot
+}
+
 func (rt *RestTester) WaitForRev(docID string, revID string) error {
 	return rt.WaitForCondition(func() bool {
 		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")

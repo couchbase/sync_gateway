@@ -502,7 +502,7 @@ func makeScopesConfig(scopeName string, collectionNames []string) ScopesConfig {
 
 	collectionsConfig := make(CollectionsConfig)
 	for _, collectionName := range collectionNames {
-		collectionsConfig[collectionName] = CollectionConfig{}
+		collectionsConfig[collectionName] = &CollectionConfig{}
 	}
 	return ScopesConfig{
 		scopeName: ScopeConfig{

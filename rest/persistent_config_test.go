@@ -344,19 +344,17 @@ func TestImportFilterEndpoint(t *testing.T) {
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
-	// FIXME: this works on the default collection, but not a named collection, this should be fixed in 3.1.2
-	if !base.TestsUseNamedCollections() {
-		// Ensure we won't fail with an empty import filter
-		resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/import_filter", "")
-		RequireStatus(t, resp, http.StatusOK)
-	}
+	rt.CreateDatabase("db1", rt.NewDbConfig())
+
+	// Ensure we won't fail with an empty import filter
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/import_filter", "")
+	RequireStatus(t, resp, http.StatusOK)
 
 	// Add a document
-	err := rt.GetSingleDataStore().Set("importDoc1", 0, nil, []byte("{}"))
-	assert.NoError(t, err)
+	require.NoError(t, rt.GetSingleDataStore().Set("importDoc1", 0, nil, []byte("{}")))
 
 	// Ensure document is imported based on default import filter
-	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/importDoc1", "")
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/importDoc1", "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Modify the import filter to always reject import
@@ -364,8 +362,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Add a document
-	err = rt.GetSingleDataStore().Set("importDoc2", 0, nil, []byte("{}"))
-	assert.NoError(t, err)
+	require.NoError(t, rt.GetSingleDataStore().Set("importDoc2", 0, nil, []byte("{}")))
 
 	// Ensure document is not imported and is rejected based on updated filter
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/importDoc2", "")
@@ -376,8 +373,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Add a document
-	err = rt.GetSingleDataStore().Set("importDoc3", 0, nil, []byte("{}"))
-	assert.NoError(t, err)
+	require.NoError(t, rt.GetSingleDataStore().Set("importDoc3", 0, nil, []byte("{}")))
 
 	// Ensure document is imported based on default import filter
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/importDoc3", "")
@@ -399,11 +395,11 @@ func TestPersistentConfigWithCollectionConflicts(t *testing.T) {
 	collection1Name := dataStoreNames[0].CollectionName()
 	collection2Name := dataStoreNames[1].CollectionName()
 	collection3Name := dataStoreNames[2].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection1Name: {}}}}
-	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection2Name: {}}}}
-	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection3Name: {}}}}
-	collection1and2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection1Name: {}, collection2Name: {}}}}
-	collection2and3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection2Name: {}, collection3Name: {}}}}
+	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
+	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection3Name: {}}}}
+	collection1and2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}, collection2Name: {}}}}
+	collection2and3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}, collection3Name: {}}}}
 
 	// 1. Test collection registry with db create and delete
 	// Create db1, with collection1
@@ -533,10 +529,10 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 	collection1Name := dataStoreNames[0].CollectionName()
 	collection2Name := dataStoreNames[1].CollectionName()
 	collection3Name := dataStoreNames[2].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection1Name: {}}}}
-	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection2Name: {}}}}
-	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection3Name: {}}}}
-	collection1and2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection1Name: {}, collection2Name: {}}}}
+	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
+	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection3Name: {}}}}
+	collection1and2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}, collection2Name: {}}}}
 
 	// Case 1. GetDatabaseConfigs should roll back registry after create failure
 	collection1db1Config := getTestDatabaseConfig(bucketName, "c1_db1", collection1ScopesConfig, "1-a")
@@ -666,9 +662,9 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 	collection1Name := dataStoreNames[0].CollectionName()
 	collection2Name := dataStoreNames[1].CollectionName()
 	collection3Name := dataStoreNames[2].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection1Name: {}}}}
-	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection2Name: {}}}}
-	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection3Name: {}}}}
+	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
+	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection3Name: {}}}}
 
 	bc := sc.BootstrapContext
 	// reduce retry timeout for testing
@@ -819,8 +815,8 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 
 	collection1Name := dataStoreNames[0].CollectionName()
 	collection2Name := dataStoreNames[1].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection1Name: {}}}}
-	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection2Name: {}}}}
+	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
 
 	// SimulateDeleteFailure updates the registry with a new config, but doesn't create the associated config file
 	bc := sc.BootstrapContext
@@ -954,7 +950,7 @@ func TestPersistentConfigSlowCreateFailure(t *testing.T) {
 
 	// set up ScopesConfigs used by tests
 	collection1Name := dataStoreNames[0].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]CollectionConfig{collection1Name: {}}}}
+	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
 
 	// Case 1. Complete slow create after rollback
 	collection1db1Config := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "1-a")
@@ -1196,11 +1192,9 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 	_, insertError := sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
 	require.NoError(t, insertError)
 
+	// migration should not return error, but legacy config will not be migrated due to collection conflict
 	migrateErr := sc.migrateV30Configs(ctx)
-	require.Error(t, migrateErr)
-	var httpErr *base.HTTPError
-	require.ErrorAs(t, migrateErr, &httpErr)
-	require.Equal(t, 409, httpErr.Status)
+	require.NoError(t, migrateErr)
 
 	// Fetch the registry, verify newDefaultDb still exists and defaultDb30 has not been migrated due to collection conflict
 	registry, registryErr := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
@@ -1209,6 +1203,10 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 	migratedDb, found := registry.getRegistryDatabase(groupID, newDefaultDbName)
 	require.True(t, found)
 	require.Equal(t, "1-a", migratedDb.Version)
+
+	// Verify non-migrated legacy config has not been deleted (since it wasn't successfully migrated)
+	_, getErr := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
+	require.NoError(t, getErr)
 }
 
 // TestLegacyDuplicate tests the behaviour of GetDatabaseConfigs when the same database exists in legacy and non-legacy format

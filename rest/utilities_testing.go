@@ -395,7 +395,7 @@ func GetCollectionsConfigWithFiltering(t testing.TB, testBucket *base.TestBucket
 	// Get a datastore as provided by the test
 	stores := testBucket.GetNonDefaultDatastoreNames()
 	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
-	defaultCollectionConfig := CollectionConfig{}
+	defaultCollectionConfig := &CollectionConfig{}
 	if syncFn != nil {
 		defaultCollectionConfig.SyncFn = syncFn
 	}
@@ -414,7 +414,7 @@ func GetCollectionsConfigWithFiltering(t testing.TB, testBucket *base.TestBucket
 			}
 		} else {
 			scopesConfig[dataStoreName.ScopeName()] = ScopeConfig{
-				Collections: map[string]CollectionConfig{
+				Collections: map[string]*CollectionConfig{
 					dataStoreName.CollectionName(): defaultCollectionConfig,
 				}}
 		}
