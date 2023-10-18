@@ -11,7 +11,6 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -339,10 +338,10 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 }
 
 func TestImportFilterEndpoint(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t)
-	base.SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)     // import tests don't work without xattrs
+	base.TestsRequireBootstrapConnection(t) // import filter modification requires bootstrap connection CBG-3271
 
-	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	rt.CreateDatabase("db1", rt.NewDbConfig())
@@ -382,37 +381,14 @@ func TestImportFilterEndpoint(t *testing.T) {
 }
 
 func TestPersistentConfigWithCollectionConflicts(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	base.TestsRequireBootstrapConnection(t)
 	base.TestRequiresCollections(t)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyDCP)
-	serverErr := make(chan error, 0)
 
-	// Start SG with no databases
-	config := BootstrapStartupConfigForTest(t)
-	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+	_ = rt.Bucket()
 
-	go func() {
-		serverErr <- StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
-
-	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
+	threeCollectionScopesConfig := GetCollectionsConfig(t, rt.TestBucket, 3)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
 
 	scopeName := dataStoreNames[0].ScopeName()
@@ -424,100 +400,67 @@ func TestPersistentConfigWithCollectionConflicts(t *testing.T) {
 	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection3Name: {}}}}
 	collection1and2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}, collection2Name: {}}}}
 	collection2and3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}, collection3Name: {}}}}
-	log.Printf("dataStoreNames: %v", dataStoreNames)
-
-	bucketName := tb.GetName()
-	numIndexReplicas := uint(0)
-	enableXattrs := base.TestUseXattrs()
-
-	getDbConfigPayload := func(bucketName string, scopesConfig ScopesConfig) string {
-		dbConfig := DbConfig{
-			BucketConfig: BucketConfig{
-				Bucket: &bucketName,
-			},
-			NumIndexReplicas: &numIndexReplicas,
-			EnableXattrs:     &enableXattrs,
-			Scopes:           scopesConfig,
-		}
-		if scopesConfig != nil {
-			dbConfig.Scopes = scopesConfig
-		}
-		dbPayload, err := json.Marshal(dbConfig)
-		require.NoError(t, err)
-		return string(dbPayload)
-	}
-
-	// Create payloads for each of the collection permutations
-	collection1Payload := getDbConfigPayload(bucketName, collection1ScopesConfig)
-	collection2Payload := getDbConfigPayload(bucketName, collection2ScopesConfig)
-	collection3Payload := getDbConfigPayload(bucketName, collection3ScopesConfig)
-	collection1and2Payload := getDbConfigPayload(bucketName, collection1and2ScopesConfig)
-	collection2and3Payload := getDbConfigPayload(bucketName, collection2and3ScopesConfig)
-	defaultCollectionPayload := getDbConfigPayload(bucketName, nil)
 
 	// 1. Test collection registry with db create and delete
 	// Create db1, with collection1
-	resp := BootstrapAdminRequest(t, http.MethodPut, "/db1/", collection1Payload)
-	resp.RequireStatus(http.StatusCreated)
+	collection1DBConfig := rt.NewDbConfig()
+	collection1DBConfig.Scopes = collection1ScopesConfig
+	RequireStatus(t, rt.CreateDatabase("db1", collection1DBConfig), http.StatusCreated)
 
 	// Verify fetch config
-	resp = BootstrapAdminRequest(t, http.MethodGet, "/db1/_config", "")
-	resp.RequireStatus(http.StatusOK)
+	RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/db1/_config", ""), http.StatusOK)
 
 	// Create db2, with collection 2
-	resp = BootstrapAdminRequest(t, http.MethodPut, "/db2/", collection2Payload)
-	resp.RequireStatus(http.StatusCreated)
+
+	collection2DBConfig := rt.NewDbConfig()
+	collection2DBConfig.Scopes = collection2ScopesConfig
+	rt.CreateDatabase("db2", collection2DBConfig)
 
 	// Create db1a with collection 1, expect conflict with db1
-	resp = BootstrapAdminRequest(t, http.MethodPut, "/db1a/", collection1Payload)
-	resp.RequireStatus(http.StatusConflict)
+	RequireStatus(t, rt.CreateDatabase("db1a", collection1DBConfig), http.StatusConflict)
 
 	// Delete db1
-	resp = BootstrapAdminRequest(t, http.MethodDelete, "/db1/", "")
-	resp.RequireStatus(http.StatusOK)
+	RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db1/", ""), http.StatusOK)
 
 	// Create db1a with collection 1, should now succeed
-	resp = BootstrapAdminRequest(t, http.MethodPut, "/db1a/", collection1Payload)
-	resp.RequireStatus(http.StatusCreated)
+	RequireStatus(t, rt.CreateDatabase("db1a", collection1DBConfig), http.StatusCreated)
 
 	// Attempt to recreate db1, expect conflict with db1a
-	resp = BootstrapAdminRequest(t, http.MethodPut, "/db1/", collection1Payload)
-	resp.RequireStatus(http.StatusConflict)
+	RequireStatus(t, rt.CreateDatabase("db1", collection1DBConfig), http.StatusConflict)
 
 	// 2. Test collection registry during existing db update
 	// Add a new (unused) collection3 to existing database db2, should succeed
-	resp = BootstrapAdminRequest(t, http.MethodPost, "/db2/_config", collection2and3Payload)
-	resp.RequireStatus(http.StatusCreated)
+	collection2And3DbConfig := rt.NewDbConfig()
+	collection2And3DbConfig.Scopes = collection2and3ScopesConfig
+	RequireStatus(t, rt.UpsertDbConfig("db2", collection2And3DbConfig), http.StatusCreated)
 
 	// Attempt to add already in use collection (collection2) to existing database db1a, should be rejected as conflict
-	resp = BootstrapAdminRequest(t, http.MethodPost, "/db1a/_config", collection1and2Payload)
-	resp.RequireStatus(http.StatusConflict)
+	collection1And2DbConfig := rt.NewDbConfig()
+	collection1And2DbConfig.Scopes = collection1and2ScopesConfig
+	RequireStatus(t, rt.UpsertDbConfig("db1a", collection1And2DbConfig), http.StatusConflict)
 
 	// Remove collection 2 from db2 (leaving collection 3 only)
-	resp = BootstrapAdminRequest(t, http.MethodPost, "/db2/_config", collection3Payload)
-	resp.RequireStatus(http.StatusCreated)
+	collection3DbConfig := rt.NewDbConfig()
+	collection3DbConfig.Scopes = collection3ScopesConfig
+	RequireStatus(t, rt.UpsertDbConfig("db2", collection3DbConfig), http.StatusCreated)
 
 	// Attempt to add collection2 to existing database db1a again, should now succeed
-	resp = BootstrapAdminRequest(t, http.MethodPost, "/db1a/_config", collection1and2Payload)
-	resp.RequireStatus(http.StatusCreated)
+	RequireStatus(t, rt.UpsertDbConfig("db1a", collection1And2DbConfig), http.StatusCreated)
 
 	// 3. default collection tests
-	//Add a new db targeting default scope and collection
-	resp = BootstrapAdminRequest(t, http.MethodPut, "/default1/", defaultCollectionPayload)
-	resp.RequireStatus(http.StatusCreated)
+	// Add a new db targeting default scope and collection
+	defaultCollectionDbConfig := rt.NewDbConfig()
+	defaultCollectionDbConfig.Scopes = nil
+	RequireStatus(t, rt.CreateDatabase("default1", defaultCollectionDbConfig), http.StatusCreated)
 
-	//Add a second db targeting default scope and collection, expect conflict
-	resp = BootstrapAdminRequest(t, http.MethodPut, "/default2/", defaultCollectionPayload)
-	resp.RequireStatus(http.StatusConflict)
+	// Add a second db targeting default scope and collection, expect conflict
+	RequireStatus(t, rt.CreateDatabase("default2", defaultCollectionDbConfig), http.StatusConflict)
 
 	// Delete default1
-	resp = BootstrapAdminRequest(t, http.MethodDelete, "/default1/", "")
-	resp.RequireStatus(http.StatusOK)
+	RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/default1/", ""), http.StatusOK)
 
 	// Create default2 targeting default scope and collection, should now succeed
-	resp = BootstrapAdminRequest(t, http.MethodPut, "/default2/", defaultCollectionPayload)
-	resp.RequireStatus(http.StatusCreated)
-
+	RequireStatus(t, rt.CreateDatabase("default2", defaultCollectionDbConfig), http.StatusCreated)
 }
 
 // TestPersistentConfigRegistryRollbackAfterCreateFailure simulates node failure during an insertConfig operation, leaving
@@ -1000,7 +943,7 @@ func TestPersistentConfigSlowCreateFailure(t *testing.T) {
 		require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
 	}
 
-	completeSlowCreate := func(t *testing.T, config *DatabaseConfig) error {
+	completeSlowCreate := func(config *DatabaseConfig) error {
 		_, insertError := bc.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, config.Name), config)
 		return insertError
 	}
@@ -1016,7 +959,7 @@ func TestPersistentConfigSlowCreateFailure(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, len(configs))
 
-	err = completeSlowCreate(t, collection1db1Config)
+	err = completeSlowCreate(collection1db1Config)
 	require.NoError(t, err)
 
 	// Re-attempt the insert, verify it's not blocked by the slow write of the config file

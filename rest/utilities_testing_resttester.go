@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -391,4 +392,19 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 		passiveTestBucket.Close(ctx)
 	}
 	return activeRT, passiveRT, passiveDBURL.String(), teardown
+}
+
+// TakeDbOffline takes the database offline.
+func (rt *RestTester) TakeDbOffline() {
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
+	RequireStatus(rt.TB, resp, http.StatusOK)
+	require.Equal(rt.TB, db.DBOffline, atomic.LoadUint32(&rt.GetDatabase().State))
+}
+
+// RequireDbOnline asserts that the state of the database is online
+func (rt *RestTester) RequireDbOnline() {
+	response := rt.SendAdminRequest("GET", "/{{.db}}/", "")
+	var body db.Body
+	require.NoError(rt.TB, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	require.Equal(rt.TB, "Online", body["state"].(string))
 }

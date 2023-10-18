@@ -8044,7 +8044,7 @@ func TestGroupIDReplications(t *testing.T) {
 		if rt.GetDatabase().OnlyDefaultCollection() {
 			dbConfig.Sync = base.StringPtr(channels.DocChannelsSyncFunction)
 		} else {
-			dbConfig.Scopes = rest.GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, base.StringPtr(channels.DocChannelsSyncFunction), 1)
+			dbConfig.Scopes = rest.GetCollectionsConfigWithFiltering(rt.TB, rt.TestBucket, 1, base.StringPtr(channels.DocChannelsSyncFunction), nil)
 		}
 		dbcJSON, err := base.JSONMarshal(dbConfig)
 		require.NoError(t, err)
