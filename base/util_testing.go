@@ -774,6 +774,13 @@ func TestRequiresCollections(t testing.TB) {
 	}
 }
 
+// TestRequiresDCPResync will skip the current test DCP sync is not supported.
+func TestRequiresDCPResync(t testing.TB) {
+	if !UnitTestUrlIsWalrus() {
+		t.Skip("Walrus doesn't support DCP resync CBG-2661")
+	}
+}
+
 // SkipImportTestsIfNotEnabled skips test that exercise import features
 func SkipImportTestsIfNotEnabled(t *testing.T) {
 
