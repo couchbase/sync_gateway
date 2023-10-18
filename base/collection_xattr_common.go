@@ -91,7 +91,7 @@ func WriteCasWithXattr(ctx context.Context, store SubdocXattrStore, k string, xa
 	}
 
 	// Kick off retry loop
-	err, cas = RetryLoopCas(ctx, "WriteCasWithXattr", worker, store.GetSpec().RetrySleeper())
+	err, cas = RetryLoopCas(ctx, "WriteCasWithXattr", worker, DefaultRetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "WriteCasWithXattr with key %v", UD(k).Redact())
 	}
@@ -144,7 +144,7 @@ func UpdateTombstoneXattr(ctx context.Context, store SubdocXattrStore, k string,
 	}
 
 	// Kick off retry loop
-	err, cas = RetryLoopCas(ctx, "UpdateTombstoneXattr", worker, store.GetSpec().RetrySleeper())
+	err, cas = RetryLoopCas(ctx, "UpdateTombstoneXattr", worker, DefaultRetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "Error during UpdateTombstoneXattr with key %v", UD(k).Redact())
 		return cas, err
@@ -171,7 +171,7 @@ func UpdateTombstoneXattr(ctx context.Context, store SubdocXattrStore, k string,
 			return false, nil, casOut
 		}
 
-		err, cas = RetryLoopCas(ctx, "UpdateXattrDeleteBodySecondOp", worker, store.GetSpec().RetrySleeper())
+		err, cas = RetryLoopCas(ctx, "UpdateXattrDeleteBodySecondOp", worker, DefaultRetrySleeper())
 		if err != nil {
 			err = pkgerrors.Wrapf(err, "Error during UpdateTombstoneXattr delete op with key %v", UD(k).Redact())
 			return cas, err
@@ -278,7 +278,7 @@ func SetXattr(ctx context.Context, store SubdocXattrStore, k string, xattrKey st
 		return false, writeErr, 0
 	}
 
-	err, casOut = RetryLoopCas(ctx, "SetXattr", worker, store.GetSpec().RetrySleeper())
+	err, casOut = RetryLoopCas(ctx, "SetXattr", worker, DefaultRetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "SetXattr with key %v", UD(k).Redact())
 	}
@@ -303,7 +303,7 @@ func RemoveXattr(ctx context.Context, store SubdocXattrStore, k string, xattrKey
 		return false, err, nil
 	}
 
-	err, _ := RetryLoop(ctx, "RemoveXattr", worker, store.GetSpec().RetrySleeper())
+	err, _ := RetryLoop(ctx, "RemoveXattr", worker, DefaultRetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "RemoveXattr with key %v xattr %v", UD(k).Redact(), UD(xattrKey).Redact())
 	}
@@ -328,7 +328,7 @@ func DeleteXattrs(ctx context.Context, store SubdocXattrStore, k string, xattrKe
 		return false, err, nil
 	}
 
-	err, _ := RetryLoop(ctx, "DeleteXattrs", worker, store.GetSpec().RetrySleeper())
+	err, _ := RetryLoop(ctx, "DeleteXattrs", worker, DefaultRetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "DeleteXattrs with keys %q xattr %v", UD(k).Redact(), UD(strings.Join(xattrKeys, ",")).Redact())
 	}
