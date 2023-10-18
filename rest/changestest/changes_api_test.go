@@ -566,7 +566,8 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	// Put several documents in channel PBS
 	_ = rt.PutDoc("pbs-1", `{"channel":["PBS"]}`)
 	pbs2 := rt.PutDoc("pbs-2", `{"channel":["PBS"]}`)
-	pbs3 := rt.PutDoc("pbs-3", `{"channel":["PBS"]}`)
+	const pbs3ID = "pbs3"
+	pbs3Version := rt.PutDoc(pbs3ID, `{"channel":["PBS"]}`)
 	_ = rt.PutDoc("pbs-4", `{"channel":["PBS"]}`)
 
 	// Put several documents in channel HBO
@@ -576,13 +577,16 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	// Put several documents in channel PBS and HBO
 	mix1 := rt.PutDoc("mix-1", `{"channel":["PBS","HBO"]}`)
 	mix2 := rt.PutDoc("mix-2", `{"channel":["PBS","HBO"]}`)
-	mix3 := rt.PutDoc("mix-3", `{"channel":["PBS","HBO"]}`)
+	const mix3ID = "mix-3"
+	mix3Version := rt.PutDoc(mix3ID, `{"channel":["PBS","HBO"]}`)
 	mix4 := rt.PutDoc("mix-4", `{"channel":["PBS","HBO"]}`)
 
 	// Put several documents in channel ABC
 	_ = rt.PutDoc("abc-1", `{"channel":["ABC"]}`)
-	abc2 := rt.PutDoc("abc-2", `{"channel":["ABC"]}`)
-	abc3 := rt.PutDoc("abc-3", `{"channel":["ABC"]}`)
+	const abc2ID = "abc-2"
+	const abc3ID = "abc-3"
+	abc2Version := rt.PutDoc(abc2ID, `{"channel":["ABC"]}`)
+	abc3Version := rt.PutDoc(abc3ID, `{"channel":["ABC"]}`)
 	cacheWaiter.AddAndWait(13)
 
 	// Update some docs to remove channel
@@ -594,30 +598,33 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	// Validate that tombstones are also not sent as part of backfill:
 	//  Case 1: Delete a document in a single channel (e.g. pbs-3), and validate it doesn't get included in backfill
 	//  Case 2: Delete a document in a multiple channels (e.g. mix-3), and validate it doesn't get included in backfill
-	rt.DeleteDoc(pbs3)
-	rt.DeleteDoc(mix3)
+	rt.DeleteDoc(pbs3ID, pbs3Version)
+	rt.DeleteDoc(mix3ID, mix3Version)
 
 	// Test Scenario:
 	//   1. Document mix-5 is in channels PBS, HBO (rev 1)
 	//   2. Document is deleted (rev 2)
 	//   3. Document is recreated, only in channel PBS (rev 3)
-	mix5 := rt.PutDoc("mix-5", `{"channel":["PBS","HBO"]}`)
-	rt.DeleteDoc(mix5)
-	_ = rt.PutDoc(mix5.DocID, `{"channel":["PBS"]}`)
+	const mix5ID = "mix-5"
+	mix5Version := rt.PutDoc(mix5ID, `{"channel":["PBS","HBO"]}`)
+	rt.DeleteDoc(mix5ID, mix5Version)
+	_ = rt.PutDoc(mix5ID, `{"channel":["PBS"]}`)
 
 	// Test Scenario:
 	//   1. Document mix-6 is in channels PBS, HBO (rev 1)
 	//   2. Document is updated only be in channel HBO (rev 2)
 	//   3. Document is updated AGAIN to remove all channels (rev 3)
-	mix6 := rt.PutDoc("mix-6", `{"channel":["PBS","HBO"]}`)
-	mix6 = rt.PutDoc(mix6.DocID, fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix6.RevID))
-	_ = rt.PutDoc(mix6.DocID, fmt.Sprintf(`{"_rev":%q}`, mix6.RevID))
+	const mix6ID = "mix-6"
+	mix6Version := rt.PutDoc(mix6ID, `{"channel":["PBS","HBO"]}`)
+	// TOR: should use UpdateDoc to ensure we are marking the next revision?, doesn't matter here and if the rest API won't support HLV is doesn't matter
+	mix6Version = rt.PutDoc(mix6ID, fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix6Version.RevID))
+	_ = rt.PutDoc(mix6ID, fmt.Sprintf(`{"_rev":%q}`, mix6Version.RevID))
 
 	// Test Scenario:
 	//   1. Delete abc-2 from channel ABC
 	//   2. Update abc-3 to remove from channel ABC
-	rt.DeleteDoc(abc2)
-	_ = rt.PutDoc(abc3.DocID, fmt.Sprintf(`{"_rev":%q}`, abc3.RevID))
+	rt.DeleteDoc(abc2ID, abc2Version)
+	_ = rt.PutDoc(abc3ID, fmt.Sprintf(`{"_rev":%q}`, abc3Version.RevID))
 
 	// Issue changes request and check the results
 	expectedResults := []string{
@@ -800,13 +807,14 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	_ = rt.PutDoc("pbs-1", `{"channel":["PBS"]}`)
 	_ = rt.PutDoc("hbo-1", `{"channel":["HBO"]}`)
 
-	pbs2 := rt.PutDoc("pbs-2", `{"channel":["PBS"]}`)
+	const pbs2ID = "pbs-2"
+	pbs2Version := rt.PutDoc(pbs2ID, `{"channel":["PBS"]}`)
 	hbo2 := rt.PutDoc("hbo-2", `{"channel":["HBO"]}`)
 	cacheWaiter.AddAndWait(4)
 
 	// remove channels/tombstone a couple of docs to ensure they're not backfilled after a dynamic grant
 	_ = rt.PutDoc("hbo-2", fmt.Sprintf(`{"_rev":%q}`, hbo2.RevID))
-	rt.DeleteDoc(pbs2)
+	rt.DeleteDoc(pbs2ID, pbs2Version)
 	cacheWaiter.AddAndWait(2)
 
 	_ = rt.PutDoc("abc-1", `{"channel":["ABC"]}`)
@@ -3890,8 +3898,8 @@ func TestResyncAllTombstones(t *testing.T) {
 
 			for i := 0; i < numTombstones; i++ {
 				docID := fmt.Sprintf("doc%d", i)
-				doc := rt.PutDoc(docID, `{"foo":"bar"}`)
-				rt.DeleteDoc(doc)
+				docVersion := rt.PutDoc(docID, `{"foo":"bar"}`)
+				rt.DeleteDoc(docID, docVersion)
 			}
 
 			resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_offline", rt.GetDatabase().Name), "")

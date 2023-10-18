@@ -2314,18 +2314,14 @@ func RespRevID(t *testing.T, response *TestResponse) (revID string) {
 
 // DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
 type DocVersion struct {
-	DocID string
 	RevID string
 }
 
 func (v *DocVersion) String() string {
-	return fmt.Sprintf("DocID: %s, RevID: %s", v.DocID, v.RevID)
+	return fmt.Sprintf("RevID: %s", v.RevID)
 }
 
 func (v DocVersion) Equal(o DocVersion) bool {
-	if v.DocID != o.DocID {
-		return false
-	}
 	if v.RevID != o.RevID {
 		return false
 	}
@@ -2351,7 +2347,7 @@ func DocVersionFromPutResponse(t testing.TB, response *TestResponse) DocVersion 
 	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r))
 	require.NotNil(t, r.RevID, "expecting non-nil rev ID from response: %s", string(response.BodyBytes()))
 	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
-	return DocVersion{DocID: *r.DocID, RevID: *r.RevID}
+	return DocVersion{RevID: *r.RevID}
 }
 
 func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {

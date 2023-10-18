@@ -150,7 +150,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 
 	ctx := rt.Context()
 	for i := 0; i < 10; i++ {
-		version = rt.UpdateDoc(version, fmt.Sprintf(`{"val":%d}`, i))
+		version = rt.UpdateDoc(docID, version, fmt.Sprintf(`{"val":%d}`, i))
 		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
 		purgeErr := collection.PurgeOldRevisionJSON(ctx, docID, revID)
 		require.NoError(t, purgeErr)

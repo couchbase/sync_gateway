@@ -1825,7 +1825,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, attKey)
 
 		// Remove attachment from the bucket via document update.
-		_ = rt.UpdateDoc(version, `{"prop":true}`)
+		_ = rt.UpdateDoc(docID, version, `{"prop":true}`)
 
 		// Check whether the attachment is removed from the underlying storage.
 		requireAttachmentNotFound(t, docID, attName)
@@ -1864,7 +1864,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, attKey)
 
 		// Delete/tombstone the document.
-		rt.DeleteDoc(version)
+		rt.DeleteDoc(docID, version)
 
 		// Check whether the attachment is removed from the underlying storage.
 		requireAttachmentNotFound(t, docID, attName)
@@ -2195,7 +2195,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		version, _ := rt.GetDoc(docID)
 
 		// Delete/tombstone the document.
-		rt.DeleteDoc(version)
+		rt.DeleteDoc(docID, version)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
@@ -2225,7 +2225,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		version, _ := rt.GetDoc(docID1)
 
 		// Delete/tombstone the first document.
-		rt.DeleteDoc(version)
+		rt.DeleteDoc(docID1, version)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
@@ -2234,7 +2234,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		version, _ = rt.GetDoc(docID2)
 
 		// Delete/tombstone the second document.
-		rt.DeleteDoc(version)
+		rt.DeleteDoc(docID2, version)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
@@ -2261,7 +2261,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		version, _ := rt.GetDoc(docID)
 
 		// Remove attachment from the document via document update.
-		_ = rt.UpdateDoc(version, `{"prop":true}`)
+		_ = rt.UpdateDoc(docID, version, `{"prop":true}`)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
@@ -2290,7 +2290,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		version, _ := rt.GetDoc(docID1)
 
 		// Remove attachment from the first document via document update.
-		_ = rt.UpdateDoc(version, `{"prop":true}`)
+		_ = rt.UpdateDoc(docID1, version, `{"prop":true}`)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
@@ -2299,7 +2299,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		version, _ = rt.GetDoc(docID2)
 
 		// Remove attachment from the second document via document update.
-		_ = rt.UpdateDoc(version, `{"prop":true}`)
+		_ = rt.UpdateDoc(docID2, version, `{"prop":true}`)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)

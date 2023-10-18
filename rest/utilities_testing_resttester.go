@@ -53,7 +53,7 @@ func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
 		RevID *string `json:"_rev"`
 	}
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &r))
-	return DocVersion{DocID: docID, RevID: *r.RevID}, body
+	return DocVersion{RevID: *r.RevID}, body
 }
 
 // CreateTestDoc creates a document with an arbitrary body.
@@ -72,25 +72,25 @@ func (rt *RestTester) PutDoc(docID string, body string) DocVersion {
 
 // UpdateDocRev updates a document at a specific revision and returns the new version. Deprecated for UpdateDoc.
 func (rt *RestTester) UpdateDocRev(docID, revID string, body string) string {
-	version := rt.UpdateDoc(DocVersion{DocID: docID, RevID: revID}, body)
+	version := rt.UpdateDoc(docID, DocVersion{RevID: revID}, body)
 	return version.RevID
 }
 
 // UpdateDoc updates a document at a specific version and returns the new version.
-func (rt *RestTester) UpdateDoc(version DocVersion, body string) DocVersion {
-	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), version.DocID, version.RevID)
+func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) DocVersion {
+	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, version.RevID)
 	rawResponse := rt.SendAdminRequest(http.MethodPut, resource, body)
 	RequireStatus(rt.TB, rawResponse, http.StatusCreated)
 	return DocVersionFromPutResponse(rt.TB, rawResponse)
 }
 
 // storeAttachment adds an attachment to a document version and returns the new version.
-func (rt *RestTester) storeAttachment(version DocVersion, attName, attBody string) DocVersion {
+func (rt *RestTester) storeAttachment(docID, version DocVersion, attName, attBody string) DocVersion {
 	attachmentContentType := "content/type"
 	reqHeaders := map[string]string{
 		"Content-Type": attachmentContentType,
 	}
-	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", version.DocID, attName, version.RevID)
+	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", docID, attName, version.RevID)
 	response := rt.SendRequestWithHeaders(http.MethodPut, resource, attBody, reqHeaders)
 	RequireStatus(rt.TB, response, http.StatusCreated)
 	var body db.Body
@@ -100,14 +100,14 @@ func (rt *RestTester) storeAttachment(version DocVersion, attName, attBody strin
 }
 
 // DeleteDoc deletes a document at a specific version. The test will fail if the revision does not exist.
-func (rt *RestTester) DeleteDoc(docVersion DocVersion) {
+func (rt *RestTester) DeleteDoc(docID string, docVersion DocVersion) {
 	RequireStatus(rt.TB, rt.SendAdminRequest(http.MethodDelete,
-		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docVersion.DocID, docVersion.RevID), ""), http.StatusOK)
+		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, docVersion.RevID), ""), http.StatusOK)
 }
 
 // DeleteDocRev removes a document at a specific revision. Deprecated for DeleteDoc.
 func (rt *RestTester) DeleteDocRev(docID, revID string) {
-	rt.DeleteDoc(DocVersion{DocID: docID, RevID: revID})
+	rt.DeleteDoc(docID, DocVersion{RevID: revID})
 }
 
 func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
@@ -119,10 +119,10 @@ func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 }
 
 // WaitForVersion retries a GET for a given document version until it returns 200 or 201 for a given document and revision. If version is not found, the test will fail.
-func (rt *RestTester) WaitForVersion(version DocVersion) error {
+func (rt *RestTester) WaitForVersion(docID string, version DocVersion) error {
 	require.NotEqual(rt.TB, "", version.RevID)
 	return rt.WaitForCondition(func() bool {
-		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+version.DocID, "")
+		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 		if rawResponse.Code != 200 && rawResponse.Code != 201 {
 			return false
 		}
@@ -134,7 +134,7 @@ func (rt *RestTester) WaitForVersion(version DocVersion) error {
 
 // WaitForRev retries a GET until it returns 200 or 201. If revision is not found, the test will fail. This function is deprecated for RestTester.WaitForVersion
 func (rt *RestTester) WaitForRev(docID, revID string) error {
-	return rt.WaitForVersion(DocVersion{DocID: docID, RevID: revID})
+	return rt.WaitForVersion(docID, DocVersion{RevID: revID})
 }
 
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {

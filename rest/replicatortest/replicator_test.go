@@ -1984,8 +1984,9 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 	// Start creating documents in the background on rt1 for the replicator to push to rt2
 	go func() {
 		for i := 0; shouldCreateDocs.IsTrue(); i++ {
-			version := rt1.PutDoc(fmt.Sprintf("%s-doc%d", t.Name(), i), fmt.Sprintf(`{"i":%d,"channels":["alice"]}`, i))
-			lastDocID.Store(version.DocID)
+			docID := fmt.Sprintf("%s-doc%d", t.Name(), i)
+			_ = rt1.PutDoc(docID, fmt.Sprintf(`{"i":%d,"channels":["alice"]}`, i))
+			lastDocID.Store(docID)
 		}
 		_ = rt1.WaitForPendingChanges()
 		wg.Done()
@@ -6400,9 +6401,10 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			// Wait for the replication to be started
 			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
 
+			const doc2ID = "docid2"
 			// Wait for document to arrive on the doc is was put on
 			err := localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				doc, _ := localActiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+				doc, _ := localActiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), doc2ID, db.DocUnmarshalSync)
 				if doc != nil {
 					return compareDocRev(doc.SyncData.CurrentRev, "3-abc")
 				}
@@ -6412,7 +6414,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for document to be replicated
 			err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				doc, _ := remotePassiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+				doc, _ := remotePassiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), doc2ID, db.DocUnmarshalSync)
 				if doc != nil {
 					return compareDocRev(doc.SyncData.CurrentRev, "3-abc")
 				}
@@ -6432,10 +6434,10 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 				// Validate document revision created to prevent race conditions
 				err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-					doc, docErr := remotePassiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+					doc, docErr := remotePassiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), doc2ID, db.DocUnmarshalSync)
 					if assert.NoError(t, docErr) {
 						if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "4-cc0337d9d38c8e5fc930ae3deda62bf8"); value != nil {
-							requireTombstone(t, remotePassiveRT.GetSingleDataStore(), "docid2")
+							requireTombstone(t, remotePassiveRT.GetSingleDataStore(), doc2ID)
 						}
 						return
 					}
@@ -6444,8 +6446,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				assert.NoError(t, err)
 
 				// Create another rev and then delete doc on local - ie tree is longer
-				version := localActiveRT.UpdateDoc(rest.DocVersion{DocID: "docid2", RevID: "3-abc"}, `{"foo":"bar"}`)
-				localActiveRT.DeleteDoc(version)
+				version := localActiveRT.UpdateDoc(doc2ID, rest.DocVersion{RevID: "3-abc"}, `{"foo":"bar"}`)
+				localActiveRT.DeleteDoc(doc2ID, version)
 
 				// Validate local is CBS tombstone, expect not found error
 				// Expect KeyNotFound error retrieving local tombstone pre-replication
@@ -6458,10 +6460,10 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 				// Validate document revision created to prevent race conditions
 				err = localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-					doc, docErr := localActiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+					doc, docErr := localActiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), doc2ID, db.DocUnmarshalSync)
 					if assert.NoError(t, docErr) {
 						if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "4-cc0337d9d38c8e5fc930ae3deda62bf8"); value != nil {
-							requireTombstone(t, localActiveRT.GetSingleDataStore(), "docid2")
+							requireTombstone(t, localActiveRT.GetSingleDataStore(), doc2ID)
 						}
 						return
 					}
@@ -6470,12 +6472,12 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				assert.NoError(t, err)
 
 				// Create another rev and then delete doc on remotePassiveRT (passive) - ie, tree is longer
-				version := remotePassiveRT.UpdateDoc(rest.DocVersion{DocID: "docid2", RevID: "3-abc"}, `{"foo":"bar"}`)
-				remotePassiveRT.DeleteDoc(version)
+				version := remotePassiveRT.UpdateDoc(doc2ID, rest.DocVersion{RevID: "3-abc"}, `{"foo":"bar"}`)
+				remotePassiveRT.DeleteDoc(doc2ID, version)
 
 				// Validate local is CBS tombstone, expect not found error
 				// Expect KeyNotFound error retrieving remote tombstone pre-replication
-				requireTombstone(t, remotePassiveRT.GetSingleDataStore(), "docid2")
+				requireTombstone(t, remotePassiveRT.GetSingleDataStore(), doc2ID)
 			}
 
 			// Start up repl again
@@ -6484,12 +6486,12 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for the recently longest branch to show up on both sides
 			err = localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				doc, docErr := localActiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+				doc, docErr := localActiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), doc2ID, db.DocUnmarshalSync)
 				if assert.NoError(t, docErr) {
 					if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "5-4a5f5a35196c37c117737afd5be1fc9b"); value != nil {
 						// Validate local is CBS tombstone, expect not found error
 						// Expect KeyNotFound error retrieving local tombstone post-replication
-						requireTombstone(t, localActiveRT.GetSingleDataStore(), "docid2")
+						requireTombstone(t, localActiveRT.GetSingleDataStore(), doc2ID)
 					}
 					return
 				}
@@ -6498,12 +6500,12 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			assert.NoError(t, err)
 
 			err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				doc, docErr := remotePassiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+				doc, docErr := remotePassiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), doc2ID, db.DocUnmarshalSync)
 				if assert.NoError(t, docErr) {
 					if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "5-4a5f5a35196c37c117737afd5be1fc9b"); value != nil {
 						// Validate remote is CBS tombstone
 						// Expect KeyNotFound error retrieving remote tombstone post-replication
-						requireTombstone(t, remotePassiveRT.GetSingleDataStore(), "docid2")
+						requireTombstone(t, remotePassiveRT.GetSingleDataStore(), doc2ID)
 					}
 					return
 				}
@@ -6521,7 +6523,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			if test.resurrectLocal {
 				if test.sdkResurrect {
 					// resurrect doc via SDK on local
-					err = localActiveRT.GetSingleDataStore().Set("docid2", 0, nil, updatedBody)
+					err = localActiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
 					_, getErr := localActiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
@@ -6533,10 +6535,10 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			} else {
 				if test.sdkResurrect {
 					// resurrect doc via SDK on remote
-					err = remotePassiveRT.GetSingleDataStore().Set("docid2", 0, nil, updatedBody)
+					err = remotePassiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
-					_, getErr := remotePassiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+					_, getErr := remotePassiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), doc2ID, db.DocUnmarshalSync)
 					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
 					resp = remotePassiveRT.SendAdminRequest("PUT", "/{{.keyspace}}/docid2", `{"resurrection": true}`)
@@ -6553,9 +6555,9 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for doc to show up on side that the resurrection was done
 			if test.resurrectLocal {
-				err = localActiveRT.WaitForRev("docid2", expectedRevID)
+				err = localActiveRT.WaitForRev(doc2ID, expectedRevID)
 			} else {
-				err = remotePassiveRT.WaitForRev("docid2", expectedRevID)
+				err = remotePassiveRT.WaitForRev(doc2ID, expectedRevID)
 			}
 			require.NoError(t, err)
 
@@ -6565,9 +6567,9 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for doc to replicate from side resurrection was done on to the other side
 			if test.resurrectLocal {
-				err = remotePassiveRT.WaitForRev("docid2", expectedRevID)
+				err = remotePassiveRT.WaitForRev(doc2ID, expectedRevID)
 			} else {
-				err = localActiveRT.WaitForRev("docid2", expectedRevID)
+				err = localActiveRT.WaitForRev(doc2ID, expectedRevID)
 			}
 			assert.NoError(t, err)
 		})
@@ -7890,7 +7892,8 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
 	require.NoError(t, err)
 
-	version := activeRT.CreateTestDoc("test")
+	docID := "test"
+	version := activeRT.CreateTestDoc(docID)
 
 	replConfig := `
 {
@@ -7908,7 +7911,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 
-	err = passiveRT.WaitForVersion(version)
+	err = passiveRT.WaitForVersion(docID, version)
 	require.NoError(t, err)
 
 	resp = activeRT.SendAdminRequest("GET", "/{{.db}}/_replication/"+t.Name(), "")

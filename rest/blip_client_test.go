@@ -989,8 +989,8 @@ func (btc *BlipTesterCollectionClient) GetRev(docID, revID string) (data []byte,
 }
 
 // WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found.
-func (btc *BlipTesterCollectionClient) WaitForVersion(docVersion DocVersion) (data []byte, found bool) {
-	return btc.WaitForRev(docVersion.DocID, docVersion.RevID)
+func (btc *BlipTesterCollectionClient) WaitForVersion(docID string, docVersion DocVersion) (data []byte, found bool) {
+	return btc.WaitForRev(docID, docVersion.RevID)
 }
 
 // WaitForRev blocks until the given doc ID and rev ID have been stored by the client, and returns the data when found. Deprecated for WaitForMessage.
@@ -1133,8 +1133,8 @@ func (btc *BlipTesterClient) StartPull() error {
 }
 
 // WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found.
-func (btc *BlipTesterClient) WaitForVersion(docVersion DocVersion) (data []byte, found bool) {
-	return btc.SingleCollection().WaitForVersion(docVersion)
+func (btc *BlipTesterClient) WaitForVersion(docID string, docVersion DocVersion) (data []byte, found bool) {
+	return btc.SingleCollection().WaitForVersion(docID, docVersion)
 }
 
 func (btc *BlipTesterClient) WaitForRev(docID string, revID string) ([]byte, bool) {

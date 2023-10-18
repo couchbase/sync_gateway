@@ -2443,14 +2443,15 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	require.EqualValues(t, 0, pullStats.HandleRevBytes.Value())
 	require.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
 
-	version := remoteRT.CreateTestDoc("doc")
+	const docID = "doc"
+	version := remoteRT.CreateTestDoc(docID)
 
 	assert.NoError(t, ar.Start(activeCtx))
 	defer func() { require.NoError(t, ar.Stop()) }()
 
 	err = activeRT.WaitForPendingChanges()
 	require.NoError(t, err)
-	err = activeRT.WaitForVersion(version)
+	err = activeRT.WaitForVersion(docID, version)
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, pullStats.HandleRevCount.Value, 1)
