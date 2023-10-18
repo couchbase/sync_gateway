@@ -1372,9 +1372,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Create a document.
 		docID := "foo"
 		version := rt.CreateTestDoc(docID)
-		if !rt.UsingHLV() {
-			require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevID)
-		}
+		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevID)
 		// Add an attachment to the document.
 		attName := "foo.txt"
 		attBody := "this is the body of attachment foo.txt"
@@ -1497,9 +1495,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Create a document.
 		docID := "qux"
 		version := rt.CreateTestDoc(docID)
-		if !rt.UsingHLV() {
-			require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevID)
-		}
+		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevID)
 		// Add an attachment to the document.
 		attName := "qux.txt"
 		attBody := "this is the body of attachment qux.txt"
@@ -1563,9 +1559,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Create a document.
 		docID := "foo1"
 		version := rt.CreateTestDoc(docID)
-		if !rt.UsingHLV() {
-			require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevID)
-		}
+		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevID)
 		// Add an attachment to the document.
 		att1Name := "alice.txt"
 		att1Body := "this is the body of attachment alice.txt"

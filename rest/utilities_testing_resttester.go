@@ -175,11 +175,6 @@ func (rt *RestTester) WaitForPullBlipSenderInitialisation(name string) {
 	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "blip sender on active replicator not initialized")
 }
 
-// UsingHLV returns true if using HLV vs revision ID
-func (rt *RestTester) UsingHLV() bool {
-	return false
-}
-
 // createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
 func (rt *RestTester) CreateReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
 	rt.CreateReplicationForDB("{{.db}}", replicationID, remoteURLString, direction, channels, continuous, conflictResolver)

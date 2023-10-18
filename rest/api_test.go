@@ -211,9 +211,7 @@ func TestDocLifecycle(t *testing.T) {
 	defer rt.Close()
 
 	version := rt.CreateTestDoc("doc")
-	if !rt.UsingHLV() {
-		assert.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevID)
-	}
+	assert.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevID)
 
 	response := rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc?rev="+version.RevID, "")
 	RequireStatus(t, response, 200)
