@@ -184,7 +184,10 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 			dbConfig.ImportPartitions = base.Uint16Ptr(base.GetDefaultImportPartitions(sc.IsServerless()))
 		}
 
+	} else {
+		dbConfig.AutoImport = base.BoolPtr(false)
 	}
+
 	revsLimit := db.DefaultRevsLimitNoConflicts
 	if dbConfig.AllowConflicts != nil && *dbConfig.AllowConflicts {
 		revsLimit = db.DefaultRevsLimitConflicts
