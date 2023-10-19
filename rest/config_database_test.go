@@ -17,7 +17,8 @@ import (
 )
 
 func TestDefaultDbConfig(t *testing.T) {
+	useXattrs := true
 	sc := DefaultStartupConfig("")
-	compactIntervalDays := *(DefaultDbConfig(&sc).CompactIntervalDays)
+	compactIntervalDays := *(DefaultDbConfig(&sc, useXattrs).CompactIntervalDays)
 	require.Equal(t, db.DefaultCompactInterval, time.Duration(compactIntervalDays)*time.Hour*24)
 }
