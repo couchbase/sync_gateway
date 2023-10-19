@@ -162,54 +162,55 @@ func TestUpgradeDatabasePreHelium(t *testing.T) {
 
 }
 
-func TestLegacyMetadataID(t *testing.T) {
+// getDbConfigFromLegacyConfig gets the db config suitable for PUT into a new database.
+func getDbConfigFromLegacyConfig(rt *rest.RestTester) string {
+	// Get the legacy config for upgrade test below
+	resp := rt.SendAdminRequest("GET", "/_config?include_runtime=true", "")
+	legacyConfigBytes := resp.BodyBytes()
 
-	if base.TestsUseNamedCollections() {
-		t.Skip("This test covers legacy interaction with the default collection")
-	}
-	testCtx := base.TestCtx(t)
+	var legacyConfig rest.LegacyServerConfig
+	err := base.JSONUnmarshal(legacyConfigBytes, &legacyConfig)
+	assert.NoError(rt.TB, err)
+
+	// Generate a dbConfig from the legacy startup config using ToStartupConfig, and use it to create a database
+	_, dbMap, err := legacyConfig.ToStartupConfig(rt.Context())
+	require.NoError(rt.TB, err)
+
+	dbConfig, ok := dbMap["db"]
+	require.True(rt.TB, ok)
+
+	// Need to sanitize the db config, but can't use sanitizeDbConfigs because it assumes non-empty server address
+	dbConfig.Username = ""
+	dbConfig.Password = ""
+	dbConfigBytes, err := base.JSONMarshal(dbConfig)
+	require.NoError(rt.TB, err)
+	return string(dbConfigBytes)
+
+}
+func TestLegacyMetadataID(t *testing.T) {
 
 	tb1 := base.GetPersistentTestBucket(t)
 	// Create a non-persistent rest tester.  Standard RestTester
 	// creates a database 'db' targeting the default collection (when !TestUseNamedCollections)
-	legacyRT := rest.NewRestTester(t, &rest.RestTesterConfig{
+	legacyRT := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb1.NoCloseClone(),
 		PersistentConfig: false,
 	})
 
 	// Create a document in the collection to trigger creation of _sync:seq
 	resp := legacyRT.SendAdminRequest("PUT", "/db/testLegacyMetadataID", `{"test":"test"}`)
-	assert.Equal(t, http.StatusCreated, resp.Code)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	// Get the legacy config for upgrade test below
-	resp = legacyRT.SendAdminRequest("GET", "/_config?include_runtime=true", "")
-	legacyConfigBytes := resp.BodyBytes()
-
-	var legacyConfig rest.LegacyServerConfig
-	err := base.JSONUnmarshal(legacyConfigBytes, &legacyConfig)
-	assert.NoError(t, err)
+	dbConfigString := getDbConfigFromLegacyConfig(legacyRT)
 	legacyRT.Close()
 
-	persistentRT := rest.NewRestTester(t, &rest.RestTesterConfig{
+	persistentRT := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb1,
 		PersistentConfig: true,
 	})
 	defer persistentRT.Close()
 
-	// Generate a dbConfig from the legacy startup config using ToStartupConfig, and use it to create a database
-	_, dbMap, err := legacyConfig.ToStartupConfig(testCtx)
-	require.NoError(t, err)
-
-	dbConfig, ok := dbMap["db"]
-	require.True(t, ok)
-
-	// Need to sanitize the db config, but can't use sanitizeDbConfigs because it assumes non-empty server address
-	dbConfig.Username = ""
-	dbConfig.Password = ""
-	dbConfigBytes, err := base.JSONMarshal(dbConfig)
-
-	require.NoError(t, err)
-	resp = persistentRT.SendAdminRequest("PUT", "/db/", string(dbConfigBytes))
+	resp = persistentRT.SendAdminRequest("PUT", "/db/", dbConfigString)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
 	// check if database is online
@@ -221,12 +222,8 @@ func TestLegacyMetadataID(t *testing.T) {
 // different name) targeting only the default collection.
 func TestMetadataIDRenameDatabase(t *testing.T) {
 
-	if base.TestsUseNamedCollections() {
-		t.Skip("This test covers legacy interaction with the default collection")
-	}
-
-	// Create a persistent rest tester.
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+	// Create a persistent rest tester with default collection.
+	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
 	})
 	defer rt.Close()
@@ -257,16 +254,10 @@ func TestMetadataIDRenameDatabase(t *testing.T) {
 // Verifies that matching metadataIDs are computed if two config groups for the same database are upgraded
 func TestMetadataIDWithConfigGroups(t *testing.T) {
 
-	if base.TestsUseNamedCollections() {
-		t.Skip("This test covers legacy interaction with the default collection")
-	}
-
-	testCtx := base.TestCtx(t)
-
 	tb1 := base.GetPersistentTestBucket(t)
 	// Create a non-persistent rest tester.  Standard RestTester
-	// creates a database 'db' targeting the default collection (when !TestUseNamedCollections)
-	legacyRT := rest.NewRestTester(t, &rest.RestTesterConfig{
+	// creates a database 'db' targeting the default collection for legacy config.
+	legacyRT := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb1.NoCloseClone(),
 		PersistentConfig: false,
 	})
@@ -275,13 +266,7 @@ func TestMetadataIDWithConfigGroups(t *testing.T) {
 	resp := legacyRT.SendAdminRequest("PUT", "/db/testLegacyMetadataID", `{"test":"test"}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	// Get the legacy config for upgrade test below
-	resp = legacyRT.SendAdminRequest("GET", "/_config?include_runtime=true", "")
-	legacyConfigBytes := resp.BodyBytes()
-
-	var legacyConfig rest.LegacyServerConfig
-	err := base.JSONUnmarshal(legacyConfigBytes, &legacyConfig)
-	assert.NoError(t, err)
+	dbConfigString := getDbConfigFromLegacyConfig(legacyRT)
 	legacyRT.Close()
 
 	group1RT := rest.NewRestTester(t, &rest.RestTesterConfig{
@@ -298,25 +283,11 @@ func TestMetadataIDWithConfigGroups(t *testing.T) {
 	})
 	defer group2RT.Close()
 
-	// Generate a dbConfig from the legacy startup config using ToStartupConfig, and use it to create a database
-	_, dbMap, err := legacyConfig.ToStartupConfig(testCtx)
-	require.NoError(t, err)
-
-	dbConfig, ok := dbMap["db"]
-	require.True(t, ok)
-
-	// Need to sanitize the db config, but can't use sanitizeDbConfigs because it assumes non-empty server address
-	dbConfig.Username = ""
-	dbConfig.Password = ""
-	dbConfigBytes, err := base.JSONMarshal(dbConfig)
-
 	// Create the database in both RTs, verify that it comes online in both with matching metadata IDs
-	require.NoError(t, err)
-	resp = group1RT.SendAdminRequest("PUT", "/db/", string(dbConfigBytes))
+	resp = group1RT.SendAdminRequest("PUT", "/db/", dbConfigString)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	require.NoError(t, err)
-	resp = group2RT.SendAdminRequest("PUT", "/db/", string(dbConfigBytes))
+	resp = group2RT.SendAdminRequest("PUT", "/db/", dbConfigString)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
 	// check if databases are online

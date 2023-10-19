@@ -752,7 +752,7 @@ func TestImportPartitionsServerless(t *testing.T) {
 				RequireStatus(t, resp, http.StatusCreated)
 				dbconf = sc.GetDbConfig("db")
 			} else {
-				dbconf = DefaultDbConfig(sc.Config)
+				dbconf = DefaultDbConfig(sc.Config, rt.GetDatabase().UseXattrs())
 			}
 
 			assert.Equal(t, expectedPartitions, dbconf.ImportPartitions)
