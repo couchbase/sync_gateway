@@ -651,23 +651,21 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 	// Write existing docs to server directly (not via blip)
 	rt := bt.restTester
 	resp := rt.PutDoc("conflictingInsert", `{"version":1}`)
-	conflictingInsertRev := resp.Rev
+	conflictingInsertRev := resp.RevID
 
 	resp = rt.PutDoc("matchingInsert", `{"version":1}`)
-	matchingInsertRev := resp.Rev
+	matchingInsertRev := resp.RevID
 
 	resp = rt.PutDoc("conflictingUpdate", `{"version":1}`)
-	conflictingUpdateRev1 := resp.Rev
-	resp = rt.UpdateDoc("conflictingUpdate", resp.Rev, `{"version":2}`)
-	conflictingUpdateRev2 := resp.Rev
+	conflictingUpdateRev1 := resp.RevID
+	conflictingUpdateRev2 := rt.UpdateDocRev("conflictingUpdate", resp.RevID, `{"version":2}`)
 
 	resp = rt.PutDoc("matchingUpdate", `{"version":1}`)
-	matchingUpdateRev1 := resp.Rev
-	resp = rt.UpdateDoc("matchingUpdate", resp.Rev, `{"version":2}`)
-	matchingUpdateRev2 := resp.Rev
+	matchingUpdateRev1 := resp.RevID
+	matchingUpdateRev2 := rt.UpdateDocRev("matchingUpdate", resp.RevID, `{"version":2}`)
 
 	resp = rt.PutDoc("newUpdate", `{"version":1}`)
-	newUpdateRev1 := resp.Rev
+	newUpdateRev1 := resp.RevID
 
 	type proposeChangesCase struct {
 		key           string
@@ -2399,7 +2397,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 			var bucketDoc map[string]interface{}
 			_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)
 			assert.NoError(t, err)
-			body := rt.GetDoc(docID)
+			body := rt.GetDocBody(docID)
 			// Confirm input body is in the bucket doc
 			if test.skipDocContentsVerification == nil || !*test.skipDocContentsVerification {
 				for k, v := range test.inputBody {
@@ -2445,14 +2443,15 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	require.EqualValues(t, 0, pullStats.HandleRevBytes.Value())
 	require.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
 
-	rev := remoteRT.CreateDoc(t, "doc")
+	const docID = "doc"
+	version := remoteRT.CreateTestDoc(docID)
 
 	assert.NoError(t, ar.Start(activeCtx))
 	defer func() { require.NoError(t, ar.Stop()) }()
 
 	err = activeRT.WaitForPendingChanges()
 	require.NoError(t, err)
-	err = activeRT.WaitForRev("doc", rev)
+	err = activeRT.WaitForVersion(docID, version)
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, pullStats.HandleRevCount.Value, 1)
@@ -2619,8 +2618,8 @@ func TestUnsubChanges(t *testing.T) {
 	// Sub changes
 	err = btc.StartPull()
 	require.NoError(t, err)
-	resp := rt.UpdateDoc("doc1", "", `{"key":"val1"}`)
-	_, found := btc.WaitForRev("doc1", resp.Rev)
+	revID := rt.UpdateDocRev("doc1", "", `{"key":"val1"}`)
+	_, found := btc.WaitForRev("doc1", revID)
 	require.True(t, found)
 
 	activeReplStat := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplActiveContinuous
@@ -2634,9 +2633,9 @@ func TestUnsubChanges(t *testing.T) {
 	base.RequireWaitForStat(t, activeReplStat.Value, 0)
 
 	// Confirm no more changes are being sent
-	resp = rt.UpdateDoc("doc2", "", `{"key":"val1"}`)
+	revID = rt.UpdateDocRev("doc2", "", `{"key":"val1"}`)
 	err = rt.WaitForConditionWithOptions(func() bool {
-		_, found = btc.GetRev("doc2", resp.Rev)
+		_, found = btc.GetRev("doc2", revID)
 		return found
 	}, 10, 100)
 	assert.Error(t, err)
@@ -2649,7 +2648,7 @@ func TestUnsubChanges(t *testing.T) {
 	// Confirm the pull replication can be restarted and it syncs doc2
 	err = btc.StartPull()
 	require.NoError(t, err)
-	_, found = btc.WaitForRev("doc2", resp.Rev)
+	_, found = btc.WaitForRev("doc2", revID)
 	assert.True(t, found)
 }
 

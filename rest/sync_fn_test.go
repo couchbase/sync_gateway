@@ -472,7 +472,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 
 	// create documents in DB to cause resync to take a few seconds
 	for i := 0; i < 1000; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%v", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%v", i))
 	}
 	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
@@ -566,7 +566,7 @@ func TestResyncOverDCP(t *testing.T) {
 			defer rt.Close()
 
 			for i := 0; i < testCase.docsCreated; i++ {
-				rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+				rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 			}
 
 			response := rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=start", "")
@@ -664,7 +664,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 	}
 
 	for i := 0; i < 1000; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_resync", "")
@@ -736,7 +736,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 	}
 
 	for i := 0; i < 1000; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	response := rt.SendAdminRequest("GET", "/db/_resync", "")
@@ -841,7 +841,7 @@ func TestResyncStop(t *testing.T) {
 	}
 
 	for i := 0; i < 1000; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	err := rt.WaitForCondition(func() bool {
@@ -899,7 +899,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 	}
 
 	for i := 0; i < 1000; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	err := rt.WaitForCondition(func() bool {
@@ -979,7 +979,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		docID := fmt.Sprintf("doc%d", i)
-		rt.CreateDoc(t, docID)
+		rt.CreateTestDoc(docID)
 
 		response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
 		require.Equal(t, http.StatusOK, response.Code)
@@ -1122,7 +1122,7 @@ func TestResyncPersistence(t *testing.T) {
 	defer rt1.Close()
 
 	// Create a document to process through resync
-	rt1.CreateDoc(t, "doc1")
+	rt1.CreateTestDoc("doc1")
 
 	// Start resync
 	resp := rt1.SendAdminRequest("POST", "/db/_offline", "")

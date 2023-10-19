@@ -389,8 +389,8 @@ func TestFlush(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	rt.CreateDoc(t, "doc1")
-	rt.CreateDoc(t, "doc2")
+	rt.CreateTestDoc("doc1")
+	rt.CreateTestDoc("doc2")
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), 200)
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc2", ""), 200)
 
@@ -694,7 +694,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	}
 	// create documents in DB to cause resync to take a few seconds
 	for i := 0; i < 1000; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%v", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%v", i))
 	}
 	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
@@ -752,7 +752,7 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 
 	// create documents in DB to cause resync to take a few seconds
 	for i := 0; i < 1000; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%v", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%v", i))
 	}
 	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
@@ -847,7 +847,7 @@ func TestResync(t *testing.T) {
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
-				rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+				rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 			}
 			err := rt.WaitForCondition(func() bool {
 				return int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()) == testCase.docsCreated
@@ -932,7 +932,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
-				rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+				rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 			}
 
 			err := rt.WaitForCondition(func() bool {
@@ -1008,7 +1008,7 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 
 	// create some docs
 	for i := 0; i < numDocs; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	// take db offline to run resync against it
@@ -1298,7 +1298,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 	}
 
 	for i := 0; i < 1000; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	response := rt.SendAdminRequest("GET", "/db/_resync", "")
@@ -1374,7 +1374,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 
 	numOfDocs := 1000
 	for i := 0; i < numOfDocs; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	assert.Equal(t, numOfDocs, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
@@ -1488,7 +1488,7 @@ func TestResyncStop(t *testing.T) {
 	}
 
 	for i := 0; i < 1000; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	err := rt.WaitForCondition(func() bool {
@@ -1934,7 +1934,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 	numOfDocs := 1000
 	for i := 0; i < numOfDocs; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	err := rt.WaitForCondition(func() bool {
@@ -4213,7 +4213,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 			var bucketDoc map[string]interface{}
 			_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)
 			assert.NoError(t, err)
-			body := rt.GetDoc(docID)
+			body := rt.GetDocBody(docID)
 			// Confirm input body is in the bucket doc
 			if test.skipDocContentsVerification == nil || !*test.skipDocContentsVerification {
 				for k, v := range test.inputBody {

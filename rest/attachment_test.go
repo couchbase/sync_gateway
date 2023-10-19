@@ -318,10 +318,10 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 	}
 
 	// Create document with simple name
-	doc1revId := rt.CreateDoc(t, "doc1")
+	doc1Version := rt.CreateTestDoc("doc1")
 
 	// Add attachment with single embedded '/' (%2F HEX)
-	resource := "/{{.keyspace}}/doc1/attachpath%2Fattachment.txt?rev=" + doc1revId
+	resource := "/{{.keyspace}}/doc1/attachpath%2Fattachment.txt?rev=" + doc1Version.RevID
 	response := rt.SendRequestWithHeaders(http.MethodPut, resource, attachmentBody, reqHeaders)
 	RequireStatus(t, response, http.StatusCreated)
 	revIdAfterAttachment := requireRevID(response)
@@ -340,9 +340,9 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 	assertResponse(response, attachmentBody)
 
 	// Create Doc with embedded '/' (%2F HEX) in name
-	doc1revId = createDoc("AC%2FDC")
+	doc1revId := rt.CreateDocReturnRev(t, "AC%2FDC", "", map[string]bool{"prop": true})
 
-	response = rt.SendRequest(http.MethodGet, "/{{.keyspace}}/AC%2FDC", "")
+	response = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/AC%2FDC", "")
 	RequireStatus(t, response, http.StatusOK)
 
 	// Add attachment with single embedded '/' (%2F HEX)
@@ -393,7 +393,7 @@ func TestManualAttachment(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
-	doc1revId := rt.CreateDoc(t, "doc1")
+	doc1Version := rt.CreateTestDoc("doc1")
 
 	// attach to existing document without rev (should fail)
 	attachmentBody := "this is the body of attachment"
@@ -415,7 +415,7 @@ func TestManualAttachment(t *testing.T) {
 	delete(reqHeaders, "If-Match")
 
 	// attach to existing document with correct rev (should succeed)
-	response = rt.SendRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+doc1revId, attachmentBody, reqHeaders)
+	response = rt.SendRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+doc1Version.RevID, attachmentBody, reqHeaders)
 	RequireStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -424,7 +424,7 @@ func TestManualAttachment(t *testing.T) {
 	if revIdAfterAttachment == "" {
 		t.Fatalf("No revid in response for PUT attachment")
 	}
-	assert.True(t, revIdAfterAttachment != doc1revId)
+	assert.True(t, revIdAfterAttachment != doc1Version.RevID)
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/{{.keyspace}}/doc1/attach1", "")
@@ -566,7 +566,7 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	doc1revId := rt.CreateDoc(t, "doc1")
+	doc1Version := rt.CreateTestDoc("doc1")
 
 	attachmentBody := "this is the body of attachment"
 	attachmentContentType := "content/type"
@@ -575,7 +575,7 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 	}
 
 	// attach to existing document with correct rev (should succeed)
-	response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+doc1revId, attachmentBody, reqHeaders)
+	response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+doc1Version.RevID, attachmentBody, reqHeaders)
 	RequireStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -584,13 +584,13 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 	if revIdAfterAttachment == "" {
 		t.Fatalf("No revid in response for PUT attachment")
 	}
-	assert.True(t, revIdAfterAttachment != doc1revId)
+	assert.True(t, revIdAfterAttachment != doc1Version.RevID)
 
 	reqHeaders = map[string]string{
 		"Accept": "application/json",
 	}
 
-	response = rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, doc1revId), "", reqHeaders)
+	response = rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, doc1Version.RevID), "", reqHeaders)
 	assert.Equal(t, 200, response.Code)
 	// validate attachment has data property
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -600,7 +600,6 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 	data := attach1["data"]
 	assert.True(t, data != nil)
 
-	log.Printf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, revIdAfterAttachment)
 	response = rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, revIdAfterAttachment), "", reqHeaders)
 	assert.Equal(t, 200, response.Code)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -644,7 +643,7 @@ func TestAddingAttachment(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(tt *testing.T) {
-			docrevId := rt.CreateDoc(tt, testCase.docName)
+			version := rt.CreateTestDoc(testCase.docName)
 
 			attachmentBody := base64.StdEncoding.EncodeToString(make([]byte, testCase.byteSize))
 			attachmentContentType := "content/type"
@@ -653,7 +652,7 @@ func TestAddingAttachment(t *testing.T) {
 			}
 
 			// Set attachment
-			response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/"+testCase.docName+"/attach1?rev="+docrevId,
+			response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/"+testCase.docName+"/attach1?rev="+version.RevID,
 				attachmentBody, reqHeaders)
 			RequireStatus(tt, response, testCase.expectedPut)
 
@@ -877,9 +876,9 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	defer rt.Close()
 
 	// Create Doc
-	docrevId := rt.CreateDoc(t, "doc1")
+	version := rt.CreateTestDoc("doc1")
 
-	docRevDigest := strings.Split(docrevId, "-")[1]
+	docRevDigest := strings.Split(version.RevID, "-")[1]
 
 	// Setup Attachment
 	attachmentContentType := "content/type"
@@ -889,7 +888,7 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 
 	// Set attachment
 	attachmentBody := "aGVsbG8gd29ybGQ=" // hello.txt
-	response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+docrevId, attachmentBody, reqHeaders)
+	response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+version.RevID, attachmentBody, reqHeaders)
 	RequireStatus(t, response, http.StatusCreated)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -975,8 +974,8 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	defer rt.Close()
 
 	// Create a document
-	docRevId := rt.CreateDoc(t, "doc1")
-	docRevDigest := strings.Split(docRevId, "-")[1]
+	version := rt.CreateTestDoc("doc1")
+	docRevDigest := strings.Split(version.RevID, "-")[1]
 
 	// //Create diverging tree
 	var body db.Body
@@ -1031,7 +1030,7 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	docRevId4a := body["rev"].(string)
 
 	// Ensure the two attachments are different
-	response1 := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+docRevId+"\"]&rev="+docRevId4, "")
+	response1 := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevID+"\"]&rev="+docRevId4, "")
 	response2 := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?rev="+docRevId4a, "")
 
 	var body1 db.Body
@@ -1049,8 +1048,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 	defer rt.Close()
 
 	// Create a document
-	docRevId := rt.CreateDoc(t, "doc1")
-	// docRevDigest := strings.Split(docRevId, "-")[1]
+	version := rt.CreateTestDoc("doc1")
 
 	// Create an attachment
 	attachmentContentType := "content/type"
@@ -1061,7 +1059,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 	// Add an attachment at rev 2
 	var body db.Body
 	rev2Attachment := `aGVsbG8gd29ybGQ=` // hello.txt
-	response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+docRevId, rev2Attachment, reqHeaders)
+	response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+version.RevID, rev2Attachment, reqHeaders)
 	RequireStatus(t, response, http.StatusCreated)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docRevId2 := body["rev"].(string)
@@ -1104,7 +1102,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	// docRevId6 := body["rev"].(string)
 
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+docRevId+"\"]", "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevID+"\"]", "")
 	log.Printf("Rev6 GET: %s", response.Body.Bytes())
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, attachmentsPresent := body["_attachments"]
@@ -1119,7 +1117,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 	assert.Equal(t, "6-a", docRevId2a)
 
 	var rev6Response db.Body
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+docRevId+"\"]", "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevID+"\"]", "")
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rev6Response))
 	_, attachmentsPresent = rev6Response["_attachments"]
 	assert.False(t, attachmentsPresent)
@@ -1130,7 +1128,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 
 	// Retrieve current winning rev with attachments
 	var rev7Response db.Body
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+docRevId+"\"]", "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevID+"\"]", "")
 	log.Printf("Rev6 GET: %s", response.Body.Bytes())
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rev7Response))
 	_, attachmentsPresent = rev7Response["_attachments"]
@@ -1356,7 +1354,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	}
 
 	retrieveAttachmentMeta := func(t *testing.T, docID string) (attMeta map[string]interface{}) {
-		body := rt.GetDoc(docID)
+		body := rt.GetDocBody(docID)
 		attachments, ok := body["_attachments"].(map[string]interface{})
 		require.True(t, ok)
 		return attachments
@@ -1373,13 +1371,12 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	rt.Run("single attachment removal upon document update", func(t *testing.T) {
 		// Create a document.
 		docID := "foo"
-		revID := rt.CreateDoc(t, docID)
-		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
-
+		version := rt.CreateTestDoc(docID)
+		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevID)
 		// Add an attachment to the document.
 		attName := "foo.txt"
 		attBody := "this is the body of attachment foo.txt"
-		revID = storeAttachment(t, docID, revID, attName, attBody)
+		revID := storeAttachment(t, docID, version.RevID, attName, attBody)
 		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
 
 		// Retrieve the attachment added to the document.
@@ -1403,8 +1400,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, attKey)
 
 		// Remove attachment from the bucket via document update.
-		response := rt.UpdateDoc(docID, revID, `{"prop":true}`)
-		require.NotEmpty(t, response.Rev)
+		_ = rt.UpdateDocRev(docID, revID, `{"prop":true}`)
 
 		// Check whether the attachment is removed from the underlying storage.
 		requireAttachmentNotFound(t, docID, attName)
@@ -1417,13 +1413,12 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	rt.Run("single attachment removal upon document delete", func(t *testing.T) {
 		// Create a document.
 		docID := "bar"
-		revID := rt.CreateDoc(t, docID)
-		require.NotEmpty(t, revID)
+		version := rt.CreateTestDoc(docID)
 
 		// Add an attachment to the document.
 		attName := "bar.txt"
 		attBody := "this is the body of attachment bar.txt"
-		revID = storeAttachment(t, docID, revID, attName, attBody)
+		revID := storeAttachment(t, docID, version.RevID, attName, attBody)
 		require.NotEmpty(t, revID)
 
 		// Retrieve the attachment added from the document.
@@ -1447,7 +1442,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, attKey)
 
 		// Delete/tombstone the document.
-		rt.DeleteDoc(docID, revID)
+		rt.DeleteDocRev(docID, revID)
 
 		// Check whether the attachment is removed from the underlying storage.
 		requireAttachmentNotFound(t, docID, attName)
@@ -1460,13 +1455,12 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	rt.Run("single attachment removal upon document purge", func(t *testing.T) {
 		// Create a document.
 		docID := "baz"
-		revID := rt.CreateDoc(t, docID)
-		require.NotEmpty(t, revID)
+		version := rt.CreateTestDoc(docID)
 
 		// Add an attachment to the document.
 		attName := "baz.txt"
 		attBody := "this is the body of attachment baz.txt"
-		revID = storeAttachment(t, docID, revID, attName, attBody)
+		revID := storeAttachment(t, docID, version.RevID, attName, attBody)
 		require.NotEmpty(t, revID)
 
 		// Retrieve attachment associated with the document.
@@ -1500,13 +1494,12 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	rt.Run("single attachment removal upon attachment update", func(t *testing.T) {
 		// Create a document.
 		docID := "qux"
-		revID := rt.CreateDoc(t, docID)
-		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
-
+		version := rt.CreateTestDoc(docID)
+		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevID)
 		// Add an attachment to the document.
 		attName := "qux.txt"
 		attBody := "this is the body of attachment qux.txt"
-		revID = storeAttachment(t, docID, revID, attName, attBody)
+		revID := storeAttachment(t, docID, version.RevID, attName, attBody)
 		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
 
 		// Retrieve the attachment added from the document.
@@ -1565,13 +1558,12 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	rt.Run("multiple attachments removal upon document update", func(t *testing.T) {
 		// Create a document.
 		docID := "foo1"
-		revID := rt.CreateDoc(t, docID)
-		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
-
+		version := rt.CreateTestDoc(docID)
+		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevID)
 		// Add an attachment to the document.
 		att1Name := "alice.txt"
 		att1Body := "this is the body of attachment alice.txt"
-		revID = storeAttachment(t, docID, revID, att1Name, att1Body)
+		revID := storeAttachment(t, docID, version.RevID, att1Name, att1Body)
 		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
 
 		// Retrieve the attachment added to the document.
@@ -1632,8 +1624,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEqual(t, att1Key, att2Key)
 
 		// Remove both attachments from the bucket via document update.
-		response := rt.UpdateDoc(docID, revID, `{"prop":true}`)
-		require.NotEmpty(t, response.Rev)
+		revID = rt.UpdateDocRev(docID, revID, `{"prop":true}`)
+		require.NotEmpty(t, revID)
 
 		// Check whether both attachments are removed from the underlying storage.
 		requireAttachmentNotFound(t, docID, att1Name)
@@ -1648,13 +1640,12 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	rt.Run("multiple attachments removal upon document delete", func(t *testing.T) {
 		// Create a document.
 		docID := "foo2"
-		revID := rt.CreateDoc(t, docID)
-		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
+		version := rt.CreateTestDoc(docID)
 
 		// Add an attachment to the document.
 		att1Name := "alice.txt"
 		att1Body := "this is the body of attachment alice.txt"
-		revID = storeAttachment(t, docID, revID, att1Name, att1Body)
+		revID := storeAttachment(t, docID, version.RevID, att1Name, att1Body)
 		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
 
 		// Retrieve the attachment added to the document.
@@ -1715,7 +1706,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEqual(t, att1Key, att2Key)
 
 		// Delete/tombstone the document.
-		rt.DeleteDoc(docID, revID)
+		rt.DeleteDocRev(docID, revID)
 
 		// Check whether both attachments are removed from the underlying storage.
 		requireAttachmentNotFound(t, docID, att1Name)
@@ -1730,13 +1721,12 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	rt.Run("multiple attachments removal upon document purge", func(t *testing.T) {
 		// Create a document.
 		docID := "foo3"
-		revID := rt.CreateDoc(t, docID)
-		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
+		version := rt.CreateTestDoc(docID)
 
 		// Add an attachment to the document.
 		att1Name := "alice.txt"
 		att1Body := "this is the body of attachment alice.txt"
-		revID = storeAttachment(t, docID, revID, att1Name, att1Body)
+		revID := storeAttachment(t, docID, version.RevID, att1Name, att1Body)
 		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
 
 		// Retrieve the attachment added to the document.
@@ -1813,9 +1803,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := "this is the body of attachment foo.txt"
 		attBodyEncoded := base64.StdEncoding.EncodeToString([]byte(attBody))
 		body := fmt.Sprintf(`{"prop": true, "_attachments": {"%s": {"data":"%s"}}}`, attName, attBodyEncoded)
-		putResponse := rt.PutDoc(docID, body)
-		revID := putResponse.Rev
-		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
+		version := rt.PutDoc(docID, body)
 
 		// Retrieve the attachment added to the document.
 		actualAttBody := retrieveAttachment(t, docID, attName)
@@ -1837,8 +1825,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, attKey)
 
 		// Remove attachment from the bucket via document update.
-		response := rt.UpdateDoc(docID, revID, `{"prop":true}`)
-		require.NotEmpty(t, response.Rev)
+		_ = rt.UpdateDoc(docID, version, `{"prop":true}`)
 
 		// Check whether the attachment is removed from the underlying storage.
 		requireAttachmentNotFound(t, docID, attName)
@@ -1855,9 +1842,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := "this is the body of attachment foo.txt"
 		attBodyEncoded := base64.StdEncoding.EncodeToString([]byte(attBody))
 		body := fmt.Sprintf(`{"prop": true, "_attachments": {"%s": {"data":"%s"}}}`, attName, attBodyEncoded)
-		putResponse := rt.PutDoc(docID, body)
-		revID := putResponse.Rev
-		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
+		version := rt.PutDoc(docID, body)
 
 		// Retrieve the attachment added to the document.
 		actualAttBody := retrieveAttachment(t, docID, attName)
@@ -1879,7 +1864,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, attKey)
 
 		// Delete/tombstone the document.
-		rt.DeleteDoc(docID, revID)
+		rt.DeleteDoc(docID, version)
 
 		// Check whether the attachment is removed from the underlying storage.
 		requireAttachmentNotFound(t, docID, attName)
@@ -1896,9 +1881,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := "this is the body of attachment foo.txt"
 		attBodyEncoded := base64.StdEncoding.EncodeToString([]byte(attBody))
 		body := fmt.Sprintf(`{"prop": true, "_attachments": {"%s": {"data":"%s"}}}`, attName, attBodyEncoded)
-		putResponse := rt.PutDoc(docID, body)
-		revID := putResponse.Rev
-		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
+		_ = rt.PutDoc(docID, body)
 
 		// Retrieve the attachment added to the document.
 		actualAttBody := retrieveAttachment(t, docID, attName)
@@ -1934,9 +1917,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := "this is the body of attachment foo.txt"
 		attBodyEncoded := base64.StdEncoding.EncodeToString([]byte(attBody))
 		body := fmt.Sprintf(`{"prop": true, "_attachments": {"%s": {"data":"%s"}}}`, attName, attBodyEncoded)
-		putResponse := rt.PutDoc(docID, body)
-		revID := putResponse.Rev
-		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
+		version := rt.PutDoc(docID, body)
 
 		// Retrieve the attachment added from the document.
 		actualAttBody := retrieveAttachment(t, docID, attName)
@@ -1959,7 +1940,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 
 		// Update the attachment body bytes.
 		attBodyUpdated := "this is the updated body of attachment qux.txt"
-		revID = storeAttachment(t, docID, revID, attName, attBodyUpdated)
+		revID := storeAttachment(t, docID, version.RevID, attName, attBodyUpdated)
 		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
 
 		// Retrieve the updated attachment added from the document.
@@ -2000,9 +1981,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := "this is the body of attachment foo.txt"
 		attBodyEncoded := base64.StdEncoding.EncodeToString([]byte(attBody))
 		body := fmt.Sprintf(`{"prop": true, "_attachments": {"%s": {"data":"%s"}}}`, attName, attBodyEncoded)
-		putResponse := rt.PutDoc(docID, body)
-		revID := putResponse.Rev
-		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
+		_ = rt.PutDoc(docID, body)
 
 		// Retrieve the attachment added to the document.
 		actualAttBody := retrieveAttachment(t, docID, attName)
@@ -2049,9 +2028,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		attBody := "this is the body of attachment foo.txt"
 		attBodyEncoded := base64.StdEncoding.EncodeToString([]byte(attBody))
 		body := fmt.Sprintf(`{"prop": true, "_attachments": {"%s": {"data":"%s"}}}`, attName, attBodyEncoded)
-		putResponse := rt.PutDoc(docID, body)
-		revID := putResponse.Rev
-		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
+		_ = rt.PutDoc(docID, body)
 
 		// Retrieve the attachment added to the document.
 		actualAttBody := retrieveAttachment(t, docID, attName)
@@ -2086,9 +2063,9 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.Equal(t, attBody, actualAttBody)
 
 		// Get the document and check doc body and attachment metadata.
-		updatedBody := rt.GetDoc(docID)
+		updatedBody := rt.GetDocBody(docID)
 		require.False(t, updatedBody["prop"].(bool))
-		revID, ok = updatedBody["_rev"].(string)
+		revID, ok := updatedBody["_rev"].(string)
 		require.True(t, ok)
 		require.Equal(t, "2-7ae7c29fb73baf11cd0459ca3c5a6ac4", revID)
 		attachments, ok = updatedBody["_attachments"].(map[string]interface{})
@@ -2106,13 +2083,12 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	rt.Run("doc with multiple attachments and removal of a single one upon document update", func(t *testing.T) {
 		// Create a document.
 		docID := "foo12"
-		revID := rt.CreateDoc(t, docID)
-		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
+		version := rt.CreateTestDoc(docID)
 
 		// Add an attachment to the document.
 		att1Name := "alice.txt"
 		att1Body := "this is the body of attachment alice.txt"
-		revID = storeAttachment(t, docID, revID, att1Name, att1Body)
+		revID := storeAttachment(t, docID, version.RevID, att1Name, att1Body)
 		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
 
 		// Retrieve the attachment added to the document.
@@ -2173,8 +2149,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEqual(t, att1Key, att2Key)
 
 		// Remove one of the attachment from the bucket via document update.
-		response := rt.UpdateDoc(docID, revID, `{"prop":true, "_attachments": {"alice.txt": {"stub": true, "revpos": 2}}}`)
-		require.NotEmpty(t, response.Rev)
+		_ = rt.UpdateDocRev(docID, revID, `{"prop":true, "_attachments": {"alice.txt": {"stub": true, "revpos": 2}}}`)
 
 		// Get the document and check the attachment metadata.
 		attachments = retrieveAttachmentMeta(t, docID)
@@ -2217,12 +2192,10 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
 
 		// Get the document and grab the revID.
-		responseBody := rt.GetDoc(docID)
-		revID := responseBody["_rev"].(string)
-		require.NotEmpty(t, revID)
+		version, _ := rt.GetDoc(docID)
 
 		// Delete/tombstone the document.
-		rt.DeleteDoc(docID, revID)
+		rt.DeleteDoc(docID, version)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
@@ -2249,23 +2222,19 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		CreateDocWithLegacyAttachment(t, rt, docID2, rawDoc, attKey, attBody)
 
 		// Get revID of the first document.
-		responseBody := rt.GetDoc(docID1)
-		revID1 := responseBody["_rev"].(string)
-		require.NotEmpty(t, revID1)
+		version, _ := rt.GetDoc(docID1)
 
 		// Delete/tombstone the first document.
-		rt.DeleteDoc(docID1, revID1)
+		rt.DeleteDoc(docID1, version)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
 
 		// Get revID of the second document.
-		responseBody = rt.GetDoc(docID2)
-		revID2 := responseBody["_rev"].(string)
-		require.NotEmpty(t, revID2)
+		version, _ = rt.GetDoc(docID2)
 
 		// Delete/tombstone the second document.
-		rt.DeleteDoc(docID2, revID2)
+		rt.DeleteDoc(docID2, version)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
@@ -2289,13 +2258,10 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
 
 		// Get the document and grab the revID.
-		responseBody := rt.GetDoc(docID)
-		revID := responseBody["_rev"].(string)
-		require.NotEmpty(t, revID)
+		version, _ := rt.GetDoc(docID)
 
 		// Remove attachment from the document via document update.
-		response := rt.UpdateDoc(docID, revID, `{"prop":true}`)
-		require.NotEmpty(t, response.Rev)
+		_ = rt.UpdateDoc(docID, version, `{"prop":true}`)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
@@ -2321,26 +2287,19 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Create another document referencing the same legacy attachment.
 		CreateDocWithLegacyAttachment(t, rt, docID2, rawDoc, attKey, attBody)
 
-		// Get revID of the first document.
-		responseBody := rt.GetDoc(docID1)
-		revID1 := responseBody["_rev"].(string)
-		require.NotEmpty(t, revID1)
+		version, _ := rt.GetDoc(docID1)
 
 		// Remove attachment from the first document via document update.
-		response := rt.UpdateDoc(docID1, revID1, `{"prop":true}`)
-		require.NotEmpty(t, response.Rev)
+		_ = rt.UpdateDoc(docID1, version, `{"prop":true}`)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
 
 		// Get revID of the second document.
-		responseBody = rt.GetDoc(docID2)
-		revID2 := responseBody["_rev"].(string)
-		require.NotEmpty(t, revID2)
+		version, _ = rt.GetDoc(docID2)
 
 		// Remove attachment from the second document via document update.
-		response = rt.UpdateDoc(docID2, revID2, `{"prop":true}`)
-		require.NotEmpty(t, response.Rev)
+		_ = rt.UpdateDoc(docID2, version, `{"prop":true}`)
 
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
@@ -2363,10 +2322,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Create a document with legacy attachment.
 		CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
 
-		// Get the document and grab the revID.
-		responseBody := rt.GetDoc(docID)
-		revID := responseBody["_rev"].(string)
-		require.NotEmpty(t, revID)
+		// Get the document.
+		_, _ = rt.GetDoc(docID)
 
 		// Purge the entire document.
 		rt.PurgeDoc(docID)
@@ -2392,10 +2349,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Create another document referencing the same legacy attachment.
 		CreateDocWithLegacyAttachment(t, rt, docID2, rawDoc, attKey, attBody)
 
-		// Get revID of the first document.
-		responseBody := rt.GetDoc(docID1)
-		revID1 := responseBody["_rev"].(string)
-		require.NotEmpty(t, revID1)
+		// Get the first document.
+		_, _ = rt.GetDoc(docID1)
 
 		// Purge the first document.
 		rt.PurgeDoc(docID1)
@@ -2403,10 +2358,8 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Check whether legacy attachment is still persisted in the bucket.
 		requireAttachmentFound(attKey, attBody)
 
-		// Get revID of the second document.
-		responseBody = rt.GetDoc(docID2)
-		revID2 := responseBody["_rev"].(string)
-		require.NotEmpty(t, revID2)
+		// Get the second document.
+		_, _ = rt.GetDoc(docID2)
 
 		// Purge the second document.
 		rt.PurgeDoc(docID2)
@@ -2858,7 +2811,7 @@ func TestProveAttachmentNotFound(t *testing.T) {
 	err = rt.WaitForPendingChanges()
 	require.NoError(t, err)
 	// Check attachment is on the document
-	body := rt.GetDoc("doc1")
+	body := rt.GetDocBody("doc1")
 	assert.Equal(t, "2-abc", body.ExtractRev())
 	resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attach", "")
 	RequireStatus(t, resp, 200)
@@ -3053,7 +3006,7 @@ func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, r
 }
 
 func retrieveAttachmentMeta(t *testing.T, rt *RestTester, docID string) (attMeta map[string]interface{}) {
-	body := rt.GetDoc(docID)
+	body := rt.GetDocBody(docID)
 	attachments, ok := body["_attachments"].(map[string]interface{})
 	require.True(t, ok)
 	return attachments
