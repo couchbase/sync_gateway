@@ -590,12 +590,12 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	CreateDocWithLegacyAttachment(t, rt, docID, rawDoc, attKey, attBody)
 
 	// Get the document and grab the revID.
-	responseBody := rt.GetDocBody(docID)
-	revID := responseBody["_rev"].(string)
-	require.NotEmpty(t, revID)
+	docVersion, _ := rt.GetDoc(docID)
+	revID := docVersion.RevID
 
 	// Store the document and attachment on the test client
 	err = client1.StoreRevOnClient(docID, revID, rawDoc)
+
 	require.NoError(t, err)
 	client1.AttachmentsLock().Lock()
 	client1.Attachments()[digest] = attBody

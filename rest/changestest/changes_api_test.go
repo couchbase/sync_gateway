@@ -564,9 +564,12 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	cacheWaiter := rt.GetDatabase().NewDCPCachingCountWaiter(t)
 
 	// Put several documents in channel PBS
+	const (
+		pbs2ID = "pbs2"
+		pbs3ID = "pbs3"
+	)
 	_ = rt.PutDoc("pbs-1", `{"channel":["PBS"]}`)
-	pbs2 := rt.PutDoc("pbs-2", `{"channel":["PBS"]}`)
-	const pbs3ID = "pbs3"
+	pbs2Version := rt.PutDoc(pbs2ID, `{"channel":["PBS"]}`)
 	pbs3Version := rt.PutDoc(pbs3ID, `{"channel":["PBS"]}`)
 	_ = rt.PutDoc("pbs-4", `{"channel":["PBS"]}`)
 
@@ -575,11 +578,17 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	_ = rt.PutDoc("hbo-2", `{"channel":["HBO"]}`)
 
 	// Put several documents in channel PBS and HBO
-	mix1 := rt.PutDoc("mix-1", `{"channel":["PBS","HBO"]}`)
-	mix2 := rt.PutDoc("mix-2", `{"channel":["PBS","HBO"]}`)
-	const mix3ID = "mix-3"
+	const (
+		mix1ID = "mix-1"
+		mix2ID = "mix-2"
+		mix3ID = "mix-3"
+		mix4ID = "mix-4"
+	)
+
+	mix1Version := rt.PutDoc(mix1ID, `{"channel":["PBS","HBO"]}`)
+	mix2Version := rt.PutDoc(mix2ID, `{"channel":["PBS","HBO"]}`)
 	mix3Version := rt.PutDoc(mix3ID, `{"channel":["PBS","HBO"]}`)
-	mix4 := rt.PutDoc("mix-4", `{"channel":["PBS","HBO"]}`)
+	mix4Version := rt.PutDoc("mix-4", `{"channel":["PBS","HBO"]}`)
 
 	// Put several documents in channel ABC
 	_ = rt.PutDoc("abc-1", `{"channel":["ABC"]}`)
@@ -590,10 +599,10 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	cacheWaiter.AddAndWait(13)
 
 	// Update some docs to remove channel
-	_ = rt.PutDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.RevID))
-	_ = rt.PutDoc("mix-1", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, mix1.RevID))
-	_ = rt.PutDoc("mix-2", fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix2.RevID))
-	_ = rt.PutDoc("mix-4", fmt.Sprintf(`{"_rev":%q}`, mix4.RevID))
+	_ = rt.UpdateDoc(pbs2ID, pbs2Version, `{}`)
+	_ = rt.UpdateDoc(mix1ID, mix1Version, `{"channel":["PBS"]}`)
+	_ = rt.UpdateDoc(mix2ID, mix2Version, `{"channel":["HBO"]}`)
+	_ = rt.UpdateDoc(mix4ID, mix4Version, `{}`)
 
 	// Validate that tombstones are also not sent as part of backfill:
 	//  Case 1: Delete a document in a single channel (e.g. pbs-3), and validate it doesn't get included in backfill
@@ -616,15 +625,14 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	//   3. Document is updated AGAIN to remove all channels (rev 3)
 	const mix6ID = "mix-6"
 	mix6Version := rt.PutDoc(mix6ID, `{"channel":["PBS","HBO"]}`)
-	// TOR: should use UpdateDoc to ensure we are marking the next revision?, doesn't matter here and if the rest API won't support HLV is doesn't matter
-	mix6Version = rt.PutDoc(mix6ID, fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix6Version.RevID))
-	_ = rt.PutDoc(mix6ID, fmt.Sprintf(`{"_rev":%q}`, mix6Version.RevID))
+	mix6Version = rt.UpdateDoc(mix6ID, mix6Version, `{"channel":["HBO"]}`)
+	_ = rt.UpdateDoc(mix6ID, mix6Version, `{}`)
 
 	// Test Scenario:
 	//   1. Delete abc-2 from channel ABC
 	//   2. Update abc-3 to remove from channel ABC
 	rt.DeleteDoc(abc2ID, abc2Version)
-	_ = rt.PutDoc(abc3ID, fmt.Sprintf(`{"_rev":%q}`, abc3Version.RevID))
+	_ = rt.UpdateDoc(abc3ID, abc3Version, `{}`)
 
 	// Issue changes request and check the results
 	expectedResults := []string{
