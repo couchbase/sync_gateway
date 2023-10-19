@@ -124,8 +124,6 @@ type BucketSpec struct {
 	Certpath, Keypath, CACertPath string         // X.509 auth parameters
 	TLSSkipVerify                 bool           // Use insecureSkipVerify when secure scheme (couchbases) is used and cacertpath is undefined
 	KvTLSPort                     int            // Port to use for memcached over TLS.  Required for cbdatasource auth when using TLS
-	MaxNumRetries                 int            // max number of retries before giving up
-	InitialRetrySleepTimeMS       int            // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
 	UseXattrs                     bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
 	ViewQueryTimeoutSecs          *uint32        // the view query timeout in seconds (default: 75 seconds)
 	MaxConcurrentQueryOps         *int           // maximum number of concurrent query operations (default: DefaultMaxConcurrentQueryOps)
@@ -135,13 +133,12 @@ type BucketSpec struct {
 	DcpBuffer                     int            // gocb dcp buffer size inititialised on the gocb connection string
 }
 
-// Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.
-func (spec BucketSpec) RetrySleeper() RetrySleeper {
-	return CreateDoublingSleeperFunc(spec.MaxNumRetries, spec.InitialRetrySleepTimeMS)
-}
+const defaultNumRetries = 10
+const defaultInitialRetryMS = 5
 
-func (spec BucketSpec) MaxRetrySleeper(maxSleepMs int) RetrySleeper {
-	return CreateMaxDoublingSleeperFunc(spec.MaxNumRetries, spec.InitialRetrySleepTimeMS, maxSleepMs)
+// Create a RetrySleeper based on the default properties.  Used to retry bucket operations after transient errors.
+func DefaultRetrySleeper() RetrySleeper {
+	return CreateDoublingSleeperFunc(defaultNumRetries, defaultInitialRetryMS)
 }
 
 func (spec BucketSpec) IsWalrusBucket() bool {
