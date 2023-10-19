@@ -706,6 +706,9 @@ func TestImportPartitionsServerless(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+	if !base.TestUseXattrs() {
+		t.Skip("tests import which is not avaiable without xattrs")
+	}
 	tests := []struct {
 		name               string
 		importPartition    *uint16
@@ -752,7 +755,7 @@ func TestImportPartitionsServerless(t *testing.T) {
 				RequireStatus(t, resp, http.StatusCreated)
 				dbconf = sc.GetDbConfig("db")
 			} else {
-				dbconf = DefaultDbConfig(sc.Config, rt.GetDatabase().UseXattrs())
+				dbconf = DefaultDbConfig(sc.Config, base.TestUseXattrs())
 			}
 
 			assert.Equal(t, expectedPartitions, dbconf.ImportPartitions)
