@@ -34,7 +34,6 @@ func NewBypassRevisionCache(backingStore RevisionCacheBackingStore, bypassStat *
 func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID string, includeBody, includeDelta bool) (docRev DocumentRevision, err error) {
 
 	unmarshalLevel := DocUnmarshalSync
-	var fetchedCV CurrentVersionVector
 	if includeBody {
 		unmarshalLevel = DocUnmarshalAll
 	}
@@ -46,12 +45,10 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 	docRev = DocumentRevision{
 		RevID: revID,
 	}
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, fetchedCV, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, revID)
+	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.CV, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, revID)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
-	// populate doc rev with the CV
-	docRev.CV = &fetchedCV
 
 	rc.bypassStat.Add(1)
 
@@ -74,11 +71,10 @@ func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *
 		return DocumentRevision{}, err
 	}
 
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, _, err = revCacheLoaderForDocumentCV(ctx, rc.backingStore, doc, *cv)
+	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.RevID, err = revCacheLoaderForDocumentCV(ctx, rc.backingStore, doc, *cv)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
-	docRev.RevID = doc.RevID
 
 	rc.bypassStat.Add(1)
 
@@ -89,7 +85,6 @@ func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *
 func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, includeBody bool) (docRev DocumentRevision, err error) {
 
 	unmarshalLevel := DocUnmarshalSync
-	var fetchedCV CurrentVersionVector
 	if includeBody {
 		unmarshalLevel = DocUnmarshalAll
 	}
@@ -102,12 +97,10 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, incl
 		RevID: doc.CurrentRev,
 	}
 
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, fetchedCV, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, doc.SyncData.CurrentRev)
+	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.CV, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, doc.SyncData.CurrentRev)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
-	// populate doc rev with the CV
-	docRev.CV = &fetchedCV
 
 	rc.bypassStat.Add(1)
 

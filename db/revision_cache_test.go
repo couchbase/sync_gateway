@@ -50,6 +50,8 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 			Channels: base.SetOf("*"),
 		},
 	}
+	doc.currentRevChannels = base.SetOf("*")
+
 	doc.HLV = &HybridLogicalVector{
 		SourceID: "test",
 		Version:  123,

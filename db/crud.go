@@ -558,28 +558,6 @@ func (col *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string)
 	}
 }
 
-func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Document) (bodyBytes []byte, body Body, attachments AttachmentsMeta, err error) {
-	bodyBytes, err = doc.BodyBytes(ctx)
-	if err != nil {
-		base.WarnfCtx(ctx, "Marshal error when retrieving active current version body: %v", err)
-		return nil, nil, nil, err
-	}
-
-	body = doc._body
-	attachments = doc.Attachments
-
-	// handle backup revision inline attachments, or pre-2.5 meta
-	if inlineAtts, cleanBodyBytes, cleanBody, err := extractInlineAttachments(bodyBytes); err != nil {
-		return nil, nil, nil, err
-	} else if len(inlineAtts) > 0 {
-		// we found some inline attachments, so merge them with attachments, and update the bodies
-		attachments = mergeAttachments(inlineAtts, attachments)
-		bodyBytes = cleanBodyBytes
-		body = cleanBody
-	}
-	return bodyBytes, body, attachments, err
-}
-
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
 // inline "_attachments" properties in the body will be extracted and returned separately if present (pre-2.5 metadata, or backup revisions)
 func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, revid string) (bodyBytes []byte, body Body, attachments AttachmentsMeta, err error) {
@@ -2026,6 +2004,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 		} else if doc != nil {
 			doc.Cas = casOut
+			doc.HLV.Version = casOut
 		}
 	}
 
@@ -2083,7 +2062,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Expiry:           doc.Expiry,
 			Deleted:          doc.History[newRevID].Deleted,
 			_shallowCopyBody: storedDoc.Body(ctx),
-			CV:               &CurrentVersionVector{VersionCAS: doc.Cas, SourceID: doc.HLV.SourceID},
+			CV:               &CurrentVersionVector{VersionCAS: doc.HLV.Version, SourceID: doc.HLV.SourceID},
 		}
 
 		if createNewRevIDSkipped {

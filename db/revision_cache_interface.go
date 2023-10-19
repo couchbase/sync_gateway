@@ -33,7 +33,7 @@ type RevisionCache interface {
 	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
 	GetWithRev(ctx context.Context, docID, revID string, includeBody, includeDelta bool) (DocumentRevision, error)
 
-	// GetWithCV returns the given revision by the CV, and stores if not already cached.
+	// GetWithCV returns the given revision by CV, and stores if not already cached.
 	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
 	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
 	GetWithCV(ctx context.Context, docID string, cv *CurrentVersionVector, includeBody, includeDelta bool) (DocumentRevision, error)
@@ -51,10 +51,10 @@ type RevisionCache interface {
 	// Update will remove existing value and re-create new one
 	Upsert(ctx context.Context, docRev DocumentRevision)
 
-	// RemoveWithRev eliminates a revision in the cache using its revID.
+	// RemoveWithRev evicts a revision from the cache using its revID.
 	RemoveWithRev(docID, revID string)
 
-	// RemoveWithCV eliminates a revision in the cache using its current version.
+	// RemoveWithCV evicts a revision from the cache using its current version.
 	RemoveWithCV(docID string, cv *CurrentVersionVector)
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
@@ -262,7 +262,7 @@ func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
 // Its job is to load a revision from the bucket when there's a cache miss.
-func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore, id IDAndRev, unmarshalBody bool) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, fetchedCV CurrentVersionVector, err error) {
+func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore, id IDAndRev, unmarshalBody bool) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, fetchedCV *CurrentVersionVector, err error) {
 	var doc *Document
 	unmarshalLevel := DocUnmarshalSync
 	if unmarshalBody {
@@ -290,22 +290,12 @@ func revCacheLoaderForCv(ctx context.Context, backingStore RevisionCacheBackingS
 	if doc, err = backingStore.GetDocument(ctx, id.DocID, unmarshalLevel); doc == nil {
 		return bodyBytes, body, history, channels, removed, attachments, deleted, expiry, revid, err
 	}
-	// nil check to be panic safe
-	if doc.HLV != nil {
-		// fetch the current version for the loaded doc and compare against the CV specified in the IDandCV key
-		fetchedDocSource, fetchedDocVersion := doc.HLV.GetCurrentVersion()
-		if fetchedDocSource != cv.SourceID || fetchedDocVersion != cv.VersionCAS {
-			return bodyBytes, body, history, channels, removed, attachments, deleted, expiry, revid, base.RedactErrorf("mismatch between specified current version and fetched document current version for doc %s", base.UD(id.DocID))
-		}
-	} else {
-		return bodyBytes, body, history, channels, removed, attachments, deleted, expiry, revid, base.RedactErrorf("mismatch between specified current version and fetched document current version for doc %s", base.UD(id.DocID))
-	}
 
 	return revCacheLoaderForDocumentCV(ctx, backingStore, doc, cv)
 }
 
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
-func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, revid string) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, fetchedCV CurrentVersionVector, err error) {
+func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, revid string) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, fetchedCV *CurrentVersionVector, err error) {
 	if bodyBytes, body, attachments, err = backingStore.getRevision(ctx, doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
 		// the revision was a channel removal. If so, we want to store as removal in the revision cache
@@ -330,7 +320,7 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 	history = encodeRevisions(ctx, doc.ID, validatedHistory)
 	channels = doc.History[revid].Channels
 	if doc.HLV != nil {
-		fetchedCV = CurrentVersionVector{SourceID: doc.HLV.SourceID, VersionCAS: doc.HLV.Version}
+		fetchedCV = &CurrentVersionVector{SourceID: doc.HLV.SourceID, VersionCAS: doc.HLV.Version}
 	}
 
 	return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, fetchedCV, err
@@ -342,8 +332,34 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 		// we need implementation of IsChannelRemoval for CV here.
 		// pending CBG-3213 support of channel removal for CV
 	}
-	channels = doc.currentChannels()
+
+	if err = doc.HasCurrentVersion(cv); err != nil {
+		return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, revid, err
+	}
+	channels = doc.currentRevChannels
 	revid = doc.CurrentRev
 
 	return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, revid, err
+}
+
+func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Document) (bodyBytes []byte, body Body, attachments AttachmentsMeta, err error) {
+	bodyBytes, err = doc.BodyBytes(ctx)
+	if err != nil {
+		base.WarnfCtx(ctx, "Marshal error when retrieving active current version body: %v", err)
+		return nil, nil, nil, err
+	}
+
+	body = doc._body
+	attachments = doc.Attachments
+
+	// handle backup revision inline attachments, or pre-2.5 meta
+	if inlineAtts, cleanBodyBytes, cleanBody, err := extractInlineAttachments(bodyBytes); err != nil {
+		return nil, nil, nil, err
+	} else if len(inlineAtts) > 0 {
+		// we found some inline attachments, so merge them with attachments, and update the bodies
+		attachments = mergeAttachments(inlineAtts, attachments)
+		bodyBytes = cleanBodyBytes
+		body = cleanBody
+	}
+	return bodyBytes, body, attachments, err
 }
