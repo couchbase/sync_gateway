@@ -564,9 +564,13 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	cacheWaiter := rt.GetDatabase().NewDCPCachingCountWaiter(t)
 
 	// Put several documents in channel PBS
+	const (
+		pbs2ID = "pbs2"
+		pbs3ID = "pbs3"
+	)
 	_ = rt.PutDoc("pbs-1", `{"channel":["PBS"]}`)
-	pbs2 := rt.PutDoc("pbs-2", `{"channel":["PBS"]}`)
-	pbs3 := rt.PutDoc("pbs-3", `{"channel":["PBS"]}`)
+	pbs2Version := rt.PutDoc(pbs2ID, `{"channel":["PBS"]}`)
+	pbs3Version := rt.PutDoc(pbs3ID, `{"channel":["PBS"]}`)
 	_ = rt.PutDoc("pbs-4", `{"channel":["PBS"]}`)
 
 	// Put several documents in channel HBO
@@ -574,50 +578,61 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	_ = rt.PutDoc("hbo-2", `{"channel":["HBO"]}`)
 
 	// Put several documents in channel PBS and HBO
-	mix1 := rt.PutDoc("mix-1", `{"channel":["PBS","HBO"]}`)
-	mix2 := rt.PutDoc("mix-2", `{"channel":["PBS","HBO"]}`)
-	mix3 := rt.PutDoc("mix-3", `{"channel":["PBS","HBO"]}`)
-	mix4 := rt.PutDoc("mix-4", `{"channel":["PBS","HBO"]}`)
+	const (
+		mix1ID = "mix-1"
+		mix2ID = "mix-2"
+		mix3ID = "mix-3"
+		mix4ID = "mix-4"
+	)
+
+	mix1Version := rt.PutDoc(mix1ID, `{"channel":["PBS","HBO"]}`)
+	mix2Version := rt.PutDoc(mix2ID, `{"channel":["PBS","HBO"]}`)
+	mix3Version := rt.PutDoc(mix3ID, `{"channel":["PBS","HBO"]}`)
+	mix4Version := rt.PutDoc("mix-4", `{"channel":["PBS","HBO"]}`)
 
 	// Put several documents in channel ABC
 	_ = rt.PutDoc("abc-1", `{"channel":["ABC"]}`)
-	abc2 := rt.PutDoc("abc-2", `{"channel":["ABC"]}`)
-	abc3 := rt.PutDoc("abc-3", `{"channel":["ABC"]}`)
+	const abc2ID = "abc-2"
+	const abc3ID = "abc-3"
+	abc2Version := rt.PutDoc(abc2ID, `{"channel":["ABC"]}`)
+	abc3Version := rt.PutDoc(abc3ID, `{"channel":["ABC"]}`)
 	cacheWaiter.AddAndWait(13)
 
 	// Update some docs to remove channel
-	_ = rt.PutDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.Rev))
-	_ = rt.PutDoc("mix-1", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, mix1.Rev))
-	_ = rt.PutDoc("mix-2", fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix2.Rev))
-	_ = rt.PutDoc("mix-4", fmt.Sprintf(`{"_rev":%q}`, mix4.Rev))
+	_ = rt.UpdateDoc(pbs2ID, pbs2Version, `{}`)
+	_ = rt.UpdateDoc(mix1ID, mix1Version, `{"channel":["PBS"]}`)
+	_ = rt.UpdateDoc(mix2ID, mix2Version, `{"channel":["HBO"]}`)
+	_ = rt.UpdateDoc(mix4ID, mix4Version, `{}`)
 
 	// Validate that tombstones are also not sent as part of backfill:
 	//  Case 1: Delete a document in a single channel (e.g. pbs-3), and validate it doesn't get included in backfill
 	//  Case 2: Delete a document in a multiple channels (e.g. mix-3), and validate it doesn't get included in backfill
-	rt.DeleteDoc(pbs3.ID, pbs3.Rev)
-	rt.DeleteDoc(mix3.ID, mix3.Rev)
+	rt.DeleteDoc(pbs3ID, pbs3Version)
+	rt.DeleteDoc(mix3ID, mix3Version)
 
 	// Test Scenario:
 	//   1. Document mix-5 is in channels PBS, HBO (rev 1)
 	//   2. Document is deleted (rev 2)
 	//   3. Document is recreated, only in channel PBS (rev 3)
-	mix5 := rt.PutDoc("mix-5", `{"channel":["PBS","HBO"]}`)
-	rt.DeleteDoc(mix5.ID, mix5.Rev)
-	_ = rt.PutDoc(mix5.ID, `{"channel":["PBS"]}`)
+	const mix5ID = "mix-5"
+	mix5Version := rt.PutDoc(mix5ID, `{"channel":["PBS","HBO"]}`)
+	rt.DeleteDoc(mix5ID, mix5Version)
+	_ = rt.PutDoc(mix5ID, `{"channel":["PBS"]}`)
 
 	// Test Scenario:
 	//   1. Document mix-6 is in channels PBS, HBO (rev 1)
 	//   2. Document is updated only be in channel HBO (rev 2)
 	//   3. Document is updated AGAIN to remove all channels (rev 3)
-	mix6 := rt.PutDoc("mix-6", `{"channel":["PBS","HBO"]}`)
-	mix6 = rt.PutDoc(mix6.ID, fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix6.Rev))
-	_ = rt.PutDoc(mix6.ID, fmt.Sprintf(`{"_rev":%q}`, mix6.Rev))
+	const mix6ID = "mix-6"
+	mix6Version := rt.PutDoc(mix6ID, `{"channel":["PBS","HBO"]}`)
+	mix6Version = rt.UpdateDoc(mix6ID, mix6Version, `{"channel":["HBO"]}`)
+	_ = rt.UpdateDoc(mix6ID, mix6Version, `{}`)
 
 	// Test Scenario:
 	//   1. Delete abc-2 from channel ABC
 	//   2. Update abc-3 to remove from channel ABC
-	rt.DeleteDoc(abc2.ID, abc2.Rev)
-	_ = rt.PutDoc(abc3.ID, fmt.Sprintf(`{"_rev":%q}`, abc3.Rev))
+	rt.DeleteDoc(abc2ID, abc2Version)
+	_ = rt.UpdateDoc(abc3ID, abc3Version, `{}`)
 
 	// Issue changes request and check the results
 	expectedResults := []string{
@@ -728,10 +743,10 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(4)
 
 	// Mark the first four PBS docs as removals
-	_ = rt.PutDoc("pbs-1", fmt.Sprintf(`{"_rev":%q}`, pbs1.Rev))
-	_ = rt.PutDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.Rev))
-	_ = rt.PutDoc("pbs-3", fmt.Sprintf(`{"_rev":%q}`, pbs3.Rev))
-	_ = rt.PutDoc("pbs-4", fmt.Sprintf(`{"_rev":%q}`, pbs4.Rev))
+	_ = rt.PutDoc("pbs-1", fmt.Sprintf(`{"_rev":%q}`, pbs1.RevID))
+	_ = rt.PutDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.RevID))
+	_ = rt.PutDoc("pbs-3", fmt.Sprintf(`{"_rev":%q}`, pbs3.RevID))
+	_ = rt.PutDoc("pbs-4", fmt.Sprintf(`{"_rev":%q}`, pbs4.RevID))
 
 	cacheWaiter.AddAndWait(4)
 
@@ -800,13 +815,14 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	_ = rt.PutDoc("pbs-1", `{"channel":["PBS"]}`)
 	_ = rt.PutDoc("hbo-1", `{"channel":["HBO"]}`)
 
-	pbs2 := rt.PutDoc("pbs-2", `{"channel":["PBS"]}`)
+	const pbs2ID = "pbs-2"
+	pbs2Version := rt.PutDoc(pbs2ID, `{"channel":["PBS"]}`)
 	hbo2 := rt.PutDoc("hbo-2", `{"channel":["HBO"]}`)
 	cacheWaiter.AddAndWait(4)
 
 	// remove channels/tombstone a couple of docs to ensure they're not backfilled after a dynamic grant
-	_ = rt.PutDoc("hbo-2", fmt.Sprintf(`{"_rev":%q}`, hbo2.Rev))
-	rt.DeleteDoc(pbs2.ID, pbs2.Rev)
+	_ = rt.PutDoc("hbo-2", fmt.Sprintf(`{"_rev":%q}`, hbo2.RevID))
+	rt.DeleteDoc(pbs2ID, pbs2Version)
 	cacheWaiter.AddAndWait(2)
 
 	_ = rt.PutDoc("abc-1", `{"channel":["ABC"]}`)
@@ -3890,9 +3906,8 @@ func TestResyncAllTombstones(t *testing.T) {
 
 			for i := 0; i < numTombstones; i++ {
 				docID := fmt.Sprintf("doc%d", i)
-				resp := rt.PutDoc(docID, `{"foo":"bar"}`)
-				require.True(t, resp.Ok)
-				rt.DeleteDoc(docID, resp.Rev)
+				docVersion := rt.PutDoc(docID, `{"foo":"bar"}`)
+				rt.DeleteDoc(docID, docVersion)
 			}
 
 			resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_offline", rt.GetDatabase().Name), "")

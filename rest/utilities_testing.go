@@ -851,9 +851,7 @@ func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRe
 }
 
 func (rt *RestTester) SendAdminRequest(method, resource, body string) *TestResponse {
-	input := bytes.NewBufferString(body)
-	request, err := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)
-	require.NoError(rt.TB, err)
+	request := Request(method, rt.mustTemplateResource(resource), body)
 
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
@@ -2332,13 +2330,46 @@ func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.Backgro
 
 // RespRevID returns a rev ID from the given response, or fails the given test if a rev ID was not found.
 func RespRevID(t *testing.T, response *TestResponse) (revID string) {
+	revision := DocVersionFromPutResponse(t, response)
+	return revision.RevID
+}
+
+// DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
+type DocVersion struct {
+	RevID string
+}
+
+func (v *DocVersion) String() string {
+	return fmt.Sprintf("RevID: %s", v.RevID)
+}
+
+func (v DocVersion) Equal(o DocVersion) bool {
+	if v.RevID != o.RevID {
+		return false
+	}
+	return true
+}
+
+// RequireDocVersionEqual calls t.Fail if two document versions are not equal.
+func RequireDocVersionEqual(t *testing.T, expected, actual DocVersion) {
+	require.True(t, expected.Equal(actual), "Versions mismatch.  Expected: %s, Actual: %s", expected, actual)
+}
+
+// RequireDocVersionNotEqual calls t.Fail if two document versions are equal.
+func RequireDocVersionNotEqual(t *testing.T, expected, actual DocVersion) {
+	require.False(t, expected.Equal(actual), "Versions match. Version should not be %s", expected)
+}
+
+// DocVersionFromPutResponse returns a DocRevisionID from the given response to PUT /{, or fails the given test if a rev ID was not found.
+func DocVersionFromPutResponse(t testing.TB, response *TestResponse) DocVersion {
 	var r struct {
+		DocID *string `json:"id"`
 		RevID *string `json:"rev"`
 	}
-	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r), "couldn't decode JSON from response body")
+	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r))
 	require.NotNil(t, r.RevID, "expecting non-nil rev ID from response: %s", string(response.BodyBytes()))
 	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
-	return *r.RevID
+	return DocVersion{RevID: *r.RevID}
 }
 
 func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {

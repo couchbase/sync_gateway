@@ -38,6 +38,13 @@ func (rt *RestTester) PurgeDoc(docID string) {
 	require.Equal(rt.TB, body, map[string]interface{}{"purged": map[string]interface{}{docID: []interface{}{"*"}}})
 }
 
+// PutDocResponse should be replaced with functions that return DocVersion.
+type PutDocResponse struct {
+	ID  string
+	Ok  bool
+	Rev string
+}
+
 // PutDocumentWithRevID builds a new_edits=false style put to create a revision with the specified revID.
 // If parentRevID is not specified, treated as insert
 func (rt *RestTester) PutNewEditsFalse(docID string, newRevID string, parentRevID string, bodyString string) (response PutDocResponse) {

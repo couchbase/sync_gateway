@@ -210,10 +210,10 @@ func TestDocLifecycle(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	revid := rt.CreateDoc(t, "doc")
-	assert.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revid)
+	version := rt.CreateTestDoc("doc")
+	assert.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevID)
 
-	response := rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc?rev="+revid, "")
+	response := rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc?rev="+version.RevID, "")
 	RequireStatus(t, response, 200)
 }
 
@@ -250,16 +250,16 @@ func TestFunkyDocIDs(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	rt.CreateDoc(t, "AC%2FDC")
+	rt.CreateTestDoc("AC%2FDC")
 
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/AC%2FDC", "")
 	RequireStatus(t, response, 200)
 
-	rt.CreateDoc(t, "AC+DC")
+	rt.CreateTestDoc("AC+DC")
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/AC+DC", "")
 	RequireStatus(t, response, 200)
 
-	rt.CreateDoc(t, "AC+DC+GC")
+	rt.CreateTestDoc("AC+DC+GC")
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/AC+DC+GC", "")
 	RequireStatus(t, response, 200)
 
@@ -268,11 +268,11 @@ func TestFunkyDocIDs(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/foo+bar+moo+car", "")
 	RequireStatus(t, response, 200)
 
-	rt.CreateDoc(t, "AC%2BDC2")
+	rt.CreateTestDoc("AC%2BDC2")
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/AC%2BDC2", "")
 	RequireStatus(t, response, 200)
 
-	rt.CreateDoc(t, "AC%2BDC%2BGC2")
+	rt.CreateTestDoc("AC%2BDC%2BGC2")
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/AC%2BDC%2BGC2", "")
 	RequireStatus(t, response, 200)
 
