@@ -85,21 +85,6 @@ func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) D
 	return DocVersionFromPutResponse(rt.TB, rawResponse)
 }
 
-// storeAttachment adds an attachment to a document version and returns the new version.
-func (rt *RestTester) storeAttachment(docID, version DocVersion, attName, attBody string) DocVersion {
-	attachmentContentType := "content/type"
-	reqHeaders := map[string]string{
-		"Content-Type": attachmentContentType,
-	}
-	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", docID, attName, version.RevID)
-	response := rt.SendRequestWithHeaders(http.MethodPut, resource, attBody, reqHeaders)
-	RequireStatus(rt.TB, response, http.StatusCreated)
-	var body db.Body
-	require.NoError(rt.TB, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	require.True(rt.TB, body["ok"].(bool))
-	return DocVersionFromPutResponse(rt.TB, response)
-}
-
 // DeleteDoc deletes a document at a specific version. The test will fail if the revision does not exist.
 func (rt *RestTester) DeleteDoc(docID string, docVersion DocVersion) {
 	RequireStatus(rt.TB, rt.SendAdminRequest(http.MethodDelete,
