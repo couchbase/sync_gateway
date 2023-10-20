@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"log"
 	"testing"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -1627,4 +1628,52 @@ func TestPutStampClusterUUID(t *testing.T) {
 	_, err = collection.dataStore.GetWithXattr(ctx, key, base.SyncXattrName, "", &body, &xattr, nil)
 	require.NoError(t, err)
 	require.Equal(t, 32, len(xattr["cluster_uuid"]))
+}
+
+// TestAssignSequenceReleaseLoop repros conditions seen in CBG-3516 (where each sequence between nextSequence and docSequence has an unusedSeq doc)
+func TestAssignSequenceReleaseLoop(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD, base.KeyDCP)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	const numSequences = 10
+
+	// allocate a large block of sequences
+	startSeq, err := db.sequences.lastSequence(ctx)
+	require.NoError(t, err)
+	endSeq, err := db.sequences.incrementSequence(numSequences)
+	require.NoError(t, err)
+	// now "use" them
+	err = db.sequences.releaseSequenceRange(ctx, startSeq, endSeq)
+	require.NoError(t, err)
+	// and wait for them to be received
+	err = db.changeCache.waitForSequence(ctx, endSeq, time.Second*30)
+	require.NoError(t, err)
+
+	startReleasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value()
+
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	rev, doc, err := collection.Put(ctx, "doc1", Body{"foo": "bar"})
+	require.NoError(t, err)
+	require.Greaterf(t, doc.Sequence, endSeq, "Expected doc sequence %d to be greater than end sequence %d", doc.Sequence, endSeq)
+	t.Logf("doc sequence: %d", doc.Sequence)
+
+	// reset sequence (this isn't supported, but we want to force a situation where the old doc sequence is greater than a newly allocated sequence)
+	// this could happen if a doc is XDCR'd from another bucket where the sequences were higher, or if the sequence doc itself got somehow lowered/removed.
+	err = db.sequences.datastore.Delete(db.sequences.metaKeys.SyncSeqKey())
+	require.NoError(t, err)
+
+	rev, doc, err = collection.Put(ctx, "doc1", Body{"foo": "buzz", BodyRev: rev})
+	require.NoError(t, err)
+	require.Greaterf(t, doc.Sequence, endSeq, "Expected doc sequence %d to be greater than end sequence %d", doc.Sequence, endSeq)
+	t.Logf("doc sequence: %d", doc.Sequence)
+
+	// wait for the doc to be received
+	err = db.changeCache.waitForSequence(ctx, doc.Sequence, time.Second*30)
+	require.NoError(t, err)
+
+	expectedReleasedSequenceCount := numSequences + 1 // 1 sequence allocated for the first doc write
+	releasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value() - startReleasedSequenceCount
+	assert.Equal(t, int64(expectedReleasedSequenceCount), releasedSequenceCount)
 }
