@@ -384,7 +384,6 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 
 	err = s.releaseSequences(ctx, sequencesToRelease)
 	if err != nil {
-		s.mutex.Unlock()
 		return 0, err
 	}
 
