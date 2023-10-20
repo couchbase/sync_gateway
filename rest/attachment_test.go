@@ -925,6 +925,7 @@ func TestAttachmentGetReplicator2(t *testing.T) {
 }
 
 func TestWebhookPropsWithAttachments(t *testing.T) {
+	const doc1 = "doc1"
 	wg := sync.WaitGroup{}
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		defer wg.Done()
@@ -934,7 +935,7 @@ func TestWebhookPropsWithAttachments(t *testing.T) {
 
 		var body db.Body
 		require.NoError(t, base.JSONUnmarshal(bodyBytes, &body), "Error parsing document body")
-		assert.Equal(t, "doc1", body[db.BodyId])
+		assert.Equal(t, doc1, body[db.BodyId])
 		assert.Equal(t, "bar", body["foo"])
 
 		if strings.HasPrefix(body[db.BodyRev].(string), "1-") {
@@ -971,11 +972,12 @@ func TestWebhookPropsWithAttachments(t *testing.T) {
 
 	// Create first revision of the document with no attachment.
 	wg.Add(1)
-	doc1Version := rt.PutDoc("doc1", `{"foo": "bar"}`)
+	doc1Version := rt.PutDoc(doc1, `{"foo": "bar"}`)
 
 	// Add attachment to the doc.
 	attachmentBody := "this is the body of attachment"
-	_ = rt.storeAttachment("doc1", doc1Version, "attach1", attachmentBody)
+	wg.Add(1)
+	_ = rt.storeAttachment(doc1, doc1Version, "attach1", attachmentBody)
 	wg.Wait()
 }
 
