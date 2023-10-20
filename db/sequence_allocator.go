@@ -71,11 +71,14 @@ func newSequenceAllocator(ctx context.Context, datastore base.DataStore, dbStats
 
 	// The reserveNotify channel manages communication between the releaseSequenceMonitor goroutine and _reserveSequenceRange invocations.
 	s.reserveNotify = make(chan struct{}, 1)
+	_, err := s.lastSequence(ctx) // just reads latest sequence from bucket
+	if err != nil {
+		return nil, err
+	}
 	go func() {
 		defer base.FatalPanicHandler()
 		s.releaseSequenceMonitor(ctx)
 	}()
-	_, err := s.lastSequence(ctx) // just reads latest sequence from bucket
 	return s, err
 }
 

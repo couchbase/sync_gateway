@@ -928,3 +928,19 @@ func TestCompactIntervalFromConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestFailedDatabaseContextBadSyncSeq(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	dbName := "testdb"
+	metadataKeys := base.NewMetadataKeys(dbName)
+	if base.UnitTestUrlIsWalrus() { // hack until rosmar supports bootstrap config CBG-3271
+		metadataKeys = base.DefaultMetadataKeys
+	}
+	// create invalid non integer sync:seq doc
+	_, err := rt.Bucket().DefaultDataStore().AddRaw(metadataKeys.SyncSeqKey(), 0, []byte(`"00000"`))
+	require.NoError(t, err)
+
+	RequireStatus(t, rt.CreateDatabase(dbName, rt.NewDbConfig()), http.StatusInternalServerError)
+}
