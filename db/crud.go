@@ -1609,22 +1609,15 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 			unusedSequences = append(unusedSequences, docSequence)
 		}
 
-		for {
-			var err error
-			if docSequence, err = db.sequences.nextSequence(ctx); err != nil {
-				return unusedSequences, err
-			}
-
-			if docSequence > doc.Sequence {
-				break
-			} else {
-				if err := db.sequences.releaseSequence(ctx, docSequence); err != nil {
-					base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
-				}
-			}
+		var err error
+		if doc.Sequence > 0 {
+			docSequence, err = db.sequences.nextSequenceGreaterThan(ctx, doc.Sequence)
+		} else {
+			docSequence, err = db.sequences.nextSequence(ctx)
 		}
-		// Could add a db.Sequences.nextSequenceGreaterThan(doc.Sequence) to push the work down into the sequence allocator
-		//  - sequence allocator is responsible for releasing unused sequences, could optimize to do that in bulk if needed
+		if err != nil {
+			return unusedSequences, err
+		}
 	}
 
 	doc.Sequence = docSequence

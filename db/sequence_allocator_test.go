@@ -234,3 +234,59 @@ func assertNewAllocatorStats(t *testing.T, stats *base.DatabaseStats, incr, rese
 	assert.Equal(t, assigned, stats.SequenceAssignedCount.Value())
 	assert.Equal(t, released, stats.SequenceReleasedCount.Value())
 }
+
+func Test_findSequenceRanges(t *testing.T) {
+	tests := []struct {
+		name      string
+		sequences []uint64
+		expected  []seqRange
+		error     string
+	}{
+		{
+			name:      "empty",
+			sequences: []uint64{},
+			expected:  []seqRange{},
+		},
+		{
+			name:      "single",
+			sequences: []uint64{1},
+			expected:  []seqRange{{1, 1}},
+		},
+		{
+			name:      "single gap",
+			sequences: []uint64{1, 3},
+			expected:  []seqRange{{1, 1}, {3, 3}},
+		},
+		{
+			name:      "single range",
+			sequences: []uint64{1, 2, 3},
+			expected:  []seqRange{{1, 3}},
+		},
+		{
+			name:      "multiple ranges",
+			sequences: []uint64{1, 2, 3, 5, 6, 7, 9, 10, 11},
+			expected:  []seqRange{{1, 3}, {5, 7}, {9, 11}},
+		},
+		{
+			name:      "multiple ranges and singles",
+			sequences: []uint64{1, 2, 3, 5, 7, 9, 10, 11, 13},
+			expected:  []seqRange{{1, 3}, {5, 5}, {7, 7}, {9, 11}, {13, 13}},
+		},
+		{
+			name:      "out of order",
+			sequences: []uint64{1, 2, 5, 4, 3},
+			error:     "input not ordered",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual, err := findSequenceRanges(tt.sequences)
+			if tt.error == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tt.error)
+			}
+			assert.Equalf(t, tt.expected, actual, "findSequenceRanges(%v)", tt.sequences)
+		})
+	}
+}
