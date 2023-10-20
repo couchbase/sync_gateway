@@ -57,6 +57,15 @@ func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
 	return DocVersion{RevID: *r.RevID}, body
 }
 
+// GetDocVersion returns the doc body and version for the given docID and version. If the document is not found, t.Fail will be called.
+func (rt *RestTester) GetDocVersion(docID string, version DocVersion) db.Body {
+	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?rev="+version.RevID, "")
+	RequireStatus(rt.TB, rawResponse, http.StatusOK)
+	var body db.Body
+	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
+	return body
+}
+
 // CreateTestDoc creates a document with an arbitrary body.
 func (rt *RestTester) CreateTestDoc(docid string) DocVersion {
 	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docid), `{"prop":true}`)
@@ -87,8 +96,15 @@ func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) D
 
 // DeleteDoc deletes a document at a specific version. The test will fail if the revision does not exist.
 func (rt *RestTester) DeleteDoc(docID string, docVersion DocVersion) {
-	RequireStatus(rt.TB, rt.SendAdminRequest(http.MethodDelete,
-		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, docVersion.RevID), ""), http.StatusOK)
+	_ = rt.DeleteDocReturnVersion(docID, docVersion)
+}
+
+// DeleteDocReturnVersion deletes a document at a specific version. The test will fail if the revision does not exist.
+func (rt *RestTester) DeleteDocReturnVersion(docID string, docVersion DocVersion) DocVersion {
+	resp := rt.SendAdminRequest(http.MethodDelete,
+		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, docVersion.RevID), "")
+	RequireStatus(rt.TB, resp, http.StatusOK)
+	return DocVersionFromPutResponse(rt.TB, resp)
 }
 
 // DeleteDocRev removes a document at a specific revision. Deprecated for DeleteDoc.

@@ -2367,6 +2367,11 @@ func RequireDocVersionNotEqual(t *testing.T, expected, actual DocVersion) {
 	require.False(t, expected.Equal(actual), "Versions match. Version should not be %s", expected)
 }
 
+// EmptyDocVersion reprents an empty document version.
+func EmptyDocVersion() DocVersion {
+	return DocVersion{RevID: ""}
+}
+
 // DocVersionFromPutResponse returns a DocRevisionID from the given response to PUT /{, or fails the given test if a rev ID was not found.
 func DocVersionFromPutResponse(t testing.TB, response *TestResponse) DocVersion {
 	var r struct {

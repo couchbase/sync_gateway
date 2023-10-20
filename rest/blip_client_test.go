@@ -784,15 +784,9 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
 
 // PushRev creates a revision on the client, and immediately sends a changes request for it.
 // The rev ID is always: "N-abc", where N is rev generation for predictability.
-func (btc *BlipTesterCollectionClient) PushRev(docID, parentRev string, body []byte) (revID string, err error) {
-	return btc.PushRevWithHistory(docID, parentRev, body, 1, 0)
-}
-
-// PushVersion creates a revision on the client, and immediately sends a changes request for it.
-// The rev ID is always: "N-abc", where N is rev generation for predictability.
-func (btc *BlipTesterCollectionClient) PushVersion(docID string, version DocVersion, body []byte) (DocVersion, error) {
-	revID, err := btc.PushRev(docID, version.RevID, body)
-	return DocVersion{RevID: revID}, err
+func (btc *BlipTesterCollectionClient) PushRev(docID string, parentVersion DocVersion, body []byte) (DocVersion, error) {
+	revid, err := btc.PushRevWithHistory(docID, parentVersion.RevID, body, 1, 0)
+	return DocVersion{RevID: revid}, err
 }
 
 // PushRevWithHistory creates a revision on the client with history, and immediately sends a changes request for it.
@@ -1168,12 +1162,8 @@ func (btc *BlipTesterClient) StartOneshotPullRequestPlus() error {
 	return btc.SingleCollection().StartOneshotPullRequestPlus()
 }
 
-func (btc *BlipTesterClient) PushRev(docID string, revID string, body []byte) (string, error) {
-	return btc.SingleCollection().PushRev(docID, revID, body)
-}
-
-func (btc *BlipTesterClient) PushVersion(docID string, version DocVersion, body []byte) (DocVersion, error) {
-	return btc.SingleCollection().PushVersion(docID, version, body)
+func (btc *BlipTesterClient) PushRev(docID string, version DocVersion, body []byte) (DocVersion, error) {
+	return btc.SingleCollection().PushRev(docID, version, body)
 }
 
 func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string) error {
