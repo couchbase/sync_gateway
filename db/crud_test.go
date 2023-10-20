@@ -1664,7 +1664,7 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 	err = db.sequences.datastore.Delete(db.sequences.metaKeys.SyncSeqKey())
 	require.NoError(t, err)
 
-	rev, doc, err = collection.Put(ctx, "doc1", Body{"foo": "buzz", BodyRev: rev})
+	_, doc, err = collection.Put(ctx, "doc1", Body{"foo": "buzz", BodyRev: rev})
 	require.NoError(t, err)
 	require.Greaterf(t, doc.Sequence, endSeq, "Expected doc sequence %d to be greater than end sequence %d", doc.Sequence, endSeq)
 	t.Logf("doc sequence: %d", doc.Sequence)
