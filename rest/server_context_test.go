@@ -930,7 +930,7 @@ func TestCompactIntervalFromConfig(t *testing.T) {
 }
 
 func TestFailedDatabaseContextBadSyncSeq(t *testing.T) {
-	rt := NewRestTesterPersistentConfig(t)
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
 
 	dbName := "testdb"
