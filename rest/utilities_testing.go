@@ -688,9 +688,7 @@ func (rt *RestTester) mustTemplateResource(resource string) string {
 }
 
 func (rt *RestTester) SendAdminRequestWithAuth(method, resource string, body string, username string, password string) *TestResponse {
-	input := bytes.NewBufferString(body)
-	request, err := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)
-	require.NoError(rt.TB, err)
+	request := Request(method, rt.mustTemplateResource(resource), body)
 
 	request.SetBasicAuth(username, password)
 
@@ -993,8 +991,7 @@ func (rt *RestTester) WaitForDatabaseState(dbName string, targetState uint32) er
 }
 
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
-	input := bytes.NewBufferString(body)
-	request, _ := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)
+	request := Request(method, rt.mustTemplateResource(resource), body)
 	for k, v := range headers {
 		request.Header.Set(k, v)
 	}
@@ -2350,6 +2347,16 @@ func (v DocVersion) Equal(o DocVersion) bool {
 	return true
 }
 
+// Digest returns the digest for the current version
+func (v DocVersion) Digest() string {
+	return strings.Split(v.RevID, "-")[1]
+}
+
+// RequireDocVersionNotNil calls t.Fail if two document version is not specified.
+func RequireDocVersionNotNil(t *testing.T, version DocVersion) {
+	require.NotEqual(t, "", version.RevID)
+}
+
 // RequireDocVersionEqual calls t.Fail if two document versions are not equal.
 func RequireDocVersionEqual(t *testing.T, expected, actual DocVersion) {
 	require.True(t, expected.Equal(actual), "Versions mismatch.  Expected: %s, Actual: %s", expected, actual)
@@ -2358,6 +2365,11 @@ func RequireDocVersionEqual(t *testing.T, expected, actual DocVersion) {
 // RequireDocVersionNotEqual calls t.Fail if two document versions are equal.
 func RequireDocVersionNotEqual(t *testing.T, expected, actual DocVersion) {
 	require.False(t, expected.Equal(actual), "Versions match. Version should not be %s", expected)
+}
+
+// EmptyDocVersion reprents an empty document version.
+func EmptyDocVersion() DocVersion {
+	return DocVersion{RevID: ""}
 }
 
 // DocVersionFromPutResponse returns a DocRevisionID from the given response to PUT /{, or fails the given test if a rev ID was not found.
