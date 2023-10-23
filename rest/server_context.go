@@ -512,13 +512,18 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		dbName = spec.BucketName
 	}
 	defer func() {
-		if returnedError != nil {
-			_, dbRegistered := sc.databases_[dbName]
-			if !dbRegistered && dbcontext != nil {
-				dbcontext.Close(ctx) // will close bucket
-			} else if bucket != nil {
-				bucket.Close(ctx)
-			}
+		if returnedError == nil {
+			return
+		}
+		// database exists in global map, management is deferred to REST api
+		_, dbRegistered := sc.databases_[dbName]
+		if dbRegistered {
+			return
+		}
+		if dbcontext != nil {
+			dbcontext.Close(ctx) // will close underlying bucket
+		} else if bucket != nil {
+			bucket.Close(ctx)
 		}
 	}()
 
