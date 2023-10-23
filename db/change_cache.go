@@ -574,9 +574,38 @@ func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64
 	} else {
 		changedChannels.Add(unusedSeq)
 	}
-	c.channelCache.AddSkippedSequence(change)
+	c.channelCache.AddUnusedSequence(change)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
 		c.notifyChange(ctx, changedChannels)
+	}
+}
+
+// releaseUnusedSequenceRange calls processEntry for each sequence in the range, but only issues a single notify.
+func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequence uint64, toSequence uint64, timeReceived time.Time) {
+
+	var allChangedChannels channels.Set
+	base.InfofCtx(ctx, base.KeyCache, "Received #%d-#%d (unused sequence range)", fromSequence, toSequence)
+	for sequence := fromSequence; sequence <= toSequence; sequence++ {
+		change := &LogEntry{
+			Sequence:     sequence,
+			TimeReceived: timeReceived,
+		}
+
+		// Since processEntry may unblock pending sequences, if there were any changed channels we need
+		// to notify any change listeners that are working changes feeds for these channels
+		changedChannels := c.processEntry(ctx, change)
+		allChangedChannels = allChangedChannels.Update(changedChannels)
+		c.channelCache.AddUnusedSequence(change)
+	}
+
+	unusedSeq := channels.NewID(unusedSeqKey, unusedSeqCollectionID)
+	if allChangedChannels == nil {
+		allChangedChannels = channels.SetOfNoValidate(unusedSeq)
+	} else {
+		allChangedChannels.Add(unusedSeq)
+	}
+	if c.notifyChange != nil && len(allChangedChannels) > 0 {
+		c.notifyChange(ctx, allChangedChannels)
 	}
 }
 
@@ -600,10 +629,7 @@ func (c *changeCache) processUnusedSequenceRange(ctx context.Context, docID stri
 		return
 	}
 
-	// TODO: There should be a more efficient way to do this
-	for seq := fromSequence; seq <= toSequence; seq++ {
-		c.releaseUnusedSequence(ctx, seq, time.Now())
-	}
+	c.releaseUnusedSequenceRange(ctx, fromSequence, toSequence, time.Now())
 }
 
 func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, docJSON []byte, isUser bool, timeReceived time.Time) {
