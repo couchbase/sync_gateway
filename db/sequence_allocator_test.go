@@ -318,7 +318,9 @@ func TestNextSequenceGreaterThanMultiNode(t *testing.T) {
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 	statsA, err := stats.NewDBStats("A", false, false, false, nil, nil)
+	require.NoError(t, err)
 	statsB, err := stats.NewDBStats("B", false, false, false, nil, nil)
+	require.NoError(t, err)
 	dbStatsA := statsA.DatabaseStats
 	dbStatsB := statsB.DatabaseStats
 
