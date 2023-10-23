@@ -1634,46 +1634,44 @@ func TestPutStampClusterUUID(t *testing.T) {
 func TestAssignSequenceReleaseLoop(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD, base.KeyDCP)
 
-	db, ctx := setupTestDB(t)
+	// import disabled
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})
 	defer db.Close(ctx)
 
-	const numSequences = 10
-
-	// allocate a large block of sequences
-	startSeq, err := db.sequences.lastSequence(ctx)
-	require.NoError(t, err)
-	endSeq, err := db.sequences.incrementSequence(numSequences)
-	require.NoError(t, err)
-	// now "use" them
-	err = db.sequences.releaseSequenceRange(ctx, startSeq, endSeq)
-	require.NoError(t, err)
-	// and wait for them to be received
-	err = db.changeCache.waitForSequence(ctx, endSeq, time.Second*30)
-	require.NoError(t, err)
+	// positive sequence gap (other cluster's sequencing is higher)
+	const otherClusterSequenceOffset = 10
 
 	startReleasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value()
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	rev, doc, err := collection.Put(ctx, "doc1", Body{"foo": "bar"})
 	require.NoError(t, err)
-	require.Greaterf(t, doc.Sequence, endSeq, "Expected doc sequence %d to be greater than end sequence %d", doc.Sequence, endSeq)
 	t.Logf("doc sequence: %d", doc.Sequence)
 
-	// reset sequence (this isn't supported, but we want to force a situation where the old doc sequence is greater than a newly allocated sequence)
-	// this could happen if a doc is XDCR'd from another bucket where the sequences were higher, or if the sequence doc itself got somehow lowered/removed.
-	err = db.sequences.datastore.Delete(db.sequences.metaKeys.SyncSeqKey())
+	// resetting or lowering sequence isn't supported - you'll end up with duplicate assigned sequences
+	//err = db.sequences.datastore.Delete(db.sequences.metaKeys.SyncSeqKey())
+	//require.NoError(t, err)
+
+	// but we can fiddle with the sequence in the metadata of the doc write to simulate a doc from a different cluster (with a higher sequence)
+	var newSyncData map[string]interface{}
+	sd, err := json.Marshal(doc.SyncData)
+	require.NoError(t, err)
+	err = json.Unmarshal(sd, &newSyncData)
+	require.NoError(t, err)
+	newSyncData["sequence"] = doc.SyncData.Sequence + otherClusterSequenceOffset
+	_, err = collection.dataStore.UpdateXattr(ctx, doc.ID, base.SyncXattrName, 0, doc.Cas, newSyncData, DefaultMutateInOpts())
 	require.NoError(t, err)
 
 	_, doc, err = collection.Put(ctx, "doc1", Body{"foo": "buzz", BodyRev: rev})
 	require.NoError(t, err)
-	require.Greaterf(t, doc.Sequence, endSeq, "Expected doc sequence %d to be greater than end sequence %d", doc.Sequence, endSeq)
+	require.Greaterf(t, doc.Sequence, uint64(otherClusterSequenceOffset), "Expected new doc sequence %d to be greater than other cluster's sequence %d", doc.Sequence, otherClusterSequenceOffset)
 	t.Logf("doc sequence: %d", doc.Sequence)
 
 	// wait for the doc to be received
 	err = db.changeCache.waitForSequence(ctx, doc.Sequence, time.Second*30)
 	require.NoError(t, err)
 
-	expectedReleasedSequenceCount := numSequences + 1 // 1 sequence allocated for the first doc write
+	expectedReleasedSequenceCount := otherClusterSequenceOffset
 	releasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value() - startReleasedSequenceCount
 	assert.Equal(t, int64(expectedReleasedSequenceCount), releasedSequenceCount)
 }
