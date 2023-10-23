@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"log"
 	"testing"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -1628,4 +1629,53 @@ func TestPutStampClusterUUID(t *testing.T) {
 	_, err = collection.dataStore.GetWithXattr(ctx, key, base.SyncXattrName, "", &body, &xattr, nil)
 	require.NoError(t, err)
 	require.Equal(t, 32, len(xattr["cluster_uuid"]))
+}
+
+// TestAssignSequenceReleaseLoop repros conditions seen in CBG-3516 (where each sequence between nextSequence and docSequence has an unusedSeq doc)
+func TestAssignSequenceReleaseLoop(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test won't work under walrus")
+	}
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD, base.KeyDCP)
+
+	// import disabled
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	// positive sequence gap (other cluster's sequencing is higher)
+	const otherClusterSequenceOffset = 10
+
+	startReleasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value()
+
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	rev, doc, err := collection.Put(ctx, "doc1", Body{"foo": "bar"})
+	require.NoError(t, err)
+	t.Logf("doc sequence: %d", doc.Sequence)
+
+	// but we can fiddle with the sequence in the metadata of the doc write to simulate a doc from a different cluster (with a higher sequence)
+	var newSyncData map[string]interface{}
+	sd, err := json.Marshal(doc.SyncData)
+	require.NoError(t, err)
+	err = json.Unmarshal(sd, &newSyncData)
+	require.NoError(t, err)
+	newSyncData["sequence"] = doc.SyncData.Sequence + otherClusterSequenceOffset
+
+	subdocXattrStore, ok := base.AsSubdocXattrStore(collection.dataStore)
+	require.True(t, ok)
+	_, err = subdocXattrStore.SubdocUpdateXattr(doc.ID, base.SyncXattrName, 0, doc.Cas, newSyncData)
+	require.NoError(t, err)
+
+	_, doc, err = collection.Put(ctx, "doc1", Body{"foo": "buzz", BodyRev: rev})
+	require.NoError(t, err)
+	require.Greaterf(t, doc.Sequence, uint64(otherClusterSequenceOffset), "Expected new doc sequence %d to be greater than other cluster's sequence %d", doc.Sequence, otherClusterSequenceOffset)
+
+	// wait for the doc to be received
+	err = db.changeCache.waitForSequence(ctx, doc.Sequence, time.Second*30)
+	require.NoError(t, err)
+
+	expectedReleasedSequenceCount := otherClusterSequenceOffset
+	releasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value() - startReleasedSequenceCount
+	assert.Equal(t, int64(expectedReleasedSequenceCount), releasedSequenceCount)
 }
