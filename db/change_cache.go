@@ -583,8 +583,10 @@ func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64
 // releaseUnusedSequenceRange calls processEntry for each sequence in the range, but only issues a single notify.
 func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequence uint64, toSequence uint64, timeReceived time.Time) {
 
-	var allChangedChannels channels.Set
 	base.InfofCtx(ctx, base.KeyCache, "Received #%d-#%d (unused sequence range)", fromSequence, toSequence)
+
+	unusedSeq := channels.NewID(unusedSeqKey, unusedSeqCollectionID)
+	allChangedChannels := channels.SetOfNoValidate(unusedSeq)
 	for sequence := fromSequence; sequence <= toSequence; sequence++ {
 		change := &LogEntry{
 			Sequence:     sequence,
@@ -598,13 +600,7 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 		c.channelCache.AddUnusedSequence(change)
 	}
 
-	unusedSeq := channels.NewID(unusedSeqKey, unusedSeqCollectionID)
-	if allChangedChannels == nil {
-		allChangedChannels = channels.SetOfNoValidate(unusedSeq)
-	} else {
-		allChangedChannels.Add(unusedSeq)
-	}
-	if c.notifyChange != nil && len(allChangedChannels) > 0 {
+	if c.notifyChange != nil {
 		c.notifyChange(ctx, allChangedChannels)
 	}
 }
