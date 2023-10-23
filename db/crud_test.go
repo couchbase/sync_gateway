@@ -1648,10 +1648,6 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("doc sequence: %d", doc.Sequence)
 
-	// resetting or lowering sequence isn't supported - you'll end up with duplicate assigned sequences
-	//err = db.sequences.datastore.Delete(db.sequences.metaKeys.SyncSeqKey())
-	//require.NoError(t, err)
-
 	// but we can fiddle with the sequence in the metadata of the doc write to simulate a doc from a different cluster (with a higher sequence)
 	var newSyncData map[string]interface{}
 	sd, err := json.Marshal(doc.SyncData)
@@ -1665,7 +1661,6 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 	_, doc, err = collection.Put(ctx, "doc1", Body{"foo": "buzz", BodyRev: rev})
 	require.NoError(t, err)
 	require.Greaterf(t, doc.Sequence, uint64(otherClusterSequenceOffset), "Expected new doc sequence %d to be greater than other cluster's sequence %d", doc.Sequence, otherClusterSequenceOffset)
-	t.Logf("doc sequence: %d", doc.Sequence)
 
 	// wait for the doc to be received
 	err = db.changeCache.waitForSequence(ctx, doc.Sequence, time.Second*30)
