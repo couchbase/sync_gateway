@@ -207,7 +207,9 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 		s.last = targetSequence
 		s.mutex.Unlock()
 		if releaseFrom < targetSequence {
-			s.releaseSequenceRange(ctx, releaseFrom, targetSequence-1)
+			if err := s.releaseSequenceRange(ctx, releaseFrom, targetSequence-1); err != nil {
+				base.WarnfCtx(ctx, "Error returned when releasing sequence range [%d-%d] from existing batch. Will be handled by skipped sequence handling.  Error:%v", releaseFrom, targetSequence-1, err)
+			}
 		}
 		s.dbStats.SequenceAssignedCount.Add(1)
 		return targetSequence, nil
@@ -249,7 +251,7 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 	// Release previously allocated sequences (c), if any
 	err = s.releaseSequenceRange(ctx, prevAllocReleaseFrom, prevAllocReleaseTo)
 	if err != nil {
-		base.WarnfCtx(ctx, "Error returned when releasing sequence range [%d-%d]. Will be handled by skipped sequence handling.  Error:%v", prevAllocReleaseFrom, prevAllocReleaseTo, err)
+		base.WarnfCtx(ctx, "Error returned when releasing sequence range [%d-%d] for previously allocated sequences. Will be handled by skipped sequence handling.  Error:%v", prevAllocReleaseFrom, prevAllocReleaseTo, err)
 	}
 
 	// Release the newly allocated sequences that were used to catch up to existingSequence (d)
@@ -258,7 +260,7 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 		releaseFrom := releaseTo - numberToRelease + 1 // +1, as releaseSequenceRange is inclusive
 		err = s.releaseSequenceRange(ctx, releaseFrom, releaseTo)
 		if err != nil {
-			base.WarnfCtx(ctx, "Error returned when releasing sequence range [%d-%d]. Will be handled by skipped sequence handling.  Error:%v", releaseFrom, releaseTo, err)
+			base.WarnfCtx(ctx, "Error returned when releasing sequence range [%d-%d] to reach target sequence. Will be handled by skipped sequence handling.  Error:%v", releaseFrom, releaseTo, err)
 		}
 	}
 

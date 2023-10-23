@@ -1610,13 +1610,20 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 		}
 
 		var err error
-		if doc.Sequence > 0 {
-			docSequence, err = db.sequences.nextSequenceGreaterThan(ctx, doc.Sequence)
-		} else {
-			docSequence, err = db.sequences.nextSequence(ctx)
-		}
-		if err != nil {
+		if docSequence, err = db.sequences.nextSequence(ctx); err != nil {
 			return unusedSequences, err
+		}
+
+		// If the assigned sequence is less than or equal to the previous sequence on the document, release
+		// the assigned sequence and acquire one using nextSequenceGreaterThan
+		if docSequence <= doc.Sequence {
+			if err = db.sequences.releaseSequence(ctx, docSequence); err != nil {
+				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
+			}
+			docSequence, err = db.sequences.nextSequenceGreaterThan(ctx, doc.Sequence)
+			if err != nil {
+				return unusedSequences, err
+			}
 		}
 	}
 
