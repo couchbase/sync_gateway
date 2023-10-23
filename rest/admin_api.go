@@ -170,7 +170,7 @@ func (h *handler) handleCreateDB() error {
 			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure using provided bucket credentials for database %s", base.MD(config.Name))
 			}
-			return err
+			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
 		}
 	}
 
