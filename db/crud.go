@@ -881,7 +881,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
 	case Import:
 		// work to be done to decide if the VV needs updating here, pending CBG-3503
-	case NewVersion:
+	case NewVersion, InternalExistingVersion:
 		// add a new entry to the version vector
 		newVVEntry := CurrentVersionVector{}
 		newVVEntry.SourceID = db.dbCtx.BucketUUID
@@ -1045,8 +1045,8 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 }
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
-func (db *DatabaseCollectionWithUser) PutExistingRev(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, forceAllConflicts bool, existingDoc *sgbucket.BucketDocument) (doc *Document, newRevID string, err error) {
-	return db.PutExistingRevWithConflictResolution(ctx, newDoc, docHistory, noConflicts, nil, forceAllConflicts, existingDoc)
+func (db *DatabaseCollectionWithUser) PutExistingRev(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, forceAllConflicts bool, existingDoc *sgbucket.BucketDocument, docUpdateEvent DocUpdateType) (doc *Document, newRevID string, err error) {
+	return db.PutExistingRevWithConflictResolution(ctx, newDoc, docHistory, noConflicts, nil, forceAllConflicts, existingDoc, docUpdateEvent)
 }
 
 // PutExistingRevWithConflictResolution Adds an existing revision to a document along with its history (list of rev IDs.)
@@ -1054,14 +1054,14 @@ func (db *DatabaseCollectionWithUser) PutExistingRev(ctx context.Context, newDoc
 //  1. If noConflicts == false, the revision will be added to the rev tree as a conflict
 //  2. If noConflicts == true and a conflictResolverFunc is not provided, a 409 conflict error will be returned
 //  3. If noConflicts == true and a conflictResolverFunc is provided, conflicts will be resolved and the result added to the document.
-func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflictingTombstone bool, existingDoc *sgbucket.BucketDocument) (doc *Document, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflictingTombstone bool, existingDoc *sgbucket.BucketDocument, docUpdateEvent DocUpdateType) (doc *Document, newRevID string, err error) {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(ctx, newRev)
 	if generation < 0 {
 		return nil, "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 
-	docUpdateEvent := ExistingVersion
+	//docUpdateEvent := ExistingVersion
 	allowImport := db.UseXattrs()
 	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, newDoc.DocExpiry, nil, docUpdateEvent, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
@@ -1162,7 +1162,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 	return doc, newRev, err
 }
 
-func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context, docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, newRev string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context, docid string, body Body, docHistory []string, noConflicts bool, docUpdateEvent DocUpdateType) (doc *Document, newRev string, err error) {
 	err = validateAPIDocUpdate(body)
 	if err != nil {
 		return nil, "", err
@@ -1187,7 +1187,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 
 	newDoc.UpdateBody(body)
 
-	doc, newRevID, putExistingRevErr := db.PutExistingRev(ctx, newDoc, docHistory, noConflicts, false, nil)
+	doc, newRevID, putExistingRevErr := db.PutExistingRev(ctx, newDoc, docHistory, noConflicts, false, nil, docUpdateEvent)
 
 	if putExistingRevErr != nil {
 		return nil, "", putExistingRevErr
@@ -2004,7 +2004,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 		} else if doc != nil {
 			doc.Cas = casOut
-			doc.HLV.Version = casOut
+			// update the doc's HLV defined post macro expansion
+			doc = postWriteUpdateHLV(doc, casOut)
 		}
 	}
 
@@ -2123,6 +2124,27 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	// Mark affected users/roles as needing to recompute their channel access:
 	db.MarkPrincipalsChanged(ctx, docid, newRevID, changedAccessPrincipals, changedRoleAccessUsers, doc.Sequence)
 	return doc, newRevID, nil
+}
+
+func postWriteUpdateHLV(doc *Document, casOut uint64) *Document {
+	if doc.HLV == nil {
+		return doc
+	}
+	if doc.HLV.Version == hlvExpandMacroCASValue {
+		doc.HLV.Version = casOut
+	}
+	if doc.HLV.CurrentVersionCAS == hlvExpandMacroCASValue {
+		doc.HLV.CurrentVersionCAS = casOut
+	}
+	// this is a temporary workaround. To be removed pending CBG-3503. This is to account for test that are relying on
+	// updates to arrive over import. As it stands the logic is still to be implemented on import doc event type leading
+	// to a doc when arriving over import, having outdated or no HLV defined, leading to issues with rev cache having
+	// appropriate doc updates
+	// TODO: Remove the below block when working on CBG-3503
+	if doc.Cas != doc.HLV.Version {
+		doc.HLV.Version = casOut
+	}
+	return doc
 }
 
 func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectionWithUser, doc *Document, newRevID string) (map[string]struct{}, error) {

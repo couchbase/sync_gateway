@@ -471,7 +471,7 @@ func (h *handler) handlePutDoc() error {
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
-		doc, newRev, err = h.collection.PutExistingRevWithBody(h.ctx(), docid, body, revisions, false)
+		doc, newRev, err = h.collection.PutExistingRevWithBody(h.ctx(), docid, body, revisions, false, db.InternalExistingVersion)
 		if err != nil {
 			return err
 		}
@@ -548,7 +548,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 		newDoc.UpdateBody(body)
 	}
 
-	doc, rev, err := h.collection.PutExistingRev(h.ctx(), newDoc, history, true, false, nil)
+	doc, rev, err := h.collection.PutExistingRev(h.ctx(), newDoc, history, true, false, nil, db.ExistingVersion)
 
 	if err != nil {
 		return err

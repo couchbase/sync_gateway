@@ -488,7 +488,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 		"value":         1235,
 		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 	}
-	_, _, err = collection.PutExistingRevWithBody(ctx, docKey, rev2body, []string{rev2id, rev1id}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, docKey, rev2body, []string{rev2id, rev1id}, false, InternalExistingVersion)
 	assert.NoError(t, err, "Unexpected error calling collection.PutExistingRev")
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found

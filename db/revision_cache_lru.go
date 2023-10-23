@@ -377,37 +377,25 @@ func (rc *LRURevisionCache) addToRevMapPostLoad(docID, revID string, cv *Current
 		// need to return doc revision to caller still but no need repopulate the cache
 		return
 	}
-	// Check if the element in the other lookup cache points to a value that has been updated in both lookup maps already
-	// This protects the following scenario:
-	//	- Process A is lookup via CV and Process B is lookup via revid, assume both process concurrent and both miss cache thus load from bucket
-	//	- Assume for this example both processes manage to 1. update their lookup map, 2. create a new value for the cache, 3. load from bucket to populate this value
-	//	- Now both processes need to update the other lookup map to their respective values
-	//	- Say process A acquires lock on rev cache for this function first, it looks up the key in the rev lookup map and finds it
-	//	assumes duplicate and removes the entry from the map and its respective element from the cache list
-	//	 - Process A continues on and updates the rev map now to point to its own value, process A then release the lock
-	//	 - Process B has been waiting on the lock, now its free it acquires the rev cache lock
-	//	 - Process B looks up key in cv lookup map, find and entry, assumes duplicate and removes the entry from the cv lookup map,
-	//	 and removes the element from teh cache list
-	//	 - We now find ourselves in a situation where both processes have removed both respective cache loads from the cache itself
-	//	 thus no entry in cache for this doc revision/version anymore. This needs to be avoided.
+	// Check if another goroutine has already updated the rev map
 	if revFound {
 		if cvElem == revElem {
 			// already match, return
 			return
 		}
+		// if CV map and rev map are targeting different list elements, update to have both use the cv map element
 		rc.cache[legacyKey] = cvElem
 		rc.lruList.Remove(revElem)
-	}
-
-	// grab elem again using the hlv key in case the element in question has been evicted, in this case we don't want to update cache
-	if elem := rc.hlvCache[key]; elem != nil {
-		value := elem.Value.(*revCacheValue)
-		// we need to populate the value with the legacy key, so reacquire value lock here to populate the value with this
-		value.lock.Lock()
-		value.revID = revID
-		elem.Value = value
-		value.lock.Unlock()
-		rc.cache[legacyKey] = elem
+	} else {
+		// check if rev id is defined on the value in the cache, for PUT code pathway we will need to define the rev id here
+		if value := cvElem.Value.(*revCacheValue); value.revID == "" {
+			value.lock.Lock()
+			value.revID = revID
+			cvElem.Value = value
+			value.lock.Unlock()
+		}
+		// if not found we need to add the element to the rev lookup (for PUT code path)
+		rc.cache[legacyKey] = cvElem
 		for rc.lruList.Len() > int(rc.capacity) {
 			rc.purgeOldest_()
 		}
@@ -429,40 +417,15 @@ func (rc *LRURevisionCache) addToHLVMapPostLoad(docID, revID string, cv *Current
 		// need to return doc revision to caller still but no need repopulate the cache
 		return
 	}
-	// Check if the element in the other lookup cache points to a value that has been updated in both lookup maps already
-	// This protects the following scenario:
-	//	- Process A is lookup via CV and Process B is lookup via revid, assume both process concurrent and both miss cache thus load from bucket
-	//	- Assume for this example both processes manage to 1. update their lookup map, 2. create a new value for the cache, 3. load from bucket to populate this value
-	//	- Now both processes need to update the other lookup map to their respective values
-	//	- Say process A acquires lock on rev cache for this function first, it looks up the key in the rev lookup map and finds it
-	//	assumes duplicate and removes the entry from the map and its respective element from the cache list
-	//	 - Process A continues on and updates the rev map now to point to its own value, process A then release the lock
-	//	 - Process B has been waiting on the lock, now its free it acquires the rev cache lock
-	//	 - Process B looks up key in cv lookup map, find and entry, assumes duplicate and removes the entry from the cv lookup map,
-	//	 and removes the element from teh cache list
-	//	 - We now find ourselves in a situation where both processes have removed both respective cache loads from the cache itself
-	//	 thus no entry in cache for this doc revision/version anymore. This needs to be avoided.
+	// Check if another goroutine has already updated the cv map
 	if cvFound {
 		if cvElem == revElem {
 			// already match, return
 			return
 		}
+		// if CV map and rev map are targeting different list elements, update to have both use the cv map element
 		rc.cache[legacyKey] = cvElem
 		rc.lruList.Remove(revElem)
-	}
-
-	// grab elem again using the rev key in case the element in question has been evicted, in this case we don't want to update cache
-	if elem := rc.cache[legacyKey]; elem != nil {
-		value := elem.Value.(*revCacheValue)
-		// we need to populate the value with the CV key, so reacquire value lock here to populate the value with this
-		value.lock.Lock()
-		value.cv = *cv
-		elem.Value = value
-		value.lock.Unlock()
-		rc.hlvCache[key] = elem
-		for rc.lruList.Len() > int(rc.capacity) {
-			rc.purgeOldest_()
-		}
 	}
 }
 
