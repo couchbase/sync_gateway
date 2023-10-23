@@ -2380,7 +2380,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 			rawBody, err := json.Marshal(test.inputBody)
 			require.NoError(t, err)
 
-			_, err = client.PushRev(docID, "", rawBody)
+			_, err = client.PushRev(docID, EmptyDocVersion(), rawBody)
 
 			if test.expectReject {
 				assert.Error(t, err)
