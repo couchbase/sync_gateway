@@ -155,7 +155,7 @@ func (s *sequenceAllocator) lastSequence(ctx context.Context) (uint64, error) {
 	s.dbStats.SequenceGetCount.Add(1)
 	last, err := s.getSequence()
 	if err != nil {
-		base.WarnfCtx(ctx, "Error from Get in getSequence(): %v", err)
+		return 0, fmt.Errorf("Couldn't get sequence from bucket: %w", err)
 	}
 	return last, err
 }
