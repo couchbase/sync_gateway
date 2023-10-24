@@ -38,9 +38,6 @@ func assertExpiry(t testing.TB, expected uint32, actual uint32) {
 
 // Test import of an SDK delete.
 func TestXattrImportOldDoc(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
@@ -125,7 +122,6 @@ func TestXattrImportOldDoc(t *testing.T) {
 
 // Test import ancestor handling
 func TestXattrImportOldDocRevHistory(t *testing.T) {
-
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
@@ -176,9 +172,6 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 
 // Validate tombstone w/ xattrs
 func TestXattrSGTombstone(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rtConfig := rest.RestTesterConfig{SyncFn: `
 		function(doc, oldDoc) { channel(doc.channels) }`}
 	rt := rest.NewRestTester(t, &rtConfig)
@@ -224,8 +217,6 @@ func TestXattrImportOnCasFailure(t *testing.T) {
 	// reliably hit the CAS failure on the SG write.
 	// Scenario fully covered by functional test.
 	t.Skip("WARNING: TEST DISABLED")
-
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -284,9 +275,6 @@ func TestXattrImportOnCasFailure(t *testing.T) {
 
 // Attempt to delete then recreate a document through SG
 func TestXattrResurrectViaSG(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
@@ -330,9 +318,6 @@ func TestXattrResurrectViaSG(t *testing.T) {
 
 // Attempt to delete then recreate a document through the SDK
 func TestXattrResurrectViaSDK(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -395,9 +380,6 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 
 // Attempt to delete a document that's already been deleted via the SDK
 func TestXattrDoubleDelete(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -442,9 +424,6 @@ func TestXattrDoubleDelete(t *testing.T) {
 }
 
 func TestViewQueryTombstoneRetrieval(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
-
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")
 	}
@@ -520,9 +499,6 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 }
 
 func TestXattrImportFilterOptIn(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
-
 	importFilter := `function (doc) { return doc.type == "mobile"}`
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -571,8 +547,6 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 }
 
 func TestImportFilterLogging(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
-
 	importFilter := `function (doc) { console.error("Error"); return doc.type == "mobile"; }`
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -613,9 +587,6 @@ func TestImportFilterLogging(t *testing.T) {
 // Test scenario where another actor updates a different xattr on a document.  Sync Gateway
 // should detect and not import/create new revision during read-triggered import
 func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -669,9 +640,6 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 // Test scenario where another actor updates a different xattr on a document.  Sync Gateway
 // should detect and not import/create new revision during write-triggered import
 func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -1048,231 +1016,6 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc))
 	assert.Equal(t, 1, len(doc.Meta.RevTree.BodyKeyMap))
 	assert.Equal(t, 2, len(doc.Meta.RevTree.BodyMap))
-}
-
-// Test retrieval of a document stored w/ xattrs when running in non-xattr mode (upgrade handling).
-func TestCheckForUpgradeOnRead(t *testing.T) {
-
-	// Only run when xattrs are disabled, but requires couchbase server since we're writing an xattr directly to the bucket
-	if base.TestUseXattrs() {
-		t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
-	}
-
-	rtConfig := rest.RestTesterConfig{
-		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			AutoImport: false,
-		}},
-	}
-	rt := rest.NewRestTester(t, &rtConfig)
-	defer rt.Close()
-	dataStore := rt.GetSingleDataStore()
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
-
-	// Write doc in SG format (doc + xattr) directly to the bucket
-	key := "TestCheckForUpgrade"
-	bodyString := `
-{
-  "value": "2-d"
-}`
-	xattrString := `
-{
-    "rev": "2-d",
-    "flags": 24,
-    "sequence": 5,
-    "recent_sequences": [1,2,3,4,5],
-    "history": {
-      "revs": [
-        "1-089c019bbfaba27047008599143bc66f",
-        "2-b92296d32600ec90dc05ff18ae61a1e8",
-        "2-b",
-        "2-c",
-        "2-d"
-      ],
-      "parents": [-1,0,0,0,0],
-      "bodymap": {
-        "2": "{\"value\":\"%s\"}",
-        "3": "{\"value\":\"%s\"}"
-      },
-      "bodyKeyMap": {
-      	"1": "_sync:rb:test"
-      },
-      "channels": [null,null,null,null,null]
-    },
-    "cas": "",
-    "time_saved": "2017-09-14T23:54:25.975220906-07:00"
-}`
-
-	ctx := base.TestCtx(t)
-	// Create via the SDK with sync metadata intact
-	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString), nil)
-	assert.NoError(t, err, "Error writing doc w/ xattr")
-
-	// Attempt to get the documents via Sync Gateway.  Should successfully retrieve doc by triggering
-	// checkForUpgrade handling to detect metadata in xattr.
-	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+key, "")
-	assert.Equal(t, 200, response.Code)
-	log.Printf("response:%s", response.Body.Bytes())
-
-	// Validate non-xattr write doesn't get upgraded
-	nonMobileKey := "TestUpgradeNoXattr"
-	nonMobileBody := make(map[string]interface{})
-	nonMobileBody["channels"] = "ABC"
-	_, err = dataStore.Add(nonMobileKey, 0, nonMobileBody)
-	assert.NoError(t, err, "Error writing SDK doc")
-
-	// Attempt to get the non-mobile via Sync Gateway.  Should return 404.
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+nonMobileKey, "")
-	assert.Equal(t, 404, response.Code)
-}
-
-// Test retrieval of a document stored w/ xattrs when running in non-xattr mode (upgrade handling).
-func TestCheckForUpgradeOnWrite(t *testing.T) {
-
-	// Only run when xattrs are disabled, but requires couchbase server since we're writing an xattr directly to the bucket
-	if base.TestUseXattrs() {
-		t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
-	}
-
-	rtConfig := rest.RestTesterConfig{
-		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			AutoImport: false,
-		}},
-	}
-	rt := rest.NewRestTester(t, &rtConfig)
-	defer rt.Close()
-	dataStore := rt.GetSingleDataStore()
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyCache)
-
-	// Write doc in SG format (doc + xattr) directly to the bucket
-	key := "TestCheckForUpgrade"
-	bodyString := `
-{
-  "value": "2-d"
-}`
-	xattrString := `
-{
-    "rev": "2-d",
-    "flags": 24,
-    "sequence": 5,
-    "recent_sequences": [1,2,3,4,5],
-    "history": {
-      "revs": [
-        "1-089c019bbfaba27047008599143bc66f",
-        "2-b92296d32600ec90dc05ff18ae61a1e8",
-        "2-b",
-        "2-c",
-        "2-d"
-      ],
-      "parents": [-1,0,0,0,0],
-      "bodymap": {
-        "2": "{\"value\":\"%s\"}",
-        "3": "{\"value\":\"%s\"}"
-      },
-      "bodyKeyMap": {
-      	"1": "_sync:rb:test"
-      },
-      "channels": [null,null,null,null,null]
-    },
-    "cas": "",
-    "time_saved": "2017-09-14T23:54:25.975220906-07:00"
-}`
-
-	ctx := base.TestCtx(t)
-	// Create via the SDK with sync metadata intact
-	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString), nil)
-	assert.NoError(t, err, "Error writing doc w/ xattr")
-	require.NoError(t, rt.WaitForSequence(5))
-
-	// Attempt to update the documents via Sync Gateway.  Should trigger checkForUpgrade handling to detect metadata in xattr, and update normally.
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=2-d", key), `{"updated":true}`)
-	assert.Equal(t, 201, response.Code)
-	log.Printf("response:%s", response.Body.Bytes())
-
-	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
-	assert.Equal(t, 200, rawResponse.Code)
-	log.Printf("raw response:%s", rawResponse.Body.Bytes())
-	require.NoError(t, rt.WaitForSequence(6))
-
-	// Validate non-xattr document doesn't get upgraded on attempted write
-	nonMobileKey := "TestUpgradeNoXattr"
-	nonMobileBody := make(map[string]interface{})
-	nonMobileBody["channels"] = "ABC"
-	_, err = dataStore.Add(nonMobileKey, 0, nonMobileBody)
-	assert.NoError(t, err, "Error writing SDK doc")
-
-	// Attempt to update the non-mobile document via Sync Gateway.  Should return
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+nonMobileKey, `{"updated":true}`)
-	assert.Equal(t, 409, response.Code)
-	log.Printf("response:%s", response.Body.Bytes())
-}
-
-// Test feed processing of a document stored w/ xattrs when running in non-xattr mode (upgrade handling).
-func TestCheckForUpgradeFeed(t *testing.T) {
-
-	// Only run when xattrs are disabled, but requires couchbase server since we're writing an xattr directly to the bucket
-	if base.TestUseXattrs() {
-		t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
-	}
-
-	rtConfig := rest.RestTesterConfig{
-		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-	}
-	rt := rest.NewRestTester(t, &rtConfig)
-	defer rt.Close()
-
-	dataStore := rt.GetSingleDataStore()
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyCache)
-
-	// Write doc in SG format (doc + xattr) directly to the bucket
-	key := "TestCheckForUpgrade"
-	bodyString := `
-{
-  "value": "2-d"
-}`
-	xattrString := `
-{
-    "rev": "1-089c019bbfaba27047008599143bc66f",
-    "sequence": 1,
-    "recent_sequences": [1],
-    "history": {
-      "revs": [
-        "1-089c019bbfaba27047008599143bc66f"
-      ],
-      "parents": [-1],
-      "channels": [null]
-    },
-    "cas": "",
-    "time_saved": "2017-09-14T23:54:25.975220906-07:00"
-}`
-
-	ctx := base.TestCtx(t)
-	// Create via the SDK with sync metadata intact
-	_, err := dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString), nil)
-	assert.NoError(t, err, "Error writing doc w/ xattr")
-	require.NoError(t, rt.WaitForSequence(1))
-
-	// Attempt to update the documents via Sync Gateway.  Should trigger checkForUpgrade handling to detect metadata in xattr, and update normally.
-	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes", "")
-	assert.Equal(t, 200, response.Code)
-	log.Printf("response:%s", response.Body.Bytes())
-
-	// Validate non-xattr document doesn't get processed on attempted feed read
-	nonMobileKey := "TestUpgradeNoXattr"
-	nonMobileBody := make(map[string]interface{})
-	nonMobileBody["channels"] = "ABC"
-
-	_, err = dataStore.Add(nonMobileKey, 0, nonMobileBody)
-	assert.NoError(t, err, "Error writing SDK doc")
-
-	// We don't have a way to wait for a upgrade that doesn't happen, but we can look for the warning that happens.
-	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.Cache().NonMobileIgnoredCount.Value()
-	}, 1)
 }
 
 // Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is imported via DCP feed
@@ -2000,7 +1743,6 @@ func TestImportComputeStatOnDemandGet(t *testing.T) {
 }
 
 func TestImportComputeStatOnDemandWrite(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
 
 	importFilter := `function (doc) { return doc.type == "mobile"}`
 	rtConfig := rest.RestTesterConfig{
@@ -2048,7 +1790,6 @@ func TestImportComputeStatOnDemandWrite(t *testing.T) {
 }
 
 func TestAutoImportComputeStat(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
@@ -2125,9 +1866,6 @@ func TestQueryResyncImportComputeStat(t *testing.T) {
 
 // Verify config flag for import creation of backup revision on import
 func TestImportRevisionCopyDisabled(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
-
 	// ImportBackupOldRev not set in config, defaults to false
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -2189,8 +1927,6 @@ func TestDcpBackfill(t *testing.T) {
 
 	t.Skip("Test disabled pending CBG-560")
 
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rt := rest.NewRestTester(t, nil)
 
 	log.Printf("Starting get bucket....")
@@ -2244,8 +1980,6 @@ func TestDcpBackfill(t *testing.T) {
 
 // Validate SG behaviour if there's an unexpected body on a tombstone
 func TestUnexpectedBodyOnTombstone(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -2350,7 +2084,6 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, ke
 }
 
 func TestDeletedEmptyDocumentImport(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -2382,7 +2115,6 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 
 // Check deleted document via SDK is getting imported if it is included in through ImportFilter function.
 func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc) {console.log("Doc in Sync Fn:" + JSON.stringify(doc))}`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -2433,7 +2165,6 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 // CBG-1995: Test the support for using an underscore prefix in the top-level body of a document
 // CBG-2023: Test preventing underscore attachments
 func TestImportInternalPropertiesHandling(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	testCases := []struct {
@@ -2564,9 +2295,6 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 
 // Test import of an SDK expiry change
 func TestImportTouch(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
