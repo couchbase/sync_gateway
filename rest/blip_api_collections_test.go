@@ -243,9 +243,8 @@ func TestCollectionsReplication(t *testing.T) {
 	require.NoError(t, err)
 	defer btc.Close()
 
-	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", "{}")
-	RequireStatus(t, resp, http.StatusCreated)
-
+	const docID = "doc1"
+	version := rt.PutDoc(docID, "{}")
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	btcCollection := btc.SingleCollection()
@@ -253,7 +252,7 @@ func TestCollectionsReplication(t *testing.T) {
 	err = btcCollection.StartOneshotPull()
 	require.NoError(t, err)
 
-	_, ok := btcCollection.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
+	_, ok := btcCollection.WaitForVersion(docID, version)
 	require.True(t, ok)
 }
 
@@ -267,18 +266,16 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 	require.NoError(t, err)
 	defer btc.Close()
 
+	var version DocVersion
 	docName := "doc1"
-	docRevID := "1-cd809becc169215072fd567eebd8b8de"
-	body := db.Body{}
-	bodyBytes := []byte(`{"foo":"bar"}`)
-	require.NoError(t, body.Unmarshal(bodyBytes))
-	for _, collection := range rt.GetDatabase().CollectionByID {
-		collectionWithAdmin := db.DatabaseCollectionWithUser{DatabaseCollection: collection}
-		revID, _, err := collectionWithAdmin.Put(base.TestCtx(t), docName, body)
-		require.NoError(t, err)
-		require.Equal(t, docRevID, revID)
+	body := `{"foo":"bar"}`
+	for _, keyspace := range rt.GetKeyspaces() {
+		resp := rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docName, `{"foo":"bar"}`)
+		RequireStatus(t, resp, http.StatusCreated)
+		version = DocVersionFromPutResponse(t, resp)
 
 	}
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// start all the clients first
 	for _, collectionClient := range btc.collectionClients {
@@ -286,9 +283,9 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 	}
 
 	for _, collectionClient := range btc.collectionClients {
-		msg, ok := collectionClient.WaitForRev(docName, docRevID)
+		msg, ok := collectionClient.WaitForVersion(docName, version)
 		require.True(t, ok)
-		require.Equal(t, bodyBytes, msg)
+		require.Equal(t, body, string(msg))
 	}
 
 	for _, collectionClient := range btc.collectionClients {
@@ -308,25 +305,24 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 	require.NoError(t, err)
 	defer btc.Close()
 
-	body := db.Body{}
-	bodyBytes := []byte(`{"foo":"bar"}`)
-	require.NoError(t, body.Unmarshal(bodyBytes))
-	collectionRevIDs := make(map[string][]string)
+	body := `{"foo":"bar"}`
 	collectionDocIDs := make(map[string][]string)
-	require.Len(t, rt.GetDatabase().CollectionByID, 2)
-	for i, collection := range rt.GetDatabase().CollectionByID {
-		collectionWithAdmin := db.DatabaseCollectionWithUser{DatabaseCollection: collection}
+	collectionVersions := make(map[string][]DocVersion)
+	require.Len(t, rt.GetKeyspaces(), 2)
+	for i, keyspace := range rt.GetKeyspaces() {
 		// intentionally create collections with different size replications to ensure one collection finishing won't cancel another one
 		docCount := 10
 		if i == 0 {
 			docCount = 1
 		}
-		blipName := fmt.Sprintf("%s.%s", collection.ScopeName, collection.Name)
+		blipName := rt.getCollectionsForBLIP()[i]
 		for j := 0; j < docCount; j++ {
 			docName := fmt.Sprintf("doc%d", j)
-			revID, _, err := collectionWithAdmin.Put(base.TestCtx(t), docName, body)
-			require.NoError(t, err)
-			collectionRevIDs[blipName] = append(collectionRevIDs[blipName], revID)
+			resp := rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docName, body)
+			RequireStatus(t, resp, http.StatusCreated)
+
+			version := DocVersionFromPutResponse(t, resp)
+			collectionVersions[blipName] = append(collectionVersions[blipName], version)
 			collectionDocIDs[blipName] = append(collectionDocIDs[blipName], docName)
 		}
 	}
@@ -338,11 +334,11 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 	}
 
 	for _, collectionClient := range btc.collectionClients {
-		revIDs := collectionRevIDs[collectionClient.collection]
+		versions := collectionVersions[collectionClient.collection]
 		docIDs := collectionDocIDs[collectionClient.collection]
-		msg, ok := collectionClient.WaitForRev(docIDs[len(docIDs)-1], revIDs[len(revIDs)-1])
+		msg, ok := collectionClient.WaitForVersion(docIDs[len(docIDs)-1], versions[len(versions)-1])
 		require.True(t, ok)
-		require.Equal(t, bodyBytes, msg)
+		require.Equal(t, body, string(msg))
 	}
 
 	for _, collectionClient := range btc.collectionClients {

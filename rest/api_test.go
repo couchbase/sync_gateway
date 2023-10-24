@@ -2716,11 +2716,12 @@ func TestDocChannelSetPruning(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
-	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"a"}})
+	const docID = "doc"
+	version := rt.PutDoc(docID, `{"channels": ["a"]}`)
 
 	for i := 0; i < 10; i++ {
-		revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": []string{}})
-		revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": []string{"a"}})
+		version = rt.UpdateDoc(docID, version, `{"channels": []}`)
+		version = rt.UpdateDoc(docID, version, `{"channels": ["a"]}`)
 	}
 
 	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
