@@ -210,13 +210,13 @@ func TestParseXattr(t *testing.T) {
 
 	resultBody, resultXattr, _, err := parseXattrStreamData(base.SyncXattrName, "", dcpBody)
 	assert.NoError(t, err, "Unexpected error parsing dcp body")
-	assert.Equal(t, string(body), string(resultBody))
-	assert.Equal(t, string(xattrValue), string(resultXattr))
+	assert.Equal(t, body, string(resultBody))
+	assert.Equal(t, xattrValue, string(resultXattr))
 
 	// Attempt to retrieve non-existent xattr
 	resultBody, resultXattr, _, err = parseXattrStreamData("nonexistent", "", dcpBody)
 	assert.NoError(t, err, "Unexpected error parsing dcp body")
-	assert.Equal(t, string(body), string(resultBody))
+	assert.Equal(t, body, string(resultBody))
 	assert.Equal(t, "", string(resultXattr))
 
 	// Attempt to retrieve xattr from empty dcp body

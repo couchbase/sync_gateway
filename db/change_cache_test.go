@@ -1326,7 +1326,7 @@ func TestStopChangeCache(t *testing.T) {
 	WriteDirect(t, db, []string{"ABC"}, 3)
 
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	err := db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
+	err := db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Hour * -2)})
 	require.NoError(t, err)
 
 	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
@@ -1449,23 +1449,6 @@ func verifyChangesFullSequences(changes []*ChangeEntry, sequences []string) bool
 		if changes[index].Seq.String() != seq {
 			log.Printf("verifyChangesFullSequences: sequence mismatch at index %v, changes=%s, sequences=%s",
 				index, changes[index].Seq.String(), seq)
-			return false
-		}
-	}
-	return true
-}
-
-// verifyChangesSequences compares for a match on sequence number only
-func verifyChangesSequences(changes []*ChangeEntry, sequences []uint64) bool {
-	if len(changes) != len(sequences) {
-		log.Printf("verifyChangesSequences: changes size (%v) not equals to sequences size (%v)",
-			len(changes), len(sequences))
-		return false
-	}
-	for index, seq := range sequences {
-		if changes[index].Seq.Seq != seq {
-			log.Printf("verifyChangesSequences: sequence mismatch at index %v, changes=%d, sequences=%d",
-				index, changes[index].Seq.Seq, seq)
 			return false
 		}
 	}
@@ -1807,19 +1790,6 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 
 }
 
-// logChangesResponse helper function, useful to dump changes response during test development.
-func logChangesResponse(changes []*ChangeEntry) {
-	log.Printf("Changes response:")
-	for _, change := range changes {
-		var rev string
-		if len(change.Changes) > 0 {
-			rev, _ = change.Changes[0]["rev"]
-		}
-		log.Printf("  seq: %v id:%v rev:%s", change.Seq, change.ID, rev)
-	}
-
-}
-
 func TestMaxChannelCacheConfig(t *testing.T) {
 	channelCacheMaxChannels := []int{10, 50000, 100000}
 
@@ -2083,44 +2053,6 @@ func TestMakeFeedBytes(t *testing.T) {
 	require.Len(t, xattr, 13)
 
 }
-
-var feedDoc1kFormat = `{
-    "index": 0,
-    "guid": "bc22f4d5-e13f-4b64-9397-2afd5a843c4d",
-    "isActive": false,
-    "balance": "$1,168.62",
-    "picture": "http://placehold.it/32x32",
-    "age": 20,
-    "eyeColor": "green",
-    "name": "Miranda Kline",
-    "company": "COMTREK",
-    "email": "mirandakline@comtrek.com",
-    "phone": "+1 (831) 408-2162",
-    "address": "701 Devon Avenue, Ballico, Alabama, 9673",
-    "about": "Minim ea esse dolor ex laborum do velit cupidatat tempor do qui. Aliqua consequat consectetur esse officia ullamco velit labore irure ea non proident. Tempor elit nostrud deserunt in ullamco pariatur enim pariatur et. Veniam fugiat ad mollit ut mollit aute adipisicing aliquip veniam consectetur incididunt. Id cupidatat duis cupidatat quis amet elit sit sit esse velit pariatur do. Excepteur tempor labore esse adipisicing laborum sit enim incididunt quis sint fugiat commodo Lorem. Dolore laboris quis ex do.\r\n",
-    "registered": "2016-09-16T12:08:17 +07:00",
-    "latitude": -14.616751,
-    "longitude": 175.689016,
-    "channels": [
-      "%s"
-    ],
-    "friends": [
-      {
-        "id": 0,
-        "name": "Wise Hewitt"
-      },
-      {
-        "id": 1,
-        "name": "Winnie Schultz"
-      },
-      {
-        "id": 2,
-        "name": "Browning Carlson"
-      }
-    ],
-    "greeting": "Hello, Miranda Kline! You have 4 unread messages.",
-    "favoriteFruit": "strawberry"
-  }`
 
 func (f *testDocChangedFeed) Next() sgbucket.FeedEvent {
 

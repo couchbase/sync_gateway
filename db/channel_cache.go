@@ -164,11 +164,6 @@ func (c *channelCacheImpl) GetHighCacheSequence() uint64 {
 	return highSeq
 }
 
-// Returns high cache sequence.  Callers should hold read lock on seqLock
-func (c *channelCacheImpl) _getHighCacheSequence() uint64 {
-	return c.highCacheSequence
-}
-
 // Updates the high cache sequence if the incoming sequence is higher than current
 // Note: doesn't require compareAndSet on update, as cache expects AddToCache to only be called from
 // a single goroutine

@@ -37,8 +37,6 @@ const (
 	// we flush to the output if we don't fill the buffer.
 	consoleLoggerCollateFlushTimeout = 1 * time.Millisecond
 	fileLoggerCollateFlushTimeout    = 10 * time.Millisecond
-	// loggerCollateFlushDelay is the duration to wait to allow the log collation buffers to be flushed to outputs.
-	loggerCollateFlushDelay = 1 * time.Second
 )
 
 // ErrUnsetLogFilePath is returned when no log_file_path, or --defaultLogFilePath fallback can be used.

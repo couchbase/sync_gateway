@@ -290,7 +290,7 @@ func (s *sequenceAllocator) _reserveSequenceBatch(ctx context.Context) error {
 	// this indicates we're making an incr call more frequently than we want to.  Triggers an increase in batch size to
 	// reduce incr frequency.
 	if time.Since(s.lastSequenceReserveTime) < MaxSequenceIncrFrequency {
-		s.sequenceBatchSize = uint64(s.sequenceBatchSize * sequenceBatchMultiplier)
+		s.sequenceBatchSize = s.sequenceBatchSize * sequenceBatchMultiplier
 		if s.sequenceBatchSize > maxBatchSize {
 			s.sequenceBatchSize = maxBatchSize
 		}
@@ -325,10 +325,6 @@ func (s *sequenceAllocator) incrementSequence(numToReserve uint64) (max uint64, 
 		s.dbStats.SequenceIncrCount.Add(1)
 	}
 	return value, err
-}
-
-type seqRange struct {
-	low, high uint64
 }
 
 // ReleaseSequence writes an unused sequence document, used to notify sequence buffering that a sequence has been allocated and not used.

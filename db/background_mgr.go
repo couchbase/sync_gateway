@@ -403,13 +403,6 @@ func (b *BackgroundManager) markStop() error {
 	return nil
 }
 
-func (b *BackgroundManager) setRunState(state BackgroundProcessState) {
-	b.lock.Lock()
-	defer b.lock.Unlock()
-
-	b.State = state
-}
-
 func (b *BackgroundManager) GetRunState() BackgroundProcessState {
 	b.lock.Lock()
 	defer b.lock.Unlock()

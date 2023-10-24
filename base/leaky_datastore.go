@@ -371,14 +371,6 @@ func (lds *LeakyDataStore) GetSpec() BucketSpec {
 	}
 }
 
-func (lds *LeakyDataStore) isRecoverableReadError(err error) bool {
-	return false // Rosmar does not have recoverable errors
-}
-
-func (lds *LeakyDataStore) isRecoverableWriteError(err error) bool {
-	return false // Rosmar does not have recoverable errors
-}
-
 // Assert interface compliance:
 var (
 	_ sgbucket.DataStore = &LeakyDataStore{}
