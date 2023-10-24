@@ -57,8 +57,8 @@ func NewSGBlipContextWithProtocols(ctx context.Context, id string, protocol ...s
 		bc, err = blip.NewContextCustomID(id, protocol...)
 	}
 
-	bc.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)
-	bc.LogFrames = base.LogDebugEnabled(base.KeyWebSocketFrame)
+	bc.LogMessages = base.LogDebugEnabled(ctx, base.KeyWebSocket)
+	bc.LogFrames = base.LogDebugEnabled(ctx, base.KeyWebSocketFrame)
 	bc.Logger = defaultBlipLogger(ctx)
 
 	return bc, err

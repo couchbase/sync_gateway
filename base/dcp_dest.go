@@ -64,7 +64,7 @@ func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bu
 		InfofCtx(d.loggingCtx, KeyDCP, "Starting sharded feed for %s.  Total partitions:%v", d.feedID, d.partitionCountStat.String())
 	}
 
-	if LogDebugEnabled(KeyDCP) {
+	if LogDebugEnabled(d.loggingCtx, KeyDCP) {
 		InfofCtx(d.loggingCtx, KeyDCP, "Using DCP Logging Receiver")
 		logRec := &DCPLoggingDest{dest: d}
 		return logRec, d.loggingCtx, nil
