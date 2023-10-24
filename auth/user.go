@@ -656,8 +656,7 @@ func (user *userImpl) FilterToAvailableCollectionChannels(scope, collection stri
 		if channelName == ch.AllChannelWildcard {
 			return user.InheritedCollectionChannels(scope, collection).Copy(), nil
 		}
-		seq := user.getCollectionAccessSeq(scope, collection, channelName)
-		added := filtered.AddChannel(channelName, seq)
+		added := filtered.AddChannel(channelName, user.canSeeCollectionChannelSince(scope, collection, channelName))
 		if !added {
 			removed = append(removed, channelName)
 		}
