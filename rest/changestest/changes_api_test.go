@@ -188,6 +188,71 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	assert.Equal(t, 200, response.Code)
 }
 
+// TestChangesFeedOnInheritedChannelsFromRoles:
+//   - Create a role with access to channel "A"
+//   - Create a user with the role just created
+//   - Put some docs on the database with channel "A" assigned
+//   - Run changes feed as the user with a channel filter on it to channel A
+func TestChangesFeedOnInheritedChannelsFromRoles(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+
+	// create role with collection channel access set to channel A
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/role", rest.GetRolePayload(t, "", "", collection, []string{"A"}))
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// create user and assign the role create above to that user
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", `{"name": "alice", "password": "letmein", "admin_roles": ["role"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// Put a some doc on the database with channel A assigned
+	for i := 0; i < 5; i++ {
+		resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"source": "rt", "channels":["A"]}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+	}
+
+	// Start changes feed as the user filtered to channel A, expect 6 changes (5 docs + user doc)
+	changes, err := rt.WaitForChanges(6, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A", "alice", false)
+	require.NoError(t, err)
+	assert.Equal(t, 6, len(changes.Results))
+}
+
+// TestChangesFeedOnInheritedChannelsFromRolesDefaultCollection:
+//   - Same concept as TestChangesFeedOnInheritedChannelsFromRoles just with use of default collection instead
+//   - Create a role with access to channel "A"
+//   - Create a user with the role just created
+//   - Put some docs on the database with channel "A" assigned
+//   - Run changes feed as the user with a channel filter on it to channel A
+func TestChangesFeedOnInheritedChannelsFromRolesDefaultCollection(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
+
+	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+
+	// create role with collection channel access set to channel A
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/role", rest.GetRolePayload(t, "", "", collection, []string{"A"}))
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// create user and assign the role create above to that user
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", `{"name": "alice", "password": "letmein", "admin_roles": ["role"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// Put a some doc on the database with channel A assigned
+	for i := 0; i < 5; i++ {
+		resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"source": "rt", "channels":["A"]}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+	}
+
+	// Start changes feed as the user filtered to channel A, expect 6 changes (5 docs + user doc)
+	changes, err := rt.WaitForChanges(6, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A", "alice", false)
+	require.NoError(t, err)
+	assert.Equal(t, 6, len(changes.Results))
+}
+
 func TestPostChanges(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)

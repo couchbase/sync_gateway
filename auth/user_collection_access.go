@@ -100,3 +100,13 @@ func (user *userImpl) AuthorizeAnyCollectionChannel(scope, collection string, ch
 
 	return user.UnauthError("You are not allowed to see this")
 }
+
+func (user *userImpl) canSeeCollectionChannelSince(scope, collection, channel string) uint64 {
+	minSeq := user.roleImpl.canSeeCollectionChannelSince(scope, collection, channel)
+	for _, role := range user.GetRoles() {
+		if seq := role.canSeeCollectionChannelSince(scope, collection, channel); seq > 0 && (seq < minSeq || minSeq == 0) {
+			minSeq = seq
+		}
+	}
+	return minSeq
+}
