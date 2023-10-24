@@ -38,7 +38,6 @@ type changeListener struct {
 	terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
 	keyCounts             map[string]uint64      // Latest count at which each doc key was updated
 	OnChangeCallback      DocChangedFunc
-	subscribeLock         sync.Mutex         // Mutex for addition to the subscriber list
 	terminator            chan bool          // Signal to cause DCP feed to exit
 	sgCfgPrefix           string             // SG config key prefix
 	started               base.AtomicBool    // whether the feed has been started

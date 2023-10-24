@@ -312,12 +312,6 @@ func (a *activeReplicatorCommon) getState() string {
 	return a.state
 }
 
-func (a *activeReplicatorCommon) getLastError() error {
-	a.stateErrorLock.RLock()
-	defer a.stateErrorLock.RUnlock()
-	return a.lastError
-}
-
 // requires a.stateErrorLock
 func (a *activeReplicatorCommon) _getStateWithErrorMessage() (state string, lastErrorMessage string) {
 	if a.lastError == nil {

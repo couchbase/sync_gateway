@@ -112,13 +112,6 @@ func (r *GatewayRegistry) getCollectionsByDatabase(ctx context.Context) map[base
 	return collectionsByDatabase
 }
 
-// updateVersionNumber changes the version number in the gateway registry, if it is greater than the previous version number
-func (r *GatewayRegistry) updateVersionNumber() {
-	if r.SGVersion.Less(base.ProductVersion) {
-		r.SGVersion = *base.ProductVersion
-	}
-}
-
 // deleteDatabase deletes the current version of the db from the registry, updating previous version
 func (r *GatewayRegistry) deleteDatabase(configGroupID, dbName string) error {
 	configGroup, ok := r.ConfigGroups[configGroupID]

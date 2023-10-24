@@ -122,9 +122,7 @@ type DatabaseContext struct {
 	ServeInsecureAttachmentTypes bool                           // Attachment content type will bypass the content-disposition handling, default false
 	NoX509HTTPClient             *http.Client                   // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}                  // Closed via PostStartup once the server has fully started
-	userFunctions                *UserFunctions                 // client-callable JavaScript functions
 	UserFunctionTimeout          time.Duration                  // Default timeout for N1QL, JavaScript and GraphQL queries. (Applies to REST and BLIP requests.)
-	graphQL                      *GraphQL                       // GraphQL query evaluator
 	Scopes                       map[string]Scope               // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
@@ -170,7 +168,6 @@ type DatabaseContextOptions struct {
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
 	Serverless                    bool          // If running in serverless mode
 	Scopes                        ScopesOptions
-	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
 	MetadataID                    string         // MetadataID used for metadata storage
 	BlipStatsReportingInterval    int64          // interval to report blip stats in milliseconds
@@ -200,22 +197,6 @@ type ScopeOptions struct {
 type CollectionOptions struct {
 	Sync         *string               // Collection sync function
 	ImportFilter *ImportFilterFunction // Opt-in filter for document import
-}
-
-// Check whether the specified ScopesOptions only defines the default collection
-func (so ScopesOptions) onlyDefaultCollection() bool {
-	if so == nil || len(so) == 0 {
-		return true
-	}
-	if len(so) > 1 {
-		return false
-	}
-	defaultScope, ok := so[base.DefaultScope]
-	if !ok || len(defaultScope.Collections) > 1 {
-		return false
-	}
-	_, ok = defaultScope.Collections[base.DefaultCollection]
-	return ok
 }
 
 type SGReplicateOptions struct {

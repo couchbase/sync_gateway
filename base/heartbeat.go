@@ -68,7 +68,6 @@ type couchbaseHeartBeater struct {
 	datastore               DataStore
 	nodeUUID                string
 	keyPrefix               string
-	groupID                 string
 	heartbeatSendInterval   time.Duration                // Heartbeat send interval
 	heartbeatExpirySeconds  uint32                       // Heartbeat expiry time (seconds)
 	heartbeatPollInterval   time.Duration                // Frequency of polling for other nodes' heartbeat documents

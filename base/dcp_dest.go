@@ -15,7 +15,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"expvar"
-	"fmt"
 	"io"
 	"strconv"
 
@@ -24,28 +23,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 )
 
-// vbucketIdStrings is a memorized array of 1024 entries for fast
-// conversion of vbucketId's to partition strings via an index lookup.
-// (Atoi is faster than map lookup when going in the other direction)
-var vbucketIdStrings [1024]string
-
-type cbgtFeedType int8
-
-const (
-	cbgtFeedType_gocb cbgtFeedType = iota
-)
-
-type destFeedType int8
-
-const (
-	DestFullFeed destFeedType = iota
-	DestShardedFeed
-)
-
 func init() {
-	for i := 0; i < len(vbucketIdStrings); i++ {
-		vbucketIdStrings[i] = fmt.Sprintf("%d", i)
-	}
 	cbgt.DCPFeedPrefix = "sg:"
 }
 
@@ -59,7 +37,6 @@ type SGDest interface {
 // is done on-demand per vbucket, as a given Dest isn't expected to manage the full set of vbuckets for a bucket.
 type DCPDest struct {
 	*DCPCommon
-	feedType           destFeedType
 	stats              *expvar.Map // DCP feed stats (rollback, backfill)
 	partitionCountStat *SgwIntStat // Stat for partition count.  Stored outside the DCP feed stats map
 	metaInitComplete   []bool      // Whether metadata initialization has been completed, per vbNo
@@ -250,10 +227,6 @@ func partitionToVbNo(ctx context.Context, partition string) uint16 {
 		return 0
 	}
 	return uint16(vbNo)
-}
-
-func vbNoToPartition(vbNo uint16) string {
-	return vbucketIdStrings[vbNo]
 }
 
 func collectionIDFromExtras(extras []byte) uint32 {

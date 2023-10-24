@@ -18,21 +18,16 @@ import (
 
 // An LRU cache of document revision bodies, together with their channel access.
 type LRUCache struct {
-	cache      map[string]*list.Element // Fast lookup of list element by key
-	lruList    *list.List               // List ordered by most recent access (Front is newest)
-	capacity   int                      // Max number of entries to cache
-	lruLock    sync.Mutex               // For thread-safety
-	loaderFunc LRUCacheLoaderFunc
+	cache    map[string]*list.Element // Fast lookup of list element by key
+	lruList  *list.List               // List ordered by most recent access (Front is newest)
+	capacity int                      // Max number of entries to cache
+	lruLock  sync.Mutex               // For thread-safety
 }
-
-type LRUCacheLoaderFunc func(key string) (value interface{}, err error)
 
 // The cache payload data. Stored as the Value of a list Element.
 type lruCacheValue struct {
-	key          string
-	value        interface{}
-	err          error      // Error from loaderFunc if it failed
-	lruValueLock sync.Mutex // Synchronizes access to this struct
+	key   string
+	value interface{}
 }
 
 // Creates an LRU cache with the given capacity and an optional loader function.

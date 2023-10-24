@@ -1106,7 +1106,7 @@ func ExpvarUInt64Val(val uint64) *expvar.Int {
 // Convert a float into an *expvar.Float
 func ExpvarFloatVal(val float64) *expvar.Float {
 	value := expvar.Float{}
-	value.Set(float64(val))
+	value.Set(val)
 	return &value
 }
 

@@ -114,7 +114,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 		assert.False(t, ok)
 		assert.Nil(t, docRev.BodyBytes)
 		assert.Equal(t, int64(0), cacheMissCounter.Value()) // peek incurs no cache miss if not found
-		assert.Equal(t, int64(prevCacheHitCount), cacheHitCounter.Value())
+		assert.Equal(t, prevCacheHitCount, cacheHitCounter.Value())
 	}
 
 	// and check we can Get up to and including the last 3 we put in

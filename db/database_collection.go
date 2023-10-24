@@ -150,11 +150,6 @@ func (c *DatabaseCollection) GetRevisionCacheForTest() RevisionCache {
 	return c.revisionCache
 }
 
-// groupID return the GroupID defined at a database level.
-func (c *DatabaseCollection) groupID() string {
-	return c.dbCtx.Options.GroupID
-}
-
 // FlushChannelCache flush support. Currently test-only - added for unit test access from rest package
 func (c *DatabaseCollection) FlushChannelCache(ctx context.Context) error {
 	base.InfofCtx(ctx, base.KeyCache, "Flushing channel cache")
