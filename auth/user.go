@@ -664,18 +664,6 @@ func (user *userImpl) FilterToAvailableCollectionChannels(scope, collection stri
 	return filtered, removed
 }
 
-// getCollectionAccessSeq find the minimum sequence a channel was granted across the user and their associated roles,
-// returning 0 when no access is found for that channel
-func (user *userImpl) getCollectionAccessSeq(scope, collection, channelName string) uint64 {
-	minSeq := user.canSeeCollectionChannelSince(scope, collection, channelName)
-	for _, role := range user.GetRoles() {
-		if seq := role.canSeeCollectionChannelSince(scope, collection, channelName); seq > 0 && (seq < minSeq || minSeq == 0) {
-			minSeq = seq
-		}
-	}
-	return minSeq
-}
-
 func (user *userImpl) GetAddedChannels(channels ch.TimedSet) base.Set {
 	output := base.Set{}
 	for userChannel := range user.inheritedChannels() {
