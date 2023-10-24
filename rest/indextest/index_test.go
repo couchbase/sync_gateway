@@ -665,7 +665,7 @@ func makeDbConfig(t *testing.T, tb *base.TestBucket, syncFunction string, import
 	scopesConfig := rest.GetCollectionsConfig(t, tb, 3)
 	for scopeName, scope := range scopesConfig {
 		for collectionName, _ := range scope.Collections {
-			collectionConfig := rest.CollectionConfig{}
+			collectionConfig := &rest.CollectionConfig{}
 			if syncFunction != "" {
 				collectionConfig.SyncFn = &syncFunction
 			}

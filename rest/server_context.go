@@ -495,7 +495,9 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
 // Pass in a bucketFromBucketSpecFn to replace the default ConnectToBucket function. This will cause the failFast argument to be ignored
-func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, options getOrAddDatabaseConfigOptions) (*db.DatabaseContext, error) {
+func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, options getOrAddDatabaseConfigOptions) (dbcontext *db.DatabaseContext, returnedError error) {
+	var bucket base.Bucket
+
 	// Generate bucket spec and validate whether db already exists
 	spec, err := GetBucketSpec(ctx, &config, sc.Config)
 	if err != nil {
@@ -506,6 +508,22 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if dbName == "" {
 		dbName = spec.BucketName
 	}
+	defer func() {
+		if returnedError == nil {
+			return
+		}
+		// database exists in global map, management is deferred to REST api
+		_, dbRegistered := sc.databases_[dbName]
+		if dbRegistered {
+			return
+		}
+		if dbcontext != nil {
+			dbcontext.Close(ctx) // will close underlying bucket
+		} else if bucket != nil {
+			bucket.Close(ctx)
+		}
+	}()
+
 	if spec.Server == "" {
 		spec.Server = sc.Config.Bootstrap.Server
 	}
@@ -546,7 +564,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		base.MD(dbName), base.MD(spec.BucketName), base.SD(base.DefaultPool), base.SD(spec.Server))
 
 	// the connectToBucketFn is used for testing seam
-	var bucket base.Bucket
 	if options.connectToBucketFn != nil {
 		// the connectToBucketFn is used for testing seam
 		bucket, err = options.connectToBucketFn(ctx, spec, options.failFast)
@@ -838,7 +855,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	contextOptions.BlipStatsReportingInterval = defaultBytesStatsReportingInterval.Milliseconds()
 	// Create the DB Context
-	dbcontext, err := db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
+	dbcontext, err = db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
 	if err != nil {
 		return nil, err
 	}

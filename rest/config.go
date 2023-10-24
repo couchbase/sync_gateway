@@ -183,7 +183,7 @@ type ScopeConfig struct {
 	Collections CollectionsConfig `json:"collections,omitempty"` // Collection-specific config options.
 }
 
-type CollectionsConfig map[string]CollectionConfig
+type CollectionsConfig map[string]*CollectionConfig
 type CollectionConfig struct {
 	SyncFn       *string `json:"sync,omitempty"`          // The sync function applied to write operations in this collection.
 	ImportFilter *string `json:"import_filter,omitempty"` // The import filter applied to import operations in this collection.
@@ -419,7 +419,6 @@ func (dbConfig *DbConfig) setup(ctx context.Context, dbName string, bootstrapCon
 		}
 		dbConfig.Sync = &sync
 	}
-
 	// Load Import Filter Function.
 	if dbConfig.ImportFilter != nil {
 		importFilter, err := loadJavaScript(ctx, *dbConfig.ImportFilter, insecureSkipVerify)

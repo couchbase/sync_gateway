@@ -14,20 +14,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-type PutDocResponse struct {
-	ID  string
-	Ok  bool
-	Rev string
-}
 
 // Run is equivalent to testing.T.Run() but updates the RestTester's TB to the new testing.T
 // so that checks are made against the right instance (otherwise the outer test complains
@@ -41,51 +35,94 @@ func (rt *RestTester) Run(name string, test func(*testing.T)) {
 	})
 }
 
-func (rt *RestTester) GetDoc(docID string) (body db.Body) {
+// GetDocBody returns the doc body for the given docID. If the document is not found, t.Fail will be called.
+func (rt *RestTester) GetDocBody(docID string) db.Body {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 	RequireStatus(rt.TB, rawResponse, 200)
+	var body db.Body
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
 	return body
 }
 
-func (rt *RestTester) CreateDoc(t *testing.T, docid string) string {
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docid), `{"prop":true}`)
-	RequireStatus(t, response, 201)
+// GetDoc returns the doc body and version for the given docID. If the document is not found, t.Fail will be called.
+func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
+	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
+	RequireStatus(rt.TB, rawResponse, 200)
 	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, true, body["ok"])
-	revid := body["rev"].(string)
-	if revid == "" {
-		t.Fatalf("No revid in response for PUT doc")
+	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
+	var r struct {
+		RevID *string `json:"_rev"`
 	}
-	return revid
+	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &r))
+	return DocVersion{RevID: *r.RevID}, body
 }
 
-func (rt *RestTester) PutDoc(docID string, body string) (response PutDocResponse) {
+// GetDocVersion returns the doc body and version for the given docID and version. If the document is not found, t.Fail will be called.
+func (rt *RestTester) GetDocVersion(docID string, version DocVersion) db.Body {
+	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?rev="+version.RevID, "")
+	RequireStatus(rt.TB, rawResponse, http.StatusOK)
+	var body db.Body
+	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
+	return body
+}
+
+// CreateTestDoc creates a document with an arbitrary body.
+func (rt *RestTester) CreateTestDoc(docid string) DocVersion {
+	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docid), `{"prop":true}`)
+	RequireStatus(rt.TB, response, 201)
+	return DocVersionFromPutResponse(rt.TB, response)
+}
+
+// PutDoc will upsert the document with a given contents.
+func (rt *RestTester) PutDoc(docID string, body string) DocVersion {
 	rawResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), body)
 	RequireStatus(rt.TB, rawResponse, 201)
-	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
-	require.True(rt.TB, response.Ok)
-	require.NotEmpty(rt.TB, response.Rev)
-	return response
+	return DocVersionFromPutResponse(rt.TB, rawResponse)
 }
 
-func (rt *RestTester) UpdateDoc(docID, revID, body string) (response PutDocResponse) {
-	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, revID)
+// UpdateDocRev updates a document at a specific revision and returns the new version. Deprecated for UpdateDoc.
+func (rt *RestTester) UpdateDocRev(docID, revID string, body string) string {
+	version := rt.UpdateDoc(docID, DocVersion{RevID: revID}, body)
+	return version.RevID
+}
+
+// UpdateDoc updates a document at a specific version and returns the new version.
+func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) DocVersion {
+	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, version.RevID)
 	rawResponse := rt.SendAdminRequest(http.MethodPut, resource, body)
 	RequireStatus(rt.TB, rawResponse, http.StatusCreated)
-	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
-	require.True(rt.TB, response.Ok)
-	require.NotEmpty(rt.TB, response.Rev)
-	return response
+	return DocVersionFromPutResponse(rt.TB, rawResponse)
 }
 
-func (rt *RestTester) DeleteDoc(docID, revID string) {
-	RequireStatus(rt.TB, rt.SendAdminRequest(http.MethodDelete,
-		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, revID), ""), http.StatusOK)
+// DeleteDoc deletes a document at a specific version. The test will fail if the revision does not exist.
+func (rt *RestTester) DeleteDoc(docID string, docVersion DocVersion) {
+	_ = rt.DeleteDocReturnVersion(docID, docVersion)
 }
 
-func (rt *RestTester) WaitForRev(docID string, revID string) error {
+// DeleteDocReturnVersion deletes a document at a specific version. The test will fail if the revision does not exist.
+func (rt *RestTester) DeleteDocReturnVersion(docID string, docVersion DocVersion) DocVersion {
+	resp := rt.SendAdminRequest(http.MethodDelete,
+		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, docVersion.RevID), "")
+	RequireStatus(rt.TB, resp, http.StatusOK)
+	return DocVersionFromPutResponse(rt.TB, resp)
+}
+
+// DeleteDocRev removes a document at a specific revision. Deprecated for DeleteDoc.
+func (rt *RestTester) DeleteDocRev(docID, revID string) {
+	rt.DeleteDoc(docID, DocVersion{RevID: revID})
+}
+
+func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
+	var dbroot DatabaseRoot
+	resp := rt.SendAdminRequest("GET", "/"+dbname+"/", "")
+	RequireStatus(rt.TB, resp, 200)
+	require.NoError(rt.TB, base.JSONUnmarshal(resp.BodyBytes(), &dbroot))
+	return dbroot
+}
+
+// WaitForVersion retries a GET for a given document version until it returns 200 or 201 for a given document and revision. If version is not found, the test will fail.
+func (rt *RestTester) WaitForVersion(docID string, version DocVersion) error {
+	require.NotEqual(rt.TB, "", version.RevID)
 	return rt.WaitForCondition(func() bool {
 		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 		if rawResponse.Code != 200 && rawResponse.Code != 201 {
@@ -93,8 +130,13 @@ func (rt *RestTester) WaitForRev(docID string, revID string) error {
 		}
 		var body db.Body
 		require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
-		return body.ExtractRev() == revID
+		return body.ExtractRev() == version.RevID
 	})
+}
+
+// WaitForRev retries a GET until it returns 200 or 201. If revision is not found, the test will fail. This function is deprecated for RestTester.WaitForVersion
+func (rt *RestTester) WaitForRev(docID, revID string) error {
+	return rt.WaitForVersion(docID, DocVersion{RevID: revID})
 }
 
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
@@ -264,9 +306,9 @@ func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) d
 // UpdatePersistedBucketName will update the persisted config bucket name to name specified in parameters
 func (rt *RestTester) UpdatePersistedBucketName(dbConfig *DatabaseConfig, newBucketName *string) (*DatabaseConfig, error) {
 	updatedDbConfig := DatabaseConfig{}
-	_, err := rt.ServerContext().BootstrapContext.UpdateConfig(base.TestCtx(rt.TB), *dbConfig.Bucket, rt.ServerContext().Config.Bootstrap.ConfigGroupID, dbConfig.Name, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+	_, err := rt.ServerContext().BootstrapContext.UpdateConfig(base.TestCtx(rt.TB), *dbConfig.Bucket, rt.ServerContext().Config.Bootstrap.ConfigGroupID, dbConfig.Name, func(_ *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 
-		bucketDbConfig = dbConfig
+		bucketDbConfig := dbConfig
 		bucketDbConfig.Bucket = newBucketName
 
 		return bucketDbConfig, nil
@@ -351,4 +393,19 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 		passiveTestBucket.Close(ctx)
 	}
 	return activeRT, passiveRT, passiveDBURL.String(), teardown
+}
+
+// TakeDbOffline takes the database offline.
+func (rt *RestTester) TakeDbOffline() {
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
+	RequireStatus(rt.TB, resp, http.StatusOK)
+	require.Equal(rt.TB, db.DBOffline, atomic.LoadUint32(&rt.GetDatabase().State))
+}
+
+// RequireDbOnline asserts that the state of the database is online
+func (rt *RestTester) RequireDbOnline() {
+	response := rt.SendAdminRequest("GET", "/{{.db}}/", "")
+	var body db.Body
+	require.NoError(rt.TB, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	require.Equal(rt.TB, "Online", body["state"].(string))
 }

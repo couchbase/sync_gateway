@@ -51,6 +51,7 @@ import (
 type RestTesterConfig struct {
 	GuestEnabled                    bool                        // If this is true, Admin Party is in full effect
 	SyncFn                          string                      // put the sync() function source in here (optional)
+	ImportFilter                    string                      // put the import filter function source in here (optional)
 	DatabaseConfig                  *DatabaseConfig             // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	MutateStartupConfig             func(config *StartupConfig) // Function to mutate the startup configuration before the server context gets created. This overrides options the RT sets.
 	InitSyncSeq                     uint64                      // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
@@ -105,6 +106,16 @@ const RestTesterDefaultUserPassword = "letmein"
 // NewRestTester returns a rest tester and corresponding keyspace backed by a single database and a single collection. This collection may be named or default collection based on global test configuration.
 func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	return newRestTester(tb, restConfig, useSingleCollection, 1)
+}
+
+// NewRestTesterPersistentConfig returns a rest tester with persistent config setup and a single database. A convenience function for NewRestTester.
+func NewRestTesterPersistentConfig(tb testing.TB) *RestTester {
+	config := &RestTesterConfig{
+		PersistentConfig: true,
+	}
+	rt := newRestTester(tb, config, useSingleCollection, 1)
+	RequireStatus(tb, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	return rt
 }
 
 // newRestTester creates the underlying rest testers, use public functions.
@@ -301,11 +312,15 @@ func (rt *RestTester) Bucket() base.Bucket {
 			// If scopes is already set, assume the caller has a plan
 			if rt.DatabaseConfig.Scopes == nil {
 				// Configure non default collections by default
-				var syncFn *string
-				if rt.SyncFn != "" {
-					syncFn = base.StringPtr(rt.SyncFn)
-				}
-				rt.DatabaseConfig.Scopes = GetCollectionsConfigWithSyncFn(rt.TB, testBucket, syncFn, rt.numCollections)
+				rt.DatabaseConfig.Scopes = GetCollectionsConfigWithFiltering(rt.TB, testBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
+			}
+		} else {
+			// override SyncFn and ImportFilter if set
+			if rt.SyncFn != "" {
+				rt.DatabaseConfig.Sync = &rt.SyncFn
+			}
+			if rt.ImportFilter != "" {
+				rt.DatabaseConfig.ImportFilter = &rt.ImportFilter
 			}
 		}
 
@@ -322,7 +337,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.Name == "" {
 			rt.DatabaseConfig.Name = "db"
 		}
-		rt.DatabaseConfig.Sync = &rt.SyncFn
 		rt.DatabaseConfig.EnableXattrs = &useXattrs
 		if rt.EnableNoConflictsMode {
 			boolVal := false
@@ -373,18 +387,22 @@ func (rt *RestTester) MetadataStore() base.DataStore {
 
 // GetCollectionsConfig sets up a ScopesConfig from a TestBucket for use with non default collections.
 func GetCollectionsConfig(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesConfig {
-	return GetCollectionsConfigWithSyncFn(t, testBucket, nil, numCollections)
+	return GetCollectionsConfigWithFiltering(t, testBucket, numCollections, nil, nil)
 }
 
-// GetCollectionsConfigWithSyncFn sets up a ScopesConfig from a TestBucket for use with non default collections. The sync function will be passed for all collections.
-func GetCollectionsConfigWithSyncFn(t testing.TB, testBucket *base.TestBucket, syncFn *string, numCollections int) ScopesConfig {
+// GetCollectionsConfigWithFiltering sets up a ScopesConfig from a TestBucket for use with non default collections. The sync function will be passed for all collections.
+func GetCollectionsConfigWithFiltering(t testing.TB, testBucket *base.TestBucket, numCollections int, syncFn *string, importFilter *string) ScopesConfig {
 	// Get a datastore as provided by the test
 	stores := testBucket.GetNonDefaultDatastoreNames()
 	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
-	defaultCollectionConfig := CollectionConfig{}
+	defaultCollectionConfig := &CollectionConfig{}
 	if syncFn != nil {
 		defaultCollectionConfig.SyncFn = syncFn
 	}
+	if importFilter != nil {
+		defaultCollectionConfig.ImportFilter = importFilter
+	}
+
 	scopesConfig := ScopesConfig{}
 	for i := 0; i < numCollections; i++ {
 		dataStoreName := stores[i]
@@ -396,7 +414,7 @@ func GetCollectionsConfigWithSyncFn(t testing.TB, testBucket *base.TestBucket, s
 			}
 		} else {
 			scopesConfig[dataStoreName.ScopeName()] = ScopeConfig{
-				Collections: map[string]CollectionConfig{
+				Collections: map[string]*CollectionConfig{
 					dataStoreName.CollectionName(): defaultCollectionConfig,
 				}}
 		}
@@ -632,14 +650,18 @@ func (rt *RestTester) templateResource(resource string) (string, error) {
 				data[dbPrefix] = database.Name
 			}
 			if len(database.CollectionByID) == 1 {
-				data["keyspace"] = rt.GetSingleKeyspace()
-			} else {
-				for j, keyspace := range getKeyspaces(rt.TB, database) {
-					if !multipleDatabases {
-						data[fmt.Sprintf("keyspace%d", j+1)] = keyspace
-					} else {
-						data[fmt.Sprintf("db%dkeyspace%d", i+1, j+1)] = keyspace
-					}
+				if multipleDatabases {
+					data[fmt.Sprintf("db%dkeyspace", i+1)] = getKeyspaces(rt.TB, database)[0]
+				} else {
+					data["keyspace"] = rt.GetSingleKeyspace()
+				}
+				continue
+			}
+			for j, keyspace := range getKeyspaces(rt.TB, database) {
+				if !multipleDatabases {
+					data[fmt.Sprintf("keyspace%d", j+1)] = keyspace
+				} else {
+					data[fmt.Sprintf("db%dkeyspace%d", i+1, j+1)] = keyspace
 				}
 			}
 		}
@@ -666,9 +688,7 @@ func (rt *RestTester) mustTemplateResource(resource string) string {
 }
 
 func (rt *RestTester) SendAdminRequestWithAuth(method, resource string, body string, username string, password string) *TestResponse {
-	input := bytes.NewBufferString(body)
-	request, err := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)
-	require.NoError(rt.TB, err)
+	request := Request(method, rt.mustTemplateResource(resource), body)
 
 	request.SetBasicAuth(username, password)
 
@@ -829,9 +849,7 @@ func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRe
 }
 
 func (rt *RestTester) SendAdminRequest(method, resource, body string) *TestResponse {
-	input := bytes.NewBufferString(body)
-	request, err := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)
-	require.NoError(rt.TB, err)
+	request := Request(method, rt.mustTemplateResource(resource), body)
 
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
@@ -973,8 +991,7 @@ func (rt *RestTester) WaitForDatabaseState(dbName string, targetState uint32) er
 }
 
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
-	input := bytes.NewBufferString(body)
-	request, _ := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)
+	request := Request(method, rt.mustTemplateResource(resource), body)
 	for k, v := range headers {
 		request.Header.Set(k, v)
 	}
@@ -2258,7 +2275,7 @@ func WaitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...
 	}
 }
 
-func WaitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+func WaitAndAssertCondition(t testing.TB, fn func() bool, failureMsgAndArgs ...interface{}) {
 	t.Helper()
 	t.Log("starting WaitAndAssertCondition")
 	for i := 0; i <= 20; i++ {
@@ -2310,13 +2327,61 @@ func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.Backgro
 
 // RespRevID returns a rev ID from the given response, or fails the given test if a rev ID was not found.
 func RespRevID(t *testing.T, response *TestResponse) (revID string) {
+	revision := DocVersionFromPutResponse(t, response)
+	return revision.RevID
+}
+
+// DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
+type DocVersion struct {
+	RevID string
+}
+
+func (v *DocVersion) String() string {
+	return fmt.Sprintf("RevID: %s", v.RevID)
+}
+
+func (v DocVersion) Equal(o DocVersion) bool {
+	if v.RevID != o.RevID {
+		return false
+	}
+	return true
+}
+
+// Digest returns the digest for the current version
+func (v DocVersion) Digest() string {
+	return strings.Split(v.RevID, "-")[1]
+}
+
+// RequireDocVersionNotNil calls t.Fail if two document version is not specified.
+func RequireDocVersionNotNil(t *testing.T, version DocVersion) {
+	require.NotEqual(t, "", version.RevID)
+}
+
+// RequireDocVersionEqual calls t.Fail if two document versions are not equal.
+func RequireDocVersionEqual(t *testing.T, expected, actual DocVersion) {
+	require.True(t, expected.Equal(actual), "Versions mismatch.  Expected: %s, Actual: %s", expected, actual)
+}
+
+// RequireDocVersionNotEqual calls t.Fail if two document versions are equal.
+func RequireDocVersionNotEqual(t *testing.T, expected, actual DocVersion) {
+	require.False(t, expected.Equal(actual), "Versions match. Version should not be %s", expected)
+}
+
+// EmptyDocVersion reprents an empty document version.
+func EmptyDocVersion() DocVersion {
+	return DocVersion{RevID: ""}
+}
+
+// DocVersionFromPutResponse returns a DocRevisionID from the given response to PUT /{, or fails the given test if a rev ID was not found.
+func DocVersionFromPutResponse(t testing.TB, response *TestResponse) DocVersion {
 	var r struct {
+		DocID *string `json:"id"`
 		RevID *string `json:"rev"`
 	}
-	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r), "couldn't decode JSON from response body")
+	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r))
 	require.NotNil(t, r.RevID, "expecting non-nil rev ID from response: %s", string(response.BodyBytes()))
 	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
-	return *r.RevID
+	return DocVersion{RevID: *r.RevID}
 }
 
 func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {
@@ -2481,6 +2546,7 @@ func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int
 	return changesResponse
 }
 
+// NewDbConfig returns a DbConfig for the given RestTester. This sets up a config appropriate to collections, xattrs, import filter and sync function.
 func (rt *RestTester) NewDbConfig() DbConfig {
 	// make sure bucket has been initialized
 	config := DbConfig{
@@ -2496,14 +2562,21 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	}
 	// Setup scopes.
 	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || (config.UseViews != nil && !*config.UseViews)) {
-		var syncFn *string
-		if rt.SyncFn != "" {
-			syncFn = base.StringPtr(rt.SyncFn)
-		}
-		config.Scopes = GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, syncFn, rt.numCollections)
+		config.Scopes = GetCollectionsConfigWithFiltering(rt.TB, rt.TestBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
+	} else {
+		config.Sync = stringPtrOrNil(rt.SyncFn)
+		config.ImportFilter = stringPtrOrNil(rt.ImportFilter)
 	}
 
 	return config
+}
+
+// stringPtrOrNil returns a stringPtr for the given string, or nil if the string is empty
+func stringPtrOrNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return base.StringPtr(s)
 }
 
 func DropAllTestIndexes(t *testing.T, tb *base.TestBucket) {

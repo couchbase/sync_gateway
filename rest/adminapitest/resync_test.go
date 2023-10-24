@@ -34,7 +34,7 @@ func TestResyncRollback(t *testing.T) {
 
 	numDocs := 10
 	for i := 0; i < numDocs; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%v", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%v", i))
 	}
 	assert.Equal(t, int64(numDocs), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 

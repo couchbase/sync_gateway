@@ -603,7 +603,7 @@ func TestSetTestLogging(t *testing.T) {
 
 	cleanup()
 	assert.Equal(t, LevelInfo, *consoleLogger.LogLevel)
-	assert.Equal(t, *logKeyMask(KeyHTTP), *consoleLogger.LogKeyMask)
+	require.Equal(t, *logKeyMask(KeyHTTP), *consoleLogger.LogKeyMask)
 
 	cleanup = setTestLogging(LevelNone, "", KeyNone)
 	assert.Equal(t, LevelNone, *consoleLogger.LogLevel)
@@ -611,7 +611,7 @@ func TestSetTestLogging(t *testing.T) {
 
 	cleanup()
 	assert.Equal(t, LevelInfo, *consoleLogger.LogLevel)
-	assert.Equal(t, *logKeyMask(KeyHTTP), *consoleLogger.LogKeyMask)
+	require.Equal(t, *logKeyMask(KeyHTTP), *consoleLogger.LogKeyMask)
 
 	cleanup = setTestLogging(LevelDebug, "", KeyDCP, KeySync)
 	assert.Equal(t, LevelDebug, *consoleLogger.LogLevel)

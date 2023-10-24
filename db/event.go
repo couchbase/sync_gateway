@@ -153,8 +153,6 @@ type JSEventFunction struct {
 }
 
 func NewJSEventFunction(ctx context.Context, fnSource string) *JSEventFunction {
-
-	base.InfofCtx(ctx, base.KeyEvents, "Creating new JSEventFunction")
 	return &JSEventFunction{
 		JSServer: sgbucket.NewJSServer(ctx, fnSource, 0, kTaskCacheSize,
 			func(ctx context.Context, fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {

@@ -44,8 +44,8 @@ type ChannelCache interface {
 	// Notifies the cache of a principal update.  Updates the cache's high sequence
 	AddPrincipal(change *LogEntry)
 
-	// Notifies the cache of a skipped sequence update. Updates the cache's high sequence
-	AddSkippedSequence(change *LogEntry)
+	// Notifies the cache of an unused sequence update. Updates the cache's high sequence
+	AddUnusedSequence(change *LogEntry)
 
 	// Remove purges the given doc IDs from all channel caches and returns the number of items removed.
 	Remove(ctx context.Context, collectionID uint32, docIDs []string, startTime time.Time) (count int)
@@ -186,8 +186,8 @@ func (c *channelCacheImpl) AddPrincipal(change *LogEntry) {
 	c.updateHighCacheSequence(change.Sequence)
 }
 
-// AddSkipedSequence notifies the cache of a skipped sequence update. Updates the cache's high sequence
-func (c *channelCacheImpl) AddSkippedSequence(change *LogEntry) {
+// Add unused Sequence notifies the cache of an unused sequence update. Updates the cache's high sequence
+func (c *channelCacheImpl) AddUnusedSequence(change *LogEntry) {
 	c.updateHighCacheSequence(change.Sequence)
 }
 

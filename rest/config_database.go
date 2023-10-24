@@ -102,7 +102,7 @@ func DefaultPerDBLogging(bootstrapLoggingCnf base.LoggingConfig) *DbLoggingConfi
 // MergeDatabaseConfigWithDefaults merges the passed in config onto a DefaultDbConfig which results in returned value
 // being populated with defaults when not set
 func MergeDatabaseConfigWithDefaults(sc *StartupConfig, dbConfig *DbConfig) (*DbConfig, error) {
-	defaultDbConfig := DefaultDbConfig(sc)
+	defaultDbConfig := DefaultDbConfig(sc, dbConfig.UseXattrs())
 
 	err := base.ConfigMerge(defaultDbConfig, dbConfig)
 	if err != nil {
@@ -115,11 +115,7 @@ func MergeDatabaseConfigWithDefaults(sc *StartupConfig, dbConfig *DbConfig) (*Db
 // DefaultDbConfig provides a DbConfig with all the default values populated. Used with MergeDatabaseConfigWithDefaults
 // to provide defaults to  include_runtime config endpoints.
 // Note that this does not include unsupported options
-func DefaultDbConfig(sc *StartupConfig) *DbConfig {
-	var partitions *uint16
-	if base.IsEnterpriseEdition() {
-		partitions = base.Uint16Ptr(base.GetDefaultImportPartitions(sc.IsServerless()))
-	}
+func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 	dbConfig := DbConfig{
 		BucketConfig:       BucketConfig{},
 		Name:               "",
@@ -127,8 +123,6 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 		Users:              nil,
 		Roles:              nil,
 		RevsLimit:          nil, // Set this below struct
-		AutoImport:         base.BoolPtr(base.DefaultAutoImport),
-		ImportPartitions:   partitions,
 		ImportFilter:       nil,
 		ImportBackupOldRev: base.BoolPtr(false),
 		EventHandlers:      nil,
@@ -182,6 +176,16 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 		JavascriptTimeoutSecs:            base.Uint32Ptr(base.DefaultJavascriptTimeoutSecs),
 		Suspendable:                      base.BoolPtr(sc.IsServerless()),
 		Logging:                          DefaultPerDBLogging(sc.Logging),
+	}
+
+	if useXattrs {
+		dbConfig.AutoImport = base.BoolPtr(base.DefaultAutoImport)
+		if base.IsEnterpriseEdition() {
+			dbConfig.ImportPartitions = base.Uint16Ptr(base.GetDefaultImportPartitions(sc.IsServerless()))
+		}
+
+	} else {
+		dbConfig.AutoImport = base.BoolPtr(false)
 	}
 
 	revsLimit := db.DefaultRevsLimitNoConflicts

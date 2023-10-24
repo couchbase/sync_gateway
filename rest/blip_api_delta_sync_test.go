@@ -51,13 +51,13 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	defer btc.Close()
 
 	// Push first rev
-	revID, err := btc.PushRev(docID, "", []byte(`{"key":"val"}`))
+	version, err := btc.PushRev(docID, EmptyDocVersion(), []byte(`{"key":"val"}`))
 	require.NoError(t, err)
 
 	// Push second rev with an attachment (no delta yet)
 	attData := base64.StdEncoding.EncodeToString([]byte("attach"))
 
-	revID, err = btc.PushRev(docID, revID, []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"`+attData+`"}}}`))
+	version, err = btc.PushRev(docID, version, []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"`+attData+`"}}}`))
 	require.NoError(t, err)
 
 	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
@@ -71,13 +71,13 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	btc.ClientDeltas = true
 
 	// Get existing body with the stub attachment, insert a new property and push as delta.
-	body, found := btc.GetRev(docID, revID)
+	body, found := btc.GetRev(docID, version.RevID)
 	require.True(t, found)
 
 	newBody, err := base.InjectJSONPropertiesFromBytes(body, base.KVPairBytes{Key: "update", Val: []byte(`true`)})
 	require.NoError(t, err)
 
-	_, err = btc.PushRev(docID, revID, newBody)
+	_, err = btc.PushRev(docID, version, newBody)
 	require.NoError(t, err)
 
 	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
@@ -122,33 +122,25 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 
 	// Create doc1 rev 1-77d9041e49931ceef58a1eef5fd032e8 on SG with an attachment
 	bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, bodyText)
-	assert.Equal(t, http.StatusCreated, response.Code)
-
-	// Wait for the document to be replicated at the client
-	revId := RespRevID(t, response)
-	data, ok := btc.WaitForRev(docID, revId)
+	version := rt.PutDoc(docID, bodyText)
+	data, ok := btc.WaitForVersion(docID, version)
 	assert.True(t, ok)
+
 	bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 	require.JSONEq(t, bodyTextExpected, string(data))
 
 	// Update the replicated doc at client by adding another attachment.
 	bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="},"world.txt":{"data":"bGVsbG8gd29ybGQ="}}}`
-	revId, err = btc.PushRev(docID, revId, []byte(bodyText))
+	version, err = btc.PushRev(docID, version, []byte(bodyText))
 	require.NoError(t, err)
-	assert.Equal(t, "2-abc", revId)
 
 	// Wait for the document to be replicated at SG
 	_, ok = btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
-	assert.Equal(t, http.StatusOK, resp.Code)
-	var respBody db.Body
-	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
+	respBody := rt.GetDocVersion(docID, version)
 
 	assert.Equal(t, docID, respBody[db.BodyId])
-	assert.Equal(t, "2-abc", respBody[db.BodyRev])
 	greetings := respBody["greetings"].([]interface{})
 	assert.Len(t, greetings, 1)
 	assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[0])
@@ -848,16 +840,15 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
-	assert.Equal(t, http.StatusCreated, resp.Code)
+	const docID = "doc1"
+	version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
-	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+	data, ok := client.WaitForVersion(docID, version)
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 	// create doc1 rev 2-abc on client
-	newRev, err := client.PushRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
+	newRev, err := client.PushRev(docID, version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 	assert.NoError(t, err)
-	assert.Equal(t, "2-abc", newRev)
 
 	// Check EE is delta, and CE is full-body replication
 	msg, found := client.waitForReplicationMessage(collection, 2)
@@ -885,12 +876,8 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
 	}
 
-	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc1?rev="+newRev, "")
-	assert.Equal(t, http.StatusOK, resp.Code)
-	var respBody db.Body
-	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
+	respBody := rt.GetDocVersion(docID, newRev)
 	assert.Equal(t, "doc1", respBody[db.BodyId])
-	assert.Equal(t, "2-abc", respBody[db.BodyRev])
 	greetings := respBody["greetings"].([]interface{})
 	assert.Len(t, greetings, 3)
 	assert.Equal(t, map[string]interface{}{"hello": "world!"}, greetings[0])
@@ -898,10 +885,9 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"howdy": "bob"}, greetings[2])
 
 	// tombstone doc1 (gets rev 3-f3be6c85e0362153005dae6f08fc68bb)
-	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev="+newRev, "")
-	assert.Equal(t, http.StatusOK, resp.Code)
+	deletedVersion := rt.DeleteDocReturnVersion(docID, newRev)
 
-	data, ok = client.WaitForRev("doc1", "3-fcc2db8cdbf1831799b7a39bb57edd71")
+	data, ok = client.WaitForVersion(docID, deletedVersion)
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
 
@@ -911,19 +897,17 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		deltaPushDocCountStart = rt.GetDatabase().DbStats.DeltaSync().DeltaPushDocCount.Value()
 	}
 
-	revID, err := client.PushRev("doc1", "3-fcc2db8cdbf1831799b7a39bb57edd71", []byte(`{"undelete":true}`))
+	_, err = client.PushRev(docID, deletedVersion, []byte(`{"undelete":true}`))
 
 	if base.IsEnterpriseEdition() {
 		// Now make the client push up a delta that has the parent of the tombstone.
 		// This is not a valid scenario, and is actively prevented on the CBL side.
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "Can't use delta. Found tombstone for doc")
-		assert.Equal(t, "", revID)
 	} else {
 		// Pushing a full body revision on top of a tombstone is valid.
 		// CBL clients should fall back to this. The test client doesn't.
 		assert.NoError(t, err)
-		assert.Equal(t, "4-abc", revID)
 	}
 
 	var deltaPushDocCountEnd int64
@@ -961,16 +945,15 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
-	assert.Equal(t, http.StatusCreated, resp.Code)
+	const docID = "doc1"
+	version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
-	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+	data, ok := client.WaitForVersion(docID, version)
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 	// create doc1 rev 2-abcxyz on client
-	newRev, err := client.PushRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
+	newRev, err := client.PushRev(docID, version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 	assert.NoError(t, err)
-	assert.Equal(t, "2-abc", newRev)
 	// Check EE is delta, and CE is full-body replication
 	msg, found := client.waitForReplicationMessage(collection, 2)
 	assert.True(t, found)
@@ -983,7 +966,6 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	assert.NotEqual(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
 
-	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc1?rev="+newRev, "")
-	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.Contains(t, resp.Body.String(), `{"howdy":"bob"}`)
+	body := rt.GetDocVersion("doc1", newRev)
+	require.Equal(t, "bob", body["greetings"].([]interface{})[2].(map[string]interface{})["howdy"])
 }

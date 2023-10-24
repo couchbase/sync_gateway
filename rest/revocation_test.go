@@ -839,7 +839,8 @@ func TestEnsureRevocationAfterDocMutation(t *testing.T) {
 
 	// Skip to seq 4 Create doc channel A
 	revocationTester.fillToSeq(4)
-	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
+	const docID = "doc"
+	version := rt.PutDoc(docID, `{"channels": "A"}`)
 
 	// Skip to seq 10 then do pull since 4 to get doc
 	revocationTester.fillToSeq(10)
@@ -852,7 +853,7 @@ func TestEnsureRevocationAfterDocMutation(t *testing.T) {
 
 	// Skip to seq 19 and then update doc foo
 	revocationTester.fillToSeq(19)
-	_ = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A"})
+	_ = rt.UpdateDoc(docID, version, `{"channels": "A"}`)
 	err := rt.WaitForPendingChanges()
 	require.NoError(t, err)
 
@@ -874,7 +875,8 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 
 	// Skip to seq 4 Create doc channel A
 	revocationTester.fillToSeq(4)
-	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
+	const docID = "doc"
+	version := rt.PutDoc(docID, `{"channels": "A"}`)
 
 	// Do pull to get doc
 	changes := revocationTester.getChanges(4, 1)
@@ -885,8 +887,8 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 	revocationTester.removeRoleChannel("foo", "A")
 
 	// Remove doc from A and re-add
-	revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{})
-	_ = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A"})
+	version = rt.UpdateDoc(docID, version, "{}")
+	_ = rt.UpdateDoc(docID, version, `{"channels": "A"}`)
 
 	changes = revocationTester.getChanges(5, 1)
 	assert.Equal(t, "8:10", changes.Last_Seq)
@@ -968,20 +970,22 @@ func TestRevocationMutationMovesIntoRevokedChannel(t *testing.T) {
 	revocationTester.addRoleChannel("foo", "A")
 
 	revocationTester.fillToSeq(4)
-	docRevID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{}})
-	doc2RevID := rt.CreateDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"A"}})
+	const docID = "doc"
+	const doc2ID = "doc2"
+	docVersion := rt.PutDoc(docID, `{"channels": []}`)
+	doc2Version := rt.PutDoc(doc2ID, `{"channels": ["A"]}`)
 
 	changes := revocationTester.getChanges(0, 2)
 	assert.Len(t, changes.Results, 2)
-	assert.Equal(t, "doc2", changes.Results[1].ID)
+	assert.Equal(t, doc2ID, changes.Results[1].ID)
 
 	revocationTester.removeRole("user", "foo")
-	_ = rt.CreateDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{"A"}})
-	_ = rt.CreateDocReturnRev(t, "doc2", doc2RevID, map[string]interface{}{"channels": []string{"A"}, "val": "mutate"})
+	_ = rt.UpdateDoc(docID, docVersion, `{"channels": ["A"]}`)
+	_ = rt.UpdateDoc(doc2ID, doc2Version, `{"channels": ["A"], "val": "mutate"}`)
 
 	changes = revocationTester.getChanges(6, 1)
 	assert.Len(t, changes.Results, 1)
-	assert.Equal(t, "doc2", changes.Results[0].ID)
+	assert.Equal(t, doc2ID, changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
 }
 
@@ -1001,8 +1005,10 @@ func TestRevocationResumeAndLowSeqCheck(t *testing.T) {
 	revocationTester.addRoleChannel("foo2", "ch2")
 
 	revocationTester.fillToSeq(9)
-	revIDDoc := rt.CreateDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": []string{"ch1"}})
-	revIDDoc2 := rt.CreateDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"ch2"}})
+	const doc1ID = "doc1"
+	const doc2ID = "doc2"
+	doc1Version := rt.PutDoc(doc1ID, `{"channels": ["ch1"]}`)
+	doc2Version := rt.PutDoc(doc2ID, `{"channels": ["ch2"]}`)
 
 	changes := revocationTester.getChanges(0, 3)
 
@@ -1013,21 +1019,21 @@ func TestRevocationResumeAndLowSeqCheck(t *testing.T) {
 	revocationTester.removeRoleChannel("foo2", "ch2")
 
 	revocationTester.fillToSeq(39)
-	revIDDoc = rt.CreateDocReturnRev(t, "doc1", revIDDoc, map[string]interface{}{"channels": []string{"ch1"}, "val": "mutate"})
+	doc1Version = rt.UpdateDoc(doc1ID, doc1Version, `{"channels": ["ch1"], "val": "mutate"}`)
 
 	revocationTester.fillToSeq(49)
-	revIDDoc2 = rt.CreateDocReturnRev(t, "doc2", revIDDoc2, map[string]interface{}{"channels": []string{"ch2"}, "val": "mutate"})
+	doc2Version = rt.UpdateDoc(doc2ID, doc2Version, `{"channels": ["ch2"], "val": "mutate"}`)
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 2)
-	assert.Equal(t, "doc1", changes.Results[0].ID)
-	assert.Equal(t, revIDDoc, changes.Results[0].Changes[0]["rev"])
+	assert.Equal(t, doc1ID, changes.Results[0].ID)
+	assert.Equal(t, doc1Version.RevID, changes.Results[0].Changes[0]["rev"])
 	assert.True(t, changes.Results[0].Revoked)
-	assert.Equal(t, "doc2", changes.Results[1].ID)
-	assert.Equal(t, revIDDoc2, changes.Results[1].Changes[0]["rev"])
+	assert.Equal(t, doc2ID, changes.Results[1].ID)
+	assert.Equal(t, doc2Version.RevID, changes.Results[1].Changes[0]["rev"])
 	assert.True(t, changes.Results[1].Revoked)
 
 	changes = revocationTester.getChanges("20:40", 1)
-	assert.Equal(t, "doc2", changes.Results[0].ID)
+	assert.Equal(t, doc2ID, changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
 
 	// Check no results with 60
@@ -1035,7 +1041,7 @@ func TestRevocationResumeAndLowSeqCheck(t *testing.T) {
 
 	// Ensure 11 low sequence means we get revocations from that far back
 	changes = revocationTester.getChanges("20:0:60", 1)
-	assert.Equal(t, "doc2", changes.Results[0].ID)
+	assert.Equal(t, doc2ID, changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
 
 }
@@ -1051,8 +1057,10 @@ func TestRevocationResumeSameRoleAndLowSeqCheck(t *testing.T) {
 	revocationTester.addRoleChannel("foo", "ch2")
 
 	revocationTester.fillToSeq(9)
-	revIDDoc := rt.CreateDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": []string{"ch1"}})
-	revIDDoc2 := rt.CreateDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"ch2"}})
+	const doc1ID = "doc1"
+	const doc2ID = "doc2"
+	doc1Version := rt.PutDoc(doc1ID, `{"channels": ["ch1"]}`)
+	doc2Version := rt.PutDoc(doc2ID, `{"channels": ["ch2"]}`)
 
 	changes := revocationTester.getChanges(0, 3)
 
@@ -1063,19 +1071,19 @@ func TestRevocationResumeSameRoleAndLowSeqCheck(t *testing.T) {
 	revocationTester.removeRoleChannel("foo", "ch2")
 
 	revocationTester.fillToSeq(39)
-	_ = rt.CreateDocReturnRev(t, "doc1", revIDDoc, map[string]interface{}{"channels": []string{"ch1"}, "val": "mutate"})
+	_ = rt.UpdateDoc(doc1ID, doc1Version, `{"channels": ["ch1"], "val": "mutate"}`)
 
 	revocationTester.fillToSeq(49)
-	_ = rt.CreateDocReturnRev(t, "doc2", revIDDoc2, map[string]interface{}{"channels": []string{"ch2"}, "val": "mutate"})
+	_ = rt.UpdateDoc(doc2ID, doc2Version, `{"channels": ["ch2"], "val": "mutate"}`)
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 2)
-	assert.Equal(t, "doc1", changes.Results[0].ID)
+	assert.Equal(t, doc1ID, changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
-	assert.Equal(t, "doc2", changes.Results[1].ID)
+	assert.Equal(t, doc2ID, changes.Results[1].ID)
 	assert.True(t, changes.Results[1].Revoked)
 
 	changes = revocationTester.getChanges("20:40", 1)
-	assert.Equal(t, "doc2", changes.Results[0].ID)
+	assert.Equal(t, doc2ID, changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
 
 	// Check no results with 60
@@ -1083,9 +1091,9 @@ func TestRevocationResumeSameRoleAndLowSeqCheck(t *testing.T) {
 
 	// Ensure 11 low sequence means we get revocations from that far back
 	changes = revocationTester.getChanges("11:0:60", 2)
-	assert.Equal(t, "doc1", changes.Results[0].ID)
+	assert.Equal(t, doc1ID, changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
-	assert.Equal(t, "doc2", changes.Results[1].ID)
+	assert.Equal(t, doc2ID, changes.Results[1].ID)
 	assert.True(t, changes.Results[1].Revoked)
 }
 
@@ -1111,9 +1119,9 @@ func TestRevocationsWithQueryLimit(t *testing.T) {
 	revocationTester.addRoleChannel("foo", "ch1")
 
 	revocationTester.fillToSeq(9)
-	_ = rt.CreateDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": []string{"ch1"}})
-	_ = rt.CreateDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"ch1"}})
-	_ = rt.CreateDocReturnRev(t, "doc3", "", map[string]interface{}{"channels": []string{"ch1"}})
+	_ = rt.PutDoc("doc1", `{"channels": ["ch1"]}`)
+	_ = rt.PutDoc("doc2", `{"channels": ["ch1"]}`)
+	_ = rt.PutDoc("doc3", `{"channels": ["ch1"]}`)
 
 	changes := revocationTester.getChanges("0", 4)
 
@@ -1154,9 +1162,9 @@ func TestRevocationsWithQueryLimit2Channels(t *testing.T) {
 	revocationTester.addUserChannel("user", "ch2")
 
 	revocationTester.fillToSeq(9)
-	_ = rt.CreateDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": []string{"ch1", "ch2"}})
-	_ = rt.CreateDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"ch1", "ch2"}})
-	_ = rt.CreateDocReturnRev(t, "doc3", "", map[string]interface{}{"channels": []string{"ch1", "ch2"}})
+	_ = rt.PutDoc("doc1", `{"channels": ["ch1", "ch2"]}`)
+	_ = rt.PutDoc("doc2", `{"channels": ["ch1", "ch2"]}`)
+	_ = rt.PutDoc("doc3", `{"channels": ["ch1", "ch2"]}`)
 
 	changes := revocationTester.getChanges("0", 4)
 
@@ -1200,9 +1208,9 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 	revocationTester.addRoleChannel("foo", "ch1")
 
 	revocationTester.fillToSeq(9)
-	_ = rt.CreateDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": []string{"ch1"}})
-	_ = rt.CreateDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"ch1"}})
-	_ = rt.CreateDocReturnRev(t, "doc3", "", map[string]interface{}{"channels": []string{"ch1"}})
+	_ = rt.PutDoc("doc1", `{"channels": ["ch1"]}`)
+	_ = rt.PutDoc("doc2", `{"channels": ["ch1"]}`)
+	_ = rt.PutDoc("doc3", `{"channels": ["ch1"]}`)
 
 	changes := revocationTester.getChanges("0", 4)
 
@@ -1231,6 +1239,9 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 }
 
 func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip test with LeakyBucket dependency when running in integration")
+	}
 
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -1285,7 +1296,8 @@ func TestWasDocInChannelAtSeq(t *testing.T) {
 	revocationTester.addRoleChannel("foo", "a")
 	revocationTester.addRoleChannel("foo", "c")
 
-	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"a"}})
+	const docID = "doc"
+	version := rt.PutDoc(docID, `{"channels": ["a"]}`)
 
 	changes := revocationTester.getChanges(0, 2)
 	assert.Len(t, changes.Results, 2)
@@ -1293,19 +1305,20 @@ func TestWasDocInChannelAtSeq(t *testing.T) {
 	revocationTester.removeRoleChannel("foo", "a")
 	revocationTester.removeRoleChannel("foo", "c")
 
-	_ = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": []string{}})
-	_ = rt.CreateDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"b", "a"}})
+	_ = rt.UpdateDoc(docID, version, `{"channels": []}`)
+	_ = rt.PutDoc("doc2", `{"channels": ["b", "a"]}`)
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)
 
 	revocationTester.addRoleChannel("foo", "c")
-	doc3Rev := rt.CreateDocReturnRev(t, "doc3", "", map[string]interface{}{"channels": []string{"c"}})
+	const doc3ID = "doc3"
+	doc3Version := rt.PutDoc(doc3ID, `{"channels": ["c"]}`)
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)
 
 	revocationTester.removeRoleChannel("foo", "c")
-	_ = rt.CreateDocReturnRev(t, "doc3", doc3Rev, map[string]interface{}{"channels": []string{"c"}})
+	_ = rt.UpdateDoc(doc3ID, doc3Version, `{"channels": ["c"]}`)
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)
 }
@@ -1318,12 +1331,13 @@ func TestChannelGrantedPeriods(t *testing.T) {
 	defer rt.Close()
 
 	revocationTester.addUserChannel("user", "a")
-	revId := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"a"}})
+	const docID = "doc"
+	version := rt.PutDoc(docID, `{"channels": ["a"]}`)
 	changes := revocationTester.getChanges(0, 2)
 	assert.Len(t, changes.Results, 2)
 
 	revocationTester.removeUserChannel("user", "a")
-	revId = rt.CreateDocReturnRev(t, "doc", revId, map[string]interface{}{"mutate": "mutate", "channels": []string{"a"}})
+	version = rt.UpdateDoc(docID, version, `{"mutate": "mutate", "channels": ["a"]}`)
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)
 
@@ -1332,23 +1346,23 @@ func TestChannelGrantedPeriods(t *testing.T) {
 	assert.Len(t, changes.Results, 1)
 
 	revocationTester.removeUserChannel("user", "a")
-	revId = rt.CreateDocReturnRev(t, "doc", revId, map[string]interface{}{"mutate": "mutate2", "channels": []string{"a"}})
+	version = rt.UpdateDoc(docID, version, `{"mutate": "mutate2", "channels": ["a"]}`)
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)
 
 	revocationTester.addUserChannel("user", "a")
-	revId = rt.CreateDocReturnRev(t, "doc", revId, map[string]interface{}{"mutate": "mutate3", "channels": []string{"a"}})
+	version = rt.UpdateDoc(docID, version, `{"mutate": "mutate3", "channels": ["a"]}`)
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)
 
 	revocationTester.addRole("user", "foo")
 	revocationTester.addRoleChannel("foo", "b")
-	revId = rt.CreateDocReturnRev(t, "doc", revId, map[string]interface{}{"channels": []string{"b"}})
+	version = rt.UpdateDoc(docID, version, `{"channels": ["b"]}`)
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 
 	revocationTester.removeRoleChannel("foo", "b")
 	revocationTester.removeRole("user", "foo")
-	_ = rt.CreateDocReturnRev(t, "doc", revId, map[string]interface{}{"mutate": "mutate", "channels": []string{"b"}})
+	_ = rt.UpdateDoc(docID, version, `{"mutate": "mutate", "channels": ["b"]}`)
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 }
 
@@ -1430,12 +1444,13 @@ func TestChannelRevocationWithContiguousSequences(t *testing.T) {
 	defer rt.Close()
 
 	revocationTester.addUserChannel("user", "a")
-	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "a"})
+	const docID = "doc"
+	version := rt.PutDoc(docID, `{"channels": "a"}`)
 	changes := revocationTester.getChanges(0, 2)
 	assert.Len(t, changes.Results, 2)
 
 	revocationTester.removeUserChannel("user", "a")
-	revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"mutate": "mutate", "channels": "a"})
+	version = rt.UpdateDoc(docID, version, `{"mutate": "mutate", "channels": "a"}`)
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)
 	assert.Equal(t, "doc", changes.Results[0].ID)
@@ -1448,7 +1463,7 @@ func TestChannelRevocationWithContiguousSequences(t *testing.T) {
 	assert.False(t, changes.Results[0].Revoked)
 
 	revocationTester.removeUserChannel("user", "a")
-	_ = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"mutate": "mutate2", "channels": "a"})
+	_ = rt.UpdateDoc(docID, version, `{"mutate": "mutate2", "channels": "a"}`)
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)
 	assert.Equal(t, "doc", changes.Results[0].ID)
@@ -1502,7 +1517,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 	_, err := userXattrStore.WriteUserXattr("accessDoc", xattrKey, map[string]interface{}{"userChannels": map[string]interface{}{"user": "a"}})
 	assert.NoError(t, err)
 
-	_ = rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"a"}})
+	_ = rt.PutDoc("doc", `{"channels": "a"}`)
 
 	changes := revocationTester.getChanges(0, 2)
 	assert.Len(t, changes.Results, 2)
@@ -1596,7 +1611,8 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	revocationTester.addRole("user", "foo")
 	revocationTester.addRoleChannel("foo", "chanA")
 
-	doc1Rev := rt2.CreateDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": "chanA"})
+	const doc1ID = "doc1"
+	doc1Version := rt2.PutDoc(doc1ID, `{"channels": "chanA"}`)
 
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -1632,7 +1648,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 
 	revocationTester.removeRole("user", "foo")
 
-	_ = rt2.CreateDocReturnRev(t, "doc1", doc1Rev, map[string]interface{}{"channels": "chanA", "mutate": "val"})
+	_ = rt2.UpdateDoc(doc1ID, doc1Version, `{"channels": "chanA", "mutate": "val"}`)
 
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
@@ -1666,7 +1682,8 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	revocationTester.addRole("user", "foo2")
 	revocationTester.addRoleChannel("foo2", "chanB")
 
-	doc1Rev := rt2.CreateDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": []string{"chanA", "chanB"}})
+	const doc1ID = "doc1"
+	doc1Version := rt2.PutDoc(doc1ID, `{"channels": ["chanA", "chanB"]}`)
 
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -1702,7 +1719,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 
 	revocationTester.removeRole("user", "foo")
 
-	_ = rt2.CreateDocReturnRev(t, "doc1", doc1Rev, map[string]interface{}{"channels": []string{"chanA", "chanB"}, "mutate": "val"})
+	_ = rt2.UpdateDoc(doc1ID, doc1Version, `{"channels": ["chanA", "chanB"], "mutate": "val"}`)
 
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
@@ -1883,11 +1900,13 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	docARev := rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
-	docA1Rev := rt2.CreateDocReturnRev(t, "docA1", "", map[string][]string{"channels": []string{"A"}})
-	_ = rt2.CreateDocReturnRev(t, "docA2", "", map[string][]string{"channels": []string{"A"}})
+	const docAID = "docA"
+	const docA1ID = "docA1"
+	docAVersion := rt2.PutDoc(docAID, `{"channels": ["A"]}`)
+	docA1Version := rt2.PutDoc(docA1ID, `{"channels": ["A"]}`)
+	_ = rt2.PutDoc("docA2", `{"channels": ["A"]}`)
 
-	_ = rt2.CreateDocReturnRev(t, "docB", "", map[string][]string{"channels": []string{"B"}})
+	_ = rt2.PutDoc("docB", `{"channels": ["B"]}`)
 
 	require.NoError(t, ar.Start(ctx1))
 
@@ -1898,11 +1917,8 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
-	resp = rt2.SendAdminRequest("DELETE", "/{{.keyspace}}/docA?rev="+docARev, "")
-	RequireStatus(t, resp, http.StatusOK)
-
-	resp = rt2.SendAdminRequest("DELETE", "/{{.keyspace}}/docA1?rev="+docA1Rev, "")
-	RequireStatus(t, resp, http.StatusOK)
+	rt2.DeleteDoc(docAID, docAVersion)
+	rt2.DeleteDoc(docA1ID, docA1Version)
 
 	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2_collection, []string{"B"}, nil))
 	RequireStatus(t, resp, http.StatusOK)
@@ -1964,7 +1980,7 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"ABC"}})
+	_ = rt2.PutDoc("docA", `{"channels": ["ABC"]}`)
 	require.NoError(t, rt2.WaitForPendingChanges())
 
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
@@ -2043,11 +2059,11 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
-	_ = rt2.CreateDocReturnRev(t, "docAB", "", map[string][]string{"channels": []string{"A", "B"}})
-	_ = rt2.CreateDocReturnRev(t, "docB", "", map[string][]string{"channels": []string{"B"}})
-	_ = rt2.CreateDocReturnRev(t, "docABC", "", map[string][]string{"channels": []string{"A", "B", "C"}})
-	_ = rt2.CreateDocReturnRev(t, "docC", "", map[string][]string{"channels": []string{"C"}})
+	_ = rt2.PutDoc("docA", `{"channels": ["A"]}`)
+	_ = rt2.PutDoc("docAB", `{"channels": ["A","B"]}`)
+	_ = rt2.PutDoc("docB", `{"channels": ["B"]}`)
+	_ = rt2.PutDoc("docABC", `{"channels": ["A","B", "C"]}`)
+	_ = rt2.PutDoc("docC", `{"channels": ["C"]}`)
 	require.NoError(t, rt2.WaitForPendingChanges())
 
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
@@ -2156,9 +2172,9 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	ar, err := db.NewActiveReplicator(ctx1, activeReplCfg)
 	require.NoError(t, err)
 
-	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
-	_ = rt2.CreateDocReturnRev(t, "docA1", "", map[string][]string{"channels": []string{"A"}})
-	_ = rt2.CreateDocReturnRev(t, "docA2", "", map[string][]string{"channels": []string{"A"}})
+	_ = rt2.PutDoc("docA", `{"channels": ["A"]}`)
+	_ = rt2.PutDoc("docA1", `{"channels": ["A"]}`)
+	_ = rt2.PutDoc("docA2", `{"channels": ["A"]}`)
 
 	require.NoError(t, ar.Start(ctx1))
 
@@ -2237,7 +2253,7 @@ func TestRevocationMessage(t *testing.T) {
 
 	// Skip to seq 4 and then create doc in channel A
 	revocationTester.fillToSeq(4)
-	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
+	version := rt.PutDoc("doc", `{"channels": "A"}`)
 
 	require.NoError(t, rt.WaitForPendingChanges())
 
@@ -2246,16 +2262,17 @@ func TestRevocationMessage(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Wait for doc revision to come over
-	_, ok := btc.WaitForBlipRevMessage("doc", revID)
+	_, ok := btc.WaitForBlipRevMessage("doc", version.RevID)
 	require.True(t, ok)
 
 	// Remove role from user
 	revocationTester.removeRole("user", "foo")
 
-	revID = rt.CreateDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": "!"})
+	const doc1ID = "doc1"
+	version = rt.PutDoc(doc1ID, `{"channels": "!"}`)
 
 	revocationTester.fillToSeq(10)
-	revID = rt.CreateDocReturnRev(t, "doc1", revID, map[string]interface{}{})
+	version = rt.UpdateDoc(doc1ID, version, "{}")
 
 	require.NoError(t, rt.WaitForPendingChanges())
 
@@ -2264,7 +2281,7 @@ func TestRevocationMessage(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Wait for doc1 rev2 - This is the last rev we expect so we can be sure replication is complete here
-	_, found := btc.WaitForRev("doc1", revID)
+	_, found := btc.WaitForVersion(doc1ID, version)
 	require.True(t, found)
 
 	messages := btc.pullReplication.GetMessages()
@@ -2347,7 +2364,8 @@ func TestRevocationNoRev(t *testing.T) {
 
 	// Skip to seq 4 and then create doc in channel A
 	revocationTester.fillToSeq(4)
-	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
+	const docID = "doc"
+	version := rt.PutDoc(docID, `{"channels": "A"}`)
 
 	require.NoError(t, rt.WaitForPendingChanges())
 	firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
@@ -2356,22 +2374,23 @@ func TestRevocationNoRev(t *testing.T) {
 	err = btc.StartOneshotPull()
 	assert.NoError(t, err)
 
-	_, ok := btc.WaitForRev("doc", "1-ad48b5c9d9c47b98532a3d8164ec0ae7")
+	_, ok := btc.WaitForVersion(docID, version)
 	require.True(t, ok)
 
 	// Remove role from user
 	revocationTester.removeRole("user", "foo")
 
-	_ = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A", "val": "mutate"})
+	_ = rt.UpdateDoc(docID, version, `{"channels": "A", "val": "mutate"}`)
 
-	waitRevID := rt.CreateDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": "!"})
+	const waitMarkerID = "docmarker"
+	waitMarkerVersion := rt.PutDoc(waitMarkerID, `{"channels": "!"}`)
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
 	err = btc.StartPullSince("false", lastSeqStr, "false")
 	assert.NoError(t, err)
 
-	_, ok = btc.WaitForRev("docmarker", waitRevID)
+	_, ok = btc.WaitForVersion(waitMarkerID, waitMarkerVersion)
 	require.True(t, ok)
 
 	messages := btc.pullReplication.GetMessages()
@@ -2439,7 +2458,8 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 
 	// Skip to seq 4 and then create doc in channel A
 	revocationTester.fillToSeq(4)
-	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
+	const docID = "doc"
+	version := rt.PutDoc(docID, `{"channels": "A"}}`)
 
 	require.NoError(t, rt.WaitForPendingChanges())
 	firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
@@ -2448,22 +2468,23 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 	err = btc.StartOneshotPull()
 	assert.NoError(t, err)
 	throw = true
-	_, ok := btc.WaitForRev("doc", "1-ad48b5c9d9c47b98532a3d8164ec0ae7")
+	_, ok := btc.WaitForVersion(docID, version)
 	require.True(t, ok)
 
 	// Remove role from user
 	revocationTester.removeRole("user", "foo")
 
-	_ = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A", "val": "mutate"})
+	_ = rt.UpdateDoc(docID, version, `{"channels": "A", "val": "mutate"}`)
 
-	waitRevID := rt.CreateDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": "!"})
+	const waitMarkerID = "docmarker"
+	waitMarkerVersion := rt.PutDoc(waitMarkerID, `{"channels": "!"}`)
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
 	err = btc.StartPullSince("false", lastSeqStr, "false")
 	assert.NoError(t, err)
 
-	_, ok = btc.WaitForRev("docmarker", waitRevID)
+	_, ok = btc.WaitForVersion(waitMarkerID, waitMarkerVersion)
 	require.True(t, ok)
 }
 
@@ -2558,11 +2579,11 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	require.NoError(t, err)
 
 	for i := 0; i < 10; i++ {
-		_ = rt2.CreateDocReturnRev(t, fmt.Sprintf("docA%d", i), "", map[string][]string{"channels": []string{"A"}})
+		_ = rt2.PutDoc(fmt.Sprintf("docA%d", i), `{"channels": ["A"]}`)
 	}
 
 	for i := 0; i < 7; i++ {
-		_ = rt2.CreateDocReturnRev(t, fmt.Sprintf("docB%d", i), "", map[string][]string{"channels": []string{"B"}})
+		_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
 	}
 
 	err = rt2.WaitForPendingChanges()
@@ -2585,7 +2606,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	// Add another few docs to 'bump' rt1's seq no. Otherwise it'll end up revoking next time as the above user PUT is
 	// not processed by the rt1 receiver.
 	for i := 7; i < 15; i++ {
-		_ = rt2.CreateDocReturnRev(t, fmt.Sprintf("docB%d", i), "", map[string][]string{"channels": []string{"B"}})
+		_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
 	}
 
 	err = rt2.WaitForPendingChanges()
@@ -2620,7 +2641,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	require.NoError(t, err)
 
 	// Send a doc to act as a 'marker' so we know when replication has completed
-	_ = rt2.CreateDocReturnRev(t, "docMarker", "", map[string][]string{"channels": []string{"B"}})
+	_ = rt2.PutDoc("docMarker", `{"channels": ["B"]}`)
 
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)

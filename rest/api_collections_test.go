@@ -278,8 +278,8 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	collection1 := dataStoreNames[0].CollectionName()
 	collection2 := dataStoreNames[1].CollectionName()
 
-	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[scope].Collections[collection2] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection1] = &CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection2] = &CollectionConfig{SyncFn: &c1SyncFunction}
 
 	fmt.Println(scopesConfig)
 	rtConfig := &RestTesterConfig{
@@ -341,9 +341,9 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	dataStoreNames = GetDataStoreNamesFromScopesConfig(scopesConfig)
 
 	collection3 := dataStoreNames[2].CollectionName()
-	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[scope].Collections[collection2] = CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[scope].Collections[collection3] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection1] = &CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection2] = &CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection3] = &CollectionConfig{SyncFn: &c1SyncFunction}
 	scopesConfigString, err := json.Marshal(scopesConfig)
 	require.NoError(t, err)
 
@@ -380,8 +380,8 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	// Remove collection and update the db config
 	scopesConfig = GetCollectionsConfig(t, tb, 2)
 
-	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[scope].Collections[collection2] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection1] = &CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection2] = &CollectionConfig{SyncFn: &c1SyncFunction}
 	scopesConfigString, err = json.Marshal(scopesConfig)
 	require.NoError(t, err)
 
@@ -411,8 +411,8 @@ func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
                   channel(doc.chan);
             }`
 
-	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = &CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = &CollectionConfig{SyncFn: &c1SyncFunction}
 
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: tb,
@@ -691,22 +691,14 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 
 	}()
 
-	serverErr := make(chan error)
-	config := BootstrapStartupConfigForTest(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		CustomTestBucket: tb.NoCloseClone(),
+	})
+	defer rt.Close()
 
 	// Create a DB configured with one scope
-	res := BootstrapAdminRequest(t, http.MethodPut, "/db/", string(mustMarshalJSON(t, map[string]any{
+	res := rt.SendAdminRequest(http.MethodPut, "/db/", string(mustMarshalJSON(t, map[string]any{
 		"bucket":                      tb.GetName(),
 		"num_index_replicas":          0,
 		"enable_shared_bucket_access": base.TestUseXattrs(),
@@ -719,10 +711,10 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 			},
 		},
 	})))
-	require.Equal(t, http.StatusCreated, res.StatusCode, "failed to create DB")
+	RequireStatus(t, res, http.StatusCreated)
 
 	// Try updating its scopes
-	res = BootstrapAdminRequest(t, http.MethodPut, "/db/_config", string(mustMarshalJSON(t, map[string]any{
+	res = rt.SendAdminRequest(http.MethodPut, "/db/_config", string(mustMarshalJSON(t, map[string]any{
 		"bucket":                      tb.GetName(),
 		"num_index_replicas":          0,
 		"enable_shared_bucket_access": base.TestUseXattrs(),
@@ -735,10 +727,8 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 			},
 		},
 	})))
-	base.RequireAllAssertions(t,
-		assert.Equal(t, http.StatusBadRequest, res.StatusCode, "should not be able to change scope"),
-		assert.Contains(t, res.Body, "cannot change scopes after database creation"),
-	)
+	assert.Contains(t, res.Body.String(), "cannot change scopes after database creation")
+	RequireStatus(t, res, http.StatusBadRequest)
 }
 
 func TestCollectionsAddNamedCollectionToImplicitDefaultScope(t *testing.T) {
@@ -836,8 +826,8 @@ func TestCollectionStats(t *testing.T) {
 
 	scope1Name, collection1Name := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
 	scope2Name, collection2Name := dataStoreNames[1].ScopeName(), dataStoreNames[1].CollectionName()
-	scopesConfig[scope1Name].Collections[collection1Name] = CollectionConfig{SyncFn: &syncFn}
-	scopesConfig[scope2Name].Collections[collection2Name] = CollectionConfig{SyncFn: &syncFn}
+	scopesConfig[scope1Name].Collections[collection1Name] = &CollectionConfig{SyncFn: &syncFn}
+	scopesConfig[scope2Name].Collections[collection2Name] = &CollectionConfig{SyncFn: &syncFn}
 
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: tb,

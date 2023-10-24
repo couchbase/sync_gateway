@@ -469,8 +469,6 @@ type ImportFilterFunction struct {
 }
 
 func NewImportFilterFunction(ctx context.Context, fnSource string, timeout time.Duration) *ImportFilterFunction {
-
-	base.DebugfCtx(ctx, base.KeyImport, "Creating new ImportFilterFunction")
 	return &ImportFilterFunction{
 		JSServer: sgbucket.NewJSServer(ctx, fnSource, timeout, kTaskCacheSize,
 			func(ctx context.Context, fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {

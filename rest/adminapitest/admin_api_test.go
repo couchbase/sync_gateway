@@ -383,11 +383,14 @@ func TestGetStatus(t *testing.T) {
 
 func TestFlush(t *testing.T) {
 
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("sgbucket.DeleteableBucket inteface only supported by Walrus")
+	}
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	rt.CreateDoc(t, "doc1")
-	rt.CreateDoc(t, "doc2")
+	rt.CreateTestDoc("doc1")
+	rt.CreateTestDoc("doc2")
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), 200)
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc2", ""), 200)
 
@@ -680,7 +683,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	}
 	// create documents in DB to cause resync to take a few seconds
 	for i := 0; i < 1000; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%v", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%v", i))
 	}
 	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
@@ -727,7 +730,7 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 
 	// create documents in DB to cause resync to take a few seconds
 	for i := 0; i < 1000; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%v", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%v", i))
 	}
 	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
@@ -811,7 +814,7 @@ func TestResync(t *testing.T) {
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
-				rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+				rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 			}
 			err := rt.WaitForCondition(func() bool {
 				return int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()) == testCase.docsCreated
@@ -880,7 +883,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
-				rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+				rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 			}
 
 			err := rt.WaitForCondition(func() bool {
@@ -940,7 +943,7 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 
 	// create some docs
 	for i := 0; i < numDocs; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	// take db offline to run resync against it
@@ -1115,85 +1118,42 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	}
 	base.TestRequiresCollections(t)
 
-	base.RequireNumTestDataStores(t, 2)
+	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
-	serverErr := make(chan error)
 
 	syncFn := `
 	function(doc) {
 		channel("x")
 	}`
 
-	rt := rest.NewRestTester(t,
+	rt := rest.NewRestTesterMultipleCollections(t,
 		&rest.RestTesterConfig{
 			SyncFn: syncFn,
 		},
+		numCollections,
 	)
 	defer rt.Close()
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
-	if !ok {
-		t.Skip("This test only works when ResyncManagerDCP is used")
-	}
-	// Start SG with no databases
-	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and add new scopes and collections to it.
-	tb := base.GetTestBucket(t)
-	defer func() {
-		log.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
-
-	dataStore1, err := tb.GetNamedDataStore(0)
-	require.NoError(t, err)
-	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
 	require.True(t, ok)
-	dataStore2, err := tb.GetNamedDataStore(1)
-	require.NoError(t, err)
-	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
-	require.True(t, ok)
-
-	keyspace1 := fmt.Sprintf("db.%s.%s", dataStore1Name.ScopeName(),
-		dataStore1Name.CollectionName())
-	keyspace2 := fmt.Sprintf("db.%s.%s", dataStore2Name.ScopeName(),
-		dataStore2Name.CollectionName())
-
-	resp := rt.SendAdminRequest(http.MethodPost, "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}, "%s":{}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
-		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(), dataStore2Name.CollectionName(),
-	))
-	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// put a docs in both collections
 	for i := 1; i <= 10; i++ {
-		resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/1000%d", keyspace1, i), `{"type":"test_doc"}`)
+		resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace1}}/1000%d", i), `{"type":"test_doc"}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 
-		resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/1000%d", keyspace2, i), `{"type":"test_doc"}`)
+		resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace2}}/1000%d", i), `{"type":"test_doc"}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 	}
 
-	resp = rt.SendAdminRequest(http.MethodPost, "/db/_offline", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
+	rt.TakeDbOffline()
 
-	rest.WaitAndAssertCondition(t, func() bool {
-		state := atomic.LoadUint32(&rt.GetDatabase().State)
-		return state == db.DBOffline
-	})
+	dataStore1, err := rt.TestBucket.GetNamedDataStore(0)
+	require.NoError(t, err)
+	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
+	require.True(t, ok)
 
 	// Run resync for single collection // Request body {"scopes": "scopeName": ["collection1Name", "collection2Name"]}}
 	body := fmt.Sprintf(`{
@@ -1201,22 +1161,9 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 				"%s": ["%s"]
 			}
 		}`, dataStore1Name.ScopeName(), dataStore1Name.CollectionName())
-	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", body)
+	resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", body)
 	rest.RequireStatus(t, resp, http.StatusOK)
-
-	var resyncManagerStatus db.ResyncManagerResponseDCP
-	err = rt.WaitForConditionWithOptions(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
-		assert.NoError(t, err)
-
-		if resyncManagerStatus.State == db.BackgroundProcessStateCompleted {
-			return true
-		} else {
-			return false
-		}
-	}, 200, 200)
-	require.NoError(t, err)
+	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 	assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
 	assert.LessOrEqual(t, 10, int(resyncManagerStatus.DocsProcessed))
@@ -1224,20 +1171,7 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	// Run resync for all collections
 	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-
-	resyncManagerStatus = db.ResyncManagerResponseDCP{}
-	err = rt.WaitForConditionWithOptions(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
-		assert.NoError(t, err)
-
-		if resyncManagerStatus.State == db.BackgroundProcessStateCompleted {
-			return true
-		} else {
-			return false
-		}
-	}, 200, 200)
-	require.NoError(t, err)
+	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 	assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
 	assert.LessOrEqual(t, 20, int(resyncManagerStatus.DocsProcessed))
@@ -1299,7 +1233,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 	}
 
 	for i := 0; i < 1000; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	response := rt.SendAdminRequest("GET", "/db/_resync", "")
@@ -1375,7 +1309,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 
 	numOfDocs := 1000
 	for i := 0; i < numOfDocs; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	assert.Equal(t, numOfDocs, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
@@ -1489,7 +1423,7 @@ func TestResyncStop(t *testing.T) {
 	}
 
 	for i := 0; i < 1000; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	err := rt.WaitForCondition(func() bool {
@@ -1576,6 +1510,8 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	responseConfig := rt.ServerContext().GetDbConfig("db1")
 	assert.Nil(t, responseConfig)
 
+	require.Equal(t, 1, len(rt.ServerContext().AllInvalidDatabases()))
+
 	// assert that fetching config fails with the correct error message to the user
 	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
 	rest.RequireStatus(t, resp, http.StatusNotFound)
@@ -1598,7 +1534,8 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	// wait some time for interval to pick up change
 	err = rt.WaitForConditionWithOptions(func() bool {
 		list := rt.ServerContext().AllDatabaseNames()
-		return len(list) == 1
+		numInvalid := len(rt.ServerContext().AllInvalidDatabases())
+		return len(list) == 1 && numInvalid == 0
 	}, 200, 1000)
 	require.NoError(t, err)
 
@@ -1932,7 +1869,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 	numOfDocs := 1000
 	for i := 0; i < numOfDocs; i++ {
-		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	err := rt.WaitForCondition(func() bool {
@@ -2752,6 +2689,9 @@ func TestConfigRedaction(t *testing.T) {
 }
 
 func TestSoftDeleteCasMismatch(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip LeakyBucket test when running in integration")
+	}
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -3263,66 +3203,33 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 }
 
 func TestPersistentConfigConcurrency(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyDCP)
-
-	serverErr := make(chan error, 0)
-
-	// Start SG with no databases
-	config := rest.BootstrapStartupConfigForTest(t)
-	ctx := base.TestCtx(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
-		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
-		),
-	)
-	resp.RequireStatus(http.StatusCreated)
+	base.TestsRequireBootstrapConnection(t) // etags require a bootstrap connection
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
 
 	// Get config
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	resp.RequireStatus(http.StatusOK)
-	eTag := resp.Header.Get("ETag")
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/_config", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	eTag := resp.Header().Get("ETag")
 	unquoteETag := strings.Trim(eTag, `"`)
 	assert.NotEqual(t, "", unquoteETag)
 
-	resp = rest.BootstrapAdminRequestWithHeaders(t, http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": eTag})
-	resp.RequireStatus(http.StatusCreated)
+	resp = rt.SendAdminRequestWithHeaders(http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": eTag})
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_config", "{}")
-	resp.RequireStatus(http.StatusCreated)
-	putETag := resp.Header.Get("ETag")
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config", "{}")
+	rest.RequireStatus(t, resp, http.StatusCreated)
+	putETag := resp.Header().Get("ETag")
 	assert.NotEqual(t, "", putETag)
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	resp.RequireStatus(http.StatusOK)
-	getETag := resp.Header.Get("ETag")
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	getETag := resp.Header().Get("ETag")
 	assert.Equal(t, putETag, getETag)
 
 	quotedStr := `"x"`
-	resp = rest.BootstrapAdminRequestWithHeaders(t, http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": quotedStr})
-	resp.RequireStatus(http.StatusPreconditionFailed)
+	resp = rt.SendAdminRequestWithHeaders(http.MethodPost, "/db/_config", "{}", map[string]string{"If-Match": quotedStr})
+	rest.RequireStatus(t, resp, http.StatusPreconditionFailed)
 }
 
 func TestDbConfigCredentials(t *testing.T) {
@@ -3330,45 +3237,13 @@ func TestDbConfigCredentials(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
-
-	serverErr := make(chan error, 0)
-
-	// Start SG with no databases
-	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
-		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
-		),
-	)
-	resp.RequireStatus(http.StatusCreated)
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
 
 	var dbConfig rest.DatabaseConfig
-
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	resp.RequireStatus(http.StatusOK)
-	err = base.JSONUnmarshal([]byte(resp.Body), &dbConfig)
-	require.NoError(t, err)
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/_config", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbConfig))
 
 	// non-runtime config, we don't expect to see any credentials present
 	assert.Equal(t, "", dbConfig.Username)
@@ -3377,10 +3252,9 @@ func TestDbConfigCredentials(t *testing.T) {
 	assert.Equal(t, "", dbConfig.CertPath)
 	assert.Equal(t, "", dbConfig.KeyPath)
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config?include_runtime=true", "")
-	resp.RequireStatus(http.StatusOK)
-	err = base.JSONUnmarshal([]byte(resp.Body), &dbConfig)
-	require.NoError(t, err)
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config?include_runtime=true", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbConfig))
 
 	// runtime config, we expect to see the credentials used by the database (either bootstrap or per-db - but in this case, bootstrap)
 	assert.Equal(t, base.TestClusterUsername(), dbConfig.Username)
@@ -3391,57 +3265,25 @@ func TestDbConfigCredentials(t *testing.T) {
 }
 
 func TestInvalidDBConfig(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
+	base.TestsRequireBootstrapConnection(t) // import_filter / sync function dynamic modification require bootstrap connection
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
-
-	serverErr := make(chan error, 0)
-
-	// Start SG with no databases
-	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
-		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
-		),
-	)
-	resp.RequireStatus(http.StatusCreated)
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
 
 	// Put db config with invalid sync fn
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config", `{"sync": "function(){"}`)
-	resp.RequireStatus(http.StatusBadRequest)
-	assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", `{"sync": "function(){"}`)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	assert.True(t, strings.Contains(resp.Body.String(), "invalid javascript syntax"))
 
 	// Put invalid sync fn via sync specific endpoint
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config/sync", `function(){`)
-	resp.RequireStatus(http.StatusBadRequest)
-	assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/sync", `function(){`)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	assert.True(t, strings.Contains(resp.Body.String(), "invalid javascript syntax"))
 
 	// Put invalid import fn via import specific endpoint
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config/import_filter", `function(){`)
-	resp.RequireStatus(http.StatusBadRequest)
-	assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/import_filter", `function(){`)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	assert.True(t, strings.Contains(resp.Body.String(), "invalid javascript syntax"))
 }
 
 func TestCreateDbOnNonExistentBucket(t *testing.T) {
@@ -3449,150 +3291,47 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
 
-	serverErr := make(chan error, 0)
-
-	// Start SG with no databases
-	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", `{"bucket": "nonexistentbucket"}`)
-	resp.RequireStatus(http.StatusForbidden)
-	assert.Contains(t, resp.Body, "Provided credentials do not have access to specified bucket/scope/collection")
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/nonexistentbucket/", `{}`)
-	resp.RequireStatus(http.StatusForbidden)
-	assert.Contains(t, resp.Body, "Provided credentials do not have access to specified bucket/scope/collection")
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/", `{"bucket": "nonexistentbucket"}`)
+	rest.RequireStatus(t, resp, http.StatusForbidden)
+	assert.Contains(t, resp.Body.String(), "Provided credentials do not have access to specified bucket/scope/collection")
+	resp = rt.SendAdminRequest(http.MethodPut, "/nonexistentbucket/", `{}`)
+	rest.RequireStatus(t, resp, http.StatusForbidden)
+	assert.Contains(t, resp.Body.String(), "Provided credentials do not have access to specified bucket/scope/collection")
 }
 
 func TestPutDbConfigChangeName(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
-
-	serverErr := make(chan error, 0)
-
-	// Start SG with no databases
-	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
-		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
-		),
-	)
-	resp.RequireStatus(http.StatusCreated)
-
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config", `{"name": "test"}`)
-	resp.RequireStatus(http.StatusBadRequest)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/db/_config", `{"name": "test"}`), http.StatusBadRequest)
 }
 
 func TestSwitchDbConfigCollectionName(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("can not create new buckets and scopes in walrus")
-	}
 	base.TestRequiresCollections(t)
-
 	base.RequireNumTestDataStores(t, 2)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
-	serverErr := make(chan error, 0)
-
-	// Start SG with no databases
-	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and add new scopes and collections to it.
-	tb := base.GetTestBucket(t)
-	defer func() {
-		log.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
-
-	dataStore1, err := tb.GetNamedDataStore(0)
-	require.NoError(t, err)
-	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
-	require.True(t, ok)
-	dataStore2, err := tb.GetNamedDataStore(1)
-	require.NoError(t, err)
-	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
-	require.True(t, ok)
-
-	keyspace1 := fmt.Sprintf("db.%s.%s", dataStore1Name.ScopeName(),
-		dataStore1Name.CollectionName())
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", fmt.Sprintf(
-		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
-		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(),
-	))
-	resp.RequireStatus(http.StatusCreated)
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
 
 	// put a doc in db
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/"+keyspace1+"/10001", `{"type":"test_doc"}`)
-	resp.RequireStatus(http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/10001", `{"type":"test_doc"}`), http.StatusCreated)
 
 	// update config to another collection
-	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
-		tb.GetName(), dataStore2Name.ScopeName(), dataStore2Name.CollectionName(),
-	))
-	resp.RequireStatus(http.StatusCreated)
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = rest.GetCollectionsConfig(t, rt.TestBucket, 2)
+	rest.RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
 
 	// put doc in new collection
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/db.%s.%s/10001", dataStore2Name.ScopeName(), dataStore2Name.CollectionName()), `{"type":"test_doc1"}`)
-	resp.RequireStatus(http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/10001", `{"type":"test_doc1"}`), http.StatusCreated)
 
 	// update back to original collection config
-	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
-		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(),
-	))
-	resp.RequireStatus(http.StatusCreated)
+	rest.RequireStatus(t, rt.UpsertDbConfig("db", rt.NewDbConfig()), http.StatusCreated)
 
 	// put doc in original collection name
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/100", keyspace1), `{"type":"test_doc1"}`)
-	resp.RequireStatus(http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/100", `{"type":"test_doc1"}`), http.StatusCreated)
 }
 
 func TestPutDBConfigOIDC(t *testing.T) {
@@ -3885,76 +3624,47 @@ func TestDbOfflineConfigLegacy(t *testing.T) {
 }
 
 func TestDbOfflineConfigPersistent(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
-
-	serverErr := make(chan error, 0)
-
-	// Start SG with no databases
-	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
-
+	base.TestsRequireBootstrapConnection(t) // import_filter / sync function dynamic modification require bootstrap connection
 	importFilter := "function(doc) { return true }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
 
-	dbConfig := `{
-	"bucket": "%s",
-	"name": "db",
-	"sync": "%s",
-	"import_filter": "%s",
-	"import_docs": false,
-	"offline": false,
-	"enable_shared_bucket_access": %t,
-	"use_views": %t,
-	"num_index_replicas": 0 }`
-	dbConfig = fmt.Sprintf(dbConfig, tb.GetName(), syncFunc, importFilter, base.TestUseXattrs(), base.TestsDisableGSI())
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn:           syncFunc,
+		ImportFilter:     importFilter,
+		PersistentConfig: true,
+	})
+	defer rt.Close()
 
-	// Persist config
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
-	resp.RequireStatus(http.StatusCreated)
+	rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 	// Get config values before taking db offline
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	resp.RequireStatus(http.StatusOK)
-	dbConfigBeforeOffline := resp.Body
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_config", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	dbConfigBeforeOffline := resp.Body.String()
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	resp.RequireResponse(http.StatusOK, importFilter)
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/import_filter", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.Equal(t, importFilter, resp.Body.String())
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	resp.RequireResponse(http.StatusOK, syncFunc)
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/sync", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.Equal(t, syncFunc, resp.Body.String())
 
 	// Take DB offline
-	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
-	resp.RequireStatus(http.StatusOK)
+	rt.TakeDbOffline()
 
 	// Check offline config matches online config
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
-	resp.RequireResponse(http.StatusOK, dbConfigBeforeOffline)
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_config", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.Equal(t, dbConfigBeforeOffline, resp.Body.String())
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	resp.RequireResponse(http.StatusOK, importFilter)
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/import_filter", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.Equal(t, importFilter, resp.Body.String())
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	resp.RequireResponse(http.StatusOK, syncFunc)
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/sync", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.Equal(t, syncFunc, resp.Body.String())
 }
 
 // TestDbConfigPersistentSGVersions ensures that cluster-wide config updates are not applied to older nodes to avoid pushing invalid configuration.
@@ -4082,156 +3792,85 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 }
 
 func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
+	base.TestsRequireBootstrapConnection(t) // import_filter / sync function dynamic modification require bootstrap connection
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			PersistentConfig: true,
+			SyncFn:           "function(doc){ throw({forbidden : \"Rejected document\"}) }",
+			ImportFilter:     "function(doc) { return false }",
+		},
+	)
+	defer rt.Close()
 
-	// Start SG with bootstrap credentials filled
-	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	serverErr := make(chan error, 0)
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	// Get a test bucket, and use it to create the database.
-	// FIXME: CBG-2266 this test reads in persistent config
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
-
-	// Initial DB config
-	dbConfig := `{
-	"bucket": "` + tb.GetName() + `",
-	"name": "db",
-	"sync": "function(doc){ throw({forbidden : \"Rejected document\"}) }",
-	"offline": false,
-	"import_filter": "function(doc) { return false }",
-	"import_docs": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
-	"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
-	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
-	"num_index_replicas": 0 }`
-
-	// Create initial database
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
-	resp.RequireStatus(http.StatusCreated)
+	rt.CreateDatabase("db", rt.NewDbConfig())
 
 	// Make sure import and sync fail
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/TestSyncDoc", "{}")
-	resp.RequireStatus(http.StatusForbidden)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/TestSyncDoc", "{}"), http.StatusForbidden)
 
 	// Take DB offline
-	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
-	resp.RequireStatus(http.StatusOK)
+	rt.TakeDbOffline()
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodDelete, "/db/_config/sync", "")
-	resp.RequireStatus(http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/_config/sync", ""), http.StatusOK)
 
 	// Take DB online
-	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_online", "")
-	resp.RequireStatus(http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_online", ""), http.StatusOK)
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	resp.RequireResponse(http.StatusOK, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/sync", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.Equal(t, "", resp.Body.String())
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/TestSyncDoc", "{}")
-	resp.RequireStatus(http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/TestSyncDoc", "{}"), http.StatusCreated)
 
 	if base.TestUseXattrs() {
 		// default data store - we're not using a named scope/collection in this test
-		add, err := tb.DefaultDataStore().Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
+		add, err := rt.GetSingleDataStore().Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
 		require.NoError(t, err)
 		require.Equal(t, true, add)
 
 		// On-demand import - rejected doc
-		resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDoc", "")
-		resp.RequireStatus(http.StatusNotFound)
+		rest.RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/TestImportDoc", ""), http.StatusNotFound)
 
 		// Persist configs
-		resp = rest.BootstrapAdminRequest(t, http.MethodDelete, "/db/_config/import_filter", "")
-		resp.RequireStatus(http.StatusOK)
+		rest.RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/_config/import_filter", ""), http.StatusOK)
 
 		// Check configs match
-		resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-		resp.RequireResponse(http.StatusOK, "")
+		resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/import_filter", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+		require.Equal(t, "", resp.Body.String())
 
 		// On-demand import - allowed doc after restored default import filter
-		resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDoc", "")
-		resp.RequireStatus(http.StatusOK)
+		rest.RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/TestImportDoc", ""), http.StatusOK)
 	}
 }
 
 func TestSetFunctionsWhileDbOffline(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
-
-	// Start SG with bootstrap credentials filled
-	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	serverErr := make(chan error, 0)
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+	base.TestsRequireBootstrapConnection(t) // import_filter / sync function dynamic modification require bootstrap connection
 
 	importFilter := "function(doc){ return true; }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
 
-	// Initial DB config
-	dbConfig := `{
-	"bucket": "` + tb.GetName() + `",
-	"name": "db",
-	"offline": false,
-	"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
-	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
-	"num_index_replicas": 0 }`
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
 
-	// Create initial database
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
-	resp.RequireStatus(http.StatusCreated)
-
-	// Take DB offline
-	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
-	resp.RequireStatus(http.StatusOK)
+	rt.TakeDbOffline()
 
 	// Persist configs
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config/import_filter", importFilter)
-	resp.RequireStatus(http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/import_filter", importFilter), http.StatusOK)
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config/sync", syncFunc)
-	resp.RequireStatus(http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/sync", syncFunc), http.StatusOK)
 
 	// Take DB online
-	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_online", "")
-	resp.RequireStatus(http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/db/_online", ""), http.StatusOK)
 
 	// Check configs match
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	resp.RequireResponse(http.StatusOK, importFilter)
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/import_filter", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.Equal(t, importFilter, resp.Body.String())
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	resp.RequireResponse(http.StatusOK, syncFunc)
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/sync", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.Equal(t, syncFunc, resp.Body.String())
 }
 
 func TestCollectionSyncFnWithBackticks(t *testing.T) {
@@ -4280,61 +3919,35 @@ func TestCollectionSyncFnWithBackticks(t *testing.T) {
 }
 
 func TestEmptyStringJavascriptFunctions(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
-
-	serverErr := make(chan error, 0)
-
-	// Start SG with no databases
-	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
 
 	// db put with empty sync func and import filter
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "sync": "", "import_filter": ""}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			rt.Bucket().GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.RequireStatus(http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// db config put with empty sync func and import filter
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config",
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "sync": "", "import_filter": ""}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			rt.Bucket().GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.RequireStatus(http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// db config post, with empty sync func and import filter
-	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_config",
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "sync": "", "import_filter": ""}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			rt.Bucket().GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.RequireStatus(http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 }
 
 // Regression test for CBG-2119 - ensure that the disable_password_auth bool field is handled correctly both when set as true and as false
@@ -4424,19 +4037,6 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	// Make another database that uses import in-order to trigger the panic instantly instead of having to time.Sleep
 	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
 	resp.RequireStatus(http.StatusCreated)
-
-	// because we moved database - resync is required for the default collection before we're able to bring db2 online
-	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db2/_resync?regenerate_sequences=true", "")
-	resp.RequireStatus(http.StatusOK)
-
-	// after resync is done, state will flip back to offline
-	BootstrapWaitForDatabaseState(t, "db2", db.DBOffline)
-
-	// now bring the db online so we're able to check dest factory
-	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db2/_online", "")
-	resp.RequireStatus(http.StatusOK)
-
-	BootstrapWaitForDatabaseState(t, "db2", db.DBOnline)
 
 	scopeName := ""
 	collectionNames := []string{}
@@ -4548,7 +4148,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 			var bucketDoc map[string]interface{}
 			_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)
 			assert.NoError(t, err)
-			body := rt.GetDoc(docID)
+			body := rt.GetDocBody(docID)
 			// Confirm input body is in the bucket doc
 			if test.skipDocContentsVerification == nil || !*test.skipDocContentsVerification {
 				for k, v := range test.inputBody {
