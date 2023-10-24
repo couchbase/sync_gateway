@@ -327,10 +327,6 @@ func (s *sequenceAllocator) incrementSequence(numToReserve uint64) (max uint64, 
 	return value, err
 }
 
-type seqRange struct {
-	low, high uint64
-}
-
 // ReleaseSequence writes an unused sequence document, used to notify sequence buffering that a sequence has been allocated and not used.
 // Sequence is stored as the document body to avoid null doc issues.
 func (s *sequenceAllocator) releaseSequence(ctx context.Context, sequence uint64) error {

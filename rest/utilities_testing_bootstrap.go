@@ -53,16 +53,6 @@ func BootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	return config
 }
 
-const (
-	publicPort  = 4984
-	adminPort   = 4985
-	metricsPort = 4986
-)
-
-func bootstrapURL(basePort int) string {
-	return "http://localhost:" + strconv.Itoa(basePort+BootstrapTestPortOffset)
-}
-
 type bootstrapAdminResponse struct {
 	StatusCode int
 	Body       string
