@@ -881,7 +881,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
 	case Import:
 		// work to be done to decide if the VV needs updating here, pending CBG-3503
-	case NewVersion, InternalExistingVersion:
+	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
 		newVVEntry := CurrentVersionVector{}
 		newVVEntry.SourceID = db.dbCtx.BucketUUID
@@ -2134,14 +2134,6 @@ func postWriteUpdateHLV(doc *Document, casOut uint64) *Document {
 	}
 	if doc.HLV.CurrentVersionCAS == hlvExpandMacroCASValue {
 		doc.HLV.CurrentVersionCAS = casOut
-	}
-	// this is a temporary workaround. To be removed pending CBG-3503. This is to account for test that are relying on
-	// updates to arrive over import. As it stands the logic is still to be implemented on import doc event type leading
-	// to a doc when arriving over import, having outdated or no HLV defined, leading to issues with rev cache having
-	// appropriate doc updates
-	// TODO: Remove the below block when working on CBG-3503
-	if doc.Cas != doc.HLV.Version {
-		doc.HLV.Version = casOut
 	}
 	return doc
 }

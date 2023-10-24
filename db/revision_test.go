@@ -131,7 +131,7 @@ func TestBackupOldRevision(t *testing.T) {
 
 	// create rev 2 and check backups for both revs
 	rev2ID := "2-abc"
-	_, _, err = collection.PutExistingRevWithBody(ctx, docID, Body{"test": true, "updated": true}, []string{rev2ID, rev1ID}, true, InternalExistingVersion)
+	_, _, err = collection.PutExistingRevWithBody(ctx, docID, Body{"test": true, "updated": true}, []string{rev2ID, rev1ID}, true, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
 
 	// now in all cases we'll have rev 1 backed up (for at least 5 minutes)
