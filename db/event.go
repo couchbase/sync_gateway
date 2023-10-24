@@ -98,13 +98,6 @@ func (dsce *DBStateChangeEvent) EventType() EventType {
 // Javascript function handling for events
 const kTaskCacheSize = 4
 
-type ResponseType uint8
-
-const (
-	StringResponse ResponseType = iota
-	JSObjectResponse
-)
-
 // A compiled JavaScript event function.
 type jsEventTask struct {
 	sgbucket.JSRunner
@@ -124,21 +117,6 @@ func newJsEventTask(ctx context.Context, funcSource string) (sgbucket.JSServerTa
 
 	eventTask.After = func(result otto.Value, err error) (interface{}, error) {
 		nativeValue, _ := result.Export()
-		/*
-			switch nativeValue := nativeValue.(type) {
-			case string:
-				stringResult = nativeValue
-				eventTask.responseType = StringResponse
-			case interface{}:
-				resultBytes, marshErr := base.JSONMarshal(nativeValue)
-				if marshErr != nil {
-					err = marshErr
-				} else {
-					stringResult = string(resultBytes)
-					eventTask.responseType = JSObjectResponse
-				}
-			}
-		*/
 		return nativeValue, err
 	}
 

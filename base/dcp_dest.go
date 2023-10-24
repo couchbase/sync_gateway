@@ -15,7 +15,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"expvar"
-	"fmt"
 	"io"
 	"strconv"
 
@@ -24,22 +23,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 )
 
-// vbucketIdStrings is a memorized array of 1024 entries for fast
-// conversion of vbucketId's to partition strings via an index lookup.
-// (Atoi is faster than map lookup when going in the other direction)
-var vbucketIdStrings [1024]string
-
-type destFeedType int8
-
-const (
-	DestFullFeed destFeedType = iota
-	DestShardedFeed
-)
-
 func init() {
-	for i := 0; i < len(vbucketIdStrings); i++ {
-		vbucketIdStrings[i] = fmt.Sprintf("%d", i)
-	}
 	cbgt.DCPFeedPrefix = "sg:"
 }
 
