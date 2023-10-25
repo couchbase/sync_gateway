@@ -664,13 +664,6 @@ func (doc *Document) setFlag(flag uint8, state bool) {
 	}
 }
 
-func (doc *Document) newestRevID() string {
-	if doc.NewestRev != "" {
-		return doc.NewestRev
-	}
-	return doc.CurrentRev
-}
-
 // RevLoaderFunc and RevWriterFunc manage persistence of non-winning revision bodies that are stored outside the document.
 type RevLoaderFunc func(key string) ([]byte, error)
 
@@ -678,17 +671,6 @@ type RevLoaderFunc func(key string) ([]byte, error)
 func (c *DatabaseCollection) RevisionBodyLoader(key string) ([]byte, error) {
 	body, _, err := c.dataStore.GetRaw(key)
 	return body, err
-}
-
-// Fetches the body of a revision as a map, or nil if it's not available.
-func (doc *Document) getRevisionBody(ctx context.Context, revid string, loader RevLoaderFunc) Body {
-	var body Body
-	if revid == doc.CurrentRev {
-		body = doc.Body(ctx)
-	} else {
-		body = doc.getNonWinningRevisionBody(ctx, revid, loader)
-	}
-	return body
 }
 
 // Retrieves a non-winning revision body.  If not already loaded in the document (either because inline,

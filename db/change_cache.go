@@ -705,7 +705,7 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
 		c.internalStats.pendingSeqLen = numPending
-		if base.LogDebugEnabled(base.KeyCache) {
+		if base.LogDebugEnabled(ctx, base.KeyCache) {
 			base.DebugfCtx(ctx, base.KeyCache, "  Deferring #%d (%d now waiting for #%d...#%d) doc %q / %q",
 				sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1, base.UD(change.DocID), change.RevID)
 		}
@@ -762,7 +762,7 @@ func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) []chann
 	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
 	// the change's active channels, as well as any channel removals for the active revision.
 	updatedChannels := c.channelCache.AddToCache(ctx, change)
-	if base.LogDebugEnabled(base.KeyChanges) {
+	if base.LogDebugEnabled(ctx, base.KeyChanges) {
 		base.DebugfCtx(ctx, base.KeyChanges, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
 	}
 
@@ -948,12 +948,6 @@ func (c *changeCache) waitForSequenceNotSkipped(ctx context.Context, sequence ui
 	err, _ := base.RetryLoop(ctx, fmt.Sprintf("waitForSequenceNotSkipped(%d)", sequence), worker, sleeper)
 	cancel()
 	return err
-}
-
-func (c *changeCache) getMaxStableCached(ctx context.Context) uint64 {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c._getMaxStableCached(ctx)
 }
 
 func (c *changeCache) _getMaxStableCached(ctx context.Context) uint64 {

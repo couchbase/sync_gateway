@@ -13,10 +13,9 @@ package base
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
-
-	"golang.org/x/exp/slices"
 
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"

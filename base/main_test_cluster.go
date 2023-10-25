@@ -179,17 +179,6 @@ func (c *tbpClusterV2) close(ctx context.Context) error {
 	return nil
 }
 
-func (c *tbpClusterV2) getMinClusterCompatVersion(ctx context.Context) int {
-	nodesMeta, err := c.cluster.Internal().GetNodesMetadata(nil)
-	if err != nil {
-		FatalfCtx(ctx, "TEST: failed to fetch nodes metadata: %v", err)
-	}
-	if len(nodesMeta) < 1 {
-		panic("invalid NodesMetadata: no nodes")
-	}
-	return nodesMeta[0].ClusterCompatibility
-}
-
 func (c *tbpClusterV2) supportsCollections() (bool, error) {
 	major, _, err := getClusterVersion(c.cluster)
 	if err != nil {

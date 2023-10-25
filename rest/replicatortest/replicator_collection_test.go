@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,7 +23,6 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/slices"
 )
 
 // TestActiveReplicatorMultiCollection is a test to get as much coverage of collections in ISGR as possible.

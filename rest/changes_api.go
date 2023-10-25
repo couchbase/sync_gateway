@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -661,12 +660,4 @@ func readWebSocketMessage(ctx context.Context, conn *websocket.Conn) ([]byte, er
 	}
 	return message, nil
 
-}
-
-func sequenceFromString(str string) uint64 {
-	seq, err := strconv.ParseUint(str, 10, 64)
-	if err != nil {
-		seq = 0
-	}
-	return seq
 }

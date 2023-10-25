@@ -41,7 +41,6 @@ const (
 
 var ErrInvalidLogin = base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 var ErrLoginRequired = base.HTTPErrorf(http.StatusUnauthorized, "Login required")
-var errPasswordAuthenticationDisabled = base.HTTPErrorf(http.StatusUnauthorized, "Password authentication is disabled")
 
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
@@ -56,8 +55,6 @@ func init() {
 }
 
 var kNotFoundError = base.HTTPErrorf(http.StatusNotFound, "missing")
-var kBadMethodError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Method Not Allowed")
-var kBadRequestError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Bad Request")
 
 var wwwAuthenticateHeader = `Basic realm="` + base.ProductNameString + `"`
 
@@ -603,7 +600,7 @@ func (h *handler) removeCorruptConfigIfExists(ctx context.Context, bucket, confi
 
 func (h *handler) logRequestLine() {
 	// Check Log Level first, as SanitizeRequestURL is expensive to evaluate.
-	if !base.LogInfoEnabled(base.KeyHTTP) {
+	if !base.LogInfoEnabled(h.ctx(), base.KeyHTTP) {
 		return
 	}
 
@@ -1016,14 +1013,6 @@ func (h *handler) getIntQuery(query string, defaultValue uint64) (value uint64) 
 	return base.GetRestrictedIntQuery(h.getQueryValues(), query, defaultValue, 0, 0, false)
 }
 
-func (h *handler) getJSONQuery(query string) (value interface{}, err error) {
-	valueJSON := h.getQuery(query)
-	if valueJSON != "" {
-		err = base.JSONUnmarshal([]byte(valueJSON), &value)
-	}
-	return
-}
-
 func (h *handler) getJSONStringArrayQuery(param string) ([]string, error) {
 	var strings []string
 	value := h.getQuery(param)
@@ -1038,13 +1027,6 @@ func (h *handler) getJSONStringArrayQuery(param string) ([]string, error) {
 func (h *handler) userAgentIs(agent string) bool {
 	userAgent := h.rq.Header.Get("User-Agent")
 	return len(userAgent) > len(agent) && userAgent[len(agent)] == '/' && strings.HasPrefix(userAgent, agent)
-}
-
-// Returns true if the header exists, and its value matches the given etag.
-// (The etag parameter should not be double-quoted; the function will take care of that.)
-func (h *handler) headerMatchesEtag(headerName string, etag string) bool {
-	value := h.rq.Header.Get(headerName)
-	return value != "" && strings.Contains(value, `"`+etag+`"`)
 }
 
 // Returns true if the header exists, and its value does NOT match the given etag.
