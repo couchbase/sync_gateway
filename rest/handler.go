@@ -600,7 +600,7 @@ func (h *handler) removeCorruptConfigIfExists(ctx context.Context, bucket, confi
 
 func (h *handler) logRequestLine() {
 	// Check Log Level first, as SanitizeRequestURL is expensive to evaluate.
-	if !base.LogInfoEnabled(base.KeyHTTP) {
+	if !base.LogInfoEnabled(h.ctx(), base.KeyHTTP) {
 		return
 	}
 

@@ -155,7 +155,7 @@ func (wh *Webhook) HandleEvent(ctx context.Context, event Event) bool {
 		}
 
 		// Check Log Level first, as SanitizedUrl is expensive to evaluate.
-		if base.LogDebugEnabled(base.KeyEvents) {
+		if base.LogDebugEnabled(ctx, base.KeyEvents) {
 			base.DebugfCtx(ctx, base.KeyEvents, "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
 				base.UD(string(payload)), base.UD(wh.SanitizedUrl(ctx)), resp.Status)
 		}
