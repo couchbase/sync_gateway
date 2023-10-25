@@ -11,6 +11,7 @@ package adminapitest
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -18,7 +19,6 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/slices"
 )
 
 func TestCollectionsSyncImportFunctions(t *testing.T) {
