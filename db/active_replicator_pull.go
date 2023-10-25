@@ -40,10 +40,6 @@ func (apr *ActivePullReplicator) Start(ctx context.Context) error {
 	apr.lock.Lock()
 	defer apr.lock.Unlock()
 
-	if apr == nil {
-		return fmt.Errorf("nil ActivePullReplicator, can't start")
-	}
-
 	if apr.ctx != nil && apr.ctx.Err() == nil {
 		return fmt.Errorf("ActivePullReplicator already running")
 	}
@@ -158,10 +154,6 @@ func (apr *ActivePullReplicator) _subChanges(collectionIdx *int, since string) e
 func (apr *ActivePullReplicator) Complete() {
 	base.TracefCtx(apr.ctx, base.KeyReplicate, "ActivePullReplicator.Complete()")
 	apr.lock.Lock()
-	if apr == nil {
-		apr.lock.Unlock()
-		return
-	}
 	_ = apr.forEachCollection(func(c *activeReplicatorCollection) error {
 		base.TracefCtx(apr.ctx, base.KeyReplicate, "Before calling waitForExpectedSequences in Complete()")
 		if err := c.Checkpointer.waitForExpectedSequences(); err != nil {

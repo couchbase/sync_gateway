@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -41,12 +40,6 @@ import (
 // util_test.go, which is only accessible from the base package.
 
 var TestExternalRevStorage = false
-
-func init() {
-
-	// Prevent https://issues.couchbase.com/browse/MB-24237
-	rand.Seed(time.Now().UTC().UnixNano())
-}
 
 type TestBucket struct {
 	Bucket

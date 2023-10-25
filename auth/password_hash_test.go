@@ -35,7 +35,6 @@ func BenchmarkBcryptCostTimes(b *testing.B) {
 
 	for i := minCostToTest; i < maxCostToTest; i++ {
 		b.Run(fmt.Sprintf("cost%d", i), func(bn *testing.B) {
-			bn.N = 1
 			_, err := bcrypt.GenerateFromPassword([]byte("hunter2"), i)
 			assert.NoError(bn, err)
 		})

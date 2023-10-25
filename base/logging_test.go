@@ -10,8 +10,8 @@ package base
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"

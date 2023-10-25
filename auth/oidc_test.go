@@ -1255,7 +1255,6 @@ func TestJWTRolesChannels(t *testing.T) {
 				require.Equal(t, base.SetFromArray(login.expectedChannels), user.Channels().AsSet())
 
 				require.Greater(t, user.JWTLastUpdated(), lastUpdateTime)
-				lastUpdateTime = user.JWTLastUpdated()
 			}
 		})
 	}
