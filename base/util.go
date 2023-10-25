@@ -620,13 +620,13 @@ func (s SortedUint64Slice) Sort() {
 	sort.Sort(s)
 }
 
-func WriteHistogram(expvarMap *expvar.Map, since time.Time, prefix string) {
-	WriteHistogramForDuration(expvarMap, time.Since(since), prefix)
+func WriteHistogram(ctx context.Context, expvarMap *expvar.Map, since time.Time, prefix string) {
+	WriteHistogramForDuration(ctx, expvarMap, time.Since(since), prefix)
 }
 
-func WriteHistogramForDuration(expvarMap *expvar.Map, duration time.Duration, prefix string) {
+func WriteHistogramForDuration(ctx context.Context, expvarMap *expvar.Map, duration time.Duration, prefix string) {
 
-	if LogDebugEnabled(KeyAll) {
+	if LogDebugEnabled(ctx, KeyAll) {
 		var durationMs int
 		if duration < 1*time.Second {
 			durationMs = int(duration/(100*time.Millisecond)) * 100

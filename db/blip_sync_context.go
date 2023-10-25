@@ -171,7 +171,7 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 		handler := newBlipHandler(bsc.loggingCtx, bsc, bsc.copyContextDatabase(), bsc.incrementSerialNumber())
 
 		// Trace log the full message body and properties
-		if base.LogTraceEnabled(base.KeySyncMsg) {
+		if base.LogTraceEnabled(bsc.loggingCtx, base.KeySyncMsg) {
 			rqBody, _ := rq.Body()
 			base.TracefCtx(bsc.loggingCtx, base.KeySyncMsg, "Recv Req %s: Body: '%s' Properties: %v", rq, base.UD(rqBody), base.UD(rq.Properties))
 		}
@@ -193,7 +193,7 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 		}
 
 		// Trace log the full response body and properties
-		if base.LogTraceEnabled(base.KeySyncMsg) {
+		if base.LogTraceEnabled(bsc.loggingCtx, base.KeySyncMsg) {
 			resp := rq.Response()
 			if resp == nil {
 				return
@@ -550,7 +550,7 @@ func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID string, collect
 // sendBLIPMessage is a simple wrapper around all sent BLIP messages
 func (bsc *BlipSyncContext) sendBLIPMessage(sender *blip.Sender, msg *blip.Message) bool {
 	ok := sender.Send(msg)
-	if base.LogTraceEnabled(base.KeySyncMsg) {
+	if base.LogTraceEnabled(bsc.loggingCtx, base.KeySyncMsg) {
 		rqBody, _ := msg.Body()
 		base.TracefCtx(bsc.loggingCtx, base.KeySyncMsg, "Sent Req %s: Body: '%s' Properties: %v", msg, base.UD(rqBody), base.UD(msg.Properties))
 	}
@@ -636,7 +636,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 	history := toHistory(rev.History, knownRevs, maxHistory)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq)
-	if base.LogDebugEnabled(base.KeySync) {
+	if base.LogDebugEnabled(bsc.loggingCtx, base.KeySync) {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), digests(attachmentStorageMeta))
 	}
 	return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, bodyBytes, attachmentStorageMeta, properties, seq, nil)
