@@ -47,20 +47,20 @@ const (
 	revocationTestPassword = "test"
 )
 
-func (tester *ChannelRevocationTester) addRole(role string) {
+func (tester *ChannelRevocationTester) addRole(user, role string) {
 	if tester.roles.Roles == nil {
 		tester.roles.Roles = map[string][]string{}
 	}
 
-	tester.roles.Roles[revocationTestUser] = append(tester.roles.Roles[revocationTestUser], fmt.Sprintf("role:%s", role))
+	tester.roles.Roles[user] = append(tester.roles.Roles[user], fmt.Sprintf("role:%s", role))
 	tester.roleVersion = tester.restTester.UpdateDoc("userRoles", tester.roleVersion, string(mustMarshalJSON(tester.restTester.TB, tester.roles)))
 }
 
-func (tester *ChannelRevocationTester) removeFooRole() {
+func (tester *ChannelRevocationTester) removeRole(user, role string) {
 	delIdx := -1
-	roles := tester.roles.Roles[revocationTestUser]
+	roles := tester.roles.Roles[user]
 	for idx, val := range roles {
-		if val == fmt.Sprintf("role:%s", revocationTestRole) {
+		if val == fmt.Sprintf("role:%s", role) {
 			delIdx = idx
 			break
 		}
@@ -94,18 +94,18 @@ func (tester *ChannelRevocationTester) removeRoleChannel(role, channel string) {
 	tester.roleChannelVersion = tester.restTester.UpdateDoc("roleChannels", tester.roleChannelVersion, string(mustMarshalJSON(tester.restTester.TB, tester.roleChannels)))
 }
 
-func (tester *ChannelRevocationTester) addUserChannel(channel string) {
+func (tester *ChannelRevocationTester) addUserChannel(user, channel string) {
 	if tester.userChannels.Channels == nil {
 		tester.userChannels.Channels = map[string][]string{}
 	}
 
-	tester.userChannels.Channels[revocationTestUser] = append(tester.userChannels.Channels[revocationTestUser], channel)
+	tester.userChannels.Channels[user] = append(tester.userChannels.Channels[user], channel)
 	tester.userChannelVersion = tester.restTester.UpdateDoc("userChannels", tester.userChannelVersion, string(mustMarshalJSON(tester.restTester.TB, tester.userChannels)))
 }
 
-func (tester *ChannelRevocationTester) removeUserChannel(channel string) {
+func (tester *ChannelRevocationTester) removeUserChannel(user string, channel string) {
 	delIdx := -1
-	channelsSlice := tester.userChannels.Channels[revocationTestUser]
+	channelsSlice := tester.userChannels.Channels[user]
 	for idx, val := range channelsSlice {
 		if val == channel {
 			delIdx = idx
@@ -2250,7 +2250,7 @@ func TestRevocationMessage(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Wait for doc revision to come over
-	_, ok := btc.WaitForBlipRevMessage("doc", version.RevID)
+	_, ok := btc.WaitForBlipRevMessage("doc", version)
 	require.True(t, ok)
 
 	// Remove role from user
