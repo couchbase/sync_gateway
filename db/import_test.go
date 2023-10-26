@@ -974,12 +974,12 @@ func TestImportConflictWithTombstone(t *testing.T) {
 
 	// Create rev 2 through SGW
 	body["foo"] = "abc"
-	_, _, err = collection.PutExistingRevWithBody(ctx, docID, body, []string{"2-abc", rev1ID}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, docID, body, []string{"2-abc", rev1ID}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
 
 	// Create conflicting rev 2 through SGW
 	body["foo"] = "def"
-	_, _, err = collection.PutExistingRevWithBody(ctx, docID, body, []string{"2-def", rev1ID}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, docID, body, []string{"2-def", rev1ID}, false, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
 
 	docRev, err := collection.GetRev(ctx, docID, "", false, nil)
