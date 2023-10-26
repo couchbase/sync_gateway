@@ -294,7 +294,7 @@ func TestDatabase(t *testing.T) {
 	body["key2"] = int64(4444)
 	history := []string{"4-four", "3-three", "2-488724414d0ed6b398d6d2aeb228d797",
 		"1-cb0c9a22be0e5a1b01084ec019defa81"}
-	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", body, history, false)
+	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", body, history, false, ExistingVersionWithUpdateToHLV)
 	body[BodyId] = doc.ID
 	body[BodyRev] = newRev
 	assert.NoError(t, err, "PutExistingRev failed")
@@ -1020,18 +1020,18 @@ func TestRepeatedConflict(t *testing.T) {
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create two conflicting changes:
 	body["n"] = 2
 	body["channels"] = []string{"all", "2b"}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
 
 	body["n"] = 3
 	body["channels"] = []string{"all", "2a"}
-	_, newRev, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false)
+	_, newRev, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
 
 	// Get the _rev that was set in the body by PutExistingRevWithBody() and make assertions on it
@@ -1040,7 +1040,7 @@ func TestRepeatedConflict(t *testing.T) {
 
 	// Remove the _rev key from the body, and call PutExistingRevWithBody() again, which should re-add it
 	delete(body, BodyRev)
-	_, newRev, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false)
+	_, newRev, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err)
 
 	// The _rev should pass the same assertions as before, since PutExistingRevWithBody() should re-add it
@@ -1068,7 +1068,7 @@ func TestConflicts(t *testing.T) {
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 
 	// Wait for rev to be cached
@@ -1081,11 +1081,11 @@ func TestConflicts(t *testing.T) {
 	// Create two conflicting changes:
 	body["n"] = 2
 	body["channels"] = []string{"all", "2b"}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
 	body["n"] = 3
 	body["channels"] = []string{"all", "2a"}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
 
 	cacheWaiter.Add(2)
@@ -1213,55 +1213,55 @@ func TestNoConflictsMode(t *testing.T) {
 
 	// Create revs 1 and 2 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 	body["n"] = 2
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
 
 	// Try to create a conflict branching from rev 1:
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assertHTTPError(t, err, 409)
 
 	// Try to create a conflict with no common ancestor:
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-c", "1-c"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-c", "1-c"}, false, ExistingVersionWithUpdateToHLV)
 	assertHTTPError(t, err, 409)
 
 	// Try to create a conflict with a longer history:
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"4-d", "3-d", "2-d", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"4-d", "3-d", "2-d", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assertHTTPError(t, err, 409)
 
 	// Try to create a conflict with no history:
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-e"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-e"}, false, ExistingVersionWithUpdateToHLV)
 	assertHTTPError(t, err, 409)
 
 	// Create a non-conflict with a longer history, ending in a deletion:
 	body[BodyDeleted] = true
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"4-a", "3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 4-a")
 	delete(body, BodyDeleted)
 
 	// Try to resurrect the document with a conflicting branch
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"4-f", "3-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"4-f", "3-a"}, false, ExistingVersionWithUpdateToHLV)
 	assertHTTPError(t, err, 409)
 
 	// Resurrect the tombstoned document with a disconnected branch):
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-f"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-f"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-f")
 
 	// Tombstone the resurrected branch
 	body[BodyDeleted] = true
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-f", "1-f"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-f", "1-f"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-f")
 	delete(body, BodyDeleted)
 
 	// Resurrect the tombstoned document with a valid history (descendents of leaf)
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"5-f", "4-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"5-f", "4-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 5-f")
 	delete(body, BodyDeleted)
 
 	// Create a new document with a longer history:
-	_, _, err = collection.PutExistingRevWithBody(ctx, "COD", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "COD", body, []string{"4-a", "3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add COD")
 	delete(body, BodyDeleted)
 
@@ -1289,34 +1289,34 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	// Create documents with multiple non-deleted branches
 	log.Printf("Creating docs")
 	body := Body{"n": 1}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create two conflicting changes:
 	body["n"] = 2
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
 	body["n"] = 3
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
 	db.Options.AllowConflicts = base.BoolPtr(false)
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-c", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-c", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.True(t, err != nil, "expected error tombstoning non-leaf")
 
 	// Tombstone the non-winning branch of a conflicted document
@@ -1366,27 +1366,27 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	// Create documents with multiple non-deleted branches
 	log.Printf("Creating docs")
 	body := Body{"n": 1}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create two conflicting changes:
 	body["n"] = 2
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-b")
 	body["n"] = 3
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
@@ -1395,12 +1395,12 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
 	body[BodyDeleted] = true
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-c", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-c", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.True(t, err != nil, "expected error tombstoning non-leaf")
 
 	// Tombstone the non-winning branch of a conflicted document
 	body[BodyDeleted] = true
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 3-a (tombstone)")
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
@@ -1408,7 +1408,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 
 	// Tombstone the winning branch of a conflicted document
 	body[BodyDeleted] = true
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"3-b", "2-b"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"3-b", "2-b"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 3-b (tombstone)")
 	doc, err = collection.GetDocument(ctx, "doc2", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
@@ -1417,7 +1417,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	// Set revs_limit=1, then tombstone non-winning branch of a conflicted document.  Validate retrieval still works.
 	body[BodyDeleted] = true
 	db.RevsLimit = uint32(1)
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"3-a", "2-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"3-a", "2-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "add 3-a (tombstone)")
 	doc, err = collection.GetDocument(ctx, "doc3", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
@@ -1453,7 +1453,7 @@ func TestSyncFnOnPush(t *testing.T) {
 	body["channels"] = "clibup"
 	history := []string{"4-four", "3-three", "2-488724414d0ed6b398d6d2aeb228d797",
 		rev1id}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, history, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, history, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "PutExistingRev failed")
 
 	// Check that the doc has the correct channel (test for issue #300)
@@ -2145,7 +2145,7 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 			enableCallback = false
 			body := Body{"name": "Emily", "age": 20}
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
-			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b", "2-b", "1-a"}, false)
+			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b", "2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 			assert.NoError(t, err, "Adding revision 3-b")
 		}
 	}
@@ -2160,29 +2160,29 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	body := Body{"name": "Olivia", "age": 80}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 1-a")
 
 	body = Body{"name": "Harry", "age": 40}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 2-a")
 
 	body = Body{"name": "Amelia", "age": 20}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 3-a")
 
 	body = Body{"name": "Charlie", "age": 10}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 4-a")
 
 	body = Body{"name": "Noah", "age": 40}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 2-b")
 
 	enableCallback = true
 
 	body = Body{"name": "Emily", "age": 20}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b", "2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b", "2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 3-b")
 
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
@@ -2203,7 +2203,7 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 			enableCallback = false
 			body := Body{"name": "Charlie", "age": 10, BodyDeleted: true}
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
-			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 			assert.NoError(t, err, "Couldn't add revision 4-a (tombstone)")
 		}
 	}
@@ -2218,19 +2218,19 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	body := Body{"name": "Olivia", "age": 80}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 1-a")
 
 	body = Body{"name": "Harry", "age": 40}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 2-a")
 
 	body = Body{"name": "Amelia", "age": 20}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 3-a")
 
 	body = Body{"name": "Noah", "age": 40}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 2-b")
 
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
@@ -2240,7 +2240,7 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 	enableCallback = true
 
 	body = Body{"name": "Charlie", "age": 10, BodyDeleted: true}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Couldn't add revision 4-a (tombstone)")
 
 	doc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
@@ -2261,7 +2261,7 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 			enableCallback = false
 			body := Body{"name": "Joshua", "age": 11}
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
-			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b1", "2-b", "1-a"}, false)
+			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b1", "2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 			assert.NoError(t, err, "Couldn't add revision 3-b1")
 		}
 	}
@@ -2276,29 +2276,29 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	body := Body{"name": "Olivia", "age": 80}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 1-a")
 
 	body = Body{"name": "Harry", "age": 40}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 2-a")
 
 	body = Body{"name": "Amelia", "age": 20}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 3-a")
 
 	body = Body{"name": "Charlie", "age": 10}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 4-a")
 
 	body = Body{"name": "Noah", "age": 40}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Adding revision 2-b")
 
 	enableCallback = true
 
 	body = Body{"name": "Liam", "age": 12}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b2", "2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b2", "2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Couldn't add revision 3-b2")
 
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
@@ -2332,7 +2332,7 @@ func TestIncreasingRecentSequences(t *testing.T) {
 			enableCallback = false
 			// Write a doc
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
-			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-abc", revid}, true)
+			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-abc", revid}, true, ExistingVersionWithUpdateToHLV)
 			assert.NoError(t, err)
 		}
 	}
@@ -2349,7 +2349,7 @@ func TestIncreasingRecentSequences(t *testing.T) {
 	assert.NoError(t, err)
 
 	enableCallback = true
-	doc, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-abc", "2-abc", revid}, true)
+	doc, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-abc", "2-abc", revid}, true, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err)
 
 	assert.True(t, sort.IsSorted(base.SortedUint64Slice(doc.SyncData.RecentSequences)))
@@ -2797,72 +2797,62 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 }
 
 func Test_resyncDocument(t *testing.T) {
-	testCases := []struct {
-		useXattr bool
-	}{
-		{useXattr: true},
-		{useXattr: false},
+	if !base.TestUseXattrs() {
+		t.Skip("Walrus doesn't support xattr")
 	}
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
-	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("Test_resyncDocument with useXattr: %t", testCase.useXattr), func(t *testing.T) {
-			if !base.TestUseXattrs() && testCase.useXattr {
-				t.Skip("Don't run xattr tests on non xattr tests")
-			}
-			db, ctx := setupTestDB(t)
-			defer db.Close(ctx)
+	db.Options.EnableXattr = true
+	db.Options.QueryPaginationLimit = 100
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-			db.Options.EnableXattr = testCase.useXattr
-			db.Options.QueryPaginationLimit = 100
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
-
-			syncFn := `
+	syncFn := `
 	function sync(doc, oldDoc){
 		channel("channel." + "ABC");
 	}
 `
-			_, err := collection.UpdateSyncFun(ctx, syncFn)
-			require.NoError(t, err)
+	_, err := collection.UpdateSyncFun(ctx, syncFn)
+	require.NoError(t, err)
 
-			docID := uuid.NewString()
+	docID := uuid.NewString()
 
-			updateBody := make(map[string]interface{})
-			updateBody["val"] = "value"
-			_, doc, err := collection.Put(ctx, docID, updateBody)
-			require.NoError(t, err)
-			assert.NotNil(t, doc)
+	updateBody := make(map[string]interface{})
+	updateBody["val"] = "value"
+	_, doc, err := collection.Put(ctx, docID, updateBody)
+	require.NoError(t, err)
+	assert.NotNil(t, doc)
 
-			syncFn = `
+	syncFn = `
 		function sync(doc, oldDoc){
 			channel("channel." + "ABC12332423234");
 		}
 	`
-			_, err = collection.UpdateSyncFun(ctx, syncFn)
-			require.NoError(t, err)
+	_, err = collection.UpdateSyncFun(ctx, syncFn)
+	require.NoError(t, err)
 
-			_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
-			require.NoError(t, err)
-			err = collection.WaitForPendingChanges(ctx)
-			require.NoError(t, err)
+	_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
+	require.NoError(t, err)
+	err = collection.WaitForPendingChanges(ctx)
+	require.NoError(t, err)
 
-			syncData, err := collection.GetDocSyncData(ctx, docID)
-			assert.NoError(t, err)
+	syncData, err := collection.GetDocSyncData(ctx, docID)
+	assert.NoError(t, err)
 
-			assert.Len(t, syncData.ChannelSet, 2)
-			assert.Len(t, syncData.Channels, 2)
-			found := false
+	assert.Len(t, syncData.ChannelSet, 2)
+	assert.Len(t, syncData.Channels, 2)
+	found := false
 
-			for _, chSet := range syncData.ChannelSet {
-				if chSet.Name == "channel.ABC12332423234" {
-					found = true
-					break
-				}
-			}
-
-			assert.True(t, found)
-			assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
-		})
+	for _, chSet := range syncData.ChannelSet {
+		if chSet.Name == "channel.ABC12332423234" {
+			found = true
+			break
+		}
 	}
+
+	assert.True(t, found)
+	assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
+
 }
 
 func Test_getUpdatedDocument(t *testing.T) {
