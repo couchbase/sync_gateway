@@ -2743,7 +2743,8 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"key": "value"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	collection, _ := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(base.TestCtx(t), "doc1")
 	assert.NoError(t, err)
 	uintCAS := base.HexCasToUint64(syncData.Cas)
 
@@ -2755,7 +2756,7 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev="+syncData.CurrentRev, `{"key1": "value1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	syncData, err = collection.GetDocSyncData(base.TestCtx(t), "doc1")
 	assert.NoError(t, err)
 	uintCAS = base.HexCasToUint64(syncData.Cas)
 
@@ -2767,7 +2768,7 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev="+syncData.CurrentRev, "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	syncData, err = collection.GetDocSyncData(base.TestCtx(t), "doc1")
 	assert.NoError(t, err)
 	uintCAS = base.HexCasToUint64(syncData.Cas)
 
@@ -2798,7 +2799,8 @@ func TestHLVOnPutWithImportRejection(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"type": "mobile"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	collection, _ := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(base.TestCtx(t), "doc1")
 	assert.NoError(t, err)
 	uintCAS := base.HexCasToUint64(syncData.Cas)
 
@@ -2811,7 +2813,7 @@ func TestHLVOnPutWithImportRejection(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// assert that the hlv is correctly updated and in tact after the import was cancelled on the doc
-	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc2")
+	syncData, err = collection.GetDocSyncData(base.TestCtx(t), "doc2")
 	assert.NoError(t, err)
 	uintCAS = base.HexCasToUint64(syncData.Cas)
 
