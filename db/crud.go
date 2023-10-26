@@ -413,10 +413,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 			// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheHits, 1)
 			db.dbStats().DeltaSync().DeltaCacheHit.Add(1)
 			return fromRevision.Delta, nil, nil
-		} // else {
-		// TODO: Recurse and merge deltas when gen(revCacheDelta.toRevID) < gen(toRevId)
-		// until then, fall through to generating delta for given rev pair
-		//	}
+		}
 	}
 
 	// Delta is unavailable, but the body is available.
