@@ -266,13 +266,13 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 	require.NoError(t, err)
 	defer btc.Close()
 
-	var version DocVersion
 	docName := "doc1"
 	body := `{"foo":"bar"}`
+	versions := make([]DocVersion, 0, len(rt.GetKeyspaces()))
 	for _, keyspace := range rt.GetKeyspaces() {
 		resp := rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docName, `{"foo":"bar"}`)
 		RequireStatus(t, resp, http.StatusCreated)
-		version = DocVersionFromPutResponse(t, resp)
+		versions = append(versions, DocVersionFromPutResponse(t, resp))
 
 	}
 	require.NoError(t, rt.WaitForPendingChanges())
@@ -282,8 +282,8 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 		require.NoError(t, collectionClient.StartPull())
 	}
 
-	for _, collectionClient := range btc.collectionClients {
-		msg, ok := collectionClient.WaitForVersion(docName, version)
+	for i, collectionClient := range btc.collectionClients {
+		msg, ok := collectionClient.WaitForVersion(docName, versions[i])
 		require.True(t, ok)
 		require.Equal(t, body, string(msg))
 	}
