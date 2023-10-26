@@ -309,7 +309,7 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		revision, err = db.revisionCache.Get(ctx, docid, revid, includeBody, RevCacheOmitDelta)
+		revision, err = db.revisionCache.GetWithRev(ctx, docid, revid, includeBody, RevCacheOmitDelta)
 	} else {
 		// No rev ID given, so load active revision
 		revision, err = db.revisionCache.GetActive(ctx, docid, includeBody)
@@ -373,7 +373,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		return nil, nil, nil
 	}
 
-	fromRevision, err := db.revisionCache.Get(ctx, docID, fromRevID, RevCacheOmitBody, RevCacheIncludeDelta)
+	fromRevision, err := db.revisionCache.GetWithRev(ctx, docID, fromRevID, RevCacheOmitBody, RevCacheIncludeDelta)
 
 	// If the fromRevision is a removal cache entry (no body), but the user has access to that removal, then just
 	// return 404 missing to indicate that the body of the revision is no longer available.
@@ -413,7 +413,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
 		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)
-		toRevision, err := db.revisionCache.Get(ctx, docID, toRevID, RevCacheOmitBody, RevCacheIncludeDelta)
+		toRevision, err := db.revisionCache.GetWithRev(ctx, docID, toRevID, RevCacheOmitBody, RevCacheIncludeDelta)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -859,7 +859,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
 	case Import:
 		// work to be done to decide if the VV needs updating here, pending CBG-3503
-	case NewVersion:
+	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
 		newVVEntry := CurrentVersionVector{}
 		newVVEntry.SourceID = db.dbCtx.BucketUUID
@@ -1025,8 +1025,8 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 }
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
-func (db *DatabaseCollectionWithUser) PutExistingRev(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, forceAllConflicts bool, existingDoc *sgbucket.BucketDocument) (doc *Document, newRevID string, err error) {
-	return db.PutExistingRevWithConflictResolution(ctx, newDoc, docHistory, noConflicts, nil, forceAllConflicts, existingDoc)
+func (db *DatabaseCollectionWithUser) PutExistingRev(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, forceAllConflicts bool, existingDoc *sgbucket.BucketDocument, docUpdateEvent DocUpdateType) (doc *Document, newRevID string, err error) {
+	return db.PutExistingRevWithConflictResolution(ctx, newDoc, docHistory, noConflicts, nil, forceAllConflicts, existingDoc, docUpdateEvent)
 }
 
 // PutExistingRevWithConflictResolution Adds an existing revision to a document along with its history (list of rev IDs.)
@@ -1034,14 +1034,13 @@ func (db *DatabaseCollectionWithUser) PutExistingRev(ctx context.Context, newDoc
 //  1. If noConflicts == false, the revision will be added to the rev tree as a conflict
 //  2. If noConflicts == true and a conflictResolverFunc is not provided, a 409 conflict error will be returned
 //  3. If noConflicts == true and a conflictResolverFunc is provided, conflicts will be resolved and the result added to the document.
-func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflictingTombstone bool, existingDoc *sgbucket.BucketDocument) (doc *Document, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflictingTombstone bool, existingDoc *sgbucket.BucketDocument, docUpdateEvent DocUpdateType) (doc *Document, newRevID string, err error) {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(ctx, newRev)
 	if generation < 0 {
 		return nil, "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 
-	docUpdateEvent := ExistingVersion
 	allowImport := db.UseXattrs()
 	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, docUpdateEvent, existingDoc, false, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 
@@ -1143,7 +1142,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 	return doc, newRev, err
 }
 
-func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context, docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, newRev string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context, docid string, body Body, docHistory []string, noConflicts bool, docUpdateEvent DocUpdateType) (doc *Document, newRev string, err error) {
 	err = validateAPIDocUpdate(body)
 	if err != nil {
 		return nil, "", err
@@ -1168,7 +1167,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 
 	newDoc.UpdateBody(body)
 
-	doc, newRevID, putExistingRevErr := db.PutExistingRev(ctx, newDoc, docHistory, noConflicts, false, nil)
+	doc, newRevID, putExistingRevErr := db.PutExistingRev(ctx, newDoc, docHistory, noConflicts, false, nil, docUpdateEvent)
 
 	if putExistingRevErr != nil {
 		return nil, "", putExistingRevErr
@@ -2085,7 +2084,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 			// Prior to saving doc, remove the revision in cache
 			if createNewRevIDSkipped {
-				db.revisionCache.Remove(doc.ID, doc.CurrentRev)
+				db.revisionCache.RemoveWithRev(doc.ID, doc.CurrentRev)
 			}
 
 			base.DebugfCtx(ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
@@ -2099,6 +2098,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 		} else if doc != nil {
 			doc.Cas = casOut
+			// update the doc's HLV defined post macro expansion
+			doc = postWriteUpdateHLV(doc, casOut)
 		}
 	}
 
@@ -2156,6 +2157,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Expiry:           doc.Expiry,
 			Deleted:          doc.History[newRevID].Deleted,
 			_shallowCopyBody: storedDoc.Body(ctx),
+			CV:               &CurrentVersionVector{VersionCAS: doc.HLV.Version, SourceID: doc.HLV.SourceID},
 		}
 
 		if createNewRevIDSkipped {
@@ -2216,6 +2218,19 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	// Mark affected users/roles as needing to recompute their channel access:
 	db.MarkPrincipalsChanged(ctx, docid, newRevID, changedAccessPrincipals, changedRoleAccessUsers, doc.Sequence)
 	return doc, newRevID, nil
+}
+
+func postWriteUpdateHLV(doc *Document, casOut uint64) *Document {
+	if doc.HLV == nil {
+		return doc
+	}
+	if doc.HLV.Version == hlvExpandMacroCASValue {
+		doc.HLV.Version = casOut
+	}
+	if doc.HLV.CurrentVersionCAS == hlvExpandMacroCASValue {
+		doc.HLV.CurrentVersionCAS = casOut
+	}
+	return doc
 }
 
 func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectionWithUser, doc *Document, newRevID string) (map[string]struct{}, error) {

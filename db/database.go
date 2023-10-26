@@ -52,6 +52,7 @@ const (
 	Import DocUpdateType = iota
 	NewVersion
 	ExistingVersion
+	ExistingVersionWithUpdateToHLV
 )
 
 type DocUpdateType uint32
