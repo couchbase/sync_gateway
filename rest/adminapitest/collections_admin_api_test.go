@@ -267,6 +267,8 @@ func TestRequireResync(t *testing.T) {
 	resyncPayload, marshalErr := base.JSONMarshal(resyncCollections)
 	require.NoError(t, marshalErr)
 
+	require.NoError(t, rt.WaitForDatabaseState(db2Name, db.DBOffline))
+
 	resp = rt.SendAdminRequest("POST", "/"+db2Name+"/_resync?action=start&regenerate_sequences=true", string(resyncPayload))
 	rest.RequireStatus(t, resp, http.StatusOK)
 
