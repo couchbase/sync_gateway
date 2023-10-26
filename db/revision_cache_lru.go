@@ -389,9 +389,6 @@ func (rc *LRURevisionCache) addToRevMapPostLoad(docID, revID string, cv *Current
 	} else {
 		// if not found we need to add the element to the rev lookup (for PUT code path)
 		rc.cache[legacyKey] = cvElem
-		for rc.lruList.Len() > int(rc.capacity) {
-			rc.purgeOldest_()
-		}
 	}
 }
 
