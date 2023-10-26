@@ -27,10 +27,15 @@ const (
 
 // RevisionCache is an interface that can be used to fetch a DocumentRevision for a Doc ID and Rev ID pair.
 type RevisionCache interface {
-	// Get returns the given revision, and stores if not already cached.
+	// GetWithRev returns the given revision, and stores if not already cached.
 	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
 	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
-	Get(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (DocumentRevision, error)
+	GetWithRev(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (DocumentRevision, error)
+
+	// GetWithCV returns the given revision by CV, and stores if not already cached.
+	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
+	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
+	GetWithCV(ctx context.Context, docID string, cv *CurrentVersionVector, collectionID uint32, includeDelta bool) (DocumentRevision, error)
 
 	// GetActive returns the current revision for the given doc ID, and stores if not already cached.
 	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
@@ -45,8 +50,11 @@ type RevisionCache interface {
 	// Upsert will remove existing value and re-create new one
 	Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32)
 
-	// Remove eliminates a revision in the cache.
-	Remove(docID, revID string, collectionID uint32)
+	// RemoveWithRev evicts a revision from the cache using its revID.
+	RemoveWithRev(docID, revID string, collectionID uint32)
+
+	// RemoveWithCV evicts a revision from the cache using its current version.
+	RemoveWithCV(docID string, cv *CurrentVersionVector, collectionID uint32)
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
 	UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta)
@@ -101,6 +109,7 @@ func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 type RevisionCacheBackingStore interface {
 	GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error)
 	getRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, error)
+	getCurrentVersion(ctx context.Context, doc *Document) ([]byte, AttachmentsMeta, error)
 }
 
 // collectionRevisionCache is a view of a revision cache for a collection.
@@ -118,8 +127,13 @@ func newCollectionRevisionCache(revCache *RevisionCache, collectionID uint32) co
 }
 
 // Get is for per collection access to Get method
-func (c *collectionRevisionCache) Get(ctx context.Context, docID, revID string, includeDelta bool) (DocumentRevision, error) {
-	return (*c.revCache).Get(ctx, docID, revID, c.collectionID, includeDelta)
+func (c *collectionRevisionCache) GetWithRev(ctx context.Context, docID, revID string, includeDelta bool) (DocumentRevision, error) {
+	return (*c.revCache).GetWithRev(ctx, docID, revID, c.collectionID, includeDelta)
+}
+
+// Get is for per collection access to Get method
+func (c *collectionRevisionCache) GetWithCV(ctx context.Context, docID string, cv *CurrentVersionVector, includeDelta bool) (DocumentRevision, error) {
+	return (*c.revCache).GetWithCV(ctx, docID, cv, c.collectionID, includeDelta)
 }
 
 // GetActive is for per collection access to GetActive method
@@ -142,9 +156,14 @@ func (c *collectionRevisionCache) Upsert(ctx context.Context, docRev DocumentRev
 	(*c.revCache).Upsert(ctx, docRev, c.collectionID)
 }
 
-// Remove is for per collection access to Remove method
-func (c *collectionRevisionCache) Remove(docID, revID string) {
-	(*c.revCache).Remove(docID, revID, c.collectionID)
+// RemoveWithRev is for per collection access to Remove method
+func (c *collectionRevisionCache) RemoveWithRev(docID, revID string) {
+	(*c.revCache).RemoveWithRev(docID, revID, c.collectionID)
+}
+
+// RemoveWithCV is for per collection access to Remove method
+func (c *collectionRevisionCache) RemoveWithCV(docID string, cv *CurrentVersionVector) {
+	(*c.revCache).RemoveWithCV(docID, cv, c.collectionID)
 }
 
 // UpdateDelta is for per collection access to UpdateDelta method
@@ -165,6 +184,7 @@ type DocumentRevision struct {
 	Delta       *RevisionDelta
 	Deleted     bool
 	Removed     bool // True if the revision is a removal.
+	CV          *CurrentVersionVector
 }
 
 // MutableBody returns a deep copy of the given document revision as a plain body (without any special properties)
@@ -310,6 +330,13 @@ type IDAndRev struct {
 	CollectionID uint32
 }
 
+type IDandCV struct {
+	DocID        string
+	Version      uint64
+	Source       string
+	CollectionID uint32
+}
+
 // RevisionDelta stores data about a delta between a revision and ToRevID.
 type RevisionDelta struct {
 	ToRevID               string                  // Target revID for the delta
@@ -333,40 +360,93 @@ func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
 // Its job is to load a revision from the bucket when there's a cache miss.
-func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore, id IDAndRev) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
+func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore, id IDAndRev) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, fetchedCV *CurrentVersionVector, err error) {
 	var doc *Document
 	if doc, err = backingStore.GetDocument(ctx, id.DocID, DocUnmarshalSync); doc == nil {
-		return bodyBytes, history, channels, removed, attachments, deleted, expiry, err
+		return bodyBytes, history, channels, removed, attachments, deleted, expiry, fetchedCV, err
 	}
-
 	return revCacheLoaderForDocument(ctx, backingStore, doc, id.RevID)
 }
 
+// revCacheLoaderForCv will load a document from the bucket using the CV, comapre the fetched doc and the CV specified in the function,
+// and will still return revid for purpose of populating the Rev ID lookup map on the cache
+func revCacheLoaderForCv(ctx context.Context, backingStore RevisionCacheBackingStore, id IDandCV) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, revid string, err error) {
+	cv := CurrentVersionVector{
+		VersionCAS: id.Version,
+		SourceID:   id.Source,
+	}
+	var doc *Document
+	if doc, err = backingStore.GetDocument(ctx, id.DocID, DocUnmarshalSync); doc == nil {
+		return bodyBytes, history, channels, removed, attachments, deleted, expiry, revid, err
+	}
+
+	return revCacheLoaderForDocumentCV(ctx, backingStore, doc, cv)
+}
+
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
-func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, revid string) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
+func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, revid string) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, fetchedCV *CurrentVersionVector, err error) {
 	if bodyBytes, attachments, err = backingStore.getRevision(ctx, doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
 		// the revision was a channel removal. If so, we want to store as removal in the revision cache
 		removalBodyBytes, removalHistory, activeChannels, isRemoval, isDelete, isRemovalErr := doc.IsChannelRemoval(ctx, revid)
 		if isRemovalErr != nil {
-			return bodyBytes, history, channels, isRemoval, nil, isDelete, nil, isRemovalErr
+			return bodyBytes, history, channels, isRemoval, nil, isDelete, nil, fetchedCV, isRemovalErr
 		}
 
 		if isRemoval {
-			return removalBodyBytes, removalHistory, activeChannels, isRemoval, nil, isDelete, nil, nil
+			return removalBodyBytes, removalHistory, activeChannels, isRemoval, nil, isDelete, nil, fetchedCV, nil
 		} else {
 			// If this wasn't a removal, return the original error from getRevision
-			return bodyBytes, history, channels, removed, nil, isDelete, nil, err
+			return bodyBytes, history, channels, removed, nil, isDelete, nil, fetchedCV, err
 		}
 	}
 	deleted = doc.History[revid].Deleted
 
 	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
 	if getHistoryErr != nil {
-		return bodyBytes, history, channels, removed, nil, deleted, nil, getHistoryErr
+		return bodyBytes, history, channels, removed, nil, deleted, nil, fetchedCV, getHistoryErr
 	}
 	history = encodeRevisions(ctx, doc.ID, validatedHistory)
 	channels = doc.History[revid].Channels
+	if doc.HLV != nil {
+		fetchedCV = &CurrentVersionVector{SourceID: doc.HLV.SourceID, VersionCAS: doc.HLV.Version}
+	}
 
-	return bodyBytes, history, channels, removed, attachments, deleted, doc.Expiry, err
+	return bodyBytes, history, channels, removed, attachments, deleted, doc.Expiry, fetchedCV, err
+}
+
+// revCacheLoaderForDocumentCV used either during cache miss (from revCacheLoaderForCv), or used directly when getting current active CV from cache
+func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, cv CurrentVersionVector) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, revid string, err error) {
+	if bodyBytes, attachments, err = backingStore.getCurrentVersion(ctx, doc); err != nil {
+		// we need implementation of IsChannelRemoval for CV here.
+		// pending CBG-3213 support of channel removal for CV
+	}
+
+	if err = doc.HasCurrentVersion(cv); err != nil {
+		return bodyBytes, history, channels, removed, attachments, deleted, doc.Expiry, revid, err
+	}
+	channels = doc.currentRevChannels
+	revid = doc.CurrentRev
+
+	return bodyBytes, history, channels, removed, attachments, deleted, doc.Expiry, revid, err
+}
+
+func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Document) (bodyBytes []byte, attachments AttachmentsMeta, err error) {
+	bodyBytes, err = doc.BodyBytes(ctx)
+	if err != nil {
+		base.WarnfCtx(ctx, "Marshal error when retrieving active current version body: %v", err)
+		return nil, nil, err
+	}
+
+	attachments = doc.Attachments
+
+	// handle backup revision inline attachments, or pre-2.5 meta
+	if inlineAtts, cleanBodyBytes, _, err := extractInlineAttachments(bodyBytes); err != nil {
+		return nil, nil, err
+	} else if len(inlineAtts) > 0 {
+		// we found some inline attachments, so merge them with attachments, and update the bodies
+		attachments = mergeAttachments(inlineAtts, attachments)
+		bodyBytes = cleanBodyBytes
+	}
+	return bodyBytes, attachments, err
 }

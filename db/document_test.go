@@ -261,7 +261,7 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	ctx := base.TestCtx(t)
 
 	doc_meta := []byte(doc_meta_with_vv)
-	doc, err := unmarshalDocumentWithXattr(ctx, "doc_1k", nil, doc_meta, nil, 1, DocUnmarshalVV)
+	doc, err := unmarshalDocumentWithXattrs(ctx, "doc_1k", nil, doc_meta, nil, nil, 1, DocUnmarshalVV)
 	require.NoError(t, err)
 
 	// assert on doc version vector values
@@ -271,7 +271,7 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
 
-	doc, err = unmarshalDocumentWithXattr(ctx, "doc1", nil, doc_meta, nil, 1, DocUnmarshalAll)
+	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, doc_meta, nil, nil, 1, DocUnmarshalAll)
 	require.NoError(t, err)
 
 	// assert on doc version vector values
@@ -281,7 +281,7 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
 
-	doc, err = unmarshalDocumentWithXattr(ctx, "doc1", nil, doc_meta, nil, 1, DocUnmarshalNoHistory)
+	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, doc_meta, nil, nil, 1, DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
 	// assert on doc version vector values
