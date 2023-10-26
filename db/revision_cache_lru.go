@@ -281,11 +281,11 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision) {
 	// doc should always have a cv present in a PUT operation on the cache (update HLV is called before hand in doc update process)
 	// thus we can call getValueByCV directly the update the rev lookup post this
 	value := rc.getValueByCV(docRev.DocID, docRev.CV, true)
+	// store the created value
+	value.store(docRev)
 
 	// add new doc version to the rev id lookup map
 	rc.addToRevMapPostLoad(docRev.DocID, docRev.RevID, docRev.CV)
-
-	value.store(docRev)
 }
 
 // Upsert a revision in the cache.
@@ -305,7 +305,7 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision)
 
 	// Add new value and overwrite existing cache key, pushing to front to maintain order
 	// also ensure we add to rev id lookup map too
-	value = &revCacheValue{id: docRev.DocID, cv: *docRev.CV, revID: docRev.RevID}
+	value = &revCacheValue{id: docRev.DocID, cv: *docRev.CV}
 	elem := rc.lruList.PushFront(value)
 	rc.hlvCache[key] = elem
 	rc.cache[legacyKey] = elem
@@ -387,13 +387,6 @@ func (rc *LRURevisionCache) addToRevMapPostLoad(docID, revID string, cv *Current
 		rc.cache[legacyKey] = cvElem
 		rc.lruList.Remove(revElem)
 	} else {
-		// check if rev id is defined on the value in the cache, for PUT code pathway we will need to define the rev id here
-		if value := cvElem.Value.(*revCacheValue); value.revID == "" {
-			value.lock.Lock()
-			value.revID = revID
-			cvElem.Value = value
-			value.lock.Unlock()
-		}
 		// if not found we need to add the element to the rev lookup (for PUT code path)
 		rc.cache[legacyKey] = cvElem
 		for rc.lruList.Len() > int(rc.capacity) {
@@ -678,7 +671,7 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 func (value *revCacheValue) store(docRev DocumentRevision) {
 	value.lock.Lock()
 	if value.bodyBytes == nil {
-		// value already has doc id/rev id in key
+		value.revID = docRev.RevID
 		value.bodyBytes = docRev.BodyBytes
 		value.history = docRev.History
 		value.channels = docRev.Channels
