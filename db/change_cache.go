@@ -81,8 +81,8 @@ type changeCacheStats struct {
 
 func (c *changeCache) updateStats(ctx context.Context) {
 
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	c.lock.RLock()
+	defer c.lock.RUnlock()
 	if c.db == nil {
 		return
 	}
