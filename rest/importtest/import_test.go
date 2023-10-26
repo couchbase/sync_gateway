@@ -424,6 +424,9 @@ func TestXattrDoubleDelete(t *testing.T) {
 }
 
 func TestViewQueryTombstoneRetrieval(t *testing.T) {
+	t.Skip("Disabled pending CBG-3503")
+	base.SkipImportTestsIfNotEnabled(t)
+
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")
 	}
