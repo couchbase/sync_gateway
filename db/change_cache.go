@@ -497,7 +497,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// Now add the entry for the new doc revision:
 	if len(rawUserXattr) > 0 {
-		collection.revisionCache.Remove(docID, syncData.CurrentRev)
+		collection.revisionCache.RemoveWithRev(docID, syncData.CurrentRev)
 	}
 	change := &LogEntry{
 		Sequence:     syncData.Sequence,
