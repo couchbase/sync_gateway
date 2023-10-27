@@ -31,10 +31,10 @@ type ChannelRevocationTester struct {
 	restTester *RestTester
 	test       *testing.T
 
-	fillerDocRev   string
-	roleRev        string
-	roleChannelRev string
-	userChannelRev string
+	fillerDocVersion   DocVersion
+	roleVersion        DocVersion
+	roleChannelVersion DocVersion
+	userChannelVersion DocVersion
 
 	roles        UserRolesTemp
 	roleChannels ChannelsTemp
@@ -53,8 +53,7 @@ func (tester *ChannelRevocationTester) addRole(user, role string) {
 	}
 
 	tester.roles.Roles[user] = append(tester.roles.Roles[user], fmt.Sprintf("role:%s", role))
-	revID := tester.restTester.CreateDocReturnRev(tester.test, "userRoles", tester.roleRev, tester.roles)
-	tester.roleRev = revID
+	tester.roleVersion = tester.restTester.UpdateDoc("userRoles", tester.roleVersion, string(mustMarshalJSON(tester.restTester.TB, tester.roles)))
 }
 
 func (tester *ChannelRevocationTester) removeRole(user, role string) {
@@ -66,8 +65,8 @@ func (tester *ChannelRevocationTester) removeRole(user, role string) {
 			break
 		}
 	}
-	tester.roles.Roles[user] = append(roles[:delIdx], roles[delIdx+1:]...)
-	tester.roleRev = tester.restTester.CreateDocReturnRev(tester.test, "userRoles", tester.roleRev, tester.roles)
+	tester.roles.Roles[revocationTestUser] = append(roles[:delIdx], roles[delIdx+1:]...)
+	tester.roleVersion = tester.restTester.UpdateDoc("userRoles", tester.roleVersion, string(mustMarshalJSON(tester.restTester.TB, tester.roles)))
 }
 
 func (tester *ChannelRevocationTester) addRoleChannel(role, channel string) {
@@ -78,7 +77,7 @@ func (tester *ChannelRevocationTester) addRoleChannel(role, channel string) {
 	role = fmt.Sprintf("role:%s", role)
 
 	tester.roleChannels.Channels[role] = append(tester.roleChannels.Channels[role], channel)
-	tester.roleChannelRev = tester.restTester.CreateDocReturnRev(tester.test, "roleChannels", tester.roleChannelRev, tester.roleChannels)
+	tester.roleChannelVersion = tester.restTester.UpdateDoc("roleChannels", tester.roleChannelVersion, string(mustMarshalJSON(tester.restTester.TB, tester.roleChannels)))
 }
 
 func (tester *ChannelRevocationTester) removeRoleChannel(role, channel string) {
@@ -92,7 +91,7 @@ func (tester *ChannelRevocationTester) removeRoleChannel(role, channel string) {
 		}
 	}
 	tester.roleChannels.Channels[role] = append(channelsSlice[:delIdx], channelsSlice[delIdx+1:]...)
-	tester.roleChannelRev = tester.restTester.CreateDocReturnRev(tester.test, "roleChannels", tester.roleChannelRev, tester.roleChannels)
+	tester.roleChannelVersion = tester.restTester.UpdateDoc("roleChannels", tester.roleChannelVersion, string(mustMarshalJSON(tester.restTester.TB, tester.roleChannels)))
 }
 
 func (tester *ChannelRevocationTester) addUserChannel(user, channel string) {
@@ -101,10 +100,10 @@ func (tester *ChannelRevocationTester) addUserChannel(user, channel string) {
 	}
 
 	tester.userChannels.Channels[user] = append(tester.userChannels.Channels[user], channel)
-	tester.userChannelRev = tester.restTester.CreateDocReturnRev(tester.test, "userChannels", tester.userChannelRev, tester.userChannels)
+	tester.userChannelVersion = tester.restTester.UpdateDoc("userChannels", tester.userChannelVersion, string(mustMarshalJSON(tester.restTester.TB, tester.userChannels)))
 }
 
-func (tester *ChannelRevocationTester) removeUserChannel(user, channel string) {
+func (tester *ChannelRevocationTester) removeUserChannel(user string, channel string) {
 	delIdx := -1
 	channelsSlice := tester.userChannels.Channels[user]
 	for idx, val := range channelsSlice {
@@ -113,8 +112,8 @@ func (tester *ChannelRevocationTester) removeUserChannel(user, channel string) {
 			break
 		}
 	}
-	tester.userChannels.Channels[user] = append(channelsSlice[:delIdx], channelsSlice[delIdx+1:]...)
-	tester.userChannelRev = tester.restTester.CreateDocReturnRev(tester.test, "userChannels", tester.userChannelRev, tester.userChannels)
+	tester.userChannels.Channels[revocationTestUser] = append(channelsSlice[:delIdx], channelsSlice[delIdx+1:]...)
+	tester.userChannelVersion = tester.restTester.UpdateDoc("userChannels", tester.userChannelVersion, string(mustMarshalJSON(tester.restTester.TB, tester.userChannels)))
 }
 
 func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
@@ -124,18 +123,7 @@ func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
 
 	loopCount := seq - currentSeq
 	for i := 0; i < int(loopCount); i++ {
-		requestURL := "/{{.keyspace}}/fillerDoc"
-		if tester.fillerDocRev != "" {
-			requestURL += "?rev=" + tester.fillerDocRev
-		}
-		resp := tester.restTester.SendAdminRequest("PUT", requestURL, "{}")
-		require.Equal(tester.test, http.StatusCreated, resp.Code)
-
-		var body db.Body
-		err = json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(tester.test, err)
-
-		tester.fillerDocRev = body["rev"].(string)
+		tester.fillerDocVersion = tester.restTester.UpdateDoc("fillerDoc", tester.fillerDocVersion, "{}")
 	}
 }
 
@@ -2262,7 +2250,7 @@ func TestRevocationMessage(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Wait for doc revision to come over
-	_, ok := btc.WaitForBlipRevMessage("doc", version.RevID)
+	_, ok := btc.WaitForBlipRevMessage("doc", version)
 	require.True(t, ok)
 
 	// Remove role from user

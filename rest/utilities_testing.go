@@ -762,6 +762,11 @@ func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
 	}
 }
 
+// requireChangeRevVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
+func requireChangeRevVersion(t *testing.T, expected DocVersion, changeRev db.ChangeRev) {
+	RequireDocVersionEqual(t, expected, DocVersion{RevID: changeRev["rev"]})
+}
+
 func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, changesURL, username string, useAdminPort bool) (worker base.RetryWorker) {
 
 	waitForChangesWorker := func() (shouldRetry bool, err error, value interface{}) {
@@ -2496,6 +2501,7 @@ func (rt *RestTester) getCollectionsForBLIP() []string {
 			Collection: collection.Name,
 		}.String())
 	}
+	sort.Strings(collections)
 	return collections
 }
 
