@@ -2106,15 +2106,10 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 	losingVersion3 := rt.UpdateDoc(docID, version, `{"_attachments": {"hello.txt": {"revpos":2,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`)
 
 	// Create doc conflicting with previous revid referencing previous attachment too
-	_, revIDHash := db.ParseRevID(rt.Context(), version.RevID)
-	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc?new_edits=false", `{"_rev": "3-b", "_revisions": {"ids": ["b", "`+revIDHash+`"], "start": 3}, "_attachments": {"hello.txt": {"revpos":2,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}, "Winning Rev": true}`)
-	RequireStatus(t, resp, http.StatusCreated)
-	winningRev3 := RespRevID(t, resp)
+	winningVersion3 := rt.PutNewEditsFalse(docID, NewDocVersionFromFakeRev("3-b"), version, `{"_attachments": {"hello.txt": {"revpos":2,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}, "Winning Rev": true}`)
 
 	// Update the winning rev 3 and ensure attachment remains around as the other leaf still references this attachment
-	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc?rev="+winningRev3, `{"update": 2}`)
-	RequireStatus(t, resp, http.StatusCreated)
-	finalRev4 := RespRevID(t, resp)
+	finalVersion4 := rt.UpdateDoc(docID, winningVersion3, `{"update": 2}`)
 
 	type docResp struct {
 		Attachments db.AttachmentsMeta `json:"_attachments"`
@@ -2122,7 +2117,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 
 	var doc1 docResp
 	// Get losing rev and ensure attachment is still there and has not been deleted
-	resp = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/doc?attachments=true&rev="+losingVersion3.RevID, "", map[string]string{"Accept": "application/json"})
+	resp := rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/doc?attachments=true&rev="+losingVersion3.RevID, "", map[string]string{"Accept": "application/json"})
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = base.JSONUnmarshal(resp.BodyBytes(), &doc1)
@@ -2139,7 +2134,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 
 	var doc2 docResp
 	// Get winning rev and ensure attachment is indeed removed from this rev
-	resp = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/doc?attachments=true&rev="+finalRev4, "", map[string]string{"Accept": "application/json"})
+	resp = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/doc?attachments=true&rev="+finalVersion4.RevID, "", map[string]string{"Accept": "application/json"})
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = base.JSONUnmarshal(resp.BodyBytes(), &doc2)
@@ -2147,8 +2142,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 	require.NotContains(t, doc2.Attachments, "hello.txt")
 
 	// Now remove the attachment in the losing rev by deleting the revision and ensure the attachment gets deleted
-	resp = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc?rev="+losingVersion3.RevID, "")
-	RequireStatus(t, resp, http.StatusOK)
+	rt.DeleteDoc(docID, losingVersion3)
 
 	_, _, err = rt.GetSingleDataStore().GetRaw(attachmentKey)
 	assert.Error(t, err)
@@ -2160,24 +2154,18 @@ func TestAttachmentsMissing(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	_ = rt.Bucket()
 
-	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+t.Name(), `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
-	RequireStatus(t, resp, http.StatusCreated)
-	rev1ID := RespRevID(t, resp)
+	docID := t.Name()
+	version1 := rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
 
-	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+t.Name()+"?rev="+rev1ID, `{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}, "testval": ["xxx","xxx"]}`)
-	RequireStatus(t, resp, http.StatusCreated)
-	rev2ID := RespRevID(t, resp)
+	version2 := rt.UpdateDoc(docID, version1, `{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}, "testval": ["xxx","xxx"]}`)
 
-	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+t.Name()+"?new_edits=false", `{"_rev": "2-b", "_revisions": {"ids": ["b", "ca9ad22802b66f662ff171f226211d5c"], "start": 2}, "Winning Rev": true}`)
-	RequireStatus(t, resp, http.StatusCreated)
+	_ = rt.PutNewEditsFalse(docID, NewDocVersionFromFakeRev("2-b"), version1, `{"_rev": "2-b", "_revisions": {"ids": ["b", "ca9ad22802b66f662ff171f226211d5c"], "start": 2}, "Winning Rev": true}`)
 
 	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
-	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+t.Name()+"?rev="+rev2ID, ``)
-	RequireStatus(t, resp, http.StatusOK)
-	assert.Contains(t, string(resp.BodyBytes()), "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
+	body := rt.GetDocVersion(docID, version2)
+	require.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", body["_attachments"].(map[string]interface{})["hello.txt"].(map[string]interface{})["digest"])
 }
 
 func TestAttachmentsMissingNoBody(t *testing.T) {
@@ -2185,24 +2173,18 @@ func TestAttachmentsMissingNoBody(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	_ = rt.Bucket()
 
-	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+t.Name(), `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
-	RequireStatus(t, resp, http.StatusCreated)
-	rev1ID := RespRevID(t, resp)
+	docID := t.Name()
+	version1 := rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
 
-	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+t.Name()+"?rev="+rev1ID, `{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`)
-	RequireStatus(t, resp, http.StatusCreated)
-	rev2ID := RespRevID(t, resp)
+	version2 := rt.UpdateDoc(docID, version1, `{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`)
 
-	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+t.Name()+"?new_edits=false", `{"_rev": "2-b", "_revisions": {"ids": ["b", "ca9ad22802b66f662ff171f226211d5c"], "start": 2}}`)
-	RequireStatus(t, resp, http.StatusCreated)
+	_ = rt.PutNewEditsFalse(docID, NewDocVersionFromFakeRev("2-b"), version1, `{}`)
 
 	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
-	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+t.Name()+"?rev="+rev2ID, ``)
-	RequireStatus(t, resp, http.StatusOK)
-	assert.Contains(t, string(resp.BodyBytes()), "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
+	body := rt.GetDocVersion(docID, version2)
+	require.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", body["_attachments"].(map[string]interface{})["hello.txt"].(map[string]interface{})["digest"])
 }
 
 func TestAttachmentDeleteOnPurge(t *testing.T) {

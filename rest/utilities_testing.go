@@ -762,8 +762,8 @@ func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
 	}
 }
 
-// requireChangeRevVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
-func requireChangeRevVersion(t *testing.T, expected DocVersion, changeRev db.ChangeRev) {
+// RequireChangeRevVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
+func RequireChangeRevVersion(t *testing.T, expected DocVersion, changeRev db.ChangeRev) {
 	RequireDocVersionEqual(t, expected, DocVersion{RevID: changeRev["rev"]})
 }
 
@@ -1005,31 +1005,6 @@ func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body 
 
 	rt.TestAdminHandler().ServeHTTP(response, request)
 	return response
-}
-
-// PutDocumentWithRevID builds a new_edits=false style put to create a revision with the specified revID.
-// If parentRevID is not specified, treated as insert
-func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parentRevID string, body db.Body) (response *TestResponse, err error) {
-
-	requestBody := body.ShallowCopy()
-	newRevGeneration, newRevDigest := db.ParseRevID(base.TestCtx(rt.TB), newRevID)
-
-	revisions := make(map[string]interface{})
-	revisions["start"] = newRevGeneration
-	ids := []string{newRevDigest}
-	if parentRevID != "" {
-		_, parentDigest := db.ParseRevID(base.TestCtx(rt.TB), parentRevID)
-		ids = append(ids, parentDigest)
-	}
-	revisions["ids"] = ids
-
-	requestBody[db.BodyRevisions] = revisions
-	requestBytes, err := json.Marshal(requestBody)
-	if err != nil {
-		return nil, err
-	}
-	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?new_edits=false", string(requestBytes))
-	return resp, nil
 }
 
 func (rt *RestTester) SetAdminChannels(username string, keyspace string, channels ...string) error {
@@ -2330,12 +2305,6 @@ func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.Backgro
 	return assert.Truef(t, base.IsDocNotFoundError(err), "expected heartbeat doc to expire, but got a different error: %v", err)
 }
 
-// RespRevID returns a rev ID from the given response, or fails the given test if a rev ID was not found.
-func RespRevID(t *testing.T, response *TestResponse) (revID string) {
-	revision := DocVersionFromPutResponse(t, response)
-	return revision.RevID
-}
-
 // DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
 type DocVersion struct {
 	RevID string
@@ -2363,7 +2332,7 @@ func RequireDocVersionNotNil(t *testing.T, version DocVersion) {
 }
 
 // RequireDocVersionEqual calls t.Fail if two document versions are not equal.
-func RequireDocVersionEqual(t *testing.T, expected, actual DocVersion) {
+func RequireDocVersionEqual(t testing.TB, expected, actual DocVersion) {
 	require.True(t, expected.Equal(actual), "Versions mismatch.  Expected: %s, Actual: %s", expected, actual)
 }
 
@@ -2375,6 +2344,11 @@ func RequireDocVersionNotEqual(t *testing.T, expected, actual DocVersion) {
 // EmptyDocVersion reprents an empty document version.
 func EmptyDocVersion() DocVersion {
 	return DocVersion{RevID: ""}
+}
+
+// NewDocVersionFromFakeRev returns a new DocVersion from the given fake rev ID, intended for use when we explicit create conflicts.
+func NewDocVersionFromFakeRev(fakeRev string) DocVersion {
+	return DocVersion{RevID: fakeRev}
 }
 
 // DocVersionFromPutResponse returns a DocRevisionID from the given response to PUT /{, or fails the given test if a rev ID was not found.

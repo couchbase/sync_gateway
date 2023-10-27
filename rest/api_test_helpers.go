@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -22,11 +23,6 @@ import (
 func (rt *RestTester) RequireDocNotFound(docID string) {
 	rawResponse := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), "")
 	RequireStatus(rt.TB, rawResponse, http.StatusNotFound)
-}
-
-func (rt *RestTester) TombstoneDoc(docID string, revID string) {
-	rawResponse := rt.SendAdminRequest("DELETE", "/{{.keyspace}}/"+docID+"?rev="+revID, "")
-	RequireStatus(rt.TB, rawResponse, 200)
 }
 
 // prugeDoc removes all the revisions (active and tombstones) of the specified document.
@@ -45,24 +41,35 @@ type PutDocResponse struct {
 	Rev string
 }
 
-// PutDocumentWithRevID builds a new_edits=false style put to create a revision with the specified revID.
+// PutNewEditsFalse builds a new_edits=false style put to create a revision with the specified revID.
 // If parentRevID is not specified, treated as insert
-func (rt *RestTester) PutNewEditsFalse(docID string, newRevID string, parentRevID string, bodyString string) (response PutDocResponse) {
+func (rt *RestTester) PutNewEditsFalse(docID string, newVersion DocVersion, parentVersion DocVersion, bodyString string) DocVersion {
 
 	var body db.Body
 	marshalErr := base.JSONUnmarshal([]byte(bodyString), &body)
 	require.NoError(rt.TB, marshalErr)
 
-	rawResponse, err := rt.PutDocumentWithRevID(docID, newRevID, parentRevID, body)
+	requestBody := body.ShallowCopy()
+	newRevGeneration, newRevDigest := db.ParseRevID(base.TestCtx(rt.TB), newVersion.RevID)
+
+	revisions := make(map[string]interface{})
+	revisions["start"] = newRevGeneration
+	ids := []string{newRevDigest}
+	if parentVersion.RevID != "" {
+		_, parentDigest := db.ParseRevID(base.TestCtx(rt.TB), parentVersion.RevID)
+		ids = append(ids, parentDigest)
+	}
+	revisions["ids"] = ids
+
+	requestBody[db.BodyRevisions] = revisions
+	requestBytes, err := json.Marshal(requestBody)
 	require.NoError(rt.TB, err)
-	RequireStatus(rt.TB, rawResponse, 201)
-	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
-	require.True(rt.TB, response.Ok)
-	require.NotEmpty(rt.TB, response.Rev)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?new_edits=false", string(requestBytes))
+	RequireStatus(rt.TB, resp, 201)
 
 	require.NoError(rt.TB, rt.WaitForPendingChanges())
 
-	return response
+	return DocVersionFromPutResponse(rt.TB, resp)
 }
 
 func (rt *RestTester) RequireWaitChanges(numChangesExpected int, since string) ChangesResults {

@@ -1972,7 +1972,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(changes.Results))
 	assert.Equal(t, "doc", changes.Results[0].ID)
-	requireChangeRevVersion(t, version, changes.Results[0].Changes[0])
+	RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
 	err = btc.StartOneshotPull()
 	assert.NoError(t, err)
@@ -1985,7 +1985,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(changes.Results))
 	assert.Equal(t, docID, changes.Results[0].ID)
-	requireChangeRevVersion(t, version, changes.Results[0].Changes[0])
+	RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
 	err = btc.StartOneshotPull()
 	assert.NoError(t, err)
@@ -2000,11 +2000,11 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, changes.Results, 2)
 	assert.Equal(t, "doc", changes.Results[0].ID)
-	requireChangeRevVersion(t, version, changes.Results[0].Changes[0])
+	RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 	assert.Equal(t, "3-1bc9dd04c8a257ba28a41eaad90d32de", changes.Results[0].Changes[0]["rev"])
 	assert.False(t, changes.Results[0].Revoked)
 	assert.Equal(t, "docmarker", changes.Results[1].ID)
-	requireChangeRevVersion(t, docMarkerVersion, changes.Results[1].Changes[0])
+	RequireChangeRevVersion(t, docMarkerVersion, changes.Results[1].Changes[0])
 	assert.Equal(t, "1-999bcad4aab47f0a8a24bd9d3598060c", changes.Results[1].Changes[0]["rev"])
 	assert.False(t, changes.Results[1].Revoked)
 
@@ -2082,7 +2082,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(changes.Results))
 	assert.Equal(t, docID, changes.Results[0].ID)
-	requireChangeRevVersion(t, version, changes.Results[0].Changes[0])
+	RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
 	err = btc.StartOneshotPull()
 	assert.NoError(t, err)
@@ -2096,7 +2096,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(changes.Results))
 	assert.Equal(t, docID, changes.Results[0].ID)
-	requireChangeRevVersion(t, version, changes.Results[0].Changes[0])
+	RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
 	err = btc.StartOneshotPullFiltered("A")
 	assert.NoError(t, err)

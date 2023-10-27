@@ -9,7 +9,6 @@ package replicatortest
 
 import (
 	"fmt"
-	"net/http"
 	"testing"
 	"time"
 
@@ -70,13 +69,19 @@ func addActiveRT(t *testing.T, dbName string, testBucket *base.TestBucket) (acti
 	return activeRT
 }
 
-// requireRevID asserts that the specified document revision is written to the
-// underlying bucket backed by the given RestTester instance.
-func requireRevID(t *testing.T, rt *rest.RestTester, docID, revID string) {
-	doc, err := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
-	require.NoError(t, err, "Error reading document from bucket")
-	require.Equal(t, revID, doc.SyncData.CurrentRev)
+// requireDocumentVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
+func requireDocumentVersion(t testing.TB, expected rest.DocVersion, doc *db.Document) {
+	rest.RequireDocVersionEqual(t, expected, rest.DocVersion{RevID: doc.SyncData.CurrentRev})
 }
+
+// requireRevID asserts that the specified document version is written to the
+// underlying bucket backed by the given RestTester instance.
+func requireVersion(rt *rest.RestTester, docID string, version rest.DocVersion) {
+	doc, err := rt.GetSingleTestDatabaseCollection().GetDocument(rt.Context(), docID, db.DocUnmarshalAll)
+	require.NoError(rt.TB, err, "Error reading document from bucket")
+	requireDocumentVersion(rt.TB, version, doc)
+}
+
 func requireErrorKeyNotFound(t *testing.T, rt *rest.RestTester, docID string) {
 	var body []byte
 	_, err := rt.Bucket().DefaultDataStore().Get(docID, &body)
@@ -94,19 +99,22 @@ func waitForTombstone(t *testing.T, rt *rest.RestTester, docID string) {
 	}))
 }
 
-// createOrUpdateDoc creates a new document or update an existing document with the
-// specified document id, revision id and body value in a channel named "alice".
-func createOrUpdateDoc(t *testing.T, rt *rest.RestTester, docID, revID, bodyValue string) string {
+// createOrUpdateDoc creates a new document the specified document id, and body value in a channel named "alice".
+func createDoc(rt *rest.RestTester, docID string, bodyValue string) rest.DocVersion {
 	body := fmt.Sprintf(`{"key":%q,"channels":["alice"]}`, bodyValue)
-	dbURL := "/{{.keyspace}}/" + docID
-	if revID != "" {
-		dbURL = "/{{.keyspace}}/" + docID + "?rev=" + revID
-	}
-	resp := rt.SendAdminRequest(http.MethodPut, dbURL, body)
-	rest.RequireStatus(t, resp, http.StatusCreated)
-	require.NoError(t, rt.WaitForPendingChanges())
-	return rest.RespRevID(t, resp)
+	updatedVersion := rt.PutDoc(docID, body)
+	require.NoError(rt.TB, rt.WaitForPendingChanges())
+	return updatedVersion
 }
+
+// updateDoc update an existing document with the specified document id, version and body value in a channel named "alice".
+func updateDoc(rt *rest.RestTester, docID string, version rest.DocVersion, bodyValue string) rest.DocVersion {
+	body := fmt.Sprintf(`{"key":%q,"channels":["alice"]}`, bodyValue)
+	updatedVersion := rt.UpdateDoc(docID, version, body)
+	require.NoError(rt.TB, rt.WaitForPendingChanges())
+	return updatedVersion
+}
+
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
 	attachments := db.GetBodyAttachments(doc)
 	if attachments == nil {

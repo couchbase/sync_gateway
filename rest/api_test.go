@@ -2754,11 +2754,9 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	rt.GetDatabase().Options.PurgeInterval = &zero
 
 	for i := 0; i < 100; i++ {
-		resp := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/doc%d", i), "{}")
-		RequireStatus(t, resp, http.StatusCreated)
-		rev := RespRevID(t, resp)
-		resp = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/doc%d?rev=%s", i, rev), "{}")
-		RequireStatus(t, resp, http.StatusOK)
+		docID := fmt.Sprintf("doc%d", i)
+		version := rt.PutDoc(docID, "{}")
+		rt.DeleteDoc(docID, version)
 	}
 
 	resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact", "")
