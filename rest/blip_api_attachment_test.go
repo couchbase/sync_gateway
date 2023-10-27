@@ -199,22 +199,18 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 	// Create two docs with the same attachment data on SG - v2 attachments intentionally result in two copies,
 	// CBL will still de-dupe attachments based on digest, so will still try proveAttachmnet for the 2nd.
 	doc1Body := fmt.Sprintf(`{"greetings":[{"hi": "alice"}],"_attachments":{"%s":{"data":"%s"}}}`, attachmentName, attachmentDataB64)
-	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+doc1ID, doc1Body)
-	RequireStatus(t, response, http.StatusCreated)
-	doc1RevID := RespRevID(t, response)
+	doc1Version := rt.PutDoc(doc1ID, doc1Body)
 
-	data, ok := btc.WaitForRev(doc1ID, doc1RevID)
+	data, ok := btc.WaitForVersion(doc1ID, doc1Version)
 	require.True(t, ok)
 	bodyTextExpected := fmt.Sprintf(`{"greetings":[{"hi":"alice"}],"_attachments":{"%s":{"revpos":1,"length":%d,"stub":true,"digest":"%s"}}}`, attachmentName, len(attachmentData), attachmentDigest)
 	require.JSONEq(t, bodyTextExpected, string(data))
 
 	// create doc2 now that we know the client has the attachment
 	doc2Body := fmt.Sprintf(`{"greetings":[{"howdy": "bob"}],"_attachments":{"%s":{"data":"%s"}}}`, attachmentName, attachmentDataB64)
-	response = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+doc2ID, doc2Body)
-	RequireStatus(t, response, http.StatusCreated)
-	doc2RevID := RespRevID(t, response)
+	doc2Version := rt.PutDoc(doc2ID, doc2Body)
 
-	data, ok = btc.WaitForRev(doc2ID, doc2RevID)
+	data, ok = btc.WaitForVersion(doc2ID, doc2Version)
 	require.True(t, ok)
 	bodyTextExpected = fmt.Sprintf(`{"greetings":[{"howdy":"bob"}],"_attachments":{"%s":{"revpos":1,"length":%d,"stub":true,"digest":"%s"}}}`, attachmentName, len(attachmentData), attachmentDigest)
 	require.JSONEq(t, bodyTextExpected, string(data))

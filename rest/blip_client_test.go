@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -566,6 +567,7 @@ func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
 		collections = append(collections,
 			strings.Join([]string{collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator))
 	}
+	slices.Sort(collections)
 	return collections
 }
 
@@ -975,13 +977,13 @@ func (btc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte
 	return inputBody, nil
 }
 
-// GetRev returns the data stored in the Client under the given docID and revID
-func (btc *BlipTesterCollectionClient) GetRev(docID, revID string) (data []byte, found bool) {
+// GetVersion returns the data stored in the Client under the given docID and version
+func (btc *BlipTesterCollectionClient) GetVersion(docID string, docVersion DocVersion) (data []byte, found bool) {
 	btc.docsLock.RLock()
 	defer btc.docsLock.RUnlock()
 
 	if rev, ok := btc.docs[docID]; ok {
-		if data, ok := rev[revID]; ok && data != nil {
+		if data, ok := rev[docVersion.RevID]; ok && data != nil {
 			return data.body, true
 		}
 	}
@@ -991,12 +993,7 @@ func (btc *BlipTesterCollectionClient) GetRev(docID, revID string) (data []byte,
 
 // WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found.
 func (btc *BlipTesterCollectionClient) WaitForVersion(docID string, docVersion DocVersion) (data []byte, found bool) {
-	return btc.WaitForRev(docID, docVersion.RevID)
-}
-
-// WaitForRev blocks until the given doc ID and rev ID have been stored by the client, and returns the data when found. Deprecated for WaitForMessage.
-func (btc *BlipTesterCollectionClient) WaitForRev(docID, revID string) (data []byte, found bool) {
-	if data, found := btc.GetRev(docID, revID); found {
+	if data, found := btc.GetVersion(docID, docVersion); found {
 		return data, found
 	}
 	ticker := time.NewTicker(50 * time.Millisecond)
@@ -1004,10 +1001,10 @@ func (btc *BlipTesterCollectionClient) WaitForRev(docID, revID string) (data []b
 	for {
 		select {
 		case <-timeout:
-			btc.parent.rt.TB.Fatalf("BlipTesterClient timed out waiting for doc ID: %v rev ID: %v", docID, revID)
+			require.FailNowf(btc.parent.rt.TB, "BlipTesterClient timed out waiting for doc", "DocID:%+v Version: %+v", docID, docVersion)
 			return nil, false
 		case <-ticker.C:
-			if data, found := btc.GetRev(docID, revID); found {
+			if data, found := btc.GetVersion(docID, docVersion); found {
 				return data, found
 			}
 		}
@@ -1099,16 +1096,16 @@ func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
 	btr.messages[msg.SerialNumber()] = msg
 }
 
-func (btc *BlipTesterCollectionClient) WaitForBlipRevMessage(docID, revID string) (msg *blip.Message, found bool) {
+func (btc *BlipTesterCollectionClient) WaitForBlipRevMessage(docID string, docVersion DocVersion) (msg *blip.Message, found bool) {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	timeout := time.After(10 * time.Second)
 	for {
 		select {
 		case <-timeout:
-			btc.parent.rt.TB.Fatalf("BlipTesterClient timed out waiting for BLIP message docID: %v, revID: %v", docID, revID)
+			btc.parent.rt.TB.Fatalf("BlipTesterClient timed out waiting for BLIP message docID: %v, revID: %v", docID, docVersion.RevID)
 			return nil, false
 		case <-ticker.C:
-			if data, found := btc.GetBlipRevMessage(docID, revID); found {
+			if data, found := btc.GetBlipRevMessage(docID, docVersion.RevID); found {
 				return data, found
 			}
 		}
@@ -1138,16 +1135,12 @@ func (btc *BlipTesterClient) WaitForVersion(docID string, docVersion DocVersion)
 	return btc.SingleCollection().WaitForVersion(docID, docVersion)
 }
 
-func (btc *BlipTesterClient) WaitForRev(docID string, revID string) ([]byte, bool) {
-	return btc.SingleCollection().WaitForRev(docID, revID)
-}
-
 func (btc *BlipTesterClient) WaitForDoc(docID string) ([]byte, bool) {
 	return btc.SingleCollection().WaitForDoc(docID)
 }
 
-func (btc *BlipTesterClient) WaitForBlipRevMessage(docID string, revID string) (*blip.Message, bool) {
-	return btc.SingleCollection().WaitForBlipRevMessage(docID, revID)
+func (btc *BlipTesterClient) WaitForBlipRevMessage(docID string, docVersion DocVersion) (*blip.Message, bool) {
+	return btc.SingleCollection().WaitForBlipRevMessage(docID, docVersion)
 }
 
 func (btc *BlipTesterClient) StartOneshotPull() error {
@@ -1174,8 +1167,8 @@ func (btc *BlipTesterClient) StartFilteredPullSince(continuous, since, activeOnl
 	return btc.SingleCollection().StartPullSince(continuous, since, activeOnly, channels, "")
 }
 
-func (btc *BlipTesterClient) GetRev(docID, revID string) ([]byte, bool) {
-	return btc.SingleCollection().GetRev(docID, revID)
+func (btc *BlipTesterClient) GetVersion(docID string, docVersion DocVersion) ([]byte, bool) {
+	return btc.SingleCollection().GetVersion(docID, docVersion)
 }
 
 func (btc *BlipTesterClient) saveAttachment(contentType string, attachmentData string) (int, string, error) {
