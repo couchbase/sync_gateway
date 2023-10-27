@@ -6896,7 +6896,6 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 	for _, test := range conflictResolutionTests {
 		t.Run(test.name, func(t *testing.T) {
 			base.RequireNumTestBuckets(t, 2)
-			base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 
 			activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 			defer teardown()
@@ -6947,7 +6946,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 				localParentVersion = activeRT.PutNewEditsFalse(docID, newLocalVersion, localParentVersion, makeRevBody(test.localMutation.propertyValue, localRevPos, localGen))
 			}
 
-			remoteParentVersion := newLocalVersion
+			remoteParentVersion := newVersion
 			var newRemoteVersion rest.DocVersion
 			for remoteGen := test.initialState.generation + 1; remoteGen <= test.remoteMutation.generation; remoteGen++ {
 				// If deleted=true, tombstone on the last mutation
@@ -6962,7 +6961,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 				if test.remoteMutation.attachmentRevPos > 0 {
 					remoteRevPos = test.remoteMutation.attachmentRevPos
 				}
-				_ = remoteRT.PutNewEditsFalse(docID, newRemoteVersion, remoteParentVersion, makeRevBody(test.remoteMutation.propertyValue, remoteRevPos, remoteGen))
+				remoteParentVersion = remoteRT.PutNewEditsFalse(docID, newRemoteVersion, remoteParentVersion, makeRevBody(test.remoteMutation.propertyValue, remoteRevPos, remoteGen))
 			}
 
 			rawResponse = activeRT.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
