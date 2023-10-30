@@ -76,6 +76,4 @@ func TestImportPartitionsOnConcurrentStart(t *testing.T) {
 			return false
 		}
 	})
-
-	log.Printf("done")
 }
