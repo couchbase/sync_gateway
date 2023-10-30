@@ -6,7 +6,7 @@ require (
 	dario.cat/mergo v1.0.0
 	github.com/bhoriuchi/graphql-go-tools v1.0.3
 	github.com/coreos/go-oidc v2.2.1+incompatible
-	github.com/couchbase/cbgt v1.3.7
+	github.com/couchbase/cbgt v1.3.8
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20231017145500-e4a51837754e
 	github.com/couchbase/gocb/v2 v2.6.4
@@ -43,7 +43,7 @@ require (
 	github.com/aws/aws-sdk-go v1.44.299 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
-	github.com/couchbase/blance v0.1.3 // indirect
+	github.com/couchbase/blance v0.1.5 // indirect
 	github.com/couchbase/cbauth v0.1.10 // indirect
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
 	github.com/couchbase/tools-common/cloud v1.0.0 // indirect

@@ -427,7 +427,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	spec := bucket.BucketSpec
 	testDBName := "testDB"
 
-	// Use an bucket-backed cfg
+	// Use a bucket-backed cfg
 	cfg, err := NewCfgSG(ctx, dataStore, "")
 	require.NoError(t, err)
 
@@ -459,8 +459,8 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 			log.Printf("Starting manager for %s", managerUUID)
 			startErr := context.StartManager(ctx, testDBName, configGroup, bucket, spec, "", nil, DefaultImportPartitions)
 			assert.NoError(t, startErr)
-
 			managerWg.Done()
+
 			// ensure all goroutines start the manager before we start closing them
 			select {
 			case <-terminatorChan:
@@ -473,7 +473,6 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	}
 	managerWg.Wait()
 	close(terminator)
-
 }
 
 // legacyFeedParams format with credentials included
