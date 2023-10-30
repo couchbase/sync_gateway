@@ -261,35 +261,22 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 	defer rt.Close()
 
 	// rev 1-a
-	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+testDocID, `{"`+testdataKey+`":1}`)
-	RequireStatus(t, resp, 201)
-	rev1ID := RespRevID(t, resp)
-
+	version1a := rt.PutDoc(testDocID, `{"`+testdataKey+`":1}`)
 	// rev 2-a
-	resp = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, rev1ID), `{"`+testdataKey+`":2}`)
-	RequireStatus(t, resp, 201)
-	rev2aID := RespRevID(t, resp)
-
+	version2a := rt.UpdateDoc(testDocID, version1a, `{"`+testdataKey+`":2}`)
 	// rev 3-a
-	resp = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, rev2aID), `{"`+testdataKey+`":3,"syncOldDocBodyCheck":true}`)
-	RequireStatus(t, resp, 201)
-	rev3aID := RespRevID(t, resp)
+	version3a := rt.UpdateDoc(testDocID, version2a, `{"`+testdataKey+`":3,"syncOldDocBodyCheck":true}`)
 
 	// rev 2-b
-	_, rev1Hash := db.ParseRevID(rt.Context(), rev1ID)
-	resp = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?new_edits=false", testDocID), `{"`+db.BodyRevisions+`":{"start":2,"ids":["b", "`+rev1Hash+`"]}}`)
-	RequireStatus(t, resp, 201)
-	rev2bID := RespRevID(t, resp)
+	version2b := rt.PutNewEditsFalse(testDocID, NewDocVersionFromFakeRev("2-b"), version1a, `{}`)
 
 	// tombstone at 4-a
-	resp = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, rev3aID), `{}`)
-	RequireStatus(t, resp, 200)
+	rt.DeleteDoc(testDocID, version3a)
 
 	numErrorsBefore, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 	// tombstone at 3-b
-	resp = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, rev2bID), `{}`)
-	RequireStatus(t, resp, 200)
+	rt.DeleteDoc(testDocID, version2b)
 
 	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)

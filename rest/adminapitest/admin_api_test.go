@@ -2385,24 +2385,22 @@ func TestRawTombstone(t *testing.T) {
 	// Create a doc
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"foo":"bar"}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
-	revID := rest.RespRevID(t, resp)
+	version := rest.DocVersionFromPutResponse(t, resp)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ``)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
 	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
-	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+revID+`"`)
+	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+version.RevID+`"`)
 	assert.Contains(t, string(resp.BodyBytes()), `"foo":"bar"`)
 	assert.NotContains(t, string(resp.BodyBytes()), `"_deleted":true`)
 
 	// Delete the doc
-	resp = rt.SendAdminRequest(http.MethodDelete, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, revID), ``)
-	rest.RequireStatus(t, resp, http.StatusOK)
-	revID = rest.RespRevID(t, resp)
+	deletedVersion := rt.DeleteDocReturnVersion(docID, version)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ``)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
 	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
-	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+revID+`"`)
+	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+deletedVersion.RevID+`"`)
 	assert.NotContains(t, string(resp.BodyBytes()), `"foo":"bar"`)
 	assert.Contains(t, string(resp.BodyBytes()), `"_deleted":true`)
 }
@@ -2873,16 +2871,11 @@ func TestChannelNameSizeWarningUpdateExistingDoc(t *testing.T) {
 
 	// Update doc - should warn
 	chanName := strings.Repeat("B", int(base.DefaultWarnThresholdChannelNameSize)+5)
-	t.Run("Update doc without changing channel", func(t *testing.T) {
-		tr := rt.SendAdminRequest("PUT", "/{{.keyspace}}/replace", `{"chan":"`+chanName+`"}`) // init doc
-		rest.RequireStatus(t, tr, http.StatusCreated)
-
-		ctx := rt.Context()
-		before := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
-		revId := rest.RespRevID(t, tr)
-		tr = rt.SendAdminRequest("PUT", "/{{.keyspace}}/replace?rev="+revId, `{"chan":"`+chanName+`", "data":"test"}`)
-		rest.RequireStatus(t, tr, http.StatusCreated)
-		after := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
+	rt.Run("Update doc without changing channel", func(t *testing.T) {
+		version := rt.PutDoc("replace", `{"chan":"`+chanName+`"}`) // init doc
+		before := rt.GetDatabase().DbStats.Database().WarnChannelNameSizeCount.Value()
+		_ = rt.UpdateDoc("replace", version, `{"chan":"`+chanName+`", "data":"test"}`)
+		after := rt.GetDatabase().DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
 	})
 }
@@ -2895,19 +2888,14 @@ func TestChannelNameSizeWarningDocChannelUpdate(t *testing.T) {
 
 	channelLength := int(base.DefaultWarnThresholdChannelNameSize) + 5
 	// Update doc channel with creation of a new channel
-	t.Run("Update doc with new channel", func(t *testing.T) {
+	rt.Run("Update doc with new channel", func(t *testing.T) {
 
 		chanName := strings.Repeat("C", channelLength)
-		tr := rt.SendAdminRequest("PUT", "/{{.keyspace}}/replaceNewChannel", `{"chan":"`+chanName+`"}`) // init doc
-		rest.RequireStatus(t, tr, http.StatusCreated)
-
-		ctx := rt.Context()
-		before := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
-		revId := rest.RespRevID(t, tr)
+		version := rt.PutDoc("replaceNewChannel", `{"chan":"`+chanName+`"}`) // init doc
+		before := rt.GetDatabase().DbStats.Database().WarnChannelNameSizeCount.Value()
 		chanName = strings.Repeat("D", channelLength+5)
-		tr = rt.SendAdminRequest("PUT", "/{{.keyspace}}/replaceNewChannel?rev="+revId, fmt.Sprintf(`{"chan":"`+chanName+`", "data":"test"}`))
-		rest.RequireStatus(t, tr, http.StatusCreated)
-		after := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
+		_ = rt.UpdateDoc("replaceNewChannel", version, fmt.Sprintf(`{"chan":"`+chanName+`", "data":"test"}`))
+		after := rt.GetDatabase().DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
 	})
 }
@@ -2920,17 +2908,12 @@ func TestChannelNameSizeWarningDeleteChannel(t *testing.T) {
 
 	channelLength := int(base.DefaultWarnThresholdChannelNameSize) + 5
 	// Delete channel over max len - no warning
-	t.Run("Delete channel over max length", func(t *testing.T) {
+	rt.Run("Delete channel over max length", func(t *testing.T) {
 		chanName := strings.Repeat("F", channelLength)
-		tr := rt.SendAdminRequest("PUT", "/{{.keyspace}}/deleteme", `{"chan":"`+chanName+`"}`) // init channel
-		rest.RequireStatus(t, tr, http.StatusCreated)
-
-		ctx := rt.Context()
-		before := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
-		revId := rest.RespRevID(t, tr)
-		tr = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/deleteme?rev="+revId, "")
-		rest.RequireStatus(t, tr, http.StatusOK)
-		after := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
+		version := rt.PutDoc("deleteme", `{"chan":"`+chanName+`"}`) // init channel
+		before := rt.GetDatabase().DbStats.Database().WarnChannelNameSizeCount.Value()
+		rt.DeleteDoc("deleteme", version)
+		after := rt.GetDatabase().DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before, after)
 	})
 }
@@ -4280,9 +4263,7 @@ func TestPutIDRevMatchBody(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 	// Create document to create rev from
-	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", "{}")
-	rest.RequireStatus(t, resp, 201)
-	rev := rest.RespRevID(t, resp)
+	version := rt.PutDoc("doc", "{}")
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
@@ -4290,12 +4271,12 @@ func TestPutIDRevMatchBody(t *testing.T) {
 			docRev := test.rev
 			docBody := test.docBody
 			if test.docID == "" {
-				docID = "doc" // Used for the rev tests to branch off of
-				docBody = strings.ReplaceAll(docBody, "[REV]", rev)
-				docRev = strings.ReplaceAll(docRev, "[REV]", rev)
+				docID = "doc"                                                 // Used for the rev tests to branch off of
+				docBody = strings.ReplaceAll(docBody, "[REV]", version.RevID) // FIX for HLV?
+				docRev = strings.ReplaceAll(docRev, "[REV]", version.RevID)
 			}
 
-			resp = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, docRev), docBody)
+			resp := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, docRev), docBody)
 			if test.expectError {
 				rest.RequireStatus(t, resp, 400)
 				return
@@ -4303,7 +4284,7 @@ func TestPutIDRevMatchBody(t *testing.T) {
 			rest.RequireStatus(t, resp, 201)
 			if test.docID == "" {
 				// Update rev to branch off for next test
-				rev = rest.RespRevID(t, resp)
+				version = rest.DocVersionFromPutResponse(t, resp)
 			}
 		})
 	}
