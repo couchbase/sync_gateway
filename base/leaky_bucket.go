@@ -58,9 +58,9 @@ func (b *LeakyBucket) SetIgnoreClose(value bool) {
 	b.config.IgnoreClose = value
 }
 
-func (b *LeakyBucket) CloseAndDelete() error {
+func (b *LeakyBucket) CloseAndDelete(ctx context.Context) error {
 	if bucket, ok := b.bucket.(sgbucket.DeleteableStore); ok {
-		return bucket.CloseAndDelete()
+		return bucket.CloseAndDelete(ctx)
 	}
 	return nil
 }

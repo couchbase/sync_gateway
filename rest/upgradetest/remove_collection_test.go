@@ -27,11 +27,8 @@ func TestRemoveCollection(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.RequireNumTestBuckets(t, 2)
 	numCollections := 2
-	bucket := base.GetPersistentTestBucket(t)
-	defer bucket.Close(base.TestCtx(t))
 	base.RequireNumTestDataStores(t, numCollections)
 	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket:             bucket.NoCloseClone(),
 		PersistentConfig:             true,
 		GroupID:                      base.StringPtr(t.Name()),
 		AdminInterfaceAuthentication: true,
@@ -52,7 +49,7 @@ func TestRemoveCollection(t *testing.T) {
 	deletedDataStore := dataStores[1]
 
 	defer func() {
-		assert.NoError(t, bucket.CreateDataStore(base.TestCtx(t), deletedDataStore))
+		assert.NoError(t, rt.TestBucket.CreateDataStore(base.TestCtx(t), deletedDataStore))
 
 	}()
 	// drop a data store
@@ -61,7 +58,7 @@ func TestRemoveCollection(t *testing.T) {
 
 	rt.Close()
 	rtConfig = &rest.RestTesterConfig{
-		CustomTestBucket:             bucket.NoCloseClone(),
+		CustomTestBucket:             rt.TestBucket,
 		PersistentConfig:             true,
 		GroupID:                      base.StringPtr(t.Name()),
 		AdminInterfaceAuthentication: true,

@@ -198,27 +198,15 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	require.NoError(t, err)
 
 	var walrusBucket *rosmar.Bucket
-	var typeName string
+	const typeName = "rosmar"
 	bucketName := tbpBucketNamePrefix + "rosmar_" + id
 	if url == "walrus:" || url == rosmar.InMemoryURL {
-		walrusBucket, err = rosmar.OpenBucket(url, rosmar.CreateOrOpen)
-		if err == nil {
-			err := walrusBucket.SetName(bucketName)
-			if err != nil {
-				tbp.Fatalf(testCtx, "Could not set name %s for rosmar bucket: %s", bucketName, err)
-			}
-		}
+		walrusBucket, err = rosmar.OpenBucket(url, bucketName, rosmar.CreateOrOpen)
 	} else {
 		walrusBucket, err = rosmar.OpenBucketIn(url, bucketName, rosmar.CreateOrOpen)
 	}
-	typeName = "rosmar"
 	if err != nil {
 		tbp.Fatalf(testCtx, "couldn't get %s bucket from <%s>: %v", typeName, url, err)
-	}
-
-	err = walrusBucket.SetName(bucketName)
-	if err != nil {
-		tbp.Fatalf(testCtx, "Could not set name %s for rosmar bucket: %s", bucketName, err)
 	}
 
 	// Wrap Walrus buckets with a leaky bucket to support vbucket IDs on feed.
@@ -258,14 +246,10 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 		atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
 		atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(openedStart).Nanoseconds())
 		tbp.markBucketClosed(t, b)
-		if url == kTestWalrusURL {
-			b.Close(ctx)
-		} else {
-			// Persisted buckets should call close and delete
-			closeErr := walrusBucket.CloseAndDelete()
-			if closeErr != nil {
-				tbp.Logf(ctx, "Unexpected error closing persistent %s bucket: %v", typeName, closeErr)
-			}
+		// Persisted buckets should call close and delete
+		closeErr := walrusBucket.CloseAndDelete(ctx)
+		if closeErr != nil {
+			tbp.Logf(ctx, "Unexpected error closing persistent %s bucket: %v", typeName, closeErr)
 		}
 
 	}

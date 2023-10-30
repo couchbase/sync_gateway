@@ -108,12 +108,6 @@ func GetTestBucket(t testing.TB) *TestBucket {
 	return getTestBucket(t, false)
 }
 
-// GetTestBucket returns a test bucket from a pool.  If running with walrus buckets, will persist bucket data
-// across bucket close.
-func GetPersistentTestBucket(t testing.TB) *TestBucket {
-	return getTestBucket(t, true)
-}
-
 // getTestBucket returns a bucket from the bucket pool.  Persistent flag determines behaviour for walrus
 // buckets only - Couchbase bucket behaviour is defined by the bucket pool readier/init.
 func getTestBucket(t testing.TB, persistent bool) *TestBucket {
@@ -208,29 +202,6 @@ func rosmarUriFromPath(path string) string {
 		}
 	}
 	return uri + strings.ReplaceAll(path, `\`, `/`)
-}
-
-// Gets a Walrus bucket which will be persisted to a temporary directory
-// Returns both the test bucket which is persisted and a function which can be used to remove the created temporary
-// directory once the test has finished with it.
-func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
-	tempDir, err := os.MkdirTemp("", "walrustemp")
-	require.NoError(t, err)
-
-	bucket, spec, closeFn := GTestBucketPool.GetWalrusTestBucket(t, rosmarUriFromPath(tempDir))
-
-	// Return this separate to closeFn as we want to avoid this being removed on database close (/_offline handling)
-	removeFileFunc := func() {
-		err := os.RemoveAll(tempDir)
-		require.NoError(t, err)
-	}
-
-	return &TestBucket{
-		Bucket:     bucket,
-		BucketSpec: spec,
-		closeFn:    closeFn,
-		t:          t,
-	}, removeFileFunc
 }
 
 // Should Sync Gateway use XATTRS functionality when running unit tests?

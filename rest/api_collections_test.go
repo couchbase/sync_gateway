@@ -267,7 +267,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
-	tb := base.GetPersistentTestBucket(t)
+	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
 	scopesConfig := GetCollectionsConfig(t, tb, 2)
@@ -281,9 +281,8 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	scopesConfig[scope].Collections[collection1] = &CollectionConfig{SyncFn: &c1SyncFunction}
 	scopesConfig[scope].Collections[collection2] = &CollectionConfig{SyncFn: &c1SyncFunction}
 
-	fmt.Println(scopesConfig)
 	rtConfig := &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
+		CustomTestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Scopes:           scopesConfig,
 			NumIndexReplicas: base.UintPtr(0),
@@ -337,15 +336,20 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Add a new collection and update the db config
-	scopesConfig = GetCollectionsConfig(t, tb, 3)
-	dataStoreNames = GetDataStoreNamesFromScopesConfig(scopesConfig)
+	scopesConfig3Collections := GetCollectionsConfig(t, tb, 3)
+	dataStoreNames = GetDataStoreNamesFromScopesConfig(scopesConfig3Collections)
 
 	collection3 := dataStoreNames[2].CollectionName()
-	scopesConfig[scope].Collections[collection1] = &CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[scope].Collections[collection2] = &CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[scope].Collections[collection3] = &CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfigString, err := json.Marshal(scopesConfig)
+	scopesConfig3Collections[scope].Collections[collection1] = &CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig3Collections[scope].Collections[collection2] = &CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig3Collections[scope].Collections[collection3] = &CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfigString, err := json.Marshal(scopesConfig3Collections)
 	require.NoError(t, err)
+
+	scopesConfig2Collections := GetCollectionsConfig(t, tb, 2)
+
+	scopesConfig2Collections[scope].Collections[collection1] = &CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig2Collections[scope].Collections[collection2] = &CollectionConfig{SyncFn: &c1SyncFunction}
 
 	resp = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
 		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
@@ -378,11 +382,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Remove collection and update the db config
-	scopesConfig = GetCollectionsConfig(t, tb, 2)
-
-	scopesConfig[scope].Collections[collection1] = &CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[scope].Collections[collection2] = &CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfigString, err = json.Marshal(scopesConfig)
+	scopesConfigString, err = json.Marshal(scopesConfig2Collections)
 	require.NoError(t, err)
 
 	resp = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
