@@ -1632,6 +1632,10 @@ func TestPutStampClusterUUID(t *testing.T) {
 
 // TestAssignSequenceReleaseLoop repros conditions seen in CBG-3516 (where each sequence between nextSequence and docSequence has an unusedSeq doc)
 func TestAssignSequenceReleaseLoop(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD, base.KeyDCP)
 
 	// import disabled
