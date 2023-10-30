@@ -403,10 +403,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			RequireStatus(t, resp, http.StatusOK)
 
 			// Create the initial document
-			resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc", `{"doNotSync": true, "foo": "bar", "channels": "chan", "_attachment":{"attach": {"data": "`+base64.StdEncoding.EncodeToString([]byte("attachmentA"))+`"}}}`)
-			RequireStatus(t, resp, http.StatusCreated)
-			rev := RespRevID(t, resp)
-
+			version := rt.PutDoc("doc", `{"doNotSync": true, "foo": "bar", "channels": "chan", "_attachment":{"attach": {"data": "`+base64.StdEncoding.EncodeToString([]byte("attachmentA"))+`"}}}`)
 			// GET requests
 			// User has no permissions to access document
 			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc", "", nil, "NoPerms", "password")
@@ -417,11 +414,11 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// User has no permissions to access rev
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc?rev="+rev, "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc?rev="+version.RevID, "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusOK)
 
 			// Guest has no permissions to access rev
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc?rev="+rev, "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc?rev="+version.RevID, "", nil, "", "")
 			assertRespStatus(resp, http.StatusOK)
 
 			// Attachments should be forbidden as well
@@ -429,7 +426,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// Attachment revs should be forbidden as well
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc/attach?rev="+rev, "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc/attach?rev="+version.RevID, "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusNotFound)
 
 			// Attachments should be forbidden for guests as well
@@ -437,7 +434,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// Attachment revs should be forbidden for guests as well
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc/attach?rev="+rev, "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc/attach?rev="+version.RevID, "", nil, "", "")
 			assertRespStatus(resp, http.StatusNotFound)
 
 			// Document does not exist should cause 403
@@ -454,7 +451,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assertRespStatus(resp, http.StatusConflict)
 
 			// PUT with rev
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+rev, `{}`, nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+version.RevID, `{}`, nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// PUT with incorrect rev
@@ -466,7 +463,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assertRespStatus(resp, http.StatusConflict)
 
 			// PUT with rev as Guest
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+rev, `{}`, nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+version.RevID, `{}`, nil, "", "")
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// PUT with incorrect rev as Guest
@@ -498,7 +495,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assert.NotContains(t, user.GetChannels(s, c).ToArray(), "chan2")
 
 			// Successful PUT which will grant access grants
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+rev, `{"channels": "chan"}`, nil, "Perms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+version.RevID, `{"channels": "chan"}`, nil, "Perms", "password")
 			AssertStatus(t, resp, http.StatusCreated)
 
 			// Make sure channel access grant was successful
@@ -515,7 +512,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assertRespStatus(resp, http.StatusConflict)
 
 			// Attempt to delete document rev with no permissions
-			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/doc?rev="+rev, "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/doc?rev="+version.RevID, "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusConflict)
 
 			// Attempt to delete document with wrong rev
@@ -531,7 +528,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			assertRespStatus(resp, http.StatusConflict)
 
 			// Attempt to delete document rev with no write perms as guest
-			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/doc?rev="+rev, "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/doc?rev="+version.RevID, "", nil, "", "")
 			assertRespStatus(resp, http.StatusConflict)
 
 			// Attempt to delete document with wrong rev as guest
@@ -1012,10 +1009,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	// Create doc that gives user access to its channel
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/alpha", `{"owner":"bernard", "channel":"PBS"}`)
 	RequireStatus(t, response, 201)
-	var body db.Body
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, true, body["ok"])
-	revId := body["rev"].(string)
+	version := DocVersionFromPutResponse(t, response)
 
 	assert.NoError(t, rt.WaitForPendingChanges())
 
@@ -1034,8 +1028,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	}
 
 	// Delete the document
-	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/alpha?rev="+revId, "")
-	RequireStatus(t, response, 200)
+	rt.DeleteDoc("alpha", version)
 
 	// Make sure it actually was deleted
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/alpha", "")
@@ -1168,7 +1161,7 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	// Write access granting document (grants chan2 to role role1)
 	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/grant1", `{"type":"setaccess", "owner":"role:role1", "channel":"chan2"}`, "user1")
 	RequireStatus(t, response, 201)
-	grant1Rev := RespRevID(t, response)
+	grant1Version := DocVersionFromPutResponse(t, response)
 
 	// Verify user can access document
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc2", "", "user1")
@@ -1191,7 +1184,7 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	RequireStatus(t, response, 200)
 
 	// Revoke access to chan2 (dynamic)
-	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/grant1?rev="+grant1Rev, `{"type":"setaccess", "owner":"none", "channel":"chan2"}`, "user1")
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/grant1?rev="+grant1Version.RevID, `{"type":"setaccess", "owner":"none", "channel":"chan2"}`, "user1")
 	RequireStatus(t, response, 201)
 
 	// Verify user cannot access doc in revoked channel, but can successfully access remaining documents

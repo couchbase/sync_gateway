@@ -233,19 +233,18 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 	defer rt.Close()
 
 	wg.Add(2)
-	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar"}`)
-	RequireStatus(t, res, http.StatusCreated)
-	rev1 := RespRevID(t, res)
-	_, rev1Hash := db.ParseRevID(rt.Context(), rev1)
+	const docID = "doc1"
+	version1 := rt.PutDoc(docID, `{"foo":"bar"}`)
 
 	// push winning branch
 	wg.Add(2)
-	res = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"buzz","_revisions":{"start":3,"ids":["buzz","bar","`+rev1Hash+`"]}}`)
+	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"buzz","_revisions":{"start":3,"ids":["buzz","bar","`+version1.RevID+`"]}}`)
 	RequireStatus(t, res, http.StatusCreated)
+	winningVersion := DocVersionFromPutResponse(t, res)
 
 	// push non-winning branch
 	wg.Add(1)
-	res = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"buzzzzz","_revisions":{"start":2,"ids":["buzzzzz","`+rev1Hash+`"]}}`)
+	_ = rt.PutNewEditsFalse(docID, NewDocVersionFromFakeRev("2-buzzzzz"), version1, `{"foo":"buzzzzz"}`)
 	RequireStatus(t, res, http.StatusCreated)
 
 	wg.Wait()
@@ -254,8 +253,7 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 
 	// tombstone the winning branch and ensure we get a rev changed message for the promoted branch
 	wg.Add(2)
-	res = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc1?rev=3-buzz", ``)
-	RequireStatus(t, res, http.StatusOK)
+	rt.DeleteDoc(docID, winningVersion)
 
 	wg.Wait()
 	assert.Equal(t, 3, int(atomic.LoadUint32(&WinningRevChangedCount)))
@@ -263,13 +261,13 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 
 	// push a separate winning branch
 	wg.Add(2)
-	res = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"quux","_revisions":{"start":4,"ids":["quux", "buzz","bar","`+rev1Hash+`"]}}`)
+	res = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"quux","_revisions":{"start":4,"ids":["quux", "buzz","bar","`+version1.RevID+`"]}}`)
 	RequireStatus(t, res, http.StatusCreated)
+	newWinningVersion := DocVersionFromPutResponse(t, res)
 
 	// tombstone the winning branch, we should get a second webhook fired for rev 2-buzzzzz now it's been resurrected
 	wg.Add(2)
-	res = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc1?rev=4-quux", ``)
-	RequireStatus(t, res, http.StatusOK)
+	rt.DeleteDoc(docID, newWinningVersion)
 
 	wg.Wait()
 	assert.Equal(t, 5, int(atomic.LoadUint32(&WinningRevChangedCount)))
