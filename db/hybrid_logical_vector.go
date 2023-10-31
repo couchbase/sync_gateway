@@ -195,19 +195,27 @@ func (hlv *HybridLogicalVector) GetVersion(sourceID string) uint64 {
 // AddNewerVersions will take a hlv and add any newer source/version pairs found across CV and PV found in the other HLV taken as parameter
 func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector) {
 	if otherVector.PreviousVersions != nil || len(otherVector.PreviousVersions) != 0 {
-		_, localVersion := hlv.GetCurrentVersion()
-		// Iterate through incoming vector previous versions, compare to current version cas of local HLV
-		// Any more recent versions in incoming vectors previous versions need to be added to local HLV previous versions
+		// Iterate through incoming vector previous versions, update with the version from other vector
+		// for source if the local version for that source is lower
 		for i, v := range otherVector.PreviousVersions {
-			if v > localVersion {
-				hlv.addToPreviousVersions(i, v)
+			if hlv.PreviousVersions[i] < v {
+				hlv.setPreviousVersion(i, v)
 			}
 		}
 	}
+
 	// create current version for incoming vector and attempt to add it to the local HLV, AddVersion will handle if attempting to add older
 	// version than local HLVs CV pair
 	otherVectorCV := CurrentVersionVector{SourceID: otherVector.SourceID, VersionCAS: otherVector.Version}
-	_ = hlv.AddVersion(otherVectorCV)
+	err := hlv.AddVersion(otherVectorCV)
+	if err != nil {
+		// we get here if the other HLV has lower current version than local HLV, so we
+		// need to check if the current source between the two are not equal then the
+		// incoming CV pair needs to be added to PV on local HLV
+		if hlv.SourceID != otherVector.SourceID {
+			hlv.setPreviousVersion(otherVector.SourceID, otherVector.Version)
+		}
+	}
 }
 
 func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
@@ -322,10 +330,10 @@ func (hlv *HybridLogicalVector) computeMacroExpansions() []sgbucket.MacroExpansi
 	return outputSpec
 }
 
-// addToPreviousVersions will take a source/version pair and add it to the HLV previous versions map
-func (hlv *HybridLogicalVector) addToPreviousVersions(source string, version uint64) {
-	if hlv.MergeVersions == nil {
-		hlv.MergeVersions = make(map[string]uint64)
+// setPreviousVersion will take a source/version pair and add it to the HLV previous versions map
+func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64) {
+	if hlv.PreviousVersions == nil {
+		hlv.PreviousVersions = make(map[string]uint64)
 	}
-	hlv.MergeVersions[source] = version
+	hlv.PreviousVersions[source] = version
 }

@@ -1062,16 +1062,24 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	return newRevID, doc, err
 }
 
-func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, docHistory []string, docHLV HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *CurrentVersionVector, newRevID string, err error) {
-	newRev := docHistory[0]
-	generation, _ := ParseRevID(ctx, newRev)
+func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, docHLV HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *CurrentVersionVector, newRevID string, err error) {
+	var matchRev string
+	if existingDoc != nil {
+		doc, unmarshalErr := unmarshalDocumentWithXattr(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattr, existingDoc.UserXattr, existingDoc.Cas, DocUnmarshalRev)
+		if unmarshalErr != nil {
+			return nil, nil, "", base.HTTPErrorf(http.StatusBadRequest, "Error unmarshaling exsiting doc")
+		}
+		matchRev = doc.CurrentRev
+	}
+	generation, _ := ParseRevID(ctx, matchRev)
 	if generation < 0 {
 		return nil, nil, "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
+	generation++
 
 	docUpdateEvent := ExistingVersion
 	allowImport := db.UseXattrs()
-	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, newDoc.DocExpiry, nil, docUpdateEvent, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, newDoc.DocExpiry, nil, docUpdateEvent, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -1093,54 +1101,39 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			}
 		}
 
-		// Find the point where this doc's history branches from the current rev:
-		currentRevIndex := len(docHistory)
-		parent := ""
-		for i, revid := range docHistory {
-			if doc.History.contains(revid) {
-				currentRevIndex = i
-				parent = revid
-				break
-			}
-		}
-		if currentRevIndex == 0 {
-			base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingRevWithBody(%q): No new revisions to add", base.UD(newDoc.ID))
-			newDoc.RevID = newRev
-			return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
-		}
-
 		// Conflict check here
+		// if doc has no HLV defined this is a new doc we haven't seen before, skip conflict check
 		if doc.HLV == nil {
 			doc.HLV = &HybridLogicalVector{}
-		}
-		if !docHLV.IsInConflict(*doc.HLV) {
-			// update hlv for all newer incoming source version pairs
 			doc.HLV.AddNewerVersions(docHLV)
 		} else {
-			base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s", base.UD(doc.ID))
-			// cancel rest of update, HLV needs to be sent back to client with merge versions populated
-			return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
-		}
-
-		// Add all the new-to-me revisions to the rev tree:
-		for i := currentRevIndex - 1; i >= 0; i-- {
-			err := doc.History.addRevision(newDoc.ID,
-				RevInfo{
-					ID:      docHistory[i],
-					Parent:  parent,
-					Deleted: i == 0 && newDoc.Deleted})
-
-			if err != nil {
-				return nil, nil, false, nil, err
+			if !docHLV.IsInConflict(*doc.HLV) {
+				// update hlv for all newer incoming source version pairs
+				doc.HLV.AddNewerVersions(docHLV)
+			} else {
+				base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s", base.UD(doc.ID))
+				// cancel rest of update, HLV needs to be sent back to client with merge versions populated
+				return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 			}
-			parent = docHistory[i]
 		}
 
-		parentRevID := doc.History[newRev].Parent
 		// Process the attachments, replacing bodies with digests.
-		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.DocAttachments, generation, parentRevID, docHistory)
+		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.DocAttachments, generation, matchRev, nil)
 		if err != nil {
 			return nil, nil, false, nil, err
+		}
+
+		// generate rev id for new arriving doc
+		strippedBody, _ := stripInternalProperties(newDoc._body)
+		encoding, err := base.JSONMarshalCanonical(strippedBody)
+		if err != nil {
+			return nil, nil, false, nil, err
+		}
+		newRev := CreateRevIDWithBytes(generation, matchRev, encoding)
+
+		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: newDoc.Deleted}); err != nil {
+			base.InfofCtx(ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(newDoc.ID), err)
+			return nil, nil, false, nil, base.ErrRevTreeAddRevFailure
 		}
 
 		newDoc.RevID = newRev
@@ -1157,7 +1150,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		cv.VersionCAS = version
 	}
 
-	return doc, cv, newRev, err
+	return doc, cv, newRevID, err
 }
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
