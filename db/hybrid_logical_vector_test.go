@@ -233,6 +233,59 @@ func TestHybridLogicalVectorPersistence(t *testing.T) {
 	assert.Equal(t, inMemoryHLV.MergeVersions, hlvFromPersistance.MergeVersions)
 }
 
+func TestAddNewerVerionsBetweenTwoVectors(t *testing.T) {
+	localInput := []string{"abc@15"}
+	localHLV := createHLVForTest(t, localInput)
+	incomingInput := []string{"def@25", "abc@20"}
+	incomingHLV := createHLVForTest(t, incomingInput)
+	localHLV.AddNewerVersions(incomingHLV)
+
+	// assert on expected values
+	expPV := make(map[string]uint64)
+	expPV["abc"] = 20
+	assert.Equal(t, "def", localHLV.SourceID)
+	assert.Equal(t, uint64(25), localHLV.Version)
+	assert.True(t, reflect.DeepEqual(expPV, localHLV.PreviousVersions))
+
+	localInput = []string{"abc@15", "def@30"}
+	localHLV = createHLVForTest(t, localInput)
+	incomingInput = []string{"def@35", "abc@15"}
+	incomingHLV = createHLVForTest(t, incomingInput)
+	localHLV.AddNewerVersions(incomingHLV)
+
+	// assert on expected values
+	expPV["abc"] = 15
+	assert.Equal(t, "def", localHLV.SourceID)
+	assert.Equal(t, uint64(35), localHLV.Version)
+	assert.True(t, reflect.DeepEqual(expPV, localHLV.PreviousVersions))
+
+	localInput = []string{"abc@17", "def@30"}
+	localHLV = createHLVForTest(t, localInput)
+	incomingInput = []string{"def@35", "abc@15"}
+	incomingHLV = createHLVForTest(t, incomingInput)
+	localHLV.AddNewerVersions(incomingHLV)
+
+	// assert on expected values
+	expPV["abc"] = 17
+	assert.Equal(t, "def", localHLV.SourceID)
+	assert.Equal(t, uint64(35), localHLV.Version)
+	assert.True(t, reflect.DeepEqual(expPV, localHLV.PreviousVersions))
+
+	localInput = []string{"abc@20", "ghi@9"}
+	localHLV = createHLVForTest(t, localInput)
+	incomingInput = []string{"def@15", "abc@17"}
+	incomingHLV = createHLVForTest(t, incomingInput)
+
+	localHLV.AddNewerVersions(incomingHLV)
+	// setup expect PV map
+	delete(expPV, "abc")
+	expPV["ghi"] = 9
+	expPV["def"] = 15
+	assert.Equal(t, "abc", localHLV.SourceID)
+	assert.Equal(t, uint64(20), localHLV.Version)
+	assert.True(t, reflect.DeepEqual(expPV, localHLV.PreviousVersions))
+}
+
 // Tests import of server-side mutations made by HLV-aware and non-HLV-aware peers
 func TestHLVImport(t *testing.T) {
 

@@ -1770,7 +1770,6 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 //   - Assert conflict between the local HLV for the doc and the incoming mutation is correctly identified
 //   - Assert that the doc's HLV in the bucket hasn't been updated
 func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD)
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
@@ -1821,7 +1820,8 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 
 // TestPutExistingCurrentVersionWithNoExistingDoc:
 //   - Purpose of this test is to test PutExistingRevWithBody code pathway where an
-//     existing doc is not provided from the bucket into the function
+//     existing doc is not provided from the bucket into the function simulating a new, not seen
+//     before doc entering this code path
 func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)

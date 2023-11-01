@@ -94,7 +94,17 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion SourceAndVersion) error {
 	if hlv.PreviousVersions == nil {
 		hlv.PreviousVersions = make(map[string]uint64)
 	}
-	hlv.PreviousVersions[hlv.SourceID] = hlv.Version
+	// we need to check if source ID already exists in PV, if so we need to ensure we are only updating with the
+	// sourceID-version pair if incoming version is greater than version already there
+	if currPVVersion := hlv.PreviousVersions[hlv.SourceID]; currPVVersion != 0 {
+		// if we get here source ID exists in PV, only replace version if it is less than the incoming version
+		if currPVVersion < hlv.Version {
+			hlv.PreviousVersions[hlv.SourceID] = hlv.Version
+		}
+	} else {
+		// source doesn't exist in PV so add
+		hlv.PreviousVersions[hlv.SourceID] = hlv.Version
+	}
 	hlv.Version = newVersion.Version
 	hlv.SourceID = newVersion.SourceID
 	return nil
@@ -198,7 +208,7 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector
 		// Iterate through incoming vector previous versions, update with the version from other vector
 		// for source if the local version for that source is lower
 		for i, v := range otherVector.PreviousVersions {
-			if hlv.PreviousVersions[i] < v {
+			if hlv.PreviousVersions[i] == 0 || hlv.PreviousVersions[i] < v {
 				hlv.setPreviousVersion(i, v)
 			}
 		}
@@ -213,8 +223,19 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector
 		// need to check if the current source between the two are not equal then the
 		// incoming CV pair needs to be added to PV on local HLV
 		if hlv.SourceID != otherVector.SourceID {
-			hlv.setPreviousVersion(otherVector.SourceID, otherVector.Version)
+			if hlv.PreviousVersions[otherVector.SourceID] == 0 {
+				// source doesn't exist in pv so add it this pair
+				hlv.setPreviousVersion(otherVector.SourceID, otherVector.Version)
+			} else if hlv.PreviousVersions[otherVector.SourceID] != 0 && hlv.PreviousVersions[otherVectorCV.SourceID] < otherVector.Version {
+				// source exists but has version less than incoing version associated with it so replace this value in PV
+				// with incoming pair
+				hlv.setPreviousVersion(otherVector.SourceID, otherVector.Version)
+			}
 		}
+	}
+	// if current source exists in PV, delete it.
+	if hlv.PreviousVersions[hlv.SourceID] != 0 {
+		delete(hlv.PreviousVersions, hlv.SourceID)
 	}
 }
 
