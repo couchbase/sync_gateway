@@ -272,7 +272,7 @@ func TestAddNewerVersionsBetweenTwoVectors(t *testing.T) {
 			incomingHLV := createHLVForTest(t, test.incomingInput)
 			expectedHLV := createHLVForTest(t, test.expectedInput)
 
-			localHLV.AddNewerVersions(incomingHLV)
+			_ = localHLV.AddNewerVersions(incomingHLV)
 			// assert on expected values
 			assert.Equal(t, expectedHLV.SourceID, localHLV.SourceID)
 			assert.Equal(t, expectedHLV.Version, localHLV.Version)
