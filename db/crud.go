@@ -1105,11 +1105,17 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		// if doc has no HLV defined this is a new doc we haven't seen before, skip conflict check
 		if doc.HLV == nil {
 			doc.HLV = &HybridLogicalVector{}
-			doc.HLV.AddNewerVersions(docHLV)
+			addNewerVersionsErr := doc.HLV.AddNewerVersions(docHLV)
+			if addNewerVersionsErr != nil {
+				return nil, nil, false, nil, addNewerVersionsErr
+			}
 		} else {
 			if !docHLV.IsInConflict(*doc.HLV) {
 				// update hlv for all newer incoming source version pairs
-				doc.HLV.AddNewerVersions(docHLV)
+				addNewerVersionsErr := doc.HLV.AddNewerVersions(docHLV)
+				if addNewerVersionsErr != nil {
+					return nil, nil, false, nil, addNewerVersionsErr
+				}
 			} else {
 				base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s", base.UD(doc.ID))
 				// cancel rest of update, HLV needs to be sent back to client with merge versions populated

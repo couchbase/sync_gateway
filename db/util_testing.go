@@ -645,24 +645,13 @@ func DefaultMutateInOpts() *sgbucket.MutateInOptions {
 	}
 }
 
-func constructDocumentFromBody(docID string, body Body) (newDoc *Document) {
-	expiry, _ := body.ExtractExpiry()
-	deleted := body.ExtractDeleted()
-	revid := body.ExtractRev()
-
+func createTestDocument(docID string, revID string, body Body, deleted bool, expiry uint32) (newDoc *Document) {
 	newDoc = &Document{
 		ID:        docID,
 		Deleted:   deleted,
 		DocExpiry: expiry,
-		RevID:     revid,
+		RevID:     revID,
+		_body:     body,
 	}
-
-	delete(body, BodyId)
-	delete(body, BodyRevisions)
-
-	newDoc.DocAttachments = GetBodyAttachments(body)
-	delete(body, BodyAttachments)
-
-	newDoc.UpdateBody(body)
 	return newDoc
 }

@@ -1720,7 +1720,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 
 	// construct a mock doc update coming over a replicator
 	body = Body{"key1": "value2"}
-	newDoc := constructDocumentFromBody(key, body)
+	newDoc := createTestDocument(key, "", body, false, 0)
 
 	// construct a HLV that simulates a doc update happening on a client
 	// this means moving the current source version pair to PV and adding new sourceID and version pair to CV
@@ -1793,7 +1793,7 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 
 	// create a new doc update to simulate a doc update arriving over replicator from, client
 	body = Body{"key1": "value2"}
-	newDoc := constructDocumentFromBody(key, body)
+	newDoc := createTestDocument(key, "", body, false, 0)
 	incomingHLV := HybridLogicalVector{
 		SourceID: "test",
 		Version:  1234,
@@ -1831,7 +1831,7 @@ func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 
 	// construct a mock doc update coming over a replicator
 	body := Body{"key1": "value2"}
-	newDoc := constructDocumentFromBody("doc2", body)
+	newDoc := createTestDocument("doc2", "", body, false, 0)
 
 	// construct a HLV that simulates a doc update happening on a client
 	// this means moving the current source version pair to PV and adding new sourceID and version pair to CV

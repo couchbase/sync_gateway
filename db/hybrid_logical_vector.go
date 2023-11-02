@@ -96,10 +96,12 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion SourceAndVersion) error {
 	}
 	// we need to check if source ID already exists in PV, if so we need to ensure we are only updating with the
 	// sourceID-version pair if incoming version is greater than version already there
-	if currPVVersion := hlv.PreviousVersions[hlv.SourceID]; currPVVersion != 0 {
+	if currPVVersion, ok := hlv.PreviousVersions[hlv.SourceID]; ok {
 		// if we get here source ID exists in PV, only replace version if it is less than the incoming version
 		if currPVVersion < hlv.Version {
 			hlv.PreviousVersions[hlv.SourceID] = hlv.Version
+		} else {
+			return fmt.Errorf("local hlv has current source in previous versiosn with version greater than current version. Current CAS: %d, PV CAS %d", hlv.Version, currPVVersion)
 		}
 	} else {
 		// source doesn't exist in PV so add
@@ -129,7 +131,7 @@ func (hlv *HybridLogicalVector) isDominating(otherVector HybridLogicalVector) bo
 
 	// Grab the latest CAS version for HLV(A)'s sourceID in HLV(B), if HLV(A) version CAS is > HLV(B)'s then it is dominating
 	// If 0 CAS is returned then the sourceID does not exist on HLV(B)
-	if latestCAS := otherVector.GetVersion(hlv.SourceID); latestCAS != 0 && hlv.Version > latestCAS {
+	if latestCAS, found := otherVector.GetVersion(hlv.SourceID); found && hlv.Version > latestCAS {
 		return true
 	}
 	// HLV A is not dominating over HLV B
@@ -184,10 +186,11 @@ func (hlv *HybridLogicalVector) equalPreviousVectors(otherVector HybridLogicalVe
 	return true
 }
 
-// GetVersion returns the latest CAS value in the HLV for a given sourceID, if the sourceID is not present in the HLV it will return 0 CAS value
-func (hlv *HybridLogicalVector) GetVersion(sourceID string) uint64 {
+// GetVersion returns the latest CAS value in the HLV for a given sourceID along with boolean value to
+// indicate if sourceID is found in the HLV, if the sourceID is not present in the HLV it will return 0 CAS value and false
+func (hlv *HybridLogicalVector) GetVersion(sourceID string) (uint64, bool) {
 	if sourceID == "" {
-		return 0
+		return 0, false
 	}
 	var latestVersion uint64
 	if sourceID == hlv.SourceID {
@@ -199,11 +202,24 @@ func (hlv *HybridLogicalVector) GetVersion(sourceID string) uint64 {
 	if mvEntry := hlv.MergeVersions[sourceID]; mvEntry > latestVersion {
 		latestVersion = mvEntry
 	}
-	return latestVersion
+	// if we have 0 cas value, there is no entry for this source ID in the HLV
+	if latestVersion == 0 {
+		return latestVersion, false
+	}
+	return latestVersion, true
 }
 
 // AddNewerVersions will take a hlv and add any newer source/version pairs found across CV and PV found in the other HLV taken as parameter
-func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector) {
+func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector) error {
+
+	// create current version for incoming vector and attempt to add it to the local HLV, AddVersion will handle if attempting to add older
+	// version than local HLVs CV pair
+	otherVectorCV := CurrentVersionVector{SourceID: otherVector.SourceID, VersionCAS: otherVector.Version}
+	err := hlv.AddVersion(otherVectorCV)
+	if err != nil {
+		return err
+	}
+
 	if otherVector.PreviousVersions != nil || len(otherVector.PreviousVersions) != 0 {
 		// Iterate through incoming vector previous versions, update with the version from other vector
 		// for source if the local version for that source is lower
@@ -213,30 +229,11 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector
 			}
 		}
 	}
-
-	// create current version for incoming vector and attempt to add it to the local HLV, AddVersion will handle if attempting to add older
-	// version than local HLVs CV pair
-	otherVectorCV := CurrentVersionVector{SourceID: otherVector.SourceID, VersionCAS: otherVector.Version}
-	err := hlv.AddVersion(otherVectorCV)
-	if err != nil {
-		// we get here if the other HLV has lower current version than local HLV, so we
-		// need to check if the current source between the two are not equal then the
-		// incoming CV pair needs to be added to PV on local HLV
-		if hlv.SourceID != otherVector.SourceID {
-			if hlv.PreviousVersions[otherVector.SourceID] == 0 {
-				// source doesn't exist in pv so add it this pair
-				hlv.setPreviousVersion(otherVector.SourceID, otherVector.Version)
-			} else if hlv.PreviousVersions[otherVector.SourceID] != 0 && hlv.PreviousVersions[otherVectorCV.SourceID] < otherVector.Version {
-				// source exists but has version less than incoing version associated with it so replace this value in PV
-				// with incoming pair
-				hlv.setPreviousVersion(otherVector.SourceID, otherVector.Version)
-			}
-		}
-	}
 	// if current source exists in PV, delete it.
-	if hlv.PreviousVersions[hlv.SourceID] != 0 {
+	if _, ok := hlv.PreviousVersions[hlv.SourceID]; ok {
 		delete(hlv.PreviousVersions, hlv.SourceID)
 	}
+	return nil
 }
 
 func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
