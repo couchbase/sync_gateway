@@ -2161,7 +2161,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 			var resultBody db.Body
 			assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
 			assert.NoError(t, resultBody.Unmarshal(result.Doc))
-			db.AssertEqualBodies(t, expectedBody, resultBody) // FIXME (bbrks): Missing channels after revcache changes
+			db.AssertEqualBodies(t, expectedBody, resultBody)
 		} else {
 			assert.Equal(t, expectedChange.Doc, result.Doc)
 		}
