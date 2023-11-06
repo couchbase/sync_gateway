@@ -89,10 +89,10 @@ const defaultConfigRetryTimeout = 3 * base.DefaultGocbV2OperationTimeout
 
 type bootstrapContext struct {
 	Connection         base.BootstrapConnection
-	configRetryTimeout time.Duration          // configRetryTimeout defines the total amount of time to retry on a registry/config mismatch
-	terminator         chan struct{}          // Used to stop the goroutine handling the bootstrap polling
-	doneChan           chan struct{}          // doneChan is closed when the bootstrap polling goroutine finishes.
-	sgVersion          base.ComparableVersion // version of Sync Gateway
+	configRetryTimeout time.Duration               // configRetryTimeout defines the total amount of time to retry on a registry/config mismatch
+	terminator         chan struct{}               // Used to stop the goroutine handling the bootstrap polling
+	doneChan           chan struct{}               // doneChan is closed when the bootstrap polling goroutine finishes.
+	sgVersion          base.ComparableBuildVersion // version of Sync Gateway
 }
 
 type getOrAddDatabaseConfigOptions struct {

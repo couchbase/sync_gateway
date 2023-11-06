@@ -32,7 +32,7 @@ type DatabaseConfig struct {
 	// Version is a generated Rev ID used for optimistic concurrency control using ETags/If-Match headers.
 	Version string `json:"version,omitempty"`
 
-	// SGVersion is a base.ComparableVersion of the Sync Gateway node that wrote the config.
+	// SGVersion is a base.ComparableBuildVersion of the Sync Gateway node that wrote the config.
 	SGVersion string `json:"sg_version,omitempty"`
 
 	// MetadataID is the prefix used to store database metadata

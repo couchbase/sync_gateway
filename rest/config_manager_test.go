@@ -226,7 +226,7 @@ func TestVersionDowngrade(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			syncGatewayVersion, err := base.NewComparableVersionFromString(test.syncGatewayVersion)
+			syncGatewayVersion, err := base.NewComparableBuildVersionFromString(test.syncGatewayVersion)
 			require.NoError(t, err)
 			rt := NewRestTester(t, &RestTesterConfig{
 				PersistentConfig:   true,
@@ -240,7 +240,7 @@ func TestVersionDowngrade(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, syncGatewayVersion.Equal(&registry.SGVersion), "%+v != %+v", syncGatewayVersion, registry.SGVersion)
 
-			metadataConfigVersion, err := base.NewComparableVersionFromString(test.metadataConfigVersion)
+			metadataConfigVersion, err := base.NewComparableBuildVersionFromString(test.metadataConfigVersion)
 			registry.SGVersion = *metadataConfigVersion
 			require.NoError(t, err)
 			require.NoError(t, bootstrapContext.setGatewayRegistry(rt.Context(), rt.Bucket().GetName(), registry))
@@ -258,7 +258,7 @@ func TestVersionDowngrade(t *testing.T) {
 			registry, err = bootstrapContext.getGatewayRegistry(rt.Context(), rt.Bucket().GetName())
 			require.NoError(t, err)
 
-			expectedRegistryVersion, err := base.NewComparableVersionFromString(test.expectedRegistryVersion)
+			expectedRegistryVersion, err := base.NewComparableBuildVersionFromString(test.expectedRegistryVersion)
 			require.NoError(t, err)
 
 			require.True(t, expectedRegistryVersion.Equal(&registry.SGVersion), "%+v != %+v", expectedRegistryVersion, registry.SGVersion)
