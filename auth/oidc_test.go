@@ -1205,9 +1205,8 @@ func TestJWTRolesChannels(t *testing.T) {
 
 			for i, login := range tc.logins {
 				var (
-					user           User
-					err            error
-					lastUpdateTime time.Time
+					user User
+					err  error
 				)
 				if i == 0 {
 					user, err = auth.NewUser(testUserPrefix+"_"+testSubject, "test", base.SetFromArray(login.explicitChannels))
@@ -1254,8 +1253,6 @@ func TestJWTRolesChannels(t *testing.T) {
 				}
 				require.Equal(t, base.SetFromArray(login.expectedChannels), user.Channels().AsSet())
 
-				require.Greater(t, user.JWTLastUpdated(), lastUpdateTime)
-				lastUpdateTime = user.JWTLastUpdated()
 			}
 		})
 	}

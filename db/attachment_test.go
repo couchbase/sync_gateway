@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1509,12 +1508,9 @@ func TestLargeAttachments(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	normalAttachment := make([]byte, 15*1024*1024)   // permissible size
-	oversizeAttachment := make([]byte, 25*1024*1024) // memcached would send an E2BIG
-	hugeAttachment := make([]byte, 35*1024*1024)     // memcached would abruptly close our connection
-	_, _ = rand.Read(normalAttachment)
-	_, _ = rand.Read(oversizeAttachment)
-	_, _ = rand.Read(hugeAttachment)
+	normalAttachment := base.FastRandBytes(t, 15*1024*1024)   // permissible size
+	oversizeAttachment := base.FastRandBytes(t, 25*1024*1024) // memcached would send an E2BIG
+	hugeAttachment := base.FastRandBytes(t, 35*1024*1024)     // memcached would abruptly close our connection
 
 	_, _, err := collection.Put(ctx, "testdoc", Body{
 		"_attachments": AttachmentsMeta{

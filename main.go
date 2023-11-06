@@ -9,15 +9,8 @@
 package main
 
 import (
-	"math/rand"
-	"time"
-
 	"github.com/couchbase/sync_gateway/rest"
 )
-
-func init() {
-	rand.Seed(time.Now().UTC().UnixNano())
-}
 
 // Simple Sync Gateway launcher tool.
 func main() {

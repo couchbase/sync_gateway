@@ -63,10 +63,6 @@ func GetGoCBv2Bucket(ctx context.Context, spec BucketSpec) (*GocbV2Bucket, error
 		RetryStrategy:  gocb.NewBestEffortRetryStrategy(nil),
 	}
 
-	if spec.KvPoolSize > 0 {
-		// TODO: Equivalent of kvPoolSize in gocb v2?
-	}
-
 	cluster, err := gocb.Connect(connString, clusterOptions)
 	if err != nil {
 		InfofCtx(ctx, KeyAuth, "Unable to connect to cluster: %v", err)

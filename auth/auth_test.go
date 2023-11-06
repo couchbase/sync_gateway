@@ -721,7 +721,7 @@ func TestConcurrentUserWrites(t *testing.T) {
 	}
 
 	// Retrieve user to trigger initial calculation of roles, channels
-	user, getErr := auth.GetUser(username)
+	_, getErr := auth.GetUser(username)
 	require.NoError(t, getErr, "Error retrieving user")
 
 	require.NoError(t, auth.SetBcryptCost(DefaultBcryptCost))

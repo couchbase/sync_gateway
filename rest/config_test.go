@@ -1431,8 +1431,8 @@ func TestSetupServerContext(t *testing.T) {
 		config.Bootstrap.Password = base.TestClusterPassword()
 		ctx := base.TestCtx(t)
 		sc, err := SetupServerContext(ctx, &config, false)
-		defer sc.Close(ctx)
 		require.NoError(t, err)
+		defer sc.Close(ctx)
 		require.NotNil(t, sc)
 	})
 }

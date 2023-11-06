@@ -46,7 +46,8 @@ func initExternalLoggers() {
 }
 
 func updateExternalLoggers() {
-	if consoleLogger != nil && consoleLogger.shouldLog(nil, LevelDebug, KeyWalrus) {
+	// use context.Background() since this is called from init or to reset test logging
+	if consoleLogger != nil && consoleLogger.shouldLog(context.Background(), LevelDebug, KeyWalrus) {
 		rosmar.SetLogLevel(rosmar.LevelDebug)
 	} else {
 		rosmar.SetLogLevel(rosmar.LevelInfo)

@@ -678,11 +678,11 @@ func (meh *sgMgrEventHandlers) OnUnregisterPIndex(pindex *cbgt.PIndex) {
 // OnFeedError is required to trigger reconnection to a feed on a closed connection (EOF).
 // NotifyMgrOnClose will trigger cbgt closing and then attempt to reconnect to the feed, if the manager hasn't
 // been stopped.
-func (meh *sgMgrEventHandlers) OnFeedError(srcType string, r cbgt.Feed, feedErr error) {
+func (meh *sgMgrEventHandlers) OnFeedError(_ string, r cbgt.Feed, feedErr error) {
 
 	// cbgt always passes srcType = SOURCE_GOCBCORE, but we have a wrapped type associated with our indexes - use that instead
 	// for our logging
-	srcType = SOURCE_DCP_SG
+	srcType := SOURCE_DCP_SG
 	var bucketName, bucketUUID string
 	dcpFeed, ok := r.(cbgt.FeedEx)
 	if ok {

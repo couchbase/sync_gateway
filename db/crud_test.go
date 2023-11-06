@@ -1360,6 +1360,7 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	// Get the document body bytes with the tombstone revision rev3, with listRevisions=true
 	// Also validate that the BodyRevisions property is present and correct.
 	bodyBytes, removed, err = collection.get1xRevFromDoc(ctx, doc, rev3, true)
+	require.NoError(t, err)
 	assert.NotEmpty(t, bodyBytes, "Document body bytes should be returned")
 	assert.False(t, removed, "This shouldn't be a removed document")
 	assert.NoError(t, response.Unmarshal(bodyBytes))
