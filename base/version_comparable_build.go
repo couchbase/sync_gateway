@@ -15,22 +15,22 @@ import (
 )
 
 const (
-	// comparableVersionEpoch can be incremented when the versioning system or string format changes, whilst maintaining ordering.
+	// comparableBuildVersionEpoch can be incremented when the versioning system or string format changes, whilst maintaining ordering.
 	// i.e. It's a version number version
 	// e.g: version system change from semver to dates: 0:30.2.1@45-EE < 1:22-3-25@33-EE
-	comparableVersionEpoch = 0
+	comparableBuildVersionEpoch = 0
 )
 
-// ComparableVersion is an [epoch:]major.minor.patch[.other][@build][-edition] version that has methods to reliably extract information.
-type ComparableVersion struct {
+// ComparableBuildVersion is an [epoch:]major.minor.patch[.other][@build][-edition] version that has methods to reliably extract information.
+type ComparableBuildVersion struct {
 	epoch, major, minor, patch, other uint8
 	build                             uint16
 	edition                           productEdition
 	str                               string
 }
 
-func zeroComparableVersion() *ComparableVersion {
-	v := &ComparableVersion{
+func zeroComparableBuildVersion() *ComparableBuildVersion {
+	v := &ComparableBuildVersion{
 		epoch:   0,
 		major:   0,
 		minor:   0,
@@ -39,18 +39,18 @@ func zeroComparableVersion() *ComparableVersion {
 		build:   0,
 		edition: "",
 	}
-	v.str = v.formatComparableVersion()
+	v.str = v.formatComparableBuildVersion()
 	return v
 }
 
-// NewComparableVersionFromString parses a ComparableVersion from the given version string.
+// NewComparableBuildVersionFromString parses a ComparableBuildVersion from the given version string.
 // Expected format: `[epoch:]major.minor.patch[.other][@build][-edition]`
-func NewComparableVersionFromString(version string) (*ComparableVersion, error) {
-	epoch, major, minor, patch, other, build, edition, err := parseComparableVersion(version)
+func NewComparableBuildVersionFromString(version string) (*ComparableBuildVersion, error) {
+	epoch, major, minor, patch, other, build, edition, err := parseComparableBuildVersion(version)
 	if err != nil {
 		return nil, err
 	}
-	v := &ComparableVersion{
+	v := &ComparableBuildVersion{
 		epoch:   epoch,
 		major:   major,
 		minor:   minor,
@@ -59,20 +59,20 @@ func NewComparableVersionFromString(version string) (*ComparableVersion, error) 
 		build:   build,
 		edition: edition,
 	}
-	v.str = v.formatComparableVersion()
+	v.str = v.formatComparableBuildVersion()
 	if v.str != version {
 		return nil, fmt.Errorf("version string %q is not equal to formatted version string %q", version, v.str)
 	}
 	return v, nil
 }
 
-func NewComparableVersion(majorStr, minorStr, patchStr, otherStr, buildStr, editionStr string) (*ComparableVersion, error) {
-	_, major, minor, patch, other, build, edition, err := parseComparableVersionComponents("", majorStr, minorStr, patchStr, otherStr, buildStr, editionStr)
+func NewComparableBuildVersion(majorStr, minorStr, patchStr, otherStr, buildStr, editionStr string) (*ComparableBuildVersion, error) {
+	_, major, minor, patch, other, build, edition, err := parseComparableBuildVersionComponents("", majorStr, minorStr, patchStr, otherStr, buildStr, editionStr)
 	if err != nil {
 		return nil, err
 	}
-	v := &ComparableVersion{
-		epoch:   comparableVersionEpoch,
+	v := &ComparableBuildVersion{
+		epoch:   comparableBuildVersionEpoch,
 		major:   major,
 		minor:   minor,
 		patch:   patch,
@@ -80,12 +80,12 @@ func NewComparableVersion(majorStr, minorStr, patchStr, otherStr, buildStr, edit
 		build:   build,
 		edition: edition,
 	}
-	v.str = v.formatComparableVersion()
+	v.str = v.formatComparableBuildVersion()
 	return v, nil
 }
 
 // Equal returns true if pv is equal to b
-func (pv *ComparableVersion) Equal(b *ComparableVersion) bool {
+func (pv *ComparableBuildVersion) Equal(b *ComparableBuildVersion) bool {
 	return pv.epoch == b.epoch &&
 		pv.major == b.major &&
 		pv.minor == b.minor &&
@@ -96,7 +96,7 @@ func (pv *ComparableVersion) Equal(b *ComparableVersion) bool {
 }
 
 // Less returns true if a is less than b
-func (a *ComparableVersion) Less(b *ComparableVersion) bool {
+func (a *ComparableBuildVersion) Less(b *ComparableBuildVersion) bool {
 	if a.epoch < b.epoch {
 		return true
 	} else if a.epoch > b.epoch {
@@ -138,7 +138,7 @@ func (a *ComparableVersion) Less(b *ComparableVersion) bool {
 }
 
 // AtLeastMinorDowngrade returns true there is a major or minor downgrade from a to b.
-func (a *ComparableVersion) AtLeastMinorDowngrade(b *ComparableVersion) bool {
+func (a *ComparableBuildVersion) AtLeastMinorDowngrade(b *ComparableBuildVersion) bool {
 	if a.epoch != b.epoch {
 		return a.epoch > b.epoch
 	}
@@ -148,82 +148,82 @@ func (a *ComparableVersion) AtLeastMinorDowngrade(b *ComparableVersion) bool {
 	return a.minor > b.minor
 }
 
-func (pv ComparableVersion) String() string {
+func (pv ComparableBuildVersion) String() string {
 	return pv.str
 }
 
-// MarshalJSON implements json.Marshaler for ComparableVersion. The JSON representation is the version string.
-func (pv *ComparableVersion) MarshalJSON() ([]byte, error) {
+// MarshalJSON implements json.Marshaler for ComparableBuildVersion. The JSON representation is the version string.
+func (pv *ComparableBuildVersion) MarshalJSON() ([]byte, error) {
 	return JSONMarshal(pv.String())
 }
 
-func (pv *ComparableVersion) UnmarshalJSON(val []byte) error {
+func (pv *ComparableBuildVersion) UnmarshalJSON(val []byte) error {
 	var strVal string
 	err := JSONUnmarshal(val, &strVal)
 	if err != nil {
 		return err
 	}
 	if strVal != "" {
-		pv.epoch, pv.major, pv.minor, pv.patch, pv.other, pv.build, pv.edition, err = parseComparableVersion(strVal)
+		pv.epoch, pv.major, pv.minor, pv.patch, pv.other, pv.build, pv.edition, err = parseComparableBuildVersion(strVal)
 	}
 
-	pv.str = pv.formatComparableVersion()
+	pv.str = pv.formatComparableBuildVersion()
 	return err
 }
 
 const (
-	comparableVersionSep        = '.'
-	comparableVersionSepEpoch   = ':'
-	comparableVersionSepBuild   = '@'
-	comparableVersionSepEdition = '-'
+	comparableBuildVersionSep        = '.'
+	comparableBuildVersionSepEpoch   = ':'
+	comparableBuildVersionSepBuild   = '@'
+	comparableBuildVersionSepEdition = '-'
 )
 
-// formatComparableVersion returns the string representation of the given version.
+// formatComparableBuildVersion returns the string representation of the given version.
 // format: `[epoch:]major.minor.patch[.other][@build][-edition]`
-func (pv *ComparableVersion) formatComparableVersion() string {
+func (pv *ComparableBuildVersion) formatComparableBuildVersion() string {
 	if pv == nil {
 		return "0.0.0"
 	}
 
 	epochStr := ""
 	if pv.epoch > 0 {
-		epochStr = strconv.FormatUint(uint64(pv.epoch), 10) + string(comparableVersionSepEpoch)
+		epochStr = strconv.FormatUint(uint64(pv.epoch), 10) + string(comparableBuildVersionSepEpoch)
 	}
 
 	semverStr := strconv.FormatUint(uint64(pv.major), 10) +
-		string(comparableVersionSep) +
+		string(comparableBuildVersionSep) +
 		strconv.FormatUint(uint64(pv.minor), 10) +
-		string(comparableVersionSep) +
+		string(comparableBuildVersionSep) +
 		strconv.FormatUint(uint64(pv.patch), 10)
 
 	otherStr := ""
 	if pv.other > 0 {
-		otherStr = string(comparableVersionSep) +
+		otherStr = string(comparableBuildVersionSep) +
 			strconv.FormatUint(uint64(pv.other), 10)
 	}
 
 	buildStr := ""
 	if pv.build > 0 {
-		buildStr = string(comparableVersionSepBuild) + strconv.FormatUint(uint64(pv.build), 10)
+		buildStr = string(comparableBuildVersionSepBuild) + strconv.FormatUint(uint64(pv.build), 10)
 	}
 
 	editionStr := ""
 	if ed := pv.edition.String(); ed != "" {
-		editionStr = string(comparableVersionSepEdition) + ed
+		editionStr = string(comparableBuildVersionSepEdition) + ed
 	}
 
 	return epochStr + semverStr + otherStr + buildStr + editionStr
 }
 
-func parseComparableVersion(version string) (epoch, major, minor, patch, other uint8, build uint16, edition productEdition, err error) {
-	epochStr, majorStr, minorStr, patchStr, otherStr, buildStr, edtionStr, err := extractComparableVersionComponents(version)
+func parseComparableBuildVersion(version string) (epoch, major, minor, patch, other uint8, build uint16, edition productEdition, err error) {
+	epochStr, majorStr, minorStr, patchStr, otherStr, buildStr, edtionStr, err := extractComparableBuildVersionComponents(version)
 	if err != nil {
 		return 0, 0, 0, 0, 0, 0, "", err
 	}
-	return parseComparableVersionComponents(epochStr, majorStr, minorStr, patchStr, otherStr, buildStr, edtionStr)
+	return parseComparableBuildVersionComponents(epochStr, majorStr, minorStr, patchStr, otherStr, buildStr, edtionStr)
 }
 
-func parseComparableVersionComponents(epochStr, majorStr, minorStr, patchStr, otherStr, buildStr, editionStr string) (epoch, major, minor, patch, other uint8, build uint16, edition productEdition, err error) {
+func parseComparableBuildVersionComponents(epochStr, majorStr, minorStr, patchStr, otherStr, buildStr, editionStr string) (epoch, major, minor, patch, other uint8, build uint16, edition productEdition, err error) {
 	if epochStr != "" {
 		tmp, err := strconv.ParseUint(epochStr, 10, 8)
 		if err != nil {
@@ -282,8 +282,8 @@ func parseComparableVersionComponents(epochStr, majorStr, minorStr, patchStr, ot
 	return epoch, major, minor, patch, other, build, edition, nil
 }
 
-// extractComparableVersionComponents takes a version string and returns each component as a string
-func extractComparableVersionComponents(version string) (epoch, major, minor, patch, other, build, edition string, err error) {
+// extractComparableBuildVersionComponents takes a version string and returns each component as a string
+func extractComparableBuildVersionComponents(version string) (epoch, major, minor, patch, other, build, edition string, err error) {
 
 	var remainder string
 
@@ -291,18 +291,18 @@ func extractComparableVersionComponents(version string) (epoch, major, minor, pa
 	// and still iterating over the entire string only once, albeit in small chunks.
 
 	// prefixes
-	epoch, remainder = safeCutBefore(version, string(comparableVersionSepEpoch))
+	epoch, remainder = safeCutBefore(version, string(comparableBuildVersionSepEpoch))
 
 	// suffixes
-	edition, remainder = safeCutAfter(remainder, string(comparableVersionSepEdition))
-	build, remainder = safeCutAfter(remainder, string(comparableVersionSepBuild))
+	edition, remainder = safeCutAfter(remainder, string(comparableBuildVersionSepEdition))
+	build, remainder = safeCutAfter(remainder, string(comparableBuildVersionSepBuild))
 
 	// major.minor.patch[.other]
-	major, remainder = safeCutBefore(remainder, string(comparableVersionSep))
-	minor, remainder = safeCutBefore(remainder, string(comparableVersionSep))
+	major, remainder = safeCutBefore(remainder, string(comparableBuildVersionSep))
+	minor, remainder = safeCutBefore(remainder, string(comparableBuildVersionSep))
 
 	// handle optional [.other]
-	if before, after, ok := strings.Cut(remainder, string(comparableVersionSep)); !ok {
+	if before, after, ok := strings.Cut(remainder, string(comparableBuildVersionSep)); !ok {
 		patch = remainder
 	} else {
 		patch = before

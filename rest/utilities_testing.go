@@ -71,7 +71,7 @@ type RestTesterConfig struct {
 	serverless                      bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
 	collectionConfig                collectionConfiguration
 	numCollections                  int
-	syncGatewayVersion              *base.ComparableVersion // alternate version of Sync Gateway to use on startup
+	syncGatewayVersion              *base.ComparableBuildVersion // alternate version of Sync Gateway to use on startup
 	allowDbConfigEnvVars            *bool
 }
 
