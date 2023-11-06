@@ -66,30 +66,6 @@ get:
                 description: Unique server identifier.
                 type: string
                 example: 995618a6a6cc9ac79731bd13240e19b5
-              scopes:
-                description: 'Scopes that are used by the database.'
-                type: object
-                example:
-                  scope1:
-                    collections:
-                      collection1:
-                        update_seq: 123456
-                      collection2:
-                        update_seq: 654321
-                additionalProperties:
-                  description: 'The name of the scope.'
-                  type: object
-                  properties:
-                    collections:
-                      description: 'The set of collections within the scope.'
-                      additionalProperties:
-                        description: 'The name of the collection.'
-                        type: object
-                        properties:
-                          update_seq:
-                            description: 'The last sequence number that was committed to the collection.'
-                            type: integer
-                            example: 123456
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
