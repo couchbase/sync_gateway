@@ -21,22 +21,31 @@ const hlvExpandMacroCASValue = math.MaxUint64
 
 type HybridLogicalVector struct {
 	CurrentVersionCAS uint64            // current version cas (or cvCAS) stores the current CAS at the time of replication
+	ImportCAS         uint64            // Set when an import modifies the document CAS but preserves the HLV (import of a version replicated by XDCR)
 	SourceID          string            // source bucket uuid of where this entry originated from
 	Version           uint64            // current cas of the current version on the version vector
 	MergeVersions     map[string]uint64 // map of merge versions for fast efficient lookup
 	PreviousVersions  map[string]uint64 // map of previous versions for fast efficient lookup
 }
 
-// CurrentVersionVector is a structure used to add a new sourceID:CAS entry to a HLV
-type CurrentVersionVector struct {
-	VersionCAS uint64
-	SourceID   string
+// SourceAndVersion is a structure used to add a new entry to a HLV
+type SourceAndVersion struct {
+	SourceID string
+	Version  uint64
+}
+
+func CreateVersion(source string, version uint64) SourceAndVersion {
+	return SourceAndVersion{
+		SourceID: source,
+		Version:  version,
+	}
 }
 
 type PersistedHybridLogicalVector struct {
 	CurrentVersionCAS string            `json:"cvCas,omitempty"`
-	SourceID          string            `json:"src,omitempty"`
-	Version           string            `json:"vrs,omitempty"`
+	ImportCAS         string            `json:"importCAS,omitempty"`
+	SourceID          string            `json:"src"`
+	Version           string            `json:"vrs"`
 	MergeVersions     map[string]string `json:"mv,omitempty"`
 	PreviousVersions  map[string]string `json:"pv,omitempty"`
 }
@@ -66,19 +75,19 @@ func (hlv *HybridLogicalVector) IsInConflict(otherVector HybridLogicalVector) bo
 
 // AddVersion adds a version vector to the in memory representation of a HLV and moves current version vector to
 // previous versions on the HLV if needed
-func (hlv *HybridLogicalVector) AddVersion(newVersion CurrentVersionVector) error {
-	if newVersion.VersionCAS < hlv.Version {
-		return fmt.Errorf("attempting to add new verison vector entry with a CAS that is less than the current version CAS value. Current cas: %d new cas %d", hlv.Version, newVersion.VersionCAS)
+func (hlv *HybridLogicalVector) AddVersion(newVersion SourceAndVersion) error {
+	if newVersion.Version < hlv.Version {
+		return fmt.Errorf("attempting to add new verison vector entry with a CAS that is less than the current version CAS value. Current cas: %d new cas %d", hlv.Version, newVersion.Version)
 	}
 	// check if this is the first time we're adding a source - version pair
 	if hlv.SourceID == "" {
-		hlv.Version = newVersion.VersionCAS
+		hlv.Version = newVersion.Version
 		hlv.SourceID = newVersion.SourceID
 		return nil
 	}
 	// if new entry has the same source we simple just update the version
 	if newVersion.SourceID == hlv.SourceID {
-		hlv.Version = newVersion.VersionCAS
+		hlv.Version = newVersion.Version
 		return nil
 	}
 	// if we get here this is a new version from a different sourceID thus need to move current sourceID to previous versions and update current version
@@ -86,7 +95,7 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion CurrentVersionVector) erro
 		hlv.PreviousVersions = make(map[string]uint64)
 	}
 	hlv.PreviousVersions[hlv.SourceID] = hlv.Version
-	hlv.Version = newVersion.VersionCAS
+	hlv.Version = newVersion.Version
 	hlv.SourceID = newVersion.SourceID
 	return nil
 }
@@ -204,9 +213,13 @@ func (hlv *HybridLogicalVector) UnmarshalJSON(inputjson []byte) error {
 func (hlv *HybridLogicalVector) convertHLVToPersistedFormat() (*PersistedHybridLogicalVector, error) {
 	persistedHLV := PersistedHybridLogicalVector{}
 	var cvCasByteArray []byte
+	var importCASBytes []byte
 	var vrsCasByteArray []byte
 	if hlv.CurrentVersionCAS != 0 {
 		cvCasByteArray = base.Uint64CASToLittleEndianHex(hlv.CurrentVersionCAS)
+	}
+	if hlv.ImportCAS != 0 {
+		importCASBytes = base.Uint64CASToLittleEndianHex(hlv.ImportCAS)
 	}
 	if hlv.Version != 0 {
 		vrsCasByteArray = base.Uint64CASToLittleEndianHex(hlv.Version)
@@ -222,6 +235,7 @@ func (hlv *HybridLogicalVector) convertHLVToPersistedFormat() (*PersistedHybridL
 	}
 
 	persistedHLV.CurrentVersionCAS = string(cvCasByteArray)
+	persistedHLV.ImportCAS = string(importCASBytes)
 	persistedHLV.SourceID = hlv.SourceID
 	persistedHLV.Version = string(vrsCasByteArray)
 	persistedHLV.PreviousVersions = pvPersistedFormat
@@ -231,6 +245,9 @@ func (hlv *HybridLogicalVector) convertHLVToPersistedFormat() (*PersistedHybridL
 
 func (hlv *HybridLogicalVector) convertPersistedHLVToInMemoryHLV(persistedJSON PersistedHybridLogicalVector) {
 	hlv.CurrentVersionCAS = base.HexCasToUint64(persistedJSON.CurrentVersionCAS)
+	if persistedJSON.ImportCAS != "" {
+		hlv.ImportCAS = base.HexCasToUint64(persistedJSON.ImportCAS)
+	}
 	hlv.SourceID = persistedJSON.SourceID
 	// convert the hex cas to uint64 cas
 	hlv.Version = base.HexCasToUint64(persistedJSON.Version)
