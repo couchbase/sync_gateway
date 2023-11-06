@@ -46,7 +46,7 @@ type GatewayRegistry struct {
 	cas          uint64
 	Version      string                          `json:"version"`       // Registry version
 	ConfigGroups map[string]*RegistryConfigGroup `json:"config_groups"` // Map of config groups, keyed by config group ID
-	SGVersion    base.ComparableVersion          `json:"sg_version"`    // Latest patch version of Sync Gateway that touched the registry
+	SGVersion    base.ComparableBuildVersion     `json:"sg_version"`    // Latest patch version of Sync Gateway that touched the registry
 }
 
 const GatewayRegistryVersion = "1.0"
@@ -84,7 +84,7 @@ type RegistryScope struct {
 var defaultOnlyRegistryScopes = map[string]RegistryScope{base.DefaultScope: {Collections: []string{base.DefaultCollection}}}
 var DefaultOnlyScopesConfig = ScopesConfig{base.DefaultScope: {Collections: map[string]*CollectionConfig{base.DefaultCollection: {}}}}
 
-func NewGatewayRegistry(syncGatewayVersion base.ComparableVersion) *GatewayRegistry {
+func NewGatewayRegistry(syncGatewayVersion base.ComparableBuildVersion) *GatewayRegistry {
 	return &GatewayRegistry{
 		ConfigGroups: make(map[string]*RegistryConfigGroup),
 		Version:      GatewayRegistryVersion,

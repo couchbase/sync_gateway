@@ -30,10 +30,10 @@ type ConfigManager interface {
 	DeleteConfig(ctx context.Context, bucket, dbName, groupID string) (err error)
 
 	// CheckMinorDowngrade returns an error the sgVersion represents at least minor version downgrade from the version in the bucket.
-	CheckMinorDowngrade(ctx context.Context, bucketName string, sgVersion base.ComparableVersion) error
+	CheckMinorDowngrade(ctx context.Context, bucketName string, sgVersion base.ComparableBuildVersion) error
 
 	// SetSGVersion updates the Sync Gateway version in the bucket registry
-	SetSGVersion(ctx context.Context, bucketName string, sgVersion base.ComparableVersion) error
+	SetSGVersion(ctx context.Context, bucketName string, sgVersion base.ComparableBuildVersion) error
 }
 
 type dbConfigNameOnly struct {
@@ -590,7 +590,7 @@ func (b *bootstrapContext) getGatewayRegistry(ctx context.Context, bucketName st
 	if registry.SGVersion.String() == "" {
 		// 3.1.0 and 3.1.1 don't write a SGVersion, but everything else will
 		configSGVersionStr := "3.1.0"
-		v, err := base.NewComparableVersionFromString(configSGVersionStr)
+		v, err := base.NewComparableBuildVersionFromString(configSGVersionStr)
 		if err != nil {
 			return nil, err
 		}
@@ -785,7 +785,7 @@ func (b *bootstrapContext) standardMetadataID(dbName string) string {
 }
 
 // CheckMinorDowngrade returns an error the sgVersion represents at least minor version downgrade from the version in the bucket.
-func (b *bootstrapContext) CheckMinorDowngrade(ctx context.Context, bucketName string, sgVersion base.ComparableVersion) error {
+func (b *bootstrapContext) CheckMinorDowngrade(ctx context.Context, bucketName string, sgVersion base.ComparableBuildVersion) error {
 	registry, err := b.getGatewayRegistry(ctx, bucketName)
 	if err != nil {
 		return err
@@ -800,7 +800,7 @@ func (b *bootstrapContext) CheckMinorDowngrade(ctx context.Context, bucketName s
 }
 
 // SetSGVersion will update the registry in a bucket with a version of Sync Gateway. This will not perform a write if the version is already up to date.
-func (b *bootstrapContext) SetSGVersion(ctx context.Context, bucketName string, sgVersion base.ComparableVersion) error {
+func (b *bootstrapContext) SetSGVersion(ctx context.Context, bucketName string, sgVersion base.ComparableBuildVersion) error {
 	registry, err := b.getGatewayRegistry(ctx, bucketName)
 	if err != nil {
 		return err

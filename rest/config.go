@@ -1776,7 +1776,7 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 		configSGVersionStr = cnf.SGVersion
 	}
 
-	configSGVersion, err := base.NewComparableVersionFromString(configSGVersionStr)
+	configSGVersion, err := base.NewComparableBuildVersionFromString(configSGVersionStr)
 	if err != nil {
 		return false, err
 	}

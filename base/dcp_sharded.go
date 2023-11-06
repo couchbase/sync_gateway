@@ -28,7 +28,7 @@ const DefaultImportPartitions = 16
 const DefaultImportPartitionsServerless = 6
 
 // firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections.
-var firstVersionToSupportCollections = &ComparableVersion{
+var firstVersionToSupportCollections = &ComparableBuildVersion{
 	epoch: 0,
 	major: 3,
 	minor: 1,
@@ -38,7 +38,7 @@ var firstVersionToSupportCollections = &ComparableVersion{
 // nodeExtras is the contents of the JSON value of the cbgt.NodeDef.Extras field as used by Sync Gateway.
 type nodeExtras struct {
 	// Version is the node's version.
-	Version *ComparableVersion `json:"v"`
+	Version *ComparableBuildVersion `json:"v"`
 }
 
 // CbgtContext holds the two handles we have for CBGT-related functionality.
@@ -376,7 +376,7 @@ func (c *CbgtContext) StartManager(ctx context.Context, dbName string, configGro
 
 // getNodeVersion returns the version of the node from its Extras field, or nil if none is stored. Returns an error if
 // the extras could not be parsed.
-func getNodeVersion(def *cbgt.NodeDef) (*ComparableVersion, error) {
+func getNodeVersion(def *cbgt.NodeDef) (*ComparableBuildVersion, error) {
 	if len(def.Extras) == 0 {
 		return nil, nil
 	}
@@ -388,7 +388,7 @@ func getNodeVersion(def *cbgt.NodeDef) (*ComparableVersion, error) {
 }
 
 // getMinNodeVersion returns the version of the oldest node currently in the cluster.
-func getMinNodeVersion(cfg cbgt.Cfg) (*ComparableVersion, error) {
+func getMinNodeVersion(cfg cbgt.Cfg) (*ComparableBuildVersion, error) {
 	nodes, _, err := cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_KNOWN)
 	if err != nil {
 		return nil, err
@@ -397,14 +397,14 @@ func getMinNodeVersion(cfg cbgt.Cfg) (*ComparableVersion, error) {
 		// If there are no nodes at all, it's likely we're the first node in the cluster.
 		return ProductVersion, nil
 	}
-	var minVersion *ComparableVersion
+	var minVersion *ComparableBuildVersion
 	for _, node := range nodes.NodeDefs {
 		nodeVersion, err := getNodeVersion(node)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get version of node %v: %w", MD(node.HostPort).Redact(), err)
 		}
 		if nodeVersion == nil {
-			nodeVersion = zeroComparableVersion()
+			nodeVersion = zeroComparableBuildVersion()
 		}
 		if minVersion == nil || nodeVersion.Less(minVersion) {
 			minVersion = nodeVersion

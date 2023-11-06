@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestComparableVersion(t *testing.T) {
+func TestComparableBuildVersion(t *testing.T) {
 	// An *ascending* list of valid versions (order is required for comparison testing)
-	testDataComparableVersions := []struct {
+	testDataComparableBuildVersions := []struct {
 		str string
 	}{
 		{"0.0.0"}, // min
@@ -48,9 +48,9 @@ func TestComparableVersion(t *testing.T) {
 		{"255:255.255.255.255@65535-EE"}, // max
 	}
 
-	for i, test := range testDataComparableVersions {
+	for i, test := range testDataComparableBuildVersions {
 		t.Run(test.str, func(t *testing.T) {
-			current, err := NewComparableVersionFromString(test.str)
+			current, err := NewComparableBuildVersionFromString(test.str)
 			require.NoError(t, err)
 
 			// string->version->string round-trip
@@ -58,8 +58,8 @@ func TestComparableVersion(t *testing.T) {
 
 			// comparisons (Less/Equal)
 			if i > 1 {
-				prevStr := testDataComparableVersions[i-1].str
-				previous, err := NewComparableVersionFromString(prevStr)
+				prevStr := testDataComparableBuildVersions[i-1].str
+				previous, err := NewComparableBuildVersionFromString(prevStr)
 				require.NoError(t, err)
 
 				assert.Truef(t, previous.Less(current), "incorrect comparison: expected %q < %q", prevStr, test.str)
@@ -70,8 +70,8 @@ func TestComparableVersion(t *testing.T) {
 	}
 }
 
-func TestInvalidComparableVersion(t *testing.T) {
-	// A list of invalid ComparableVersion
+func TestInvalidComparableBuildVersion(t *testing.T) {
+	// A list of invalid ComparableBuildVersion
 	tests := []struct {
 		ver string
 	}{
@@ -108,29 +108,29 @@ func TestInvalidComparableVersion(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.ver, func(t *testing.T) {
-			ver, err := NewComparableVersionFromString(test.ver)
+			ver, err := NewComparableBuildVersionFromString(test.ver)
 			assert.Error(t, err)
 			assert.Nil(t, ver)
 		})
 	}
 }
 
-func TestComparableVersionJSONRoundTrip(t *testing.T) {
+func TestComparableBuildVersionJSONRoundTrip(t *testing.T) {
 	json, err := JSONMarshal(ProductVersion)
 	require.NoError(t, err)
-	var version ComparableVersion
+	var version ComparableBuildVersion
 	err = JSONUnmarshal(json, &version)
 	require.NoError(t, err)
 	require.True(t, ProductVersion.Equal(&version))
 	require.Equal(t, ProductVersion.String(), version.String())
 }
 
-func TestComparableVersionEmptyStringJSON(t *testing.T) {
-	var version ComparableVersion
+func TestComparableBuildVersionEmptyStringJSON(t *testing.T) {
+	var version ComparableBuildVersion
 	err := JSONUnmarshal([]byte(`""`), &version)
 	require.NoError(t, err)
-	require.True(t, zeroComparableVersion().Equal(&version))
-	require.Equal(t, "0.0.0", zeroComparableVersion().String())
+	require.True(t, zeroComparableBuildVersion().Equal(&version))
+	require.Equal(t, "0.0.0", zeroComparableBuildVersion().String())
 	require.Equal(t, "0.0.0", version.String())
 }
 
@@ -224,30 +224,30 @@ func TestAtLeastMinorDowngradeVersion(t *testing.T) {
 
 	for _, test := range testCases {
 		t.Run(fmt.Sprintf("%s->%s", test.versionA, test.versionB), func(t *testing.T) {
-			versionA, err := NewComparableVersionFromString(test.versionA)
+			versionA, err := NewComparableBuildVersionFromString(test.versionA)
 			require.NoError(t, err)
 
-			versionB, err := NewComparableVersionFromString(test.versionB)
+			versionB, err := NewComparableBuildVersionFromString(test.versionB)
 			require.NoError(t, err)
 			require.Equal(t, test.minorDowngrade, versionA.AtLeastMinorDowngrade(versionB))
 		})
 	}
 }
 
-func BenchmarkComparableVersion(b *testing.B) {
+func BenchmarkComparableBuildVersion(b *testing.B) {
 	const str = "8:7.6.5.4@3-EE"
 
-	current, err := NewComparableVersionFromString(str)
+	current, err := NewComparableBuildVersionFromString(str)
 	require.NoError(b, err)
 
-	b.Run("parseComparableVersion", func(b *testing.B) {
+	b.Run("parseComparableBuildVersion", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, _, _, _, _, _, _, _ = parseComparableVersion(str)
+			_, _, _, _, _, _, _, _ = parseComparableBuildVersion(str)
 		}
 	})
-	b.Run("formatComparableVersion", func(b *testing.B) {
+	b.Run("formatComparableBuildVersion", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = current.formatComparableVersion()
+			_ = current.formatComparableBuildVersion()
 		}
 	})
 }

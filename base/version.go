@@ -27,7 +27,7 @@ const (
 // populated via init() below
 var (
 	// ProductVersion describes the specific version information of the build.
-	ProductVersion *ComparableVersion
+	ProductVersion *ComparableBuildVersion
 
 	// VersionString appears in the "Server:" header of HTTP responses.
 	// CBL 1.x parses the header to determine whether it's talking to Sync Gateway (vs. CouchDB) and what version.
@@ -109,7 +109,7 @@ func init() {
 	editionStr = productEditionShortName
 
 	var err error
-	ProductVersion, err = NewComparableVersion(majorStr, minorStr, patchStr, otherStr, buildStr, editionStr)
+	ProductVersion, err = NewComparableBuildVersion(majorStr, minorStr, patchStr, otherStr, buildStr, editionStr)
 	if err != nil {
 		panic(err)
 	}
