@@ -13,26 +13,18 @@ package db
 import (
 	"context"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 )
 
-const blipCBMobileReplicationPrefix = "CBMobile_"
-
 const (
 	// BlipCBMobileReplicationV2 / BlipCBMobileReplicationV3 is the AppProtocolId part of the BLIP websocket
 	// sub protocol.  One must match identically with one provided by the peer (CBLite / ISGR)
-	blipCBMobileReplicationV2 = iota + 2
-	blipCBMobileReplicationV3
-	blipCBMobileReplicationV4 // Version Vectors instead of RevIDs/RevTrees
+	BlipCBMobileReplicationV2 = "CBMobile_2"
+	BlipCBMobileReplicationV3 = "CBMobile_3"
 )
-
-func BlipCBMobileReplicationSubprotocolVersion(version int) string {
-	return blipCBMobileReplicationPrefix + strconv.Itoa(version)
-}
 
 var (
 	// compressedTypes are MIME types that explicitly indicate they're compressed:
@@ -55,7 +47,7 @@ func NewSGBlipContext(ctx context.Context, id string) (bc *blip.Context, err err
 	// V3 is first here as it is the preferred communication method
 	// In the host case this means SGW can accept both V3 and V2 clients
 	// In the client case this means we prefer V3 but can fallback to V2
-	return NewSGBlipContextWithProtocols(ctx, id, BlipCBMobileReplicationSubprotocolVersion(blipCBMobileReplicationV3), BlipCBMobileReplicationSubprotocolVersion(blipCBMobileReplicationV2))
+	return NewSGBlipContextWithProtocols(ctx, id, BlipCBMobileReplicationV3, BlipCBMobileReplicationV2)
 }
 
 func NewSGBlipContextWithProtocols(ctx context.Context, id string, protocol ...string) (bc *blip.Context, err error) {
