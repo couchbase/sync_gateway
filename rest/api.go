@@ -394,17 +394,16 @@ func (h *handler) instanceStartTimeMicro() int64 {
 }
 
 type DatabaseRoot struct {
-	DBName                        string                       `json:"db_name"`
-	SequenceNumber                *uint64                      `json:"update_seq,omitempty"`           // The last sequence written to the _default collection, if not running with multiple collections.
-	CommittedUpdateSequenceNumber *uint64                      `json:"committed_update_seq,omitempty"` // Same as above - Used by perf tests, shouldn't be removed
-	InstanceStartTimeMicro        int64                        `json:"instance_start_time"`            // microseconds since epoch
-	CompactRunning                bool                         `json:"compact_running"`
-	PurgeSequenceNumber           uint64                       `json:"purge_seq"`
-	DiskFormatVersion             uint64                       `json:"disk_format_version"`
-	State                         string                       `json:"state"`
-	ServerUUID                    string                       `json:"server_uuid,omitempty"`
-	RequireResync                 []string                     `json:"require_resync,omitempty"`
-	Scopes                        map[string]databaseRootScope `json:"scopes,omitempty"` // stats for each scope/collection
+	DBName                        string   `json:"db_name"`
+	SequenceNumber                *uint64  `json:"update_seq,omitempty"`           // The last sequence written to the _default collection, if not running with multiple collections.
+	CommittedUpdateSequenceNumber *uint64  `json:"committed_update_seq,omitempty"` // Same as above - Used by perf tests, shouldn't be removed
+	InstanceStartTimeMicro        int64    `json:"instance_start_time"`            // microseconds since epoch
+	CompactRunning                bool     `json:"compact_running"`
+	PurgeSequenceNumber           uint64   `json:"purge_seq"`
+	DiskFormatVersion             uint64   `json:"disk_format_version"`
+	State                         string   `json:"state"`
+	ServerUUID                    string   `json:"server_uuid,omitempty"`
+	RequireResync                 []string `json:"require_resync,omitempty"`
 }
 
 type dbSummary struct {
@@ -413,33 +412,22 @@ type dbSummary struct {
 	State  string `json:"state"`
 }
 
-type databaseRootScope struct {
-	Collections map[string]databaseRootCollection `json:"collections,omitempty"`
-}
-
-type databaseRootCollection struct {
-	SequenceNumber uint64 `json:"update_seq"` // The last sequence written for this collection
-}
-
 func (h *handler) handleGetDB() error {
 	if h.rq.Method == "HEAD" {
 		return nil
 	}
 
-	// TODO: If running with multiple collections, leave nil
-	var defaultCollectionLastSeq *uint64
-
 	// Don't bother trying to lookup LastSequence() if offline
+	var lastSeq uint64
 	runState := db.RunStateString[atomic.LoadUint32(&h.db.State)]
 	if runState != db.RunStateString[db.DBOffline] {
-		lastSeq, _ := h.db.LastSequence(h.ctx())
-		defaultCollectionLastSeq = &lastSeq
+		lastSeq, _ = h.db.LastSequence(h.ctx())
 	}
 
 	var response = DatabaseRoot{
 		DBName:                        h.db.Name,
-		SequenceNumber:                defaultCollectionLastSeq,
-		CommittedUpdateSequenceNumber: defaultCollectionLastSeq,
+		SequenceNumber:                &lastSeq,
+		CommittedUpdateSequenceNumber: &lastSeq,
 		InstanceStartTimeMicro:        h.instanceStartTimeMicro(),
 		CompactRunning:                h.db.IsCompactRunning(),
 		PurgeSequenceNumber:           0, // TODO: Should track this value
@@ -447,16 +435,6 @@ func (h *handler) handleGetDB() error {
 		State:                         runState,
 		ServerUUID:                    h.db.DatabaseContext.ServerUUID,
 		RequireResync:                 h.db.RequireResync.ScopeAndCollectionNames(),
-
-		// TODO: If running with multiple scope/collections
-		// Scopes: map[string]databaseRootScope{
-		// 	"scope1": {
-		// 		Collections: map[string]databaseRootCollection{
-		// 			"collection1": {SequenceNumber: 123456},
-		// 			"collection2": {SequenceNumber: 987654},
-		// 		},
-		// 	},
-		// },
 	}
 
 	h.writeJSON(response)
