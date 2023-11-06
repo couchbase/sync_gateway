@@ -13,7 +13,6 @@ package rest
 import (
 	"bytes"
 	"compress/gzip"
-	"crypto/rand"
 	"fmt"
 	"io"
 	"log"
@@ -26,7 +25,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestWriteMultipartDocument(t *testing.T) {
@@ -163,9 +161,7 @@ func TestWriteJSONPart(t *testing.T) {
 	// writeJSONPart toggles compression to false if the incoming body is less than 300 bytes, so creating
 	// a body larger than 300 bytes to test writeJSONPart with compression=true and compression=false
 	mockFakeBody := func() db.Body {
-		bytes := make([]byte, 139)
-		_, err := rand.Read(bytes)
-		require.NoError(t, err)
+		bytes := base.FastRandBytes(t, 139)
 		value := fmt.Sprintf("%x", bytes)
 		return db.Body{"key": "foo", "value": value}
 	}

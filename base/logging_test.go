@@ -10,7 +10,6 @@ package base
 
 import (
 	"bytes"
-	"crypto/rand"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -79,9 +78,7 @@ func BenchmarkLogRotation(b *testing.B) {
 
 	for _, test := range tests {
 		b.Run(fmt.Sprintf("rotate:%t-compress:%t-bytes:%v", test.rotate, test.compress, test.numBytes), func(bm *testing.B) {
-			data := make([]byte, test.numBytes)
-			_, err := rand.Read(data)
-			require.NoError(bm, err)
+			data := FastRandBytes(bm, test.numBytes)
 
 			logPath := b.TempDir()
 			logger := lumberjack.Logger{Filename: filepath.Join(logPath, "output.log"), Compress: test.compress}
@@ -99,7 +96,7 @@ func BenchmarkLogRotation(b *testing.B) {
 			// we can't remove temp dir while the async compression is still writing log files
 			assert.NoError(bm, logger.Close())
 			ctx := TestCtx(bm)
-			err, _ = RetryLoop(ctx, "benchmark-logrotate-teardown",
+			err, _ := RetryLoop(ctx, "benchmark-logrotate-teardown",
 				func() (shouldRetry bool, err error, value interface{}) {
 					err = os.RemoveAll(logPath)
 					return err != nil, err, nil
