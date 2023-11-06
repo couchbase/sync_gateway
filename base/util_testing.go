@@ -42,12 +42,6 @@ import (
 
 var TestExternalRevStorage = false
 
-func init() {
-
-	// Prevent https://issues.couchbase.com/browse/MB-24237
-	rand.Seed(time.Now().UTC().UnixNano())
-}
-
 type TestBucket struct {
 	Bucket
 	BucketSpec BucketSpec
@@ -928,4 +922,13 @@ func MoveDocument(t testing.TB, docID string, dst, src DataStore) {
 
 	_, err = src.Remove(docID, srcCAS)
 	require.NoError(t, err)
+}
+
+// FastRandBytes returns a set of random bytes. Uses a low quality random generator.
+func FastRandBytes(t testing.TB, size int) []byte {
+	b := make([]byte, size)
+	// staticcheck wants to use crypto/rand as math/rand is deprecated in go 1.20, but we don't need that for testing
+	_, err := rand.Read(b) // nolint:staticcheck
+	require.NoError(t, err)
+	return b
 }

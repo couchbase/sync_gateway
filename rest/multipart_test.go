@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"mime/multipart"
 	"net/http"
 	"strconv"
@@ -162,8 +161,7 @@ func TestWriteJSONPart(t *testing.T) {
 	// writeJSONPart toggles compression to false if the incoming body is less than 300 bytes, so creating
 	// a body larger than 300 bytes to test writeJSONPart with compression=true and compression=false
 	mockFakeBody := func() db.Body {
-		bytes := make([]byte, 139)
-		rand.Read(bytes)
+		bytes := base.FastRandBytes(t, 139)
 		value := fmt.Sprintf("%x", bytes)
 		return db.Body{"key": "foo", "value": value}
 	}

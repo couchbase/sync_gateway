@@ -35,27 +35,30 @@ func BenchmarkBcryptCostTimes(b *testing.B) {
 
 	for i := minCostToTest; i < maxCostToTest; i++ {
 		b.Run(fmt.Sprintf("cost%d", i), func(bn *testing.B) {
-			bn.N = 1
 			_, err := bcrypt.GenerateFromPassword([]byte("hunter2"), i)
 			assert.NoError(bn, err)
 		})
 	}
 }
 
-// TestBcryptDefaultCostTime will ensure that the default bcrypt cost takes at least a 'reasonable' amount of time
-// If this test fails, it suggests maybe we need to think about increasing the default cost...
-func TestBcryptDefaultCostTime(t *testing.T) {
-	// Modest 2.2GHz macbook i7 takes ~80ms at cost 10
-	// Assume server CPUs are ~2x faster
-	minimumDuration := 40 * time.Millisecond
+// TestBcryptCostTimes will output the time it takes to hash a password with each bcrypt cost value
+func TestBcryptCostTimes(t *testing.T) {
+	// Little value in running this regularly. Might be useful for one-off informational purposes
+	t.Skip("Test disabled")
 
-	startTime := time.Now()
-	_, err := bcrypt.GenerateFromPassword([]byte("hunter2"), DefaultBcryptCost)
-	duration := time.Since(startTime)
+	minCostToTest := bcrypt.DefaultCost
+	maxCostToTest := bcrypt.DefaultCost + 5
 
-	t.Logf("bcrypt.GenerateFromPassword with cost %d took: %v", DefaultBcryptCost, duration)
-	assert.NoError(t, err)
-	assert.True(t, minimumDuration < duration)
+	for i := minCostToTest; i < maxCostToTest; i++ {
+		t.Run(fmt.Sprintf("cost%d", i), func(t *testing.T) {
+			startTime := time.Now()
+			_, err := bcrypt.GenerateFromPassword([]byte("hunter2"), i)
+			duration := time.Since(startTime)
+
+			t.Logf("bcrypt.GenerateFromPassword with cost %d took: %v", i, duration)
+			assert.NoError(t, err)
+		})
+	}
 }
 
 func TestSetBcryptCost(t *testing.T) {

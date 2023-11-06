@@ -3063,8 +3063,8 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 			require.NoError(t, err)
 
 			db, err := GetDatabase(dbCtx, nil)
-			defer db.Close(ctx)
 			require.NoError(t, err)
+			defer db.Close(ctx)
 			col, err := db.GetDatabaseCollectionWithUser(testCase.scope, testCase.collection)
 			if testCase.err {
 				require.Error(t, err)

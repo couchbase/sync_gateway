@@ -43,7 +43,7 @@ func TestReplicateManagerReplications(t *testing.T) {
 	assert.Equal(t, replication1_id, r.ID)
 
 	// Request non-existent replication
-	r, err = manager.GetReplication("dne")
+	_, err = manager.GetReplication("dne")
 	require.Error(t, err, base.ErrNotFound)
 
 	// Attempt to add existing replication

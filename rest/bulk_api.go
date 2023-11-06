@@ -264,9 +264,7 @@ func (h *handler) handleDump() error {
 func (h *handler) handleRepair() error {
 
 	// TODO: If repair is re-enabled, it may need to be modified to support xattrs and GSI
-	if true == true {
-		return errors.New("_repair endpoint disabled")
-	}
+	return errors.New("_repair endpoint disabled")
 
 	/*base.InfofCtx(h.ctx(), base.KeyHTTP, "Repair bucket")
 
@@ -305,8 +303,6 @@ func (h *handler) handleRepair() error {
 	return err
 
 	*/
-
-	return nil
 }
 
 // HTTP handler for _dumpchannel

@@ -1700,8 +1700,8 @@ func TestLongpollWithWildcard(t *testing.T) {
 	// has a wait counter of zero (no documents writted since the listener was restarted).
 	wg := sync.WaitGroup{}
 	// start changes request
+	wg.Add(1)
 	go func() {
-		wg.Add(1)
 		defer wg.Done()
 		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
 		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
