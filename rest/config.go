@@ -1458,11 +1458,11 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 			continue
 		}
 
-		base.InfofCtx(ctx, base.KeyConfig, "Found legacy persisted config for database %s - migrating to db registry.", base.MD(dbConfig.Name))
+		base.InfofCtx(ctx, base.KeyConfig, "Found legacy persisted config for database %s in bucket %s, groupID %s - migrating to db registry.", base.MD(dbConfig.Name), base.MD(bucketName), base.MD(groupID))
 		_, insertErr := sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, &dbConfig)
 		if insertErr != nil {
 			if insertErr == base.ErrAlreadyExists {
-				base.DebugfCtx(ctx, base.KeyConfig, "Found legacy config for database %s, but already exists in registry.", base.MD(dbConfig.Name))
+				base.DebugfCtx(ctx, base.KeyConfig, "Found legacy config for database %s in bucket %s, groupID: %s, but already exists in registry.", base.MD(dbConfig.Name), base.MD(bucketName), base.MD(groupID))
 			} else {
 				base.InfofCtx(ctx, base.KeyConfig, "Unable to persist migrated v3.0 config for bucket %s groupID %s: %w", base.MD(bucketName), base.MD(groupID), insertErr)
 				continue
@@ -1470,7 +1470,7 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 		}
 		removeErr := sc.BootstrapContext.Connection.DeleteMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), legacyCas)
 		if removeErr != nil {
-			base.InfofCtx(ctx, base.KeyConfig, "Failed to remove legacy config for database %s.", base.MD(dbConfig.Name))
+			base.InfofCtx(ctx, base.KeyConfig, "Failed to remove legacy config for database %s in bucket %s, groupID %s: %s", base.MD(dbConfig.Name), base.MD(bucketName), base.MD(groupID), base.MD(removeErr))
 		}
 	}
 	return nil
@@ -1555,7 +1555,7 @@ func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (fou
 			cnf.CertPath = sc.Config.Bootstrap.X509CertPath
 			cnf.KeyPath = sc.Config.Bootstrap.X509KeyPath
 		}
-		base.TracefCtx(ctx, base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
+		base.TracefCtx(ctx, base.KeyConfig, "Got database config %s for bucket %q with cas %d and groupID %q", base.MD(dbName), base.MD(bucket), cas, base.MD(sc.Config.Bootstrap.ConfigGroupID))
 		return true, nil
 	}
 
@@ -1677,20 +1677,20 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
 	for _, bucket := range buckets {
 
-		base.TracefCtx(ctx, base.KeyConfig, "Checking for configs for group %q from bucket %q", sc.Config.Bootstrap.ConfigGroupID, bucket)
+		base.TracefCtx(ctx, base.KeyConfig, "Checking for configs for group %q from bucket %q", sc.Config.Bootstrap.ConfigGroupID, base.MD(bucket))
 		configs, err := sc.BootstrapContext.GetDatabaseConfigs(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID)
 		if err != nil {
 			// Unexpected error fetching config - SDK has already performed retries, so we'll treat it as a registry removal
 			// this could be due to invalid JSON or some other non-recoverable error.
 			if isInitialStartup {
-				base.WarnfCtx(ctx, "Unable to fetch config for group %q from bucket %q on startup: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
+				base.WarnfCtx(ctx, "Unable to fetch configs for group %q from bucket %q on startup: %v", sc.Config.Bootstrap.ConfigGroupID, base.MD(bucket), err)
 			} else {
-				base.DebugfCtx(ctx, base.KeyConfig, "Unable to fetch config for group %q from bucket %q: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
+				base.DebugfCtx(ctx, base.KeyConfig, "Unable to fetch configs for group %q from bucket %q: %v", sc.Config.Bootstrap.ConfigGroupID, base.MD(bucket), err)
 			}
 			continue
 		}
 		if len(configs) == 0 {
-			base.DebugfCtx(ctx, base.KeyConfig, "Bucket %q did not contain config for group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
+			base.DebugfCtx(ctx, base.KeyConfig, "Bucket %q did not contain any configs for group %q", base.MD(bucket), sc.Config.Bootstrap.ConfigGroupID)
 			continue
 		}
 		for _, cnf := range configs {
