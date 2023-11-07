@@ -1752,7 +1752,8 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 		return
 	}
 
-	if len(channelSet) > 0 {
+	isWinningRev := doc.CurrentRev == newRevID
+	if len(channelSet) > 0 && !isWinningRev {
 		doc.History[newRevID].Channels = channelSet
 	}
 
@@ -1779,7 +1780,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 				return
 			}
 		}
-		_, err = doc.updateChannels(ctx, channelSet)
+		_, err = doc.updateChannels(ctx, isWinningRev, channelSet)
 		if err != nil {
 			return
 		}
@@ -2008,7 +2009,11 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			return nil, "", err
 		}
 
-		revChannels := doc.History[newRevID].Channels
+		revChannels, ok := doc.channelsForRev(newRevID)
+		if !ok {
+			// Should be unreachable, as we've already checked History[newRevID] above ...
+			return nil, "", base.RedactErrorf("unable to determine channels for %s/%s", base.UD(docid), newRevID)
+		}
 		documentRevision := DocumentRevision{
 			DocID:            docid,
 			RevID:            newRevID,

@@ -229,17 +229,18 @@ func TestRevTreeUnmarshalOldFormat(t *testing.T) {
 	"bodies": ["{\"foo\":\"bar\"}", "", ""],
 	"channels": [["ABC", "CBS"], null, ["ABC"]]
 }`
-	tree := testmap.copy()
+	expected := testmap.copy()
 
-	// set desired channels
-	ri, err := tree.getInfo("3-three")
+	// winning rev channel information no longer present in revtree,
+	// expect to drop it at unmarshal time if it's still in the raw JSON
+	ri, err := expected.getInfo("3-three")
 	require.NoError(t, err)
-	ri.Channels = base.SetOf("ABC", "CBS")
+	ri.Channels = nil
 
-	assertRevTreeUnmarshal(t, testJSON, tree)
+	assertRevTreeUnmarshal(t, testJSON, expected)
 }
 
-func TestRevTreeUnmarshalChannelMap(t *testing.T) {
+func TestRevTreeUnmarshalOldFormatNonWinningRev(t *testing.T) {
 	// we moved non-winning leaf revision channel information into a 'channelMap' property instead to handle the case where documents are in conflict.
 	const testJSON = `{
 	"revs": ["3-drei", "3-three", "2-two", "1-one"],
@@ -247,14 +248,16 @@ func TestRevTreeUnmarshalChannelMap(t *testing.T) {
 	"bodies": ["{\"foo\":\"buzz\"}", "{\"foo\":\"bar\"}", "", ""],
 	"channels": [["DE"], ["EN"], null, ["ABC"]]
 }`
-	tree := testmap.copy()
+	expected := testmap.copy()
 
-	// set desired channels
-	ri, err := tree.getInfo("3-three")
+	// winning rev channel information no longer present in revtree,
+	// expect to drop it at unmarshal time if it's still in the raw JSON
+	ri, err := expected.getInfo("3-three")
 	require.NoError(t, err)
-	ri.Channels = base.SetOf("EN")
+	ri.Channels = nil
 
-	err = tree.addRevision("", RevInfo{
+	// non-winning revisions do retain channel information, so populate this for the expected expected
+	err = expected.addRevision("", RevInfo{
 		ID:       "3-drei",
 		Parent:   "2-two",
 		Body:     []byte(`{"foo":"buzz"}`),
@@ -262,7 +265,7 @@ func TestRevTreeUnmarshalChannelMap(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assertRevTreeUnmarshal(t, testJSON, tree)
+	assertRevTreeUnmarshal(t, testJSON, expected)
 }
 
 func TestRevTreeUnmarshal(t *testing.T) {
@@ -390,15 +393,22 @@ func TestRevTreeChannelMapLeafOnly(t *testing.T) {
 	//	                       └─│ 3-drei (DE) │
 	//	                         └─────────────┘
 	tree := branchymap.copy()
-	err := tree.addRevision(t.Name(), RevInfo{
+
+	ri, err := tree.getInfo("3-three")
+	require.NoError(t, err)
+	// this wouldn't have been set normally (winning rev),
+	// but let's force it to ensure we're not storing old revs in ChannelsMap
+	ri.Channels = base.SetOf("EN")
+
+	err = tree.addRevision(t.Name(), RevInfo{
 		ID:       "4-four",
 		Parent:   "3-three",
-		Channels: base.SetOf("EN-us", "EN-gb"),
+		Channels: nil, // we don't store channels for winning revs
 	})
 	require.NoError(t, err)
 
 	// insert channel into tree - we don't store it in the globals because each test requires different channel data.
-	ri, err := tree.getInfo("3-drei")
+	ri, err = tree.getInfo("3-drei")
 	require.NoError(t, err)
 	ri.Channels = base.SetOf("DE")
 

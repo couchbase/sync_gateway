@@ -63,8 +63,6 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	}
 	revIndexes := map[string]int{"": -1}
 
-	winner, _, _ := tree.winningRevision(context.TODO())
-
 	i := 0
 	for _, info := range tree {
 		revIndexes[info.ID] = i
@@ -86,7 +84,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 		}
 
 		// for non-winning leaf revisions we'll store channel information
-		if winner != info.ID && len(info.Channels) > 0 {
+		if len(info.Channels) > 0 {
 			if rep.ChannelsMap == nil {
 				rep.ChannelsMap = make(map[string]base.Set, 1)
 			}
@@ -192,10 +190,12 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 
 	// we shouldn't be in a situation where we have both channels and channelsMap populated, but we still need to handle the old format
 	if len(rep.Channels_Old) > 0 {
+		winner, _, _ := tree.winningRevision(context.TODO())
 		leaves := tree.Leaves()
 		for i, channels := range rep.Channels_Old {
 			info := (*tree)[rep.Revs[i]]
-			if _, isLeaf := leaves[info.ID]; isLeaf {
+			// Ensure this leaf is not a winner (channels not stored in revtree for winning revision)
+			if _, isLeaf := leaves[info.ID]; isLeaf && info.ID != winner {
 				// set only if we've not already populated from ChannelsMap (we shouldn't ever have both)
 				if info.Channels != nil {
 					return fmt.Errorf("RevTree leaf %q had channels set already (from channelsMap)", info.ID)
