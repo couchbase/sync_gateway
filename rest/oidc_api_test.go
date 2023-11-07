@@ -2451,10 +2451,6 @@ func mustMarshalJSON(t testing.TB, val interface{}) []byte {
 
 // Checks that we correctly handle the removal of an OIDC provider while it's in use
 func TestOpenIDConnectProviderRemoval(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		// Requires persistent config
-		t.Skip("This test only works against Couchbase Server")
-	}
 
 	const (
 		providerName    = "foo"
@@ -2535,7 +2531,13 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 		UserCtx db.Body `json:"userCtx"`
 	}
 	require.NoError(t, base.JSONUnmarshal(res.Body.Bytes(), &sessionResponse))
-	require.Nil(t, sessionResponse.UserCtx["channels"])
+	// session response only contains non collection channels, and is blank if there is no default collection
+	if base.TestsUseNamedCollections() {
+		require.Nil(t, sessionResponse.UserCtx["channels"])
+	} else {
+		require.NotContains(t, sessionResponse.UserCtx["channels"], testChannelName)
+
+	}
 }
 
 // This test verifies the edge case of having two different OIDC providers with different role/channel configurations
