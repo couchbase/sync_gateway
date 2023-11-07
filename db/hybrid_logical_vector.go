@@ -210,6 +210,7 @@ func (hlv *HybridLogicalVector) GetVersion(sourceID string) (uint64, bool) {
 }
 
 // AddNewerVersions will take a hlv and add any newer source/version pairs found across CV and PV found in the other HLV taken as parameter
+// when both HLV
 func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector) error {
 
 	// create current version for incoming vector and attempt to add it to the local HLV, AddVersion will handle if attempting to add older
@@ -234,6 +235,15 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector
 		delete(hlv.PreviousVersions, hlv.SourceID)
 	}
 	return nil
+}
+
+func (hlv *HybridLogicalVector) SetMergeVectors(otherVector HybridLogicalVector) {
+	if hlv.MergeVersions == nil {
+		hlv.MergeVersions = make(map[string]uint64)
+	}
+
+	hlv.setMergeVersion(otherVector.SourceID, otherVector.Version)
+	hlv.setMergeVersion(hlv.SourceID, hlv.Version)
 }
 
 func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
@@ -354,4 +364,12 @@ func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64
 		hlv.PreviousVersions = make(map[string]uint64)
 	}
 	hlv.PreviousVersions[source] = version
+}
+
+// setMergeVersion will take a source/version pair and add it to the HLV merge versions map
+func (hlv *HybridLogicalVector) setMergeVersion(source string, version uint64) {
+	if hlv.MergeVersions == nil {
+		hlv.MergeVersions = make(map[string]uint64)
+	}
+	hlv.MergeVersions[source] = version
 }

@@ -233,36 +233,30 @@ func TestHybridLogicalVectorPersistence(t *testing.T) {
 	assert.Equal(t, inMemoryHLV.MergeVersions, hlvFromPersistance.MergeVersions)
 }
 
-func TestAddNewerVersionsBetweenTwoVectors(t *testing.T) {
+func TestAddNewerVersionsBetweenTwoVectorsWhenNotInConflict(t *testing.T) {
 	testCases := []struct {
 		name          string
 		localInput    []string
 		incomingInput []string
-		expectedInput []string
+		expected      []string
 	}{
 		{
 			name:          "testcase1",
 			localInput:    []string{"abc@15"},
 			incomingInput: []string{"def@25", "abc@20"},
-			expectedInput: []string{"def@25", "abc@20"},
+			expected:      []string{"def@25", "abc@20"},
 		},
 		{
 			name:          "testcase2",
 			localInput:    []string{"abc@15", "def@30"},
 			incomingInput: []string{"def@35", "abc@15"},
-			expectedInput: []string{"def@35", "abc@15"},
+			expected:      []string{"def@35", "abc@15"},
 		},
 		{
 			name:          "testcase3",
 			localInput:    []string{"abc@17", "def@30"},
 			incomingInput: []string{"def@35", "abc@15"},
-			expectedInput: []string{"def@35", "abc@17"},
-		},
-		{
-			name:          "testcase4",
-			localInput:    []string{"abc@20", "ghi@9"},
-			incomingInput: []string{"def@15", "abc@17"},
-			expectedInput: []string{"def@15", "ghi@9", "abc@20"},
+			expected:      []string{"def@35", "abc@17"},
 		},
 	}
 
@@ -270,7 +264,7 @@ func TestAddNewerVersionsBetweenTwoVectors(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			localHLV := createHLVForTest(t, test.localInput)
 			incomingHLV := createHLVForTest(t, test.incomingInput)
-			expectedHLV := createHLVForTest(t, test.expectedInput)
+			expectedHLV := createHLVForTest(t, test.expected)
 
 			_ = localHLV.AddNewerVersions(incomingHLV)
 			// assert on expected values
@@ -279,6 +273,27 @@ func TestAddNewerVersionsBetweenTwoVectors(t *testing.T) {
 			assert.True(t, reflect.DeepEqual(expectedHLV.PreviousVersions, localHLV.PreviousVersions))
 		})
 	}
+}
+
+func TestAddToMergeVersionsWhenInConflict(t *testing.T) {
+
+	localInput := []string{"abc@20", "ghi@9"}
+	incomingInput := []string{"def@15", "ghi@17"}
+	expected := []string{"abc@20", "ghi@9", "m_def@15", "m_abc@20"}
+
+	localHLV := createHLVForTest(t, localInput)
+	incomingHLV := createHLVForTest(t, incomingInput)
+	expectedHLV := createHLVForTest(t, expected)
+
+	isInConflict := localHLV.IsInConflict(incomingHLV)
+	require.True(t, isInConflict)
+	localHLV.SetMergeVectors(incomingHLV)
+
+	// assert on expected values
+	assert.Equal(t, expectedHLV.SourceID, localHLV.SourceID)
+	assert.Equal(t, expectedHLV.Version, localHLV.Version)
+	assert.True(t, reflect.DeepEqual(expectedHLV.PreviousVersions, localHLV.PreviousVersions))
+	assert.True(t, reflect.DeepEqual(expectedHLV.MergeVersions, localHLV.MergeVersions))
 }
 
 // Tests import of server-side mutations made by HLV-aware and non-HLV-aware peers

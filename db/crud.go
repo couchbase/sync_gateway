@@ -2084,14 +2084,6 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			// update the mutate in options based on the above logic
 			updatedSpec = doc.SyncData.HLV.computeMacroExpansions()
 
-			// update the HLV values
-			doc, err = db.updateHLV(doc, docUpdateEvent)
-			if err != nil {
-				return
-			}
-			// update the mutate in options based on the above logic
-			updatedSpec = doc.SyncData.HLV.computeMacroExpansions()
-
 			deleteDoc = currentRevFromHistory.Deleted
 
 			// Return the new raw document value for the bucket to store.
