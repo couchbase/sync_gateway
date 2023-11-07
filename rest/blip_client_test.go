@@ -573,7 +573,7 @@ func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
 	return collections
 }
 
-func NewBlipTesterClientOptsWithRT(opts *BlipTesterClientOpts) (client *BlipTesterClient) {
+func NewBlipTesterClientOpts(opts *BlipTesterClientOpts) (client *BlipTesterClient) {
 	if opts == nil {
 		opts = &BlipTesterClientOpts{}
 	}
@@ -614,6 +614,7 @@ func (btc *BlipTesterClient) RunDualClients(btc2 *BlipTesterClient, test func(t 
 	})
 	// if test is not wanting version vector subprotocol to be run, return before we start this subtest
 	if btc.SkipVersionVectorInitialization {
+		btc.rt.Close()
 		return
 	}
 	// teardown active replications on blip tester clients
@@ -654,6 +655,7 @@ func (btc *BlipTesterClient) RunWithRevocationTester(test func(t *testing.T, tes
 	})
 	// if test is not wanting version vector subprotocol to be run, return before we start this subtest
 	if btc.SkipVersionVectorInitialization {
+		btc.rt.Close()
 		return
 	}
 	// teardown active replications on blip tester client and start new rest tester for next test run

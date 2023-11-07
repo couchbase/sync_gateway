@@ -48,7 +48,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 	opts.SupportedBLIPProtocols = []string{db.BlipCBMobileReplicationV2}
 	// given this test is for v2 protocol, skip version vector test
 	opts.SkipVersionVectorInitialization = true
-	btc := NewBlipTesterClientOptsWithRT(opts)
+	btc := NewBlipTesterClientOpts(opts)
 	defer btc.Close()
 	const docID = "doc1"
 
@@ -115,7 +115,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(nil)
+	btc := NewBlipTesterClientOpts(nil)
 	defer btc.Close()
 	const docID = "doc1"
 
@@ -170,7 +170,7 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		SupportedBLIPProtocols:          []string{db.BlipCBMobileReplicationV2},
 		SkipVersionVectorInitialization: true,
 	})
@@ -228,7 +228,7 @@ func TestBlipProveAttachmentV2Push(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		SupportedBLIPProtocols:          []string{db.BlipCBMobileReplicationV2},
 		SkipVersionVectorInitialization: true,
 	})
@@ -278,7 +278,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(nil)
+	btc := NewBlipTesterClientOpts(nil)
 	defer btc.Close()
 
 	const docID = "doc1"
@@ -349,7 +349,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(nil)
+	btc := NewBlipTesterClientOpts(nil)
 	defer btc.Close()
 
 	const docID = "doc1"
@@ -510,7 +510,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	client1 := NewBlipTesterClientOptsWithRT(nil)
+	client1 := NewBlipTesterClientOpts(nil)
 	defer client1.Close()
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
 
@@ -552,7 +552,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
-	client1 := NewBlipTesterClientOptsWithRT(nil)
+	client1 := NewBlipTesterClientOpts(nil)
 	defer client1.Close()
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
 
@@ -604,7 +604,7 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	client1 := NewBlipTesterClientOptsWithRT(nil)
+	client1 := NewBlipTesterClientOpts(nil)
 	defer client1.Close()
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
 
@@ -677,7 +677,7 @@ func TestAttachmentComputeStat(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(nil)
+	btc := NewBlipTesterClientOpts(nil)
 	defer btc.Close()
 	const docID = "doc1"
 

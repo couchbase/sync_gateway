@@ -29,7 +29,7 @@ func TestBlipGetCollections(t *testing.T) {
 
 	const defaultScopeAndCollection = "_default._default"
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		SkipCollectionsInitialization: true,
 		NumCollectionsRequired:        1,
 	})
@@ -149,7 +149,7 @@ func TestBlipReplicationNoDefaultCollection(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		SkipVersionVectorInitialization: true, // no need for version vector test here
 	})
 	defer btc.Close()
@@ -179,7 +179,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		SkipVersionVectorInitialization: true, // no need for version vector test here
 	})
 	defer btc.Close()
@@ -239,7 +239,7 @@ func TestCollectionsReplication(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(nil)
+	btc := NewBlipTesterClientOpts(nil)
 	defer btc.Close()
 	const docID = "doc1"
 
@@ -262,7 +262,7 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{NumCollectionsRequired: 2})
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{NumCollectionsRequired: 2})
 	defer btc.Close()
 
 	btc.Run(func(t *testing.T) {
@@ -299,7 +299,7 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{NumCollectionsRequired: 2})
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{NumCollectionsRequired: 2})
 	defer btc.Close()
 
 	btc.Run(func(t *testing.T) {

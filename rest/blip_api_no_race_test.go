@@ -47,7 +47,7 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	client := NewBlipTesterClientOptsWithRT(nil)
+	client := NewBlipTesterClientOpts(nil)
 	defer client.Close()
 
 	var lastPushRevErr atomic.Value

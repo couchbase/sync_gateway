@@ -42,7 +42,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(nil)
+	btc := NewBlipTesterClientOpts(nil)
 	defer btc.Close()
 
 	btc.Run(func(t *testing.T) {
@@ -108,7 +108,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 		}},
 		GuestEnabled: true,
 	}
-	btc := NewBlipTesterClientOptsWithRT(nil)
+	btc := NewBlipTesterClientOpts(nil)
 	defer btc.Close()
 	const docID = "doc1"
 
@@ -176,7 +176,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	client := NewBlipTesterClientOptsWithRT(nil)
+	client := NewBlipTesterClientOpts(nil)
 	defer client.Close()
 	const doc1ID = "doc1"
 
@@ -271,7 +271,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	}
 
 	var deltaSentCount int64
-	client := NewBlipTesterClientOptsWithRT(nil)
+	client := NewBlipTesterClientOpts(nil)
 	defer client.Close()
 	const docID = "doc1"
 
@@ -346,7 +346,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	client := NewBlipTesterClientOptsWithRT(nil)
+	client := NewBlipTesterClientOpts(nil)
 	defer client.Close()
 	const docID = "doc1"
 
@@ -414,7 +414,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
 
-	client := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	client := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		Username:               "alice",
 		Channels:               []string{"public"},
 		ClientDeltas:           true,
@@ -480,7 +480,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	var deltasRequestedStart int64
 	var deltasSentStart int64
 
-	client := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	client := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		Username:     "alice",
 		Channels:     []string{"public"},
 		ClientDeltas: true,
@@ -572,14 +572,14 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	var deltasRequestedStart int64
 	var deltasSentStart int64
 
-	client1 := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	client1 := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		Username:     "client1",
 		Channels:     []string{"*"},
 		ClientDeltas: true,
 	})
 	defer client1.Close()
 
-	client2 := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	client2 := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		Username:     "client2",
 		Channels:     []string{"*"},
 		ClientDeltas: true,
@@ -708,10 +708,10 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	client := NewBlipTesterClientOptsWithRT(nil)
+	client := NewBlipTesterClientOpts(nil)
 	defer client.Close()
 
-	client2 := NewBlipTesterClientOptsWithRT(nil)
+	client2 := NewBlipTesterClientOpts(nil)
 	defer client2.Close()
 	const docID = "doc1"
 
@@ -792,7 +792,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	client := NewBlipTesterClientOptsWithRT(nil)
+	client := NewBlipTesterClientOpts(nil)
 	defer client.Close()
 	client.ClientDeltas = true
 	const docID = "doc1"
@@ -895,7 +895,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	client := NewBlipTesterClientOptsWithRT(nil)
+	client := NewBlipTesterClientOpts(nil)
 	defer client.Close()
 	const docID = "doc1"
 

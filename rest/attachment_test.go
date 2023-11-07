@@ -2266,7 +2266,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(nil)
+	btc := NewBlipTesterClientOpts(nil)
 	defer btc.Close()
 
 	const (
@@ -2326,7 +2326,7 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(nil)
+	btc := NewBlipTesterClientOpts(nil)
 	defer btc.Close()
 
 	const doc1ID = "doc1"
@@ -2373,7 +2373,7 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 		},
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(nil)
+	btc := NewBlipTesterClientOpts(nil)
 	defer btc.Close()
 
 	const docID = "doc"
@@ -2410,7 +2410,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(nil)
+	btc := NewBlipTesterClientOpts(nil)
 	defer btc.Close()
 
 	btc.Run(func(t *testing.T) {
@@ -2588,7 +2588,7 @@ func TestCBLRevposHandling(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(nil)
+	btc := NewBlipTesterClientOpts(nil)
 	defer btc.Close()
 
 	const (

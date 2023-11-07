@@ -2223,7 +2223,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 func TestRevocationMessage(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		Username:        "user",
 		Channels:        []string{"*"},
 		ClientDeltas:    false,
@@ -2331,7 +2331,7 @@ func TestRevocationMessage(t *testing.T) {
 func TestRevocationNoRev(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		Username:        "user",
 		Channels:        []string{"*"},
 		ClientDeltas:    false,
@@ -2422,7 +2422,7 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 		},
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		Username:        "user",
 		Channels:        []string{"*"},
 		ClientDeltas:    false,
@@ -2471,7 +2471,8 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 
 // Regression test for CBG-2183.
 func TestBlipRevokeNonExistentRole(t *testing.T) {
-	bt := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	bt := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		Username:        "bilbo",
 		SendRevocations: true,
 	})
@@ -2480,10 +2481,7 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 		GuestEnabled: false,
 	}
 	bt.Run(func(t *testing.T) {
-
 		collection := bt.rt.GetSingleTestDatabaseCollection()
-
-		base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 		// 1. Create user with admin_roles including two roles not previously defined (a1 and a2, for example)
 		res := bt.rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_user/bilbo", bt.rt.GetDatabase().Name), GetUserPayload(t, "bilbo", "test", "", collection, []string{"c1"}, []string{"a1", "a2"}))

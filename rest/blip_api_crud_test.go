@@ -1837,7 +1837,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	client := NewBlipTesterClientOptsWithRT(nil)
+	client := NewBlipTesterClientOpts(nil)
 	defer client.Close()
 	client.ClientDeltas = true
 	const docID = "doc1"
@@ -1873,7 +1873,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 
-	btc := NewBlipTesterClientOptsWithRT(nil)
+	btc := NewBlipTesterClientOpts(nil)
 	defer btc.Close()
 	const docID = "doc1"
 
@@ -1902,7 +1902,7 @@ func TestBlipNorev(t *testing.T) {
 
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		SkipVersionVectorInitialization: true, // no rev has different handling for VV
 	})
 	defer btc.Close()
@@ -1952,7 +1952,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 	rtConfig := &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction}
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		Username:        "user",
 		Channels:        []string{"*"},
 		ClientDeltas:    false,
@@ -2060,7 +2060,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 
 	rtConfig := &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction}
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		Username:        "user",
 		Channels:        []string{"*"},
 		ClientDeltas:    false,
@@ -2073,7 +2073,6 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	)
 
 	btc.Run(func(t *testing.T) {
-		// can we remove?
 		collection := btc.rt.GetSingleTestDatabaseCollection()
 		resp := btc.rt.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", collection, []string{"A", "B"}, nil))
 		RequireStatus(t, resp, http.StatusOK)
@@ -2369,7 +2368,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	client := NewBlipTesterClientOptsWithRT(nil)
+	client := NewBlipTesterClientOpts(nil)
 	defer client.Close()
 
 	client.Run(func(t *testing.T) {
@@ -2536,7 +2535,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 		CustomTestBucket: base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		SkipVersionVectorInitialization: true, // no rev has different handling for VV
 	})
 	defer btc.Close()
@@ -2611,7 +2610,7 @@ func TestUnsubChanges(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 
-	btc := NewBlipTesterClientOptsWithRT(nil)
+	btc := NewBlipTesterClientOpts(nil)
 	defer btc.Close()
 	const (
 		doc1ID = "doc1ID"
@@ -2678,7 +2677,7 @@ func TestRequestPlusPull(t *testing.T) {
 	}
 
 	// Initialize blip tester client (will create user)
-	client := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	client := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		Username: "bernard",
 	})
 	defer client.Close()
@@ -2738,7 +2737,7 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 	}
 
 	// Initialize blip tester client (will create user)
-	client := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	client := NewBlipTesterClientOpts(&BlipTesterClientOpts{
 		Username: "bernard",
 	})
 	defer client.Close()
@@ -2800,7 +2799,7 @@ func TestBlipRefreshUser(t *testing.T) {
 
 	const username = "bernard"
 	// Initialize blip tester client (will create user)
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{ // This test will need refactoring when its getting fixed in CBG-3512
+	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{ // This test will need refactoring when its getting fixed in CBG-3512
 		Username: "bernard",
 		Channels: []string{"chan1"},
 	})
