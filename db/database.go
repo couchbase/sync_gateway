@@ -1734,9 +1734,11 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 			access = nil
 			channels = nil
 		}
-		rev.Channels = channels
 
-		if rev.ID == doc.CurrentRev {
+		isWinningRev := rev.ID == doc.CurrentRev
+		if !isWinningRev {
+			rev.Channels = channels
+		} else {
 			if regenerateSequences {
 				updatedUnusedSequences, err = db.assignSequence(ctx, 0, doc, unusedSequences)
 				if err != nil {
@@ -1745,7 +1747,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 				forceUpdate = true
 			}
 
-			changedChannels, err := doc.updateChannels(ctx, channels)
+			changedChannels, err := doc.updateChannels(ctx, isWinningRev, channels)
 			changed = len(doc.Access.updateAccess(ctx, doc, access)) +
 				len(doc.RoleAccess.updateAccess(ctx, doc, roles)) +
 				len(changedChannels)
