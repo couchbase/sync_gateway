@@ -28,322 +28,321 @@ func TestBlipGetCollections(t *testing.T) {
 	// checkpointIDWithError := "checkpointError"
 
 	const defaultScopeAndCollection = "_default._default"
-	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{GuestEnabled: true}, 1)
-	defer rt.Close()
-
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt,
-		&BlipTesterClientOpts{
-			SkipCollectionsInitialization: true,
-		},
-	)
-	require.NoError(t, err)
+	rtConfig := &RestTesterConfig{GuestEnabled: true}
+	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+		SkipCollectionsInitialization: true,
+		NumCollectionsNeeded:          1,
+	})
 	defer btc.Close()
 
-	checkpointID1 := "checkpoint1"
-	checkpoint1Body := db.Body{"seq": "123"}
-	collection := rt.GetSingleTestDatabaseCollection()
-	scopeAndCollection := fmt.Sprintf("%s.%s", collection.ScopeName, collection.Name)
-	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
-	require.NoError(t, err)
-	checkpoint1RevID := "0-1"
-	require.Equal(t, checkpoint1RevID, revID)
-	testCases := []struct {
-		name        string
-		requestBody db.GetCollectionsRequestBody
-		resultBody  []db.Body
-		errorCode   string
-	}{
-		{
-			name: "noDocInDefaultCollection",
-			requestBody: db.GetCollectionsRequestBody{
-				CheckpointIDs: []string{"id"},
-				Collections:   []string{defaultScopeAndCollection},
+	btc.Run(func(t *testing.T) {
+		checkpointID1 := "checkpoint1"
+		checkpoint1Body := db.Body{"seq": "123"}
+		collection := btc.rt.GetSingleTestDatabaseCollection()
+		scopeAndCollection := fmt.Sprintf("%s.%s", collection.ScopeName, collection.Name)
+		revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+		require.NoError(t, err)
+		checkpoint1RevID := "0-1"
+		require.Equal(t, checkpoint1RevID, revID)
+		testCases := []struct {
+			name        string
+			requestBody db.GetCollectionsRequestBody
+			resultBody  []db.Body
+			errorCode   string
+		}{
+			{
+				name: "noDocInDefaultCollection",
+				requestBody: db.GetCollectionsRequestBody{
+					CheckpointIDs: []string{"id"},
+					Collections:   []string{defaultScopeAndCollection},
+				},
+				resultBody: []db.Body{nil},
+				errorCode:  "",
 			},
-			resultBody: []db.Body{nil},
-			errorCode:  "",
-		},
-		{
-			name: "mismatchedLengthOnInput",
-			requestBody: db.GetCollectionsRequestBody{
-				CheckpointIDs: []string{"id", "id2"},
-				Collections:   []string{defaultScopeAndCollection},
+			{
+				name: "mismatchedLengthOnInput",
+				requestBody: db.GetCollectionsRequestBody{
+					CheckpointIDs: []string{"id", "id2"},
+					Collections:   []string{defaultScopeAndCollection},
+				},
+				resultBody: []db.Body{nil},
+				errorCode:  fmt.Sprintf("%d", http.StatusBadRequest),
 			},
-			resultBody: []db.Body{nil},
-			errorCode:  fmt.Sprintf("%d", http.StatusBadRequest),
-		},
-		{
-			name: "inDefaultCollection",
-			requestBody: db.GetCollectionsRequestBody{
-				CheckpointIDs: []string{checkpointID1},
-				Collections:   []string{defaultScopeAndCollection},
+			{
+				name: "inDefaultCollection",
+				requestBody: db.GetCollectionsRequestBody{
+					CheckpointIDs: []string{checkpointID1},
+					Collections:   []string{defaultScopeAndCollection},
+				},
+				resultBody: []db.Body{nil},
+				errorCode:  "",
 			},
-			resultBody: []db.Body{nil},
-			errorCode:  "",
-		},
-		{
-			name: "badScopeSpecificationEmptyString",
-			// bad scope specification - empty string
-			requestBody: db.GetCollectionsRequestBody{
-				CheckpointIDs: []string{checkpointID1},
-				Collections:   []string{""},
+			{
+				name: "badScopeSpecificationEmptyString",
+				// bad scope specification - empty string
+				requestBody: db.GetCollectionsRequestBody{
+					CheckpointIDs: []string{checkpointID1},
+					Collections:   []string{""},
+				},
+				resultBody: []db.Body{nil},
+				errorCode:  fmt.Sprintf("%d", http.StatusBadRequest),
 			},
-			resultBody: []db.Body{nil},
-			errorCode:  fmt.Sprintf("%d", http.StatusBadRequest),
-		},
-		{
-			name: "presentNonDefaultCollection",
-			requestBody: db.GetCollectionsRequestBody{
-				CheckpointIDs: []string{checkpointID1},
-				Collections:   []string{scopeAndCollection},
+			{
+				name: "presentNonDefaultCollection",
+				requestBody: db.GetCollectionsRequestBody{
+					CheckpointIDs: []string{checkpointID1},
+					Collections:   []string{scopeAndCollection},
+				},
+				resultBody: []db.Body{checkpoint1Body},
+				errorCode:  "",
 			},
-			resultBody: []db.Body{checkpoint1Body},
-			errorCode:  "",
-		},
-		{
-			name: "unseenInNonDefaultCollection",
-			requestBody: db.GetCollectionsRequestBody{
-				CheckpointIDs: []string{"id"},
-				Collections:   []string{scopeAndCollection},
+			{
+				name: "unseenInNonDefaultCollection",
+				requestBody: db.GetCollectionsRequestBody{
+					CheckpointIDs: []string{"id"},
+					Collections:   []string{scopeAndCollection},
+				},
+				resultBody: []db.Body{db.Body{}},
+				errorCode:  "",
 			},
-			resultBody: []db.Body{db.Body{}},
-			errorCode:  "",
-		},
-		// {
-		//	name: "checkpointExistsWithErrorInNonDefaultCollection",
-		//	requestBody: db.GetCollectionsRequestBody{
-		//		CheckpointIDs: []string{checkpointIDWithError},
-		//		Collections:   []string{scopeAndCollection},
-		//	},
-		//	resultBody: []db.Body{nil},
-		//	errorCode:  "",
-		// },
-	}
+			// {
+			//	name: "checkpointExistsWithErrorInNonDefaultCollection",
+			//	requestBody: db.GetCollectionsRequestBody{
+			//		CheckpointIDs: []string{checkpointIDWithError},
+			//		Collections:   []string{scopeAndCollection},
+			//	},
+			//	resultBody: []db.Body{nil},
+			//	errorCode:  "",
+			// },
+		}
 
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			getCollectionsRequest, err := db.NewGetCollectionsMessage(testCase.requestBody)
-			require.NoError(t, err)
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				getCollectionsRequest, err := db.NewGetCollectionsMessage(testCase.requestBody)
+				require.NoError(t, err)
 
-			require.NoError(t, btc.pushReplication.sendMsg(getCollectionsRequest))
+				require.NoError(t, btc.pushReplication.sendMsg(getCollectionsRequest))
 
-			// Check that the response we got back was processed by the norev handler
-			resp := getCollectionsRequest.Response()
-			require.NotNil(t, resp)
-			errorCode, hasErrorCode := resp.Properties[db.BlipErrorCode]
-			require.Equal(t, hasErrorCode, testCase.errorCode != "", "Request returned unexpected error %+v", resp.Properties)
-			require.Equal(t, errorCode, testCase.errorCode)
-			if testCase.errorCode != "" {
-				return
-			}
-			var checkpoints []db.Body
-			err = resp.ReadJSONBody(&checkpoints)
-			require.NoErrorf(t, err, "Actual error %+v", checkpoints)
+				// Check that the response we got back was processed by the norev handler
+				resp := getCollectionsRequest.Response()
+				require.NotNil(t, resp)
+				errorCode, hasErrorCode := resp.Properties[db.BlipErrorCode]
+				require.Equal(t, hasErrorCode, testCase.errorCode != "", "Request returned unexpected error %+v", resp.Properties)
+				require.Equal(t, errorCode, testCase.errorCode)
+				if testCase.errorCode != "" {
+					return
+				}
+				var checkpoints []db.Body
+				err = resp.ReadJSONBody(&checkpoints)
+				require.NoErrorf(t, err, "Actual error %+v", checkpoints)
 
-			require.Equal(t, testCase.resultBody, checkpoints)
-		})
-	}
+				require.Equal(t, testCase.resultBody, checkpoints)
+			})
+		}
+	}, t, rtConfig)
 }
 
 func TestBlipReplicationNoDefaultCollection(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	rt := NewRestTester(t, &RestTesterConfig{
+	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
-	})
-	defer rt.Close()
+	}
 
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	require.NoError(t, err)
+	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+		SkipVersionVectorInitialization: true, // no need for version vector test here
+	})
 	defer btc.Close()
 
-	checkpointID1 := "checkpoint1"
-	checkpoint1Body := db.Body{"seq": "123"}
-	collection := rt.GetSingleTestDatabaseCollection()
-	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
-	require.NoError(t, err)
-	checkpoint1RevID := "0-1"
-	require.Equal(t, checkpoint1RevID, revID)
+	btc.Run(func(t *testing.T) {
+		checkpointID1 := "checkpoint1"
+		checkpoint1Body := db.Body{"seq": "123"}
+		collection := btc.rt.GetSingleTestDatabaseCollection()
+		revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+		require.NoError(t, err)
+		checkpoint1RevID := "0-1"
+		require.Equal(t, checkpoint1RevID, revID)
 
-	subChangesRequest := blip.NewRequest()
-	subChangesRequest.SetProfile(db.MessageSubChanges)
+		subChangesRequest := blip.NewRequest()
+		subChangesRequest.SetProfile(db.MessageSubChanges)
 
-	require.NoError(t, btc.pullReplication.sendMsg(subChangesRequest))
-	resp := subChangesRequest.Response()
-	require.Equal(t, strconv.Itoa(http.StatusBadRequest), resp.Properties[db.BlipErrorCode])
+		require.NoError(t, btc.pullReplication.sendMsg(subChangesRequest))
+		resp := subChangesRequest.Response()
+		require.Equal(t, strconv.Itoa(http.StatusBadRequest), resp.Properties[db.BlipErrorCode])
+	}, t, rtConfig)
 }
 
 func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	rt := NewRestTester(t, &RestTesterConfig{
+	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
-	})
-	defer rt.Close()
+	}
 
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	require.NoError(t, err)
+	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+		SkipVersionVectorInitialization: true, // no need for version vector test here
+	})
 	defer btc.Close()
 
-	checkpointID1 := "checkpoint1"
-	checkpoint1Body := db.Body{"seq": "123"}
-	collection := rt.GetSingleTestDatabaseCollection()
-	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
-	require.NoError(t, err)
-	checkpoint1RevID := "0-1"
-	require.Equal(t, checkpoint1RevID, revID)
-	getCollectionsRequest, err := db.NewGetCollectionsMessage(db.GetCollectionsRequestBody{
-		CheckpointIDs: []string{checkpointID1},
-		Collections:   []string{fmt.Sprintf("%s.%s", collection.ScopeName, collection.Name)},
-	})
+	btc.Run(func(t *testing.T) {
+		checkpointID1 := "checkpoint1"
+		checkpoint1Body := db.Body{"seq": "123"}
+		collection := btc.rt.GetSingleTestDatabaseCollection()
+		revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+		require.NoError(t, err)
+		checkpoint1RevID := "0-1"
+		require.Equal(t, checkpoint1RevID, revID)
+		getCollectionsRequest, err := db.NewGetCollectionsMessage(db.GetCollectionsRequestBody{
+			CheckpointIDs: []string{checkpointID1},
+			Collections:   []string{fmt.Sprintf("%s.%s", collection.ScopeName, collection.Name)},
+		})
 
-	require.NoError(t, err)
+		require.NoError(t, err)
 
-	require.NoError(t, btc.pushReplication.sendMsg(getCollectionsRequest))
+		require.NoError(t, btc.pushReplication.sendMsg(getCollectionsRequest))
 
-	// Check that the response we got back was processed by the GetCollections
-	resp := getCollectionsRequest.Response()
-	require.NotNil(t, resp)
-	errorCode, hasErrorCode := resp.Properties[db.BlipErrorCode]
-	require.False(t, hasErrorCode)
-	require.Equal(t, errorCode, "")
-	var checkpoints []db.Body
-	err = resp.ReadJSONBody(&checkpoints)
-	require.NoErrorf(t, err, "Actual error %+v", checkpoints)
-	require.Equal(t, []db.Body{checkpoint1Body}, checkpoints)
+		// Check that the response we got back was processed by the GetCollections
+		resp := getCollectionsRequest.Response()
+		require.NotNil(t, resp)
+		errorCode, hasErrorCode := resp.Properties[db.BlipErrorCode]
+		require.False(t, hasErrorCode)
+		require.Equal(t, errorCode, "")
+		var checkpoints []db.Body
+		err = resp.ReadJSONBody(&checkpoints)
+		require.NoErrorf(t, err, "Actual error %+v", checkpoints)
+		require.Equal(t, []db.Body{checkpoint1Body}, checkpoints)
 
-	// make sure other functions get called
+		// make sure other functions get called
 
-	requestGetCheckpoint := blip.NewRequest()
-	requestGetCheckpoint.SetProfile(db.MessageGetCheckpoint)
-	requestGetCheckpoint.Properties[db.BlipClient] = checkpointID1
-	requestGetCheckpoint.Properties[db.BlipCollection] = "0"
-	require.NoError(t, btc.pushReplication.sendMsg(requestGetCheckpoint))
-	resp = requestGetCheckpoint.Response()
-	require.NotNil(t, resp)
-	errorCode, hasErrorCode = resp.Properties[db.BlipErrorCode]
-	require.Equal(t, errorCode, "")
-	require.False(t, hasErrorCode)
-	var checkpoint db.Body
-	err = resp.ReadJSONBody(&checkpoint)
-	require.NoErrorf(t, err, "Actual error %+v", checkpoint)
+		requestGetCheckpoint := blip.NewRequest()
+		requestGetCheckpoint.SetProfile(db.MessageGetCheckpoint)
+		requestGetCheckpoint.Properties[db.BlipClient] = checkpointID1
+		requestGetCheckpoint.Properties[db.BlipCollection] = "0"
+		require.NoError(t, btc.pushReplication.sendMsg(requestGetCheckpoint))
+		resp = requestGetCheckpoint.Response()
+		require.NotNil(t, resp)
+		errorCode, hasErrorCode = resp.Properties[db.BlipErrorCode]
+		require.Equal(t, errorCode, "")
+		require.False(t, hasErrorCode)
+		var checkpoint db.Body
+		err = resp.ReadJSONBody(&checkpoint)
+		require.NoErrorf(t, err, "Actual error %+v", checkpoint)
 
-	require.Equal(t, db.Body{"seq": "123"}, checkpoint)
-
+		require.Equal(t, db.Body{"seq": "123"}, checkpoint)
+	}, t, rtConfig)
 }
 
 func TestCollectionsReplication(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	rt := NewRestTester(t, &RestTesterConfig{
+	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
-	})
-	defer rt.Close()
+	}
 
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	require.NoError(t, err)
+	btc := NewBlipTesterClientOptsWithRT(nil)
 	defer btc.Close()
-
 	const docID = "doc1"
-	version := rt.PutDoc(docID, "{}")
-	require.NoError(t, rt.WaitForPendingChanges())
 
-	btcCollection := btc.SingleCollection()
+	btc.Run(func(t *testing.T) {
+		version := rt.PutDoc(docID, "{}")
+		require.NoError(t, rt.WaitForPendingChanges())
 
-	err = btcCollection.StartOneshotPull()
-	require.NoError(t, err)
+		btcCollection := btc.SingleCollection()
 
-	_, ok := btcCollection.WaitForVersion(docID, version)
-	require.True(t, ok)
+		err := btcCollection.StartOneshotPull()
+		require.NoError(t, err)
+
+		_, ok := btcCollection.WaitForVersion(docID, version)
+		require.True(t, ok)
+	}, t, rtConfig)
 }
 
 func TestBlipReplicationMultipleCollections(t *testing.T) {
-	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{
+	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
-	}, 2)
-	defer rt.Close()
+	}
 
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	require.NoError(t, err)
+	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{NumCollectionsNeeded: 2})
 	defer btc.Close()
 
-	docName := "doc1"
-	body := `{"foo":"bar"}`
-	versions := make([]DocVersion, 0, len(rt.GetKeyspaces()))
-	for _, keyspace := range rt.GetKeyspaces() {
-		resp := rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docName, `{"foo":"bar"}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		versions = append(versions, DocVersionFromPutResponse(t, resp))
+	btc.Run(func(t *testing.T) {
+		docName := "doc1"
+		body := `{"foo":"bar"}`
+		versions := make([]DocVersion, 0, len(rt.GetKeyspaces()))
+		for _, keyspace := range rt.GetKeyspaces() {
+			resp := rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docName, `{"foo":"bar"}`)
+			RequireStatus(t, resp, http.StatusCreated)
+			versions = append(versions, DocVersionFromPutResponse(t, resp))
+		}
+		require.NoError(t, rt.WaitForPendingChanges())
 
-	}
-	require.NoError(t, rt.WaitForPendingChanges())
+		// start all the clients first
+		for _, collectionClient := range btc.collectionClients {
+			require.NoError(t, collectionClient.StartPull())
+		}
 
-	// start all the clients first
-	for _, collectionClient := range btc.collectionClients {
-		require.NoError(t, collectionClient.StartPull())
-	}
+		for i, collectionClient := range btc.collectionClients {
+			msg, ok := collectionClient.WaitForVersion(docName, versions[i])
+			require.True(t, ok)
+			require.Equal(t, body, string(msg))
+		}
 
-	for i, collectionClient := range btc.collectionClients {
-		msg, ok := collectionClient.WaitForVersion(docName, versions[i])
-		require.True(t, ok)
-		require.Equal(t, body, string(msg))
-	}
-
-	for _, collectionClient := range btc.collectionClients {
-		resp, err := collectionClient.UnsubPullChanges()
-		assert.NoError(t, err, "Error unsubing: %+v", resp)
-	}
-
+		for _, collectionClient := range btc.collectionClients {
+			resp, err := collectionClient.UnsubPullChanges()
+			assert.NoError(t, err, "Error unsubing: %+v", resp)
+		}
+	}, t, rtConfig)
 }
 
 func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
-	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{
+	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
-	}, 2)
-	defer rt.Close()
+	}
 
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	require.NoError(t, err)
+	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{NumCollectionsNeeded: 2})
 	defer btc.Close()
 
-	body := `{"foo":"bar"}`
-	collectionDocIDs := make(map[string][]string)
-	collectionVersions := make(map[string][]DocVersion)
-	require.Len(t, rt.GetKeyspaces(), 2)
-	for i, keyspace := range rt.GetKeyspaces() {
-		// intentionally create collections with different size replications to ensure one collection finishing won't cancel another one
-		docCount := 10
-		if i == 0 {
-			docCount = 1
+	btc.Run(func(t *testing.T) {
+		body := `{"foo":"bar"}`
+		collectionDocIDs := make(map[string][]string)
+		collectionVersions := make(map[string][]DocVersion)
+		require.Len(t, rt.GetKeyspaces(), 2)
+		for i, keyspace := range rt.GetKeyspaces() {
+			// intentionally create collections with different size replications to ensure one collection finishing won't cancel another one
+			docCount := 10
+			if i == 0 {
+				docCount = 1
+			}
+			blipName := rt.getCollectionsForBLIP()[i]
+			for j := 0; j < docCount; j++ {
+				docName := fmt.Sprintf("doc%d", j)
+				resp := rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docName, body)
+				RequireStatus(t, resp, http.StatusCreated)
+
+				version := DocVersionFromPutResponse(t, resp)
+				collectionVersions[blipName] = append(collectionVersions[blipName], version)
+				collectionDocIDs[blipName] = append(collectionDocIDs[blipName], docName)
+			}
 		}
-		blipName := rt.getCollectionsForBLIP()[i]
-		for j := 0; j < docCount; j++ {
-			docName := fmt.Sprintf("doc%d", j)
-			resp := rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docName, body)
-			RequireStatus(t, resp, http.StatusCreated)
+		require.NoError(t, rt.WaitForPendingChanges())
 
-			version := DocVersionFromPutResponse(t, resp)
-			collectionVersions[blipName] = append(collectionVersions[blipName], version)
-			collectionDocIDs[blipName] = append(collectionDocIDs[blipName], docName)
+		// start all the clients first
+		for _, collectionClient := range btc.collectionClients {
+			require.NoError(t, collectionClient.StartOneshotPull())
 		}
-	}
-	require.NoError(t, rt.WaitForPendingChanges())
 
-	// start all the clients first
-	for _, collectionClient := range btc.collectionClients {
-		require.NoError(t, collectionClient.StartOneshotPull())
-	}
+		for _, collectionClient := range btc.collectionClients {
+			versions := collectionVersions[collectionClient.collection]
+			docIDs := collectionDocIDs[collectionClient.collection]
+			msg, ok := collectionClient.WaitForVersion(docIDs[len(docIDs)-1], versions[len(versions)-1])
+			require.True(t, ok)
+			require.Equal(t, body, string(msg))
+		}
 
-	for _, collectionClient := range btc.collectionClients {
-		versions := collectionVersions[collectionClient.collection]
-		docIDs := collectionDocIDs[collectionClient.collection]
-		msg, ok := collectionClient.WaitForVersion(docIDs[len(docIDs)-1], versions[len(versions)-1])
-		require.True(t, ok)
-		require.Equal(t, body, string(msg))
-	}
-
-	for _, collectionClient := range btc.collectionClients {
-		resp, err := collectionClient.UnsubPullChanges()
-		assert.NoError(t, err, "Error unsubing: %+v", resp)
-	}
+		for _, collectionClient := range btc.collectionClients {
+			resp, err := collectionClient.UnsubPullChanges()
+			assert.NoError(t, err, "Error unsubing: %+v", resp)
+		}
+	}, t, rtConfig)
 
 }

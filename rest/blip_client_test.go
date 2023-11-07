@@ -31,12 +31,14 @@ import (
 )
 
 type BlipTesterClientOpts struct {
-	ClientDeltas                  bool // Support deltas on the client side
-	Username                      string
-	Channels                      []string
-	SendRevocations               bool
-	SupportedBLIPProtocols        []string
-	SkipCollectionsInitialization bool
+	ClientDeltas                    bool // Support deltas on the client side
+	Username                        string
+	Channels                        []string
+	SendRevocations                 bool
+	SupportedBLIPProtocols          []string
+	SkipCollectionsInitialization   bool
+	SkipVersionVectorInitialization bool
+	NumCollectionsNeeded            int
 
 	// a deltaSrc rev ID for which to reject a delta
 	rejectDeltasForSrcRev string
@@ -571,63 +573,15 @@ func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
 	return collections
 }
 
-func createBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient, err error) {
+func NewBlipTesterClientOptsWithRT(opts *BlipTesterClientOpts) (client *BlipTesterClient) {
 	if opts == nil {
 		opts = &BlipTesterClientOpts{}
 	}
-	btc := BlipTesterClient{
+	client = &BlipTesterClient{
 		BlipTesterClientOpts: *opts,
-		rt:                   rt,
 	}
 
-	id, err := uuid.NewRandom()
-	if err != nil {
-		return nil, err
-	}
-
-	if btc.pushReplication, err = newBlipTesterReplication(btc.rt.TB, "push"+id.String(), &btc, opts.SkipCollectionsInitialization); err != nil {
-		return nil, err
-	}
-	if btc.pullReplication, err = newBlipTesterReplication(btc.rt.TB, "pull"+id.String(), &btc, opts.SkipCollectionsInitialization); err != nil {
-		return nil, err
-	}
-
-	collections := getCollectionsForBLIP(tb, rt)
-	if !opts.SkipCollectionsInitialization && len(collections) > 0 {
-		btc.collectionClients = make([]*BlipTesterCollectionClient, len(collections))
-		for i, collection := range collections {
-			if err := btc.initCollectionReplication(collection, i); err != nil {
-				return nil, err
-			}
-		}
-	} else {
-		btc.nonCollectionAwareClient = &BlipTesterCollectionClient{
-			docs:              make(map[string]map[string]*BodyMessagePair),
-			attachments:       make(map[string][]byte),
-			lastReplicatedRev: make(map[string]string),
-			parent:            &btc,
-		}
-
-	}
-
-	return &btc, nil
-}
-
-// NewBlipTesterClient returns a client which emulates the behaviour of a CBL client over BLIP.
-func NewBlipTesterClient(tb testing.TB, rt *RestTester) (client *BlipTesterClient, err error) {
-	return createBlipTesterClientOpts(tb, rt, nil)
-}
-
-func NewBlipTesterClientOptsWithRT(tb testing.TB, rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient, err error) {
-	client, err = createBlipTesterClientOpts(tb, rt, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	client.pullReplication.bt.avoidRestTesterClose = true
-	client.pushReplication.bt.avoidRestTesterClose = true
-
-	return client, nil
+	return client
 }
 
 func (btc *BlipTesterClient) Close() {
@@ -639,6 +593,172 @@ func (btc *BlipTesterClient) Close() {
 	if btc.nonCollectionAwareClient != nil {
 		btc.nonCollectionAwareClient.Close()
 	}
+}
+
+func (btc *BlipTesterClient) RunDualClients(btc2 *BlipTesterClient, test func(t *testing.T), t *testing.T, rtConfig *RestTesterConfig) {
+	rt := NewRestTester(t, rtConfig)
+	btc.rt = rt
+	btc2.rt = rt
+	parentT := btc.rt.TB.(*testing.T)
+	parentT.Run("revTree", func(t *testing.T) {
+		// create blip replications on client 1
+		err := btc.createBlipTesterReplications()
+		require.NoError(t, err)
+		// create blip replications on client 2
+		err = btc2.createBlipTesterReplications()
+		require.NoError(t, err)
+
+		btc.rt.TB = t
+		defer func() { btc.rt.TB = parentT }()
+		test(t)
+	})
+	// if test is not wanting version vector subprotocol to be run, return before we start this subtest
+	if btc.SkipVersionVectorInitialization {
+		return
+	}
+	// teardown active replications on blip tester clients
+	btc.tearDownBlipClientReplications()
+	btc2.tearDownBlipClientReplications()
+	rt.Close()
+
+	// setup rest tester for new run
+	rt = NewRestTester(t, rtConfig)
+	defer rt.Close()
+	btc.rt = rt
+	btc2.rt = rt
+	parentT = btc.rt.TB.(*testing.T)
+	parentT.Run("versionVector", func(t *testing.T) {
+		// bump sub protocol version here before replication init
+		err := btc.createBlipTesterReplications()
+		require.NoError(t, err)
+		err = btc2.createBlipTesterReplications()
+		require.NoError(t, err)
+
+		btc.rt.TB = t
+		defer func() { btc.rt.TB = parentT }()
+		test(t)
+	})
+}
+
+func (btc *BlipTesterClient) RunWithRevocationTester(test func(t *testing.T, tester ChannelRevocationTester), t *testing.T, rtConfig *RestTesterConfig) {
+	revocationTester, rt := InitScenario(t, rtConfig)
+	btc.rt = rt
+
+	parentT := btc.rt.TB.(*testing.T)
+	parentT.Run("revTree", func(t *testing.T) {
+		err := btc.createBlipTesterReplications()
+		require.NoError(t, err)
+		btc.rt.TB = t
+		defer func() { btc.rt.TB = parentT }()
+		test(t, revocationTester)
+	})
+	// if test is not wanting version vector subprotocol to be run, return before we start this subtest
+	if btc.SkipVersionVectorInitialization {
+		return
+	}
+	// teardown active replications on blip tester client and start new rest tester for next test run
+	btc.tearDownBlipClientReplications()
+	rt.Close()
+
+	// setup rest tester for new run
+	revocationTester, rt = InitScenario(t, rtConfig)
+	btc.rt = rt
+	defer rt.Close()
+	parentT = btc.rt.TB.(*testing.T)
+	parentT.Run("versionVector", func(t *testing.T) {
+		// bump sub protocol version here before replication init
+		err := btc.createBlipTesterReplications()
+		require.NoError(t, err)
+		btc.rt.TB = t
+		defer func() { btc.rt.TB = parentT }()
+		test(t, revocationTester)
+	})
+}
+
+func (btc *BlipTesterClient) Run(test func(*testing.T), t *testing.T, rtConfig *RestTesterConfig) {
+	if btc.NumCollectionsNeeded != 0 {
+		btc.rt = NewRestTesterMultipleCollections(t, rtConfig, btc.NumCollectionsNeeded)
+	} else {
+		// assume standard rest tester creation
+		btc.rt = NewRestTester(t, rtConfig)
+	}
+	parentT := btc.rt.TB.(*testing.T)
+	parentT.Run("revTree", func(t *testing.T) {
+		err := btc.createBlipTesterReplications()
+		require.NoError(t, err)
+		btc.rt.TB = t
+		defer func() { btc.rt.TB = parentT }()
+		test(t)
+	})
+	// if test is not wanting version vector subprotocol to be run, return before we start this subtest
+	if btc.SkipVersionVectorInitialization {
+		btc.rt.Close()
+		return
+	}
+	// teardown active replications on blip tester client and start new rest tester for next test run
+	btc.tearDownBlipClientReplications()
+	btc.rt.Close()
+
+	// setup rest tester for new run
+	if btc.NumCollectionsNeeded != 0 {
+		btc.rt = NewRestTesterMultipleCollections(t, rtConfig, btc.NumCollectionsNeeded)
+	} else {
+		// assume standard rest tester creation
+		btc.rt = NewRestTester(t, rtConfig)
+	}
+	defer btc.rt.Close()
+	parentT = btc.rt.TB.(*testing.T)
+	parentT.Run("versionVector", func(t *testing.T) {
+		// bump sub protocol version here before replication init
+		err := btc.createBlipTesterReplications()
+		require.NoError(t, err)
+		btc.rt.TB = t
+		defer func() { btc.rt.TB = parentT }()
+		test(t)
+	})
+}
+
+// tearDownBlipClientReplications closes any underlying BlipTesterReplications running on the BlipTesterClient
+func (btc *BlipTesterClient) tearDownBlipClientReplications() {
+	btc.pullReplication.Close()
+	btc.pushReplication.Close()
+}
+
+// createBlipTesterReplications initiates new BlipTesterReplications on the BlipTesterClient
+func (btc *BlipTesterClient) createBlipTesterReplications() error {
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return err
+	}
+
+	if btc.pushReplication, err = newBlipTesterReplication(btc.rt.TB, "push"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization); err != nil {
+		return err
+	}
+	if btc.pullReplication, err = newBlipTesterReplication(btc.rt.TB, "pull"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization); err != nil {
+		return err
+	}
+
+	collections := getCollectionsForBLIP(btc.rt.TB, btc.rt)
+	if !btc.BlipTesterClientOpts.SkipCollectionsInitialization && len(collections) > 0 {
+		btc.collectionClients = make([]*BlipTesterCollectionClient, len(collections))
+		for i, collection := range collections {
+			if err := btc.initCollectionReplication(collection, i); err != nil {
+				return err
+			}
+		}
+	} else {
+		btc.nonCollectionAwareClient = &BlipTesterCollectionClient{
+			docs:              make(map[string]map[string]*BodyMessagePair),
+			attachments:       make(map[string][]byte),
+			lastReplicatedRev: make(map[string]string),
+			parent:            btc,
+		}
+	}
+
+	btc.pullReplication.bt.avoidRestTesterClose = true
+	btc.pushReplication.bt.avoidRestTesterClose = true
+
+	return nil
 }
 
 func (btc *BlipTesterClient) initCollectionReplication(collection string, collectionIdx int) error {
