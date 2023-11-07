@@ -2276,8 +2276,8 @@ func TestUpdateExistingAttachment(t *testing.T) {
 
 	btc.Run(func(t *testing.T) {
 		// Add doc1 and doc2
-		doc1Version := rt.PutDoc(doc1ID, `{}`)
-		doc2Version := rt.PutDoc(doc2ID, `{}`)
+		doc1Version := btc.rt.PutDoc(doc1ID, `{}`)
+		doc2Version := btc.rt.PutDoc(doc2ID, `{}`)
 
 		require.NoError(t, btc.rt.WaitForPendingChanges())
 
@@ -2296,8 +2296,8 @@ func TestUpdateExistingAttachment(t *testing.T) {
 		doc2Version, err = btc.PushRev("doc2", doc2Version, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
 		require.NoError(t, err)
 
-		assert.NoError(t, rt.WaitForVersion(doc1ID, doc1Version))
-		assert.NoError(t, rt.WaitForVersion(doc2ID, doc2Version))
+		assert.NoError(t, btc.rt.WaitForVersion(doc1ID, doc1Version))
+		assert.NoError(t, btc.rt.WaitForVersion(doc2ID, doc2Version))
 
 		_, err = btc.rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
 		require.NoError(t, err)
@@ -2307,7 +2307,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 		doc1Version, err = btc.PushRev("doc1", doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":3}}}`))
 		require.NoError(t, err)
 
-		assert.NoError(t, rt.WaitForVersion(doc1ID, doc1Version))
+		assert.NoError(t, btc.rt.WaitForVersion(doc1ID, doc1Version))
 
 		doc1, err := btc.rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
 		assert.NoError(t, err)
@@ -2333,7 +2333,7 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 
 	btc.Run(func(t *testing.T) {
 		// Add doc1 and doc2
-		doc1Version := rt.PutDoc(doc1ID, `{}`)
+		doc1Version := btc.rt.PutDoc(doc1ID, `{}`)
 
 		require.NoError(t, btc.rt.WaitForPendingChanges())
 
@@ -2353,7 +2353,7 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 		doc1Version, err = btc.PushRev(doc1ID, doc1Version, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"content_type":"%s","stub":true,"revpos":1}}}`, digest, length, contentType)))
 		require.NoError(t, err)
 
-		require.NoError(t, rt.WaitForVersion(doc1ID, doc1Version))
+		require.NoError(t, btc.rt.WaitForVersion(doc1ID, doc1Version))
 
 		// verify that attachment exists on document and was persisted
 		attResponse := btc.rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
@@ -2380,8 +2380,8 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 
 	btc.Run(func(t *testing.T) {
 		// Push an initial rev with attachment data
-		initialVersion := rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
-		err = rt.WaitForPendingChanges()
+		initialVersion := btc.rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
+		err := btc.rt.WaitForPendingChanges()
 		assert.NoError(t, err)
 
 		// Replicate data to client and ensure doc arrives
@@ -2416,8 +2416,8 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	btc.Run(func(t *testing.T) {
 		// Create rev 1 with the hello.txt attachment
 		const docID = "doc"
-		version := rt.PutDoc(docID, `{"val": "val", "_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
-		err := rt.WaitForPendingChanges()
+		version := btc.rt.PutDoc(docID, `{"val": "val", "_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
+		err := btc.rt.WaitForPendingChanges()
 		assert.NoError(t, err)
 
 		// Pull rev and attachment down to client
@@ -2597,9 +2597,9 @@ func TestCBLRevposHandling(t *testing.T) {
 	)
 
 	btc.Run(func(t *testing.T) {
-		doc1Version := rt.PutDoc(doc1ID, `{}`)
-		doc2Version := rt.PutDoc(doc2ID, `{}`)
-		require.NoError(t, rt.WaitForPendingChanges())
+		doc1Version := btc.rt.PutDoc(doc1ID, `{}`)
+		doc2Version := btc.rt.PutDoc(doc2ID, `{}`)
+		require.NoError(t, btc.rt.WaitForPendingChanges())
 
 		err := btc.StartOneshotPull()
 		assert.NoError(t, err)
@@ -2616,8 +2616,8 @@ func TestCBLRevposHandling(t *testing.T) {
 		doc2Version, err = btc.PushRev(doc2ID, doc2Version, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
 		require.NoError(t, err)
 
-		assert.NoError(t, rt.WaitForVersion(doc1ID, doc1Version))
-		assert.NoError(t, rt.WaitForVersion(doc2ID, doc2Version))
+		assert.NoError(t, btc.rt.WaitForVersion(doc1ID, doc1Version))
+		assert.NoError(t, btc.rt.WaitForVersion(doc2ID, doc2Version))
 
 		_, err = btc.rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
 		require.NoError(t, err)
@@ -2628,7 +2628,7 @@ func TestCBLRevposHandling(t *testing.T) {
 		doc1Version, err = btc.PushRev(doc1ID, doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":2}}}`))
 		require.NoError(t, err)
 
-		assert.NoError(t, rt.WaitForVersion(doc1ID, doc1Version))
+		assert.NoError(t, btc.rt.WaitForVersion(doc1ID, doc1Version))
 
 		// Update doc1, don't change attachment, use revpos=generation of revid, as CBL 2.x does.  Should not proveAttachment on digest match.
 		doc1Version, err = btc.PushRev(doc1ID, doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":4}}}`))

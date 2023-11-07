@@ -2239,7 +2239,7 @@ func TestRevocationMessage(t *testing.T) {
 
 		// Skip to seq 4 and then create doc in channel A
 		revocationTester.fillToSeq(4)
-		version := rt.PutDoc("doc", `{"channels": "A"}`)
+		version := btc.rt.PutDoc("doc", `{"channels": "A"}`)
 
 		require.NoError(t, btc.rt.WaitForPendingChanges())
 
@@ -2254,10 +2254,10 @@ func TestRevocationMessage(t *testing.T) {
 		// Remove role from user
 		revocationTester.removeRole("user", "foo")
 
-		version = rt.PutDoc(doc1ID, `{"channels": "!"}`)
+		version = btc.rt.PutDoc(doc1ID, `{"channels": "!"}`)
 
 		revocationTester.fillToSeq(10)
-		version = rt.UpdateDoc(doc1ID, version, "{}")
+		version = btc.rt.UpdateDoc(doc1ID, version, "{}")
 
 		require.NoError(t, btc.rt.WaitForPendingChanges())
 
@@ -2348,7 +2348,7 @@ func TestRevocationNoRev(t *testing.T) {
 
 		// Skip to seq 4 and then create doc in channel A
 		revocationTester.fillToSeq(4)
-		version := rt.PutDoc(docID, `{"channels": "A"}`)
+		version := btc.rt.PutDoc(docID, `{"channels": "A"}`)
 
 		require.NoError(t, btc.rt.WaitForPendingChanges())
 		firstOneShotSinceSeq := btc.rt.GetDocumentSequence("doc")
@@ -2363,10 +2363,10 @@ func TestRevocationNoRev(t *testing.T) {
 		// Remove role from user
 		revocationTester.removeRole("user", "foo")
 
-		_ = rt.UpdateDoc(docID, version, `{"channels": "A", "val": "mutate"}`)
+		_ = btc.rt.UpdateDoc(docID, version, `{"channels": "A", "val": "mutate"}`)
 
-		waitMarkerVersion := rt.PutDoc(waitMarkerID, `{"channels": "!"}`)
-		require.NoError(t, rt.WaitForPendingChanges())
+		waitMarkerVersion := btc.rt.PutDoc(waitMarkerID, `{"channels": "!"}`)
+		require.NoError(t, btc.rt.WaitForPendingChanges())
 
 		lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
 		err = btc.StartPullSince("false", lastSeqStr, "false")
@@ -2433,20 +2433,20 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 	const waitMarkerID = "docmarker"
 
 	btc.RunWithRevocationTester(func(t *testing.T, revocationTester ChannelRevocationTester) {
-		revocationTester.fillerDocRev = ""
+		revocationTester.fillerDocVersion.RevID = ""
 		// Add channel to role and role to user
 		revocationTester.addRoleChannel("foo", "A")
 		revocationTester.addRole("user", "foo")
 
 		// Skip to seq 4 and then create doc in channel A
 		revocationTester.fillToSeq(4)
-		version := rt.PutDoc(docID, `{"channels": "A"}}`)
+		version := btc.rt.PutDoc(docID, `{"channels": "A"}}`)
 
 		require.NoError(t, btc.rt.WaitForPendingChanges())
 		firstOneShotSinceSeq := btc.rt.GetDocumentSequence("doc")
 
 		// OneShot pull to grab doc
-		err = btc.StartOneshotPull()
+		err := btc.StartOneshotPull()
 		assert.NoError(t, err)
 		throw = true
 		_, ok := btc.WaitForVersion(docID, version)
@@ -2455,10 +2455,10 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 		// Remove role from user
 		revocationTester.removeRole("user", "foo")
 
-		_ = rt.UpdateDoc(docID, version, `{"channels": "A", "val": "mutate"}`)
+		_ = btc.rt.UpdateDoc(docID, version, `{"channels": "A", "val": "mutate"}`)
 
-		waitMarkerVersion := rt.PutDoc(waitMarkerID, `{"channels": "!"}`)
-		require.NoError(t, rt.WaitForPendingChanges())
+		waitMarkerVersion := btc.rt.PutDoc(waitMarkerID, `{"channels": "!"}`)
+		require.NoError(t, btc.rt.WaitForPendingChanges())
 
 		lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
 		err = btc.StartPullSince("false", lastSeqStr, "false")

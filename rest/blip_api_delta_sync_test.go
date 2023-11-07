@@ -119,7 +119,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 
 		// Create doc1 rev 1-77d9041e49931ceef58a1eef5fd032e8 on SG with an attachment
 		bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-		version := rt.PutDoc(docID, bodyText)
+		version := btc.rt.PutDoc(docID, bodyText)
 		data, ok := btc.WaitForVersion(docID, version)
 		assert.True(t, ok)
 
@@ -135,7 +135,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 		_, ok = btc.pushReplication.WaitForMessage(2)
 		assert.True(t, ok)
 
-		respBody := rt.GetDocVersion(docID, version)
+		respBody := btc.rt.GetDocVersion(docID, version)
 
 		assert.Equal(t, docID, respBody[db.BodyId])
 		greetings := respBody["greetings"].([]interface{})
@@ -186,15 +186,14 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		assert.NoError(t, err)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version := rt.PutDoc(doc1ID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+		version := client.rt.PutDoc(doc1ID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
 		data, ok := client.WaitForVersion(doc1ID, version)
 		assert.True(t, ok)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// create doc1 rev 2-10000d5ec533b29b117e60274b1e3653 on SG with the first attachment
-		version = rt.UpdateDoc(doc1ID, version, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}], "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
+		version = client.rt.UpdateDoc(doc1ID, version, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}], "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
 
 		data, ok = client.WaitForVersion(doc1ID, version)
 		assert.True(t, ok)
@@ -238,7 +237,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 			assert.Contains(t, string(msgBody), `"greetings":[{"hello":"world!"},{"hi":"alice"}]`)
 		}
 
-		respBody := rt.GetDocVersion(doc1ID, version)
+		respBody := client.rt.GetDocVersion(doc1ID, version)
 		assert.Equal(t, doc1ID, respBody[db.BodyId])
 		greetings := respBody["greetings"].([]interface{})
 		assert.Len(t, greetings, 2)
@@ -286,14 +285,14 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 		assert.NoError(t, err)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+		version := client.rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
 		data, ok := client.WaitForVersion(docID, version)
 		assert.True(t, ok)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
-		version = rt.UpdateDoc(docID, version, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
+		version = client.rt.UpdateDoc(docID, version, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
 
 		data, ok = client.WaitForVersion(docID, version)
 		assert.True(t, ok)
@@ -353,7 +352,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 
 	client.Run(func(t *testing.T) {
 		// create doc1 rev 1
-		docVersion1 := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+		docVersion1 := client.rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
 		deltaSentCount := client.rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 
@@ -361,14 +360,14 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		client.rejectDeltasForSrcRev = docVersion1.RevID
 
 		client.ClientDeltas = true
-		err = client.StartPull()
+		err := client.StartPull()
 		assert.NoError(t, err)
 		data, ok := client.WaitForVersion(docID, docVersion1)
 		assert.True(t, ok)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// create doc1 rev 2
-		docVersion2 := rt.UpdateDoc(docID, docVersion1, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
+		docVersion2 := client.rt.UpdateDoc(docID, docVersion1, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
 
 		data, ok = client.WaitForVersion(docID, docVersion2)
 		assert.True(t, ok)
@@ -383,7 +382,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
 		assert.Equal(t, `{"greetings":{"2-":[{"howdy":12345678901234567890}]}}`, string(msgBody))
-		assert.Equal(t, deltaSentCount+1, rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
+		assert.Equal(t, deltaSentCount+1, client.rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
 
 		msg, ok = client.WaitForBlipRevMessage(docID, docVersion2)
 		assert.True(t, ok)
@@ -429,7 +428,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		assert.NoError(t, err)
 
 		// create doc1 rev 1-1513b53e2738671e634d9dd111f48de0
-		version := rt.PutDoc(docID, `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
+		version := client.rt.PutDoc(docID, `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
 
 		data, ok := client.WaitForVersion(docID, version)
 		assert.True(t, ok)
@@ -437,7 +436,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 		// create doc1 rev 2-ff91e11bc1fd12bbb4815a06571859a9
-		version = rt.UpdateDoc(docID, version, `{"channels": ["private"], "greetings": [{"hello": "world!"}, {"hi": "bob"}]}`)
+		version = client.rt.UpdateDoc(docID, version, `{"channels": ["private"], "greetings": [{"hello": "world!"}, {"hi": "bob"}]}`)
 
 		data, ok = client.WaitForVersion(docID, version)
 		assert.True(t, ok)
@@ -500,14 +499,14 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		assert.NoError(t, err)
 
 		// create doc1 rev 1-e89945d756a1d444fa212bffbbb31941
-		version := rt.PutDoc(docID, `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
+		version := client.rt.PutDoc(docID, `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
 		data, ok := client.WaitForVersion(docID, version)
 		assert.True(t, ok)
 		assert.Contains(t, string(data), `"channels":["public"]`)
 		assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 		// tombstone doc1 at rev 2-2db70833630b396ef98a3ec75b3e90fc
-		version = rt.DeleteDocReturnVersion(docID, version)
+		version = client.rt.DeleteDocReturnVersion(docID, version)
 
 		data, ok = client.WaitForVersion(docID, version)
 		assert.True(t, ok)
@@ -600,7 +599,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		require.NoError(t, err)
 
 		// create doc1 rev 1-e89945d756a1d444fa212bffbbb31941
-		version := rt.PutDoc(docID, `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
+		version := client1.rt.PutDoc(docID, `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
 
 		data, ok := client1.WaitForVersion(docID, version)
 		assert.True(t, ok)
@@ -616,7 +615,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 		// tombstone doc1 at rev 2-2db70833630b396ef98a3ec75b3e90fc
-		version = rt.DeleteDocReturnVersion(docID, version)
+		version = client1.rt.DeleteDocReturnVersion(docID, version)
 
 		data, ok = client1.WaitForVersion(docID, version)
 		assert.True(t, ok)
@@ -722,7 +721,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		assert.NoError(t, err)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version1 := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+		version1 := client.rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
 		data, ok := client.WaitForVersion(docID, version1)
 		assert.True(t, ok)
@@ -737,7 +736,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
-		version2 := rt.UpdateDoc(docID, version1, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": "bob"}]}`)
+		version2 := client.rt.UpdateDoc(docID, version1, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": "bob"}]}`)
 
 		data, ok = client.WaitForVersion(docID, version2)
 		assert.True(t, ok)
@@ -804,7 +803,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.NoError(t, err)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+		version := client.rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
 		data, ok := client.WaitForVersion(docID, version)
 		assert.True(t, ok)
@@ -839,7 +838,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 			assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
 		}
 
-		respBody := rt.GetDocVersion(docID, newRev)
+		respBody := client.rt.GetDocVersion(docID, newRev)
 		assert.Equal(t, "doc1", respBody[db.BodyId])
 		greetings := respBody["greetings"].([]interface{})
 		assert.Len(t, greetings, 3)
@@ -848,7 +847,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, map[string]interface{}{"howdy": "bob"}, greetings[2])
 
 		// tombstone doc1 (gets rev 3-f3be6c85e0362153005dae6f08fc68bb)
-		deletedVersion := rt.DeleteDocReturnVersion(docID, newRev)
+		deletedVersion := client.rt.DeleteDocReturnVersion(docID, newRev)
 
 		data, ok = client.WaitForVersion(docID, deletedVersion)
 		assert.True(t, ok)
@@ -907,7 +906,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		assert.NoError(t, err)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+		version := client.rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
 		data, ok := client.WaitForVersion(docID, version)
 		assert.True(t, ok)
@@ -927,7 +926,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		assert.NotEqual(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
 
-		body := rt.GetDocVersion("doc1", newRev)
+		body := client.rt.GetDocVersion("doc1", newRev)
 		require.Equal(t, "bob", body["greetings"].([]interface{})[2].(map[string]interface{})["howdy"])
 	}, t, rtConfig)
 }

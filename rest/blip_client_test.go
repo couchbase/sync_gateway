@@ -38,7 +38,7 @@ type BlipTesterClientOpts struct {
 	SupportedBLIPProtocols          []string
 	SkipCollectionsInitialization   bool
 	SkipVersionVectorInitialization bool
-	NumCollectionsNeeded            int
+	NumCollectionsRequired          int
 
 	// a deltaSrc rev ID for which to reject a delta
 	rejectDeltasForSrcRev string
@@ -676,8 +676,8 @@ func (btc *BlipTesterClient) RunWithRevocationTester(test func(t *testing.T, tes
 }
 
 func (btc *BlipTesterClient) Run(test func(*testing.T), t *testing.T, rtConfig *RestTesterConfig) {
-	if btc.NumCollectionsNeeded != 0 {
-		btc.rt = NewRestTesterMultipleCollections(t, rtConfig, btc.NumCollectionsNeeded)
+	if btc.NumCollectionsRequired != 0 {
+		btc.rt = NewRestTesterMultipleCollections(t, rtConfig, btc.NumCollectionsRequired)
 	} else {
 		// assume standard rest tester creation
 		btc.rt = NewRestTester(t, rtConfig)
@@ -700,8 +700,8 @@ func (btc *BlipTesterClient) Run(test func(*testing.T), t *testing.T, rtConfig *
 	btc.rt.Close()
 
 	// setup rest tester for new run
-	if btc.NumCollectionsNeeded != 0 {
-		btc.rt = NewRestTesterMultipleCollections(t, rtConfig, btc.NumCollectionsNeeded)
+	if btc.NumCollectionsRequired != 0 {
+		btc.rt = NewRestTesterMultipleCollections(t, rtConfig, btc.NumCollectionsRequired)
 	} else {
 		// assume standard rest tester creation
 		btc.rt = NewRestTester(t, rtConfig)

@@ -1847,14 +1847,14 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 		assert.NoError(t, err)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version1 := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+		version1 := client.rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
 		data, ok := client.WaitForVersion(docID, version1)
 		assert.True(t, ok)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
-		version2 := rt.UpdateDoc(docID, version1, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
+		version2 := client.rt.UpdateDoc(docID, version1, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
 
 		data, ok = client.WaitForVersion(docID, version2)
 		assert.True(t, ok)
@@ -1878,7 +1878,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	const docID = "doc1"
 
 	btc.Run(func(t *testing.T) {
-		version := rt.PutDoc(docID, `{"test":true}`)
+		version := btc.rt.PutDoc(docID, `{"test":true}`)
 
 		// start an initial pull
 		require.NoError(t, btc.StartPullSince("true", "0", "true"))
@@ -1887,7 +1887,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 		assert.Equal(t, `{"test":true}`, string(rev))
 
 		// delete the doc and make sure the client still gets the tombstone replicated
-		deletedVersion := rt.DeleteDocReturnVersion(docID, version)
+		deletedVersion := btc.rt.DeleteDocReturnVersion(docID, version)
 
 		rev, found = btc.WaitForVersion(docID, deletedVersion)
 		assert.True(t, found)
@@ -1963,9 +1963,13 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	const docMarker = "docmarker"
 
 	btc.Run(func(t *testing.T) {
-		version := rt.PutDoc(docID, `{"channels": ["A", "B"]}`)
+		collection := btc.rt.GetSingleTestDatabaseCollection()
+		resp := btc.rt.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", collection, []string{"A", "B"}, nil))
+		RequireStatus(t, resp, http.StatusOK)
 
-		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
+		version := btc.rt.PutDoc(docID, `{"channels": ["A", "B"]}`)
+
+		changes, err := btc.rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(changes.Results))
 		assert.Equal(t, "doc", changes.Results[0].ID)
@@ -1976,9 +1980,9 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		_, ok := btc.WaitForVersion(docID, version)
 		assert.True(t, ok)
 
-		version = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
+		version = btc.rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
 
-		changes, err = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
+		changes, err = btc.rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(changes.Results))
 		assert.Equal(t, docID, changes.Results[0].ID)
@@ -1989,10 +1993,10 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		_, ok = btc.WaitForVersion(docID, version)
 		assert.True(t, ok)
 
-		version = rt.UpdateDoc(docID, version, `{"channels": []}`)
-		docMarkerVersion := rt.PutDoc(docMarker, `{"channels": ["!"]}`)
+		version = btc.rt.UpdateDoc(docID, version, `{"channels": []}`)
+		docMarkerVersion := btc.rt.PutDoc(docMarker, `{"channels": ["!"]}`)
 
-		changes, err = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
+		changes, err = btc.rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 		require.NoError(t, err)
 		assert.Len(t, changes.Results, 2)
 		assert.Equal(t, "doc", changes.Results[0].ID)
@@ -2074,9 +2078,9 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		resp := btc.rt.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", collection, []string{"A", "B"}, nil))
 		RequireStatus(t, resp, http.StatusOK)
 
-		version := rt.PutDoc(docID, `{"channels": ["A", "B"]}`)
+		version := btc.rt.PutDoc(docID, `{"channels": ["A", "B"]}`)
 
-		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
+		changes, err := btc.rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(changes.Results))
 		assert.Equal(t, docID, changes.Results[0].ID)
@@ -2087,11 +2091,11 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		_, ok := btc.WaitForVersion(docID, version)
 		assert.True(t, ok)
 
-		version = rt.UpdateDoc(docID, version, `{"channels": ["C"]}`)
-		require.NoError(t, rt.WaitForPendingChanges())
+		version = btc.rt.UpdateDoc(docID, version, `{"channels": ["C"]}`)
+		require.NoError(t, btc.rt.WaitForPendingChanges())
 
 		// At this point changes should send revocation, as document isn't in any of the user's channels
-		changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
+		changes, err = btc.rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(changes.Results))
 		assert.Equal(t, docID, changes.Results[0].ID)
@@ -2102,12 +2106,12 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		_, ok = btc.WaitForVersion(docID, version)
 		assert.True(t, ok)
 
-		_ = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
-		markerVersion := rt.PutDoc(markerID, `{"channels": ["A"]}`)
-		require.NoError(t, rt.WaitForPendingChanges())
+		_ = btc.rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
+		markerVersion := btc.rt.PutDoc(markerID, `{"channels": ["A"]}`)
+		require.NoError(t, btc.rt.WaitForPendingChanges())
 
 		// Revocation should not be sent over blip, as document is now in user's channels - only marker document should be received
-		changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
+		changes, err = btc.rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
 		require.NoError(t, err)
 		assert.Len(t, changes.Results, 2) // _changes still gets two results, as we don't support 3.0 removal handling over REST API
 		assert.Equal(t, "doc", changes.Results[0].ID)
@@ -2394,9 +2398,9 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 				require.NoError(t, err)
 
 				var bucketDoc map[string]interface{}
-				_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)
+				_, err = client.rt.GetSingleDataStore().Get(docID, &bucketDoc)
 				assert.NoError(t, err)
-				body := rt.GetDocBody(docID)
+				body := client.rt.GetDocBody(docID)
 				// Confirm input body is in the bucket doc
 				if test.skipDocContentsVerification == nil || !*test.skipDocContentsVerification {
 					for k, v := range test.inputBody {
@@ -2565,7 +2569,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 					recievedNoRevs <- msg
 				}
 
-				version := rt.PutDoc(docName, `{"foo":"bar"}`)
+				version := btc.rt.PutDoc(docName, `{"foo":"bar"}`)
 
 				// Make the LeakyBucket return an error
 				leakyDataStore.SetGetRawCallback(func(key string) error {
@@ -2623,7 +2627,7 @@ func TestUnsubChanges(t *testing.T) {
 		// Sub changes
 		err = btc.StartPull()
 		require.NoError(t, err)
-		doc1Version := rt.PutDoc(doc1ID, `{"key":"val1"}`)
+		doc1Version := btc.rt.PutDoc(doc1ID, `{"key":"val1"}`)
 		_, found := btc.WaitForVersion(doc1ID, doc1Version)
 		require.True(t, found)
 
@@ -2638,8 +2642,8 @@ func TestUnsubChanges(t *testing.T) {
 		base.RequireWaitForStat(t, activeReplStat.Value, 0)
 
 		// Confirm no more changes are being sent
-		doc2Version := rt.PutDoc(doc2ID, `{"key":"val1"}`)
-		err = rt.WaitForConditionWithOptions(func() bool {
+		doc2Version := btc.rt.PutDoc(doc2ID, `{"key":"val1"}`)
+		err = btc.rt.WaitForConditionWithOptions(func() bool {
 			_, found = btc.GetVersion("doc2", doc2Version)
 			return found
 		}, 10, 100)
@@ -2796,7 +2800,7 @@ func TestBlipRefreshUser(t *testing.T) {
 
 	const username = "bernard"
 	// Initialize blip tester client (will create user)
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
+	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{ // This test will need refactoring when its getting fixed in CBG-3512
 		Username: "bernard",
 		Channels: []string{"chan1"},
 	})

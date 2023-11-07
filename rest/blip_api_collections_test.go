@@ -31,7 +31,7 @@ func TestBlipGetCollections(t *testing.T) {
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{
 		SkipCollectionsInitialization: true,
-		NumCollectionsNeeded:          1,
+		NumCollectionsRequired:        1,
 	})
 	defer btc.Close()
 
@@ -244,8 +244,8 @@ func TestCollectionsReplication(t *testing.T) {
 	const docID = "doc1"
 
 	btc.Run(func(t *testing.T) {
-		version := rt.PutDoc(docID, "{}")
-		require.NoError(t, rt.WaitForPendingChanges())
+		version := btc.rt.PutDoc(docID, "{}")
+		require.NoError(t, btc.rt.WaitForPendingChanges())
 
 		btcCollection := btc.SingleCollection()
 
@@ -262,19 +262,19 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{NumCollectionsNeeded: 2})
+	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{NumCollectionsRequired: 2})
 	defer btc.Close()
 
 	btc.Run(func(t *testing.T) {
 		docName := "doc1"
 		body := `{"foo":"bar"}`
-		versions := make([]DocVersion, 0, len(rt.GetKeyspaces()))
-		for _, keyspace := range rt.GetKeyspaces() {
-			resp := rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docName, `{"foo":"bar"}`)
+		versions := make([]DocVersion, 0, len(btc.rt.GetKeyspaces()))
+		for _, keyspace := range btc.rt.GetKeyspaces() {
+			resp := btc.rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docName, `{"foo":"bar"}`)
 			RequireStatus(t, resp, http.StatusCreated)
 			versions = append(versions, DocVersionFromPutResponse(t, resp))
 		}
-		require.NoError(t, rt.WaitForPendingChanges())
+		require.NoError(t, btc.rt.WaitForPendingChanges())
 
 		// start all the clients first
 		for _, collectionClient := range btc.collectionClients {
@@ -299,24 +299,24 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{NumCollectionsNeeded: 2})
+	btc := NewBlipTesterClientOptsWithRT(&BlipTesterClientOpts{NumCollectionsRequired: 2})
 	defer btc.Close()
 
 	btc.Run(func(t *testing.T) {
 		body := `{"foo":"bar"}`
 		collectionDocIDs := make(map[string][]string)
 		collectionVersions := make(map[string][]DocVersion)
-		require.Len(t, rt.GetKeyspaces(), 2)
-		for i, keyspace := range rt.GetKeyspaces() {
+		require.Len(t, btc.rt.GetKeyspaces(), 2)
+		for i, keyspace := range btc.rt.GetKeyspaces() {
 			// intentionally create collections with different size replications to ensure one collection finishing won't cancel another one
 			docCount := 10
 			if i == 0 {
 				docCount = 1
 			}
-			blipName := rt.getCollectionsForBLIP()[i]
+			blipName := btc.rt.getCollectionsForBLIP()[i]
 			for j := 0; j < docCount; j++ {
 				docName := fmt.Sprintf("doc%d", j)
-				resp := rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docName, body)
+				resp := btc.rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docName, body)
 				RequireStatus(t, resp, http.StatusCreated)
 
 				version := DocVersionFromPutResponse(t, resp)
@@ -324,7 +324,7 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 				collectionDocIDs[blipName] = append(collectionDocIDs[blipName], docName)
 			}
 		}
-		require.NoError(t, rt.WaitForPendingChanges())
+		require.NoError(t, btc.rt.WaitForPendingChanges())
 
 		// start all the clients first
 		for _, collectionClient := range btc.collectionClients {
