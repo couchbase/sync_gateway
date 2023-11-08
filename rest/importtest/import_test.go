@@ -2039,7 +2039,7 @@ func assertDocProperty(t *testing.T, getDocResponse *rest.TestResponse, property
 	err := base.JSONUnmarshal(getDocResponse.Body.Bytes(), &responseBody)
 	assert.NoError(t, err, "Error unmarshalling document response")
 	value, ok := responseBody[propertyName]
-	require.True(t, ok, fmt.Sprintf("Expected property %s not found in response %s", propertyName, getDocResponse.Body.Bytes()))
+	assert.True(t, ok, fmt.Sprintf("Expected property %s not found in response %s", propertyName, getDocResponse.Body.Bytes()))
 	assert.Equal(t, expectedPropertyValue, value)
 }
 
@@ -2734,7 +2734,12 @@ func TestImportRollback(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP)
 
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: bucket.NoCloseClone(),
 		PersistentConfig: false,
 	})
 
@@ -2763,9 +2768,9 @@ func TestImportRollback(t *testing.T) {
 	}()
 
 	// fetch the checkpoint for the document's vbucket, modify the checkpoint values to a higher sequence
-	vbNo, err := base.GetVbucketForKey(rt.TestBucket, key)
+	vbNo, err := base.GetVbucketForKey(bucket, key)
 	require.NoError(t, err)
-	metaStore := rt.TestBucket.GetMetadataStore()
+	metaStore := bucket.GetMetadataStore()
 	checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
 	var checkpointData dcpMetaData
 	checkpointBytes, _, err := metaStore.GetRaw(checkpointKey)
@@ -2784,6 +2789,7 @@ func TestImportRollback(t *testing.T) {
 
 	// Reopen the db, expect DCP rollback
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: bucket.NoCloseClone(),
 		PersistentConfig: false,
 	})
 	defer rt2.Close()

@@ -189,9 +189,11 @@ func getDbConfigFromLegacyConfig(rt *rest.RestTester) string {
 }
 func TestLegacyMetadataID(t *testing.T) {
 
+	tb1 := base.GetTestBucket(t)
 	// Create a non-persistent rest tester.  Standard RestTester
 	// creates a database 'db' targeting the default collection (when !TestUseNamedCollections)
 	legacyRT := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb1.NoCloseClone(),
 		PersistentConfig: false,
 	})
 
@@ -203,13 +205,13 @@ func TestLegacyMetadataID(t *testing.T) {
 	legacyRT.Close()
 
 	persistentRT := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
-		CustomTestBucket: legacyRT.TestBucket,
+		CustomTestBucket: tb1,
 		PersistentConfig: true,
 	})
 	defer persistentRT.Close()
 
 	resp = persistentRT.SendAdminRequest("PUT", "/db/", dbConfigString)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+	assert.Equal(t, http.StatusCreated, resp.Code)
 
 	// check if database is online
 	dbRoot := persistentRT.GetDatabaseRoot("db")
@@ -252,9 +254,11 @@ func TestMetadataIDRenameDatabase(t *testing.T) {
 // Verifies that matching metadataIDs are computed if two config groups for the same database are upgraded
 func TestMetadataIDWithConfigGroups(t *testing.T) {
 
+	tb1 := base.GetTestBucket(t)
 	// Create a non-persistent rest tester.  Standard RestTester
 	// creates a database 'db' targeting the default collection for legacy config.
 	legacyRT := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb1.NoCloseClone(),
 		PersistentConfig: false,
 	})
 
@@ -266,14 +270,14 @@ func TestMetadataIDWithConfigGroups(t *testing.T) {
 	legacyRT.Close()
 
 	group1RT := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: legacyRT.TestBucket,
+		CustomTestBucket: tb1,
 		PersistentConfig: true,
 		GroupID:          base.StringPtr("group1"),
 	})
 	defer group1RT.Close()
 
 	group2RT := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: legacyRT.TestBucket,
+		CustomTestBucket: tb1,
 		PersistentConfig: true,
 		GroupID:          base.StringPtr("group2"),
 	})

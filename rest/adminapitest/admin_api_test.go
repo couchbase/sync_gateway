@@ -1472,6 +1472,7 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyConfig)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure the interval time to pick up new configs from the bucket to every 1 seconds
@@ -1556,6 +1557,7 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 	base.TestsRequireBootstrapConnection(t)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure the interval time to pick up new configs from the bucket to every 1 seconds
@@ -1605,8 +1607,12 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
 	base.TestsRequireBootstrapConnection(t)
 	base.RequireNumTestBuckets(t, 2)
+	ctx := base.TestCtx(t)
+	tb1 := base.GetTestBucket(t)
+	defer tb1.Close(ctx)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure the interval time to pick up new configs from the bucket to every 1 seconds
@@ -1622,9 +1628,6 @@ func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
 
 	// wait for db to come online
 	require.NoError(t, rt.WaitForDBOnline())
-	ctx := base.TestCtx(t)
-	tb1 := base.GetTestBucket(t)
-	defer tb1.Close(ctx)
 	badName := tb1.GetName()
 	dbConfig.Bucket = &badName
 
