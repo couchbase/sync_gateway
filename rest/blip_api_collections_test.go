@@ -29,13 +29,17 @@ func TestBlipGetCollections(t *testing.T) {
 
 	const defaultScopeAndCollection = "_default._default"
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
-	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
-		SkipCollectionsInitialization: true,
-		NumCollectionsRequired:        1,
-	})
-	defer btc.Close()
+	btcRunner := NewBlipTesterClientRunner(t)
 
-	btc.Run(func(t *testing.T) {
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTesterMultipleCollections(t, rtConfig, 1)
+		defer rt.Close()
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			SkipCollectionsInitialization: true,
+			SupportedBLIPProtocols:        SupportedBLIPProtocols,
+		})
+		defer btc.Close()
+
 		checkpointID1 := "checkpoint1"
 		checkpoint1Body := db.Body{"seq": "123"}
 		collection := btc.rt.GetSingleTestDatabaseCollection()
@@ -139,7 +143,7 @@ func TestBlipGetCollections(t *testing.T) {
 				require.Equal(t, testCase.resultBody, checkpoints)
 			})
 		}
-	}, t, rtConfig)
+	})
 }
 
 func TestBlipReplicationNoDefaultCollection(t *testing.T) {
@@ -148,13 +152,15 @@ func TestBlipReplicationNoDefaultCollection(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
+	btcRunner := NewBlipTesterClientRunner(t)
 
-	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
-		SkipVersionVectorInitialization: true, // no need for version vector test here
-	})
-	defer btc.Close()
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, rtConfig)
+		defer rt.Close()
 
-	btc.Run(func(t *testing.T) {
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
 		checkpointID1 := "checkpoint1"
 		checkpoint1Body := db.Body{"seq": "123"}
 		collection := btc.rt.GetSingleTestDatabaseCollection()
@@ -169,7 +175,7 @@ func TestBlipReplicationNoDefaultCollection(t *testing.T) {
 		require.NoError(t, btc.pullReplication.sendMsg(subChangesRequest))
 		resp := subChangesRequest.Response()
 		require.Equal(t, strconv.Itoa(http.StatusBadRequest), resp.Properties[db.BlipErrorCode])
-	}, t, rtConfig)
+	})
 }
 
 func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
@@ -178,13 +184,16 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
+	btcRunner := NewBlipTesterClientRunner(t)
 
-	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
-		SkipVersionVectorInitialization: true, // no need for version vector test here
-	})
-	defer btc.Close()
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, rtConfig)
+		defer rt.Close()
 
-	btc.Run(func(t *testing.T) {
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
+
 		checkpointID1 := "checkpoint1"
 		checkpoint1Body := db.Body{"seq": "123"}
 		collection := btc.rt.GetSingleTestDatabaseCollection()
@@ -229,7 +238,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 		require.NoErrorf(t, err, "Actual error %+v", checkpoint)
 
 		require.Equal(t, db.Body{"seq": "123"}, checkpoint)
-	}, t, rtConfig)
+	})
 }
 
 func TestCollectionsReplication(t *testing.T) {
@@ -238,34 +247,44 @@ func TestCollectionsReplication(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
-
-	btc := NewBlipTesterClientOpts(nil)
-	defer btc.Close()
 	const docID = "doc1"
+	btcRunner := NewBlipTesterClientRunner(t)
 
-	btc.Run(func(t *testing.T) {
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, rtConfig)
+		defer rt.Close()
+
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
+
 		version := btc.rt.PutDoc(docID, "{}")
 		require.NoError(t, btc.rt.WaitForPendingChanges())
 
-		btcCollection := btc.SingleCollection()
+		btcCollection := btcRunner.SingleCollection(btc.id)
 
 		err := btcCollection.StartOneshotPull()
 		require.NoError(t, err)
 
 		_, ok := btcCollection.WaitForVersion(docID, version)
 		require.True(t, ok)
-	}, t, rtConfig)
+	})
 }
 
 func TestBlipReplicationMultipleCollections(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
+	btcRunner := NewBlipTesterClientRunner(t)
 
-	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{NumCollectionsRequired: 2})
-	defer btc.Close()
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
+		defer rt.Close()
 
-	btc.Run(func(t *testing.T) {
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
+
 		docName := "doc1"
 		body := `{"foo":"bar"}`
 		versions := make([]DocVersion, 0, len(btc.rt.GetKeyspaces()))
@@ -291,18 +310,23 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 			resp, err := collectionClient.UnsubPullChanges()
 			assert.NoError(t, err, "Error unsubing: %+v", resp)
 		}
-	}, t, rtConfig)
+	})
 }
 
 func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
+	btcRunner := NewBlipTesterClientRunner(t)
 
-	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{NumCollectionsRequired: 2})
-	defer btc.Close()
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
+		defer rt.Close()
 
-	btc.Run(func(t *testing.T) {
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
+
 		body := `{"foo":"bar"}`
 		collectionDocIDs := make(map[string][]string)
 		collectionVersions := make(map[string][]DocVersion)
@@ -343,6 +367,5 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 			resp, err := collectionClient.UnsubPullChanges()
 			assert.NoError(t, err, "Error unsubing: %+v", resp)
 		}
-	}, t, rtConfig)
-
+	})
 }

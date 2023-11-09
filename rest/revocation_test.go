@@ -2223,16 +2223,21 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 func TestRevocationMessage(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
-		Username:        "user",
-		Channels:        []string{"*"},
-		ClientDeltas:    false,
-		SendRevocations: true,
-	})
-	defer btc.Close()
+	btcRunner := NewBlipTesterClientRunner(t)
 	const doc1ID = "doc1"
 
-	btc.RunWithRevocationTester(func(t *testing.T, revocationTester ChannelRevocationTester) {
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		revocationTester, rt := InitScenario(t, nil)
+		defer rt.Close()
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			Username:               "user",
+			Channels:               []string{"*"},
+			ClientDeltas:           false,
+			SendRevocations:        true,
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
+		})
+		defer btc.Close()
+
 		// Add channel to role and role to user
 		revocationTester.addRoleChannel("foo", "A")
 		revocationTester.addRole("user", "foo")
@@ -2244,11 +2249,11 @@ func TestRevocationMessage(t *testing.T) {
 		require.NoError(t, btc.rt.WaitForPendingChanges())
 
 		// Start pull
-		err := btc.StartOneshotPull()
+		err := btcRunner.StartOneshotPull(btc.id)
 		assert.NoError(t, err)
 
 		// Wait for doc revision to come over
-		_, ok := btc.WaitForBlipRevMessage("doc", version)
+		_, ok := btcRunner.WaitForBlipRevMessage(btc.id, "doc", version)
 		require.True(t, ok)
 
 		// Remove role from user
@@ -2262,11 +2267,11 @@ func TestRevocationMessage(t *testing.T) {
 		require.NoError(t, btc.rt.WaitForPendingChanges())
 
 		// Start a pull since 5 to receive revocation and removal
-		err = btc.StartPullSince("false", "5", "false")
+		err = btcRunner.StartPullSince(btc.id, "false", "5", "false")
 		assert.NoError(t, err)
 
 		// Wait for doc1 rev2 - This is the last rev we expect so we can be sure replication is complete here
-		_, found := btc.WaitForVersion(doc1ID, version)
+		_, found := btcRunner.WaitForVersion(btc.id, doc1ID, version)
 		require.True(t, found)
 
 		messages := btc.pullReplication.GetMessages()
@@ -2325,23 +2330,28 @@ func TestRevocationMessage(t *testing.T) {
 			})
 		}
 		assert.NoError(t, err)
-	}, t, nil)
+	})
 }
 
 func TestRevocationNoRev(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
-		Username:        "user",
-		Channels:        []string{"*"},
-		ClientDeltas:    false,
-		SendRevocations: true,
-	})
-	defer btc.Close()
 	const docID = "doc"
 	const waitMarkerID = "docmarker"
+	btcRunner := NewBlipTesterClientRunner(t)
 
-	btc.RunWithRevocationTester(func(t *testing.T, revocationTester ChannelRevocationTester) {
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		revocationTester, rt := InitScenario(t, nil)
+		defer rt.Close()
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			Username:               "user",
+			Channels:               []string{"*"},
+			ClientDeltas:           false,
+			SendRevocations:        true,
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
+		})
+		defer btc.Close()
+
 		// Add channel to role and role to user
 		revocationTester.addRoleChannel("foo", "A")
 		revocationTester.addRole("user", "foo")
@@ -2354,10 +2364,10 @@ func TestRevocationNoRev(t *testing.T) {
 		firstOneShotSinceSeq := btc.rt.GetDocumentSequence("doc")
 
 		// OneShot pull to grab doc
-		err := btc.StartOneshotPull()
+		err := btcRunner.StartOneshotPull(btc.id)
 		assert.NoError(t, err)
 
-		_, ok := btc.WaitForVersion(docID, version)
+		_, ok := btcRunner.WaitForVersion(btc.id, docID, version)
 		require.True(t, ok)
 
 		// Remove role from user
@@ -2369,10 +2379,10 @@ func TestRevocationNoRev(t *testing.T) {
 		require.NoError(t, btc.rt.WaitForPendingChanges())
 
 		lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
-		err = btc.StartPullSince("false", lastSeqStr, "false")
+		err = btcRunner.StartPullSince(btc.id, "false", lastSeqStr, "false")
 		assert.NoError(t, err)
 
-		_, ok = btc.WaitForVersion(waitMarkerID, waitMarkerVersion)
+		_, ok = btcRunner.WaitForVersion(btc.id, waitMarkerID, waitMarkerVersion)
 		require.True(t, ok)
 
 		messages := btc.pullReplication.GetMessages()
@@ -2401,7 +2411,7 @@ func TestRevocationNoRev(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, deletedFlag, int64(2))
-	}, t, nil)
+	})
 }
 
 func TestRevocationGetSyncDataError(t *testing.T) {
@@ -2422,18 +2432,22 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 		},
 	}
 
-	btc := NewBlipTesterClientOpts(&BlipTesterClientOpts{
-		Username:        "user",
-		Channels:        []string{"*"},
-		ClientDeltas:    false,
-		SendRevocations: true,
-	})
-	defer btc.Close()
 	const docID = "doc"
 	const waitMarkerID = "docmarker"
+	btcRunner := NewBlipTesterClientRunner(t)
 
-	btc.RunWithRevocationTester(func(t *testing.T, revocationTester ChannelRevocationTester) {
-		revocationTester.fillerDocVersion.RevID = ""
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		revocationTester, rt := InitScenario(t, rtConfig)
+		defer rt.Close()
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			Username:               "user",
+			Channels:               []string{"*"},
+			ClientDeltas:           false,
+			SendRevocations:        true,
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
+		})
+		defer btc.Close()
+
 		// Add channel to role and role to user
 		revocationTester.addRoleChannel("foo", "A")
 		revocationTester.addRole("user", "foo")
@@ -2446,10 +2460,10 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 		firstOneShotSinceSeq := btc.rt.GetDocumentSequence("doc")
 
 		// OneShot pull to grab doc
-		err := btc.StartOneshotPull()
+		err := btcRunner.StartOneshotPull(btc.id)
 		assert.NoError(t, err)
 		throw = true
-		_, ok := btc.WaitForVersion(docID, version)
+		_, ok := btcRunner.WaitForVersion(btc.id, docID, version)
 		require.True(t, ok)
 
 		// Remove role from user
@@ -2461,26 +2475,32 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 		require.NoError(t, btc.rt.WaitForPendingChanges())
 
 		lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
-		err = btc.StartPullSince("false", lastSeqStr, "false")
+		err = btcRunner.StartPullSince(btc.id, "false", lastSeqStr, "false")
 		assert.NoError(t, err)
 
-		_, ok = btc.WaitForVersion(waitMarkerID, waitMarkerVersion)
+		_, ok = btcRunner.WaitForVersion(btc.id, waitMarkerID, waitMarkerVersion)
 		require.True(t, ok)
-	}, t, rtConfig)
+	})
 }
 
 // Regression test for CBG-2183.
 func TestBlipRevokeNonExistentRole(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-	bt := NewBlipTesterClientOpts(&BlipTesterClientOpts{
-		Username:        "bilbo",
-		SendRevocations: true,
-	})
-	defer bt.Close()
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: false,
 	}
-	bt.Run(func(t *testing.T) {
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, rtConfig)
+		defer rt.Close()
+		bt := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			Username:               "bilbo",
+			SendRevocations:        true,
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
+		})
+		defer bt.Close()
+
 		collection := bt.rt.GetSingleTestDatabaseCollection()
 
 		// 1. Create user with admin_roles including two roles not previously defined (a1 and a2, for example)
@@ -2497,13 +2517,13 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 		RequireStatus(t, res, http.StatusOK)
 
 		// 4. Try to sync
-		require.NoError(t, bt.StartPull())
+		require.NoError(t, btcRunner.StartPull(bt.id))
 
 		// in the failing case we'll panic before hitting this
 		base.RequireWaitForStat(t, func() int64 {
 			return bt.rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 		}, 1)
-	}, t, rtConfig)
+	})
 }
 
 func TestReplicatorSwitchPurgeNoReset(t *testing.T) {

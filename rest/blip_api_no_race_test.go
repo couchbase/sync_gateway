@@ -44,64 +44,68 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 		GuestEnabled:     true,
 		CustomTestBucket: tb.NoCloseClone(),
 	}
-	rt := NewRestTester(t, &rtConfig)
-	defer rt.Close()
+	btcRunner := NewBlipTesterClientRunner(t)
 
-	client := NewBlipTesterClientOpts(nil)
-	defer client.Close()
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
 
-	var lastPushRevErr atomic.Value
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
 
-	// Wait for the background updates to finish at the end of the test
-	shouldCreateDocs := base.NewAtomicBool(true)
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	defer func() {
-		shouldCreateDocs.Set(false)
-		wg.Wait()
-	}()
+		var lastPushRevErr atomic.Value
 
-	// Start the test client creating and pushing documents in the background
-	go func() {
-		for i := 0; shouldCreateDocs.IsTrue(); i++ {
-			// this will begin to error when the database is reloaded underneath the replication
-			_, err := client.PushRev(fmt.Sprintf("doc%d", i), EmptyDocVersion(), []byte(fmt.Sprintf(`{"i":%d}`, i)))
-			if err != nil {
-				lastPushRevErr.Store(err)
+		// Wait for the background updates to finish at the end of the test
+		shouldCreateDocs := base.NewAtomicBool(true)
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+		defer func() {
+			shouldCreateDocs.Set(false)
+			wg.Wait()
+		}()
+
+		// Start the test client creating and pushing documents in the background
+		go func() {
+			for i := 0; shouldCreateDocs.IsTrue(); i++ {
+				// this will begin to error when the database is reloaded underneath the replication
+				_, err := btcRunner.PushRev(client.id, fmt.Sprintf("doc%d", i), EmptyDocVersion(), []byte(fmt.Sprintf(`{"i":%d}`, i)))
+				if err != nil {
+					lastPushRevErr.Store(err)
+				}
 			}
-		}
-		_ = rt.WaitForPendingChanges()
-		wg.Done()
-	}()
+			_ = rt.WaitForPendingChanges()
+			wg.Done()
+		}()
 
-	// and wait for a few to be done before we proceed with updating database config underneath replication
-	_, err := rt.WaitForChanges(5, "/{{.keyspace}}/_changes", "", true)
-	require.NoError(t, err)
+		// and wait for a few to be done before we proceed with updating database config underneath replication
+		_, err := rt.WaitForChanges(5, "/{{.keyspace}}/_changes", "", true)
+		require.NoError(t, err)
 
-	// just change the sync function to cause the database to reload
-	dbConfig := *rt.ServerContext().GetDbConfig("db")
-	dbConfig.Sync = base.StringPtr(`function(doc){console.log("update");}`)
-	resp := rt.ReplaceDbConfig("db", dbConfig)
-	RequireStatus(t, resp, http.StatusCreated)
+		// just change the sync function to cause the database to reload
+		dbConfig := *rt.ServerContext().GetDbConfig("db")
+		dbConfig.Sync = base.StringPtr(`function(doc){console.log("update");}`)
+		resp := rt.ReplaceDbConfig("db", dbConfig)
+		RequireStatus(t, resp, http.StatusCreated)
 
-	// Did we tell the client to close the connection (via HTTP/503)?
-	// The BlipTesterClient doesn't implement reconnect - but CBL resets the replication connection.
-	WaitAndAssertCondition(t, func() bool {
-		lastErr, ok := lastPushRevErr.Load().(error)
-		if !ok {
-			return false
-		}
-		if lastErr == nil {
-			return false
-		}
-		lastErrMsg := lastErr.Error()
-		if !strings.Contains(lastErrMsg, "HTTP 503") {
-			return false
-		}
-		if !strings.Contains(lastErrMsg, "Sync Gateway database went away - asking client to reconnect") {
-			return false
-		}
-		return true
-	}, "expected HTTP 503 error")
-
+		// Did we tell the client to close the connection (via HTTP/503)?
+		// The BlipTesterClient doesn't implement reconnect - but CBL resets the replication connection.
+		WaitAndAssertCondition(t, func() bool {
+			lastErr, ok := lastPushRevErr.Load().(error)
+			if !ok {
+				return false
+			}
+			if lastErr == nil {
+				return false
+			}
+			lastErrMsg := lastErr.Error()
+			if !strings.Contains(lastErrMsg, "HTTP 503") {
+				return false
+			}
+			if !strings.Contains(lastErrMsg, "Sync Gateway database went away - asking client to reconnect") {
+				return false
+			}
+			return true
+		}, "expected HTTP 503 error")
+	})
 }
