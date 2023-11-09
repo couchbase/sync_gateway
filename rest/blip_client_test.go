@@ -605,7 +605,8 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 		id:                   id.ID(),
 	}
 	btcRunner.clients[client.id] = client
-	client.createBlipTesterReplications()
+	err = client.createBlipTesterReplications()
+	require.NoError(btcRunner.t, err)
 
 	return client
 }
