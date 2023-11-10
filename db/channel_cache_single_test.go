@@ -951,6 +951,23 @@ func verifyChannelDocIDs(entries []*LogEntry, docIDs []string) bool {
 	return true
 }
 
+type cvValues struct {
+	source  string
+	version uint64
+}
+
+func verifyCVEntries(entries []*LogEntry, cvs []cvValues) bool {
+	for index, cv := range cvs {
+		if entries[index].SourceID != cv.source {
+			return false
+		}
+		if entries[index].Version != cv.version {
+			return false
+		}
+	}
+	return true
+}
+
 func writeEntries(entries []*LogEntry) {
 	for index, entry := range entries {
 		log.Printf("%d:seq=%d, docID=%s, revID=%s", index, entry.Sequence, entry.DocID, entry.RevID)

@@ -508,6 +508,8 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		TimeSaved:    syncData.TimeSaved,
 		Channels:     syncData.Channels,
 		CollectionID: event.CollectionID,
+		SourceID:     syncData.HLV.SourceID,
+		Version:      syncData.HLV.Version,
 	}
 
 	millisecondLatency := int(feedLatency / time.Millisecond)

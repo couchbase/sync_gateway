@@ -54,6 +54,8 @@ type LogEntry struct {
 	PrevSequence uint64       // Sequence of previous active revision
 	IsPrincipal  bool         // Whether the log-entry is a tracking entry for a principal doc
 	CollectionID uint32       // Collection ID
+	SourceID     string
+	Version      uint64
 }
 
 func (l LogEntry) String() string {

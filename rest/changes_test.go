@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -272,4 +273,45 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 	wg.Wait()
 	assert.Equal(t, 5, int(atomic.LoadUint32(&WinningRevChangedCount)))
 	assert.Equal(t, 6, int(atomic.LoadUint32(&DocumentChangedCount)))
+}
+
+func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyDCP, base.KeyCache, base.KeyHTTP)
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+	})
+	defer rt.Close()
+	channelCache := rt.GetDatabase().GetChannelCache()
+	ctx := base.TestCtx(t)
+	collectionID := rt.GetSingleTestDatabaseCollection().GetCollectionID()
+	bucketUUID := rt.GetDatabase().BucketUUID
+
+	// Make channel active
+	_, err := channelCache.GetChanges(ctx, channels.NewID("ABC", collectionID), db.ChangesOptions{ChangesCtx: ctx})
+	require.NoError(t, err)
+
+	// Put a doc that gets assigned a CV to populate the channel cache with
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"channels": ["ABC"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(ctx, "doc1")
+	require.NoError(t, err)
+	uintCAS := base.HexCasToUint64(syncData.Cas)
+
+	var logEntries []*db.LogEntry
+	// get entry of above doc from channel cache
+	err = rt.WaitForConditionWithOptions(func() bool {
+		entries, err := channelCache.GetChanges(ctx, channels.NewID("ABC", collectionID), db.ChangesOptions{ChangesCtx: ctx})
+		require.NoError(t, err)
+		logEntries = entries
+		return len(entries) != 0
+	}, 100, 1000)
+	require.NoError(t, err)
+
+	// assert that the source and version has been populated with the channel cache entry for the doc
+	assert.Equal(t, "doc1", logEntries[0].DocID)
+	assert.Equal(t, uintCAS, logEntries[0].Version)
+	assert.Equal(t, bucketUUID, logEntries[0].SourceID)
+	assert.Equal(t, syncData.HLV.SourceID, logEntries[0].SourceID)
+	assert.Equal(t, syncData.HLV.Version, logEntries[0].Version)
 }
