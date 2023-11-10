@@ -275,6 +275,12 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 	assert.Equal(t, 6, int(atomic.LoadUint32(&DocumentChangedCount)))
 }
 
+// TestCurrentVersionPopulationOnChannelCache:
+//   - Make channel active on cache
+//   - Add a doc that is assigned this channel
+//   - Get the sync data of that doc to assert against the HLV defined on it
+//   - Wait for the channel cache to be populated with this doc write
+//   - Assert the CV in the entry fetched from channel cache matches the sync data CV and the bucket UUID on the database context
 func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyDCP, base.KeyCache, base.KeyHTTP)
 	rt := NewRestTester(t, &RestTesterConfig{

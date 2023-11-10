@@ -499,6 +499,13 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	if len(rawUserXattr) > 0 {
 		collection.revisionCache.RemoveWithRev(docID, syncData.CurrentRev)
 	}
+	var docSource string
+	var docVersion uint64
+	if syncData.HLV != nil {
+		docSource = syncData.HLV.SourceID
+		docVersion = syncData.HLV.Version
+	}
+
 	change := &LogEntry{
 		Sequence:     syncData.Sequence,
 		DocID:        docID,
@@ -508,8 +515,8 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		TimeSaved:    syncData.TimeSaved,
 		Channels:     syncData.Channels,
 		CollectionID: event.CollectionID,
-		SourceID:     syncData.HLV.SourceID,
-		Version:      syncData.HLV.Version,
+		SourceID:     docSource,
+		Version:      docVersion,
 	}
 
 	millisecondLatency := int(feedLatency / time.Millisecond)

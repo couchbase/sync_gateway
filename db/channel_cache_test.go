@@ -53,6 +53,10 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	assert.Equal(t, 4, int(maxEntries))
 }
 
+// TestChannelCacheCurrentVersion:
+//   - Makes channel channels active for channels used in test by requesting changes on each channel
+//   - Add 4 docs to the channel cache with CV defined in the log entry
+//   - Get changes for each channel in question and assert that the CV is populated in each entry expected
 func TestChannelCacheCurrentVersion(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
