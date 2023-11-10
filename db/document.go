@@ -41,6 +41,7 @@ const (
 	DocUnmarshalHistory                                  // Unmarshals history + rev + CAS only
 	DocUnmarshalRev                                      // Unmarshals rev + CAS only
 	DocUnmarshalCAS                                      // Unmarshals CAS (for import check) only
+	DocUnmarshalVV                                       // Unmarshals Version Vector only
 	DocUnmarshalNone                                     // No unmarshalling (skips import/upgrade check)
 )
 
@@ -64,23 +65,24 @@ type ChannelSetEntry struct {
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type SyncData struct {
-	CurrentRev        string              `json:"rev"`
-	NewestRev         string              `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
-	Flags             uint8               `json:"flags,omitempty"`
-	Sequence          uint64              `json:"sequence,omitempty"`
-	UnusedSequences   []uint64            `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
-	RecentSequences   []uint64            `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
-	Channels          channels.ChannelMap `json:"channels,omitempty"`
-	Access            UserAccessMap       `json:"access,omitempty"`
-	RoleAccess        UserAccessMap       `json:"role_access,omitempty"`
-	Expiry            *time.Time          `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
-	Cas               string              `json:"cas"`                               // String representation of a cas value, populated via macro expansion
-	Crc32c            string              `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
-	Crc32cUserXattr   string              `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
-	TombstonedAt      int64               `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
-	Attachments       AttachmentsMeta     `json:"attachments,omitempty"`
-	ChannelSet        []ChannelSetEntry   `json:"channel_set"`
-	ChannelSetHistory []ChannelSetEntry   `json:"channel_set_history"`
+	CurrentRev        string               `json:"rev"`
+	NewestRev         string               `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
+	Flags             uint8                `json:"flags,omitempty"`
+	Sequence          uint64               `json:"sequence,omitempty"`
+	UnusedSequences   []uint64             `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
+	RecentSequences   []uint64             `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
+	Channels          channels.ChannelMap  `json:"channels,omitempty"`
+	Access            UserAccessMap        `json:"access,omitempty"`
+	RoleAccess        UserAccessMap        `json:"role_access,omitempty"`
+	Expiry            *time.Time           `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
+	Cas               string               `json:"cas"`                               // String representation of a cas value, populated via macro expansion
+	Crc32c            string               `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
+	Crc32cUserXattr   string               `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
+	TombstonedAt      int64                `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
+	Attachments       AttachmentsMeta      `json:"attachments,omitempty"`
+	ChannelSet        []ChannelSetEntry    `json:"channel_set"`
+	ChannelSetHistory []ChannelSetEntry    `json:"channel_set_history"`
+	HLV               *HybridLogicalVector `json:"_vv,omitempty"`
 
 	// Only used for performance metrics:
 	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
@@ -175,11 +177,12 @@ type Document struct {
 	Cas          uint64 // Document cas
 	rawUserXattr []byte // Raw user xattr as retrieved from the bucket
 
-	Deleted        bool
-	DocExpiry      uint32
-	RevID          string
-	DocAttachments AttachmentsMeta
-	inlineSyncData bool
+	Deleted            bool
+	DocExpiry          uint32
+	RevID              string
+	DocAttachments     AttachmentsMeta
+	inlineSyncData     bool
+	currentRevChannels base.Set // A base.Set of the current revision's channels (determined by SyncData.Channels at UnmarshalJSON time)
 }
 
 type historyOnlySyncData struct {
@@ -967,6 +970,7 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 			doc.updateChannelHistory(channel, doc.Sequence, true)
 		}
 	}
+	doc.currentRevChannels = newChannels
 	if changed != nil {
 		base.InfofCtx(ctx, base.KeyCRUD, "\tDoc %q / %q in channels %q", base.UD(doc.ID), doc.CurrentRev, base.UD(newChannels))
 		changedChannels, err = channels.SetFromArray(changed, channels.KeepStar)
@@ -1076,6 +1080,17 @@ func (doc *Document) UnmarshalJSON(data []byte) error {
 		doc.SyncData = *syncData.SyncData
 	}
 
+	// determine current revision's channels and store in-memory (avoids doc.Channels iteration at access-check time)
+	if len(doc.Channels) > 0 {
+		ch := base.SetOf()
+		for channelName, channelRemoval := range doc.Channels {
+			if channelRemoval == nil || channelRemoval.Seq == 0 {
+				ch.Add(channelName)
+			}
+		}
+		doc.currentRevChannels = ch
+	}
+
 	// Unmarshal the rest of the doc body as map[string]interface{}
 	if err := doc._body.Unmarshal(data); err != nil {
 		return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
@@ -1130,7 +1145,6 @@ func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata 
 		if unmarshalLevel == DocUnmarshalAll && len(data) > 0 {
 			return doc._body.Unmarshal(data)
 		}
-
 	case DocUnmarshalNoHistory:
 		// Unmarshal sync metadata only, excluding history
 		doc.SyncData = SyncData{}
@@ -1174,6 +1188,14 @@ func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata 
 			Cas: casOnlyMeta.Cas,
 		}
 		doc._rawBody = data
+	case DocUnmarshalVV:
+		tmpData := SyncData{}
+		unmarshalErr := base.JSONUnmarshal(xdata, &tmpData)
+		if unmarshalErr != nil {
+			return base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalVV).  Error: %w", base.UD(doc.ID), unmarshalErr)
+		}
+		doc.SyncData.HLV = tmpData.HLV
+		doc._rawBody = data
 	}
 
 	// If there's no body, but there is an xattr, set deleted flag and initialize an empty body
@@ -1214,4 +1236,18 @@ func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 	}
 
 	return data, xdata, nil
+}
+
+// HasCurrentVersion Compares the specified CV with the fetched documents CV, returns error on mismatch between the two
+func (d *Document) HasCurrentVersion(cv CurrentVersionVector) error {
+	if d.HLV == nil {
+		return base.RedactErrorf("no HLV present in fetched doc %s", base.UD(d.ID))
+	}
+
+	// fetch the current version for the loaded doc and compare against the CV specified in the IDandCV key
+	fetchedDocSource, fetchedDocVersion := d.HLV.GetCurrentVersion()
+	if fetchedDocSource != cv.SourceID || fetchedDocVersion != cv.VersionCAS {
+		return base.RedactErrorf("mismatch between specified current version and fetched document current version for doc %s", base.UD(d.ID))
+	}
+	return nil
 }

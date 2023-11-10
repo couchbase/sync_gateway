@@ -46,6 +46,7 @@ type BlipTesterClientOpts struct {
 type BlipTesterClient struct {
 	BlipTesterClientOpts
 
+	id              uint32 // unique ID for the client
 	rt              *RestTester
 	pullReplication *BlipTesterReplicator // SG -> CBL replications
 	pushReplication *BlipTesterReplicator // CBL -> SG replications
@@ -69,6 +70,14 @@ type BlipTesterCollectionClient struct {
 	lastReplicatedRevLock sync.RWMutex      // lock for lastReplicatedRev map
 }
 
+// BlipTestClientRunner is for running the blip tester client and its associated methods in test framework
+type BlipTestClientRunner struct {
+	clients                         map[uint32]*BlipTesterClient // map of created BlipTesterClient's
+	t                               *testing.T
+	initialisedInsideRunnerCode     bool // flag to check that the BlipTesterClient is being initialised in the correct area (inside the Run() method)
+	SkipVersionVectorInitialization bool // used to skip the version vector subtest
+}
+
 type BodyMessagePair struct {
 	body    []byte
 	message *blip.Message
@@ -83,6 +92,14 @@ type BlipTesterReplicator struct {
 	messages     map[blip.MessageNumber]*blip.Message // Map of blip messages keyed by message number
 
 	replicationStats *db.BlipSyncStats // Stats of replications
+}
+
+// NewBlipTesterClientRunner creates a BlipTestClientRunner type
+func NewBlipTesterClientRunner(t *testing.T) *BlipTestClientRunner {
+	return &BlipTestClientRunner{
+		t:       t,
+		clients: make(map[uint32]*BlipTesterClient),
+	}
 }
 
 func (btr *BlipTesterReplicator) Close() {
@@ -571,33 +588,83 @@ func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
 	return collections
 }
 
-func createBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient, err error) {
+// NewBlipTesterClientOptsWithRT creates a BlipTesterClient and adds it to the map of clients on the BlipTestClientRunner. Then creates replications on the client
+func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient) {
+	if !btcRunner.initialisedInsideRunnerCode {
+		btcRunner.t.Fatalf("must initialise BlipTesterClient inside Run() method")
+	}
 	if opts == nil {
 		opts = &BlipTesterClientOpts{}
 	}
-	btc := BlipTesterClient{
+	id, err := uuid.NewRandom()
+	require.NoError(btcRunner.t, err)
+
+	client = &BlipTesterClient{
 		BlipTesterClientOpts: *opts,
 		rt:                   rt,
+		id:                   id.ID(),
 	}
+	btcRunner.clients[client.id] = client
+	err = client.createBlipTesterReplications()
+	require.NoError(btcRunner.t, err)
 
+	return client
+}
+
+func (btc *BlipTesterClient) Close() {
+	btc.tearDownBlipClientReplications()
+	for _, collectionClient := range btc.collectionClients {
+		collectionClient.Close()
+	}
+	if btc.nonCollectionAwareClient != nil {
+		btc.nonCollectionAwareClient.Close()
+	}
+}
+
+// Run runs two subtests of the input test code, one for rev tree replications and another for version vector enabled replication
+func (btcRunner *BlipTestClientRunner) Run(test func(t *testing.T, SupportedBLIPProtocols []string)) {
+	btcRunner.initialisedInsideRunnerCode = true
+	// reset to protect against someone creating a new client after Run() is run
+	defer func() { btcRunner.initialisedInsideRunnerCode = false }()
+	btcRunner.t.Run("revTree", func(t *testing.T) {
+		test(t, []string{db.BlipCBMobileReplicationV3})
+	})
+	// if test is not wanting version vector subprotocol to be run, return before we start this subtest
+	if btcRunner.SkipVersionVectorInitialization {
+		return
+	}
+	btcRunner.t.Run("versionVector", func(t *testing.T) {
+		// bump sub protocol version here and pass into test function pending CBG-3253
+		test(t, nil)
+	})
+}
+
+// tearDownBlipClientReplications closes any underlying BlipTesterReplications running on the BlipTesterClient
+func (btc *BlipTesterClient) tearDownBlipClientReplications() {
+	btc.pullReplication.Close()
+	btc.pushReplication.Close()
+}
+
+// createBlipTesterReplications initiates new BlipTesterReplications on the BlipTesterClient
+func (btc *BlipTesterClient) createBlipTesterReplications() error {
 	id, err := uuid.NewRandom()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	if btc.pushReplication, err = newBlipTesterReplication(btc.rt.TB, "push"+id.String(), &btc, opts.SkipCollectionsInitialization); err != nil {
-		return nil, err
+	if btc.pushReplication, err = newBlipTesterReplication(btc.rt.TB, "push"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization); err != nil {
+		return err
 	}
-	if btc.pullReplication, err = newBlipTesterReplication(btc.rt.TB, "pull"+id.String(), &btc, opts.SkipCollectionsInitialization); err != nil {
-		return nil, err
+	if btc.pullReplication, err = newBlipTesterReplication(btc.rt.TB, "pull"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization); err != nil {
+		return err
 	}
 
-	collections := getCollectionsForBLIP(tb, rt)
-	if !opts.SkipCollectionsInitialization && len(collections) > 0 {
+	collections := getCollectionsForBLIP(btc.rt.TB, btc.rt)
+	if !btc.BlipTesterClientOpts.SkipCollectionsInitialization && len(collections) > 0 {
 		btc.collectionClients = make([]*BlipTesterCollectionClient, len(collections))
 		for i, collection := range collections {
 			if err := btc.initCollectionReplication(collection, i); err != nil {
-				return nil, err
+				return err
 			}
 		}
 	} else {
@@ -605,40 +672,14 @@ func createBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterC
 			docs:              make(map[string]map[string]*BodyMessagePair),
 			attachments:       make(map[string][]byte),
 			lastReplicatedRev: make(map[string]string),
-			parent:            &btc,
+			parent:            btc,
 		}
-
 	}
 
-	return &btc, nil
-}
+	btc.pullReplication.bt.avoidRestTesterClose = true
+	btc.pushReplication.bt.avoidRestTesterClose = true
 
-// NewBlipTesterClient returns a client which emulates the behaviour of a CBL client over BLIP.
-func NewBlipTesterClient(tb testing.TB, rt *RestTester) (client *BlipTesterClient, err error) {
-	return createBlipTesterClientOpts(tb, rt, nil)
-}
-
-func NewBlipTesterClientOptsWithRT(tb testing.TB, rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient, err error) {
-	client, err = createBlipTesterClientOpts(tb, rt, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	client.pullReplication.bt.avoidRestTesterClose = true
-	client.pushReplication.bt.avoidRestTesterClose = true
-
-	return client, nil
-}
-
-func (btc *BlipTesterClient) Close() {
-	btc.pullReplication.Close()
-	btc.pushReplication.Close()
-	for _, collectionClient := range btc.collectionClients {
-		collectionClient.Close()
-	}
-	if btc.nonCollectionAwareClient != nil {
-		btc.nonCollectionAwareClient.Close()
-	}
+	return nil
 }
 
 func (btc *BlipTesterClient) initCollectionReplication(collection string, collectionIdx int) error {
@@ -668,25 +709,25 @@ func (btc *BlipTesterClient) waitForReplicationMessage(collection *db.DatabaseCo
 }
 
 // SingleCollection returns a single collection blip tester if the RestTester database is configured with only one collection. Otherwise, throw a fatal test error.
-func (btc *BlipTesterClient) SingleCollection() *BlipTesterCollectionClient {
-	if btc.nonCollectionAwareClient != nil {
-		return btc.nonCollectionAwareClient
+func (btcRunner *BlipTestClientRunner) SingleCollection(clientID uint32) *BlipTesterCollectionClient {
+	if btcRunner.clients[clientID].nonCollectionAwareClient != nil {
+		return btcRunner.clients[clientID].nonCollectionAwareClient
 	}
-	require.Equal(btc.rt.TB, 1, len(btc.collectionClients))
-	return btc.collectionClients[0]
+	require.Equal(btcRunner.clients[clientID].rt.TB, 1, len(btcRunner.clients[clientID].collectionClients))
+	return btcRunner.clients[clientID].collectionClients[0]
 }
 
 // Collection return a collection blip tester by name, if configured in the RestTester database. Otherwise, throw a fatal test error.
-func (btc *BlipTesterClient) Collection(collectionName string) *BlipTesterCollectionClient {
-	if collectionName == "_default._default" && btc.nonCollectionAwareClient != nil {
-		return btc.nonCollectionAwareClient
+func (btcRunner *BlipTestClientRunner) Collection(clientID uint32, collectionName string) *BlipTesterCollectionClient {
+	if collectionName == "_default._default" && btcRunner.clients[clientID].nonCollectionAwareClient != nil {
+		return btcRunner.clients[clientID].nonCollectionAwareClient
 	}
-	for _, collectionClient := range btc.collectionClients {
+	for _, collectionClient := range btcRunner.clients[clientID].collectionClients {
 		if collectionClient.collection == collectionName {
 			return collectionClient
 		}
 	}
-	btc.rt.TB.Fatalf("Could not find collection %s in BlipTesterClient", collectionName)
+	btcRunner.clients[clientID].rt.TB.Fatalf("Could not find collection %s in BlipTesterClient", collectionName)
 	return nil
 }
 
@@ -1126,81 +1167,81 @@ func (btc *BlipTesterCollectionClient) GetBlipRevMessage(docID, revID string) (m
 	return nil, false
 }
 
-func (btc *BlipTesterClient) StartPull() error {
-	return btc.SingleCollection().StartPull()
+func (btcRunner *BlipTestClientRunner) StartPull(clientID uint32) error {
+	return btcRunner.SingleCollection(clientID).StartPull()
 }
 
 // WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found.
-func (btc *BlipTesterClient) WaitForVersion(docID string, docVersion DocVersion) (data []byte, found bool) {
-	return btc.SingleCollection().WaitForVersion(docID, docVersion)
+func (btcRunner *BlipTestClientRunner) WaitForVersion(clientID uint32, docID string, docVersion DocVersion) (data []byte, found bool) {
+	return btcRunner.SingleCollection(clientID).WaitForVersion(docID, docVersion)
 }
 
-func (btc *BlipTesterClient) WaitForDoc(docID string) ([]byte, bool) {
-	return btc.SingleCollection().WaitForDoc(docID)
+func (btcRunner *BlipTestClientRunner) WaitForDoc(clientID uint32, docID string) ([]byte, bool) {
+	return btcRunner.SingleCollection(clientID).WaitForDoc(docID)
 }
 
-func (btc *BlipTesterClient) WaitForBlipRevMessage(docID string, docVersion DocVersion) (*blip.Message, bool) {
-	return btc.SingleCollection().WaitForBlipRevMessage(docID, docVersion)
+func (btcRunner *BlipTestClientRunner) WaitForBlipRevMessage(clientID uint32, docID string, docVersion DocVersion) (*blip.Message, bool) {
+	return btcRunner.SingleCollection(clientID).WaitForBlipRevMessage(docID, docVersion)
 }
 
-func (btc *BlipTesterClient) StartOneshotPull() error {
-	return btc.SingleCollection().StartOneshotPull()
+func (btcRunner *BlipTestClientRunner) StartOneshotPull(clientID uint32) error {
+	return btcRunner.SingleCollection(clientID).StartOneshotPull()
 }
 
-func (btc *BlipTesterClient) StartOneshotPullFiltered(channels string) error {
-	return btc.SingleCollection().StartOneshotPullFiltered(channels)
+func (btcRunner *BlipTestClientRunner) StartOneshotPullFiltered(clientID uint32, channels string) error {
+	return btcRunner.SingleCollection(clientID).StartOneshotPullFiltered(channels)
 }
 
-func (btc *BlipTesterClient) StartOneshotPullRequestPlus() error {
-	return btc.SingleCollection().StartOneshotPullRequestPlus()
+func (btcRunner *BlipTestClientRunner) StartOneshotPullRequestPlus(clientID uint32) error {
+	return btcRunner.SingleCollection(clientID).StartOneshotPullRequestPlus()
 }
 
-func (btc *BlipTesterClient) PushRev(docID string, version DocVersion, body []byte) (DocVersion, error) {
-	return btc.SingleCollection().PushRev(docID, version, body)
+func (btcRunner *BlipTestClientRunner) PushRev(clientID uint32, docID string, version DocVersion, body []byte) (DocVersion, error) {
+	return btcRunner.SingleCollection(clientID).PushRev(docID, version, body)
 }
 
-func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string) error {
-	return btc.SingleCollection().StartPullSince(continuous, since, activeOnly, "", "")
+func (btcRunner *BlipTestClientRunner) StartPullSince(clientID uint32, continuous, since, activeOnly string) error {
+	return btcRunner.SingleCollection(clientID).StartPullSince(continuous, since, activeOnly, "", "")
 }
 
-func (btc *BlipTesterClient) StartFilteredPullSince(continuous, since, activeOnly string, channels string) error {
-	return btc.SingleCollection().StartPullSince(continuous, since, activeOnly, channels, "")
+func (btcRunner *BlipTestClientRunner) StartFilteredPullSince(clientID uint32, continuous, since, activeOnly, channels string) error {
+	return btcRunner.SingleCollection(clientID).StartPullSince(continuous, since, activeOnly, channels, "")
 }
 
-func (btc *BlipTesterClient) GetVersion(docID string, docVersion DocVersion) ([]byte, bool) {
-	return btc.SingleCollection().GetVersion(docID, docVersion)
+func (btcRunner *BlipTestClientRunner) GetVersion(clientID uint32, docID string, docVersion DocVersion) ([]byte, bool) {
+	return btcRunner.SingleCollection(clientID).GetVersion(docID, docVersion)
 }
 
-func (btc *BlipTesterClient) saveAttachment(contentType string, attachmentData string) (int, string, error) {
-	return btc.SingleCollection().saveAttachment(contentType, attachmentData)
+func (btcRunner *BlipTestClientRunner) saveAttachment(clientID uint32, contentType string, attachmentData string) (int, string, error) {
+	return btcRunner.SingleCollection(clientID).saveAttachment(contentType, attachmentData)
 }
 
-func (btc *BlipTesterClient) StoreRevOnClient(docID, revID string, body []byte) error {
-	return btc.SingleCollection().StoreRevOnClient(docID, revID, body)
+func (btcRunner *BlipTestClientRunner) StoreRevOnClient(clientID uint32, docID, revID string, body []byte) error {
+	return btcRunner.SingleCollection(clientID).StoreRevOnClient(docID, revID, body)
 }
 
-func (btc *BlipTesterClient) PushRevWithHistory(docID, revID string, body []byte, revCount, prunedRevCount int) (string, error) {
-	return btc.SingleCollection().PushRevWithHistory(docID, revID, body, revCount, prunedRevCount)
+func (btcRunner *BlipTestClientRunner) PushRevWithHistory(clientID uint32, docID, revID string, body []byte, revCount, prunedRevCount int) (string, error) {
+	return btcRunner.SingleCollection(clientID).PushRevWithHistory(docID, revID, body, revCount, prunedRevCount)
 }
 
-func (btc *BlipTesterClient) AttachmentsLock() *sync.RWMutex {
-	return &btc.SingleCollection().attachmentsLock
+func (btcRunner *BlipTestClientRunner) AttachmentsLock(clientID uint32) *sync.RWMutex {
+	return &btcRunner.SingleCollection(clientID).attachmentsLock
 }
 
 func (btc *BlipTesterCollectionClient) AttachmentsLock() *sync.RWMutex {
 	return &btc.attachmentsLock
 }
 
-func (btc *BlipTesterClient) Attachments() map[string][]byte {
-	return btc.SingleCollection().attachments
+func (btcRunner *BlipTestClientRunner) Attachments(clientID uint32) map[string][]byte {
+	return btcRunner.SingleCollection(clientID).attachments
 }
 
 func (btc *BlipTesterCollectionClient) Attachments() map[string][]byte {
 	return btc.attachments
 }
 
-func (btc *BlipTesterClient) UnsubPullChanges() ([]byte, error) {
-	return btc.SingleCollection().UnsubPullChanges()
+func (btcRunner *BlipTestClientRunner) UnsubPullChanges(clientID uint32) ([]byte, error) {
+	return btcRunner.SingleCollection(clientID).UnsubPullChanges()
 }
 
 func (btc *BlipTesterCollectionClient) addCollectionProperty(msg *blip.Message) {
