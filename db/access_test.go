@@ -44,7 +44,7 @@ func TestDynamicChannelGrant(t *testing.T) {
 
 	// Create a document in channel chan1
 	doc1Body := Body{"channel": "chan1", "greeting": "hello"}
-	_, _, err = dbCollection.PutExistingRevWithBody(ctx, "doc1", doc1Body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
+	_, _, err = dbCollection.PutExistingRevWithBody(ctx, "doc1", doc1Body, []string{"1-a"}, false)
 	require.NoError(t, err)
 
 	// Verify user cannot access document
@@ -54,7 +54,7 @@ func TestDynamicChannelGrant(t *testing.T) {
 
 	// Write access granting document
 	grantingBody := Body{"type": "setaccess", "owner": "user1", "channel": "chan1"}
-	_, _, err = dbCollection.PutExistingRevWithBody(ctx, "grant1", grantingBody, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
+	_, _, err = dbCollection.PutExistingRevWithBody(ctx, "grant1", grantingBody, []string{"1-a"}, false)
 	require.NoError(t, err)
 
 	// Verify reloaded user can access document
@@ -66,12 +66,12 @@ func TestDynamicChannelGrant(t *testing.T) {
 
 	// Create a document in channel chan2
 	doc2Body := Body{"channel": "chan2", "greeting": "hello"}
-	_, _, err = dbCollection.PutExistingRevWithBody(ctx, "doc2", doc2Body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
+	_, _, err = dbCollection.PutExistingRevWithBody(ctx, "doc2", doc2Body, []string{"1-a"}, false)
 	require.NoError(t, err)
 
 	// Write access granting document for chan2 (tests invalidation when channels/inval_seq exists)
 	grantingBody = Body{"type": "setaccess", "owner": "user1", "channel": "chan2"}
-	_, _, err = dbCollection.PutExistingRevWithBody(ctx, "grant2", grantingBody, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
+	_, _, err = dbCollection.PutExistingRevWithBody(ctx, "grant2", grantingBody, []string{"1-a"}, false)
 	require.NoError(t, err)
 
 	// Verify user can now access both documents

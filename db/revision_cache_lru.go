@@ -45,12 +45,8 @@ func (sc *ShardedLRURevisionCache) getShard(docID string) *LRURevisionCache {
 	return sc.caches[sgbucket.VBHash(docID, sc.numShards)]
 }
 
-func (sc *ShardedLRURevisionCache) GetWithRev(ctx context.Context, docID, revID string, includeBody, includeDelta bool) (docRev DocumentRevision, err error) {
-	return sc.getShard(docID).GetWithRev(ctx, docID, revID, includeBody, includeDelta)
-}
-
-func (sc *ShardedLRURevisionCache) GetWithCV(ctx context.Context, docID string, cv *CurrentVersionVector, includeBody, includeDelta bool) (docRev DocumentRevision, err error) {
-	return sc.getShard(docID).GetWithCV(ctx, docID, cv, includeBody, includeDelta)
+func (sc *ShardedLRURevisionCache) Get(ctx context.Context, docID, revID string, includeBody bool, includeDelta bool) (docRev DocumentRevision, err error) {
+	return sc.getShard(docID).Get(ctx, docID, revID, includeBody, includeDelta)
 }
 
 func (sc *ShardedLRURevisionCache) Peek(ctx context.Context, docID, revID string) (docRev DocumentRevision, found bool) {
@@ -73,19 +69,14 @@ func (sc *ShardedLRURevisionCache) Upsert(ctx context.Context, docRev DocumentRe
 	sc.getShard(docRev.DocID).Upsert(ctx, docRev)
 }
 
-func (sc *ShardedLRURevisionCache) RemoveWithRev(docID, revID string) {
-	sc.getShard(docID).RemoveWithRev(docID, revID)
-}
-
-func (sc *ShardedLRURevisionCache) RemoveWithCV(docID string, cv *CurrentVersionVector) {
-	sc.getShard(docID).RemoveWithCV(docID, cv)
+func (sc *ShardedLRURevisionCache) Remove(docID, revID string) {
+	sc.getShard(docID).Remove(docID, revID)
 }
 
 // An LRU cache of document revision bodies, together with their channel access.
 type LRURevisionCache struct {
 	backingStore RevisionCacheBackingStore
 	cache        map[IDAndRev]*list.Element
-	hlvCache     map[IDandCV]*list.Element
 	lruList      *list.List
 	cacheHits    *base.SgwIntStat
 	cacheMisses  *base.SgwIntStat
@@ -102,9 +93,7 @@ type revCacheValue struct {
 	attachments AttachmentsMeta
 	delta       *RevisionDelta
 	body        Body
-	id          string
-	cv          CurrentVersionVector
-	revID       string
+	key         IDAndRev
 	bodyBytes   []byte
 	lock        sync.RWMutex
 	deleted     bool
@@ -116,7 +105,6 @@ func NewLRURevisionCache(capacity uint32, backingStore RevisionCacheBackingStore
 
 	return &LRURevisionCache{
 		cache:        map[IDAndRev]*list.Element{},
-		hlvCache:     map[IDandCV]*list.Element{},
 		lruList:      list.New(),
 		capacity:     capacity,
 		backingStore: backingStore,
@@ -129,18 +117,14 @@ func NewLRURevisionCache(capacity uint32, backingStore RevisionCacheBackingStore
 // Returns the body of the revision, its history, and the set of channels it's in.
 // If the cache has a loaderFunction, it will be called if the revision isn't in the cache;
 // any error returned by the loaderFunction will be returned from Get.
-func (rc *LRURevisionCache) GetWithRev(ctx context.Context, docID, revID string, includeBody, includeDelta bool) (DocumentRevision, error) {
-	return rc.getFromCacheByRev(ctx, docID, revID, true, includeBody, includeDelta)
-}
-
-func (rc *LRURevisionCache) GetWithCV(ctx context.Context, docID string, cv *CurrentVersionVector, includeBody, includeDelta bool) (DocumentRevision, error) {
-	return rc.getFromCacheByCV(ctx, docID, cv, true, includeBody, includeDelta)
+func (rc *LRURevisionCache) Get(ctx context.Context, docID, revID string, includeBody bool, includeDelta bool) (DocumentRevision, error) {
+	return rc.getFromCache(ctx, docID, revID, true, includeBody, includeDelta)
 }
 
 // Looks up a revision from the cache only.  Will not fall back to loader function if not
 // present in the cache.
 func (rc *LRURevisionCache) Peek(ctx context.Context, docID, revID string) (docRev DocumentRevision, found bool) {
-	docRev, err := rc.getFromCacheByRev(ctx, docID, revID, false, RevCacheOmitBody, RevCacheOmitDelta)
+	docRev, err := rc.getFromCache(ctx, docID, revID, false, RevCacheOmitBody, RevCacheOmitDelta)
 	if err != nil {
 		return DocumentRevision{}, false
 	}
@@ -156,42 +140,18 @@ func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string
 	}
 }
 
-func (rc *LRURevisionCache) getFromCacheByRev(ctx context.Context, docID, revID string, loadOnCacheMiss bool, includeBody bool, includeDelta bool) (DocumentRevision, error) {
+func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID string, loadOnCacheMiss bool, includeBody bool, includeDelta bool) (DocumentRevision, error) {
 	value := rc.getValue(docID, revID, loadOnCacheMiss)
 	if value == nil {
 		return DocumentRevision{}, nil
 	}
 
-	docRev, cacheHit, err := value.load(ctx, rc.backingStore, includeBody, includeDelta)
-	rc.statsRecorderFunc(cacheHit)
+	docRev, statEvent, err := value.load(ctx, rc.backingStore, includeBody, includeDelta)
+	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {
 		rc.removeValue(value) // don't keep failed loads in the cache
 	}
-	if !cacheHit {
-		rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.CV)
-	}
-
-	return docRev, err
-}
-
-func (rc *LRURevisionCache) getFromCacheByCV(ctx context.Context, docID string, cv *CurrentVersionVector, loadCacheOnMiss bool, includeBody bool, includeDelta bool) (DocumentRevision, error) {
-	value := rc.getValueByCV(docID, cv, loadCacheOnMiss)
-	if value == nil {
-		return DocumentRevision{}, nil
-	}
-
-	docRev, cacheHit, err := value.load(ctx, rc.backingStore, includeBody, includeDelta)
-	rc.statsRecorderFunc(cacheHit)
-
-	if err != nil {
-		rc.removeValue(value) // don't keep failed loads in the cache
-	}
-
-	if !cacheHit {
-		rc.addToRevMapPostLoad(docID, docRev.RevID, docRev.CV)
-	}
-
 	return docRev, err
 }
 
@@ -202,16 +162,15 @@ func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(ctx context.Context, 
 	var docRevBody Body
 
 	value := revCacheValue{
-		id:    key.DocID,
-		revID: key.RevID,
+		key: key,
 	}
 
 	// If doc has been passed in use this to grab values. Otherwise run revCacheLoader which will grab the Document
 	// first
 	if doc != nil {
-		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, _, value.err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, key.RevID)
+		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, key.RevID)
 	} else {
-		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, _, value.err = revCacheLoader(ctx, rc.backingStore, key, includeBody)
+		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(ctx, rc.backingStore, key, includeBody)
 	}
 
 	if includeDelta {
@@ -251,15 +210,12 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, include
 	// Retrieve from or add to rev cache
 	value := rc.getValue(docID, bucketDoc.CurrentRev, true)
 
-	docRev, cacheHit, err := value.loadForDoc(ctx, rc.backingStore, bucketDoc, includeBody)
-	rc.statsRecorderFunc(cacheHit)
+	docRev, statEvent, err := value.loadForDoc(ctx, rc.backingStore, bucketDoc, includeBody)
+	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {
 		rc.removeValue(value) // don't keep failed loads in the cache
 	}
-	// add successfully fetched value to cv lookup map too
-	rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.CV)
-
 	return docRev, err
 }
 
@@ -278,43 +234,30 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision) {
 		// TODO: CBG-1948
 		panic("Missing history for RevisionCache.Put")
 	}
-	// doc should always have a cv present in a PUT operation on the cache (update HLV is called before hand in doc update process)
-	// thus we can call getValueByCV directly the update the rev lookup post this
-	value := rc.getValueByCV(docRev.DocID, docRev.CV, true)
-	// store the created value
+	value := rc.getValue(docRev.DocID, docRev.RevID, true)
 	value.store(docRev)
-
-	// add new doc version to the rev id lookup map
-	rc.addToRevMapPostLoad(docRev.DocID, docRev.RevID, docRev.CV)
 }
 
 // Upsert a revision in the cache.
 func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision) {
-	var value *revCacheValue
-	// similar to PUT operation we should have the CV defined by this point (updateHLV is called before calling this)
-	key := IDandCV{DocID: docRev.DocID, Source: docRev.CV.SourceID, Version: docRev.CV.VersionCAS}
-	legacyKey := IDAndRev{DocID: docRev.DocID, RevID: docRev.RevID}
+	key := IDAndRev{DocID: docRev.DocID, RevID: docRev.RevID}
 
 	rc.lock.Lock()
-	// lookup for element in hlv lookup map, if not found for some reason try rev lookup map
-	if elem := rc.hlvCache[key]; elem != nil {
-		rc.lruList.Remove(elem)
-	} else if elem = rc.cache[legacyKey]; elem != nil {
+	// If element exists remove from lrulist
+	if elem := rc.cache[key]; elem != nil {
 		rc.lruList.Remove(elem)
 	}
 
 	// Add new value and overwrite existing cache key, pushing to front to maintain order
-	// also ensure we add to rev id lookup map too
-	value = &revCacheValue{id: docRev.DocID, cv: *docRev.CV}
-	elem := rc.lruList.PushFront(value)
-	rc.hlvCache[key] = elem
-	rc.cache[legacyKey] = elem
+	value := &revCacheValue{key: key}
+	rc.cache[key] = rc.lruList.PushFront(value)
 
-	for rc.lruList.Len() > int(rc.capacity) {
+	// Purge oldest item if required
+	for len(rc.cache) > int(rc.capacity) {
 		rc.purgeOldest_()
 	}
 	rc.lock.Unlock()
-	// store upsert value
+
 	value.store(docRev)
 }
 
@@ -329,126 +272,18 @@ func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *r
 		rc.lruList.MoveToFront(elem)
 		value = elem.Value.(*revCacheValue)
 	} else if create {
-		value = &revCacheValue{id: docID, revID: revID}
+		value = &revCacheValue{key: key}
 		rc.cache[key] = rc.lruList.PushFront(value)
-		for rc.lruList.Len() > int(rc.capacity) {
+		for len(rc.cache) > int(rc.capacity) {
 			rc.purgeOldest_()
 		}
 	}
 	rc.lock.Unlock()
 	return
-}
-
-// getValueByCV gets a value from rev cache by CV, if not found and create is true, will add the value to cache and both lookup maps
-func (rc *LRURevisionCache) getValueByCV(docID string, cv *CurrentVersionVector, create bool) (value *revCacheValue) {
-	if docID == "" || cv == nil {
-		return nil
-	}
-
-	key := IDandCV{DocID: docID, Source: cv.SourceID, Version: cv.VersionCAS}
-	rc.lock.Lock()
-	if elem := rc.hlvCache[key]; elem != nil {
-		rc.lruList.MoveToFront(elem)
-		value = elem.Value.(*revCacheValue)
-	} else if create {
-		value = &revCacheValue{id: docID, cv: *cv}
-		newElem := rc.lruList.PushFront(value)
-		rc.hlvCache[key] = newElem
-		for rc.lruList.Len() > int(rc.capacity) {
-			rc.purgeOldest_()
-		}
-	}
-	rc.lock.Unlock()
-	return
-}
-
-// addToRevMapPostLoad will generate and entry in the Rev lookup map for a new document entering the cache
-func (rc *LRURevisionCache) addToRevMapPostLoad(docID, revID string, cv *CurrentVersionVector) {
-	legacyKey := IDAndRev{DocID: docID, RevID: revID}
-	key := IDandCV{DocID: docID, Source: cv.SourceID, Version: cv.VersionCAS}
-
-	rc.lock.Lock()
-	defer rc.lock.Unlock()
-	// check for existing value in rev cache map (due to concurrent fetch by rev ID)
-	cvElem, cvFound := rc.hlvCache[key]
-	revElem, revFound := rc.cache[legacyKey]
-	if !cvFound {
-		// its possible the element has been evicted if we don't find the element above (high churn on rev cache)
-		// need to return doc revision to caller still but no need repopulate the cache
-		return
-	}
-	// Check if another goroutine has already updated the rev map
-	if revFound {
-		if cvElem == revElem {
-			// already match, return
-			return
-		}
-		// if CV map and rev map are targeting different list elements, update to have both use the cv map element
-		rc.cache[legacyKey] = cvElem
-		rc.lruList.Remove(revElem)
-	} else {
-		// if not found we need to add the element to the rev lookup (for PUT code path)
-		rc.cache[legacyKey] = cvElem
-	}
-}
-
-// addToHLVMapPostLoad will generate and entry in the CV lookup map for a new document entering the cache
-func (rc *LRURevisionCache) addToHLVMapPostLoad(docID, revID string, cv *CurrentVersionVector) {
-	legacyKey := IDAndRev{DocID: docID, RevID: revID}
-	key := IDandCV{DocID: docID, Source: cv.SourceID, Version: cv.VersionCAS}
-
-	rc.lock.Lock()
-	defer rc.lock.Unlock()
-	// check for existing value in rev cache map (due to concurrent fetch by rev ID)
-	cvElem, cvFound := rc.hlvCache[key]
-	revElem, revFound := rc.cache[legacyKey]
-	if !revFound {
-		// its possible the element has been evicted if we don't find the element above (high churn on rev cache)
-		// need to return doc revision to caller still but no need repopulate the cache
-		return
-	}
-	// Check if another goroutine has already updated the cv map
-	if cvFound {
-		if cvElem == revElem {
-			// already match, return
-			return
-		}
-		// if CV map and rev map are targeting different list elements, update to have both use the cv map element
-		rc.cache[legacyKey] = cvElem
-		rc.lruList.Remove(revElem)
-	}
 }
 
 // Remove removes a value from the revision cache, if present.
-func (rc *LRURevisionCache) RemoveWithRev(docID, revID string) {
-	rc.removeFromCacheByRev(docID, revID)
-}
-
-// RemoveWithCV removes a value from rev cache by CV reference if present
-func (rc *LRURevisionCache) RemoveWithCV(docID string, cv *CurrentVersionVector) {
-	rc.removeFromCacheByCV(docID, cv)
-}
-
-// removeFromCacheByCV removes an entry from rev cache by CV
-func (rc *LRURevisionCache) removeFromCacheByCV(docID string, cv *CurrentVersionVector) {
-	key := IDandCV{DocID: docID, Source: cv.SourceID, Version: cv.VersionCAS}
-	rc.lock.Lock()
-	defer rc.lock.Unlock()
-	element, ok := rc.hlvCache[key]
-	if !ok {
-		return
-	}
-	// grab the revid key from the value to enable us to remove the reference from the rev lookup map too
-	elem := element.Value.(*revCacheValue)
-	legacyKey := IDAndRev{DocID: docID, RevID: elem.revID}
-	rc.lruList.Remove(element)
-	delete(rc.hlvCache, key)
-	// remove from rev lookup map too
-	delete(rc.cache, legacyKey)
-}
-
-// removeFromCacheByRev removes an entry from rev cache by revID
-func (rc *LRURevisionCache) removeFromCacheByRev(docID, revID string) {
+func (rc *LRURevisionCache) Remove(docID, revID string) {
 	key := IDAndRev{DocID: docID, RevID: revID}
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
@@ -456,38 +291,23 @@ func (rc *LRURevisionCache) removeFromCacheByRev(docID, revID string) {
 	if !ok {
 		return
 	}
-	// grab the cv key key from the value to enable us to remove the reference from the rev lookup map too
-	elem := element.Value.(*revCacheValue)
-	hlvKey := IDandCV{DocID: docID, Source: elem.cv.SourceID, Version: elem.cv.VersionCAS}
 	rc.lruList.Remove(element)
 	delete(rc.cache, key)
-	// remove from CV lookup map too
-	delete(rc.hlvCache, hlvKey)
 }
 
 // removeValue removes a value from the revision cache, if present and the value matches the the value. If there's an item in the revision cache with a matching docID and revID but the document is different, this item will not be removed from the rev cache.
 func (rc *LRURevisionCache) removeValue(value *revCacheValue) {
 	rc.lock.Lock()
-	defer rc.lock.Unlock()
-	revKey := IDAndRev{DocID: value.id, RevID: value.revID}
-	if element := rc.cache[revKey]; element != nil && element.Value == value {
+	if element := rc.cache[value.key]; element != nil && element.Value == value {
 		rc.lruList.Remove(element)
-		delete(rc.cache, revKey)
+		delete(rc.cache, value.key)
 	}
-	// need to also check hlv lookup cache map
-	hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.VersionCAS}
-	if element := rc.hlvCache[hlvKey]; element != nil && element.Value == value {
-		rc.lruList.Remove(element)
-		delete(rc.hlvCache, hlvKey)
-	}
+	rc.lock.Unlock()
 }
 
 func (rc *LRURevisionCache) purgeOldest_() {
 	value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
-	revKey := IDAndRev{DocID: value.id, RevID: value.revID}
-	hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.VersionCAS}
-	delete(rc.cache, revKey)
-	delete(rc.hlvCache, hlvKey)
+	delete(rc.cache, value.key)
 }
 
 // Gets the body etc. out of a revCacheValue. If they aren't present already, the loader func
@@ -499,8 +319,6 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 	// to reduce locking when includeDelta=false
 	var delta *RevisionDelta
 	var docRevBody Body
-	var fetchedCV *CurrentVersionVector
-	var revid string
 
 	// Attempt to read cached value.
 	value.lock.RLock()
@@ -531,24 +349,12 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 		// If body is requested and not already present in cache, populate value.body from value.BodyBytes
 		if includeBody && value.body == nil && value.err == nil {
 			if err := value.body.Unmarshal(value.bodyBytes); err != nil {
-				base.WarnfCtx(ctx, "Unable to marshal BodyBytes in revcache for %s %s", base.UD(value.id), value.revID)
+				base.WarnfCtx(ctx, "Unable to marshal BodyBytes in revcache for %s %s", base.UD(value.key.DocID), value.key.RevID)
 			}
 		}
 	} else {
 		cacheHit = false
-		if value.revID == "" {
-			hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.VersionCAS}
-			value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, revid, value.err = revCacheLoaderForCv(ctx, backingStore, hlvKey, includeBody)
-			// based off the current value load we need to populate the revid key with what has been fetched from the bucket (for use of populating the opposite lookup map)
-			value.revID = revid
-		} else {
-			revKey := IDAndRev{DocID: value.id, RevID: value.revID}
-			value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, fetchedCV, value.err = revCacheLoader(ctx, backingStore, revKey, includeBody)
-			// based off the revision load we need to populate the hlv key with what has been fetched from the bucket (for use of populating the opposite lookup map)
-			if fetchedCV != nil {
-				value.cv = *fetchedCV
-			}
-		}
+		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(ctx, backingStore, value.key, includeBody)
 	}
 
 	if includeDelta {
@@ -568,7 +374,7 @@ func (value *revCacheValue) updateBody(ctx context.Context) (err error) {
 	var body Body
 	if err := body.Unmarshal(value.bodyBytes); err != nil {
 		// On unmarshal error, warn return docRev without body
-		base.WarnfCtx(ctx, "Unable to marshal BodyBytes in revcache for %s %s", base.UD(value.id), value.revID)
+		base.WarnfCtx(ctx, "Unable to marshal BodyBytes in revcache for %s %s", base.UD(value.key.DocID), value.key.RevID)
 		return err
 	}
 
@@ -585,8 +391,8 @@ func (value *revCacheValue) updateBody(ctx context.Context) (err error) {
 func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) (DocumentRevision, error) {
 
 	docRev := DocumentRevision{
-		DocID:       value.id,
-		RevID:       value.revID,
+		DocID:       value.key.DocID,
+		RevID:       value.key.RevID,
 		BodyBytes:   value.bodyBytes,
 		History:     value.history,
 		Channels:    value.channels,
@@ -594,7 +400,6 @@ func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) 
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 		Deleted:     value.deleted,
 		Removed:     value.removed,
-		CV:          &CurrentVersionVector{VersionCAS: value.cv.VersionCAS, SourceID: value.cv.SourceID},
 	}
 	if body != nil {
 		docRev._shallowCopyBody = body.ShallowCopy()
@@ -609,8 +414,6 @@ func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) 
 func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, includeBody bool) (docRev DocumentRevision, cacheHit bool, err error) {
 
 	var docRevBody Body
-	var fetchedCV *CurrentVersionVector
-	var revid string
 	value.lock.RLock()
 	if value.bodyBytes != nil || value.err != nil {
 		if includeBody {
@@ -640,22 +443,13 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 		// If body is requested and not already present in cache, attempt to generate from bytes and insert into cache
 		if includeBody && value.body == nil {
 			if err := value.body.Unmarshal(value.bodyBytes); err != nil {
-				base.WarnfCtx(ctx, "Unable to marshal BodyBytes in revcache for %s %s", base.UD(value.id), value.revID)
+				base.WarnfCtx(ctx, "Unable to marshal BodyBytes in revcache for %s %s", base.UD(value.key.DocID), value.key.RevID)
 			}
 		}
 	} else {
 		cacheHit = false
-		if value.revID == "" {
-			value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, revid, value.err = revCacheLoaderForDocumentCV(ctx, backingStore, doc, value.cv)
-			value.revID = revid
-		} else {
-			value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, fetchedCV, value.err = revCacheLoaderForDocument(ctx, backingStore, doc, value.revID)
-			if fetchedCV != nil {
-				value.cv = *fetchedCV
-			}
-		}
+		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(ctx, backingStore, doc, value.key.RevID)
 	}
-
 	if includeBody {
 		docRevBody = value.body
 	}
@@ -668,7 +462,7 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 func (value *revCacheValue) store(docRev DocumentRevision) {
 	value.lock.Lock()
 	if value.bodyBytes == nil {
-		value.revID = docRev.RevID
+		// value already has doc id/rev id in key
 		value.bodyBytes = docRev.BodyBytes
 		value.history = docRev.History
 		value.channels = docRev.Channels
