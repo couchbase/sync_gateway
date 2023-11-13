@@ -356,11 +356,3 @@ func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64
 	}
 	hlv.PreviousVersions[source] = version
 }
-
-// setMergeVersion will take a source/version pair and add it to the HLV merge versions map
-func (hlv *HybridLogicalVector) setMergeVersion(source string, version uint64) {
-	if hlv.MergeVersions == nil {
-		hlv.MergeVersions = make(map[string]uint64)
-	}
-	hlv.MergeVersions[source] = version
-}
