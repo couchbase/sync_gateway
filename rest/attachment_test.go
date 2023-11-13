@@ -1060,7 +1060,6 @@ func TestAttachmentContentType(t *testing.T) {
 }
 
 func TestBasicAttachmentRemoval(t *testing.T) {
-	t.Skip("Disabled pending CBG-3503")
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
@@ -2224,7 +2223,6 @@ func TestAttachmentDeleteOnPurge(t *testing.T) {
 }
 
 func TestAttachmentDeleteOnExpiry(t *testing.T) {
-	t.Skip("Disabled pending CBG-3503")
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -2262,204 +2260,184 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 }
 func TestUpdateExistingAttachment(t *testing.T) {
-	rtConfig := &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
-	}
+	})
+	defer rt.Close()
 
-	btcRunner := NewBlipTesterClientRunner(t)
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
 	const (
 		doc1ID = "doc1"
 		doc2ID = "doc2"
 	)
+	doc1Version := rt.PutDoc(doc1ID, `{}`)
+	doc2Version := rt.PutDoc(doc2ID, `{}`)
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		rt := NewRestTester(t, rtConfig)
-		defer rt.Close()
+	require.NoError(t, rt.WaitForPendingChanges())
 
-		opts := BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
-		defer btc.Close()
-		// Add doc1 and doc2
-		doc1Version := btc.rt.PutDoc(doc1ID, `{}`)
-		doc2Version := btc.rt.PutDoc(doc2ID, `{}`)
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+	_, ok := btc.WaitForVersion(doc1ID, doc1Version)
+	require.True(t, ok)
+	_, ok = btc.WaitForVersion(doc2ID, doc2Version)
+	require.True(t, ok)
 
-		require.NoError(t, btc.rt.WaitForPendingChanges())
+	attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
+	attachmentBData := base64.StdEncoding.EncodeToString([]byte("attachmentB"))
 
-		err := btcRunner.StartOneshotPull(btc.id)
-		assert.NoError(t, err)
-		_, ok := btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
-		require.True(t, ok)
-		_, ok = btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version)
-		require.True(t, ok)
+	doc1Version, err = btc.PushRev(doc1ID, doc1Version, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
+	require.NoError(t, err)
+	doc2Version, err = btc.PushRev(doc2ID, doc2Version, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
+	require.NoError(t, err)
 
-		attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
-		attachmentBData := base64.StdEncoding.EncodeToString([]byte("attachmentB"))
+	assert.NoError(t, rt.WaitForVersion(doc1ID, doc1Version))
+	assert.NoError(t, rt.WaitForVersion(doc2ID, doc2Version))
 
-		doc1Version, err = btcRunner.PushRev(btc.id, doc1ID, doc1Version, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
-		require.NoError(t, err)
-		doc2Version, err = btcRunner.PushRev(btc.id, doc2ID, doc2Version, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
-		require.NoError(t, err)
+	_, err = rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+	require.NoError(t, err)
+	_, err = rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
+	require.NoError(t, err)
 
-		assert.NoError(t, btc.rt.WaitForVersion(doc1ID, doc1Version))
-		assert.NoError(t, btc.rt.WaitForVersion(doc2ID, doc2Version))
+	doc1Version, err = btc.PushRev(doc1ID, doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":3}}}`))
+	require.NoError(t, err)
 
-		_, err = btc.rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
-		require.NoError(t, err)
-		_, err = btc.rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
-		require.NoError(t, err)
+	assert.NoError(t, rt.WaitForVersion(doc1ID, doc1Version))
 
-		doc1Version, err = btcRunner.PushRev(btc.id, doc1ID, doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":3}}}`))
-		require.NoError(t, err)
+	doc1, err := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+	assert.NoError(t, err)
 
-		assert.NoError(t, btc.rt.WaitForVersion(doc1ID, doc1Version))
+	assert.Equal(t, "sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=", doc1.Attachments["attachment"].(map[string]interface{})["digest"])
 
-		doc1, err := btc.rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), doc1ID, db.DocUnmarshalAll)
-		assert.NoError(t, err)
-
-		assert.Equal(t, "sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=", doc1.Attachments["attachment"].(map[string]interface{})["digest"])
-
-		req := btc.rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
-		assert.Equal(t, "attachmentB", string(req.BodyBytes()))
-	})
+	req := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
+	assert.Equal(t, "attachmentB", string(req.BodyBytes()))
 }
 
 // TestPushUnknownAttachmentAsStub sets revpos to an older generation, for an attachment that doesn't exist on the server.
 // Verifies that getAttachment is triggered, and attachment is properly persisted.
 func TestPushUnknownAttachmentAsStub(t *testing.T) {
-	rtConfig := &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
-	}
-	const doc1ID = "doc1"
-	btcRunner := NewBlipTesterClientRunner(t)
-
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		rt := NewRestTester(t, rtConfig)
-		defer rt.Close()
-
-		opts := BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
-		defer btc.Close()
-		// Add doc1 and doc2
-		doc1Version := btc.rt.PutDoc(doc1ID, `{}`)
-
-		require.NoError(t, btc.rt.WaitForPendingChanges())
-
-		err := btcRunner.StartOneshotPull(btc.id)
-		assert.NoError(t, err)
-
-		_, ok := btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
-		require.True(t, ok)
-
-		// force attachment into test client's store to validate it's fetched
-		attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
-		contentType := "text/plain"
-
-		length, digest, err := btcRunner.saveAttachment(btc.id, contentType, attachmentAData)
-		require.NoError(t, err)
-		// Update doc1, include reference to non-existing attachment with recent revpos
-		doc1Version, err = btcRunner.PushRev(btc.id, doc1ID, doc1Version, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"content_type":"%s","stub":true,"revpos":1}}}`, digest, length, contentType)))
-		require.NoError(t, err)
-
-		require.NoError(t, btc.rt.WaitForVersion(doc1ID, doc1Version))
-
-		// verify that attachment exists on document and was persisted
-		attResponse := btc.rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
-		assert.Equal(t, 200, attResponse.Code)
-		assert.Equal(t, "attachmentA", string(attResponse.BodyBytes()))
 	})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	assert.NoError(t, err)
+	defer btc.Close()
+
+	const doc1ID = "doc1"
+	doc1Version := rt.PutDoc(doc1ID, `{}`)
+
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+
+	_, ok := btc.WaitForVersion(doc1ID, doc1Version)
+	require.True(t, ok)
+
+	// force attachment into test client's store to validate it's fetched
+	attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
+	contentType := "text/plain"
+
+	length, digest, err := btc.saveAttachment(contentType, attachmentAData)
+	require.NoError(t, err)
+	// Update doc1, include reference to non-existing attachment with recent revpos
+	doc1Version, err = btc.PushRev(doc1ID, doc1Version, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"content_type":"%s","stub":true,"revpos":1}}}`, digest, length, contentType)))
+	require.NoError(t, err)
+
+	require.NoError(t, rt.WaitForVersion(doc1ID, doc1Version))
+
+	// verify that attachment exists on document and was persisted
+	attResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
+	assert.Equal(t, 200, attResponse.Code)
+	assert.Equal(t, "attachmentA", string(attResponse.BodyBytes()))
+
 }
 
 func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	rtConfig := &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AllowConflicts: base.BoolPtr(true),
 			},
 		},
-	}
-
-	btcRunner := NewBlipTesterClientRunner(t)
-	const docID = "doc"
-
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		rt := NewRestTester(t, rtConfig)
-		defer rt.Close()
-
-		opts := BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
-		defer btc.Close()
-		// Push an initial rev with attachment data
-		initialVersion := btc.rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
-		err := btc.rt.WaitForPendingChanges()
-		assert.NoError(t, err)
-
-		// Replicate data to client and ensure doc arrives
-		err = btcRunner.StartOneshotPull(btc.id)
-		assert.NoError(t, err)
-		_, found := btcRunner.WaitForVersion(btc.id, docID, initialVersion)
-		assert.True(t, found)
-
-		// Push a revision with a bunch of history simulating doc updated on mobile device
-		// Note this references revpos 1 and therefore SGW has it - Shouldn't need proveAttachment
-		proveAttachmentBefore := btc.pushReplication.replicationStats.ProveAttachment.Value()
-		revid, err := btcRunner.PushRevWithHistory(btc.id, docID, initialVersion.RevID, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`), 25, 5)
-		assert.NoError(t, err)
-		proveAttachmentAfter := btc.pushReplication.replicationStats.ProveAttachment.Value()
-		assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
-
-		// Push another bunch of history
-		_, err = btcRunner.PushRevWithHistory(btc.id, docID, revid, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`), 25, 5)
-		assert.NoError(t, err)
-		proveAttachmentAfter = btc.pushReplication.replicationStats.ProveAttachment.Value()
-		assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
 	})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	// Push an initial rev with attachment data
+	const docID = "doc"
+	initialVersion := rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
+	err = rt.WaitForPendingChanges()
+	assert.NoError(t, err)
+
+	// Replicate data to client and ensure doc arrives
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+	_, found := btc.WaitForVersion(docID, initialVersion)
+	assert.True(t, found)
+
+	// Push a revision with a bunch of history simulating doc updated on mobile device
+	// Note this references revpos 1 and therefore SGW has it - Shouldn't need proveAttachment
+	proveAttachmentBefore := btc.pushReplication.replicationStats.ProveAttachment.Value()
+	revid, err := btc.PushRevWithHistory(docID, initialVersion.RevID, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`), 25, 5)
+	assert.NoError(t, err)
+	proveAttachmentAfter := btc.pushReplication.replicationStats.ProveAttachment.Value()
+	assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
+
+	// Push another bunch of history
+	_, err = btc.PushRevWithHistory(docID, revid, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`), 25, 5)
+	assert.NoError(t, err)
+	proveAttachmentAfter = btc.pushReplication.replicationStats.ProveAttachment.Value()
+	assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
 }
 func TestAttachmentWithErroneousRevPos(t *testing.T) {
-	rtConfig := &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
-	}
-
-	btcRunner := NewBlipTesterClientRunner(t)
-
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		rt := NewRestTester(t, rtConfig)
-		defer rt.Close()
-
-		opts := BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
-		defer btc.Close()
-		// Create rev 1 with the hello.txt attachment
-		const docID = "doc"
-		version := btc.rt.PutDoc(docID, `{"val": "val", "_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
-		err := btc.rt.WaitForPendingChanges()
-		assert.NoError(t, err)
-
-		// Pull rev and attachment down to client
-		err = btcRunner.StartOneshotPull(btc.id)
-		assert.NoError(t, err)
-		_, found := btcRunner.WaitForVersion(btc.id, docID, version)
-		assert.True(t, found)
-
-		// Add an attachment to client
-		btcRunner.AttachmentsLock(btc.id).Lock()
-		btcRunner.Attachments(btc.id)["sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="] = []byte("goodbye cruel world")
-		btcRunner.AttachmentsLock(btc.id).Unlock()
-
-		// Put doc with an erroneous revpos 1 but with a different digest, referring to the above attachment
-		_, err = btcRunner.PushRevWithHistory(btc.id, docID, version.RevID, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`), 1, 0)
-		require.NoError(t, err)
-
-		// Ensure message and attachment is pushed up
-		_, ok := btc.pushReplication.WaitForMessage(2)
-		assert.True(t, ok)
-
-		// Get the attachment and ensure the data is updated
-		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc/hello.txt", "")
-		RequireStatus(t, resp, http.StatusOK)
-		assert.Equal(t, "goodbye cruel world", string(resp.BodyBytes()))
 	})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	// Create rev 1 with the hello.txt attachment
+	const docID = "doc"
+	version := rt.PutDoc(docID, `{"val": "val", "_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
+	err = rt.WaitForPendingChanges()
+	assert.NoError(t, err)
+
+	// Pull rev and attachment down to client
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+	_, found := btc.WaitForVersion(docID, version)
+	assert.True(t, found)
+
+	// Add an attachment to client
+	btc.AttachmentsLock().Lock()
+	btc.Attachments()["sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="] = []byte("goodbye cruel world")
+	btc.AttachmentsLock().Unlock()
+
+	// Put doc with an erroneous revpos 1 but with a different digest, referring to the above attachment
+	_, err = btc.PushRevWithHistory(docID, version.RevID, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`), 1, 0)
+	require.NoError(t, err)
+
+	// Ensure message and attachment is pushed up
+	_, ok := btc.pushReplication.WaitForMessage(2)
+	assert.True(t, ok)
+
+	// Get the attachment and ensure the data is updated
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc/hello.txt", "")
+	RequireStatus(t, resp, http.StatusOK)
+	assert.Equal(t, "goodbye cruel world", string(resp.BodyBytes()))
 }
 
 // CBG-2004: Test that prove attachment over Blip works correctly when receiving a ErrAttachmentNotFound
@@ -2600,79 +2578,74 @@ func TestPutInvalidAttachment(t *testing.T) {
 // validates that proveAttachment isn't being invoked when the attachment is already present and the
 // digest doesn't change, regardless of revpos.
 func TestCBLRevposHandling(t *testing.T) {
-	rtConfig := &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
-	}
+	})
+	defer rt.Close()
 
-	btcRunner := NewBlipTesterClientRunner(t)
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	assert.NoError(t, err)
+	defer btc.Close()
+
 	const (
 		doc1ID = "doc1"
 		doc2ID = "doc2"
 	)
+	doc1Version := rt.PutDoc(doc1ID, `{}`)
+	doc2Version := rt.PutDoc(doc2ID, `{}`)
+	require.NoError(t, rt.WaitForPendingChanges())
 
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		rt := NewRestTester(t, rtConfig)
-		defer rt.Close()
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+	_, ok := btc.WaitForVersion(doc1ID, doc1Version)
+	require.True(t, ok)
+	_, ok = btc.WaitForVersion(doc2ID, doc2Version)
+	require.True(t, ok)
 
-		opts := BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &opts)
-		defer btc.Close()
+	attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
+	attachmentBData := base64.StdEncoding.EncodeToString([]byte("attachmentB"))
 
-		doc1Version := btc.rt.PutDoc(doc1ID, `{}`)
-		doc2Version := btc.rt.PutDoc(doc2ID, `{}`)
-		require.NoError(t, btc.rt.WaitForPendingChanges())
+	doc1Version, err = btc.PushRev(doc1ID, doc1Version, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
+	require.NoError(t, err)
+	doc2Version, err = btc.PushRev(doc2ID, doc2Version, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
+	require.NoError(t, err)
 
-		err := btcRunner.StartOneshotPull(btc.id)
-		assert.NoError(t, err)
-		_, ok := btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
-		require.True(t, ok)
-		_, ok = btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version)
-		require.True(t, ok)
+	assert.NoError(t, rt.WaitForVersion(doc1ID, doc1Version))
+	assert.NoError(t, rt.WaitForVersion(doc2ID, doc2Version))
 
-		attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
-		attachmentBData := base64.StdEncoding.EncodeToString([]byte("attachmentB"))
+	_, err = rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+	require.NoError(t, err)
+	_, err = rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
+	require.NoError(t, err)
 
-		doc1Version, err = btcRunner.PushRev(btc.id, doc1ID, doc1Version, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
-		require.NoError(t, err)
-		doc2Version, err = btcRunner.PushRev(btc.id, doc2ID, doc2Version, []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
-		require.NoError(t, err)
+	// Update doc1, don't change attachment, use correct revpos
+	doc1Version, err = btc.PushRev(doc1ID, doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":2}}}`))
+	require.NoError(t, err)
 
-		assert.NoError(t, btc.rt.WaitForVersion(doc1ID, doc1Version))
-		assert.NoError(t, btc.rt.WaitForVersion(doc2ID, doc2Version))
+	assert.NoError(t, rt.WaitForVersion(doc1ID, doc1Version))
 
-		_, err = btc.rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
-		require.NoError(t, err)
-		_, err = btc.rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
-		require.NoError(t, err)
+	// Update doc1, don't change attachment, use revpos=generation of revid, as CBL 2.x does.  Should not proveAttachment on digest match.
+	doc1Version, err = btc.PushRev(doc1ID, doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":4}}}`))
+	require.NoError(t, err)
 
-		// Update doc1, don't change attachment, use correct revpos
-		doc1Version, err = btcRunner.PushRev(btc.id, doc1ID, doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":2}}}`))
-		require.NoError(t, err)
+	// Validate attachment exists
+	attResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
+	assert.Equal(t, 200, attResponse.Code)
+	assert.Equal(t, "attachmentA", string(attResponse.BodyBytes()))
 
-		assert.NoError(t, btc.rt.WaitForVersion(doc1ID, doc1Version))
+	attachmentPushCount := rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
+	// Update doc1, change attachment digest with CBL revpos=generation.  Should getAttachment
+	_, err = btc.PushRev(doc1ID, doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":5}}}`))
+	require.NoError(t, err)
 
-		// Update doc1, don't change attachment, use revpos=generation of revid, as CBL 2.x does.  Should not proveAttachment on digest match.
-		doc1Version, err = btcRunner.PushRev(btc.id, doc1ID, doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":4}}}`))
-		require.NoError(t, err)
+	// Validate attachment exists and is updated
+	attResponse = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
+	assert.Equal(t, 200, attResponse.Code)
+	assert.Equal(t, "attachmentB", string(attResponse.BodyBytes()))
 
-		// Validate attachment exists
-		attResponse := btc.rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
-		assert.Equal(t, 200, attResponse.Code)
-		assert.Equal(t, "attachmentA", string(attResponse.BodyBytes()))
+	attachmentPushCountAfter := rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
+	assert.Equal(t, attachmentPushCount+1, attachmentPushCountAfter)
 
-		attachmentPushCount := btc.rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
-		// Update doc1, change attachment digest with CBL revpos=generation.  Should getAttachment
-		_, err = btcRunner.PushRev(btc.id, doc1ID, doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":5}}}`))
-		require.NoError(t, err)
-
-		// Validate attachment exists and is updated
-		attResponse = btc.rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
-		assert.Equal(t, 200, attResponse.Code)
-		assert.Equal(t, "attachmentB", string(attResponse.BodyBytes()))
-
-		attachmentPushCountAfter := btc.rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
-		assert.Equal(t, attachmentPushCount+1, attachmentPushCountAfter)
-	})
 }
 
 // Helper_Functions

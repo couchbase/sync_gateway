@@ -30,8 +30,8 @@ func NewBypassRevisionCache(backingStore RevisionCacheBackingStore, bypassStat *
 	}
 }
 
-// GetWithRev fetches the revision for the given docID and revID immediately from the bucket.
-func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID string, includeBody, includeDelta bool) (docRev DocumentRevision, err error) {
+// Get fetches the revision for the given docID and revID immediately from the bucket.
+func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, includeBody bool, includeDelta bool) (docRev DocumentRevision, err error) {
 
 	unmarshalLevel := DocUnmarshalSync
 	if includeBody {
@@ -45,33 +45,7 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 	docRev = DocumentRevision{
 		RevID: revID,
 	}
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.CV, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, revID)
-	if err != nil {
-		return DocumentRevision{}, err
-	}
-
-	rc.bypassStat.Add(1)
-
-	return docRev, nil
-}
-
-// GetWithCV fetches the Current Version for the given docID and CV immediately from the bucket.
-func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *CurrentVersionVector, includeBody, includeDelta bool) (docRev DocumentRevision, err error) {
-
-	unmarshalLevel := DocUnmarshalSync
-	if includeBody {
-		unmarshalLevel = DocUnmarshalAll
-	}
-	docRev = DocumentRevision{
-		CV: cv,
-	}
-
-	doc, err := rc.backingStore.GetDocument(ctx, docID, unmarshalLevel)
-	if err != nil {
-		return DocumentRevision{}, err
-	}
-
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.RevID, err = revCacheLoaderForDocumentCV(ctx, rc.backingStore, doc, *cv)
+	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, revID)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -97,7 +71,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, incl
 		RevID: doc.CurrentRev,
 	}
 
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.CV, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, doc.SyncData.CurrentRev)
+	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, doc.SyncData.CurrentRev)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -122,11 +96,7 @@ func (rc *BypassRevisionCache) Upsert(ctx context.Context, docRev DocumentRevisi
 	// no-op
 }
 
-func (rc *BypassRevisionCache) RemoveWithRev(docID, revID string) {
-	// nop
-}
-
-func (rc *BypassRevisionCache) RemoveWithCV(docID string, cv *CurrentVersionVector) {
+func (rc *BypassRevisionCache) Remove(docID, revID string) {
 	// nop
 }
 

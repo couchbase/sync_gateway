@@ -1479,7 +1479,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	_, err := dataStore.GetXattr(rt.Context(), docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
-	docRev, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().GetWithRev(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
+	docRev, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(docRev.Channels.ToArray()))
 	assert.Equal(t, syncData.CurrentRev, docRev.RevID)
@@ -1499,7 +1499,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	_, err = dataStore.GetXattr(rt.Context(), docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
-	docRev2, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().GetWithRev(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
+	docRev2, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
 	assert.NoError(t, err)
 	assert.Equal(t, syncData2.CurrentRev, docRev2.RevID)
 
