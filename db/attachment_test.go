@@ -72,7 +72,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	var rev2Body Body
 	rev2Data := `{"test": true, "updated": true, "_attachments": {"hello.txt": {"stub": true, "revpos": 1}}}`
 	require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
-	_, _, err = collection.PutExistingRevWithBody(ctx, docID, rev2Body, []string{"2-abc", rev1ID}, true, ExistingVersionWithUpdateToHLV)
+	_, _, err = collection.PutExistingRevWithBody(ctx, docID, rev2Body, []string{"2-abc", rev1ID}, true)
 	require.NoError(t, err)
 	rev2ID := "2-abc"
 
@@ -200,7 +200,7 @@ func TestAttachments(t *testing.T) {
 	rev2Bstr := `{"_attachments": {"bye.txt": {"stub":true,"revpos":1,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}, "_rev": "2-f000"}`
 	var body2B Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev2Bstr), &body2B))
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body2B, []string{"2-f000", rev1id}, false, ExistingVersionWithUpdateToHLV)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body2B, []string{"2-f000", rev1id}, false)
 	assert.NoError(t, err, "Couldn't update document")
 }
 
@@ -284,7 +284,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 			rev2Data := `{"prop1":"value2", "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 			require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
-			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2Body, []string{"2-abc", rev1ID}, true, ExistingVersionWithUpdateToHLV)
+			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2Body, []string{"2-abc", rev1ID}, true)
 			require.NoError(t, err)
 
 			log.Printf("Done creating rev 2 for key %s", key)
@@ -315,7 +315,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 	var rev3Body Body
 	rev3Data := `{"prop1":"value3", "_attachments": {"hello.txt": {"revpos":2,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 	require.NoError(t, base.JSONUnmarshal([]byte(rev3Data), &rev3Body))
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3Body, []string{"3-abc", "2-abc", rev1ID}, true, ExistingVersionWithUpdateToHLV)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3Body, []string{"3-abc", "2-abc", rev1ID}, true)
 	require.NoError(t, err)
 
 	log.Printf("rev 3 done")
@@ -347,7 +347,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 			rev2Data := `{"prop1":"value2"}`
 			require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
-			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2Body, []string{"2-abc", rev1ID}, true, ExistingVersionWithUpdateToHLV)
+			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2Body, []string{"2-abc", rev1ID}, true)
 			require.NoError(t, err)
 
 			log.Printf("Done creating rev 2 for key %s", key)
@@ -378,7 +378,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 	var rev3Body Body
 	rev3Data := `{"prop1":"value3", "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	require.NoError(t, base.JSONUnmarshal([]byte(rev3Data), &rev3Body))
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3Body, []string{"3-abc", "2-abc", rev1ID}, true, ExistingVersionWithUpdateToHLV)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", rev3Body, []string{"3-abc", "2-abc", rev1ID}, true)
 	require.NoError(t, err)
 
 	log.Printf("rev 3 done")
@@ -567,7 +567,7 @@ func TestRetrieveAncestorAttachments(t *testing.T) {
 	// Create document (rev 1)
 	text := `{"key": "value", "version": "1a"}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	doc, revID, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
+	doc, revID, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
@@ -575,49 +575,49 @@ func TestRetrieveAncestorAttachments(t *testing.T) {
 	text = `{"key": "value", "version": "2a", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
 	body[BodyRev] = revID
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
+	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "3a", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
 	body[BodyRev] = revID
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"3-a", "2-a"}, false, ExistingVersionWithUpdateToHLV)
+	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"3-a", "2-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "4a", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
 	body[BodyRev] = revID
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"4-a", "3-a"}, false, ExistingVersionWithUpdateToHLV)
+	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"4-a", "3-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "5a", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
 	body[BodyRev] = revID
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"5-a", "4-a"}, false, ExistingVersionWithUpdateToHLV)
+	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"5-a", "4-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "6a", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
 	body[BodyRev] = revID
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"6-a", "5-a"}, false, ExistingVersionWithUpdateToHLV)
+	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"6-a", "5-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "3b", "type": "pruned"}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
 	body[BodyRev] = revID
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"3-b", "2-a"}, false, ExistingVersionWithUpdateToHLV)
+	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"3-b", "2-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "3b", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
 	body[BodyRev] = revID
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"3-b", "2-a"}, false, ExistingVersionWithUpdateToHLV)
+	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"3-b", "2-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 }
