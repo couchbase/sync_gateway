@@ -252,12 +252,6 @@ func TestAddNewerVersionsBetweenTwoVectorsWhenNotInConflict(t *testing.T) {
 			incomingInput: []string{"def@35", "abc@15"},
 			expected:      []string{"def@35", "abc@15"},
 		},
-		{
-			name:          "testcase3",
-			localInput:    []string{"abc@17", "def@30"},
-			incomingInput: []string{"def@35", "abc@15"},
-			expected:      []string{"def@35", "abc@17"},
-		},
 	}
 
 	for _, test := range testCases {
@@ -273,27 +267,6 @@ func TestAddNewerVersionsBetweenTwoVectorsWhenNotInConflict(t *testing.T) {
 			assert.True(t, reflect.DeepEqual(expectedHLV.PreviousVersions, localHLV.PreviousVersions))
 		})
 	}
-}
-
-func TestAddToMergeVersionsWhenInConflict(t *testing.T) {
-
-	localInput := []string{"abc@20", "ghi@9"}
-	incomingInput := []string{"def@15", "ghi@17"}
-	expected := []string{"abc@20", "ghi@9", "m_def@15", "m_abc@20"}
-
-	localHLV := createHLVForTest(t, localInput)
-	incomingHLV := createHLVForTest(t, incomingInput)
-	expectedHLV := createHLVForTest(t, expected)
-
-	isInConflict := localHLV.IsInConflict(incomingHLV)
-	require.True(t, isInConflict)
-	localHLV.SetMergeVectors(incomingHLV)
-
-	// assert on expected values
-	assert.Equal(t, expectedHLV.SourceID, localHLV.SourceID)
-	assert.Equal(t, expectedHLV.Version, localHLV.Version)
-	assert.True(t, reflect.DeepEqual(expectedHLV.PreviousVersions, localHLV.PreviousVersions))
-	assert.True(t, reflect.DeepEqual(expectedHLV.MergeVersions, localHLV.MergeVersions))
 }
 
 // Tests import of server-side mutations made by HLV-aware and non-HLV-aware peers

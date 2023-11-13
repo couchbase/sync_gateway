@@ -237,15 +237,6 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector
 	return nil
 }
 
-func (hlv *HybridLogicalVector) SetMergeVectors(otherVector HybridLogicalVector) {
-	if hlv.MergeVersions == nil {
-		hlv.MergeVersions = make(map[string]uint64)
-	}
-
-	hlv.setMergeVersion(otherVector.SourceID, otherVector.Version)
-	hlv.setMergeVersion(hlv.SourceID, hlv.Version)
-}
-
 func (hlv HybridLogicalVector) MarshalJSON() ([]byte, error) {
 
 	persistedHLV, err := hlv.convertHLVToPersistedFormat()
