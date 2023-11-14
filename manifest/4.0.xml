@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+Copyright 2016-Present Couchbase, Inc.
+
+Use of this software is governed by the Business Source License included in
+the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+file, in accordance with the Business Source License, use of this software will
+be governed by the Apache License, Version 2.0, included in the file
+licenses/APL2.txt.
+-->
+
+<manifest>
+
+  <remote fetch="https://github.com/couchbase/" name="couchbase"/>
+  <default remote="couchbase" revision="master"/>
+
+  <!-- Build Scripts (required on CI servers) -->
+  <project name="product-texts" path="product-texts" remote="couchbase"/>
+  <project name="build" path="cbbuild" remote="couchbase" revision="844e2484067053d7af88e706a814766265bf03df">
+    <annotation name="VERSION" value="3.1.2"     keep="true"/>
+    <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
+    <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
+  </project>
+
+
+  <!-- Sync Gateway -->
+   <project name="sync_gateway" path="sync_gateway" remote="couchbase" revision="beryllium"/>
+
+</manifest>
