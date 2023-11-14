@@ -435,7 +435,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipVersionVectorInitialization = true
+	btcRunner.SkipVersionVectorInitialization = true // v2 protocol test
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {

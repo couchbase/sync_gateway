@@ -1974,10 +1974,11 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		RequireStatus(t, resp, http.StatusCreated)
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:        "user",
-			Channels:        []string{"*"},
-			ClientDeltas:    false,
-			SendRevocations: true,
+			Username:               "user",
+			Channels:               []string{"*"},
+			ClientDeltas:           false,
+			SendRevocations:        true,
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
 		})
 		defer btc.Close()
 
@@ -2085,10 +2086,11 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		RequireStatus(t, resp, http.StatusCreated)
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:        "user",
-			Channels:        []string{"*"},
-			ClientDeltas:    false,
-			SendRevocations: true,
+			Username:               "user",
+			Channels:               []string{"*"},
+			ClientDeltas:           false,
+			SendRevocations:        true,
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
 		})
 		defer btc.Close()
 
