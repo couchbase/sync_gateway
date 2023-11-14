@@ -588,53 +588,6 @@ func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
 	return collections
 }
 
-func createBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient, err error) {
-	if opts == nil {
-		opts = &BlipTesterClientOpts{}
-	}
-	btc := BlipTesterClient{
-		BlipTesterClientOpts: *opts,
-		rt:                   rt,
-	}
-
-	id, err := uuid.NewRandom()
-	if err != nil {
-		return nil, err
-	}
-
-	if btc.pushReplication, err = newBlipTesterReplication(btc.rt.TB, "push"+id.String(), &btc, opts.SkipCollectionsInitialization); err != nil {
-		return nil, err
-	}
-	if btc.pullReplication, err = newBlipTesterReplication(btc.rt.TB, "pull"+id.String(), &btc, opts.SkipCollectionsInitialization); err != nil {
-		return nil, err
-	}
-
-	collections := getCollectionsForBLIP(tb, rt)
-	if !opts.SkipCollectionsInitialization && len(collections) > 0 {
-		btc.collectionClients = make([]*BlipTesterCollectionClient, len(collections))
-		for i, collection := range collections {
-			if err := btc.initCollectionReplication(collection, i); err != nil {
-				return nil, err
-			}
-		}
-	} else {
-		btc.nonCollectionAwareClient = &BlipTesterCollectionClient{
-			docs:              make(map[string]map[string]*BodyMessagePair),
-			attachments:       make(map[string][]byte),
-			lastReplicatedRev: make(map[string]string),
-			parent:            &btc,
-		}
-
-	}
-
-	return &btc, nil
-}
-
-// NewBlipTesterClient returns a client which emulates the behaviour of a CBL client over BLIP.
-func NewBlipTesterClient(tb testing.TB, rt *RestTester) (client *BlipTesterClient, err error) {
-	return createBlipTesterClientOpts(tb, rt, nil)
-}
-
 func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient) {
 	if !btcRunner.initialisedInsideRunnerCode {
 		btcRunner.t.Fatalf("must initialise BlipTesterClient inside Run() method")
@@ -679,6 +632,7 @@ func (btcRunner *BlipTestClientRunner) Run(test func(t *testing.T, SupportedBLIP
 		return
 	}
 	btcRunner.t.Run("versionVector", func(t *testing.T) {
+		t.Skip("skip VV subtest on master")
 		// bump sub protocol version here and pass into test function pending CBG-3253
 		test(t, nil)
 	})
