@@ -1322,22 +1322,24 @@ func TestAllowedAttachments(t *testing.T) {
 
 	var tests = []struct {
 		name              string
-		inputBlipProtocol string
+		inputBlipProtocol CBMobileSubprotocolVersion
 		inputAttVersion   int
 	}{
-		{"TestAllowedAttachmentsCBMobile2AttVer1", BlipCBMobileReplicationV2, AttVersion1},
-		{"TestAllowedAttachmentsCBMobile2AttVer2", BlipCBMobileReplicationV2, AttVersion2},
-		{"TestAllowedAttachmentsCBMobile3AttVer1", BlipCBMobileReplicationV3, AttVersion1},
-		{"TestAllowedAttachmentsCBMobile3AttVer2", BlipCBMobileReplicationV3, AttVersion2},
+		{"TestAllowedAttachmentsCBMobile2AttVer1", CBMobileReplicationV2, AttVersion1},
+		{"TestAllowedAttachmentsCBMobile2AttVer2", CBMobileReplicationV2, AttVersion2},
+		{"TestAllowedAttachmentsCBMobile3AttVer1", CBMobileReplicationV3, AttVersion1},
+		{"TestAllowedAttachmentsCBMobile3AttVer2", CBMobileReplicationV3, AttVersion2},
+		{"TestAllowedAttachmentsCBMobile4AttVer2", CBMobileReplicationV4, AttVersion2},
+		{"TestAllowedAttachmentsCBMobile4AttVer2", CBMobileReplicationV4, AttVersion2},
 	}
 
 	isAllowedAttachment := func(ctx *BlipSyncContext, key string) bool {
 		return ctx.allowedAttachment(key).counter > 0
 	}
 
-	requireIsAttachmentAllowedTrue := func(t *testing.T, ctx *BlipSyncContext, docID string, meta []AttachmentStorageMeta, activeSubprotocol string) {
+	requireIsAttachmentAllowedTrue := func(t *testing.T, ctx *BlipSyncContext, docID string, meta []AttachmentStorageMeta, activeSubprotocol CBMobileSubprotocolVersion) {
 		docIDForAllowedAttKey := docID
-		if activeSubprotocol == BlipCBMobileReplicationV2 {
+		if activeSubprotocol <= CBMobileReplicationV2 {
 			docIDForAllowedAttKey = ""
 		}
 		for _, att := range meta {
@@ -1346,9 +1348,9 @@ func TestAllowedAttachments(t *testing.T) {
 		}
 	}
 
-	requireIsAttachmentAllowedFalse := func(t *testing.T, ctx *BlipSyncContext, docID string, meta []AttachmentStorageMeta, activeSubprotocol string) {
+	requireIsAttachmentAllowedFalse := func(t *testing.T, ctx *BlipSyncContext, docID string, meta []AttachmentStorageMeta, activeSubprotocol CBMobileSubprotocolVersion) {
 		docIDForAllowedAttKey := docID
-		if activeSubprotocol == BlipCBMobileReplicationV2 {
+		if activeSubprotocol <= CBMobileReplicationV2 {
 			docIDForAllowedAttKey = ""
 		}
 		for _, att := range meta {
@@ -1413,9 +1415,9 @@ func TestAllowedAttachments(t *testing.T) {
 
 			ctx.removeAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
-			if tt.inputBlipProtocol == BlipCBMobileReplicationV2 {
+			if tt.inputBlipProtocol <= CBMobileReplicationV2 {
 				requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
-			} else if tt.inputBlipProtocol == BlipCBMobileReplicationV3 {
+			} else if tt.inputBlipProtocol <= CBMobileReplicationV3 {
 				requireIsAttachmentAllowedFalse(t, ctx, docID1, meta, tt.inputBlipProtocol)
 			}
 
@@ -1443,9 +1445,9 @@ func TestAllowedAttachments(t *testing.T) {
 
 			ctx.removeAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
-			if tt.inputBlipProtocol == BlipCBMobileReplicationV2 {
+			if tt.inputBlipProtocol <= CBMobileReplicationV2 {
 				requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
-			} else if tt.inputBlipProtocol == BlipCBMobileReplicationV3 {
+			} else if tt.inputBlipProtocol <= CBMobileReplicationV3 {
 				requireIsAttachmentAllowedFalse(t, ctx, docID1, meta, tt.inputBlipProtocol)
 			}
 

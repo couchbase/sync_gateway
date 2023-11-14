@@ -340,7 +340,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					if _, found := btcr.attachments[digest]; !found {
 						missingDigests = append(missingDigests, digest)
 					} else {
-						if btr.bt.blipContext.ActiveSubprotocol() == db.BlipCBMobileReplicationV2 {
+						if btr.bt.activeSubprotocol == db.CBMobileReplicationV2 {
 							// only v2 clients care about proveAttachments
 							knownDigests = append(knownDigests, digest)
 						}
@@ -400,7 +400,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					outrq := blip.NewRequest()
 					outrq.SetProfile(db.MessageGetAttachment)
 					outrq.Properties[db.GetAttachmentDigest] = digest
-					if btr.bt.blipContext.ActiveSubprotocol() == db.BlipCBMobileReplicationV3 {
+					if btr.bt.activeSubprotocol >= db.CBMobileReplicationV3 {
 						outrq.Properties[db.GetAttachmentID] = docID
 					}
 
