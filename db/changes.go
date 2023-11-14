@@ -44,19 +44,20 @@ type ChangesOptions struct {
 // A changes entry; Database.GetChanges returns an array of these.
 // Marshals into the standard CouchDB _changes format.
 type ChangeEntry struct {
-	Seq          SequenceID      `json:"seq"`
-	ID           string          `json:"id"`
-	Deleted      bool            `json:"deleted,omitempty"`
-	Removed      base.Set        `json:"removed,omitempty"`
-	Doc          json.RawMessage `json:"doc,omitempty"`
-	Changes      []ChangeRev     `json:"changes"`
-	Err          error           `json:"err,omitempty"` // Used to notify feed consumer of errors
-	allRemoved   bool            // Flag to track whether an entry is a removal in all channels visible to the user.
-	branched     bool
-	backfill     backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
-	principalDoc bool         // Used to indicate _user/_role docs
-	Revoked      bool         `json:"revoked,omitempty"`
-	collectionID uint32
+	Seq            SequenceID      `json:"seq"`
+	ID             string          `json:"id"`
+	Deleted        bool            `json:"deleted,omitempty"`
+	Removed        base.Set        `json:"removed,omitempty"`
+	Doc            json.RawMessage `json:"doc,omitempty"`
+	Changes        []ChangeRev     `json:"changes"`
+	Err            error           `json:"err,omitempty"` // Used to notify feed consumer of errors
+	allRemoved     bool            // Flag to track whether an entry is a removal in all channels visible to the user.
+	branched       bool
+	backfill       backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
+	principalDoc   bool         // Used to indicate _user/_role docs
+	Revoked        bool         `json:"revoked,omitempty"`
+	collectionID   uint32
+	CurrentVersion CurrentVersionVector // the current version of the change entry
 }
 
 const (
@@ -473,13 +474,14 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 
 func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channel channels.ID) ChangeEntry {
 	change := ChangeEntry{
-		Seq:          seqID,
-		ID:           logEntry.DocID,
-		Deleted:      (logEntry.Flags & channels.Deleted) != 0,
-		Changes:      []ChangeRev{{"rev": logEntry.RevID}},
-		branched:     (logEntry.Flags & channels.Branched) != 0,
-		principalDoc: logEntry.IsPrincipal,
-		collectionID: logEntry.CollectionID,
+		Seq:            seqID,
+		ID:             logEntry.DocID,
+		Deleted:        (logEntry.Flags & channels.Deleted) != 0,
+		Changes:        []ChangeRev{{"rev": logEntry.RevID}},
+		branched:       (logEntry.Flags & channels.Branched) != 0,
+		principalDoc:   logEntry.IsPrincipal,
+		collectionID:   logEntry.CollectionID,
+		CurrentVersion: CurrentVersionVector{SourceID: logEntry.SourceID, VersionCAS: logEntry.Version},
 	}
 	if logEntry.Flags&channels.Removed != 0 {
 		change.Removed = base.SetOf(channel.Name)
@@ -1280,6 +1282,13 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	row.Deleted = populatedDoc.Deleted
 	row.Seq = SequenceID{Seq: populatedDoc.Sequence}
 	row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
+
+	cv := CurrentVersionVector{}
+	if populatedDoc.HLV != nil {
+		cv.SourceID = populatedDoc.HLV.SourceID
+		cv.VersionCAS = populatedDoc.HLV.Version
+	}
+	row.CurrentVersion = cv
 
 	var removedChannels []string
 

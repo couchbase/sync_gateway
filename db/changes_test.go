@@ -290,6 +290,39 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	printChanges(changes)
 }
 
+func TestCVPopulationOnChangeEntry(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collectionID := collection.GetCollectionID()
+	bucketUUID := db.BucketUUID
+
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	authenticator := db.Authenticator(base.TestCtx(t))
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+
+	collection.user, _ = authenticator.GetUser("alice")
+
+	// Make channel active
+	_, err = db.channelCache.GetChanges(ctx, channels.NewID("A", collectionID), getChangesOptionsWithZeroSeq(t))
+	require.NoError(t, err)
+
+	_, doc, err := collection.Put(ctx, "doc1", Body{"channels": []string{"A"}})
+	require.NoError(t, err)
+
+	require.NoError(t, collection.WaitForPendingChanges(base.TestCtx(t)))
+
+	changes, err := collection.GetChanges(ctx, base.SetOf("A"), getChangesOptionsWithZeroSeq(t))
+	require.NoError(t, err)
+
+	assert.Equal(t, doc.ID, changes[0].ID)
+	assert.Equal(t, bucketUUID, changes[0].CurrentVersion.SourceID)
+	assert.Equal(t, doc.Cas, changes[0].CurrentVersion.VersionCAS)
+}
+
 func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	if base.TestUseXattrs() {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  Same error as TestDocDeletionFromChannelCoalescedRemoved")
