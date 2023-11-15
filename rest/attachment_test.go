@@ -1060,7 +1060,6 @@ func TestAttachmentContentType(t *testing.T) {
 }
 
 func TestBasicAttachmentRemoval(t *testing.T) {
-	t.Skip("Disabled pending CBG-3503")
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
@@ -2224,7 +2223,6 @@ func TestAttachmentDeleteOnPurge(t *testing.T) {
 }
 
 func TestAttachmentDeleteOnExpiry(t *testing.T) {
-	t.Skip("Disabled pending CBG-3503")
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
