@@ -9,11 +9,14 @@
 package db
 
 import (
+	"context"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 
+	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,14 +37,14 @@ func TestInternalHLVFunctions(t *testing.T) {
 	const newSource = "s_testsource"
 
 	// create a new version vector entry that will error method AddVersion
-	badNewVector := CurrentVersionVector{
-		VersionCAS: 123345,
-		SourceID:   currSourceId,
+	badNewVector := SourceAndVersion{
+		Version:  123345,
+		SourceID: currSourceId,
 	}
 	// create a new version vector entry that should be added to HLV successfully
-	newVersionVector := CurrentVersionVector{
-		VersionCAS: newCAS,
-		SourceID:   currSourceId,
+	newVersionVector := SourceAndVersion{
+		Version:  newCAS,
+		SourceID: currSourceId,
 	}
 
 	// Get current version vector, sourceID and CAS pair
@@ -228,4 +231,94 @@ func TestHybridLogicalVectorPersistence(t *testing.T) {
 	assert.Equal(t, inMemoryHLV.Version, hlvFromPersistance.Version)
 	assert.Equal(t, inMemoryHLV.PreviousVersions, hlvFromPersistance.PreviousVersions)
 	assert.Equal(t, inMemoryHLV.MergeVersions, hlvFromPersistance.MergeVersions)
+}
+
+// Tests import of server-side mutations made by HLV-aware and non-HLV-aware peers
+func TestHLVImport(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	localSource := collection.dbCtx.BucketUUID
+
+	// 1. Test standard import of an SDK write
+	standardImportKey := "standardImport_" + t.Name()
+	standardImportBody := []byte(`{"prop":"value"}`)
+	cas, err := collection.dataStore.WriteCas(standardImportKey, 0, 0, 0, standardImportBody, sgbucket.Raw)
+	require.NoError(t, err, "write error")
+	_, err = collection.ImportDocRaw(ctx, standardImportKey, standardImportBody, nil, nil, false, cas, nil, ImportFromFeed)
+	require.NoError(t, err, "import error")
+
+	importedDoc, _, err := collection.GetDocWithXattr(ctx, standardImportKey, DocUnmarshalAll)
+	require.NoError(t, err)
+	importedHLV := importedDoc.HLV
+	require.Equal(t, cas, importedHLV.ImportCAS)
+	require.Equal(t, importedDoc.Cas, importedHLV.CurrentVersionCAS)
+	require.Equal(t, importedDoc.Cas, importedHLV.Version)
+	require.Equal(t, localSource, importedHLV.SourceID)
+
+	// 2. Test import of write by HLV-aware peer (HLV is already updated, sync metadata is not).
+	otherSource := "otherSource"
+	hlvHelper := NewHLVAgent(t, collection.dataStore, otherSource, "_sync")
+	existingHLVKey := "existingHLV_" + t.Name()
+	_ = hlvHelper.insertWithHLV(ctx, existingHLVKey)
+
+	var existingBody, existingXattr []byte
+	cas, err = collection.dataStore.GetWithXattr(ctx, existingHLVKey, "_sync", "", &existingBody, &existingXattr, nil)
+	require.NoError(t, err)
+
+	_, err = collection.ImportDocRaw(ctx, existingHLVKey, existingBody, existingXattr, nil, false, cas, nil, ImportFromFeed)
+	require.NoError(t, err, "import error")
+
+	importedDoc, _, err = collection.GetDocWithXattr(ctx, existingHLVKey, DocUnmarshalAll)
+	require.NoError(t, err)
+	importedHLV = importedDoc.HLV
+	// cas in the HLV's current version and cvCAS should not have changed, and should match importCAS
+	require.Equal(t, cas, importedHLV.ImportCAS)
+	require.Equal(t, cas, importedHLV.CurrentVersionCAS)
+	require.Equal(t, cas, importedHLV.Version)
+	require.Equal(t, otherSource, importedHLV.SourceID)
+}
+
+// HLVAgent performs HLV updates directly (not via SG) for simulating/testing interaction with non-SG HLV agents
+type HLVAgent struct {
+	t         *testing.T
+	datastore base.DataStore
+	source    string // All writes by the HLVHelper are done as this source
+	xattrName string // xattr name to store the HLV
+}
+
+var defaultHelperBody = map[string]interface{}{"version": 1}
+
+func NewHLVAgent(t *testing.T, datastore base.DataStore, source string, xattrName string) *HLVAgent {
+	return &HLVAgent{
+		t:         t,
+		datastore: datastore,
+		source:    source, // all writes by the HLVHelper are done as this source
+		xattrName: xattrName,
+	}
+}
+
+// insertWithHLV inserts a new document into the bucket with a populated HLV (matching a write from
+// a different HLV-aware peer)
+func (h *HLVAgent) insertWithHLV(ctx context.Context, key string) (casOut uint64) {
+	hlv := &HybridLogicalVector{}
+	err := hlv.AddVersion(CreateVersion(h.source, hlvExpandMacroCASValue))
+	require.NoError(h.t, err)
+	hlv.CurrentVersionCAS = hlvExpandMacroCASValue
+
+	syncData := &SyncData{HLV: hlv}
+	syncDataBytes, err := base.JSONMarshal(syncData)
+	require.NoError(h.t, err)
+
+	mutateInOpts := &sgbucket.MutateInOptions{
+		MacroExpansion: hlv.computeMacroExpansions(),
+	}
+
+	cas, err := h.datastore.WriteCasWithXattr(ctx, key, h.xattrName, 0, 0, defaultHelperBody, syncDataBytes, mutateInOpts)
+	require.NoError(h.t, err)
+	return cas
 }
