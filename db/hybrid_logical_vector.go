@@ -215,7 +215,7 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector
 
 	// create current version for incoming vector and attempt to add it to the local HLV, AddVersion will handle if attempting to add older
 	// version than local HLVs CV pair
-	otherVectorCV := CurrentVersionVector{SourceID: otherVector.SourceID, VersionCAS: otherVector.Version}
+	otherVectorCV := SourceAndVersion{SourceID: otherVector.SourceID, Version: otherVector.Version}
 	err := hlv.AddVersion(otherVectorCV)
 	if err != nil {
 		return err
