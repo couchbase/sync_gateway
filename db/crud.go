@@ -1062,7 +1062,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	return newRevID, doc, err
 }
 
-func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, docHLV HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *CurrentVersionVector, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, docHLV HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *SourceAndVersion, newRevID string, err error) {
 	var matchRev string
 	if existingDoc != nil {
 		doc, unmarshalErr := unmarshalDocumentWithXattr(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattr, existingDoc.UserXattr, existingDoc.Cas, DocUnmarshalRev)
@@ -1149,11 +1149,11 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 
 	if doc != nil && doc.HLV != nil {
 		if cv == nil {
-			cv = &CurrentVersionVector{}
+			cv = &SourceAndVersion{}
 		}
 		source, version := doc.HLV.GetCurrentVersion()
 		cv.SourceID = source
-		cv.VersionCAS = version
+		cv.Version = version
 	}
 
 	return doc, cv, newRevID, err
