@@ -19,8 +19,8 @@ import (
 const (
 	ProductName = "Couchbase Sync Gateway"
 
-	ProductAPIVersionMajor = "3"
-	ProductAPIVersionMinor = "2"
+	ProductAPIVersionMajor = "4"
+	ProductAPIVersionMinor = "0"
 	ProductAPIVersion      = ProductAPIVersionMajor + "." + ProductAPIVersionMinor
 )
 
