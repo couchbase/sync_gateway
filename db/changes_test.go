@@ -317,7 +317,6 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 
 	changes, err := collection.GetChanges(ctx, base.SetOf("A"), getChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err)
-	printChanges(changes)
 
 	assert.Equal(t, doc.ID, changes[0].ID)
 	assert.Equal(t, bucketUUID, changes[0].CurrentVersion.SourceID)

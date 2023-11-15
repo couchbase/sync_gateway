@@ -436,7 +436,6 @@ func (h *handler) handlePutDoc() error {
 	if err != nil {
 		return err
 	}
-	var cv db.CurrentVersionVector
 
 	if body == nil {
 		return base.ErrEmptyDocument
@@ -448,6 +447,7 @@ func (h *handler) handlePutDoc() error {
 
 	var newRev string
 	var doc *db.Document
+	var cv db.CurrentVersionVector
 
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:

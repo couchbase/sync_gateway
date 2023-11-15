@@ -1056,12 +1056,11 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		return newDoc, newAttachments, false, nil, nil
 	})
 
-	var cv CurrentVersionVector
 	if err == nil {
-		cv = CurrentVersionVector{SourceID: doc.HLV.SourceID, VersionCAS: doc.HLV.Version}
+		currentVersion = CurrentVersionVector{SourceID: doc.HLV.SourceID, VersionCAS: doc.HLV.Version}
 	}
 
-	return newRevID, cv, doc, err
+	return newRevID, currentVersion, doc, err
 }
 
 func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, docHLV HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *SourceAndVersion, newRevID string, err error) {
