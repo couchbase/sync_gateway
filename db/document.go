@@ -1170,14 +1170,14 @@ func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 }
 
 // HasCurrentVersion Compares the specified CV with the fetched documents CV, returns error on mismatch between the two
-func (d *Document) HasCurrentVersion(cv CurrentVersionVector) error {
+func (d *Document) HasCurrentVersion(cv SourceAndVersion) error {
 	if d.HLV == nil {
 		return base.RedactErrorf("no HLV present in fetched doc %s", base.UD(d.ID))
 	}
 
 	// fetch the current version for the loaded doc and compare against the CV specified in the IDandCV key
 	fetchedDocSource, fetchedDocVersion := d.HLV.GetCurrentVersion()
-	if fetchedDocSource != cv.SourceID || fetchedDocVersion != cv.VersionCAS {
+	if fetchedDocSource != cv.SourceID || fetchedDocVersion != cv.Version {
 		return base.RedactErrorf("mismatch between specified current version and fetched document current version for doc %s", base.UD(d.ID))
 	}
 	return nil
