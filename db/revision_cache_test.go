@@ -325,7 +325,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 		"value":       1234,
 		BodyRevisions: "unexpected data",
 	}
-	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
+	rev1id, _, _, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	// Get the raw document directly from the bucket, validate _revisions property isn't found
@@ -375,12 +375,12 @@ func TestBypassRevisionCache(t *testing.T) {
 		"value": 1234,
 	}
 	key := "doc1"
-	rev1, _, err := collection.Put(ctx, key, docBody)
+	rev1, _, _, err := collection.Put(ctx, key, docBody)
 	assert.NoError(t, err)
 
 	docBody["_rev"] = rev1
 	docBody["value"] = 5678
-	rev2, _, err := collection.Put(ctx, key, docBody)
+	rev2, _, _, err := collection.Put(ctx, key, docBody)
 	assert.NoError(t, err)
 
 	bypassStat := base.SgwIntStat{}
@@ -438,7 +438,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 	}
 	rev1key := "doc1"
-	rev1id, _, err := collection.Put(ctx, rev1key, rev1body)
+	rev1id, _, _, err := collection.Put(ctx, rev1key, rev1body)
 	assert.NoError(t, err, "Unexpected error calling collection.Put")
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found
@@ -480,7 +480,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	rev1body := Body{
 		"value": 1234,
 	}
-	rev1id, _, err := collection.Put(ctx, docKey, rev1body)
+	rev1id, _, _, err := collection.Put(ctx, docKey, rev1body)
 	assert.NoError(t, err, "Unexpected error calling collection.Put")
 
 	rev2id := "2-xxx"
@@ -589,7 +589,7 @@ func TestRevisionCacheRemove(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	rev1id, _, err := collection.Put(ctx, "doc", Body{"val": 123})
+	rev1id, _, _, err := collection.Put(ctx, "doc", Body{"val": 123})
 	assert.NoError(t, err)
 
 	docRev, err := collection.revisionCache.GetWithRev(base.TestCtx(t), "doc", rev1id, true, true)
@@ -770,7 +770,7 @@ func TestGetActive(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	rev1id, doc, err := collection.Put(ctx, "doc", Body{"val": 123})
+	rev1id, _, doc, err := collection.Put(ctx, "doc", Body{"val": 123})
 	require.NoError(t, err)
 
 	expectedCV := SourceAndVersion{

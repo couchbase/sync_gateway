@@ -1268,7 +1268,7 @@ func TestGet1xRevAndChannels(t *testing.T) {
 	assert.Equal(t, []interface{}{"a"}, revisions[RevisionsIds])
 
 	// Delete the document, creating tombstone revision rev3
-	rev3, err := collection.DeleteDoc(ctx, docId, rev2)
+	rev3, _, err := collection.DeleteDoc(ctx, docId, rev2)
 	require.NoError(t, err)
 	bodyBytes, removed, err = collection.get1xRevFromDoc(ctx, doc2, rev3, true)
 	assert.False(t, removed)
@@ -1354,7 +1354,7 @@ func TestGet1xRevFromDoc(t *testing.T) {
 
 	// Deletes the document, by adding a new revision whose _deleted property is true.
 	body := Body{BodyDeleted: true, BodyRev: rev2}
-	rev3, doc, err := collection.Put(ctx, docId, body)
+	rev3, _, doc, err := collection.Put(ctx, docId, body)
 	assert.NoError(t, err, "Document should be deleted")
 	assert.NotEmpty(t, rev3, "Document revision shouldn't be empty")
 
@@ -1621,7 +1621,7 @@ func TestPutStampClusterUUID(t *testing.T) {
 	err := body.Unmarshal([]byte(`{"field": "value"}`))
 	require.NoError(t, err)
 
-	_, doc, err := collection.Put(ctx, key, body)
+	_, _, doc, err := collection.Put(ctx, key, body)
 
 	require.NoError(t, err)
 	require.Equal(t, 32, len(doc.ClusterUUID))
@@ -1650,7 +1650,7 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 	startReleasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value()
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	rev, doc, err := collection.Put(ctx, "doc1", Body{"foo": "bar"})
+	rev, _, doc, err := collection.Put(ctx, "doc1", Body{"foo": "bar"})
 	require.NoError(t, err)
 	t.Logf("doc sequence: %d", doc.Sequence)
 
@@ -1664,7 +1664,7 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 	_, err = collection.dataStore.UpdateXattr(ctx, doc.ID, base.SyncXattrName, 0, doc.Cas, newSyncData, DefaultMutateInOpts())
 	require.NoError(t, err)
 
-	_, doc, err = collection.Put(ctx, "doc1", Body{"foo": "buzz", BodyRev: rev})
+	_, _, doc, err = collection.Put(ctx, "doc1", Body{"foo": "buzz", BodyRev: rev})
 	require.NoError(t, err)
 	require.Greaterf(t, doc.Sequence, uint64(otherClusterSequenceOffset), "Expected new doc sequence %d to be greater than other cluster's sequence %d", doc.Sequence, otherClusterSequenceOffset)
 

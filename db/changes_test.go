@@ -65,7 +65,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 
 			for i := 0; i < testCase.genChanAndDocs; i++ {
 				id := fmt.Sprintf("%d", i+1)
-				_, _, err = collection.Put(ctx, "doc"+id, Body{"channels": []string{"ch" + id}})
+				_, _, _, err = collection.Put(ctx, "doc"+id, Body{"channels": []string{"ch" + id}})
 				require.NoError(t, err)
 			}
 			err = collection.WaitForPendingChanges(base.TestCtx(t))
@@ -112,7 +112,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	_, _, err := collection.Put(ctx, "doc1", Body{"channels": []string{"ABC", "PBS"}})
+	_, _, _, err := collection.Put(ctx, "doc1", Body{"channels": []string{"ABC", "PBS"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
@@ -152,7 +152,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
 
 	// Add a new doc (sequence 3):
-	revid, _, err := collection.Put(ctx, "doc2", Body{"channels": []string{"PBS"}})
+	revid, _, _, err := collection.Put(ctx, "doc2", Body{"channels": []string{"PBS"}})
 	require.NoError(t, err)
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
@@ -224,7 +224,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _, err := collection.Put(ctx, "alpha", Body{"channels": []string{"A", "B"}})
+	revid, _, _, err := collection.Put(ctx, "alpha", Body{"channels": []string{"A", "B"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
@@ -310,13 +310,14 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 	_, err = db.channelCache.GetChanges(ctx, channels.NewID("A", collectionID), getChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err)
 
-	_, doc, err := collection.Put(ctx, "doc1", Body{"channels": []string{"A"}})
+	_, _, doc, err := collection.Put(ctx, "doc1", Body{"channels": []string{"A"}})
 	require.NoError(t, err)
 
 	require.NoError(t, collection.WaitForPendingChanges(base.TestCtx(t)))
 
 	changes, err := collection.GetChanges(ctx, base.SetOf("A"), getChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err)
+	printChanges(changes)
 
 	assert.Equal(t, doc.ID, changes[0].ID)
 	assert.Equal(t, bucketUUID, changes[0].CurrentVersion.SourceID)
@@ -343,7 +344,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _, err := collection.Put(ctx, "alpha", Body{"channels": []string{"A", "B"}})
+	revid, _, _, err := collection.Put(ctx, "alpha", Body{"channels": []string{"A", "B"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
@@ -418,14 +419,14 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		body := Body{"foo": "bar"}
-		revId, _, err = collection.Put(ctx, key, body)
+		revId, _, _, err = collection.Put(ctx, key, body)
 		require.NoError(t, err, "Couldn't create document")
 	}
 
 	// Tombstone 5 documents
 	for i := 2; i <= 6; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, err = collection.DeleteDoc(ctx, key, revId)
+		_, _, err = collection.DeleteDoc(ctx, key, revId)
 		require.NoError(t, err, "Couldn't delete document")
 	}
 
@@ -504,7 +505,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 		docid, err := base.GenerateRandomID()
 		require.NoError(b, err)
 		docBody := createDoc(numKeys, valSizeBytes)
-		revId, _, err := collection.Put(ctx, docid, docBody)
+		revId, _, _, err := collection.Put(ctx, docid, docBody)
 		if err != nil {
 			b.Fatalf("Error creating doc: %v", err)
 		}

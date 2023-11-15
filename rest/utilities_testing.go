@@ -2309,6 +2309,7 @@ func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.Backgro
 // DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
 type DocVersion struct {
 	RevID string
+	CV    db.CurrentVersionVector
 }
 
 func (v *DocVersion) String() string {
@@ -2355,13 +2356,15 @@ func NewDocVersionFromFakeRev(fakeRev string) DocVersion {
 // DocVersionFromPutResponse returns a DocRevisionID from the given response to PUT /{, or fails the given test if a rev ID was not found.
 func DocVersionFromPutResponse(t testing.TB, response *TestResponse) DocVersion {
 	var r struct {
-		DocID *string `json:"id"`
-		RevID *string `json:"rev"`
+		DocID *string                  `json:"id"`
+		RevID *string                  `json:"rev"`
+		Cv    *db.CurrentVersionVector `json:"current_version"`
 	}
 	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r))
 	require.NotNil(t, r.RevID, "expecting non-nil rev ID from response: %s", string(response.BodyBytes()))
+	require.NotNil(t, r.Cv, "expecting non-nil current version from response: %s", string(response.BodyBytes()))
 	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
-	return DocVersion{RevID: *r.RevID}
+	return DocVersion{RevID: *r.RevID, CV: *r.Cv}
 }
 
 func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {

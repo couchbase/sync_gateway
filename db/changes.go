@@ -57,7 +57,7 @@ type ChangeEntry struct {
 	principalDoc   bool         // Used to indicate _user/_role docs
 	Revoked        bool         `json:"revoked,omitempty"`
 	collectionID   uint32
-	CurrentVersion CurrentVersionVector // the current version of the change entry
+	CurrentVersion *CurrentVersionVector `json:"current_version,omitempty"` // the current version of the change entry
 }
 
 const (
@@ -474,14 +474,17 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 
 func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channel channels.ID) ChangeEntry {
 	change := ChangeEntry{
-		Seq:            seqID,
-		ID:             logEntry.DocID,
-		Deleted:        (logEntry.Flags & channels.Deleted) != 0,
-		Changes:        []ChangeRev{{"rev": logEntry.RevID}},
-		branched:       (logEntry.Flags & channels.Branched) != 0,
-		principalDoc:   logEntry.IsPrincipal,
-		collectionID:   logEntry.CollectionID,
-		CurrentVersion: CurrentVersionVector{SourceID: logEntry.SourceID, VersionCAS: logEntry.Version},
+		Seq:          seqID,
+		ID:           logEntry.DocID,
+		Deleted:      (logEntry.Flags & channels.Deleted) != 0,
+		Changes:      []ChangeRev{{"rev": logEntry.RevID}},
+		branched:     (logEntry.Flags & channels.Branched) != 0,
+		principalDoc: logEntry.IsPrincipal,
+		collectionID: logEntry.CollectionID,
+	}
+	// populate CurrentVersion entry if log entry has sourceID and Version populated
+	if logEntry.SourceID != "" && logEntry.Version != 0 {
+		change.CurrentVersion = &CurrentVersionVector{SourceID: logEntry.SourceID, VersionCAS: logEntry.Version}
 	}
 	if logEntry.Flags&channels.Removed != 0 {
 		change.Removed = base.SetOf(channel.Name)
@@ -1283,12 +1286,12 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	row.Seq = SequenceID{Seq: populatedDoc.Sequence}
 	row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
 
-	cv := CurrentVersionVector{}
 	if populatedDoc.HLV != nil {
+		cv := CurrentVersionVector{}
 		cv.SourceID = populatedDoc.HLV.SourceID
 		cv.VersionCAS = populatedDoc.HLV.Version
+		row.CurrentVersion = &cv
 	}
-	row.CurrentVersion = cv
 
 	var removedChannels []string
 

@@ -913,7 +913,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 
 // Updates or creates a document.
 // The new body's BodyRev property must match the current revision's, if any.
-func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, body Body) (newRevID string, doc *Document, err error) {
+func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, body Body) (newRevID string, currentVersion CurrentVersionVector, doc *Document, err error) {
 
 	delete(body, BodyId)
 
@@ -921,7 +921,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	matchRev, _ := body[BodyRev].(string)
 	generation, _ := ParseRevID(ctx, matchRev)
 	if generation < 0 {
-		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
+		return "", currentVersion, nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	generation++
 	delete(body, BodyRev)
@@ -931,7 +931,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 
 	expiry, err := body.ExtractExpiry()
 	if err != nil {
-		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+		return "", currentVersion, nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
 	}
 
 	// Create newDoc which will be used to pass around Body
@@ -947,7 +947,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 
 	err = validateAPIDocUpdate(body)
 	if err != nil {
-		return "", nil, err
+		return "", currentVersion, nil, err
 	}
 
 	docUpdateEvent := NewVersion
@@ -1056,7 +1056,12 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		return newDoc, newAttachments, false, nil, nil
 	})
 
-	return newRevID, doc, err
+	var cv CurrentVersionVector
+	if err == nil {
+		cv = CurrentVersionVector{SourceID: doc.HLV.SourceID, VersionCAS: doc.HLV.Version}
+	}
+
+	return newRevID, cv, doc, err
 }
 
 func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, docHLV HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *SourceAndVersion, newRevID string, err error) {
@@ -2396,7 +2401,7 @@ func (db *DatabaseCollectionWithUser) Post(ctx context.Context, body Body) (doci
 		}
 	}
 
-	rev, doc, err = db.Put(ctx, docid, body)
+	rev, _, doc, err = db.Put(ctx, docid, body)
 	if err != nil {
 		docid = ""
 	}
@@ -2404,10 +2409,10 @@ func (db *DatabaseCollectionWithUser) Post(ctx context.Context, body Body) (doci
 }
 
 // Deletes a document, by adding a new revision whose _deleted property is true.
-func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid string, revid string) (string, error) {
+func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid string, revid string) (string, CurrentVersionVector, error) {
 	body := Body{BodyDeleted: true, BodyRev: revid}
-	newRevID, _, err := db.Put(ctx, docid, body)
-	return newRevID, err
+	newRevID, cv, _, err := db.Put(ctx, docid, body)
+	return newRevID, cv, err
 }
 
 // Purges a document from the bucket (no tombstone)

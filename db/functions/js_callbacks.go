@@ -218,7 +218,7 @@ func (runner *jsRunner) do_save(body map[string]any, docIDPtr *string, sudo bool
 	}
 	if _, found := body["_rev"]; found {
 		// If caller provided `_rev` property, use MVCC as normal:
-		_, _, err := collection.Put(runner.ctx, docID, body)
+		_, _, _, err := collection.Put(runner.ctx, docID, body)
 		if err == nil {
 			return &docID, err // success
 		} else if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
@@ -243,7 +243,7 @@ func (runner *jsRunner) do_save(body map[string]any, docIDPtr *string, sudo bool
 				body["_rev"] = rev.RevID
 			}
 
-			_, _, err = collection.Put(runner.ctx, docID, body)
+			_, _, _, err = collection.Put(runner.ctx, docID, body)
 			if err == nil {
 				break // success!
 			} else if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusConflict {

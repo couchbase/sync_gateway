@@ -7809,7 +7809,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	// interval during the running of the test
 	defer reduceTestCheckpointInterval(9999 * time.Hour)()
 
-	rev, doc, err := activeRT.GetSingleTestDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
+	rev, _, doc, err := activeRT.GetSingleTestDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
 	require.NoError(t, err)
 	seq := strconv.FormatUint(doc.Sequence, 10)
 

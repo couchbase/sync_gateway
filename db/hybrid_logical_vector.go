@@ -30,8 +30,8 @@ type HybridLogicalVector struct {
 
 // SourceAndVersion is a structure used to add a new entry to a HLV
 type SourceAndVersion struct {
-	SourceID string
-	Version  uint64
+	SourceID string `json:"version"`
+	Version  uint64 `json:"source_id"`
 }
 
 func CreateVersion(source string, version uint64) SourceAndVersion {
