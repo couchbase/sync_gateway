@@ -84,6 +84,7 @@ const (
 	StatAddedVersion3dot1dot2     = "3.1.2"
 	StatAddedVersion3dot1dot3dot1 = "3.1.3.1"
 	StatAddedVersion3dot2dot0     = "3.2.0"
+	StatAddedVersion4dot0dot0     = "4.0.0"
 
 	StatDeprecatedVersionNotDeprecated = ""
 	StatDeprecatedVersion3dot2dot0     = "3.2.0"
