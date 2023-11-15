@@ -56,7 +56,7 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 }
 
 // GetWithCV fetches the Current Version for the given docID and CV immediately from the bucket.
-func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *CurrentVersionVector, includeBody, includeDelta bool) (docRev DocumentRevision, err error) {
+func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *SourceAndVersion, includeBody, includeDelta bool) (docRev DocumentRevision, err error) {
 
 	unmarshalLevel := DocUnmarshalSync
 	if includeBody {
@@ -126,7 +126,7 @@ func (rc *BypassRevisionCache) RemoveWithRev(docID, revID string) {
 	// nop
 }
 
-func (rc *BypassRevisionCache) RemoveWithCV(docID string, cv *CurrentVersionVector) {
+func (rc *BypassRevisionCache) RemoveWithCV(docID string, cv *SourceAndVersion) {
 	// nop
 }
 
