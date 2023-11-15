@@ -352,7 +352,7 @@ func (h *handler) handlePutAttachment() error {
 	}
 	h.setEtag(newRev)
 
-	h.writeRawJSONStatus(http.StatusCreated, []byte(fmt.Sprintf(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`", "current_version": {"source_id":"`+cv.SourceID+`", "version": %d}}`, cv.VersionCAS)))
+	h.writeRawJSONStatus(http.StatusCreated, []byte(fmt.Sprintf(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`", "current_version": {"source_id":"`+cv.SourceID+`", "version": %d}}`, cv.Version)))
 	return nil
 }
 
@@ -447,7 +447,7 @@ func (h *handler) handlePutDoc() error {
 
 	var newRev string
 	var doc *db.Document
-	var cv db.CurrentVersionVector
+	var cv db.SourceAndVersion
 
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
@@ -484,7 +484,7 @@ func (h *handler) handlePutDoc() error {
 		}
 	}
 
-	h.writeRawJSONStatus(http.StatusCreated, []byte(fmt.Sprintf(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`", "current_version": {"source_id":"`+cv.SourceID+`", "version": %d}}`, cv.VersionCAS)))
+	h.writeRawJSONStatus(http.StatusCreated, []byte(fmt.Sprintf(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`", "current_version": {"source_id":"`+cv.SourceID+`", "version": %d}}`, cv.Version)))
 	return nil
 }
 
@@ -606,10 +606,10 @@ func (h *handler) handleDeleteDoc() error {
 			return err
 		}
 	}
-	var cv db.CurrentVersionVector
+	var cv db.SourceAndVersion
 	newRev, cv, err := h.collection.DeleteDoc(h.ctx(), docid, revid)
 	if err == nil {
-		h.writeRawJSONStatus(http.StatusOK, []byte(fmt.Sprintf(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`", "current_version": {"source_id":"`+cv.SourceID+`", "version": %d}}`, cv.VersionCAS)))
+		h.writeRawJSONStatus(http.StatusOK, []byte(fmt.Sprintf(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`", "current_version": {"source_id":"`+cv.SourceID+`", "version": %d}}`, cv.Version)))
 	}
 	return err
 }

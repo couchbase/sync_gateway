@@ -913,7 +913,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 
 // Updates or creates a document.
 // The new body's BodyRev property must match the current revision's, if any.
-func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, body Body) (newRevID string, currentVersion CurrentVersionVector, doc *Document, err error) {
+func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, body Body) (newRevID string, currentVersion SourceAndVersion, doc *Document, err error) {
 
 	delete(body, BodyId)
 
@@ -1057,7 +1057,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	})
 
 	if err == nil {
-		currentVersion = CurrentVersionVector{SourceID: doc.HLV.SourceID, VersionCAS: doc.HLV.Version}
+		currentVersion = SourceAndVersion{SourceID: doc.HLV.SourceID, Version: doc.HLV.Version}
 	}
 
 	return newRevID, currentVersion, doc, err
@@ -2408,7 +2408,7 @@ func (db *DatabaseCollectionWithUser) Post(ctx context.Context, body Body) (doci
 }
 
 // Deletes a document, by adding a new revision whose _deleted property is true.
-func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid string, revid string) (string, CurrentVersionVector, error) {
+func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid string, revid string) (string, SourceAndVersion, error) {
 	body := Body{BodyDeleted: true, BodyRev: revid}
 	newRevID, cv, _, err := db.Put(ctx, docid, body)
 	return newRevID, cv, err
