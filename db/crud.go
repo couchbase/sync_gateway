@@ -856,19 +856,37 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 	case ExistingVersion:
 		// preserve any other logic on the HLV that has been done by the client, only update to cvCAS will be needed
 		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
+		d.HLV.ImportCAS = 0 // remove importCAS for non-imports to save space
 	case Import:
-		// work to be done to decide if the VV needs updating here, pending CBG-3503
+		if d.HLV.CurrentVersionCAS == d.Cas {
+			// if cvCAS = document CAS, the HLV has already been updated for this mutation by another HLV-aware peer.
+			// Set ImportCAS to the previous document CAS, but don't otherwise modify HLV
+			d.HLV.ImportCAS = d.Cas
+		} else {
+			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
+			newVVEntry := SourceAndVersion{}
+			newVVEntry.SourceID = db.dbCtx.BucketUUID
+			newVVEntry.Version = hlvExpandMacroCASValue
+			err := d.SyncData.HLV.AddVersion(newVVEntry)
+			if err != nil {
+				return nil, err
+			}
+			d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
+			d.HLV.ImportCAS = d.Cas
+		}
+
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
-		newVVEntry := CurrentVersionVector{}
+		newVVEntry := SourceAndVersion{}
 		newVVEntry.SourceID = db.dbCtx.BucketUUID
-		newVVEntry.VersionCAS = hlvExpandMacroCASValue
+		newVVEntry.Version = hlvExpandMacroCASValue
 		err := d.SyncData.HLV.AddVersion(newVVEntry)
 		if err != nil {
 			return nil, err
 		}
 		// update the cvCAS on the SGWrite event too
 		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
+		d.HLV.ImportCAS = 0 // remove importCAS for non-imports to save space
 	}
 	return d, nil
 }
@@ -2142,7 +2160,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Expiry:           doc.Expiry,
 			Deleted:          doc.History[newRevID].Deleted,
 			_shallowCopyBody: storedDoc.Body(ctx),
-			CV:               &CurrentVersionVector{VersionCAS: doc.HLV.Version, SourceID: doc.HLV.SourceID},
+			CV:               &SourceAndVersion{Version: doc.HLV.Version, SourceID: doc.HLV.SourceID},
 		}
 
 		if createNewRevIDSkipped {
