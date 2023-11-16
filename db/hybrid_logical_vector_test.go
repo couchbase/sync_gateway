@@ -233,6 +233,42 @@ func TestHybridLogicalVectorPersistence(t *testing.T) {
 	assert.Equal(t, inMemoryHLV.MergeVersions, hlvFromPersistance.MergeVersions)
 }
 
+func TestAddNewerVersionsBetweenTwoVectorsWhenNotInConflict(t *testing.T) {
+	testCases := []struct {
+		name          string
+		localInput    []string
+		incomingInput []string
+		expected      []string
+	}{
+		{
+			name:          "testcase1",
+			localInput:    []string{"abc@15"},
+			incomingInput: []string{"def@25", "abc@20"},
+			expected:      []string{"def@25", "abc@20"},
+		},
+		{
+			name:          "testcase2",
+			localInput:    []string{"abc@15", "def@30"},
+			incomingInput: []string{"def@35", "abc@15"},
+			expected:      []string{"def@35", "abc@15"},
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			localHLV := createHLVForTest(t, test.localInput)
+			incomingHLV := createHLVForTest(t, test.incomingInput)
+			expectedHLV := createHLVForTest(t, test.expected)
+
+			_ = localHLV.AddNewerVersions(incomingHLV)
+			// assert on expected values
+			assert.Equal(t, expectedHLV.SourceID, localHLV.SourceID)
+			assert.Equal(t, expectedHLV.Version, localHLV.Version)
+			assert.True(t, reflect.DeepEqual(expectedHLV.PreviousVersions, localHLV.PreviousVersions))
+		})
+	}
+}
+
 // Tests import of server-side mutations made by HLV-aware and non-HLV-aware peers
 func TestHLVImport(t *testing.T) {
 
