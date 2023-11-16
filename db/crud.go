@@ -348,7 +348,7 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 		_, requestedHistory = trimEncodedRevisionsToAncestor(ctx, requestedHistory, historyFrom, maxHistory)
 	}
 
-	isAuthorized, redactedRev := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, revision.Deleted, requestedHistory)
+	isAuthorized, redactedRev := db.authorizeUserForChannels(docid, revision.RevID, nil, revision.Channels, revision.Deleted, requestedHistory)
 	if !isAuthorized {
 		if revid == "" {
 			return DocumentRevision{}, ErrForbidden
@@ -367,6 +367,53 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 	}
 
 	if revision.Deleted && revid == "" {
+		return DocumentRevision{}, ErrDeleted
+	}
+
+	return revision, nil
+}
+
+func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, cv *SourceAndVersion, includeBody bool) (revision DocumentRevision, err error) {
+	if cv != nil {
+		revision, err = db.revisionCache.GetWithCV(ctx, docid, cv, includeBody, RevCacheOmitDelta)
+	} else {
+		revision, err = db.revisionCache.GetActive(ctx, docid, includeBody)
+	}
+
+	if err != nil {
+		return DocumentRevision{}, err
+	}
+
+	if revision.BodyBytes == nil {
+		if db.ForceAPIForbiddenErrors() {
+			base.InfofCtx(ctx, base.KeyCRUD, "Doc: %s %s:%s is missing", base.UD(docid), base.MD(cv.SourceID), base.MD(cv.Version))
+			return DocumentRevision{}, ErrForbidden
+		}
+		return DocumentRevision{}, ErrMissing
+	}
+
+	db.collectionStats.NumDocReads.Add(1)
+	db.collectionStats.DocReadsBytes.Add(int64(len(revision.BodyBytes)))
+
+	isAuthorized, redactedRevision := db.authorizeUserForChannels(docid, revision.RevID, cv, revision.Channels, revision.Deleted, nil)
+	if !isAuthorized {
+		if cv == nil {
+			return DocumentRevision{}, ErrForbidden
+		}
+		if db.ForceAPIForbiddenErrors() {
+			base.InfofCtx(ctx, base.KeyCRUD, "Not authorized to view doc: %s %s:%s", base.UD(docid), base.MD(cv.SourceID), base.MD(cv.Version))
+			return DocumentRevision{}, ErrForbidden
+		}
+		return redactedRevision, nil
+	}
+
+	// If the revision is a removal cache entry (no body), but the user has access to that removal, then just
+	// return 404 missing to indicate that the body of the revision is no longer available.
+	if revision.Removed {
+		return DocumentRevision{}, ErrMissing
+	}
+
+	if revision.Deleted && cv == nil {
 		return DocumentRevision{}, ErrDeleted
 	}
 
@@ -404,7 +451,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	if fromRevision.Delta != nil {
 		if fromRevision.Delta.ToRevID == toRevID {
 
-			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevision.Delta.RevisionHistory))
+			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, nil, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevision.Delta.RevisionHistory))
 			if !isAuthorized {
 				return nil, &redactedBody, nil
 			}
@@ -427,7 +474,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		}
 
 		deleted := toRevision.Deleted
-		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, toRevision.Channels, deleted, toRevision.History)
+		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, nil, toRevision.Channels, deleted, toRevision.History)
 		if !isAuthorized {
 			return nil, &redactedBody, nil
 		}
@@ -486,7 +533,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	return nil, nil, nil
 }
 
-func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID string, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
+func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID string, cv *SourceAndVersion, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
 
 	if col.user != nil {
 		if err := col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, channels); err != nil {
@@ -498,6 +545,7 @@ func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID str
 				RevID:   revID,
 				History: history,
 				Deleted: isDeleted,
+				CV:      cv,
 			}
 			if isDeleted {
 				// Deletions are denoted by the deleted message property during 2.x replication

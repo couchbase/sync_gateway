@@ -337,7 +337,7 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 	if err = doc.HasCurrentVersion(cv); err != nil {
 		return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, revid, err
 	}
-	channels = doc.currentRevChannels
+	channels = doc.SyncData.getCurrentChannels()
 	revid = doc.CurrentRev
 
 	return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, revid, err
