@@ -746,3 +746,14 @@ func DefaultMutateInOpts() *sgbucket.MutateInOptions {
 		MacroExpansion: macroExpandSpec(base.SyncXattrName),
 	}
 }
+
+func createTestDocument(docID string, revID string, body Body, deleted bool, expiry uint32) (newDoc *Document) {
+	newDoc = &Document{
+		ID:        docID,
+		Deleted:   deleted,
+		DocExpiry: expiry,
+		RevID:     revID,
+		_body:     body,
+	}
+	return newDoc
+}
