@@ -521,3 +521,45 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 	}
 
 }
+
+// TestCurrentVersionPopulationOnChannelCache:
+//   - Make channel active on cache
+//   - Add a doc that is assigned this channel
+//   - Get the sync data of that doc to assert against the HLV defined on it
+//   - Wait for the channel cache to be populated with this doc write
+//   - Assert the CV in the entry fetched from channel cache matches the sync data CV and the bucket UUID on the database context
+func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyDCP, base.KeyCache, base.KeyHTTP)
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collectionID := collection.GetCollectionID()
+	bucketUUID := db.BucketUUID
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	// Make channel active
+	_, err := db.channelCache.GetChanges(ctx, channels.NewID("ABC", collectionID), getChangesOptionsWithZeroSeq(t))
+	require.NoError(t, err)
+
+	// Put a doc that gets assigned a CV to populate the channel cache with
+	_, _, err = collection.Put(ctx, "doc1", Body{"channels": []string{"ABC"}})
+	require.NoError(t, err)
+	err = collection.WaitForPendingChanges(base.TestCtx(t))
+	require.NoError(t, err)
+
+	syncData, err := collection.GetDocSyncData(ctx, "doc1")
+	require.NoError(t, err)
+	uintCAS := base.HexCasToUint64(syncData.Cas)
+
+	// get entry of above doc from channel cache
+	entries, err := db.channelCache.GetChanges(ctx, channels.NewID("ABC", collectionID), getChangesOptionsWithZeroSeq(t))
+	require.NoError(t, err)
+	require.NotNil(t, entries)
+
+	// assert that the source and version has been populated with the channel cache entry for the doc
+	assert.Equal(t, "doc1", entries[0].DocID)
+	assert.Equal(t, uintCAS, entries[0].Version)
+	assert.Equal(t, bucketUUID, entries[0].SourceID)
+	assert.Equal(t, syncData.HLV.SourceID, entries[0].SourceID)
+	assert.Equal(t, syncData.HLV.Version, entries[0].Version)
+}
