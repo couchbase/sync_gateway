@@ -53,6 +53,58 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	assert.Equal(t, 4, int(maxEntries))
 }
 
+// TestChannelCacheCurrentVersion:
+//   - Makes channel channels active for channels used in test by requesting changes on each channel
+//   - Add 4 docs to the channel cache with CV defined in the log entry
+//   - Get changes for each channel in question and assert that the CV is populated in each entry expected
+func TestChannelCacheCurrentVersion(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	cache := db.changeCache.getChannelCache()
+
+	collectionID := GetSingleDatabaseCollection(t, db.DatabaseContext).GetCollectionID()
+
+	// Make channels active
+	_, err := cache.GetChanges(ctx, channels.NewID("chanA", collectionID), getChangesOptionsWithCtxOnly(t))
+	require.NoError(t, err)
+	_, err = cache.GetChanges(ctx, channels.NewID("chanB", collectionID), getChangesOptionsWithCtxOnly(t))
+	require.NoError(t, err)
+	_, err = cache.GetChanges(ctx, channels.NewID("chanC", collectionID), getChangesOptionsWithCtxOnly(t))
+	require.NoError(t, err)
+	_, err = cache.GetChanges(ctx, channels.NewID("chanD", collectionID), getChangesOptionsWithCtxOnly(t))
+	require.NoError(t, err)
+
+	cache.AddToCache(ctx, testLogEntryWithCV(1, "doc1", "1-a", []string{"chanB", "chanC", "chanD"}, collectionID, "test1", 123))
+	cache.AddToCache(ctx, testLogEntryWithCV(2, "doc2", "1-a", []string{"chanB", "chanC", "chanD"}, collectionID, "test2", 1234))
+	cache.AddToCache(ctx, testLogEntryWithCV(3, "doc3", "1-a", []string{"chanC", "chanD"}, collectionID, "test3", 12345))
+	cache.AddToCache(ctx, testLogEntryWithCV(4, "doc4", "1-a", []string{"chanC"}, collectionID, "test4", 123456))
+
+	// assert on channel cache entries for 'chanC'
+	entriesChanC, err := cache.GetChanges(ctx, channels.NewID("chanC", collectionID), getChangesOptionsWithZeroSeq(t))
+	assert.NoError(t, err)
+	require.Len(t, entriesChanC, 4)
+	assert.True(t, verifyChannelSequences(entriesChanC, []uint64{1, 2, 3, 4}))
+	assert.True(t, verifyChannelDocIDs(entriesChanC, []string{"doc1", "doc2", "doc3", "doc4"}))
+	assert.True(t, verifyCVEntries(entriesChanC, []cvValues{{source: "test1", version: 123}, {source: "test2", version: 1234}, {source: "test3", version: 12345}, {source: "test4", version: 123456}}))
+
+	// assert on channel cache entries for 'chanD'
+	entriesChanD, err := cache.GetChanges(ctx, channels.NewID("chanD", collectionID), getChangesOptionsWithZeroSeq(t))
+	assert.NoError(t, err)
+	require.Len(t, entriesChanD, 3)
+	assert.True(t, verifyChannelSequences(entriesChanD, []uint64{1, 2, 3}))
+	assert.True(t, verifyChannelDocIDs(entriesChanD, []string{"doc1", "doc2", "doc3"}))
+	assert.True(t, verifyCVEntries(entriesChanD, []cvValues{{source: "test1", version: 123}, {source: "test2", version: 1234}, {source: "test3", version: 12345}}))
+
+	// assert on channel cache entries for 'chanB'
+	entriesChanB, err := cache.GetChanges(ctx, channels.NewID("chanB", collectionID), getChangesOptionsWithZeroSeq(t))
+	assert.NoError(t, err)
+	require.Len(t, entriesChanB, 2)
+	assert.True(t, verifyChannelSequences(entriesChanB, []uint64{1, 2}))
+	assert.True(t, verifyChannelDocIDs(entriesChanB, []string{"doc1", "doc2"}))
+	assert.True(t, verifyCVEntries(entriesChanB, []cvValues{{source: "test1", version: 123}, {source: "test2", version: 1234}}))
+}
+
 func getCacheUtilization(stats *base.CacheStats) (active, tombstones, removals int) {
 	active = int(stats.ChannelCacheRevsActive.Value())
 	tombstones = int(stats.ChannelCacheRevsTombstone.Value())
