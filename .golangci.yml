@@ -8,7 +8,8 @@
 
 # config file for golangci-lint
 
-timeout: 3m
+run:
+  timeout: 3m
 
 linters:
   enable:
