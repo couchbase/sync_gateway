@@ -465,6 +465,10 @@ func (dbc *DatabaseContext) CollectionChannelViewForTest(tb testing.TB, collecti
 	return collection.getChangesInChannelFromQuery(base.TestCtx(tb), channelName, startSeq, endSeq, 0, false)
 }
 
+func (db *DatabaseContext) GetChannelCache() ChannelCache {
+	return db.channelCache
+}
+
 // Test-only version of GetPrincipal that doesn't trigger channel/role recalculation
 func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUser bool) (info *auth.PrincipalConfig, err error) {
 	ctx := base.TestCtx(tb)
