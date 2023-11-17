@@ -483,6 +483,8 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channel channels.ID) 
 		collectionID: logEntry.CollectionID,
 	}
 	// populate CurrentVersion entry if log entry has sourceID and Version populated
+	// This allows current version to be nil in event of CV not being populated on log entry
+	// allowing omitempty to work as expected
 	if logEntry.SourceID != "" && logEntry.Version != 0 {
 		change.CurrentVersion = &SourceAndVersion{SourceID: logEntry.SourceID, Version: logEntry.Version}
 	}
