@@ -1694,7 +1694,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	key := "doc1"
 	body := Body{"key1": "value1"}
 
-	rev, _, err := collection.Put(ctx, key, body)
+	rev, _, _, err := collection.Put(ctx, key, body)
 	require.NoError(t, err)
 
 	// assert on HLV on that above PUT
@@ -1711,7 +1711,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	// PUT an update to the above doc
 	body = Body{"key1": "value11"}
 	body[BodyRev] = rev
-	_, _, err = collection.Put(ctx, key, body)
+	_, _, _, err = collection.Put(ctx, key, body)
 	require.NoError(t, err)
 
 	// grab the new version for the above update to assert against later in test
@@ -1781,7 +1781,7 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 	key := "doc1"
 	body := Body{"key1": "value1"}
 
-	_, _, err := collection.Put(ctx, key, body)
+	_, _, _, err := collection.Put(ctx, key, body)
 	require.NoError(t, err)
 
 	// assert on the HLV values after the above creation of the doc

@@ -575,7 +575,7 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	require.NoError(t, err)
 
 	// Put a doc that gets assigned a CV to populate the channel cache with
-	_, _, err = collection.Put(ctx, "doc1", Body{"channels": []string{"ABC"}})
+	_, docVersion, _, err := collection.Put(ctx, "doc1", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err)
 	err = collection.WaitForPendingChanges(base.TestCtx(t))
 	require.NoError(t, err)
@@ -593,6 +593,6 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	assert.Equal(t, "doc1", entries[0].DocID)
 	assert.Equal(t, uintCAS, entries[0].Version)
 	assert.Equal(t, bucketUUID, entries[0].SourceID)
-	assert.Equal(t, syncData.HLV.SourceID, entries[0].SourceID)
-	assert.Equal(t, syncData.HLV.Version, entries[0].Version)
+	assert.Equal(t, docVersion.SourceID, entries[0].SourceID)
+	assert.Equal(t, docVersion.Version, entries[0].Version)
 }
