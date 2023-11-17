@@ -166,11 +166,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// If we have a TestBucket defined on the RestTesterConfig, use that instead of requesting a new one.
 	testBucket := rt.RestTesterConfig.CustomTestBucket
 	if testBucket == nil {
-		if rt.PersistentConfig {
-			testBucket = base.GetPersistentTestBucket(rt.TB)
-		} else {
-			testBucket = base.GetTestBucket(rt.TB)
-		}
+		testBucket = base.GetTestBucket(rt.TB)
 		if rt.leakyBucketConfig != nil {
 			leakyConfig := *rt.leakyBucketConfig
 			// Ignore closures to avoid double closing panics

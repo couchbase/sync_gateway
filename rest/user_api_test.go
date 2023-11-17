@@ -1530,7 +1530,7 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
-	testBucket := base.GetPersistentTestBucket(t)
+	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close(ctx)
 	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
 
@@ -1616,7 +1616,7 @@ func TestGetUserCollectionAccess(t *testing.T) {
 func TestPutUserCollectionAccess(t *testing.T) {
 	base.RequireNumTestDataStores(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	testBucket := base.GetPersistentTestBucket(t)
+	testBucket := base.GetTestBucket(t)
 
 	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
 	rtConfig := &RestTesterConfig{

@@ -258,7 +258,7 @@ func (h *handler) handleFlush() error {
 		name := h.db.Name
 		config := h.server.GetDatabaseConfig(name)
 		h.server.RemoveDatabase(h.ctx(), name)
-		err := bucket.CloseAndDelete()
+		err := bucket.CloseAndDelete(h.ctx())
 		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), config.DatabaseConfig)
 		if err == nil {
 			err = err2

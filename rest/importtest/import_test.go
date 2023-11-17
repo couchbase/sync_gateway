@@ -2735,7 +2735,7 @@ func TestImportRollback(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP)
 
 	ctx := base.TestCtx(t)
-	bucket := base.GetPersistentTestBucket(t)
+	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
