@@ -27,7 +27,7 @@ func TestRemoveCollection(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.RequireNumTestBuckets(t, 2)
 	numCollections := 2
-	bucket := base.GetPersistentTestBucket(t)
+	bucket := base.GetTestBucket(t)
 	defer bucket.Close(base.TestCtx(t))
 	base.RequireNumTestDataStores(t, numCollections)
 	rtConfig := &rest.RestTesterConfig{

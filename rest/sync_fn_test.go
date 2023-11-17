@@ -936,20 +936,9 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	var testBucket *base.TestBucket
-
-	if base.UnitTestUrlIsWalrus() {
-		var closeFn func()
-		testBucket, closeFn = base.GetPersistentWalrusBucket(t)
-		defer closeFn()
-	} else {
-		testBucket = base.GetTestBucket(t)
-	}
-
 	rt := NewRestTester(t,
 		&RestTesterConfig{
-			SyncFn:           syncFn,
-			CustomTestBucket: testBucket,
+			SyncFn: syncFn,
 		},
 	)
 	defer rt.Close()

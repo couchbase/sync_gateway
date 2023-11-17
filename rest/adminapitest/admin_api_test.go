@@ -1537,7 +1537,7 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyConfig)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetPersistentTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure the interval time to pick up new configs from the bucket to every 1 seconds
@@ -1622,7 +1622,7 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 	base.TestsRequireBootstrapConnection(t)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetPersistentTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure the interval time to pick up new configs from the bucket to every 1 seconds
@@ -1673,11 +1673,11 @@ func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
 	base.TestsRequireBootstrapConnection(t)
 	base.RequireNumTestBuckets(t, 2)
 	ctx := base.TestCtx(t)
-	tb1 := base.GetPersistentTestBucket(t)
+	tb1 := base.GetTestBucket(t)
 	defer tb1.Close(ctx)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetPersistentTestBucket(t),
+		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure the interval time to pick up new configs from the bucket to every 1 seconds
@@ -1708,11 +1708,11 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 	base.TestsRequireBootstrapConnection(t)
 	base.RequireNumTestBuckets(t, 3)
 	ctx := base.TestCtx(t)
-	tb1 := base.GetPersistentTestBucket(t)
+	tb1 := base.GetTestBucket(t)
 	defer tb1.Close(ctx)
-	tb2 := base.GetPersistentTestBucket(t)
+	tb2 := base.GetTestBucket(t)
 	defer tb2.Close(ctx)
-	tb3 := base.GetPersistentTestBucket(t)
+	tb3 := base.GetTestBucket(t)
 	defer tb3.Close(ctx)
 
 	const groupID = "60ce5544-c368-4b08-b0ed-4ca3b37973f9"
@@ -1787,9 +1787,9 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 3)
 	ctx := base.TestCtx(t)
-	tb1 := base.GetPersistentTestBucket(t)
+	tb1 := base.GetTestBucket(t)
 	defer tb1.Close(ctx)
-	tb2 := base.GetPersistentTestBucket(t)
+	tb2 := base.GetTestBucket(t)
 	defer tb2.Close(ctx)
 
 	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
@@ -1857,9 +1857,9 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 	base.TestsRequireBootstrapConnection(t)
 
 	ctx := base.TestCtx(t)
-	tb1 := base.GetPersistentTestBucket(t)
+	tb1 := base.GetTestBucket(t)
 	defer tb1.Close(ctx)
-	tb2 := base.GetPersistentTestBucket(t)
+	tb2 := base.GetTestBucket(t)
 	defer tb2.Close(ctx)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
