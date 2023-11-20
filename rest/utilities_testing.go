@@ -282,16 +282,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 		sc.Bootstrap.X509KeyPath = testBucket.BucketSpec.Keypath
 
 		rt.TestBucket.BucketSpec.TLSSkipVerify = base.TestTLSSkipVerify()
-
-		if err := rt.RestTesterServerContext.initializeCouchbaseServerConnections(ctx, true); err != nil {
-			panic("Couldn't initialize Couchbase Server connection: " + err.Error())
-		}
 	}
+	err := rt.RestTesterServerContext.initializeCouchbaseServerConnections(ctx, true)
+	require.NoError(rt.TB, err, "Couldn't initialize Couchbase Server connection")
 	// Copy this startup config at this point into initial startup config
-	err := base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc)
-	if err != nil {
-		rt.TB.Fatalf("Unable to copy initial startup config: %v", err)
-	}
+	require.NoError(rt.TB, base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc))
 
 	// tests must create their own databases in persistent mode
 	if !rt.PersistentConfig {
@@ -1068,7 +1063,7 @@ func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentialsConfig) {
 	rt.ServerContext().Config.BucketCredentials = config
 	// Update the CouchbaseCluster to include the new bucket credentials
-	couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(base.TestCtx(rt.TB), rt.ServerContext().Config, base.PerUseClusterConnections)
+	couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(base.TestCtx(rt.TB), rt.ServerContext().Config, base.PerUseClusterConnections)
 	require.NoError(rt.TB, err)
 	rt.ServerContext().BootstrapContext.Connection = couchbaseCluster
 }

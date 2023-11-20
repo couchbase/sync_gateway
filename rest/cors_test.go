@@ -395,16 +395,11 @@ func TestCORSValidation(t *testing.T) {
 		MaxAge: 1000,
 	}
 	resp := rt.CreateDatabase(dbName, dbConfig)
-	// walrus doesn't set ServerContext.persistentConfig so we miss some validation
-	if base.UnitTestUrlIsWalrus() {
-		RequireStatus(t, resp, http.StatusCreated)
-	} else {
-		RequireStatus(t, resp, http.StatusBadRequest)
-		require.Contains(t, resp.Body.String(), "max_age")
-		nonCORSDbConfig := rt.NewDbConfig()
-		resp := rt.CreateDatabase(dbName, nonCORSDbConfig)
-		RequireStatus(t, resp, http.StatusCreated)
-	}
+	RequireStatus(t, resp, http.StatusBadRequest)
+	require.Contains(t, resp.Body.String(), "max_age")
+	nonCORSDbConfig := rt.NewDbConfig()
+	resp = rt.CreateDatabase(dbName, nonCORSDbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.UpsertDbConfig(dbName, dbConfig)
 	RequireStatus(t, resp, http.StatusBadRequest)
 	require.Contains(t, resp.Body.String(), "max_age")

@@ -176,7 +176,6 @@ outer:
 			base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig encountered error while upserting database config for conflicting updates: %v", err)
 			return 0, err
 		}
-
 		// If there are conflicts with previous versions of in-progress database updates, wait for those to complete
 		if len(previousVersionConflicts) > 0 {
 			err := b.WaitForConflictingUpdates(ctx, bucketName, previousVersionConflicts)
@@ -208,10 +207,11 @@ outer:
 	}
 
 	// Step 2. Update the config document
-	casOut, err := b.Connection.WriteMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, dbName), updatedConfig.cfgCas, updatedConfig)
+	docID := PersistentConfigKey(ctx, groupID, dbName)
+	casOut, err := b.Connection.WriteMetadataDocument(ctx, bucketName, docID, updatedConfig.cfgCas, updatedConfig)
 	if err != nil {
-		base.InfofCtx(ctx, base.KeyConfig, "Write for database config returned error %v", err)
-		return 0, err
+		base.InfofCtx(ctx, base.KeyConfig, "Write for database config %q returned error %v", base.MD(docID), err)
+		return 0, base.RedactErrorf("Error writing %q: %w", base.MD(docID), err)
 	}
 	base.DebugfCtx(ctx, base.KeyConfig, "Write for database config was successful")
 
@@ -293,7 +293,7 @@ outer:
 	} else {
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr != nil {
-			return fmt.Errorf("Error persisting removal of previous version of config group: %s, database: %s from registry after successful delete: %w", base.MD(groupID), base.MD(dbName), writeErr)
+			return fmt.Errorf("!Error persisting removal of previous version of config group: %s, database: %s from registry after successful delete: %w", base.MD(groupID), base.MD(dbName), writeErr)
 		}
 	}
 
@@ -335,7 +335,7 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 		var legacyConfig DatabaseConfig
 		var legacyDbName string
 		cas, legacyErr := b.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, ""), &legacyConfig)
-		if legacyErr != nil && legacyErr != base.ErrNotFound {
+		if legacyErr != nil && !base.IsDocNotFoundError(legacyErr) {
 			return nil, fmt.Errorf("Error checking for legacy config for %s, %s: %w", base.MD(bucketName), base.MD(groupID), legacyErr)
 		}
 		if legacyErr == nil {
@@ -397,7 +397,7 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 		config := &DatabaseConfig{}
 		metadataKey := PersistentConfigKey(ctx, groupID, dbName)
 		cas, err := b.Connection.GetMetadataDocument(ctx, bucketName, metadataKey, config)
-		if err == base.ErrNotFound {
+		if base.IsDocNotFoundError(err) {
 			return true, base.ErrConfigRegistryRollback, nil
 		}
 		if err != nil {
@@ -489,7 +489,7 @@ func (b *bootstrapContext) waitForConfigDelete(ctx context.Context, bucketName, 
 		config := &DatabaseConfig{}
 		cas, getErr := b.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, dbName), config)
 		// Success case - delete has been completed
-		if getErr == base.ErrNotFound {
+		if base.IsDocNotFoundError(getErr) {
 			return false, nil, nil
 		}
 		// For non-recoverable errors, return the error
@@ -582,7 +582,7 @@ func (b *bootstrapContext) getGatewayRegistry(ctx context.Context, bucketName st
 	registry := &GatewayRegistry{}
 	cas, getErr := b.Connection.GetMetadataDocument(ctx, bucketName, base.SGRegistryKey, registry)
 	if getErr != nil {
-		if getErr == base.ErrNotFound {
+		if base.IsDocNotFoundError(getErr) {
 			return NewGatewayRegistry(b.sgVersion), nil
 		}
 		return nil, getErr

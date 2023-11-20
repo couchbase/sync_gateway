@@ -150,8 +150,6 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 	}
 
 	if base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
-		sc.persistentConfig = false
-
 		// Disable Admin API authentication when running as walrus on the default admin interface to support dev
 		// environments.
 		if sc.Config.API.AdminInterface == DefaultAdminInterface {
@@ -2021,21 +2019,22 @@ func (sc *ServerContext) Database(ctx context.Context, name string) *db.Database
 func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Context, failFast bool) error {
 	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Initializing server connections...")
 
-	goCBAgent, err := sc.initializeGoCBAgent(ctx)
-	if err != nil {
-		return err
-	}
-	sc.GoCBAgent = goCBAgent
-	//sc.DatabaseInitManager.cluster = goCBAgent.
+	if !base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
+		goCBAgent, err := sc.initializeGoCBAgent(ctx)
+		if err != nil {
+			return err
+		}
+		sc.GoCBAgent = goCBAgent
+		//sc.DatabaseInitManager.cluster = goCBAgent.
 
-	sc.NoX509HTTPClient, err = sc.initializeNoX509HttpClient(ctx)
-	if err != nil {
-		return err
+		sc.NoX509HTTPClient, err = sc.initializeNoX509HttpClient(ctx)
+		if err != nil {
+			return err
+		}
 	}
-
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if sc.persistentConfig {
-		couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(ctx, sc.Config, base.CachedClusterConnections)
+		couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(ctx, sc.Config, base.CachedClusterConnections)
 		if err != nil {
 			return err
 		}

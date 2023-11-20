@@ -48,6 +48,9 @@ type BootstrapConnection interface {
 	// Returns exists=false if key is not found, returns error for any other error.
 	GetDocument(ctx context.Context, bucket, docID string, rv interface{}) (exists bool, err error)
 
+	// SetConnectionStringServerless sets the connection string to use serverless mode, needs to be called before any connection occurs.
+	SetConnectionStringServerless() error
+
 	// Returns the bootstrap connection's cluster connection as N1QLStore for the specified bucket/scope/collection.
 	// Does NOT establish a bucket connection, the bucketName/scopeName/collectionName is for query scoping only
 	GetClusterN1QLStore(bucketName, scopeName, collectionName string) (*ClusterOnlyN1QLStore, error)

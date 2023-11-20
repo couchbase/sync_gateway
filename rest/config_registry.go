@@ -156,7 +156,6 @@ func (r *GatewayRegistry) removeDatabase(configGroupID, dbName string) bool {
 // If in-conflict with an in-flight update to other database(s), returns that set as previousVersionConflicts so that callers
 // can wait and retry.
 func (r *GatewayRegistry) upsertDatabaseConfig(ctx context.Context, configGroupID string, config *DatabaseConfig) (previousVersionConflicts []configGroupAndDatabase, err error) {
-
 	if config == nil {
 		return nil, fmt.Errorf("attempted to upsertDatabaseConfig with nil config")
 	}

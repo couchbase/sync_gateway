@@ -97,7 +97,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 
 	assert.Equal(t, config, string(writtenBackupFile))
 
-	cbs, err := CreateCouchbaseClusterFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
+	cbs, err := CreateBootstrapConnectionFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
 	require.NoError(t, err)
 
 	bootstrapContext := &bootstrapContext{
@@ -270,7 +270,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	startupConfig, _, _, _, err := automaticConfigUpgrade(ctx, updatedConfigPath)
 	require.NoError(t, err)
 
-	cbs, err := CreateCouchbaseClusterFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
+	cbs, err := CreateBootstrapConnectionFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
 	require.NoError(t, err)
 
 	bootstrapContext := &bootstrapContext{
@@ -338,8 +338,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 }
 
 func TestImportFilterEndpoint(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)     // import tests don't work without xattrs
-	base.TestsRequireBootstrapConnection(t) // import filter modification requires bootstrap connection CBG-3271
+	base.SkipImportTestsIfNotEnabled(t) // import tests don't work without xattrs
 
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
@@ -381,7 +380,6 @@ func TestImportFilterEndpoint(t *testing.T) {
 }
 
 func TestPersistentConfigWithCollectionConflicts(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t)
 	base.TestRequiresCollections(t)
 
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
@@ -1300,7 +1298,6 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) D
 }
 
 func TestPersistentConfigNoBucketField(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t)
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyConfig)
@@ -1349,7 +1346,7 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 
 	count, err := rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)
 	require.NoError(t, err)
-	assert.Equal(t, 1, count, "should have loaded 1 config")
+	require.Equal(t, 1, count, "should have loaded 1 config")
 
 	_, err = rt.UpdatePersistedBucketName(&databaseConfig, &b2Name)
 	require.NoError(t, err)
