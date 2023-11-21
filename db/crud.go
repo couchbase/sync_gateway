@@ -11,6 +11,7 @@ package db
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -21,7 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -690,7 +691,7 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 		// Update: this applies to non-deletions too, since the client may have lost access to
 		// the channel and gotten a "removed" entry in the _changes feed. It then needs to
 		// incorporate that tombstone and for that it needs to see the _revisions property.
-		if revid == "" || doc.History[revid] == nil || err == ErrMissing {
+		if revid == "" || doc.History[revid] == nil || errors.Is(err, ErrMissing) {
 			return nil, false, err
 		}
 		if doc.History[revid].Deleted {
@@ -1559,7 +1560,7 @@ func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAtt
 		if errors.Is(err, ErrAttachmentTooLarge) || err.Error() == "document value was too large" {
 			err = base.HTTPErrorf(http.StatusRequestEntityTooLarge, "Attachment too large")
 		} else {
-			err = errors.Wrap(err, "Error adding attachment")
+			err = pkgerrors.Wrap(err, "Error adding attachment")
 		}
 	}
 	return err
