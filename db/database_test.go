@@ -457,6 +457,70 @@ func TestIsServerless(t *testing.T) {
 	}
 }
 
+func TestUncachedOldRevisionChannel(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	auth := db.Authenticator(base.TestCtx(t))
+
+	userAlice, err := auth.NewUser("alice", "pass", base.SetOf("ABC"))
+	require.NoError(t, err, "Error creating user")
+
+	collection.user = userAlice
+
+	// Create the first revision of doc1.
+	rev1Body := Body{
+		"k1":       "v1",
+		"channels": []string{"ABC"},
+	}
+	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
+	require.NoError(t, err, "Error creating doc")
+
+	rev2Body := Body{
+		"k2":       "v2",
+		"channels": []string{"ABC"},
+		BodyRev:    rev1ID,
+	}
+	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
+	require.NoError(t, err, "Error creating doc")
+
+	rev3Body := Body{
+		"k3":       "v3",
+		"channels": []string{"ABC"},
+		BodyRev:    rev2ID,
+	}
+	rev3ID, _, err := collection.Put(ctx, "doc1", rev3Body)
+	require.NoError(t, err, "Error creating doc")
+	require.NotEmpty(t, rev3ID, "Error creating doc")
+
+	body, err := collection.Get1xRevBody(ctx, "doc1", rev2ID, true, nil)
+	require.NoError(t, err, "Error getting 1x rev body")
+
+	// old rev was cached so still retains channel information
+	_, rev1Digest := ParseRevID(ctx, rev1ID)
+	_, rev2Digest := ParseRevID(ctx, rev2ID)
+	bodyExpected := Body{
+		"k2":       "v2",
+		"channels": []string{"ABC"},
+		BodyRevisions: Revisions{
+			RevisionsStart: 2,
+			RevisionsIds:   []string{rev2Digest, rev1Digest},
+		},
+		BodyId:  "doc1",
+		BodyRev: rev2ID,
+	}
+	require.Equal(t, bodyExpected, body)
+
+	// Flush the revision cache to force load from backup revision
+	collection.FlushRevisionCacheForTest()
+
+	// 404 because we lost the non-leaf channel information after cache flush
+	_, _, _, _, _, _, _, _, err = collection.Get1xRevAndChannels(ctx, "doc1", rev2ID, false)
+	assertHTTPError(t, err, 404)
+}
+
 // Test removal handling for unavailable multi-channel revisions.
 func TestGetRemovalMultiChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)

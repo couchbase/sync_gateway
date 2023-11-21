@@ -537,8 +537,12 @@ func (col *DatabaseCollectionWithUser) authorizeDoc(ctx context.Context, doc *Do
 
 	channelsForRev, ok := doc.channelsForRev(revid)
 	if !ok {
-		// No such revision; let the caller proceed and return a 404
+		// No such revision
+		// let the caller proceed and return a 404
 		return nil
+	} else if channelsForRev == nil {
+		// non-leaf (no channel info) - force 404 (caller would find the rev if it tried to look)
+		return ErrMissing
 	}
 
 	return col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, channelsForRev)
@@ -686,7 +690,7 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 		// Update: this applies to non-deletions too, since the client may have lost access to
 		// the channel and gotten a "removed" entry in the _changes feed. It then needs to
 		// incorporate that tombstone and for that it needs to see the _revisions property.
-		if revid == "" || doc.History[revid] == nil {
+		if revid == "" || doc.History[revid] == nil || err == ErrMissing {
 			return nil, false, err
 		}
 		if doc.History[revid].Deleted {
