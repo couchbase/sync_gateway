@@ -1417,7 +1417,7 @@ func TestAllowedAttachments(t *testing.T) {
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 			if tt.inputBlipProtocol <= CBMobileReplicationV2 {
 				requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
-			} else if tt.inputBlipProtocol <= CBMobileReplicationV3 {
+			} else if tt.inputBlipProtocol >= CBMobileReplicationV3 {
 				requireIsAttachmentAllowedFalse(t, ctx, docID1, meta, tt.inputBlipProtocol)
 			}
 
@@ -1447,7 +1447,7 @@ func TestAllowedAttachments(t *testing.T) {
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 			if tt.inputBlipProtocol <= CBMobileReplicationV2 {
 				requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
-			} else if tt.inputBlipProtocol <= CBMobileReplicationV3 {
+			} else if tt.inputBlipProtocol >= CBMobileReplicationV3 {
 				requireIsAttachmentAllowedFalse(t, ctx, docID1, meta, tt.inputBlipProtocol)
 			}
 

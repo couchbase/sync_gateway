@@ -454,7 +454,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 				// If change is a removal and we're running with protocol V3 and change change is not a tombstone
 				// fall into 3.0 removal handling.
 				// Changes with change.Revoked=true have already evaluated UserHasDocAccess in changes.go, don't check again.
-				if change.allRemoved && bh.activeCBMobileSubprotocol <= CBMobileReplicationV3 && !change.Deleted && !change.Revoked {
+				if change.allRemoved && bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 && !change.Deleted && !change.Revoked {
 					// If client doesn't want removals / revocations, don't send change
 					if !opts.revocations {
 						continue
@@ -517,7 +517,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string) []interface{} {
 	var changeRow []interface{}
 
-	if bh.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+	if bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 {
 		deletedFlags := changesDeletedFlag(0)
 		if change.Deleted {
 			deletedFlags |= changesDeletedFlagDeleted
@@ -688,7 +688,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 		}
 
-		if bh.purgeOnRemoval && bh.activeCBMobileSubprotocol <= CBMobileReplicationV3 &&
+		if bh.purgeOnRemoval && bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 &&
 			(deletedFlags.HasFlag(changesDeletedFlagRevoked) || deletedFlags.HasFlag(changesDeletedFlagRemoved)) {
 			err := bh.collection.Purge(bh.loggingCtx, docID)
 			if err != nil {
@@ -1270,7 +1270,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 
 	docID := ""
 	attachmentAllowedKey := digest
-	if bh.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+	if bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 {
 		docID = getAttachmentParams.docID()
 		if docID == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "Missing 'docID'")
@@ -1319,7 +1319,7 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 		outrq.Properties[BlipCompress] = trueProperty
 	}
 
-	if bh.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+	if bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 {
 		outrq.Properties[GetAttachmentID] = docID
 	}
 
@@ -1513,7 +1513,7 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []Att
 }
 
 func allowedAttachmentKey(docID, digest string, activeCBMobileSubprotocol CBMobileSubprotocolVersion) string {
-	if activeCBMobileSubprotocol == CBMobileReplicationV3 {
+	if activeCBMobileSubprotocol >= CBMobileReplicationV3 {
 		return docID + digest
 	}
 	return digest
