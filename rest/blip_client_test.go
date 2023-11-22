@@ -625,7 +625,7 @@ func (btcRunner *BlipTestClientRunner) Run(test func(t *testing.T, SupportedBLIP
 	// reset to protect against someone creating a new client after Run() is run
 	defer func() { btcRunner.initialisedInsideRunnerCode = false }()
 	btcRunner.t.Run("revTree", func(t *testing.T) {
-		test(t, []string{db.BlipCBMobileReplicationV3})
+		test(t, []string{db.CBMobileReplicationV3.SubprotocolString()})
 	})
 	// if test is not wanting version vector subprotocol to be run, return before we start this subtest
 	if btcRunner.SkipVersionVectorInitialization {
