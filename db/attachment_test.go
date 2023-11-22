@@ -1329,8 +1329,6 @@ func TestAllowedAttachments(t *testing.T) {
 		{"TestAllowedAttachmentsCBMobile2AttVer2", CBMobileReplicationV2, AttVersion2},
 		{"TestAllowedAttachmentsCBMobile3AttVer1", CBMobileReplicationV3, AttVersion1},
 		{"TestAllowedAttachmentsCBMobile3AttVer2", CBMobileReplicationV3, AttVersion2},
-		{"TestAllowedAttachmentsCBMobile4AttVer2", CBMobileReplicationV4, AttVersion2},
-		{"TestAllowedAttachmentsCBMobile4AttVer2", CBMobileReplicationV4, AttVersion2},
 	}
 
 	isAllowedAttachment := func(ctx *BlipSyncContext, key string) bool {
