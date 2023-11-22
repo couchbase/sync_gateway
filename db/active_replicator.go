@@ -237,7 +237,7 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	}
 
 	// set active subprotocol after handshake
-	bsc.activeCBMobileSubprotocol, err = ParseSubprotocolString(blipContext.ActiveSubprotocol())
+	err = bsc.SetActiveCBMobileSubprotocol(blipContext.ActiveSubprotocol())
 	if err != nil {
 		return nil, nil, err
 	}
