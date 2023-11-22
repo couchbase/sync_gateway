@@ -69,28 +69,20 @@ func (h *handler) handleBLIPSync() error {
 	// Create a BLIP WebSocket handler and have it handle the request:
 	server := blipContext.WebSocketServer()
 
-	middleware := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(
-			func(w http.ResponseWriter, r *http.Request) {
-				defer base.InfofCtx(h.ctx(), base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed", h.formatSerialNumber())
-				next.ServeHTTP(w, r)
-			})
-	}
-
 	go func() {
+		// ActiveSubprotocol only available after handshake via ServeHTTP()
 		if ok := server.WaitUntilStarted(h.ctx()); ok {
 			subprotocol := blipContext.ActiveSubprotocol()
 			h.logStatus(http.StatusSwitchingProtocols, fmt.Sprintf("[%s] Upgraded to WebSocket protocol %s+%s%s", blipContext.ID, blip.WebSocketSubProtocolPrefix, subprotocol, h.formattedEffectiveUserName()))
 			err := ctx.SetActiveCBMobileSubprotocol(subprotocol)
 			if err != nil {
-				panic(err)
+				base.WarnfCtx(h.ctx(), "Couldn't set active CB Mobile Subprotocol: %v", err)
 			}
-		} else {
-			base.InfofCtx(h.ctx(), base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed before it was accepted", h.formatSerialNumber())
 		}
 	}()
 
-	middleware(server).ServeHTTP(h.response, h.rq)
+	server.ServeHTTP(h.response, h.rq)
+	base.InfofCtx(h.ctx(), base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed", h.formatSerialNumber())
 
 	return nil
 }
