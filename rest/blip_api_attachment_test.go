@@ -54,7 +54,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 		defer rt.Close()
 
 		opts := &BlipTesterClientOpts{}
-		opts.SupportedBLIPProtocols = []string{db.BlipCBMobileReplicationV2}
+		opts.SupportedBLIPProtocols = []string{db.CBMobileReplicationV2.SubprotocolString()}
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
@@ -203,7 +203,7 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 		defer rt.Close()
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			SupportedBLIPProtocols: []string{db.BlipCBMobileReplicationV2},
+			SupportedBLIPProtocols: []string{db.CBMobileReplicationV2.SubprotocolString()},
 		})
 		defer btc.Close()
 
@@ -263,7 +263,7 @@ func TestBlipProveAttachmentV2Push(t *testing.T) {
 		defer rt.Close()
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			SupportedBLIPProtocols: []string{db.BlipCBMobileReplicationV2},
+			SupportedBLIPProtocols: []string{db.CBMobileReplicationV2.SubprotocolString()},
 		})
 		defer btc.Close()
 		// Create two docs with the same attachment data on the client - v2 attachments intentionally result in two copies stored on the server, despite the client being able to share the data for both.

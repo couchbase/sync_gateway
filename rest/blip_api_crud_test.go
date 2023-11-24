@@ -1694,7 +1694,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
-		blipProtocols:      []string{db.BlipCBMobileReplicationV2},
+		blipProtocols:      []string{db.CBMobileReplicationV2.SubprotocolString()},
 	}
 	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
@@ -1708,7 +1708,7 @@ func TestGetRemovedDoc(t *testing.T) {
 		connectingUsername:          "user2",
 		connectingPassword:          "1234",
 		connectingUserChannelGrants: []string{"user1"}, // so it can see user1's docs
-		blipProtocols:               []string{db.BlipCBMobileReplicationV2},
+		blipProtocols:               []string{db.CBMobileReplicationV2.SubprotocolString()},
 	}
 	bt2, err := NewBlipTesterFromSpecWithRT(t, &btSpec2, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")

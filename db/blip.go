@@ -19,13 +19,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-const (
-	// BlipCBMobileReplicationV2 / BlipCBMobileReplicationV3 is the AppProtocolId part of the BLIP websocket
-	// sub protocol.  One must match identically with one provided by the peer (CBLite / ISGR)
-	BlipCBMobileReplicationV2 = "CBMobile_2"
-	BlipCBMobileReplicationV3 = "CBMobile_3"
-)
-
 var (
 	// compressedTypes are MIME types that explicitly indicate they're compressed:
 	compressedTypes = regexp.MustCompile(`(?i)\bg?zip\b`)
@@ -44,10 +37,7 @@ var (
 
 // NewSGBlipContext returns a go-blip context with the given ID, initialized for use in Sync Gateway.
 func NewSGBlipContext(ctx context.Context, id string) (bc *blip.Context, err error) {
-	// V3 is first here as it is the preferred communication method
-	// In the host case this means SGW can accept both V3 and V2 clients
-	// In the client case this means we prefer V3 but can fallback to V2
-	return NewSGBlipContextWithProtocols(ctx, id, BlipCBMobileReplicationV3, BlipCBMobileReplicationV2)
+	return NewSGBlipContextWithProtocols(ctx, id, supportedSubprotocols()...)
 }
 
 func NewSGBlipContextWithProtocols(ctx context.Context, id string, protocol ...string) (bc *blip.Context, err error) {

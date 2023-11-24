@@ -447,7 +447,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 			Username:               "alice",
 			Channels:               []string{"public"},
 			ClientDeltas:           true,
-			SupportedBLIPProtocols: []string{db.BlipCBMobileReplicationV2},
+			SupportedBLIPProtocols: []string{db.CBMobileReplicationV2.SubprotocolString()},
 		})
 		defer client.Close()
 
