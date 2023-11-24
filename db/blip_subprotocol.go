@@ -21,6 +21,8 @@ const (
 	CBMobileReplicationV2 CBMobileSubprotocolVersion = iota + 2
 	// CBMobileReplicationV3 minor changes to support revocation and ISGR
 	CBMobileReplicationV3
+	// Version Vectors/HLV
+	CBMobileReplicationV4
 
 	// _nextCBMobileSubprotocolVersions reserved for maxCBMobileSubprotocolVersion
 	_nextCBMobileSubprotocolVersions
