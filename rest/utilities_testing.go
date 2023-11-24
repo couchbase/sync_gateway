@@ -1257,7 +1257,8 @@ type BlipTester struct {
 
 	// The blip context which contains blip related state and the sender/reciever goroutines associated
 	// with this websocket connection
-	blipContext *blip.Context
+	blipContext       *blip.Context
+	activeSubprotocol db.CBMobileSubprotocolVersion
 
 	// The blip sender that can be used for sending messages over the websocket connection
 	sender *blip.Sender
@@ -1397,7 +1398,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 	// If protocols are not set use V3 as a V3 client would
 	protocols := spec.blipProtocols
 	if len(protocols) == 0 {
-		protocols = []string{db.BlipCBMobileReplicationV3}
+		protocols = []string{db.CBMobileReplicationV3.SubprotocolString()}
 	}
 
 	// Make BLIP/Websocket connection
@@ -1428,6 +1429,11 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 	bt.sender, err = bt.blipContext.DialConfig(&config)
 	if err != nil {
 		return nil, err
+	}
+
+	bt.activeSubprotocol, err = db.ParseSubprotocolString(bt.blipContext.ActiveSubprotocol())
+	if err != nil {
+		tb.Fatalf("Unable to parse subprotocol string: %v", err)
 	}
 
 	collections := bt.restTester.getCollectionsForBLIP()
@@ -1966,7 +1972,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 			getAttachmentRequest := blip.NewRequest()
 			getAttachmentRequest.SetProfile(db.MessageGetAttachment)
 			getAttachmentRequest.Properties[db.GetAttachmentDigest] = attachment.Digest
-			if bt.blipContext.ActiveSubprotocol() == db.BlipCBMobileReplicationV3 {
+			if bt.activeSubprotocol >= db.CBMobileReplicationV3 {
 				getAttachmentRequest.Properties[db.GetAttachmentID] = docId
 			}
 			bt.addCollectionProperty(getAttachmentRequest)

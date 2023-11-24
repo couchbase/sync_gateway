@@ -83,9 +83,10 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 // This connection remains open until the client closes it, and can receive any number of requests.
 type BlipSyncContext struct {
 	blipContext                 *blip.Context
-	blipContextDb               *Database       // 'master' database instance for the replication, used as source when creating handler-specific databases
-	loggingCtx                  context.Context // logging context for connection
-	dbUserLock                  sync.RWMutex    // Must be held when refreshing the db user
+	activeCBMobileSubprotocol   CBMobileSubprotocolVersion // The active subprotocol version for this connection
+	blipContextDb               *Database                  // 'master' database instance for the replication, used as source when creating handler-specific databases
+	loggingCtx                  context.Context            // logging context for connection
+	dbUserLock                  sync.RWMutex               // Must be held when refreshing the db user
 	allowedAttachments          map[string]AllowedAttachment
 	allowedAttachmentsLock      sync.Mutex
 	handlerSerialNumber         uint64            // Each handler within a context gets a unique serial number for logging
@@ -134,6 +135,12 @@ type AllowedAttachment struct {
 	version int    // Version of the attachment
 	counter int    // Counter to track allowed attachments
 	docID   string // docID, used for BlipCBMobileReplicationV2 retrieval of V2 attachments
+}
+
+// SetActiveCBMobileSubprotocol returns the active subprotocol version
+func (bsc *BlipSyncContext) SetActiveCBMobileSubprotocol(subprotocol string) (err error) {
+	bsc.activeCBMobileSubprotocol, err = ParseSubprotocolString(subprotocol)
+	return err
 }
 
 func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) {
@@ -420,7 +427,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	// asynchronously wait for a response if we have attachment digests to verify, if we sent a delta and want to error check, or if we have a registered callback.
 	awaitResponse := len(attMeta) > 0 || properties[RevMessageDeltaSrc] != "" || collectionCtx.sgr2PushProcessedSeqCallback != nil
 
-	activeSubprotocol := bsc.blipContext.ActiveSubprotocol()
+	activeSubprotocol := bsc.activeCBMobileSubprotocol
 	if awaitResponse {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
 		bsc.addAllowedAttachments(docID, attMeta, activeSubprotocol)
@@ -437,7 +444,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	bsc.reportComputeStat(outrq.Message, startTime)
 
 	if awaitResponse {
-		go func(activeSubprotocol string) {
+		go func(activeSubprotocol CBMobileSubprotocolVersion) {
 			defer func() {
 				if panicked := recover(); panicked != nil {
 					bsc.replicationStats.NumHandlersPanicked.Add(1)
@@ -568,7 +575,7 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 	noRevRq.SetId(docID)
 	noRevRq.SetRev(revID)
 	noRevRq.SetCollection(collectionIdx)
-	if bsc.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV2 && bsc.clientType == BLIPClientTypeSGR2 {
+	if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV2 && bsc.clientType == BLIPClientTypeSGR2 {
 		noRevRq.SetSeq(seq)
 	} else {
 		noRevRq.SetSequence(seq)
