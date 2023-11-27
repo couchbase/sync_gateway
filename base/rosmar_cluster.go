@@ -46,7 +46,7 @@ func (c *RosmarCluster) GetMetadataDocument(ctx context.Context, location, docID
 	return bucket.DefaultDataStore().Get(docID, valuePtr)
 }
 
-// InsertMetadataDocument inserts a metadata document, and fails if it already exists or returns a CasMismatchError
+// InsertMetadataDocument inserts a metadata document, and fails if it already exists.
 func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, key string, value interface{}) (newCAS uint64, err error) {
 	bucket, err := rosmar.OpenBucket(c.serverURL, location, rosmar.CreateOrOpen)
 	if err != nil {
@@ -65,7 +65,7 @@ func (c *RosmarCluster) WriteMetadataDocument(ctx context.Context, location, doc
 	}
 	defer bucket.Close(ctx)
 
-	return c.writeWithOptionalCas(bucket.DefaultDataStore(), docID, cas, value)
+	return bucket.DefaultDataStore().WriteCas(docID, 0, 0, cas, value, 0)
 }
 
 // TouchMetadataDocument sets the specified property in a bootstrap metadata document for a given bucket and key.  Used to
@@ -82,25 +82,6 @@ func (c *RosmarCluster) TouchMetadataDocument(ctx context.Context, location, doc
 	return bucket.DefaultDataStore().Touch(docID, 0)
 }
 
-// writeWithOptionalCas writes a document, optionally using a CAS value if provided.  If the document already exists, the CAS value must match the existing CAS value. This is a workaround for behavior of WriteCas and has race conditions on getting cas if the document is updated after Set and before Get when cas = 0.
-func (c *RosmarCluster) writeWithOptionalCas(dataStore DataStore, docID string, cas uint64, value any) (uint64, error) {
-	var unused any
-	_, err := dataStore.Get(docID, &unused)
-	if err != nil {
-		return 0, err
-	}
-	newDoc := IsDocNotFoundError(err)
-	if cas != 0 && !newDoc {
-		return dataStore.WriteCas(docID, 0, 0, cas, value, 0)
-
-	}
-	err = dataStore.Set(docID, 0, nil, value)
-	if err != nil {
-		return 0, err
-	}
-	return dataStore.Get(docID, &unused)
-}
-
 // DeleteMetadataDocument deletes an existing bootstrap metadata document for a given bucket and key.
 func (c *RosmarCluster) DeleteMetadataDocument(ctx context.Context, location, key string, cas uint64) error {
 	bucket, err := rosmar.OpenBucket(c.serverURL, location, rosmar.CreateOrOpen)
@@ -113,7 +94,7 @@ func (c *RosmarCluster) DeleteMetadataDocument(ctx context.Context, location, ke
 	return err
 }
 
-// UpdateMetadataDocument retries on CAS mismatch
+// UpdateMetadataDocument updates a given document and retries on CAS mismatch.
 func (c *RosmarCluster) UpdateMetadataDocument(ctx context.Context, location, docID string, updateCallback func(bucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error)) (newCAS uint64, err error) {
 	bucket, err := rosmar.OpenBucket(c.serverURL, location, rosmar.CreateOrOpen)
 	if err != nil {

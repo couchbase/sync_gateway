@@ -208,6 +208,7 @@ outer:
 
 	// Step 2. Update the config document
 	docID := PersistentConfigKey(ctx, groupID, dbName)
+	fmt.Println("updatedConfig.cfgCas=", updatedConfig.cfgCas)
 	casOut, err := b.Connection.WriteMetadataDocument(ctx, bucketName, docID, updatedConfig.cfgCas, updatedConfig)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyConfig, "Write for database config %q returned error %v", base.MD(docID), err)
@@ -293,7 +294,7 @@ outer:
 	} else {
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr != nil {
-			return fmt.Errorf("!Error persisting removal of previous version of config group: %s, database: %s from registry after successful delete: %w", base.MD(groupID), base.MD(dbName), writeErr)
+			return fmt.Errorf("Error persisting removal of previous version of config group: %s, database: %s from registry after successful delete: %w", base.MD(groupID), base.MD(dbName), writeErr)
 		}
 	}
 

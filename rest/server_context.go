@@ -367,12 +367,6 @@ func (sc *ServerContext) AllDatabases() map[string]*db.DatabaseContext {
 	return databases
 }
 
-func (sc *ServerContext) AllInvalidDatabases() map[string]*invalidConfigInfo {
-	sc.invalidDatabaseConfigTracking.m.RLock()
-	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
-	return sc.invalidDatabaseConfigTracking.dbNames
-}
-
 type PostUpgradeResult map[string]PostUpgradeDatabaseResult
 
 type PostUpgradeDatabaseResult struct {

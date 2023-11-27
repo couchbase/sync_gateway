@@ -1509,7 +1509,7 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	responseConfig := rt.ServerContext().GetDbConfig("db1")
 	assert.Nil(t, responseConfig)
 
-	require.Equal(t, 1, len(rt.ServerContext().AllInvalidDatabases()))
+	require.Len(t, rt.ServerContext().AllInvalidDatabaseNames(t), 1)
 
 	// assert that fetching config fails with the correct error message to the user
 	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
@@ -1533,7 +1533,7 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	// wait some time for interval to pick up change
 	err = rt.WaitForConditionWithOptions(func() bool {
 		list := rt.ServerContext().AllDatabaseNames()
-		numInvalid := len(rt.ServerContext().AllInvalidDatabases())
+		numInvalid := len(rt.ServerContext().AllInvalidDatabaseNames(t))
 		return len(list) == 1 && numInvalid == 0
 	}, 200, 1000)
 	require.NoError(t, err)
@@ -1559,7 +1559,7 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure the interval time to pick up new configs from the bucket to every 50 milliseconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Second)
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
 		},
 		DatabaseConfig: nil,
 	})
@@ -1587,7 +1587,7 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 
 	// asser that the config is picked up as invalid config on server context
 	err = rt.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt.ServerContext().AllInvalidDatabases()
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
 		return len(invalidDatabases) == 1
 	}, 200, 1000)
 	require.NoError(t, err)
@@ -1683,7 +1683,7 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 		CustomTestBucket: tb3,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// configure the interval time to pick up new configs from the bucket to every 50 milliseconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Second)
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
 			// configure same config groupID
 			config.Bootstrap.ConfigGroupID = groupID
 		},
@@ -1692,7 +1692,7 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 
 	// assert the invalid database is picked up with new rest tester
 	err := rt3.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt3.ServerContext().AllInvalidDatabases()
+		invalidDatabases := rt3.ServerContext().AllInvalidDatabaseNames(t)
 		return len(invalidDatabases) == 1
 	}, 200, 1000)
 	require.NoError(t, err)
@@ -1765,7 +1765,7 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 
 	// assert that the invalid config is picked up by the new rest tester
 	err := rt3.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt3.ServerContext().AllInvalidDatabases()
+		invalidDatabases := rt3.ServerContext().AllInvalidDatabaseNames(t)
 		return len(invalidDatabases) == 1
 	}, 200, 1000)
 	require.NoError(t, err)
@@ -1828,7 +1828,7 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 
 	// assert the config is picked as invalid db config
 	err = rt.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt.ServerContext().AllInvalidDatabases()
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
 		return len(invalidDatabases) == 1
 	}, 200, 1000)
 	require.NoError(t, err)
