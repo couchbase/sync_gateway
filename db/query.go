@@ -99,19 +99,19 @@ const (
 var QueryChannels = SGQuery{
 	name: QueryTypeChannels,
 	statement: fmt.Sprintf(
-		"SELECT [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][1] AS seq, "+
-			"[op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][2] AS rRev, "+
-			"[op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][3] AS rDel, "+
+		"SELECT [op.name, LEAST($sync.`sequence`, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][1] AS seq, "+
+			"[op.name, LEAST($sync.`sequence`, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][2] AS rRev, "+
+			"[op.name, LEAST($sync.`sequence`, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][3] AS rDel, "+
 			"$sync.rev AS rev, "+
 			"$sync.flags AS flags, "+
 			"META(%s).id AS id "+
 			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
 			"UNNEST OBJECT_PAIRS($relativesync.channels) AS op "+
-			"WHERE ([op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  "+
+			"WHERE ([op.name, LEAST($sync.`sequence`, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  "+
 			"BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq]) "+
 			"%s"+
-			"ORDER BY [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]",
+			"ORDER BY [op.name, LEAST($sync.`sequence`, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]",
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		activeOnlyFilter),
@@ -121,15 +121,15 @@ var QueryChannels = SGQuery{
 var QueryStarChannel = SGQuery{
 	name: QueryTypeChannelsStar,
 	statement: fmt.Sprintf(
-		"SELECT $sync.sequence AS seq, "+
+		"SELECT $sync.`sequence` AS seq, "+
 			"$sync.rev AS rev, "+
 			"$sync.flags AS flags, "+
 			"META(%s).id AS id "+
 			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
-			"WHERE $sync.sequence >= $startSeq AND $sync.sequence < $endSeq "+
+			"WHERE $sync.`sequence` >= $startSeq AND $sync.`sequence` < $endSeq "+
 			"AND META().id NOT LIKE '%s' %s"+
-			"ORDER BY $sync.sequence",
+			"ORDER BY $sync.`sequence`",
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		SyncDocWildcard, activeOnlyFilter),
@@ -139,13 +139,13 @@ var QueryStarChannel = SGQuery{
 var QuerySequences = SGQuery{
 	name: QueryTypeSequences,
 	statement: fmt.Sprintf(
-		"SELECT $sync.sequence AS seq, "+
+		"SELECT $sync.`sequence` AS seq, "+
 			"$sync.rev AS rev, "+
 			"$sync.flags AS flags, "+
 			"META(%s).id AS id "+
 			"FROM %s AS %s "+
 			"USE INDEX($idx) "+
-			"WHERE $sync.sequence IN $inSequences "+
+			"WHERE $sync.`sequence` IN $inSequences "+
 			"AND META().id NOT LIKE '%s'",
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
@@ -338,11 +338,11 @@ var QueryAllDocs = SGQuery{
 	statement: fmt.Sprintf(
 		"SELECT META(%s).id as id, "+
 			"$sync.rev as r, "+
-			"$sync.sequence as s, "+
+			"$sync.`sequence` as s, "+
 			"$sync.channels as c "+
 			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
-			"WHERE $sync.sequence > 0 AND "+ // Required to use IndexAllDocs
+			"WHERE $sync.`sequence` > 0 AND "+ // Required to use IndexAllDocs
 			"META(%s).id NOT LIKE '%s' "+
 			"AND $sync IS NOT MISSING "+
 			"AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)",

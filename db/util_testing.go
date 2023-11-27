@@ -212,9 +212,9 @@ func emptyAllDocsIndex(ctx context.Context, dataStore sgbucket.DataStore, tbp *b
 
 	// A stripped down version of db.Compact() that works on AllDocs instead of tombstones
 	statement := `SELECT META(ks).id AS id
-FROM ` + base.KeyspaceQueryToken + ` AS ks USE INDEX (sg_allDocs_x1)
-WHERE META(ks).xattrs._sync.sequence IS NOT MISSING
-    AND META(ks).id NOT LIKE '\\_sync:%'`
+FROM ` + base.KeyspaceQueryToken + ` AS ks USE INDEX (sg_allDocs_x1)`
+	statement += " WHERE META(ks).xattrs._sync.`sequence` IS NOT MISSING"
+	statement += ` AND META(ks).id NOT LIKE '\\_sync:%'`
 	results, err := n1qlStore.Query(ctx, statement, nil, base.RequestPlus, true)
 	if err != nil {
 		return 0, err
