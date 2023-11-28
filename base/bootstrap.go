@@ -356,7 +356,7 @@ func (cc *CouchbaseCluster) WriteMetadataDocument(ctx context.Context, location,
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 	if cas == 0 {
-		return 0, RedactErrorf("CAS for %q in bucket %q must be non-zero", docID, location)
+		return 0, RedactErrorf("CAS for %q in bucket %q must be non-zero", UD(docID), MD(location))
 	}
 
 	b, teardown, err := cc.getBucket(ctx, location)
