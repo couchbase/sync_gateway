@@ -1839,9 +1839,6 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 
 // Repros CBG-2416
 func TestDBReplicationStatsTeardown(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
 
 	base.RequireNumTestBuckets(t, 2)
 	// Test tests Prometheus stat registration
@@ -1946,10 +1943,6 @@ func TestTakeDbOfflineOngoingPushReplication(t *testing.T) {
 func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 
 	t.Skip("Skipping test - revisit in CBG-1908")
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test does not support Walrus - depends on closing and re-opening persistent bucket")
-	}
 
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
@@ -7844,8 +7837,8 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 // Tests replications to make sure they are namespaced by group ID
 func TestGroupIDReplications(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
-		t.Skip("This test requires xattrs and persistent config")
+	if !base.TestUseXattrs() {
+		t.Skip("This test requires xattrs")
 	}
 	base.RequireNumTestBuckets(t, 2)
 
@@ -7903,8 +7896,11 @@ func TestGroupIDReplications(t *testing.T) {
 				Bucket: base.StringPtr(activeBucket.GetName()),
 			},
 			EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
-			UseViews:     base.BoolPtr(base.TestsDisableGSI()),
 		}
+		if !base.UnitTestUrlIsWalrus() {
+			dbConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
+		}
+
 		if rt.GetDatabase().OnlyDefaultCollection() {
 			dbConfig.Sync = base.StringPtr(channels.DocChannelsSyncFunction)
 		} else {

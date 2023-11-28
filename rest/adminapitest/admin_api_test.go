@@ -3309,9 +3309,6 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 }
 
 func TestPutDBConfigOIDC(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
@@ -3642,9 +3639,6 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 
 // TestDbConfigPersistentSGVersions ensures that cluster-wide config updates are not applied to older nodes to avoid pushing invalid configuration.
 func TestDbConfigPersistentSGVersions(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyConfig)
 
@@ -3944,7 +3938,7 @@ func TestDisablePasswordAuthThroughAdminAPI(t *testing.T) {
 
 // CBG-1790: Deleting a database that targets the same bucket as another causes a panic in legacy
 func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+	if !base.TestUseXattrs() {
 		t.Skip("This test only works against Couchbase Server with xattrs")
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)

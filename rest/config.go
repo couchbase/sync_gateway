@@ -1356,11 +1356,9 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 	}
 
 	sc := NewServerContext(ctx, config, persistentConfig)
-	if !base.ServerIsWalrus(config.Bootstrap.Server) {
-		failFast := false
-		if err := sc.initializeCouchbaseServerConnections(ctx, failFast); err != nil {
-			return nil, err
-		}
+	failFast := false
+	if err := sc.initializeCouchbaseServerConnections(ctx, failFast); err != nil {
+		return nil, err
 	}
 	return sc, nil
 }
