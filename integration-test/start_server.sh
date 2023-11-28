@@ -59,7 +59,7 @@ docker rm ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
 # --volume: Makes and mounts a CBS folder for storing a CBCollect if needed
 
 # use dockerhub if no registry is specified, allows for pre-release images from alternative registries
-if [[ !"${COUCHBASE_DOCKER_IMAGE_NAME}" =~ ".*/" ]]; then
+if [[ "${COUCHBASE_DOCKER_IMAGE_NAME}" != *"/"* ]]; then
     COUCHBASE_DOCKER_IMAGE_NAME="couchbase/server:${COUCHBASE_DOCKER_IMAGE_NAME}"
 fi
 
