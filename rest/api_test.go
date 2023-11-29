@@ -2754,7 +2754,7 @@ func TestDatabaseXattrConfigHandlingForDBConfigUpdate(t *testing.T) {
 	base.LongRunningTest(t)
 	const (
 		dbName  = "db1"
-		errResp = "sync gateway requires shared_bucket_access to be enabled"
+		errResp = "sync gateway requires enable_shared_bucket_access=true"
 	)
 
 	testCases := []struct {
@@ -2808,7 +2808,7 @@ func TestCreateDBWithXattrsDisbaled(t *testing.T) {
 	defer rt.Close()
 	const (
 		dbName  = "db1"
-		errResp = "sync gateway requires shared_bucket_access to be enabled"
+		errResp = "sync gateway requires enable_shared_bucket_access=true"
 	)
 
 	dbConfig := rt.NewDbConfig()
