@@ -208,7 +208,6 @@ outer:
 
 	// Step 2. Update the config document
 	docID := PersistentConfigKey(ctx, groupID, dbName)
-	fmt.Println("updatedConfig.cfgCas=", updatedConfig.cfgCas)
 	casOut, err := b.Connection.WriteMetadataDocument(ctx, bucketName, docID, updatedConfig.cfgCas, updatedConfig)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyConfig, "Write for database config %q returned error %v", base.MD(docID), err)
