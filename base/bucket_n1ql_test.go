@@ -358,7 +358,7 @@ func TestCreateAndDropIndex(t *testing.T) {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
 
-	createExpression := SyncPropertyName + ".sequence"
+	createExpression := SyncPropertyName + ".`sequence`"
 	err := n1qlStore.CreateIndex(ctx, "testIndex_sequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
@@ -389,7 +389,7 @@ func TestCreateDuplicateIndex(t *testing.T) {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
 
-	createExpression := SyncPropertyName + ".sequence"
+	createExpression := SyncPropertyName + ".`sequence`"
 	err := n1qlStore.CreateIndex(ctx, "testIndexDuplicateSequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
@@ -425,7 +425,7 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
 
-	createExpression := SyncPropertyName + ".sequence"
+	createExpression := SyncPropertyName + ".`sequence`"
 	err := n1qlStore.CreateIndex(ctx, "testIndex-sequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
@@ -465,7 +465,7 @@ func TestDeferredCreateIndex(t *testing.T) {
 		DeferBuild: true,
 	}
 
-	createExpression := SyncPropertyName + ".sequence"
+	createExpression := SyncPropertyName + ".`sequence`"
 	err := n1qlStore.CreateIndex(ctx, indexName, createExpression, "", deferN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
@@ -514,7 +514,7 @@ func TestBuildDeferredIndexes(t *testing.T) {
 	}
 
 	// Create a deferred and a non-deferred index
-	createExpression := SyncPropertyName + ".sequence"
+	createExpression := SyncPropertyName + ".`sequence`"
 	err := n1qlStore.CreateIndex(ctx, deferredIndexName, createExpression, "", deferN1qlOptions)
 	if err != nil {
 		t.Errorf("Error creating index: %s", err)
@@ -579,11 +579,8 @@ func TestCreateAndDropIndexErrors(t *testing.T) {
 	}
 
 	// Create index
-	createExpression = "_sync.sequence"
-	err = n1qlStore.CreateIndex(ctx, "testIndex_sequence", createExpression, "", testN1qlOptions)
-	if err != nil {
-		t.Fatalf("Error creating index: %s", err)
-	}
+	createExpression = "_sync.`sequence`"
+	require.NoError(t, n1qlStore.CreateIndex(ctx, "testIndex_sequence", createExpression, "", testN1qlOptions))
 
 	// Attempt to recreate duplicate index
 	err = n1qlStore.CreateIndex(ctx, "testIndex_sequence", createExpression, "", testN1qlOptions)
