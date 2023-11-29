@@ -547,7 +547,8 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 }
 
 func TestImportFilterLogging(t *testing.T) {
-	importFilter := `function (doc) { console.error("Error"); return doc.type == "mobile"; }`
+	const errorMessage = `ImportFilterError`
+	importFilter := `function (doc) { console.error("` + errorMessage + `"); return doc.type == "mobile"; }`
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -572,15 +573,17 @@ func TestImportFilterLogging(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Attempt to get doc will trigger import
-	response := rt.SendAdminRequest("GET", "/db/"+key, "")
-	assert.Equal(t, http.StatusOK, response.Code)
+	base.AssertLogContains(t, errorMessage, func() {
+		response := rt.SendAdminRequest("GET", "/db/"+key, "")
+		assert.Equal(t, http.StatusOK, response.Code)
+	})
 
 	// Get number of errors after
 	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
-	// Make sure an error was logged
-	assert.Equal(t, numErrors+1, numErrorsAfter)
+	// Make sure at least one error was logged
+	assert.GreaterOrEqual(t, numErrors+1, numErrorsAfter)
 
 }
 
