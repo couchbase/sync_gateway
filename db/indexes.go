@@ -114,9 +114,9 @@ var (
 	indexExpressions = map[SGIndexType]string{
 		IndexAccess:     "ALL (ARRAY (op.name) FOR op IN OBJECT_PAIRS($sync.access) END)",
 		IndexRoleAccess: "ALL (ARRAY (op.name) FOR op IN OBJECT_PAIRS($sync.role_access) END)",
-		IndexChannels: "ALL (ARRAY [op.name, LEAST($sync.sequence,op.val.seq), IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)] FOR op IN OBJECT_PAIRS($sync.channels) END), " +
-			"$sync.rev, $sync.sequence, $sync.flags",
-		IndexAllDocs:    "$sync.sequence, $sync.rev, $sync.flags, $sync.deleted",
+		IndexChannels: "ALL (ARRAY [op.name, LEAST($sync.`sequence`,op.val.seq), IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)] FOR op IN OBJECT_PAIRS($sync.channels) END), " +
+			"$sync.rev, $sync.`sequence`, $sync.flags",
+		IndexAllDocs:    "$sync.`sequence`, $sync.rev, $sync.flags, $sync.deleted",
 		IndexTombstones: "$sync.tombstoned_at",
 		IndexSyncDocs:   "META().id",
 		IndexUser:       "META().id, name, email, disabled",
@@ -166,12 +166,12 @@ var (
 			"USE INDEX ($idx) " +
 			"WHERE ANY op in OBJECT_PAIRS($relativesync.role_access) SATISFIES op.name = 'foo' end " +
 			"LIMIT 1",
-		IndexChannels: "SELECT  [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)][1] AS sequence " +
+		IndexChannels: "SELECT  [op.name, LEAST($sync.`sequence`, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)][1] AS `sequence` " +
 			"FROM %s AS %s " +
 			"USE INDEX ($idx) " +
 			"UNNEST OBJECT_PAIRS($relativesync.channels) AS op " +
-			"WHERE [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)]  BETWEEN  ['foo', 0] AND ['foo', 1] " +
-			"ORDER BY [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)] " +
+			"WHERE [op.name, LEAST($sync.`sequence`, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)]  BETWEEN  ['foo', 0] AND ['foo', 1] " +
+			"ORDER BY [op.name, LEAST($sync.`sequence`, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)] " +
 			"LIMIT 1",
 	}
 )
