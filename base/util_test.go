@@ -801,10 +801,7 @@ func TestInjectJSONProperties(t *testing.T) {
 			}
 
 			assert.Equal(tt, test.expectedOutput, string(output))
-
-			var m map[string]interface{}
-			err = JSONUnmarshal(output, &m)
-			assert.NoError(tt, err, "produced invalid JSON")
+			assert.NoError(tt, JSONUnmarshal(output, &map[string]interface{}{}), "produced invalid JSON")
 		})
 	}
 }
@@ -904,6 +901,30 @@ func TestInjectJSONPropertiesDiffTypes(t *testing.T) {
 				true,
 			},
 		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: `{"foo": "bar","quoted_string":"\"quoted\""}`,
+			pair: KVPair{
+				"quoted_string",
+				`"quoted"`,
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: `{"foo": "bar","reverse_solidus":"C:\\something\\that\\contains\\backslashes"}`,
+			pair: KVPair{
+				"reverse_solidus",
+				`C:\something\that\contains\backslashes`,
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: `{"foo": "bar","escape":"foo\u0000bar"}`,
+			pair: KVPair{
+				"escape",
+				"foo\x00bar",
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -911,6 +932,7 @@ func TestInjectJSONPropertiesDiffTypes(t *testing.T) {
 			output, err := InjectJSONProperties([]byte(test.input), test.pair)
 			assert.NoError(t, err)
 			assert.Equal(t, test.output, string(output))
+			assert.NoErrorf(t, JSONUnmarshal(output, &map[string]interface{}{}), "produced invalid JSON")
 		})
 	}
 }
