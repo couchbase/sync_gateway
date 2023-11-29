@@ -15,8 +15,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-func traverseAndRetrieveStats(logger *log.Logger, s any) []StatDefinition {
-	var stats []StatDefinition
+func traverseAndRetrieveStats(logger *log.Logger, s any) StatDefinitions {
+	stats := make(StatDefinitions)
 
 	topLevel := reflect.ValueOf(s)
 	if topLevel.IsNil() {
@@ -40,7 +40,7 @@ func traverseAndRetrieveStats(logger *log.Logger, s any) []StatDefinition {
 		stat := field.Interface()
 		statWrapper, ok := stat.(base.SgwStatWrapper)
 		if ok {
-			stats = append(stats, newStatDefinition(statWrapper))
+			stats[statWrapper.Name()] = newStatDefinition(statWrapper)
 			continue
 		}
 
@@ -56,8 +56,10 @@ func traverseAndRetrieveStats(logger *log.Logger, s any) []StatDefinition {
 			field = values.Value()
 		}
 
-		// Follow to struct down a level
-		stats = append(stats, traverseAndRetrieveStats(logger, field.Interface())...)
+		// Follow to struct down a level and append the stats to the map
+		for k,v  := range  traverseAndRetrieveStats(logger, field.Interface()) {
+			stats[k] = v
+		}
 	}
 
 	return stats

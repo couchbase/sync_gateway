@@ -74,15 +74,24 @@ func closeAndLogError(logger *log.Logger, c io.Closer) {
 	}
 }
 
-func getStats(logger *log.Logger) ([]StatDefinition, error) {
+func getStats(logger *log.Logger) (StatDefinitions, error) {
 	globalStats, dbStats, err := registerStats()
 	if err != nil {
 		return nil, fmt.Errorf("could not register stats: %w", err)
 	}
 
-	// Append the db stat definitions on to the global stat definitions
-	stats := traverseAndRetrieveStats(logger, globalStats)
-	stats = append(stats, traverseAndRetrieveStats(logger, dbStats)...)
+	// Get all the stats
+	globalStatsDefinitions := traverseAndRetrieveStats(logger, globalStats)
+	dbStatDefinitions :=  traverseAndRetrieveStats(logger, dbStats)
+
+	// Merge the two maps
+	stats := make(StatDefinitions, len(globalStatsDefinitions) + len(dbStatDefinitions))
+	for k, v := range globalStatsDefinitions {
+		stats[k] = v
+	}
+	for k, v := range dbStatDefinitions {
+		stats[k] = v
+	}
 
 	return stats, nil
 }
@@ -110,7 +119,7 @@ func registerStats() (*base.GlobalStat, *base.DbStats, error) {
 	return sgStats.GlobalStats, dbStats, nil
 }
 
-func writeStats(stats []StatDefinition, writer io.Writer) error {
+func writeStats(stats StatDefinitions, writer io.Writer) error {
 	encoder := json.NewEncoder(writer)
 
 	encoder.SetIndent("", "\t")

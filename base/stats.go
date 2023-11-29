@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -814,6 +815,9 @@ func (s SgwStat) LabelKeys() []string {
 	for labelKey := range s.labels {
 		labelKeys = append(labelKeys, labelKey)
 	}
+
+	// Sort the label keys so that the order is deterministic
+	slices.Sort(labelKeys)
 
 	return labelKeys
 }
