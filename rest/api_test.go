@@ -2746,6 +2746,10 @@ func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 	assert.Contains(t, err.Error(), "null doc body for doc")
 }
 
+// TestDatabaseXattrConfigHandlingForDBConfigUpdate:
+//   - Create database with xattrs enabled
+//   - Test updating the config to disable the use of xattrs in this database through replacing + upserting the config
+//   - Assert error code is returned and response contains error string
 func TestDatabaseXattrConfigHandlingForDBConfigUpdate(t *testing.T) {
 	base.LongRunningTest(t)
 	const (
@@ -2794,6 +2798,9 @@ func TestDatabaseXattrConfigHandlingForDBConfigUpdate(t *testing.T) {
 	}
 }
 
+// TestCreateDBWithXattrsDisbaled:
+//   - Test that you cannot create a database with xattrs disabled
+//   - Assert error code is returned and response contains error string
 func TestCreateDBWithXattrsDisbaled(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,

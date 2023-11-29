@@ -1229,7 +1229,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		LocalJWTConfig:                config.LocalJWTConfig,
 		DBOnlineCallback:              dbOnlineCallback,
 		ImportOptions:                 *importOptions,
-		EnableXattr:                   config.UseXattrs(), //
+		EnableXattr:                   config.UseXattrs(),
 		SecureCookieOverride:          secureCookieOverride,
 		SessionCookieName:             config.SessionCookieName,
 		SessionCookieHttpOnly:         base.BoolDefault(config.SessionCookieHTTPOnly, false),
