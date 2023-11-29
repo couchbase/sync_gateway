@@ -1309,9 +1309,9 @@ func InjectJSONProperties(b []byte, kvPairs ...KVPair) (new []byte, err error) {
 			valBytes = []byte(strconv.FormatUint(v, 10))
 		case bool:
 			valBytes = []byte(strconv.FormatBool(v))
-		case string:
-			// it's not safe to use strings without marshalling
-			valBytes = []byte(ConvertToJSONString(v))
+		// case string:
+		// it's not safe to use strings without marshalling
+		// fall through to default below
 		default:
 			valBytes, err = JSONMarshal(kv.Val)
 		}
