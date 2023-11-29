@@ -57,7 +57,7 @@ func traverseAndRetrieveStats(logger *log.Logger, s any) StatDefinitions {
 		}
 
 		// Follow to struct down a level and append the stats to the map
-		for k,v  := range  traverseAndRetrieveStats(logger, field.Interface()) {
+		for k, v := range traverseAndRetrieveStats(logger, field.Interface()) {
 			stats[k] = v
 		}
 	}

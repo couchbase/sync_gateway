@@ -82,10 +82,10 @@ func getStats(logger *log.Logger) (StatDefinitions, error) {
 
 	// Get all the stats
 	globalStatsDefinitions := traverseAndRetrieveStats(logger, globalStats)
-	dbStatDefinitions :=  traverseAndRetrieveStats(logger, dbStats)
+	dbStatDefinitions := traverseAndRetrieveStats(logger, dbStats)
 
 	// Merge the two maps
-	stats := make(StatDefinitions, len(globalStatsDefinitions) + len(dbStatDefinitions))
+	stats := make(StatDefinitions, len(globalStatsDefinitions)+len(dbStatDefinitions))
 	for k, v := range globalStatsDefinitions {
 		stats[k] = v
 	}
