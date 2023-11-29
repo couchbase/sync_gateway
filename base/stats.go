@@ -786,30 +786,44 @@ type SgwStat struct {
 	statDesc          *prometheus.Desc
 }
 
+// Name returns the fully qualified name of the stat.
+// Currently only used for the stat metadata exporter tool.
 func (s SgwStat) Name() string {
 	return s.statFQN
 }
 
+// Unit returns the units the stat uses for example, seconds.
+// Currently only used for the stat metadata exporter tool.
 func (s SgwStat) Unit() string {
 	return s.unit
 }
 
+// Help returns the help text for the stat.
+// Currently only used for the stat metadata exporter tool.
 func (s SgwStat) Help() string {
 	return s.help
 }
 
+// AddedVersion returns the version of Sync Gateway this stat was added.
+// Currently only used for the stat metadata exporter tool.
 func (s SgwStat) AddedVersion() string {
 	return s.addedVersion
 }
 
+// DeprecatedVersion returns the version of Sync Gateway this stat was deprecated.
+// Currently only used for the stat metadata exporter tool.
 func (s SgwStat) DeprecatedVersion() string {
 	return s.deprecatedVersion
 }
 
+// Stability returns if there is a commitment to keep this stat stable.
+// Currently only used for the stat metadata exporter tool.
 func (s SgwStat) Stability() string {
 	return s.stability
 }
 
+// LabelKeys returns the label keys for the stat in deterministic order.
+// Currently only used for the stat metadata exporter tool.
 func (s SgwStat) LabelKeys() []string {
 	labelKeys := make([]string, 0, len(s.labels))
 	for labelKey := range s.labels {
@@ -822,6 +836,8 @@ func (s SgwStat) LabelKeys() []string {
 	return labelKeys
 }
 
+// ValueTypeString returns the string representation of the prometheus.ValueType
+// Currently only used for the stat metadata exporter tool.
 func (s SgwStat) ValueTypeString() string {
 	switch s.statValueType {
 	case prometheus.CounterValue:
