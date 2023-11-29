@@ -2746,6 +2746,72 @@ func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 	assert.Contains(t, err.Error(), "null doc body for doc")
 }
 
+func TestDatabaseXattrConfigHandlingForDBConfigUpdate(t *testing.T) {
+	base.LongRunningTest(t)
+	const (
+		dbName  = "db1"
+		errResp = "sync gateway requires shared_bucket_access to be enabled"
+	)
+
+	testCases := []struct {
+		name         string
+		upsertConfig bool
+	}{
+		{
+			name:         "POST update",
+			upsertConfig: true,
+		},
+		{
+			name:         "PUT update",
+			upsertConfig: false,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{
+				PersistentConfig: true,
+			})
+			defer rt.Close()
+
+			dbConfig := rt.NewDbConfig()
+
+			resp := rt.CreateDatabase(dbName, dbConfig)
+			RequireStatus(t, resp, http.StatusCreated)
+			assert.NoError(t, rt.WaitForDBOnline())
+
+			dbConfig.EnableXattrs = base.BoolPtr(false)
+
+			if testCase.upsertConfig {
+				resp = rt.UpsertDbConfig(dbName, dbConfig)
+				RequireStatus(t, resp, http.StatusInternalServerError)
+				assert.Contains(t, resp.Body.String(), errResp)
+			} else {
+				resp = rt.ReplaceDbConfig(dbName, dbConfig)
+				RequireStatus(t, resp, http.StatusInternalServerError)
+				assert.Contains(t, resp.Body.String(), errResp)
+			}
+		})
+	}
+}
+
+func TestCreateDBWithXattrsDisbaled(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+	const (
+		dbName  = "db1"
+		errResp = "sync gateway requires shared_bucket_access to be enabled"
+	)
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.EnableXattrs = base.BoolPtr(false)
+
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusInternalServerError)
+	assert.Contains(t, resp.Body.String(), errResp)
+}
+
 // TestPutDocUpdateVersionVector:
 //   - Put a doc and assert that the versions and the source for the hlv is correctly updated
 //   - Update that doc and assert HLV has also been updated
