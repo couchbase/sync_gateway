@@ -481,9 +481,9 @@ func (rt *RestTester) UpsertDbConfig(dbName string, config DbConfig) *TestRespon
 	return resp
 }
 
-// GetDatabase Returns first database found for server context.
+// GetDatabase Returns a database found for server context, if there is only one database. Fails the test harness if there is not a database defined.
 func (rt *RestTester) GetDatabase() *db.DatabaseContext {
-
+	require.Len(rt.TB, rt.ServerContext().AllDatabases(), 1)
 	for _, database := range rt.ServerContext().AllDatabases() {
 		return database
 	}
@@ -1073,13 +1073,14 @@ func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentia
 	rt.ServerContext().BootstrapContext.Connection = couchbaseCluster
 }
 
+// Context returns a context for a rest tester with server and database log context, if available an unambiguous.
 func (rt *RestTester) Context() context.Context {
 	ctx := base.TestCtx(rt.TB)
 	if svrctx := rt.ServerContext(); svrctx != nil {
 		ctx = svrctx.AddServerLogContext(ctx)
 	}
-	if dbctx := rt.GetDatabase(); dbctx != nil {
-		ctx = dbctx.AddDatabaseLogContext(ctx)
+	if len(rt.ServerContext().AllDatabases()) == 1 {
+		ctx = rt.GetDatabase().AddDatabaseLogContext(ctx)
 	}
 	return ctx
 }
