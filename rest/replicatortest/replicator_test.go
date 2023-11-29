@@ -7837,6 +7837,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 // Tests replications to make sure they are namespaced by group ID
 func TestGroupIDReplications(t *testing.T) {
+	rest.RequireNonParallelBootstrapTests(t)
 	if !base.TestUseXattrs() {
 		t.Skip("This test requires xattrs")
 	}

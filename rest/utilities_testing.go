@@ -2600,3 +2600,10 @@ func dropAllNonPrimaryIndexes(t *testing.T, dataStore base.DataStore) {
 	err := n1qlStore.CreatePrimaryIndex(ctx, base.PrimaryIndexName, nil)
 	require.NoError(t, err, "Unable to recreate primary index")
 }
+
+// RequireBucketSpecificCredentials skips tests if bucket specific credentials are required
+func RequireBucketSpecificCredentials(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server since rosmar has no bucket specific credentials")
+	}
+}

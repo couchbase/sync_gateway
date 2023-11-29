@@ -21,7 +21,7 @@ import (
 
 // Tests behaviour of CBG-2257 to poll only buckets in BucketCredentials that don't currently have a database
 func TestServerlessPollBuckets(t *testing.T) {
-	requireBucketSpecificCredentials(t)
+	RequireBucketSpecificCredentials(t)
 
 	ctx := base.TestCtx(t)
 	// Get test bucket
@@ -89,7 +89,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 
 // Tests behaviour of CBG-2258 to force per bucket credentials to be used when setting up db in serverless mode
 func TestServerlessDBSetupForceCreds(t *testing.T) {
-	requireBucketSpecificCredentials(t)
+	RequireBucketSpecificCredentials(t)
 
 	ctx := base.TestCtx(t)
 	tb1 := base.GetTestBucket(t)
@@ -141,7 +141,7 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 // Tests behaviour of CBG-2258 to make sure fetch databases only uses buckets listed on StartupConfig.BucketCredentials
 // when running in serverless mode
 func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
-	requireBucketSpecificCredentials(t)
+	RequireBucketSpecificCredentials(t)
 
 	ctx := base.TestCtx(t)
 	tb1 := base.GetTestBucket(t)
@@ -226,7 +226,7 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 }
 
 func TestServerlessUnsupportedOptions(t *testing.T) {
-	requireBucketSpecificCredentials(t)
+	RequireBucketSpecificCredentials(t)
 	tests := []struct {
 		name            string
 		expectedConnStr string
@@ -274,7 +274,7 @@ func TestServerlessUnsupportedOptions(t *testing.T) {
 }
 
 func TestServerlessSuspendDatabase(t *testing.T) {
-	requireBucketSpecificCredentials(t)
+	RequireBucketSpecificCredentials(t)
 
 	ctx := base.TestCtx(t)
 	// Get test bucket
@@ -349,7 +349,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 
 // Confirms that when the database config is not in sc.dbConfigs, the fetch callback is check if the config is in a bucket
 func TestServerlessUnsuspendFetchFallback(t *testing.T) {
-	requireBucketSpecificCredentials(t)
+	RequireBucketSpecificCredentials(t)
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
@@ -393,7 +393,7 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 
 // Confirms that ServerContext.fetchConfigsWithTTL works correctly
 func TestServerlessFetchConfigsLimited(t *testing.T) {
-	requireBucketSpecificCredentials(t)
+	RequireBucketSpecificCredentials(t)
 
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
@@ -475,7 +475,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 // Checks what happens to a suspended database when the config is modified by another node and the periodic fetchAndLoadConfigs gets called.
 // Currently, it will be unsuspended however that behaviour may be changed in the future
 func TestServerlessUpdateSuspendedDb(t *testing.T) {
-	requireBucketSpecificCredentials(t)
+	RequireBucketSpecificCredentials(t)
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
@@ -523,7 +523,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 
 // Tests scenarios a database is and is not allowed to suspend
 func TestSuspendingFlags(t *testing.T) {
-	requireBucketSpecificCredentials(t)
+	RequireBucketSpecificCredentials(t)
 	testCases := []struct {
 		name             string
 		serverlessMode   bool
@@ -604,7 +604,7 @@ func TestSuspendingFlags(t *testing.T) {
 
 // Tests the public API unsuspending a database automatically
 func TestServerlessUnsuspendAPI(t *testing.T) {
-	requireBucketSpecificCredentials(t)
+	RequireBucketSpecificCredentials(t)
 	ctx := base.TestCtx(t)
 	// Get test bucket
 	tb := base.GetTestBucket(t)
@@ -640,7 +640,7 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 
 // Makes sure admin API calls do not unsuspend DB if they fail authentication
 func TestServerlessUnsuspendAdminAuth(t *testing.T) {
-	requireBucketSpecificCredentials(t)
+	RequireBucketSpecificCredentials(t)
 	ctx := base.TestCtx(t)
 	// Get test bucket
 	tb := base.GetTestBucket(t)
@@ -683,7 +683,7 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 }
 
 func TestImportPartitionsServerless(t *testing.T) {
-	requireBucketSpecificCredentials(t)
+	RequireBucketSpecificCredentials(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test requires cbgt")
 	}
@@ -741,12 +741,5 @@ func TestImportPartitionsServerless(t *testing.T) {
 
 			assert.Equal(t, expectedPartitions, dbconf.ImportPartitions)
 		})
-	}
-}
-
-// requireBucketSpecificCredentials skips tests if bucket specific credentials are required
-func requireBucketSpecificCredentials(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server since rosmar has no bucket specific credentials")
 	}
 }

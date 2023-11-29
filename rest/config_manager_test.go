@@ -19,6 +19,7 @@ import (
 )
 
 func TestBootstrapConfig(t *testing.T) {
+	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyDCP)

@@ -470,6 +470,7 @@ func TestPersistentConfigWithCollectionConflicts(t *testing.T) {
 //  5. UpdateConfig to a different db, with collection conflict with the failed create (should fail with conflict, but succeed after GetDatabaseConfigs runs)
 //  6. DeleteConfig for the same db name (triggers rollback, then returns ErrNotFound for the delete operation)
 func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
+	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -613,6 +614,7 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 //  5. DeleteConfig for the same db name (triggers rollback, then successfully deletes)
 
 func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
+	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -763,6 +765,7 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 //  4. Attempt recreation of database with earlier version generation, after delete fails.  Should resolve delete and succeed
 //  5. Attempt update of database after delete fails.  Should return "database does not exist" error
 func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
+	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -876,6 +879,7 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 // triggers rollback before the config document is updated. Verifies that the original create operation
 // fails and returns an appropriate error
 func TestPersistentConfigSlowCreateFailure(t *testing.T) {
+	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -1121,6 +1125,7 @@ func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
 // TestMigratev30PersistentConfigCollision sets up a 3.1 database targeting the default collection, then attempts
 // migration of another database in the 3.0 format (which also targets the default collection)
 func TestMigratev30PersistentConfigCollision(t *testing.T) {
+	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -1189,6 +1194,7 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 
 // TestLegacyDuplicate tests the behaviour of GetDatabaseConfigs when the same database exists in legacy and non-legacy format
 func TestLegacyDuplicate(t *testing.T) {
+	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 

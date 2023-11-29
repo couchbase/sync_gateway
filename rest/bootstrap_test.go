@@ -25,10 +25,7 @@ import (
 // Then Sync Gateway restarts to ensure that a subsequent bootstrap picks up the
 // database created in the first step.
 func TestBootstrapRESTAPISetup(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Bootstrap works with Couchbase Server only")
-	}
-
+	RequireNonParallelBootstrapTests(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	// Start SG with no databases
@@ -140,9 +137,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 
 // TestBootstrapDuplicateBucket will attempt to create two databases sharing the same collections and ensure this isn't allowed.
 func TestBootstrapDuplicateCollections(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Bootstrap works with Couchbase Server only")
-	}
+	RequireNonParallelBootstrapTests(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
@@ -187,9 +182,7 @@ func TestBootstrapDuplicateCollections(t *testing.T) {
 
 // TestBootstrapDuplicateDatabase will attempt to create a second database and ensure this isn't allowed.
 func TestBootstrapDuplicateDatabase(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Bootstrap works with Couchbase Server only")
-	}
+	RequireNonParallelBootstrapTests(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 

@@ -3309,7 +3309,7 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 }
 
 func TestPutDBConfigOIDC(t *testing.T) {
-
+	rest.RequireNonParallelBootstrapTests(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
@@ -3422,10 +3422,7 @@ func TestNotExistentDBRequest(t *testing.T) {
 }
 
 func TestConfigsIncludeDefaults(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	rest.RequireNonParallelBootstrapTests(t)
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
@@ -3516,9 +3513,8 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 }
 
 func TestLegacyCredentialInheritance(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
+	rest.RequireNonParallelBootstrapTests(t)
+	rest.RequireBucketSpecificCredentials(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
@@ -3639,7 +3635,7 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 
 // TestDbConfigPersistentSGVersions ensures that cluster-wide config updates are not applied to older nodes to avoid pushing invalid configuration.
 func TestDbConfigPersistentSGVersions(t *testing.T) {
-
+	rest.RequireNonParallelBootstrapTests(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyConfig)
 
 	serverErr := make(chan error, 0)
@@ -4276,9 +4272,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 
 // Make sure per DB credentials override per bucket credentials
 func TestPerDBCredsOverride(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
+	rest.RequireBucketSpecificCredentials(t)
 
 	ctx := base.TestCtx(t)
 	// Get test bucket
