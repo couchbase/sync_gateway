@@ -2010,86 +2010,87 @@ func (sc *ServerContext) Database(ctx context.Context, name string) *db.Database
 	return db
 }
 
-func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Context, failFast bool) error {
-	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Initializing server connections...")
+func (sc *ServerContext) initializeGocbAdminConnection(ctx context.Context) error {
+	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Initializing server admin connection...")
 
-	if !base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
-		goCBAgent, err := sc.initializeGoCBAgent(ctx)
-		if err != nil {
-			return err
-		}
-		sc.GoCBAgent = goCBAgent
-		//sc.DatabaseInitManager.cluster = goCBAgent.
+	goCBAgent, err := sc.initializeGoCBAgent(ctx)
+	if err != nil {
+		return err
+	}
+	sc.GoCBAgent = goCBAgent
 
-		sc.NoX509HTTPClient, err = sc.initializeNoX509HttpClient(ctx)
+	sc.NoX509HTTPClient, err = sc.initializeNoX509HttpClient(ctx)
+	base.InfofCtx(ctx, base.KeyAll, "Finished initializing server admin connection")
+	return err
+}
+
+func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) error {
+	if !sc.persistentConfig {
+		return nil
+	}
+	base.InfofCtx(ctx, base.KeyAll, "Initializing bootstrap connection..")
+	// Fetch database configs from bucket and start polling for new buckets and config updates.
+	couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(ctx, sc.Config, base.CachedClusterConnections)
+	if err != nil {
+		return err
+	}
+	if sc.Config.IsServerless() {
+		err := couchbaseCluster.SetConnectionStringServerless()
 		if err != nil {
 			return err
 		}
 	}
-	// Fetch database configs from bucket and start polling for new buckets and config updates.
-	if sc.persistentConfig {
-		couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(ctx, sc.Config, base.CachedClusterConnections)
-		if err != nil {
-			return err
-		}
-		if sc.Config.IsServerless() {
-			err := couchbaseCluster.SetConnectionStringServerless()
-			if err != nil {
-				return err
-			}
-		}
 
-		sc.BootstrapContext.Connection = couchbaseCluster
+	sc.BootstrapContext.Connection = couchbaseCluster
 
-		// Check for v3.0 persisted configs, migrate to registry format if found
-		err = sc.migrateV30Configs(ctx)
-		if err != nil {
-			base.InfofCtx(ctx, base.KeyConfig, "Unable to migrate v3.0 config to registry - will not be migrated: %v", err)
-		}
+	// Check for v3.0 persisted configs, migrate to registry format if found
+	err = sc.migrateV30Configs(ctx)
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyConfig, "Unable to migrate v3.0 config to registry - will not be migrated: %v", err)
+	}
 
-		count, err := sc.fetchAndLoadConfigs(ctx, true)
-		if err != nil {
-			return err
-		}
+	count, err := sc.fetchAndLoadConfigs(ctx, true)
+	if err != nil {
+		return err
+	}
 
-		if count > 0 {
-			base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %q from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
-		} else {
-			base.WarnfCtx(ctx, "Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.Config.Bootstrap.ConfigGroupID)
-		}
+	if count > 0 {
+		base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %q from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
+	} else {
+		base.WarnfCtx(ctx, "Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.Config.Bootstrap.ConfigGroupID)
+	}
 
-		if sc.Config.Bootstrap.ConfigUpdateFrequency.Value() > 0 {
-			sc.BootstrapContext.terminator = make(chan struct{})
-			sc.BootstrapContext.doneChan = make(chan struct{})
+	if sc.Config.Bootstrap.ConfigUpdateFrequency.Value() > 0 {
+		sc.BootstrapContext.terminator = make(chan struct{})
+		sc.BootstrapContext.doneChan = make(chan struct{})
 
-			base.InfofCtx(ctx, base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.Config.Bootstrap.ConfigUpdateFrequency.Value().String())
-			go func() {
-				defer close(sc.BootstrapContext.doneChan)
-				t := time.NewTicker(sc.Config.Bootstrap.ConfigUpdateFrequency.Value())
-				for {
-					select {
-					case <-sc.BootstrapContext.terminator:
-						base.InfofCtx(ctx, base.KeyConfig, "Stopping background config polling loop")
-						t.Stop()
-						return
-					case <-t.C:
-						base.DebugfCtx(ctx, base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.Config.Bootstrap.ConfigGroupID)
-						count, err := sc.fetchAndLoadConfigs(ctx, false)
-						if err != nil {
-							base.WarnfCtx(ctx, "Couldn't load configs from bucket for group %q when polled: %v", sc.Config.Bootstrap.ConfigGroupID, err)
-						}
-						if count > 0 {
-							base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %d from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
-						}
+		base.InfofCtx(ctx, base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.Config.Bootstrap.ConfigUpdateFrequency.Value().String())
+		go func() {
+			defer close(sc.BootstrapContext.doneChan)
+			t := time.NewTicker(sc.Config.Bootstrap.ConfigUpdateFrequency.Value())
+			for {
+				select {
+				case <-sc.BootstrapContext.terminator:
+					base.InfofCtx(ctx, base.KeyConfig, "Stopping background config polling loop")
+					t.Stop()
+					return
+				case <-t.C:
+					base.DebugfCtx(ctx, base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.Config.Bootstrap.ConfigGroupID)
+					count, err := sc.fetchAndLoadConfigs(ctx, false)
+					if err != nil {
+						base.WarnfCtx(ctx, "Couldn't load configs from bucket for group %q when polled: %v", sc.Config.Bootstrap.ConfigGroupID, err)
+					}
+					if count > 0 {
+						base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %d from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
 					}
 				}
-			}()
-		} else {
-			base.InfofCtx(ctx, base.KeyConfig, "Disabled background polling for new configs/buckets")
-		}
+			}
+		}()
+	} else {
+		base.InfofCtx(ctx, base.KeyConfig, "Disabled background polling for new configs/buckets")
 	}
+	base.InfofCtx(ctx, base.KeyAll, "Finished initializing bootstrap connection")
 
-	base.InfofCtx(ctx, base.KeyAll, "Finished initializing server connections")
 	return nil
 }
 

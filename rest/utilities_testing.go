@@ -282,9 +282,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 		sc.Bootstrap.X509KeyPath = testBucket.BucketSpec.Keypath
 
 		rt.TestBucket.BucketSpec.TLSSkipVerify = base.TestTLSSkipVerify()
+		require.NoError(rt.TB, rt.RestTesterServerContext.initializeGocbAdminConnection(ctx))
 	}
-	err := rt.RestTesterServerContext.initializeCouchbaseServerConnections(ctx, true)
-	require.NoError(rt.TB, err, "Couldn't initialize Couchbase Server connection")
+	require.NoError(rt.TB, rt.RestTesterServerContext.initializeBootstrapConnection(ctx))
+
 	// Copy this startup config at this point into initial startup config
 	require.NoError(rt.TB, base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc))
 
@@ -343,15 +344,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 
 		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
+		var err error
 		if rt.leakyBucketConfig != nil || isLeaky {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.TB, *rt.DatabaseConfig, testBucket.Bucket)
 		} else {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
 		}
-
-		if err != nil {
-			rt.TB.Fatalf("Error from AddDatabaseFromConfig: %v", err)
-		}
+		require.NoError(rt.TB, err)
 		ctx = rt.Context() // get new ctx with db info before passing it down
 
 		// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
