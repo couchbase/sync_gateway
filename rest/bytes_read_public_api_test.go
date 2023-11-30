@@ -442,12 +442,14 @@ func TestPutDBBytesRead(t *testing.T) {
 		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), base.TestClusterUsername(), base.TestClusterPassword(),
 	)
 
+	db := rt.GetDatabase() // get database before we add a new one
+
 	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/db1/", input, "MobileSyncGatewayUser", "password")
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// assert the stat hasn't increased (admin request doesn't effect count)
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return db.DbStats.DatabaseStats.PublicRestBytesRead.Value()
 	}, 0)
 
 }
