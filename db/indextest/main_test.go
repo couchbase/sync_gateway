@@ -97,11 +97,11 @@ var primaryIndexReadier base.TBPBucketReadierFunc = func(ctx context.Context, b 
 			return errors.New("attempting to empty indexes with non-N1QL store")
 		}
 		// assert no lost indexes
-		indexes, err := n1qlStore.GetIndexes()
+		indexes, err := n1qlStore.GetAllIndexes(ctx)
 		if err != nil {
 			return err
 		}
-		if len(indexes) != 1 && indexes[0] != base.PrimaryIndexName {
+		if len(indexes) != 1 && indexes[0].Name != base.PrimaryIndexName {
 			return fmt.Errorf("expected only primary index to be present, found: %v", indexes)
 		}
 		tbp.Logf(ctx, "waiting for empty bucket indexes %s.%s.%s", b.GetName(), dsName.ScopeName(), dsName.CollectionName())

@@ -27,9 +27,9 @@ import (
 func requireNoIndexes(t *testing.T, dataStore base.DataStore) {
 	collection, err := base.AsCollection(dataStore)
 	require.NoError(t, err)
-	indexNames, err := collection.GetIndexes()
+	indexes, err := collection.GetAllIndexes(base.TestCtx(t))
 	require.NoError(t, err)
-	require.Len(t, indexNames, 0)
+	require.Len(t, indexes, 0)
 
 }
 
@@ -69,13 +69,15 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		}
 		metadataCollection, err := base.AsCollection(bucket.DefaultDataStore())
 		require.NoError(t, err)
-		indexNames, err := metadataCollection.GetIndexes()
+		indexes, err := metadataCollection.GetAllIndexes(ctx)
 		require.NoError(t, err)
 
-		require.Contains(t, indexNames, indexSyncDocs)
+		require.Contains(t, indexes, base.N1QLIndex{Name: indexSyncDocs, State: base.IndexStateOnline})
 
 		if base.TestsUseNamedCollections() {
-			require.NotContains(t, indexNames, indexAccess)
+			for _, index := range indexes {
+				require.NotEqual(t, index.Name, indexAccess)
+			}
 		}
 	}
 

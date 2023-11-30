@@ -58,8 +58,8 @@ type N1QLStore interface {
 	// executeStatement executes the specified statement and closes the response, returning any errors received.
 	executeStatement(statement string) error
 
-	// getIndexes retrieves all index names, used by test harness
-	GetIndexes() (indexes []string, err error)
+	// GetAllIndexes retrieves all index names, used by test harness
+	GetAllIndexes(ctx context.Context) (indexes []N1QLIndex, err error)
 
 	// waitUntilQueryServiceReady waits until the query service is ready to accept requests
 	waitUntilQueryServiceReady(timeout time.Duration) error
@@ -83,25 +83,10 @@ func ExplainQuery(ctx context.Context, store N1QLStore, statement string, params
 	return plan, unmarshalErr
 }
 
-type indexManager struct {
-	cluster        *gocb.QueryIndexManager
-	collection     *gocb.CollectionQueryIndexManager
-	bucketName     string
-	scopeName      string
-	collectionName string
-}
-
-func (im *indexManager) GetAllIndexes() ([]gocb.QueryIndex, error) {
-	opts := &gocb.GetAllQueryIndexesOptions{
-		RetryStrategy: &goCBv2FailFastRetryStrategy{},
-	}
-
-	if im.collection != nil {
-		return im.collection.GetAllIndexes(opts)
-	}
-	opts.ScopeName = im.scopeName
-	opts.CollectionName = im.collectionName
-	return im.cluster.GetAllIndexes(im.bucketName, opts)
+// N1QLIndex represents a Couchbase GSI index by name and its current status.
+type N1QLIndex struct {
+	Name  string `json:"name"`  // name of the index
+	State string `json:"state"` // state of the index, e.g. "online", "deferred", "pending"
 }
 
 // CreateIndex issues a CREATE INDEX query in the current bucket, using the form:
@@ -221,10 +206,7 @@ func BuildDeferredIndexes(ctx context.Context, s N1QLStore, indexSet []string) e
 		return err
 	}
 	deferredIndexes := make([]string, 0)
-	var indexInfo struct {
-		Name  string `json:"name"`
-		State string `json:"state"`
-	}
+	var indexInfo N1QLIndex
 	for results.Next(ctx, &indexInfo) {
 		// If index is deferred (not built), add to set of deferred indexes
 		if indexInfo.State == IndexStateDeferred {
@@ -538,7 +520,7 @@ func IndexMetaKeyspaceID(bucketName, scopeName, collectionName string) string {
 }
 
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
-func WaitForIndexesOnline(ctx context.Context, mgr *indexManager, indexNames []string, failfast bool) error {
+func WaitForIndexesOnline(ctx context.Context, n1qlStore N1QLStore, indexNames []string, failfast bool) error {
 	maxNumAttempts := 180
 	if failfast {
 		maxNumAttempts = 1
@@ -550,7 +532,7 @@ func WaitForIndexesOnline(ctx context.Context, mgr *indexManager, indexNames []s
 
 	for {
 		watchedOnlineIndexCount := 0
-		currIndexes, err := mgr.GetAllIndexes()
+		currIndexes, err := n1qlStore.GetAllIndexes(ctx)
 		if err != nil {
 			return err
 		}
@@ -586,17 +568,4 @@ func WaitForIndexesOnline(ctx context.Context, mgr *indexManager, indexNames []s
 		InfofCtx(ctx, KeyAll, "Indexes %s not ready - retrying...", strings.Join(offlineIndexes, ", "))
 		time.Sleep(time.Millisecond * time.Duration(sleepMs))
 	}
-}
-
-func GetAllIndexes(mgr *indexManager) (indexes []string, err error) {
-	indexes = []string{}
-	indexInfo, err := mgr.GetAllIndexes()
-	if err != nil {
-		return indexes, err
-	}
-
-	for _, indexInfo := range indexInfo {
-		indexes = append(indexes, indexInfo.Name)
-	}
-	return indexes, nil
 }

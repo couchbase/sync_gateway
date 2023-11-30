@@ -188,17 +188,8 @@ func (cl *ClusterOnlyN1QLStore) runQuery(statement string, n1qlOptions *gocb.Que
 	return queryResults, err
 }
 
-func (cl *ClusterOnlyN1QLStore) indexManager(scopeName, collectionName string) *indexManager {
-	return &indexManager{
-		cluster:        cl.cluster.QueryIndexes(),
-		bucketName:     cl.bucketName,
-		scopeName:      scopeName,
-		collectionName: collectionName,
-	}
-}
-
 func (cl *ClusterOnlyN1QLStore) WaitForIndexesOnline(ctx context.Context, indexNames []string, failfast bool) error {
-	return WaitForIndexesOnline(ctx, cl.indexManager(cl.scopeName, cl.collectionName), indexNames, failfast)
+	return WaitForIndexesOnline(ctx, cl, indexNames, failfast)
 }
 
 func (cl *ClusterOnlyN1QLStore) GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error) {
@@ -217,12 +208,9 @@ func (cl *ClusterOnlyN1QLStore) EscapedKeyspace() string {
 	return fmt.Sprintf("`%s`.`%s`.`%s`", cl.bucketName, cl.scopeName, cl.collectionName)
 }
 
-func (cl *ClusterOnlyN1QLStore) GetIndexes() (indexes []string, err error) {
-	if cl.supportsCollections {
-		return GetAllIndexes(cl.indexManager(cl.scopeName, cl.collectionName))
-	} else {
-		return GetAllIndexes(cl.indexManager("", ""))
-	}
+// GetAllIndexes returns all indexes for the keyspace.
+func (cl *ClusterOnlyN1QLStore) GetAllIndexes(ctx context.Context) (indexes []N1QLIndex, err error) {
+	return GetAllIndexes(ctx, cl)
 }
 
 // waitUntilQueryServiceReady will wait for the specified duration until the query service is available.

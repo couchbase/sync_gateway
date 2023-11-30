@@ -62,20 +62,6 @@ func (c *Collection) BucketName() string {
 	return c.Bucket.GetName()
 }
 
-func (c *Collection) indexManager() *indexManager {
-	m := &indexManager{
-		bucketName:     c.BucketName(),
-		collectionName: c.CollectionName(),
-		scopeName:      c.ScopeName(),
-	}
-	if !c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		m.cluster = c.Bucket.cluster.QueryIndexes()
-	} else {
-		m.collection = c.Collection.QueryIndexes()
-	}
-	return m
-}
-
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaKeyspaceID() string {
 	return IndexMetaKeyspaceID(c.BucketName(), c.ScopeName(), c.CollectionName())
@@ -139,7 +125,7 @@ func (c *Collection) CreatePrimaryIndex(ctx context.Context, indexName string, o
 
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
 func (c *Collection) WaitForIndexesOnline(ctx context.Context, indexNames []string, failfast bool) error {
-	return WaitForIndexesOnline(ctx, c.indexManager(), indexNames, failfast)
+	return WaitForIndexesOnline(ctx, c, indexNames, failfast)
 }
 
 func (c *Collection) GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error) {
@@ -212,8 +198,32 @@ func (c *Collection) IsErrNoResults(err error) bool {
 	return err == gocb.ErrNoResult
 }
 
-func (c *Collection) GetIndexes() (indexes []string, err error) {
-	return GetAllIndexes(c.indexManager())
+func (c *Collection) GetAllIndexes(ctx context.Context) (indexes []N1QLIndex, err error) {
+	return GetAllIndexes(ctx, c)
+}
+
+func GetAllIndexes(ctx context.Context, n1qlStore N1QLStore) (indexes []N1QLIndex, err error) {
+	statement := fmt.Sprintf("SELECT indexes.name, indexes.state FROM system:indexes WHERE indexes.keyspace_id = '%s'", n1qlStore.IndexMetaKeyspaceID())
+
+	if n1qlStore.IndexMetaBucketID() != "" {
+		statement += fmt.Sprintf("AND indexes.bucket_id = '%s' ", n1qlStore.IndexMetaBucketID())
+	}
+	if n1qlStore.IndexMetaScopeID() != "" {
+		statement += fmt.Sprintf("AND indexes.scope_id = '%s' ", n1qlStore.IndexMetaScopeID())
+	}
+	results, err := n1qlStore.Query(ctx, statement, nil, NotBounded, false)
+	if err != nil {
+		return nil, err
+	}
+	var indexInfo N1QLIndex
+	for results.Next(ctx, &indexInfo) {
+		indexes = append(indexes, indexInfo)
+	}
+	err = results.Close()
+	if err != nil {
+		return nil, err
+	}
+	return indexes, nil
 }
 
 // waitUntilQueryServiceReady will wait for the specified duration until the query service is available.
