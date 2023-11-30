@@ -271,9 +271,11 @@ func TestRequireResync(t *testing.T) {
 	resp = rt.SendAdminRequest("POST", "/"+db2Name+"/_resync?action=start&regenerate_sequences=true", string(resyncPayload))
 	rest.RequireStatus(t, resp, http.StatusOK)
 
+	db2, err := rt.ServerContext().GetDatabase(rt.Context(), db2Name)
+	require.NoError(t, err)
 	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
 		func(t testing.TB) db.BackgroundProcessState {
-			return rt.GetDatabase().ResyncManager.GetRunState()
+			return db2.ResyncManager.GetRunState()
 		})
 
 	// Attempt online again, should now succeed

@@ -1864,7 +1864,11 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	db2Url, err := url.Parse(srv.URL + "/db2")
 	require.NoError(t, err)
 
-	resp := rt.SendAdminRequest(http.MethodPut, "/db2/", fmt.Sprintf(`{
+	const (
+		db2 = "db2"
+		db1 = "db1"
+	)
+	resp := rt.SendAdminRequest(http.MethodPut, "/"+db2+"/", fmt.Sprintf(`{
 				"bucket": "%s",
 				"use_views": %t,
 				"num_index_replicas": 0
@@ -1873,7 +1877,7 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close(ctx)
-	resp = rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
+	resp = rt.SendAdminRequest(http.MethodPut, "/"+db1+"/", fmt.Sprintf(`{
 				"bucket": "%s",
 				"use_views": %t,
 				"num_index_replicas": 0
@@ -1884,27 +1888,30 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	rt.WaitForReplicationStatusForDB("{{.db1}}", "repl1", db.ReplicationStateRunning)
 
 	// Wait for document to replicate from db to db2 to confirm replication start
-	rt.CreateTestDoc("marker1")
+	marker1 := "marker1"
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", db1, marker1), `{"prop":true}`), http.StatusCreated)
+
 	err = rt.WaitForCondition(func() bool {
-		getResp := rt.SendAdminRequest("GET", "/db2/marker1", "")
+		getResp := rt.SendAdminRequest("GET", "/"+db2+"/"+marker1, "")
 		return getResp.Code == http.StatusOK
 	})
 	require.NoError(t, err)
 
 	// Force DB reload by modifying config
-	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"import_docs": false}`)
+	resp = rt.SendAdminRequest(http.MethodPost, "/"+db1+"/_config", `{"import_docs": false}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// If CE, recreate the replication
 	if !base.IsEnterpriseEdition() {
-		rt.CreateReplicationForDB("{{.db1}}", "repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
-		rt.WaitForReplicationStatusForDB("{{.db1}}", "repl1", db.ReplicationStateRunning)
+		rt.CreateReplicationForDB(db1, "repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+		rt.WaitForReplicationStatusForDB(db1, "repl1", db.ReplicationStateRunning)
 	}
 
 	// Wait for second document to replicate to confirm replication restart
-	rt.CreateTestDoc("marker2")
+	marker2 := "marker2"
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", db1, marker2), `{"prop":true}`), http.StatusCreated)
 	err = rt.WaitForCondition(func() bool {
-		getResp := rt.SendAdminRequest("GET", "/db2/marker2", "")
+		getResp := rt.SendAdminRequest("GET", "/"+db2+"/"+marker2, "")
 		return getResp.Code == http.StatusOK
 	})
 	require.NoError(t, err)
