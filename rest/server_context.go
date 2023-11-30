@@ -1622,6 +1622,10 @@ func (sc *ServerContext) logStats(ctx context.Context) error {
 		base.WarnfCtx(ctx, "Error getting sigar based system resource stats: %v", err)
 	}
 
+	if err := sc.statsContext.addNodeCpuStats(); err != nil {
+		base.WarnfCtx(ctx, "Error getting system resource stats: %v", err)
+	}
+
 	sc.updateCalculatedStats(ctx)
 	// Create wrapper expvar map in order to add a timestamp field for logging purposes
 	currentTime := time.Now()

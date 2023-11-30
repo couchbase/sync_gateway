@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/elastic/gosigar"
 	gopsutilnet "github.com/shirou/gopsutil/net"
+	"github.com/shirou/gopsutil/v3/cpu"
 )
 
 // Group the stats related context that is associated w/ a ServerContext into a struct
@@ -174,6 +175,16 @@ func (statsContext *statsContext) addGoSigarStats() error {
 
 	return nil
 
+}
+
+func (statsContext *statsContext) addNodeCpuStats() error {
+	perCpu := false
+	cpuPercents, err := cpu.Percent(0, perCpu)
+	if err != nil {
+		return err
+	}
+	base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NodeCpuPercentUtil.Set(cpuPercents[0])
+	return nil
 }
 
 func (statsContext *statsContext) addPublicNetworkInterfaceStatsForHostnamePort(hostPort string) error {
