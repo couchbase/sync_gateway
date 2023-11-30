@@ -51,8 +51,10 @@ const (
 
 	NumGoroutinesDesc = "The total number of goroutines."
 
-	ProcessCPUPercentUtilDesc = "The CPU's utilization as percentage value. The CPU usage calculation is performed based on user and system CPU time, but it does not include components such as iowait. The derivation means that the values of " +
+	ProcessCPUPercentUtilDesc = "The CPU's utilization as percentage value * 10. The extra 10 multiplier is a mistake left for backwards compability. Please consider using node_cpu_percent_utilization. The CPU usage calculation is performed based on user and system CPU time, but it does not include components such as iowait. The derivation means that the values of " +
 		"process_cpu_percent_utilization and %Cpu, returned when running the top command, will differ"
+
+	NodeCPUPercentUtilDesc = "The node CPU utilization as percentage value, since the last time this stat was called. The CPU usage calculation is performed based on user and system CPU time, but it does not include components such as iowait."
 
 	ProcessMemoryResidentDesc = "The memory utilization (Resident Set Size) for the process, in bytes."
 

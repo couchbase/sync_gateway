@@ -85,6 +85,7 @@ const (
 	StatAddedVersion3dot2dot0 = "3.2.0"
 
 	StatDeprecatedVersionNotDeprecated = ""
+	StatDeprecatedVersion3dot2dot0     = "3.2.0"
 
 	StatStabilityCommitted = "committed"
 	StatStabilityVolatile  = "volatile"
@@ -264,10 +265,16 @@ func (g *GlobalStat) initResourceUtilizationStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.CpuPercentUtil, err = NewFloatStat(ResourceUtilizationSubsystem, "process_cpu_percent_utilization", StatUnitPercent, ProcessCPUPercentUtilDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.GaugeValue, 0)
+	resUtil.CpuPercentUtil, err = NewFloatStat(ResourceUtilizationSubsystem, "process_cpu_percent_utilization", StatUnitPercent, ProcessCPUPercentUtilDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersion3dot2dot0, StatStabilityCommitted, nil, nil, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
 	}
+
+	resUtil.NodeCpuPercentUtil, err = NewFloatStat(ResourceUtilizationSubsystem, "node_cpu_percent_utilization", StatUnitPercent, NodeCPUPercentUtilDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
+
 	resUtil.Uptime, err = NewDurStat(ResourceUtilizationSubsystem, "uptime", StatUnitNanoseconds, UptimeDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, time.Now())
 	if err != nil {
 		return err
@@ -317,6 +324,10 @@ type ResourceUtilization struct {
 	// The CPU usage calculation is performed based on user and system CPU time, but it doesn’t include components such as iowait.
 	// The derivation means that the values of process_cpu_percent_utilization and %Cpu, returned when running the top command, will differ.
 	CpuPercentUtil *SgwFloatStat `json:"process_cpu_percent_utilization"`
+
+	// The node CPU usage calculation based values from /proc of user + system since the last time this function was called.
+	NodeCpuPercentUtil *SgwFloatStat `json:"node_cpu_percent_utilization"`
+
 	// The memory utilization (Resident Set Size) for the process, in bytes.
 	ProcessMemoryResident *SgwIntStat `json:"process_memory_resident"`
 	// The total number of bytes received (since node start-up) on the network interface to which the Sync Gateway api.public_interface is bound.
@@ -1033,7 +1044,7 @@ type SgwDurStat struct {
 // Prometheus's DefaultRegisterer and returns the collector. It panics if any error
 // occurs while registering the collector on Prometheus registry.
 func NewDurStat(subsystem, key, unit, description, addedVersion, deprecatedVersion, stability string, labelKeys, labelVals []string, statValueType prometheus.ValueType, initialValue time.Time) (*SgwDurStat, error) {
-	stat, err := newSGWStat(subsystem, key, unit, description, addedVersion, StatDeprecatedVersionNotDeprecated, stability, labelKeys, labelVals, statValueType)
+	stat, err := newSGWStat(subsystem, key, unit, description, addedVersion, deprecatedVersion, stability, labelKeys, labelVals, statValueType)
 	if err != nil {
 		return nil, err
 	}

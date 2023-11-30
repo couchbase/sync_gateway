@@ -98,42 +98,69 @@ ExpVars:
               properties:
                 admin_net_bytes_recv:
                   type: integer
+                  description: "The total number of bytes received (since node start-up) on the network interface to which the Sync Gateway api.admin_interface is bound."
                 admin_net_bytes_sent:
                   type: integer
+                  description: "The total number of bytes sent (since node start-up) on the network interface to which the Sync Gateway api.admin_interface is bound."
                 error_count:
                   type: integer
+                  description: "The total number of errors logged."
                 go_memstats_heapalloc:
                   type: integer
+                  description: "HeapAlloc is bytes of allocated heap objects. Allocated heap objects include all reachable objects, as well as unreachable objects that the garbage collector has not yet freed. Specifically, HeapAlloc increases as heap objects are allocated and decreases as the heap is swept and unreachable objects are freed. Sweeping occurs incrementally between GC cycles, so these two processes occur simultaneously, and as a result HeapAlloc tends to change smoothly (in contrast with the sawtooth that is typical of stop-the-world garbage collectors)."
                 go_memstats_heapidle:
                   type: integer
+                  description: "HeapIdle is bytes in idle (unused) spans. Idle spans have no objects in them. These spans could be (and may already have been) returned to the OS, or they can be reused for heap allocations, or they can be reused as stack memory. HeapIdle minus HeapReleased estimates the amount of memory that could be returned to the OS, but is being retained by the runtime so it can grow the heap without requesting more memory from the OS. If this difference is significantly larger than the heap size, it indicates there was a recent transient spike in live heap size."
                 go_memstats_heapinuse:
                   type: integer
+                  description: "HeapInuse is bytes in in-use spans. In-use spans have at least one object in them. These spans an only be used for other objects of roughly the same size. HeapInuse minus HeapAlloc estimates the amount of memory that has been dedicated to particular size classes, but is not currently being used. This is an upper bound on fragmentation, but in general this memory can be reused efficiently."
                 go_memstats_heapreleased:
                   type: integer
+                  description: "HeapReleased is bytes of physical memory returned to the OS. This counts heap memory from idle spans that was returned to the OS and has not yet been reacquired for the heap."
                 go_memstats_pausetotalns:
                   type: integer
+                  description: "PauseTotalNs is the cumulative nanoseconds in GC stop-the-world pauses since the program started. During a stop-the-world pause, all goroutines are paused and only the garbage collector can run."
                 go_memstats_stackinuse:
                   type: integer
+                  description: "StackInuse is bytes in stack spans. In-use stack spans have at least one stack in them. These spans can only be used for other stacks of the same size. There is no StackIdle because unused stack spans are returned to the heap (and hence counted toward HeapIdle)."
                 go_memstats_stacksys:
                   type: integer
+                  description: "StackSys is bytes of stack memory obtained from the OS. StackSys is StackInuse, plus any memory obtained directly from the OS for OS thread stacks (which should be minimal)."
                 go_memstats_sys:
                   type: integer
+                  description: "Sys is the total bytes of memory obtained from the OS. Sys is the sum of the XSys fields below. Sys measures the virtual address space reserved by the Go runtime for the heap, stacks, and other internal data structures. It's likely that not all of the virtual address space is backed by physical memory at any given moment, though in general it all was at some point."
                 goroutines_high_watermark:
                   type: integer
+                  description: "Peak number of go routines since process start."
                 num_goroutines:
                   type: integer
+                  description: "The total number of goroutines."
                 process_cpu_percent_utilization:
-                  type: integer
+                  type: number
+                  format: float
+                  description: "The CPU's utilization as percentage value * 10. The extra 10 multiplier is a mistake left for backwards compability. Please consider using node_cpu_percent_utilization as of version 3.2. The CPU usage calculation is performed based on user and system CPU time, but it does not include components such as iowait. The derivation means that the values of process_cpu_percent_utilization and %Cpu, returned when running the top command, will differ."
+                node_cpu_percent_utilization:
+                  type: number
+                  format: float
+                  description: "The node CPU utilization as percentage value, since the last time this stat was called. The CPU usage calculation is performed based on user and system CPU time, but it does not include components such as iowait."
                 process_memory_resident:
                   type: integer
+                  description: "The memory utilization (Resident Set Size) for the process, in bytes."
                 pub_net_bytes_recv:
                   type: integer
+                  description: "The total number of bytes received (since node start-up) on the network interface to which the Sync Gateway api.public_interface is bound. By default, that is the number of bytes received on 127.0.0.1:4984 since node start-up"
                 pub_net_bytes_sent:
                   type: integer
+                  description: "The total number of bytes sent (since node start-up) on the network interface to which Sync Gateway api.public_interface is bound. By default, that is the number of bytes sent on 127.0.0.1:4984 since node start-up."
                 system_memory_total:
                   type: integer
+                  description: "The total memory available on the system in bytes."
                 warn_count:
                   type: integer
+                  description: "The total number of warnings logged."
+                uptime:
+                  type: integer
+                  description: "The total uptime."
         per_db:
           description: |-
             This array contains stats for all databases declared in the config file -- see the [Sync Gateway Statistics Schema](./../stats-monitoring.html) for more details on the metrics collected and reported by Sync Gateway.
