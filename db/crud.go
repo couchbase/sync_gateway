@@ -1922,6 +1922,10 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			if err != nil {
 				return
 			}
+			// If importing and the sync function has modified the expiry, allow sgbucket.MutateInOptions to modify the expiry
+			if allowImport && syncFuncExpiry != nil && *syncFuncExpiry != expiry {
+				opts.PreserveExpiry = false
+			}
 			docSequence = doc.Sequence
 			inConflict = doc.hasFlag(channels.Conflict)
 			currentRevFromHistory, ok := doc.History[doc.CurrentRev]

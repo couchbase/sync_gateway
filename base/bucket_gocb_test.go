@@ -2453,9 +2453,6 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
-	if !bucket.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) {
-		t.Skip("Preserve expiry is not supported with this CBS version. Skipping test...")
-	}
 	SetUpTestLogging(t, LevelInfo, KeyAll)
 
 	testCases := []struct {

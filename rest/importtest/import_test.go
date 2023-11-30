@@ -2827,23 +2827,61 @@ type dcpMetaData struct {
 }
 
 func TestImportUpdateExpiry(t *testing.T) {
-	oneHour := time.Now().Add(1 * time.Hour)
-
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		SyncFn: fmt.Sprintf(`function(doc, oldDoc, meta) { expiry("%s"); }`, oneHour.Format(time.RFC3339Nano)),
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				AutoImport: false, // set AutoImport false to allow manually testing error conditions on import
-			},
+	testCases := []struct {
+		name        string
+		syncFn      string
+		startExpiry uint32
+		assertion   func(t require.TestingT, expected, actual interface{}, msgAndArgs ...interface{})
+	}{
+		{
+			name:        "Decrease expiry",
+			syncFn:      `function(doc, oldDoc, meta) { expiry(1000); }`,
+			startExpiry: 2000,
+			assertion:   require.Less,
 		},
-	})
-	defer rt.Close()
+		{
+			name:        "Increase expiry",
+			syncFn:      `function(doc, oldDoc, meta) { expiry(2000); }`,
+			startExpiry: 1000,
+			assertion:   require.Greater,
+		},
+		{
+			name:        "Unset TTL",
+			syncFn:      `function(doc, oldDoc, meta) { expiry(0); }`,
+			startExpiry: 2000,
+			assertion:   require.Equal,
+		},
+		{
+			name:        "no modification to TTL",
+			syncFn:      `function(doc, oldDoc, meta) { }`,
+			startExpiry: 2000,
+			assertion:   require.Equal,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				SyncFn: test.syncFn,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						AutoImport: false, // set AutoImport false to allow manually testing error conditions on import
+					},
+				},
+			})
+			defer rt.Close()
 
-	const docID = "doc1"
-	exp := uint32((2 * time.Hour).Seconds())
-	err := rt.GetSingleDataStore().SetRaw(docID, exp, nil, []byte(`{"foo": "bar"}`))
-	require.NoError(t, err)
+			const docID = "doc1"
+			err := rt.GetSingleDataStore().SetRaw(docID, test.startExpiry, nil, []byte(`{"foo": "bar"}`))
+			require.NoError(t, err)
 
-	// Attempt to get the document via Sync Gateway, to trigger import. Success is successfully importing the body and not throwing an assertion error.
-	_ = rt.GetDocBody(docID)
+			ctx := base.TestCtx(t)
+			preImportExp, err := rt.GetSingleDataStore().GetExpiry(ctx, docID)
+			require.NoError(t, err)
+			// Attempt to get the document via Sync Gateway, to trigger import. Success is successfully importing the body and not throwing an assertion error.
+			_ = rt.GetDocBody(docID)
+			expiry, err := rt.GetSingleDataStore().GetExpiry(ctx, docID)
+			require.NoError(t, err)
+			test.assertion(t, int(expiry), int(preImportExp))
+		})
+	}
 }
