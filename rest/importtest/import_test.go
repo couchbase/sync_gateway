@@ -2825,3 +2825,25 @@ type dcpMetaData struct {
 	SnapEnd     uint64     `json:"snapEnd"`
 	FailOverLog [][]uint64 `json:"failOverLog"`
 }
+
+func TestImportUpdateExpiry(t *testing.T) {
+	oneHour := time.Now().Add(1 * time.Hour)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn: fmt.Sprintf(`function(doc, oldDoc, meta) { expiry("%s"); }`, oneHour.Format(time.RFC3339Nano)),
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				AutoImport: false, // set AutoImport false to allow manually testing error conditions on import
+			},
+		},
+	})
+	defer rt.Close()
+
+	const docID = "doc1"
+	exp := uint32((2 * time.Hour).Seconds())
+	err := rt.GetSingleDataStore().SetRaw(docID, exp, nil, []byte(`{"foo": "bar"}`))
+	require.NoError(t, err)
+
+	// Attempt to get the document via Sync Gateway, to trigger import. Success is successfully importing the body and not throwing an assertion error.
+	_ = rt.GetDocBody(docID)
+}
