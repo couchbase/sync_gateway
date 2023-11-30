@@ -97,7 +97,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 
 	assert.Equal(t, config, string(writtenBackupFile))
 
-	cbs, err := CreateCouchbaseClusterFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
+	cbs, err := CreateBootstrapConnectionFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
 	require.NoError(t, err)
 
 	bootstrapContext := &bootstrapContext{
@@ -270,7 +270,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	startupConfig, _, _, _, err := automaticConfigUpgrade(ctx, updatedConfigPath)
 	require.NoError(t, err)
 
-	cbs, err := CreateCouchbaseClusterFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
+	cbs, err := CreateBootstrapConnectionFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
 	require.NoError(t, err)
 
 	bootstrapContext := &bootstrapContext{
@@ -338,8 +338,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 }
 
 func TestImportFilterEndpoint(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)     // import tests don't work without xattrs
-	base.TestsRequireBootstrapConnection(t) // import filter modification requires bootstrap connection CBG-3271
+	base.SkipImportTestsIfNotEnabled(t) // import tests don't work without xattrs
 
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
@@ -381,7 +380,6 @@ func TestImportFilterEndpoint(t *testing.T) {
 }
 
 func TestPersistentConfigWithCollectionConflicts(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t)
 	base.TestRequiresCollections(t)
 
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
@@ -472,10 +470,7 @@ func TestPersistentConfigWithCollectionConflicts(t *testing.T) {
 //  5. UpdateConfig to a different db, with collection conflict with the failed create (should fail with conflict, but succeed after GetDatabaseConfigs runs)
 //  6. DeleteConfig for the same db name (triggers rollback, then returns ErrNotFound for the delete operation)
 func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -619,10 +614,7 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 //  5. DeleteConfig for the same db name (triggers rollback, then successfully deletes)
 
 func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -773,10 +765,7 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 //  4. Attempt recreation of database with earlier version generation, after delete fails.  Should resolve delete and succeed
 //  5. Attempt update of database after delete fails.  Should return "database does not exist" error
 func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -890,10 +879,7 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 // triggers rollback before the config document is updated. Verifies that the original create operation
 // fails and returns an appropriate error
 func TestPersistentConfigSlowCreateFailure(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -1053,7 +1039,7 @@ func TestMigratev30PersistentConfig(t *testing.T) {
 
 func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+		t.Skip("xattr storage is only enabled with CBS and not RosmarCluster")
 	}
 
 	base.TestRequiresCollections(t)
@@ -1139,10 +1125,7 @@ func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
 // TestMigratev30PersistentConfigCollision sets up a 3.1 database targeting the default collection, then attempts
 // migration of another database in the 3.0 format (which also targets the default collection)
 func TestMigratev30PersistentConfigCollision(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -1211,10 +1194,7 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 
 // TestLegacyDuplicate tests the behaviour of GetDatabaseConfigs when the same database exists in legacy and non-legacy format
 func TestLegacyDuplicate(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -1300,7 +1280,6 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) D
 }
 
 func TestPersistentConfigNoBucketField(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t)
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyConfig)
@@ -1349,7 +1328,7 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 
 	count, err := rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)
 	require.NoError(t, err)
-	assert.Equal(t, 1, count, "should have loaded 1 config")
+	require.Equal(t, 1, count, "should have loaded 1 config")
 
 	_, err = rt.UpdatePersistedBucketName(&databaseConfig, &b2Name)
 	require.NoError(t, err)

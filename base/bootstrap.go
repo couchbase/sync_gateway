@@ -48,6 +48,9 @@ type BootstrapConnection interface {
 	// Returns exists=false if key is not found, returns error for any other error.
 	GetDocument(ctx context.Context, bucket, docID string, rv interface{}) (exists bool, err error)
 
+	// SetConnectionStringServerless sets the connection string to use serverless mode, needs to be called before any connection occurs.
+	SetConnectionStringServerless() error
+
 	// Returns the bootstrap connection's cluster connection as N1QLStore for the specified bucket/scope/collection.
 	// Does NOT establish a bucket connection, the bucketName/scopeName/collectionName is for query scoping only
 	GetClusterN1QLStore(bucketName, scopeName, collectionName string) (*ClusterOnlyN1QLStore, error)
@@ -351,6 +354,9 @@ func (cc *CouchbaseCluster) InsertMetadataDocument(ctx context.Context, location
 func (cc *CouchbaseCluster) WriteMetadataDocument(ctx context.Context, location, docID string, cas uint64, value interface{}) (newCAS uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
+	}
+	if cas == 0 {
+		return 0, RedactErrorf("CAS for %q in bucket %q must be non-zero to call WriteMetadataDocument, to add a new document use InsertMetadataDocument", UD(docID), MD(location))
 	}
 
 	b, teardown, err := cc.getBucket(ctx, location)

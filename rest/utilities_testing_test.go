@@ -201,14 +201,8 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 	}
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
-	dbConfig := DbConfig{
-		Scopes: GetCollectionsConfig(rt.TB, rt.TestBucket, numCollections),
-		BucketConfig: BucketConfig{
-			Bucket: base.StringPtr(rt.TestBucket.GetName()),
-		},
-		EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
-		UseViews:     base.BoolPtr(base.TestsDisableGSI()),
-	}
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(rt.TB, rt.TestBucket, numCollections)
 	dbOne := "dbone"
 	bucket1Datastore1, err := rt.TestBucket.GetNamedDataStore(0)
 	require.NoError(t, err)
@@ -263,13 +257,10 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 	ctx := base.TestCtx(t)
 	bucket2 := base.GetTestBucket(t)
 	defer bucket2.Close(ctx)
-	dbConfig = DbConfig{
-		Scopes: GetCollectionsConfig(rt.TB, bucket2, numCollections),
-		BucketConfig: BucketConfig{
-			Bucket: base.StringPtr(bucket2.GetName()),
-		},
-		EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
-		UseViews:     base.BoolPtr(base.TestsDisableGSI()),
+	dbConfig = rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(rt.TB, bucket2, numCollections)
+	dbConfig.BucketConfig = BucketConfig{
+		Bucket: base.StringPtr(bucket2.GetName()),
 	}
 	dbTwo := "dbtwo"
 	bucket2Datastore1, err := rt.TestBucket.GetNamedDataStore(0)
