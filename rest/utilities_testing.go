@@ -1073,8 +1073,12 @@ func (rt *RestTester) Context() context.Context {
 	if svrctx := rt.ServerContext(); svrctx != nil {
 		ctx = svrctx.AddServerLogContext(ctx)
 	}
-	if len(rt.ServerContext().AllDatabases()) == 1 {
-		ctx = rt.GetDatabase().AddDatabaseLogContext(ctx)
+	// this has the possibility of adding an ambiguous database log context if there is a database being created at this time.
+	databases := rt.ServerContext().AllDatabases()
+	if len(databases) == 1 {
+		for _, database := range databases {
+			ctx = database.AddDatabaseLogContext(ctx)
+		}
 	}
 	return ctx
 }
