@@ -282,16 +282,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 		sc.Bootstrap.X509KeyPath = testBucket.BucketSpec.Keypath
 
 		rt.TestBucket.BucketSpec.TLSSkipVerify = base.TestTLSSkipVerify()
+		require.NoError(rt.TB, rt.RestTesterServerContext.initializeGocbAdminConnection(ctx))
+	}
+	require.NoError(rt.TB, rt.RestTesterServerContext.initializeBootstrapConnection(ctx))
 
-		if err := rt.RestTesterServerContext.initializeCouchbaseServerConnections(ctx, true); err != nil {
-			panic("Couldn't initialize Couchbase Server connection: " + err.Error())
-		}
-	}
 	// Copy this startup config at this point into initial startup config
-	err := base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc)
-	if err != nil {
-		rt.TB.Fatalf("Unable to copy initial startup config: %v", err)
-	}
+	require.NoError(rt.TB, base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc))
 
 	// tests must create their own databases in persistent mode
 	if !rt.PersistentConfig {
@@ -348,15 +344,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 
 		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
+		var err error
 		if rt.leakyBucketConfig != nil || isLeaky {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.TB, *rt.DatabaseConfig, testBucket.Bucket)
 		} else {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
 		}
-
-		if err != nil {
-			rt.TB.Fatalf("Error from AddDatabaseFromConfig: %v", err)
-		}
+		require.NoError(rt.TB, err)
 		ctx = rt.Context() // get new ctx with db info before passing it down
 
 		// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
@@ -1068,7 +1062,7 @@ func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentialsConfig) {
 	rt.ServerContext().Config.BucketCredentials = config
 	// Update the CouchbaseCluster to include the new bucket credentials
-	couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(base.TestCtx(rt.TB), rt.ServerContext().Config, base.PerUseClusterConnections)
+	couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(base.TestCtx(rt.TB), rt.ServerContext().Config, base.PerUseClusterConnections)
 	require.NoError(rt.TB, err)
 	rt.ServerContext().BootstrapContext.Connection = couchbaseCluster
 }
@@ -2585,6 +2579,17 @@ func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, expecte
 	require.EqualValues(t, expectedDbNames, dbNames)
 }
 
+// AllInvalidDatabaseNames returns the names of all the databases that have invalid configs. Testing only since this locks the database context.
+func (sc *ServerContext) AllInvalidDatabaseNames(_ *testing.T) []string {
+	sc.invalidDatabaseConfigTracking.m.RLock()
+	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
+	dbs := make([]string, 0, len(sc.invalidDatabaseConfigTracking.dbNames))
+	for db := range sc.invalidDatabaseConfigTracking.dbNames {
+		dbs = append(dbs, db)
+	}
+	return dbs
+}
+
 // Calls DropAllIndexes to remove all indexes, then restores the primary index for TestBucketPool readier requirements
 func dropAllNonPrimaryIndexes(t *testing.T, dataStore base.DataStore) {
 
@@ -2595,4 +2600,11 @@ func dropAllNonPrimaryIndexes(t *testing.T, dataStore base.DataStore) {
 	require.NoError(t, dropErr)
 	err := n1qlStore.CreatePrimaryIndex(ctx, base.PrimaryIndexName, nil)
 	require.NoError(t, err, "Unable to recreate primary index")
+}
+
+// RequireBucketSpecificCredentials skips tests if bucket specific credentials are required
+func RequireBucketSpecificCredentials(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server since rosmar has no bucket specific credentials")
+	}
 }

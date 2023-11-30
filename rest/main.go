@@ -206,7 +206,7 @@ func automaticConfigUpgrade(ctx context.Context, configPath string) (sc *Startup
 	}
 
 	// Attempt to establish connection to server
-	cluster, err := CreateCouchbaseClusterFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
+	cluster, err := CreateBootstrapConnectionFromStartupConfig(ctx, startupConfig, base.PerUseClusterConnections)
 	if err != nil {
 		return nil, false, nil, nil, err
 	}
@@ -368,7 +368,11 @@ func backupCurrentConfigFile(sourcePath string) (string, error) {
 	return backupPath, nil
 }
 
-func CreateCouchbaseClusterFromStartupConfig(ctx context.Context, config *StartupConfig, bucketConnectionMode base.BucketConnectionMode) (*base.CouchbaseCluster, error) {
+func CreateBootstrapConnectionFromStartupConfig(ctx context.Context, config *StartupConfig, bucketConnectionMode base.BucketConnectionMode) (base.BootstrapConnection, error) {
+	if base.ServerIsWalrus(config.Bootstrap.Server) {
+		cluster := base.NewRosmarCluster(config.Bootstrap.Server)
+		return cluster, nil
+	}
 	cluster, err := base.NewCouchbaseCluster(ctx, config.Bootstrap.Server, config.Bootstrap.Username, config.Bootstrap.Password,
 		config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath, config.Bootstrap.CACertPath,
 		config.IsServerless(), config.BucketCredentials, config.Bootstrap.ServerTLSSkipVerify, config.Unsupported.UseXattrConfig, bucketConnectionMode)

@@ -14,7 +14,6 @@ import (
 	"errors"
 	"os"
 	"strings"
-	"testing"
 	"time"
 
 	"github.com/couchbaselabs/rosmar"
@@ -229,12 +228,6 @@ func UnitTestUrl() string {
 // UnitTestUrlIsWalrus returns true if we're running with a Walrus test URL.
 func UnitTestUrlIsWalrus() bool {
 	return ServerIsWalrus(UnitTestUrl())
-}
-
-func TestsRequireBootstrapConnection(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skipf("Tests requiring a bootstrap connection are not supporting using rosmar yet - CBG-3271")
-	}
 }
 
 // ServerIsTLS returns true if the server URL is using an accepted secure protocol as it's prefix

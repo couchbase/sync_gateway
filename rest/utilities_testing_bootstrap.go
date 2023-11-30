@@ -115,3 +115,10 @@ func doBootstrapAdminRequest(t *testing.T, method, host, path, body string, head
 		Header:     resp.Header,
 	}
 }
+
+// RequireNonParallelBootstrapTests is a helper function to skip tests that require serial execution between packages, since bootstrap test setup is fixed on specific port numbers and a collision can happen.
+func RequireNonParallelBootstrapTests(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Requires serial test execution between packages -p 1, not guaranteed under rosmar, is under CBS: CBG-3638")
+	}
+}

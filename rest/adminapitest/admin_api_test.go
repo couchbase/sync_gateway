@@ -1468,15 +1468,14 @@ func TestResyncStop(t *testing.T) {
 //     on the config now matches the rest tester bucket name
 func TestCorruptDbConfigHandling(t *testing.T) {
 	base.LongRunningTest(t)
-	base.TestsRequireBootstrapConnection(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyConfig)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
-			// configure the interval time to pick up new configs from the bucket to every 1 seconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1 * time.Second)
+			// configure the interval time to pick up new configs from the bucket to every 50 milliseconds
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
 		},
 	})
 	defer rt.Close()
@@ -1510,7 +1509,7 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	responseConfig := rt.ServerContext().GetDbConfig("db1")
 	assert.Nil(t, responseConfig)
 
-	require.Equal(t, 1, len(rt.ServerContext().AllInvalidDatabases()))
+	require.Len(t, rt.ServerContext().AllInvalidDatabaseNames(t), 1)
 
 	// assert that fetching config fails with the correct error message to the user
 	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
@@ -1534,7 +1533,7 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	// wait some time for interval to pick up change
 	err = rt.WaitForConditionWithOptions(func() bool {
 		list := rt.ServerContext().AllDatabaseNames()
-		numInvalid := len(rt.ServerContext().AllInvalidDatabases())
+		numInvalid := len(rt.ServerContext().AllInvalidDatabaseNames(t))
 		return len(list) == 1 && numInvalid == 0
 	}, 200, 1000)
 	require.NoError(t, err)
@@ -1554,14 +1553,13 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 //   - assert that the db config is picked up as an invalid db config
 //   - assert that a call to the db endpoint will fail with correct error message
 func TestBadConfigInsertionToBucket(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
-			// configure the interval time to pick up new configs from the bucket to every 1 seconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1 * time.Second)
+			// configure the interval time to pick up new configs from the bucket to every 50 milliseconds
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
 		},
 		DatabaseConfig: nil,
 	})
@@ -1589,7 +1587,7 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 
 	// asser that the config is picked up as invalid config on server context
 	err = rt.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt.ServerContext().AllInvalidDatabases()
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
 		return len(invalidDatabases) == 1
 	}, 200, 1000)
 	require.NoError(t, err)
@@ -1605,7 +1603,6 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 //   - attempt to update the config to change the bucket name on the config to a mismatched bucket name
 //   - assert the request fails
 func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t)
 	base.RequireNumTestBuckets(t, 2)
 	ctx := base.TestCtx(t)
 	tb1 := base.GetTestBucket(t)
@@ -1615,8 +1612,8 @@ func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
 		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
-			// configure the interval time to pick up new configs from the bucket to every 1 seconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1 * time.Second)
+			// configure the interval time to pick up new configs from the bucket to every 50 milliseconds
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
 		},
 	})
 	defer rt.Close()
@@ -1640,7 +1637,6 @@ func TestMismatchedBucketNameOnDbConfigUpdate(t *testing.T) {
 //   - in bucketA and bucketB, write two db configs with bucket name as bucketC
 //   - Start new rest tester and ensure they aren't picked up as valid configs
 func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t)
 	base.RequireNumTestBuckets(t, 3)
 	ctx := base.TestCtx(t)
 	tb1 := base.GetTestBucket(t)
@@ -1686,8 +1682,8 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 		PersistentConfig: true,
 		CustomTestBucket: tb3,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
-			// configure the interval time to pick up new configs from the bucket to every 1 seconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1 * time.Second)
+			// configure the interval time to pick up new configs from the bucket to every 50 milliseconds
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
 			// configure same config groupID
 			config.Bootstrap.ConfigGroupID = groupID
 		},
@@ -1696,7 +1692,7 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 
 	// assert the invalid database is picked up with new rest tester
 	err := rt3.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt3.ServerContext().AllInvalidDatabases()
+		invalidDatabases := rt3.ServerContext().AllInvalidDatabaseNames(t)
 		return len(invalidDatabases) == 1
 	}, 200, 1000)
 	require.NoError(t, err)
@@ -1718,7 +1714,6 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 //   - create bucketA and bucketB with db configs that that both list bucket name as bucketA
 //   - start a new rest tester and assert that invalid db config is picked up and the valid one is also picked up
 func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t)
 
 	base.RequireNumTestBuckets(t, 3)
 	ctx := base.TestCtx(t)
@@ -1760,8 +1755,8 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 	rt3 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
-			// configure the interval time to pick up new configs from the bucket to every 1 seconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1 * time.Second)
+			// configure the interval time to pick up new configs from the bucket to every 50 milliseconds
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
 			// configure same config groupID
 			config.Bootstrap.ConfigGroupID = "60ce5544-c368-4b08-b0ed-4ca3b37973f9"
 		},
@@ -1770,7 +1765,7 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 
 	// assert that the invalid config is picked up by the new rest tester
 	err := rt3.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt3.ServerContext().AllInvalidDatabases()
+		invalidDatabases := rt3.ServerContext().AllInvalidDatabaseNames(t)
 		return len(invalidDatabases) == 1
 	}, 200, 1000)
 	require.NoError(t, err)
@@ -1789,7 +1784,6 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 //   - persist that db config to another bucket
 //   - assert that is picked up as an invalid db config
 func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t)
 
 	ctx := base.TestCtx(t)
 	tb1 := base.GetTestBucket(t)
@@ -1801,8 +1795,8 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 		CustomTestBucket: tb1,
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
-			// configure the interval time to pick up new configs from the bucket to every 1 seconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1 * time.Second)
+			// configure the interval time to pick up new configs from the bucket to every 50 milliseconds
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
 		},
 	})
 	defer rt.Close()
@@ -1834,7 +1828,7 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 
 	// assert the config is picked as invalid db config
 	err = rt.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt.ServerContext().AllInvalidDatabases()
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
 		return len(invalidDatabases) == 1
 	}, 200, 1000)
 	require.NoError(t, err)
@@ -3186,7 +3180,6 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 }
 
 func TestPersistentConfigConcurrency(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t) // etags require a bootstrap connection
 	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
@@ -3248,8 +3241,6 @@ func TestDbConfigCredentials(t *testing.T) {
 }
 
 func TestInvalidDBConfig(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t) // import_filter / sync function dynamic modification require bootstrap connection
-
 	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
@@ -3318,10 +3309,7 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 }
 
 func TestPutDBConfigOIDC(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	rest.RequireNonParallelBootstrapTests(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
@@ -3434,10 +3422,7 @@ func TestNotExistentDBRequest(t *testing.T) {
 }
 
 func TestConfigsIncludeDefaults(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	rest.RequireNonParallelBootstrapTests(t)
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
@@ -3528,9 +3513,8 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 }
 
 func TestLegacyCredentialInheritance(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
+	rest.RequireNonParallelBootstrapTests(t)
+	rest.RequireBucketSpecificCredentials(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
@@ -3607,7 +3591,6 @@ func TestDbOfflineConfigLegacy(t *testing.T) {
 }
 
 func TestDbOfflineConfigPersistent(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t) // import_filter / sync function dynamic modification require bootstrap connection
 	importFilter := "function(doc) { return true }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
 
@@ -3652,10 +3635,7 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 
 // TestDbConfigPersistentSGVersions ensures that cluster-wide config updates are not applied to older nodes to avoid pushing invalid configuration.
 func TestDbConfigPersistentSGVersions(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	rest.RequireNonParallelBootstrapTests(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyConfig)
 
 	serverErr := make(chan error, 0)
@@ -3775,7 +3755,6 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 }
 
 func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t) // import_filter / sync function dynamic modification require bootstrap connection
 
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
@@ -3828,8 +3807,6 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 }
 
 func TestSetFunctionsWhileDbOffline(t *testing.T) {
-	base.TestsRequireBootstrapConnection(t) // import_filter / sync function dynamic modification require bootstrap connection
-
 	importFilter := "function(doc){ return true; }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
 
@@ -3957,7 +3934,7 @@ func TestDisablePasswordAuthThroughAdminAPI(t *testing.T) {
 
 // CBG-1790: Deleting a database that targets the same bucket as another causes a panic in legacy
 func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+	if !base.TestUseXattrs() {
 		t.Skip("This test only works against Couchbase Server with xattrs")
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
@@ -4295,9 +4272,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 
 // Make sure per DB credentials override per bucket credentials
 func TestPerDBCredsOverride(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
+	rest.RequireBucketSpecificCredentials(t)
 
 	ctx := base.TestCtx(t)
 	// Get test bucket
@@ -4332,9 +4307,9 @@ func TestPerDBCredsOverride(t *testing.T) {
 	}()
 	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
-	couchbaseCluster, err := rest.CreateCouchbaseClusterFromStartupConfig(ctx, sc.Config, base.PerUseClusterConnections)
+	bootstrapConnection, err := rest.CreateBootstrapConnectionFromStartupConfig(ctx, sc.Config, base.PerUseClusterConnections)
 	require.NoError(t, err)
-	sc.BootstrapContext.Connection = couchbaseCluster
+	sc.BootstrapContext.Connection = bootstrapConnection
 
 	dbConfig := `{
 		"bucket": "` + tb1.GetName() + `",

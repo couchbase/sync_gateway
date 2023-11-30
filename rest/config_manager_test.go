@@ -19,10 +19,7 @@ import (
 )
 
 func TestBootstrapConfig(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
+	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyDCP)
@@ -176,10 +173,6 @@ func TestLongMetadataID(t *testing.T) {
 }
 
 func TestVersionDowngrade(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	// rely on AtLeastMinorDowngrade unit test to cover all cases, starting up a db is slow
 	testCases := []struct {
 		syncGatewayVersion      string

@@ -332,7 +332,7 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 	sc, _, _, _, err := automaticConfigUpgrade(ctx, configPath)
 	require.NoError(t, err)
 
-	cluster, err := CreateCouchbaseClusterFromStartupConfig(ctx, sc, base.PerUseClusterConnections)
+	cluster, err := CreateBootstrapConnectionFromStartupConfig(ctx, sc, base.PerUseClusterConnections)
 	require.NoError(t, err)
 
 	bootstrap := bootstrapContext{
