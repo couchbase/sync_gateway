@@ -462,7 +462,7 @@ function sync(doc, oldDoc){
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < docsToCreate; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, _, _, err := collection.Put(ctx, key, body)
+		_, _, err := collection.Put(ctx, key, body)
 		require.NoError(t, err)
 	}
 

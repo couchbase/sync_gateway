@@ -428,9 +428,9 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 
 	collection, err := db.GetDefaultDatabaseCollectionWithUser()
 	require.NoError(t, err)
-	_, _, _, _ = collection.Put(ctx, "a", Body{"type": "task", "title": "Applesauce", "done": true, "tags": []string{"fruit", "soft"}, "channels": "wonderland"})
-	_, _, _, _ = collection.Put(ctx, "b", Body{"type": "task", "title": "Beer", "description": "Bass ale please", "channels": "wonderland"})
-	_, _, _, _ = collection.Put(ctx, "m", Body{"type": "task", "title": "Mangoes", "channels": "wonderland"})
+	_, _, _ = collection.Put(ctx, "a", Body{"type": "task", "title": "Applesauce", "done": true, "tags": []string{"fruit", "soft"}, "channels": "wonderland"})
+	_, _, _ = collection.Put(ctx, "b", Body{"type": "task", "title": "Beer", "description": "Bass ale please", "channels": "wonderland"})
+	_, _, _ = collection.Put(ctx, "m", Body{"type": "task", "title": "Mangoes", "channels": "wonderland"})
 
 	n1qlStore, ok := base.AsN1QLStore(db.Bucket.DefaultDataStore())
 	require.True(t, ok)

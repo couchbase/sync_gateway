@@ -501,7 +501,7 @@ func (h *handler) handleBulkDocs() error {
 		var revid string
 		if newEdits {
 			if docid != "" {
-				revid, _, _, err = h.collection.Put(h.ctx(), docid, doc)
+				revid, _, err = h.collection.Put(h.ctx(), docid, doc)
 			} else {
 				docid, revid, _, err = h.collection.Post(h.ctx(), doc)
 			}

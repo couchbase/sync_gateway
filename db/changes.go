@@ -1290,8 +1290,7 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 
 	if populatedDoc.HLV != nil {
 		cv := SourceAndVersion{}
-		cv.SourceID = populatedDoc.HLV.SourceID
-		cv.Version = populatedDoc.HLV.Version
+		cv.SourceID, cv.Version = populatedDoc.HLV.GetCurrentVersion()
 		row.CurrentVersion = &cv
 	}
 

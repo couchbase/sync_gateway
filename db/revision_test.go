@@ -112,7 +112,7 @@ func TestBackupOldRevision(t *testing.T) {
 
 	docID := t.Name()
 
-	rev1ID, _, _, err := collection.Put(ctx, docID, Body{"test": true})
+	rev1ID, _, err := collection.Put(ctx, docID, Body{"test": true})
 	require.NoError(t, err)
 
 	// make sure we didn't accidentally store an empty old revision
