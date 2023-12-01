@@ -2652,3 +2652,68 @@ type dcpMetaData struct {
 	SnapEnd     uint64     `json:"snapEnd"`
 	FailOverLog [][]uint64 `json:"failOverLog"`
 }
+
+func TestImportUpdateExpiry(t *testing.T) {
+	testCases := []struct {
+		name         string
+		syncFn       string
+		startExpiry  uint32
+		assertion    func(t require.TestingT, expected, actual interface{}, msgAndArgs ...interface{})
+		shouldBeZero bool
+	}{
+		{
+			name:        "Decrease expiry",
+			syncFn:      `function(doc, oldDoc, meta) { expiry(1000); }`,
+			startExpiry: 2000,
+			assertion:   require.Less,
+		},
+		{
+			name:        "Increase expiry",
+			syncFn:      `function(doc, oldDoc, meta) { expiry(2000); }`,
+			startExpiry: 1000,
+			assertion:   require.Greater,
+		},
+		{
+			name:         "Unset TTL",
+			syncFn:       `function(doc, oldDoc, meta) { expiry(0); }`,
+			startExpiry:  2000,
+			shouldBeZero: true,
+		},
+		{
+			name:        "no modification to TTL",
+			syncFn:      `function(doc, oldDoc, meta) { }`,
+			startExpiry: 2000,
+			assertion:   require.LessOrEqual, // in 6.0, we reset the expiry to a new offset so it can be slightly less than the original TTL. In 7.0 + this will be an exact match
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				SyncFn: test.syncFn,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						AutoImport: false, // set AutoImport false to allow manually testing error conditions on import
+					},
+				},
+			})
+			defer rt.Close()
+
+			const docID = "doc1"
+			err := rt.GetSingleDataStore().SetRaw(docID, test.startExpiry, nil, []byte(`{"foo": "bar"}`))
+			require.NoError(t, err)
+
+			ctx := base.TestCtx(t)
+			preImportExp, err := rt.GetSingleDataStore().GetExpiry(ctx, docID)
+			require.NoError(t, err)
+			// Attempt to get the document via Sync Gateway, to trigger import. Success is successfully importing the body and not throwing an assertion error.
+			_ = rt.GetDocBody(docID)
+			expiry, err := rt.GetSingleDataStore().GetExpiry(ctx, docID)
+			require.NoError(t, err)
+			if test.shouldBeZero {
+				require.Equal(t, 0, int(expiry))
+			} else {
+				test.assertion(t, int(expiry), int(preImportExp))
+			}
+		})
+	}
+}
