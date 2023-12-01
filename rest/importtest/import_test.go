@@ -2856,7 +2856,7 @@ func TestImportUpdateExpiry(t *testing.T) {
 			name:        "no modification to TTL",
 			syncFn:      `function(doc, oldDoc, meta) { }`,
 			startExpiry: 2000,
-			assertion:   require.GreaterOrEqual, // in 6.0, we reset the expiry to a new offset so it can be greater. In 7.0 + this will be an exact match
+			assertion:   require.LessOrEqual, // in 6.0, we reset the expiry to a new offset so it can be slightly less than the original TTL. In 7.0 + this will be an exact match
 		},
 	}
 	for _, test := range testCases {
