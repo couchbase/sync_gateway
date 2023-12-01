@@ -124,7 +124,20 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 	var newRev string
 	var alreadyImportedDoc *Document
 
-	mutationOptions := &sgbucket.MutateInOptions{PreserveExpiry: true}
+	mutationOptions := &sgbucket.MutateInOptions{}
+	if db.dataStore.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) {
+		mutationOptions.PreserveExpiry = true
+	} else {
+		// Get the doc expiry if it wasn't passed in and preserve expiry is not supported
+		if expiry == nil {
+			getExpiry, getExpiryErr := db.dataStore.GetExpiry(ctx, docid)
+			if getExpiryErr != nil {
+				return nil, getExpiryErr
+			}
+			expiry = &getExpiry
+		}
+		existingDoc.Expiry = *expiry
+	}
 
 	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, existingDoc.Expiry, mutationOptions, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
@@ -144,6 +157,16 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 				existingDoc = &sgbucket.BucketDocument{
 					Cas: doc.Cas,
+				}
+
+				if !mutationOptions.PreserveExpiry {
+					// Reload the doc expiry if GoCB is not preserving expiry
+					expiry, getExpiryErr := db.dataStore.GetExpiry(ctx, newDoc.ID)
+					if getExpiryErr != nil {
+						return nil, nil, false, nil, getExpiryErr
+					}
+					existingDoc.Expiry = expiry
+					updatedExpiry = &expiry
 				}
 
 				if doc.inlineSyncData {
