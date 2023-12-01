@@ -906,7 +906,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	}
 
 	allowImport := db.UseXattrs()
-	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, expiry, nil, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		var isSgWrite bool
 		var crc32Match bool
 
@@ -1031,7 +1031,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 	}
 
 	allowImport := db.UseXattrs()
-	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, newDoc.DocExpiry, nil, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -1669,16 +1669,21 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 	return unusedSequences, nil
 }
 
-func (doc *Document) updateExpiry(syncExpiry, updatedExpiry *uint32, expiry uint32) (finalExp *uint32) {
+func (doc *Document) updateExpiry(syncExpiry, updatedExpiry *uint32, expiry *uint32) (finalExp *uint32) {
 	if syncExpiry != nil {
 		finalExp = syncExpiry
 	} else if updatedExpiry != nil {
 		finalExp = updatedExpiry
-	} else {
-		finalExp = &expiry
+	} else if expiry != nil {
+		finalExp = expiry
 	}
 
-	doc.UpdateExpiry(*finalExp)
+	if finalExp != nil {
+		doc.UpdateExpiry(*finalExp)
+	} else {
+		doc.UpdateExpiry(0)
+
+	}
 
 	return finalExp
 
@@ -1736,7 +1741,7 @@ func (db *DatabaseCollectionWithUser) IsIllegalConflict(ctx context.Context, doc
 	return true
 }
 
-func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredDoc *Document, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, createNewRevIDSkipped bool, err error) {
+func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry *uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredDoc *Document, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, createNewRevIDSkipped bool, err error) {
 
 	err = validateExistingDoc(doc, allowImport, docExists)
 	if err != nil {
@@ -1831,8 +1836,7 @@ type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAtta
 //  1. Receive the updated document body in the response
 //  2. Specify the existing document body/xattr/cas, to avoid initial retrieval of the doc in cases that the current contents are already known (e.g. import).
 //     On cas failure, the document will still be reloaded from the bucket as usual.
-func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry uint32, opts *sgbucket.MutateInOptions, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
-
+func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry *uint32, opts *sgbucket.MutateInOptions, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
 	key := realDocID(docid)
 	if key == "" {
 		return nil, "", base.HTTPErrorf(400, "Invalid doc ID")
@@ -1856,7 +1860,11 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 	if !db.UseXattrs() {
 		// Update the document, storing metadata in _sync property
-		_, err = db.dataStore.Update(key, expiry, func(currentValue []byte) (raw []byte, syncFuncExpiry *uint32, isDelete bool, err error) {
+		var initialExpiry uint32 // expiry before Update callback happens
+		if expiry != nil {
+			initialExpiry = *expiry
+		}
+		_, err = db.dataStore.Update(key, initialExpiry, func(currentValue []byte) (raw []byte, syncFuncExpiry *uint32, isDelete bool, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 				return
@@ -1899,7 +1907,11 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			opts = &sgbucket.MutateInOptions{}
 		}
 		opts.MacroExpansion = macroExpandSpec(base.SyncXattrName)
-		casOut, err = db.dataStore.WriteUpdateWithXattr(ctx, key, base.SyncXattrName, db.userXattrKey(), expiry, existingDoc, opts, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, updatedSpec []sgbucket.MacroExpansionSpec, err error) {
+		var initialExpiry uint32
+		if expiry != nil {
+			initialExpiry = *expiry
+		}
+		casOut, err = db.dataStore.WriteUpdateWithXattr(ctx, key, base.SyncXattrName, db.userXattrKey(), initialExpiry, existingDoc, opts, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, updatedSpec []sgbucket.MacroExpansionSpec, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(ctx, docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll); err != nil {
 				return
@@ -1923,7 +1935,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				return
 			}
 			// If importing and the sync function has modified the expiry, allow sgbucket.MutateInOptions to modify the expiry
-			if db.dataStore.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) && syncFuncExpiry != nil && *syncFuncExpiry != expiry {
+			if db.dataStore.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) && syncFuncExpiry != nil {
 				opts.PreserveExpiry = false
 			}
 			docSequence = doc.Sequence

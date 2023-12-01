@@ -2828,10 +2828,11 @@ type dcpMetaData struct {
 
 func TestImportUpdateExpiry(t *testing.T) {
 	testCases := []struct {
-		name        string
-		syncFn      string
-		startExpiry uint32
-		assertion   func(t require.TestingT, expected, actual interface{}, msgAndArgs ...interface{})
+		name         string
+		syncFn       string
+		startExpiry  uint32
+		assertion    func(t require.TestingT, expected, actual interface{}, msgAndArgs ...interface{})
+		shouldBeZero bool
 	}{
 		{
 			name:        "Decrease expiry",
@@ -2846,16 +2847,16 @@ func TestImportUpdateExpiry(t *testing.T) {
 			assertion:   require.Greater,
 		},
 		{
-			name:        "Unset TTL",
-			syncFn:      `function(doc, oldDoc, meta) { expiry(0); }`,
-			startExpiry: 2000,
-			assertion:   require.Equal,
+			name:         "Unset TTL",
+			syncFn:       `function(doc, oldDoc, meta) { expiry(0); }`,
+			startExpiry:  2000,
+			shouldBeZero: true,
 		},
 		{
 			name:        "no modification to TTL",
 			syncFn:      `function(doc, oldDoc, meta) { }`,
 			startExpiry: 2000,
-			assertion:   require.Equal,
+			assertion:   require.GreaterOrEqual, // in 6.0, we reset the expiry to a new offset so it can be greater. In 7.0 + this will be an exact match
 		},
 	}
 	for _, test := range testCases {
@@ -2881,7 +2882,11 @@ func TestImportUpdateExpiry(t *testing.T) {
 			_ = rt.GetDocBody(docID)
 			expiry, err := rt.GetSingleDataStore().GetExpiry(ctx, docID)
 			require.NoError(t, err)
-			test.assertion(t, int(expiry), int(preImportExp))
+			if test.shouldBeZero {
+				require.Equal(t, 0, int(expiry))
+			} else {
+				test.assertion(t, int(expiry), int(preImportExp))
+			}
 		})
 	}
 }
