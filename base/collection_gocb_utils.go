@@ -21,7 +21,7 @@ func fillUpsertOptions(ctx context.Context, goCBUpsertOptions *gocb.UpsertOption
 		return
 	}
 	goCBUpsertOptions.PreserveExpiry = upsertOptions.PreserveExpiry
-	if goCBUpsertOptions.Expiry != 0 && !upsertOptions.PreserveExpiry {
+	if goCBUpsertOptions.Expiry != 0 && upsertOptions.PreserveExpiry {
 		InfofCtx(ctx, KeyCRUD, "Expiry set on gocb.UpsertOptions, but sgbucket.UpsertOptions.PreserveExpiry is false. Force setting PreserveExpiry to false to allow write to proceed.")
 		goCBUpsertOptions.PreserveExpiry = false
 
@@ -34,7 +34,7 @@ func fillMutateInOptions(ctx context.Context, goCBMutateInOptions *gocb.MutateIn
 		return
 	}
 	goCBMutateInOptions.PreserveExpiry = mutateInOptions.PreserveExpiry
-	if goCBMutateInOptions.Expiry != 0 && !mutateInOptions.PreserveExpiry {
+	if goCBMutateInOptions.Expiry != 0 && mutateInOptions.PreserveExpiry {
 		InfofCtx(ctx, KeyCRUD, "Expiry set on gocb.MutateInOptions, but sgbucket.MutateInOptions.PreserveExpiry is false. Force setting PreserveExpiry to false to allow write to proceed.")
 		goCBMutateInOptions.PreserveExpiry = false
 
