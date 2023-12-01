@@ -409,7 +409,7 @@ func (c *Collection) UpdateXattr(_ context.Context, k string, xattrKey string, e
 
 // UpdateBodyAndXattr updates the document body and xattr of an existing document. Writes cas and crc32c to the xattr using
 // macro expansion.
-func (c *Collection) UpdateBodyAndXattr(_ context.Context, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
+func (c *Collection) UpdateBodyAndXattr(ctx context.Context, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -424,7 +424,7 @@ func (c *Collection) UpdateBodyAndXattr(_ context.Context, k string, xattrKey st
 		StoreSemantic: gocb.StoreSemanticsUpsert,
 		Cas:           gocb.Cas(cas),
 	}
-	fillMutateInOptions(options, opts)
+	fillMutateInOptions(ctx, options, opts)
 	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {
 		return 0, mutateErr

@@ -1087,3 +1087,29 @@ func TestResyncPersistence(t *testing.T) {
 	fmt.Printf("RT2 Resync Status: %s\n", resp2.BodyBytes())
 	assert.Equal(t, resp.BodyBytes(), resp2.BodyBytes())
 }
+
+func TestExpiryUpdateSyncFunction(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	const docID = "doc1"
+	version := rt.CreateTestDoc(docID)
+	exp, err := rt.GetSingleDataStore().GetExpiry(rt.Context(), docID)
+	require.NoError(t, err)
+	require.Equal(t, 0, int(exp))
+
+	// have sync function turn on expiry, make sure new revision has an expiry
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/sync", `function(olddoc, doc){ expiry(1000); }`), http.StatusOK)
+	version = rt.UpdateDoc(docID, version, `{"foo": "bar"}`)
+	exp, err = rt.GetSingleDataStore().GetExpiry(rt.Context(), docID)
+	require.NoError(t, err)
+	require.NotEqual(t, 0, int(exp))
+
+	// have sync function not set expiry, make sure no expiry is on doc
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/sync", `function(olddoc, doc){}`), http.StatusOK)
+	_ = rt.UpdateDoc(docID, version, `{"foo": "baz"}`)
+	exp, err = rt.GetSingleDataStore().GetExpiry(rt.Context(), docID)
+	require.NoError(t, err)
+	require.Equal(t, 0, int(exp))
+
+}
