@@ -1071,6 +1071,11 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		}
 	}
 
+	// In sync gateway version 4.0+ we do not support the disabling of use of xattrs
+	if !config.UseXattrs() {
+		return db.DatabaseContextOptions{}, fmt.Errorf("sync gateway requires enable_shared_bucket_access=true")
+	}
+
 	oldRevExpirySeconds := base.DefaultOldRevExpirySeconds
 	if config.OldRevExpirySeconds != nil {
 		oldRevExpirySeconds = *config.OldRevExpirySeconds
