@@ -2245,7 +2245,7 @@ func TestHandlePutDbConfigWithBackticksCollections(t *testing.T) {
 	reqBodyWithBackticks := `{
         "server": "walrus:",
         "bucket": "backticks",
-		"enable_shared_bucket_access":false,
+		"enable_shared_bucket_access":true,
 		"scopes": {
 			"scope1": {
 			  "collections" : {

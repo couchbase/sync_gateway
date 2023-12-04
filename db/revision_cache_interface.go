@@ -327,10 +327,11 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 }
 
 // revCacheLoaderForDocumentCV used either during cache miss (from revCacheLoaderForCv), or used directly when getting current active CV from cache
+// nolint:staticcheck
 func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, cv SourceAndVersion) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, revid string, err error) {
 	if bodyBytes, body, attachments, err = backingStore.getCurrentVersion(ctx, doc); err != nil {
+		// TODO: pending CBG-3213 support of channel removal for CV
 		// we need implementation of IsChannelRemoval for CV here.
-		// pending CBG-3213 support of channel removal for CV
 	}
 
 	if err = doc.HasCurrentVersion(cv); err != nil {
