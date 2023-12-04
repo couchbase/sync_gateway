@@ -319,6 +319,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	assert.NotNil(t, sc.dbConfigs["db"])
 
 	// Update config in bucket to see if unsuspending check for updates
+	sc.dbConfigs["db"].EnableXattrs = base.BoolPtr(true) // xattrs must be enabled
 	cas, err := sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 		config := sc.dbConfigs["db"].ToDatabaseConfig()
 		config.cfgCas = bucketDbConfig.cfgCas
