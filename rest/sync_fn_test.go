@@ -1171,3 +1171,41 @@ func TestResyncPersistence(t *testing.T) {
 	fmt.Printf("RT2 Resync Status: %s\n", resp2.BodyBytes())
 	assert.Equal(t, resp.BodyBytes(), resp2.BodyBytes())
 }
+
+func TestExpiryUpdateSyncFunctionNew(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server - needs expiry")
+	}
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyJavascript)
+
+	// This sync function sets expiry to 1000 if the setExpiry property is true
+	syncFn := `function(doc) {
+		if (doc.setExpiry == true) {
+			expiry(1000)
+		}
+	}`
+
+	rtConfig := RestTesterConfig{SyncFn: syncFn}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	const docID = "doc1"
+
+	// Create doc without expiry
+	response := rt.PutDoc(docID, `{"setExpiry":false}`)
+	exp, err := rt.GetSingleDataStore().GetExpiry(rt.Context(), docID)
+	require.NoError(t, err)
+	require.Equal(t, 0, int(exp))
+
+	// have sync function set expiry, make sure new revision has an expiry
+	response = rt.UpdateDoc(docID, response.Rev, `{"setExpiry":true}`)
+	exp, err = rt.GetSingleDataStore().GetExpiry(rt.Context(), docID)
+	require.NoError(t, err)
+	require.NotEqual(t, 0, int(exp))
+
+	// have sync function not set expiry, make sure no expiry is on doc
+	_ = rt.UpdateDoc(docID, response.Rev, `{"setExpiry":false}`)
+	exp, err = rt.GetSingleDataStore().GetExpiry(rt.Context(), docID)
+	require.NoError(t, err)
+	require.Equal(t, 0, int(exp))
+}

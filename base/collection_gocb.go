@@ -190,7 +190,7 @@ func (c *Collection) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v i
 		Expiry:     CbsExpiryToDuration(exp),
 		Transcoder: NewSGJSONTranscoder(),
 	}
-	fillUpsertOptions(goCBUpsertOptions, opts)
+	fillUpsertOptions(context.TODO(), goCBUpsertOptions, opts)
 
 	if _, ok := v.([]byte); ok {
 		goCBUpsertOptions.Transcoder = gocb.NewRawJSONTranscoder()
@@ -208,7 +208,7 @@ func (c *Collection) SetRaw(k string, exp uint32, opts *sgbucket.UpsertOptions, 
 		Expiry:     CbsExpiryToDuration(exp),
 		Transcoder: NewSGRawTranscoder(),
 	}
-	fillUpsertOptions(goCBUpsertOptions, opts)
+	fillUpsertOptions(context.TODO(), goCBUpsertOptions, opts)
 
 	_, err := c.Collection.Upsert(k, v, goCBUpsertOptions)
 	return err

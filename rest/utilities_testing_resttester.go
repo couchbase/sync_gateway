@@ -36,6 +36,15 @@ func (rt *RestTester) GetDoc(docID string) (body db.Body) {
 	return body
 }
 
+// GetDocBody returns the doc body for the given docID. If the document is not found, t.Fail will be called.
+func (rt *RestTester) GetDocBody(docID string) db.Body {
+	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
+	RequireStatus(rt.TB, rawResponse, 200)
+	var body db.Body
+	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
+	return body
+}
+
 func (rt *RestTester) CreateDoc(t *testing.T, docid string) string {
 	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docid), `{"prop":true}`)
 	RequireStatus(t, response, 201)

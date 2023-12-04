@@ -30,7 +30,7 @@ type SubdocXattrStore interface {
 	SubdocInsertBodyAndXattr(k string, xattrKey string, exp uint32, v interface{}, xv interface{}) (casOut uint64, err error)
 	SubdocSetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error)
 	SubdocUpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error)
-	SubdocUpdateBodyAndXattr(k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error)
+	SubdocUpdateBodyAndXattr(ctx context.Context, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error)
 	SubdocUpdateXattrDeleteBody(k, xattrKey string, exp uint32, cas uint64, xv interface{}) (casOut uint64, err error)
 	SubdocDeleteXattr(k string, xattrKey string, cas uint64) error
 	SubdocDeleteXattrs(k string, xattrKeys ...string) error
@@ -74,7 +74,7 @@ func WriteCasWithXattr(ctx context.Context, store SubdocXattrStore, k string, xa
 		// Otherwise, replace existing value
 		if v != nil {
 			// Have value and xattr value - update both
-			casOut, err = store.SubdocUpdateBodyAndXattr(k, xattrKey, exp, cas, opts, v, xv)
+			casOut, err = store.SubdocUpdateBodyAndXattr(ctx, k, xattrKey, exp, cas, opts, v, xv)
 			if err != nil {
 				shouldRetry = store.isRecoverableWriteError(err)
 				return shouldRetry, err, uint64(0)
