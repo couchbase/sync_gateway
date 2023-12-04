@@ -1092,6 +1092,11 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		}
 	}
 
+	// In sync gateway version 4.0+ we do not support the disabling of use of xattrs
+	if !config.UseXattrs() {
+		return db.DatabaseContextOptions{}, fmt.Errorf("sync gateway requires enable_shared_bucket_access=true")
+	}
+
 	// Create a callback function that will be invoked if the database goes offline and comes
 	// back online again
 	dbOnlineCallback := func(dbContext *db.DatabaseContext) {
