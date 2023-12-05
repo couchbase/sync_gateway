@@ -325,7 +325,7 @@ func TestCVPopulationOnDocIDChanges(t *testing.T) {
 
 	require.NoError(t, collection.WaitForPendingChanges(base.TestCtx(t)))
 
-	changes, err := rt.WaitForChanges(1, fmt.Sprintf(`/{{.keyspace}}/_changes?doc_ids=["%s"]`, DocID), "", true)
+	changes, err := rt.WaitForChanges(1, fmt.Sprintf(`/{{.keyspace}}/_changes?filter=_doc_ids&doc_ids=%s`, DocID), "", true)
 	require.NoError(t, err)
 
 	fetchedDoc, _, err := collection.GetDocWithXattr(ctx, DocID, db.DocUnmarshalCAS)
