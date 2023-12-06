@@ -336,7 +336,7 @@ func TestCheckProposedVersion(t *testing.T) {
 	assert.Equal(t, ProposedRev_Exists, status)
 
 	// non conflict new version scenario
-	hlvString = fmt.Sprint(100, "@", bucketUUID, ";", hlvString)
+	hlvString = fmt.Sprint(vrs+100, "@", bucketUUID, ";", hlvString)
 	status, _ = collection.CheckProposedVersion(ctx, "doc1", hlvString)
 	assert.Equal(t, ProposedRev_OK, status)
 
