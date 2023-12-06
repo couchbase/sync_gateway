@@ -2348,6 +2348,17 @@ func (v DocVersion) Equal(o DocVersion) bool {
 	return true
 }
 
+func (v DocVersion) GetRev(useHLV bool) string {
+	if useHLV {
+		if v.CV.SourceID == "" {
+			return ""
+		}
+		return v.CV.String()
+	} else {
+		return v.RevTreeID
+	}
+}
+
 // Digest returns the digest for the current version
 func (v DocVersion) Digest() string {
 	return strings.Split(v.RevTreeID, "-")[1]
