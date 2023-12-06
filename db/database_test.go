@@ -313,6 +313,7 @@ func TestDatabase(t *testing.T) {
 //   - Run doc ID through CheckProposedVersion with the non conflict hlv present
 //   - Run new doc ID through CheckProposedVersion
 //   - Run doc ID through CheckProposedVersion with conflicting hlv
+//   - Run doc ID through CheckProposedVersion with invalid HLV string
 //   - Assert all above scenarios return appropriate status
 func TestCheckProposedVersion(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
@@ -345,9 +346,14 @@ func TestCheckProposedVersion(t *testing.T) {
 	assert.Equal(t, ProposedRev_OK_IsNew, status)
 
 	// conflict scenario
-	hlvString = fmt.Sprint(4, "@", "cluster2", ";", 1, "cluster2")
+	hlvString = fmt.Sprint(4, "@", "cluster2", ";", 1, "@", "cluster2")
 	status, _ = collection.CheckProposedVersion(ctx, "doc1", hlvString)
 	assert.Equal(t, ProposedRev_Conflict, status)
+
+	// test error scenario
+	hlvString = fmt.Sprint("")
+	status, _ = collection.CheckProposedVersion(ctx, "doc1", hlvString)
+	assert.Equal(t, ProposedRev_Error, status)
 
 }
 

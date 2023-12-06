@@ -420,6 +420,9 @@ func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, er
 		return HybridLogicalVector{}, err
 	}
 	err = hlv.AddVersion(SourceAndVersion{SourceID: sourceAndVersion[1], Version: vrs})
+	if err != nil {
+		return HybridLogicalVector{}, err
+	}
 
 	switch vectorLength {
 	case 1:
