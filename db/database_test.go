@@ -307,6 +307,157 @@ func TestDatabase(t *testing.T) {
 
 }
 
+// TestCheckProposedVersion ensures that a given CV will return the appropriate status based on the information present in the HLV.
+func TestCheckProposedVersion(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+
+	// create a doc
+	body := Body{"key1": "value1", "key2": 1234}
+	_, doc, err := collection.Put(ctx, "doc1", body)
+	require.NoError(t, err)
+	cvSource, cvValue := doc.HLV.GetCurrentVersion()
+	currentVersion := Version{cvSource, cvValue}
+
+	testCases := []struct {
+		name            string
+		newVersion      Version
+		previousVersion *Version
+		expectedStatus  ProposedRevStatus
+		expectedRev     string
+	}{
+		{
+			// proposed version matches the current server version
+			//  Already known
+			name:            "version exists",
+			newVersion:      currentVersion,
+			previousVersion: nil,
+			expectedStatus:  ProposedRev_Exists,
+			expectedRev:     "",
+		},
+		{
+			// proposed version is newer than server cv (same source), and previousVersion matches server cv
+			//  Not a conflict
+			name:            "new version,same source,prev matches",
+			newVersion:      Version{cvSource, incrementStringCas(cvValue, 100)},
+			previousVersion: &currentVersion,
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// proposed version is newer than server cv (same source), and previousVersion is not specified.
+			//  Not a conflict, even without previousVersion, because of source match
+			name:            "new version,same source,prev not specified",
+			newVersion:      Version{cvSource, incrementStringCas(cvValue, 100)},
+			previousVersion: nil,
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// proposed version is from a source not present in server HLV, and previousVersion matches server cv
+			//  Not a conflict, due to previousVersion match
+			name:            "new version,new source,prev matches",
+			newVersion:      Version{"other", incrementStringCas(cvValue, 100)},
+			previousVersion: &currentVersion,
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// proposed version is newer than server cv (same source), but previousVersion does not match server cv.
+			//  Not a conflict, regardless of previousVersion mismatch, because of source match between proposed
+			//  version and cv
+			name:            "new version,prev mismatch,new matches cv",
+			newVersion:      Version{cvSource, incrementStringCas(cvValue, 100)},
+			previousVersion: &Version{"other", incrementStringCas(cvValue, 50)},
+			expectedStatus:  ProposedRev_OK,
+			expectedRev:     "",
+		},
+		{
+			// proposed version is already known, source matches cv
+			name:           "proposed version already known, no prev version",
+			newVersion:     Version{cvSource, incrementStringCas(cvValue, -100)},
+			expectedStatus: ProposedRev_Exists,
+			expectedRev:    "",
+		},
+		{
+			// conflict - previous version is older than CV
+			name:            "conflict,same source,server updated",
+			newVersion:      Version{"other", incrementStringCas(cvValue, -100)},
+			previousVersion: &Version{cvSource, incrementStringCas(cvValue, -50)},
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     Version{cvSource, cvValue}.String(),
+		},
+		{
+			// conflict - previous version is older than CV
+			name:            "conflict,new source,server updated",
+			newVersion:      Version{"other", incrementStringCas(cvValue, 100)},
+			previousVersion: &Version{"other", incrementStringCas(cvValue, -50)},
+			expectedStatus:  ProposedRev_Conflict,
+			expectedRev:     Version{cvSource, cvValue}.String(),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			previousVersionStr := ""
+			if tc.previousVersion != nil {
+				previousVersionStr = tc.previousVersion.String()
+			}
+			status, rev := collection.CheckProposedVersion(ctx, "doc1", tc.newVersion.String(), previousVersionStr)
+			assert.Equal(t, tc.expectedStatus, status)
+			assert.Equal(t, tc.expectedRev, rev)
+		})
+	}
+
+	t.Run("invalid hlv", func(t *testing.T) {
+		hlvString := ""
+		status, _ := collection.CheckProposedVersion(ctx, "doc1", hlvString, "")
+		assert.Equal(t, ProposedRev_Error, status)
+	})
+
+	// New doc cases - standard insert
+	t.Run("new doc", func(t *testing.T) {
+		newVersion := Version{"other", base.CasToString(100)}.String()
+		status, _ := collection.CheckProposedVersion(ctx, "doc2", newVersion, "")
+		assert.Equal(t, ProposedRev_OK_IsNew, status)
+	})
+
+	// New doc cases - insert with prev version (previous version purged from SGW)
+	t.Run("new doc with prev version", func(t *testing.T) {
+		newVersion := Version{"other", base.CasToString(100)}.String()
+		prevVersion := Version{"another other", base.CasToString(50)}.String()
+		status, _ := collection.CheckProposedVersion(ctx, "doc2", newVersion, prevVersion)
+		assert.Equal(t, ProposedRev_OK_IsNew, status)
+	})
+
+	/*
+		t.Run("conflict - previous version source matches cv", func(t *testing.T) {
+
+			newVersion := Version{"other", 100}.String()
+			prevVersion := Version{cvSource, cvValue - 100}.String()
+			assert.NoError(t, base.DeepCopyInefficient(&hlv, doc.HLV))
+			err = hlv.AddVersion(Version{"cluster2", hlv.CurrentVersionCAS + 1})
+			require.NoError(t, err)
+			err = hlv.AddVersion(Version{"cluster2", hlv.CurrentVersionCAS + 4})
+			require.NoError(t, err)
+			// TODO: Get full BLIP formatted HLV
+			hlvString := hlv.GetCurrentVersionString()
+			status, _ := collection.CheckProposedVersion(ctx, "doc1", hlvString)
+			assert.Equal(t, ProposedRev_Conflict, status)
+		})
+	*/
+
+}
+
+func incrementStringCas(cas string, delta int) (casOut string) {
+	casValue := base.HexCasToUint64(cas)
+	casValue = casValue + uint64(delta)
+	return base.CasToString(casValue)
+}
+
 func TestGetDeleted(t *testing.T) {
 
 	db, ctx := setupTestDB(t)

@@ -870,13 +870,21 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
 // PushRev creates a revision on the client, and immediately sends a changes request for it.
 // The rev ID is always: "N-abc", where N is rev generation for predictability.
 func (btc *BlipTesterCollectionClient) PushRev(docID string, parentVersion DocVersion, body []byte) (DocVersion, error) {
-	revid, err := btc.PushRevWithHistory(docID, parentVersion.RevTreeID, body, 1, 0)
+	revID, err := btc.PushRevWithHistory(docID, parentVersion.RevTreeID, body, 1, 0)
 	if err != nil {
 		return DocVersion{}, err
 	}
 	docVersion := btc.GetDocVersion(docID)
-	require.Equal(btc.parent.rt.TB, docVersion.RevTreeID, revid)
+	btc.requireRevID(docVersion, revID)
 	return docVersion, nil
+}
+
+func (btc *BlipTesterCollectionClient) requireRevID(expected DocVersion, revID string) {
+	if btc.UseHLV() {
+		require.Equal(btc.parent.rt.TB, expected.CV.String(), revID)
+	} else {
+		require.Equal(btc.parent.rt.TB, expected.RevTreeID, revID)
+	}
 }
 
 // GetDocVersion fetches revid and cv directly from the bucket.  Used to support REST-based verification in btc tests
@@ -887,7 +895,7 @@ func (btc *BlipTesterCollectionClient) GetDocVersion(docID string) DocVersion {
 	ctx := base.DatabaseLogCtx(base.TestCtx(btc.parent.rt.TB), btc.parent.rt.GetDatabase().Name, nil)
 	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalSync)
 	require.NoError(btc.parent.rt.TB, err)
-	if doc.HLV == nil {
+	if !btc.UseHLV() {
 		return DocVersion{RevTreeID: doc.CurrentRev}
 	}
 	return DocVersion{RevTreeID: doc.CurrentRev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}

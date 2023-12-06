@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"encoding/base64"
 	"reflect"
 	"strconv"
@@ -26,19 +27,19 @@ import (
 //   - Tests methods GetCurrentVersion, AddVersion and Remove
 func TestInternalHLVFunctions(t *testing.T) {
 	pv := make(map[string]string)
-	currSourceId := base64.StdEncoding.EncodeToString([]byte("5pRi8Piv1yLcLJ1iVNJIsA"))
-	currVersion := string(base.Uint64CASToLittleEndianHex(12345678))
-	pv[base64.StdEncoding.EncodeToString([]byte("YZvBpEaztom9z5V/hDoeIw"))] = string(base.Uint64CASToLittleEndianHex(64463204720))
+	currSourceId := EncodeSource("5pRi8Piv1yLcLJ1iVNJIsA")
+	currVersion := EncodeValue(12345678)
+	pv[EncodeSource("YZvBpEaztom9z5V/hDoeIw")] = EncodeValue(64463204720)
 
 	inputHLV := []string{"5pRi8Piv1yLcLJ1iVNJIsA@12345678", "YZvBpEaztom9z5V/hDoeIw@64463204720", "m_NqiIe0LekFPLeX4JvTO6Iw@345454"}
 	hlv := createHLVForTest(t, inputHLV)
 
-	newCAS := string(base.Uint64CASToLittleEndianHex(123456789))
+	newCAS := EncodeValue(123456789)
 	const newSource = "s_testsource"
 
 	// create a new version vector entry that will error method AddVersion
 	badNewVector := Version{
-		Value:    string(base.Uint64CASToLittleEndianHex(123345)),
+		Value:    EncodeValue(123345),
 		SourceID: currSourceId,
 	}
 	// create a new version vector entry that should be added to HLV successfully
@@ -78,7 +79,7 @@ func TestInternalHLVFunctions(t *testing.T) {
 }
 
 // TestConflictDetectionDominating:
-//   - Tests two cases where one HLV's is said to be 'dominating' over another and thus not in conflict
+//   - Tests cases where one HLV's is said to be 'dominating' over another
 //   - Test case 1: where sourceID is the same between HLV's but HLV(A) has higher version CAS than HLV(B) thus A dominates
 //   - Test case 2: where sourceID is different and HLV(A) sourceID is present in HLV(B) PV and HLV(A) has dominating version
 //   - Test case 3: where sourceID is different and HLV(A) sourceID is present in HLV(B) MV and HLV(A) has dominating version
@@ -86,39 +87,71 @@ func TestInternalHLVFunctions(t *testing.T) {
 //   - Assert that all scenarios returns false from IsInConflict method, as we have a HLV that is dominating in each case
 func TestConflictDetectionDominating(t *testing.T) {
 	testCases := []struct {
-		name          string
-		inputListHLVA []string
-		inputListHLVB []string
+		name           string
+		inputListHLVA  []string
+		inputListHLVB  []string
+		expectedResult bool
 	}{
 		{
-			name:          "Test case 1",
-			inputListHLVA: []string{"cluster1@20", "cluster2@2"},
-			inputListHLVB: []string{"cluster1@10", "cluster2@1"},
+			name:           "Matching current source, newer version",
+			inputListHLVA:  []string{"cluster1@20", "cluster2@2"},
+			inputListHLVB:  []string{"cluster1@10", "cluster2@1"},
+			expectedResult: true,
+		}, {
+			name:           "Matching current source and version",
+			inputListHLVA:  []string{"cluster1@20", "cluster2@2"},
+			inputListHLVB:  []string{"cluster1@20", "cluster2@1"},
+			expectedResult: true,
 		},
 		{
-			name:          "Test case 2",
-			inputListHLVA: []string{"cluster1@20", "cluster3@3"},
-			inputListHLVB: []string{"cluster2@10", "cluster1@15"},
+			name:           "B CV found in A's PV",
+			inputListHLVA:  []string{"cluster1@20", "cluster2@10"},
+			inputListHLVB:  []string{"cluster2@10", "cluster1@15"},
+			expectedResult: true,
 		},
 		{
-			name:          "Test case 3",
-			inputListHLVA: []string{"cluster1@20", "cluster3@3"},
-			inputListHLVB: []string{"cluster2@10", "m_cluster1@12", "m_cluster2@11"},
+			name:           "B CV older than A's PV for same source",
+			inputListHLVA:  []string{"cluster1@20", "cluster2@10"},
+			inputListHLVB:  []string{"cluster2@10", "cluster1@15"},
+			expectedResult: true,
 		},
 		{
-			name:          "Test case 4",
-			inputListHLVA: []string{"cluster2@10", "cluster1@15"},
-
-			inputListHLVB: []string{"cluster1@20", "cluster3@3"},
+			name:           "Unique sources in A",
+			inputListHLVA:  []string{"cluster1@20", "cluster2@15", "cluster3@3"},
+			inputListHLVB:  []string{"cluster2@10", "cluster1@10"},
+			expectedResult: true,
+		},
+		{
+			name:           "Unique sources in B",
+			inputListHLVA:  []string{"cluster1@20"},
+			inputListHLVB:  []string{"cluster1@15", "cluster3@3"},
+			expectedResult: true,
+		},
+		{
+			name:           "B has newer cv",
+			inputListHLVA:  []string{"cluster1@10"},
+			inputListHLVB:  []string{"cluster1@15"},
+			expectedResult: false,
+		},
+		{
+			name:           "B has newer cv than A pv",
+			inputListHLVA:  []string{"cluster2@20", "cluster1@10"},
+			inputListHLVB:  []string{"cluster1@15", "cluster2@20"},
+			expectedResult: false,
+		},
+		{
+			name:           "B's cv not found in A",
+			inputListHLVA:  []string{"cluster2@20", "cluster1@10"},
+			inputListHLVB:  []string{"cluster3@5"},
+			expectedResult: false,
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			hlvA := createHLVForTest(t, testCase.inputListHLVA)
 			hlvB := createHLVForTest(t, testCase.inputListHLVB)
-			decHLVA := hlvA.ToDecodedHybridLogicalVector()
-			decHLVB := hlvB.ToDecodedHybridLogicalVector()
-			require.False(t, decHLVA.IsInConflict(decHLVB))
+			require.True(t, hlvA.isDominating(hlvB) == testCase.expectedResult)
+
 		})
 	}
 }
@@ -163,21 +196,6 @@ func TestConflictEqualHLV(t *testing.T) {
 	require.False(t, decHLVA.isEqual(decHLVB))
 }
 
-// TestConflictExample:
-//   - Takes example conflict scenario from PRD to see if we correctly identify conflict in that scenario
-//   - Creates two HLV's similar to ones in example and calls IsInConflict to assert it returns true
-func TestConflictExample(t *testing.T) {
-	input := []string{"cluster1@11", "cluster3@2", "cluster2@4"}
-	inMemoryHLV := createHLVForTest(t, input)
-
-	input = []string{"cluster2@2", "cluster3@3"}
-	otherVector := createHLVForTest(t, input)
-
-	inMemoryHLVDec := inMemoryHLV.ToDecodedHybridLogicalVector()
-	otherVectorDec := otherVector.ToDecodedHybridLogicalVector()
-	require.True(t, inMemoryHLVDec.IsInConflict(otherVectorDec))
-}
-
 // createHLVForTest is a helper function to create a HLV for use in a test. Takes a list of strings in the format of <sourceID@version> and assumes
 // first entry is current version. For merge version entries you must specify 'm_' as a prefix to sourceID NOTE: it also sets cvCAS to the current version
 func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
@@ -186,25 +204,25 @@ func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
 	// first element will be current version and source pair
 	currentVersionPair := strings.Split(inputList[0], "@")
 	hlvOutput.SourceID = base64.StdEncoding.EncodeToString([]byte(currentVersionPair[0]))
-	version, err := strconv.ParseUint(currentVersionPair[1], 10, 64)
+	value, err := strconv.ParseUint(currentVersionPair[1], 10, 64)
 	require.NoError(tb, err)
-	vrsEncoded := string(base.Uint64CASToLittleEndianHex(version))
+	vrsEncoded := EncodeValue(value)
 	hlvOutput.Version = vrsEncoded
 	hlvOutput.CurrentVersionCAS = vrsEncoded
 
 	// remove current version entry in list now we have parsed it into the HLV
 	inputList = inputList[1:]
 
-	for _, value := range inputList {
-		currentVersionPair = strings.Split(value, "@")
-		version, err = strconv.ParseUint(currentVersionPair[1], 10, 64)
+	for _, version := range inputList {
+		currentVersionPair = strings.Split(version, "@")
+		value, err = strconv.ParseUint(currentVersionPair[1], 10, 64)
 		require.NoError(tb, err)
 		if strings.HasPrefix(currentVersionPair[0], "m_") {
 			// add entry to merge version removing the leading prefix for sourceID
-			hlvOutput.MergeVersions[base64.StdEncoding.EncodeToString([]byte(currentVersionPair[0][2:]))] = string(base.Uint64CASToLittleEndianHex(version))
+			hlvOutput.MergeVersions[EncodeSource(currentVersionPair[0][2:])] = EncodeValue(value)
 		} else {
 			// if it's not got the prefix we assume it's a previous version entry
-			hlvOutput.PreviousVersions[base64.StdEncoding.EncodeToString([]byte(currentVersionPair[0]))] = string(base.Uint64CASToLittleEndianHex(version))
+			hlvOutput.PreviousVersions[EncodeSource(currentVersionPair[0])] = EncodeValue(value)
 		}
 	}
 	return hlvOutput
@@ -283,7 +301,7 @@ func TestHLVImport(t *testing.T) {
 	var existingBody, existingXattr []byte
 	cas, err = collection.dataStore.GetWithXattr(ctx, existingHLVKey, "_sync", "", &existingBody, &existingXattr, nil)
 	require.NoError(t, err)
-	encodedCAS = string(base.Uint64CASToLittleEndianHex(cas))
+	encodedCAS = EncodeValue(cas)
 
 	_, err = collection.ImportDocRaw(ctx, existingHLVKey, existingBody, existingXattr, nil, false, cas, nil, ImportFromFeed)
 	require.NoError(t, err, "import error")
@@ -346,4 +364,164 @@ func TestHLVMapToCBLString(t *testing.T) {
 			}
 		})
 	}
+}
+
+// insertWithHLV inserts a new document into the bucket with a populated HLV (matching a write from
+// a different HLV-aware peer)
+func (h *HLVAgent) insertWithHLV(ctx context.Context, key string) (casOut uint64) {
+	hlv := &HybridLogicalVector{}
+	err := hlv.AddVersion(CreateVersion(h.Source, hlvExpandMacroCASValue))
+	require.NoError(h.t, err)
+	hlv.CurrentVersionCAS = hlvExpandMacroCASValue
+
+	syncData := &SyncData{HLV: hlv}
+	syncDataBytes, err := base.JSONMarshal(syncData)
+	require.NoError(h.t, err)
+
+	mutateInOpts := &sgbucket.MutateInOptions{
+		MacroExpansion: hlv.computeMacroExpansions(),
+	}
+
+	cas, err := h.datastore.WriteCasWithXattr(ctx, key, h.xattrName, 0, 0, defaultHelperBody, syncDataBytes, mutateInOpts)
+	require.NoError(h.t, err)
+	return cas
+}
+
+// TestInvalidHLVOverChangesMessage:
+//   - Test hlv string that has too many sections to it (parts delimited by ;)
+//   - Test hlv string that is empty
+//   - Assert that extractHLVFromBlipMessage will return error in both cases
+func TestInvalidHLVInBlipMessageForm(t *testing.T) {
+	hlvStr := "25@def; 22@def,21@eff; 20@abc,18@hij; 222@hiowdwdew, 5555@dhsajidfgd"
+
+	hlv, err := extractHLVFromBlipMessage(hlvStr)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "invalid hlv in changes message received")
+	assert.Equal(t, HybridLogicalVector{}, hlv)
+
+	hlvStr = ""
+	hlv, err = extractHLVFromBlipMessage(hlvStr)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "invalid hlv in changes message received")
+	assert.Equal(t, HybridLogicalVector{}, hlv)
+}
+
+var extractHLVFromBlipMsgBMarkCases = []struct {
+	name             string
+	hlvString        string
+	expectedHLV      []string
+	mergeVersions    bool
+	previousVersions bool
+}{
+	{
+		name:             "mv and pv, leading spaces",                                                                                                                                                         // with spaces
+		hlvString:        "25@def; 22@def, 21@eff, 500@x, 501@xx, 4000@xxx, 700@y, 701@yy, 702@yyy; 20@abc, 18@hij, 3@x, 4@xx, 5@xxx, 6@xxxx, 7@xxxxx, 3@y, 4@yy, 5@yyy, 6@yyyy, 7@yyyyy, 2@xy, 3@xyy, 4@xxy", // 15 pv 8 mv
+		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "x@3", "xx@4", "xxx@5", "xxxx@6", "xxxxx@7", "y@3", "yy@4", "yyy@5", "yyyy@6", "yyyyy@7", "xy@2", "xyy@3", "xxy@4", "m_def@22", "m_eff@21", "m_x@500", "m_xx@501", "m_xxx@4000", "m_y@700", "m_yy@701", "m_yyy@702"},
+		previousVersions: true,
+		mergeVersions:    true,
+	},
+	{
+		name:             "mv and pv, no spaces",                                                                                                                                       // without spaces
+		hlvString:        "25@def;22@def,21@eff,500@x,501@xx,4000@xxx,700@y,701@yy,702@yyy;20@abc,18@hij,3@x,4@xx,5@xxx,6@xxxx,7@xxxxx,3@y,4@yy,5@yyy,6@yyyy,7@yyyyy,2@xy,3@xyy,4@xxy", // 15 pv 8 mv
+		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "x@3", "xx@4", "xxx@5", "xxxx@6", "xxxxx@7", "y@3", "yy@4", "yyy@5", "yyyy@6", "yyyyy@7", "xy@2", "xyy@3", "xxy@4", "m_def@22", "m_eff@21", "m_x@500", "m_xx@501", "m_xxx@4000", "m_y@700", "m_yy@701", "m_yyy@702"},
+		previousVersions: true,
+		mergeVersions:    true,
+	},
+	{
+		name:             "pv only",
+		hlvString:        "25@def; 20@abc,18@hij",
+		expectedHLV:      []string{"def@25", "abc@20", "hij@18"},
+		previousVersions: true,
+	},
+	{
+		name:             "mv and pv, mixed spacing",
+		hlvString:        "25@def; 22@def,21@eff; 20@abc,18@hij,3@x,4@xx,5@xxx,6@xxxx,7@xxxxx,3@y,4@yy,5@yyy,6@yyyy,7@yyyyy,2@xy,3@xyy,4@xxy", // 15
+		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "x@3", "xx@4", "xxx@5", "xxxx@6", "xxxxx@7", "y@3", "yy@4", "yyy@5", "yyyy@6", "yyyyy@7", "xy@2", "xyy@3", "xxy@4", "m_def@22", "m_eff@21"},
+		mergeVersions:    true,
+		previousVersions: true,
+	},
+	{
+		name:        "cv only",
+		hlvString:   "24@def",
+		expectedHLV: []string{"def@24"},
+	},
+	{
+		name:             "cv and mv,base64 encoded",
+		hlvString:        "1@Hell0CA; 1@1Hr0k43xS662TToxODDAxQ",
+		expectedHLV:      []string{"Hell0CA@1", "1Hr0k43xS662TToxODDAxQ@1"},
+		previousVersions: true,
+	},
+	{
+		name:             "cv and mv - small",
+		hlvString:        "25@def; 22@def,21@eff; 20@abc,18@hij",
+		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "m_def@22", "m_eff@21"},
+		mergeVersions:    true,
+		previousVersions: true,
+	},
+}
+
+// TestExtractHLVFromChangesMessage:
+//   - Test case 1: CV entry and 1 PV entry
+//   - Test case 2: CV entry and 2 PV entries
+//   - Test case 3: CV entry, 2 MV entries and 2 PV entries
+//   - Test case 4: just CV entry
+//   - Each test case gets run through extractHLVFromBlipMessage and assert that the resulting HLV
+//     is correct to what is expected
+func TestExtractHLVFromChangesMessage(t *testing.T) {
+	for _, test := range extractHLVFromBlipMsgBMarkCases {
+		t.Run(test.name, func(t *testing.T) {
+			expectedVector := createHLVForTest(t, test.expectedHLV)
+
+			// TODO: When CBG-3662 is done, should be able to simplify base64 handling to treat source as a string
+			//       that may represent a base64 encoding
+			base64EncodedHlvString := cblEncodeTestSources(test.hlvString)
+			hlv, err := extractHLVFromBlipMessage(base64EncodedHlvString)
+			require.NoError(t, err)
+
+			assert.Equal(t, expectedVector.SourceID, hlv.SourceID)
+			assert.Equal(t, expectedVector.Version, hlv.Version)
+			if test.previousVersions {
+				assert.True(t, reflect.DeepEqual(expectedVector.PreviousVersions, hlv.PreviousVersions))
+			}
+			if test.mergeVersions {
+				assert.True(t, reflect.DeepEqual(expectedVector.MergeVersions, hlv.MergeVersions))
+			}
+		})
+	}
+}
+
+func BenchmarkExtractHLVFromBlipMessage(b *testing.B) {
+	for _, bm := range extractHLVFromBlipMsgBMarkCases {
+		b.Run(bm.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _ = extractHLVFromBlipMessage(bm.hlvString)
+			}
+		})
+	}
+}
+
+// cblEncodeTestSources converts the simplified versions in test data to CBL-style encoding
+func cblEncodeTestSources(hlvString string) (base64HLVString string) {
+
+	vectorFields := strings.Split(hlvString, ";")
+	vectorLength := len(vectorFields)
+	if vectorLength == 0 {
+		return hlvString
+	}
+
+	// first vector field is single vector, cv
+	base64HLVString += EncodeTestVersion(vectorFields[0])
+	for _, field := range vectorFields[1:] {
+		base64HLVString += ";"
+		versions := strings.Split(field, ",")
+		if len(versions) == 0 {
+			continue
+		}
+		base64HLVString += EncodeTestVersion(versions[0])
+		for _, version := range versions[1:] {
+			base64HLVString += ","
+			base64HLVString += EncodeTestVersion(version)
+		}
+	}
+	return base64HLVString
 }
