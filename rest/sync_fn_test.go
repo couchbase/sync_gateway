@@ -1172,7 +1172,7 @@ func TestResyncPersistence(t *testing.T) {
 	assert.Equal(t, resp.BodyBytes(), resp2.BodyBytes())
 }
 
-func TestExpiryUpdateSyncFunctionNew(t *testing.T) {
+func TestExpiryUpdateSyncFunction(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server - needs expiry")
 	}
