@@ -1106,12 +1106,24 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			if addNewerVersionsErr != nil {
 				return nil, nil, false, nil, addNewerVersionsErr
 			}
+			if docHLV.MergeVersions != nil {
+				if doc.HLV.MergeVersions == nil {
+					doc.HLV.MergeVersions = make(map[string]uint64)
+				}
+				doc.HLV.MergeVersions = docHLV.MergeVersions
+			}
 		} else {
 			if !docHLV.IsInConflict(*doc.HLV) {
 				// update hlv for all newer incoming source version pairs
 				addNewerVersionsErr := doc.HLV.AddNewerVersions(docHLV)
 				if addNewerVersionsErr != nil {
 					return nil, nil, false, nil, addNewerVersionsErr
+				}
+				if docHLV.MergeVersions != nil {
+					if doc.HLV.MergeVersions == nil {
+						doc.HLV.MergeVersions = make(map[string]uint64)
+					}
+					doc.HLV.MergeVersions = docHLV.MergeVersions
 				}
 			} else {
 				base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s", base.UD(doc.ID))
@@ -2759,6 +2771,41 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 		// Parent revision mismatch, so this is a conflict:
 		return ProposedRev_Conflict, doc.CurrentRev
 	}
+}
+
+// CheckProposedVersion Given DocID and a version vector in string form (as seen over Blip), check whether
+// it can be added without conflict.
+func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, docid, versionVector string) (status ProposedRevStatus, currentVersion SourceAndVersion) {
+	if strings.HasPrefix(docid, "_design/") && db.user != nil {
+		return ProposedRev_OK, SourceAndVersion{} // Users can't upload design docs, so ignore them
+	}
+
+	incomingHLV, err := extractHLVFromBlipMessage(versionVector)
+	if err != nil {
+		return ProposedRev_Error, SourceAndVersion{}
+	}
+	incomingDocCV := SourceAndVersion{SourceID: incomingHLV.SourceID, Version: incomingHLV.Version}
+
+	localDocCV := SourceAndVersion{}
+	level := DocUnmarshalVV
+	doc, err := db.GetDocSyncDataNoImport(ctx, docid, level)
+	if doc.HLV != nil {
+		localDocCV.SourceID, localDocCV.Version = doc.HLV.GetCurrentVersion()
+	}
+	if err != nil {
+		if !base.IsDocNotFoundError(err) && err != base.ErrXattrNotFound {
+			base.WarnfCtx(ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
+			return ProposedRev_Error, SourceAndVersion{}
+		}
+		return ProposedRev_OK_IsNew, SourceAndVersion{}
+	} else if localDocCV == incomingDocCV {
+		return ProposedRev_Exists, SourceAndVersion{}
+	} else if doc.HLV.IsInConflict(incomingHLV) {
+		return ProposedRev_Conflict, localDocCV
+	} else {
+		return ProposedRev_OK, SourceAndVersion{}
+	}
+
 }
 
 const (

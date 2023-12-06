@@ -17,6 +17,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -1671,6 +1672,63 @@ func TestPutRevConflictsMode(t *testing.T) {
 	assert.NotEqual(t, nil, err)                          // conflict error
 	assert.Equal(t, "409", resp.Properties["Error-Code"]) // conflict
 
+}
+
+// TestPutRevV4:
+//   - Create blip tester to run with V4 protocol
+//   - Use send rev with CV defined in rev field and history field with PV/MV defined
+//   - Retrieve the doc from bucket and assert that the HLV is set to what has been sent over the blip tester
+func TestPutRevV4(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+
+	// Create blip tester with v4 protocol
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		noConflictsMode:    true,
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+		blipProtocols:      []string{db.CBMobileReplicationV4.SubprotocolString()},
+	})
+	require.NoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+	collection := bt.restTester.GetSingleTestDatabaseCollection()
+
+	// sent rev with version vector in rev and history fields
+	sent, _, resp, err := bt.SendRev("foo", "3@efg", []byte(`{"key": "val"}`), blip.Properties{"history": "1@def, 2@abc"})
+	assert.True(t, sent)
+	require.NoError(t, err)
+	assert.Equal(t, "", resp.Properties["Error-Code"])
+
+	// assert on bucket doc
+	doc, _, err := collection.GetDocWithXattr(base.TestCtx(t), "foo", db.DocUnmarshalVV)
+	require.NoError(t, err)
+
+	// assert the persisted HLV based on what was sent through the blip tester
+	pv := make(map[string]uint64)
+	pv["def"] = 1
+	pv["abc"] = 2
+	assert.Equal(t, "efg", doc.HLV.SourceID)
+	assert.Equal(t, uint64(3), doc.HLV.Version)
+	assert.Equal(t, doc.Cas, doc.HLV.CurrentVersionCAS)
+	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
+
+	// test sending rev with merge versions included in history
+	sent, _, resp, err = bt.SendRev("boo", "4@efg", []byte(`{"key": "val"}`), blip.Properties{"history": "3@def, 3@abc; 1@def, 2@abc"})
+	assert.True(t, sent)
+	require.NoError(t, err)
+	assert.Equal(t, "", resp.Properties["Error-Code"])
+
+	// assert on bucket doc
+	doc, _, err = collection.GetDocWithXattr(base.TestCtx(t), "boo", db.DocUnmarshalVV)
+	require.NoError(t, err)
+
+	mv := make(map[string]uint64)
+	mv["def"] = 3
+	mv["abc"] = 3
+	assert.Equal(t, "efg", doc.HLV.SourceID)
+	assert.Equal(t, uint64(4), doc.HLV.Version)
+	assert.Equal(t, doc.Cas, doc.HLV.CurrentVersionCAS)
+	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
+	assert.True(t, reflect.DeepEqual(mv, doc.HLV.MergeVersions))
 }
 
 // Repro attempt for SG #3281

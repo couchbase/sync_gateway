@@ -785,12 +785,18 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 	for i, change := range changeList {
 		docID := change[0].(string)
-		revID := change[1].(string)
+		version := change[1].(string)
 		parentRevID := ""
 		if len(change) > 2 {
 			parentRevID = change[2].(string)
 		}
-		status, currentRev := bh.collection.CheckProposedRev(bh.loggingCtx, docID, revID, parentRevID)
+		var status ProposedRevStatus
+		var currentRev string
+		if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
+			status, _ = bh.collection.CheckProposedVersion(bh.loggingCtx, docID, version)
+		} else {
+			status, currentRev = bh.collection.CheckProposedRev(bh.loggingCtx, docID, version, parentRevID)
+		}
 		if status == ProposedRev_OK_IsNew {
 			// Remember that the doc doesn't exist locally, in order to optimize the upcoming Put:
 			bh.collectionCtx.notePendingInsertion(docID)
@@ -930,18 +936,22 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 	}()
 
+	if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 && bh.conflictResolver != nil {
+		return base.HTTPErrorf(http.StatusNotImplemented, "conflicts resolver handling not yet implemented for v4 protocol")
+	}
+
 	// addRevisionParams := newAddRevisionParams(rq)
 	revMessage := RevMessage{Message: rq}
 
 	// Doc metadata comes from the BLIP message metadata, not magic document properties:
 	docID, found := revMessage.ID()
-	revID, rfound := revMessage.Rev()
+	version, rfound := revMessage.Rev()
 	if !found || !rfound {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
 	}
 
 	if bh.readOnly {
-		return base.HTTPErrorf(http.StatusForbidden, "Replication context is read-only, docID: %s, revID:%s", docID, revID)
+		return base.HTTPErrorf(http.StatusForbidden, "Replication context is read-only, docID: %s, revID:%s", docID, version)
 	}
 
 	base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
@@ -961,7 +971,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			return err
 		}
 		if removed, ok := body[BodyRemoved].(bool); ok && removed {
-			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), revID)
+			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), version)
 			if err := bh.collection.Purge(bh.loggingCtx, docID); err != nil {
 				return err
 			}
@@ -973,16 +983,40 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				if err != nil {
 					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqStr, err)
 				} else {
-					bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+					bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: version})
 				}
 			}
 			return nil
 		}
 	}
 
+	var history []string
+	if bh.activeCBMobileSubprotocol < CBMobileReplicationV4 {
+		// include current rev propery in history
+		history = append(history, version)
+	}
+	var versionVectorStr string
+	if historyStr := rq.Properties[RevMessageHistory]; historyStr != "" && bh.activeCBMobileSubprotocol < CBMobileReplicationV4 {
+		history = append(history, strings.Split(historyStr, ",")...)
+	} else if historyStr != "" {
+		versionVectorStr = version + ";" + historyStr
+	}
+
+	var incomingHLV HybridLogicalVector
+	if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
+		incomingHLV, err = extractHLVFromBlipMessage(versionVectorStr)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "error extracting hlv from blip message")
+		}
+	}
+
 	newDoc := &Document{
-		ID:    docID,
-		RevID: revID,
+		ID: docID,
+	}
+	if bh.activeCBMobileSubprotocol < CBMobileReplicationV4 {
+		newDoc.RevID = version
+	} else {
+		newDoc.HLV = &incomingHLV
 	}
 	newDoc.UpdateBodyBytes(bodyBytes)
 
@@ -1002,7 +1036,15 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		//       while retrieving deltaSrcRevID.  Couchbase Lite replication guarantees client has access to deltaSrcRevID,
 		//       due to no-conflict write restriction, but we still need to enforce security here to prevent leaking data about previous
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
-		deltaSrcRev, err := bh.collection.GetRev(bh.loggingCtx, docID, deltaSrcRevID, false, nil)
+		var deltaSrcRev DocumentRevision
+		if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
+			cv := SourceAndVersion{}
+			cv.SourceID, cv.Version = incomingHLV.GetCurrentVersion()
+			// swap for GetCV once merged (CBG-3212)
+			deltaSrcRev, err = bh.collection.revisionCache.GetWithCV(bh.loggingCtx, docID, &cv, RevCacheOmitBody, RevCacheOmitDelta)
+		} else {
+			deltaSrcRev, err = bh.collection.GetRev(bh.loggingCtx, docID, deltaSrcRevID, false, nil)
+		}
 		if err != nil {
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't fetch doc %s for deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
 		}
@@ -1028,7 +1070,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		// err should only ever be a FleeceDeltaError here - but to be defensive, handle other errors too (e.g. somehow reaching this code in a CE build)
 		if err != nil {
 			// Something went wrong in the diffing library. We want to know about this!
-			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for doc %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
+			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for doc %s with delta - err: %v", deltaSrcRevID, version, base.UD(docID), err)
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error patching deltaSrc with delta: %s", err)
 		}
 
@@ -1066,15 +1108,14 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 	}
 
-	history := []string{revID}
-	if historyStr := rq.Properties[RevMessageHistory]; historyStr != "" {
-		history = append(history, strings.Split(historyStr, ",")...)
-	}
-
 	var rawBucketDoc *sgbucket.BucketDocument
 
 	// Pull out attachments
 	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
+		// temporarily error here
+		if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
+			return base.HTTPErrorf(http.StatusNotImplemented, "attachment handling not yet supported for v4 protocol")
+		}
 		body := newDoc.Body(bh.loggingCtx)
 
 		var currentBucketDoc *Document
@@ -1111,7 +1152,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				if !ok {
 					// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
 					// update to ensure it's fetched and uploaded
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, revID)
+					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, version)
 					continue
 				}
 
@@ -1151,7 +1192,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				// digest is different we need to override the revpos and set it to the current revision to ensure
 				// the attachment is requested and stored
 				if int(incomingAttachmentRevpos) <= minRevpos && currentAttachmentDigest != incomingAttachmentDigest {
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, revID)
+					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, version)
 				}
 			}
 
@@ -1159,7 +1200,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 
 		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID, currentDigests); err != nil {
-			base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
+			base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), version, err)
 			return err
 		}
 
@@ -1182,7 +1223,9 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// If the doc is a tombstone we want to allow conflicts when running SGR2
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
 	forceAllowConflictingTombstone := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
-	if bh.conflictResolver != nil {
+	if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
+		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, newDoc, incomingHLV, rawBucketDoc)
+	} else if bh.conflictResolver != nil {
 		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
 	} else {
 		_, _, err = bh.collection.PutExistingRev(bh.loggingCtx, newDoc, history, revNoConflicts, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
@@ -1197,7 +1240,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		if err != nil {
 			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqProperty, err)
 		} else {
-			bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+			bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: version})
 		}
 	}
 

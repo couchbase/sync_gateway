@@ -358,3 +358,81 @@ func (h *HLVAgent) insertWithHLV(ctx context.Context, key string) (casOut uint64
 	require.NoError(h.t, err)
 	return cas
 }
+
+// TestExtractHLVFromChangesMessage:
+//   - Test case 1: CV entry and 1 PV entry
+//   - Test case 2: CV entry and 2 PV entries
+//   - Test case 3: CV entry, 2 MV entries and 2 PV entries
+//   - Test case 4: just CV entry
+//   - Each test case gets run through extractHLVFromBlipMessage and assert that the resulting HLV
+//     is correct to what is expected
+func TestExtractHLVFromChangesMessage(t *testing.T) {
+	testCases := []struct {
+		name             string
+		hlvString        string
+		expectedHLV      []string
+		mergeVersions    bool
+		previousVersions bool
+	}{
+		{
+			name:             "test case 1",
+			hlvString:        "1@Hell0CA; 1@1Hr0k43xS662TToxODDAxQ",
+			expectedHLV:      []string{"Hell0CA@1", "1Hr0k43xS662TToxODDAxQ@1"},
+			previousVersions: true,
+		},
+		{
+			name:             "test case 2",
+			hlvString:        "25@def; 20@abc,18@hij",
+			expectedHLV:      []string{"def@25", "abc@20", "hij@18"},
+			previousVersions: true,
+		},
+		{
+			name:             "test case 3",
+			hlvString:        "25@def; 22@def,21@eff; 20@abc,18@hij",
+			expectedHLV:      []string{"def@25", "abc@20", "hij@18", "m_def@22", "m_eff@21"},
+			mergeVersions:    true,
+			previousVersions: true,
+		},
+		{
+			name:        "test case 4",
+			hlvString:   "24@def",
+			expectedHLV: []string{"def@24"},
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			expectedVector := createHLVForTest(t, test.expectedHLV)
+
+			hlv, err := extractHLVFromBlipMessage(test.hlvString)
+			require.NoError(t, err)
+
+			assert.Equal(t, expectedVector.SourceID, hlv.SourceID)
+			assert.Equal(t, expectedVector.Version, hlv.Version)
+			if test.previousVersions {
+				assert.True(t, reflect.DeepEqual(expectedVector.PreviousVersions, hlv.PreviousVersions))
+			}
+			if test.mergeVersions {
+				assert.True(t, reflect.DeepEqual(expectedVector.MergeVersions, hlv.MergeVersions))
+			}
+		})
+	}
+}
+
+// TestInvalidHLVOverChangesMessage:
+//   - Test hlv string that has too many sections to it (parts delimited by ;)
+//   - Test hlv string that is empty
+//   - Assert that extractHLVFromBlipMessage will return error in both cases
+func TestInvalidHLVInBlipMessageForm(t *testing.T) {
+	hlvStr := "25@def; 22@def,21@eff; 20@abc,18@hij; 222@hiowdwdew, 5555@dhsajidfgd"
+
+	hlv, err := extractHLVFromBlipMessage(hlvStr)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "invalid hlv in changes message received")
+	assert.Equal(t, HybridLogicalVector{}, hlv)
+
+	hlvStr = ""
+	hlv, err = extractHLVFromBlipMessage(hlvStr)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "invalid hlv in changes message received")
+	assert.Equal(t, HybridLogicalVector{}, hlv)
+}

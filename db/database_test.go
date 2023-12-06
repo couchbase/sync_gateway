@@ -307,6 +307,50 @@ func TestDatabase(t *testing.T) {
 
 }
 
+// TestCheckProposedVersion:
+//   - Create a doc on database
+//   - Run doc ID through CheckProposedVersion with the same CV as the local doc
+//   - Run doc ID through CheckProposedVersion with the non conflict hlv present
+//   - Run new doc ID through CheckProposedVersion
+//   - Run doc ID through CheckProposedVersion with conflicting hlv
+//   - Assert all above scenarios return appropriate status
+func TestCheckProposedVersion(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	bucketUUID := db.BucketUUID
+
+	// create a doc
+	body := Body{"key1": "value1", "key2": 1234}
+	_, doc, err := collection.Put(ctx, "doc1", body)
+	require.NoError(t, err)
+
+	src, vrs := doc.HLV.GetCurrentVersion()
+	hlvString := fmt.Sprint(vrs, "@", src)
+
+	// version exists scenario
+	status, _ := collection.CheckProposedVersion(ctx, "doc1", hlvString)
+	assert.Equal(t, ProposedRev_Exists, status)
+
+	// non conflict new version scenario
+	hlvString = fmt.Sprint(100, "@", bucketUUID, ";", hlvString)
+	status, _ = collection.CheckProposedVersion(ctx, "doc1", hlvString)
+	assert.Equal(t, ProposedRev_OK, status)
+
+	// new doc scenario
+	hlvString = fmt.Sprint(100, "@", bucketUUID)
+	status, _ = collection.CheckProposedVersion(ctx, "doc2", hlvString)
+	assert.Equal(t, ProposedRev_OK_IsNew, status)
+
+	// conflict scenario
+	hlvString = fmt.Sprint(4, "@", "cluster2", ";", 1, "cluster2")
+	status, _ = collection.CheckProposedVersion(ctx, "doc1", hlvString)
+	assert.Equal(t, ProposedRev_Conflict, status)
+
+}
+
 func TestGetDeleted(t *testing.T) {
 
 	db, ctx := setupTestDB(t)

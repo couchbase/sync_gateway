@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -398,4 +399,85 @@ func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64
 		hlv.PreviousVersions = make(map[string]uint64)
 	}
 	hlv.PreviousVersions[source] = version
+}
+
+// extractHLVFromBlipMessage extracts the full HLV a string in the format seen over Blip
+func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, error) {
+	hlv := HybridLogicalVector{}
+
+	vectorFields := strings.Split(versionVectorStr, ";")
+	vectorLength := len(vectorFields)
+	if vectorLength == 1 && vectorFields[0] == "" {
+		return HybridLogicalVector{}, fmt.Errorf("invalid hlv in changes message received")
+	}
+
+	// add current version (should always be present)
+	cvStr := vectorFields[0]
+	sourceAndVersion := strings.Split(cvStr, "@")
+
+	vrs, err := strconv.ParseUint(sourceAndVersion[0], 10, 64)
+	if err != nil {
+		return HybridLogicalVector{}, err
+	}
+	err = hlv.AddVersion(SourceAndVersion{SourceID: sourceAndVersion[1], Version: vrs})
+
+	switch vectorLength {
+	case 1:
+		return hlv, nil
+	case 2:
+		// only cv and pv present
+		sourceVersionListPV, err := parseVectorValues(vectorFields[1])
+		if err != nil {
+			return HybridLogicalVector{}, err
+		}
+		hlv.PreviousVersions = make(map[string]uint64)
+		for _, v := range sourceVersionListPV {
+			hlv.PreviousVersions[v.SourceID] = v.Version
+		}
+		return hlv, nil
+	case 3:
+		// cv, mv and pv present
+		hlv.PreviousVersions = make(map[string]uint64)
+		hlv.MergeVersions = make(map[string]uint64)
+		sourceVersionListPV, err := parseVectorValues(vectorFields[2])
+		if err != nil {
+			return HybridLogicalVector{}, err
+		}
+		for _, pv := range sourceVersionListPV {
+			hlv.PreviousVersions[pv.SourceID] = pv.Version
+		}
+		sourceVersionListMV, err := parseVectorValues(vectorFields[1])
+		if err != nil {
+			return HybridLogicalVector{}, err
+		}
+		for _, mv := range sourceVersionListMV {
+			hlv.MergeVersions[mv.SourceID] = mv.Version
+		}
+		return hlv, nil
+	default:
+		return HybridLogicalVector{}, fmt.Errorf("invalid hlv in changes message received")
+	}
+}
+
+// parseVectorValues takes a HLV section (for example previous versions) in Blip string form and split that into
+// source and version pairs
+func parseVectorValues(vectorStr string) (sourceVersionList []SourceAndVersion, err error) {
+	vectorPairs := strings.Split(vectorStr, ",")
+
+	// remove any leading whitespace form the string value
+	for i, v := range vectorPairs {
+		if v[0] == ' ' {
+			v = v[1:]
+			vectorPairs[i] = v
+		}
+	}
+	for _, v := range vectorPairs {
+		sourceAndVersion := strings.Split(v, "@")
+		vrs, err := strconv.ParseUint(sourceAndVersion[0], 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		sourceVersionList = append(sourceVersionList, SourceAndVersion{SourceID: sourceAndVersion[1], Version: vrs})
+	}
+	return sourceVersionList, nil
 }

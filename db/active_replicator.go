@@ -208,7 +208,13 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	arc.replicationStats.NumConnectAttempts.Add(1)
 
 	var originPatterns []string // no origin headers for ISGR
-	blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix, originPatterns)
+
+	// Commented out following line pending work to get ISGR workiong woth Version Vectors.
+	//blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix, originPatterns)
+
+	// force use of V3 and below subprotocol versions
+	protocols := []string{"CBMobile_3", "CBMobile_2"}
+	blipContext, err := NewSGBlipContextWithProtocols(arc.ctx, arc.config.ID+idSuffix, originPatterns, protocols)
 	if err != nil {
 		return nil, nil, err
 	}
