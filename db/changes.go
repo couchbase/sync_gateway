@@ -44,19 +44,20 @@ type ChangesOptions struct {
 // A changes entry; Database.GetChanges returns an array of these.
 // Marshals into the standard CouchDB _changes format.
 type ChangeEntry struct {
-	Seq          SequenceID      `json:"seq"`
-	ID           string          `json:"id"`
-	Deleted      bool            `json:"deleted,omitempty"`
-	Removed      base.Set        `json:"removed,omitempty"`
-	Doc          json.RawMessage `json:"doc,omitempty"`
-	Changes      []ChangeRev     `json:"changes"`
-	Err          error           `json:"err,omitempty"` // Used to notify feed consumer of errors
-	allRemoved   bool            // Flag to track whether an entry is a removal in all channels visible to the user.
-	branched     bool
-	backfill     backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
-	principalDoc bool         // Used to indicate _user/_role docs
-	Revoked      bool         `json:"revoked,omitempty"`
-	collectionID uint32
+	Seq            SequenceID      `json:"seq"`
+	ID             string          `json:"id"`
+	Deleted        bool            `json:"deleted,omitempty"`
+	Removed        base.Set        `json:"removed,omitempty"`
+	Doc            json.RawMessage `json:"doc,omitempty"`
+	Changes        []ChangeRev     `json:"changes"`
+	Err            error           `json:"err,omitempty"` // Used to notify feed consumer of errors
+	allRemoved     bool            // Flag to track whether an entry is a removal in all channels visible to the user.
+	branched       bool
+	backfill       backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
+	principalDoc   bool         // Used to indicate _user/_role docs
+	Revoked        bool         `json:"revoked,omitempty"`
+	collectionID   uint32
+	CurrentVersion *SourceAndVersion `json:"current_version,omitempty"` // the current version of the change entry
 }
 
 const (
@@ -480,6 +481,12 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channel channels.ID) 
 		branched:     (logEntry.Flags & channels.Branched) != 0,
 		principalDoc: logEntry.IsPrincipal,
 		collectionID: logEntry.CollectionID,
+	}
+	// populate CurrentVersion entry if log entry has sourceID and Version populated
+	// This allows current version to be nil in event of CV not being populated on log entry
+	// allowing omitempty to work as expected
+	if logEntry.SourceID != "" && logEntry.Version != 0 {
+		change.CurrentVersion = &SourceAndVersion{SourceID: logEntry.SourceID, Version: logEntry.Version}
 	}
 	if logEntry.Flags&channels.Removed != 0 {
 		change.Removed = base.SetOf(channel.Name)
@@ -1280,6 +1287,12 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	row.Deleted = populatedDoc.Deleted
 	row.Seq = SequenceID{Seq: populatedDoc.Sequence}
 	row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
+
+	if populatedDoc.HLV != nil {
+		cv := SourceAndVersion{}
+		cv.SourceID, cv.Version = populatedDoc.HLV.GetCurrentVersion()
+		row.CurrentVersion = &cv
+	}
 
 	var removedChannels []string
 
