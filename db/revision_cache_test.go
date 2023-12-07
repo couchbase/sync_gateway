@@ -782,12 +782,12 @@ func TestImmediateRevCacheMemoryBasedEviction(t *testing.T) {
 	ctx := base.TestCtx(t)
 	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &cacheNumItems, &memoryBytesCounted)
 
-	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc1", RevID: "1-abc", CV: &CurrentVersionVector{VersionCAS: uint64(123), SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc1", RevID: "1-abc", CV: &SourceAndVersion{Version: uint64(123), SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
 
 	assert.Equal(t, int64(0), memoryBytesCounted.Value())
 	assert.Equal(t, int64(0), cacheNumItems.Value())
 
-	cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc2", RevID: "1-abc", CV: &CurrentVersionVector{VersionCAS: uint64(123), SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc2", RevID: "1-abc", CV: &SourceAndVersion{Version: uint64(123), SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
 
 	assert.Equal(t, int64(0), memoryBytesCounted.Value())
 	assert.Equal(t, int64(0), cacheNumItems.Value())
@@ -921,15 +921,15 @@ func TestImmediateRevCacheItemBasedEviction(t *testing.T) {
 	ctx := base.TestCtx(t)
 	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &cacheNumItems, &memoryBytesCounted)
 	// load up item to hit max capacity
-	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc1", RevID: "1-abc", CV: &CurrentVersionVector{VersionCAS: uint64(123), SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc1", RevID: "1-abc", CV: &SourceAndVersion{Version: uint64(123), SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
 
 	// eviction starts from here in test
-	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "newDoc", RevID: "1-abc", CV: &CurrentVersionVector{VersionCAS: uint64(123), SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "newDoc", RevID: "1-abc", CV: &SourceAndVersion{Version: uint64(123), SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
 
 	assert.Equal(t, int64(15), memoryBytesCounted.Value())
 	assert.Equal(t, int64(1), cacheNumItems.Value())
 
-	cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc2", RevID: "1-abc", CV: &CurrentVersionVector{VersionCAS: uint64(123), SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc2", RevID: "1-abc", CV: &SourceAndVersion{Version: uint64(123), SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
 
 	assert.Equal(t, int64(15), memoryBytesCounted.Value())
 	assert.Equal(t, int64(1), cacheNumItems.Value())
