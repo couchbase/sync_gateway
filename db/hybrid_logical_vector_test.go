@@ -277,7 +277,7 @@ func TestHLVImport(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	localSource := collection.dbCtx.BucketUUID
 
 	// 1. Test standard import of an SDK write
