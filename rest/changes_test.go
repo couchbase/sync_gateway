@@ -273,3 +273,65 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 	assert.Equal(t, 5, int(atomic.LoadUint32(&WinningRevChangedCount)))
 	assert.Equal(t, 6, int(atomic.LoadUint32(&DocumentChangedCount)))
 }
+
+func TestCVPopulationOnChangesViaAPI(t *testing.T) {
+	rtConfig := RestTesterConfig{
+		SyncFn: `function(doc) {channel(doc.channels)}`,
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	ctx := base.TestCtx(t)
+	collection := rt.GetSingleTestDatabaseCollection()
+	bucketUUID := rt.GetDatabase().BucketUUID
+	const DocID = "doc1"
+
+	// activate channel cache
+	_, err := rt.WaitForChanges(0, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+DocID, `{"channels": ["ABC"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	require.NoError(t, collection.WaitForPendingChanges(base.TestCtx(t)))
+
+	changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+
+	fetchedDoc, _, err := collection.GetDocWithXattr(ctx, DocID, db.DocUnmarshalCAS)
+	require.NoError(t, err)
+
+	assert.Equal(t, "doc1", changes.Results[0].ID)
+	assert.Equal(t, bucketUUID, changes.Results[0].CurrentVersion.SourceID)
+	assert.Equal(t, fetchedDoc.Cas, changes.Results[0].CurrentVersion.Version)
+}
+
+func TestCVPopulationOnDocIDChanges(t *testing.T) {
+	rtConfig := RestTesterConfig{
+		SyncFn: `function(doc) {channel(doc.channels)}`,
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	ctx := base.TestCtx(t)
+	collection := rt.GetSingleTestDatabaseCollection()
+	bucketUUID := rt.GetDatabase().BucketUUID
+	const DocID = "doc1"
+
+	// activate channel cache
+	_, err := rt.WaitForChanges(0, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+DocID, `{"channels": ["ABC"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	require.NoError(t, collection.WaitForPendingChanges(base.TestCtx(t)))
+
+	changes, err := rt.WaitForChanges(1, fmt.Sprintf(`/{{.keyspace}}/_changes?filter=_doc_ids&doc_ids=%s`, DocID), "", true)
+	require.NoError(t, err)
+
+	fetchedDoc, _, err := collection.GetDocWithXattr(ctx, DocID, db.DocUnmarshalCAS)
+	require.NoError(t, err)
+
+	assert.Equal(t, "doc1", changes.Results[0].ID)
+	assert.Equal(t, bucketUUID, changes.Results[0].CurrentVersion.SourceID)
+	assert.Equal(t, fetchedDoc.Cas, changes.Results[0].CurrentVersion.Version)
+}

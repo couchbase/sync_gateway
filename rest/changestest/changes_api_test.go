@@ -861,6 +861,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	}
 }`})
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user with access to channel NBC:
 	ctx := rt.Context()
@@ -928,6 +929,10 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	// Write another doc
 	_ = rt.PutDoc("mix-1", `{"channel":["ABC", "PBS", "HBO"]}`)
 
+	fetchedDoc, _, err := collection.GetDocWithXattr(ctx, "mix-1", db.DocUnmarshalSync)
+	require.NoError(t, err)
+	mixSource, mixVersion := fetchedDoc.HLV.GetCurrentVersion()
+
 	cacheWaiter.AddAndWait(1)
 
 	// Issue a changes request with a compound since value from the last changes response
@@ -935,7 +940,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	expectedResults = []string{
 		`{"seq":"8:2","id":"hbo-1","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
 		`{"seq":8,"id":"grant-1","changes":[{"rev":"1-c5098bb14d12d647c901850ff6a6292a"}]}`,
-		`{"seq":9,"id":"mix-1","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
+		fmt.Sprintf(`{"seq":9,"id":"mix-1","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}], "current_version":{"source_id": "%s", "version": %d}}`, mixSource, mixVersion),
 	}
 
 	t.Run("grant via existing channel", func(t *testing.T) {
