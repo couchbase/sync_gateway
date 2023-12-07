@@ -1071,7 +1071,9 @@ func TestConflicts(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	bucketUUID := db.BucketUUID
 
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
@@ -1144,13 +1146,17 @@ func TestConflicts(t *testing.T) {
 		ChangesCtx: base.TestCtx(t),
 	}
 	changes := getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
+	fetchedDoc, _, err := collection.GetDocWithXattr(ctx, "doc", DocUnmarshalCAS)
+	require.NoError(t, err)
+
 	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
-		Seq:          SequenceID{Seq: 3},
-		ID:           "doc",
-		Changes:      []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}},
-		branched:     true,
-		collectionID: collectionID,
+		Seq:            SequenceID{Seq: 3},
+		ID:             "doc",
+		Changes:        []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}},
+		branched:       true,
+		collectionID:   collectionID,
+		CurrentVersion: &SourceAndVersion{SourceID: bucketUUID, Version: fetchedDoc.Cas},
 	}, changes[0],
 	)
 
@@ -1180,11 +1186,12 @@ func TestConflicts(t *testing.T) {
 	changes = getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
 	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
-		Seq:          SequenceID{Seq: 4},
-		ID:           "doc",
-		Changes:      []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
-		branched:     true,
-		collectionID: collectionID,
+		Seq:            SequenceID{Seq: 4},
+		ID:             "doc",
+		Changes:        []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
+		branched:       true,
+		collectionID:   collectionID,
+		CurrentVersion: &SourceAndVersion{SourceID: bucketUUID, Version: doc.Cas},
 	}, changes[0])
 
 }
