@@ -327,6 +327,7 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 }
 
 // revCacheLoaderForDocumentCV used either during cache miss (from revCacheLoaderForCv), or used directly when getting current active CV from cache
+// Added no lint static check here as function below has empty body to if statement due to needing channel removals for CV to be implemented (CBG-3213)
 // nolint:staticcheck
 func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, cv Version) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, revid string, err error) {
 	if bodyBytes, body, attachments, err = backingStore.getCurrentVersion(ctx, doc); err != nil {

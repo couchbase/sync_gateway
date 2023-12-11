@@ -793,7 +793,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 		var status ProposedRevStatus
 		var currentRev string
 		if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
-			status, _ = bh.collection.CheckProposedVersion(bh.loggingCtx, docID, version)
+			status, currentRev = bh.collection.CheckProposedVersion(bh.loggingCtx, docID, version)
 		} else {
 			status, currentRev = bh.collection.CheckProposedRev(bh.loggingCtx, docID, version, parentRevID)
 		}

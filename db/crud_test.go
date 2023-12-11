@@ -1867,3 +1867,12 @@ func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(syncData.HLV.PreviousVersions, pv))
 	assert.Equal(t, "1-3a208ea66e84121b528f05b5457d1134", syncData.CurrentRev)
 }
+
+func TestCVToString(t *testing.T) {
+	cv := SourceAndVersion{
+		Version:  33,
+		SourceID: "test",
+	}
+	expectedStr := "33@test"
+	assert.Equal(t, expectedStr, cvToString(cv))
+}

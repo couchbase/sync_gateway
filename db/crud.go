@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1101,16 +1102,11 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		// Conflict check here
 		// if doc has no HLV defined this is a new doc we haven't seen before, skip conflict check
 		if doc.HLV == nil {
-			doc.HLV = &HybridLogicalVector{}
+			newHLV := NewHybridLogicalVector()
+			doc.HLV = &newHLV
 			addNewerVersionsErr := doc.HLV.AddNewerVersions(docHLV)
 			if addNewerVersionsErr != nil {
 				return nil, nil, false, nil, addNewerVersionsErr
-			}
-			if docHLV.MergeVersions != nil {
-				if doc.HLV.MergeVersions == nil {
-					doc.HLV.MergeVersions = make(map[string]uint64)
-				}
-				doc.HLV.MergeVersions = docHLV.MergeVersions
 			}
 		} else {
 			if !docHLV.IsInConflict(*doc.HLV) {
@@ -1119,17 +1115,15 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				if addNewerVersionsErr != nil {
 					return nil, nil, false, nil, addNewerVersionsErr
 				}
-				if docHLV.MergeVersions != nil {
-					if doc.HLV.MergeVersions == nil {
-						doc.HLV.MergeVersions = make(map[string]uint64)
-					}
-					doc.HLV.MergeVersions = docHLV.MergeVersions
-				}
 			} else {
 				base.InfofCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s", base.UD(doc.ID))
 				// cancel rest of update, HLV needs to be sent back to client with merge versions populated
 				return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 			}
+		}
+		// populate merge versions
+		if docHLV.MergeVersions != nil {
+			doc.HLV.MergeVersions = docHLV.MergeVersions
 		}
 
 		// Process the attachments, replacing bodies with digests.
@@ -2775,14 +2769,14 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 
 // CheckProposedVersion Given DocID and a version vector in string form (as seen over Blip), check whether
 // it can be added without conflict.
-func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, docid, versionVector string) (status ProposedRevStatus, currentVersion SourceAndVersion) {
+func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, docid, versionVector string) (status ProposedRevStatus, currentVersion string) {
 	if strings.HasPrefix(docid, "_design/") && db.user != nil {
-		return ProposedRev_OK, SourceAndVersion{} // Users can't upload design docs, so ignore them
+		return ProposedRev_OK, "" // Users can't upload design docs, so ignore them
 	}
 
 	incomingHLV, err := extractHLVFromBlipMessage(versionVector)
 	if err != nil {
-		return ProposedRev_Error, SourceAndVersion{}
+		return ProposedRev_Error, ""
 	}
 	incomingDocCV := SourceAndVersion{SourceID: incomingHLV.SourceID, Version: incomingHLV.Version}
 
@@ -2794,17 +2788,23 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 	if err != nil {
 		if !base.IsDocNotFoundError(err) && err != base.ErrXattrNotFound {
 			base.WarnfCtx(ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
-			return ProposedRev_Error, SourceAndVersion{}
+			return ProposedRev_Error, ""
 		}
-		return ProposedRev_OK_IsNew, SourceAndVersion{}
+		return ProposedRev_OK_IsNew, ""
 	} else if localDocCV == incomingDocCV {
-		return ProposedRev_Exists, SourceAndVersion{}
+
+		return ProposedRev_Exists, ""
 	} else if doc.HLV.IsInConflict(incomingHLV) {
-		return ProposedRev_Conflict, localDocCV
+		return ProposedRev_Conflict, cvToString(localDocCV)
 	} else {
-		return ProposedRev_OK, SourceAndVersion{}
+		return ProposedRev_OK, ""
 	}
 
+}
+
+// cvToString converts SourceAndVersion struct to Blip CV string format
+func cvToString(cv SourceAndVersion) string {
+	return strconv.FormatUint(cv.Version, 10) + "@" + cv.SourceID
 }
 
 const (
