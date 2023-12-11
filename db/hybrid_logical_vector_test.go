@@ -436,3 +436,74 @@ func TestInvalidHLVInBlipMessageForm(t *testing.T) {
 	assert.ErrorContains(t, err, "invalid hlv in changes message received")
 	assert.Equal(t, HybridLogicalVector{}, hlv)
 }
+
+var extractHLVFromBlipMsgBMarkCases = []struct {
+	name             string
+	hlvString        string
+	expectedHLV      []string
+	mergeVersions    bool
+	previousVersions bool
+}{
+	{
+		name:             "test case 1",                                                                                                                                                                       // with spaces
+		hlvString:        "25@def; 22@def, 21@eff, 500@x, 501@xx, 4000@xxx, 700@y, 701@yy, 702@yyy; 20@abc, 18@hij, 3@x, 4@xx, 5@xxx, 6@xxxx, 7@xxxxx, 3@y, 4@yy, 5@yyy, 6@yyyy, 7@yyyyy, 2@xy, 3@xyy, 4@xxy", // 15 pv 8 mv
+		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "x@3", "xx@4", "xxx@5", "xxxx@6", "xxxxx@7", "y@3", "yy@4", "yyy@5", "yyyy@6", "yyyyy@7", "xy@2", "xyy@3", "xxy@4", "m_def@22", "m_eff@21", "m_x@500", "m_xx@501", "m_xxx@4000", "m_y@700", "m_yy@701", "m_yyy@702"},
+		previousVersions: true,
+		mergeVersions:    true,
+	},
+	{
+		name:             "test case 2",                                                                                                                                                // without spaces
+		hlvString:        "25@def;22@def,21@eff,500@x,501@xx,4000@xxx,700@y,701@yy,702@yyy;20@abc,18@hij,3@x,4@xx,5@xxx,6@xxxx,7@xxxxx,3@y,4@yy,5@yyy,6@yyyy,7@yyyyy,2@xy,3@xyy,4@xxy", // 15 pv 8 mv
+		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "x@3", "xx@4", "xxx@5", "xxxx@6", "xxxxx@7", "y@3", "yy@4", "yyy@5", "yyyy@6", "yyyyy@7", "xy@2", "xyy@3", "xxy@4", "m_def@22", "m_eff@21", "m_x@500", "m_xx@501", "m_xxx@4000", "m_y@700", "m_yy@701", "m_yyy@702"},
+		previousVersions: true,
+		mergeVersions:    true,
+	},
+	{
+		name:             "test case 3",
+		hlvString:        "25@def; 20@abc,18@hij",
+		expectedHLV:      []string{"def@25", "abc@20", "hij@18"},
+		previousVersions: true,
+	},
+	{
+		name:             "test case 4",
+		hlvString:        "25@def; 22@def,21@eff; 20@abc,18@hij,3@x,4@xx,5@xxx,6@xxxx,7@xxxxx,3@y,4@yy,5@yyy,6@yyyy,7@yyyyy,2@xy,3@xyy,4@xxy", // 15
+		expectedHLV:      []string{"def@25", "abc@20", "hij@18", "x@3", "xx@4", "xxx@5", "xxxx@6", "xxxxx@7", "y@3", "yy@4", "yyy@5", "yyyy@6", "yyyyy@7", "xy@2", "xyy@3", "xxy@4", "m_def@22", "m_eff@21"},
+		mergeVersions:    true,
+		previousVersions: true,
+	},
+	{
+		name:        "test case 5",
+		hlvString:   "24@def",
+		expectedHLV: []string{"def@24"},
+	},
+}
+
+func TestBenchmarkHLVMessageCases(t *testing.T) {
+	for _, test := range extractHLVFromBlipMsgBMarkCases {
+		t.Run(test.name, func(t *testing.T) {
+			expectedVector := createHLVForTest(t, test.expectedHLV)
+
+			hlv, err := extractHLVFromBlipMessage(test.hlvString)
+			require.NoError(t, err)
+
+			assert.Equal(t, expectedVector.SourceID, hlv.SourceID)
+			assert.Equal(t, expectedVector.Version, hlv.Version)
+			if test.previousVersions {
+				assert.True(t, reflect.DeepEqual(expectedVector.PreviousVersions, hlv.PreviousVersions))
+			}
+			if test.mergeVersions {
+				assert.True(t, reflect.DeepEqual(expectedVector.MergeVersions, hlv.MergeVersions))
+			}
+		})
+	}
+}
+
+func BenchmarkExtractHLVFromBlipMessage(b *testing.B) {
+	for _, bm := range extractHLVFromBlipMsgBMarkCases {
+		b.Run(bm.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				extractHLVFromBlipMessage(bm.hlvString)
+			}
+		})
+	}
+}
