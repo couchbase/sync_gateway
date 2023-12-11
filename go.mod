@@ -6,7 +6,7 @@ require (
 	dario.cat/mergo v1.0.0
 	github.com/bhoriuchi/graphql-go-tools v1.0.3
 	github.com/coreos/go-oidc v2.2.1+incompatible
-	github.com/couchbase/cbgt v1.3.8
+	github.com/couchbase/cbgt v1.3.9
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20231124154334-75a1511ff3c9
 	github.com/couchbase/gocb/v2 v2.6.5
@@ -31,7 +31,7 @@ require (
 	github.com/samuel/go-metrics v0.0.0-20150819231912-7ccf3e0e1fb1
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/stretchr/testify v1.8.4
-	golang.org/x/crypto v0.14.0
+	golang.org/x/crypto v0.15.0
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/net v0.17.0
 	golang.org/x/oauth2 v0.13.0
@@ -44,7 +44,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/couchbase/blance v0.1.5 // indirect
-	github.com/couchbase/cbauth v0.1.10 // indirect
+	github.com/couchbase/cbauth v0.1.11 // indirect
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
 	github.com/couchbase/tools-common/cloud v1.0.0 // indirect
 	github.com/couchbase/tools-common/fs v1.0.0 // indirect
@@ -78,8 +78,8 @@ require (
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
-	golang.org/x/sys v0.13.0 // indirect
-	golang.org/x/text v0.13.0 // indirect
+	golang.org/x/sys v0.14.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
