@@ -9,8 +9,8 @@ require (
 	github.com/couchbase/cbgt v1.3.8
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20231124154334-75a1511ff3c9
-	github.com/couchbase/gocb/v2 v2.6.4
-	github.com/couchbase/gocbcore/v10 v10.2.8
+	github.com/couchbase/gocb/v2 v2.6.5
+	github.com/couchbase/gocbcore/v10 v10.2.10
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20231116231254-16c1ad8b2483
