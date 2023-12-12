@@ -425,13 +425,12 @@ func TestCORSBlipSync(t *testing.T) {
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
-	rt.CreateDatabase("corsdb",
-		DbConfig{
-			CORS: &auth.CORSConfig{
-				Origin: []string{"http://example.com"},
-			},
-		},
-	)
+	dbConfig := rt.NewDbConfig()
+	dbConfig.CORS = &auth.CORSConfig{
+		Origin: []string{"http://example.com"},
+	}
+
+	rt.CreateDatabase("corsdb", dbConfig)
 	require.NoError(t, rt.SetAdminParty(true))
 	testCases := []struct {
 		name         string
@@ -477,13 +476,11 @@ func TestCORSBlipSyncStar(t *testing.T) {
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
-	rt.CreateDatabase("corsdb",
-		DbConfig{
-			CORS: &auth.CORSConfig{
-				Origin: []string{"*"},
-			},
-		},
-	)
+	dbConfig := rt.NewDbConfig()
+	dbConfig.CORS = &auth.CORSConfig{
+		Origin: []string{"*"},
+	}
+	rt.CreateDatabase("corsdb", dbConfig)
 	require.NoError(t, rt.SetAdminParty(true))
 	urls := []string{"http://example.com", "http://example2.com", "https://example.com"}
 	for _, url := range urls {
@@ -507,13 +504,12 @@ func TestCORSBlipNoConfig(t *testing.T) {
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
-	rt.CreateDatabase("corsdb",
-		DbConfig{
-			CORS: &auth.CORSConfig{
-				Origin: []string{""},
-			},
-		},
-	)
+	dbConfig := rt.NewDbConfig()
+	dbConfig.CORS = &auth.CORSConfig{
+		Origin: []string{""},
+	}
+
+	rt.CreateDatabase("corsdb", dbConfig)
 	require.NoError(t, rt.SetAdminParty(true))
 
 	urls := []string{"http://example.com", "http://example2.com", "https://example.com"}
