@@ -582,10 +582,8 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	context.sequences.Stop(ctx)
 	context.mutationListener.Stop(ctx)
 	context.changeCache.Stop(ctx)
-	// Stop the channel cache and it's background tasks.
-	if context.channelCache != nil {
-		context.channelCache.Stop(ctx)
-	}
+	// Stop the channel cache and its background tasks.
+	context.channelCache.Stop(ctx)
 	context.ImportListener.Stop()
 	if context.Heartbeater != nil {
 		context.Heartbeater.Stop(ctx)
@@ -2251,10 +2249,6 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	base.InfofCtx(ctx, base.KeyChanges, "Starting mutation feed on bucket %v", base.MD(db.Bucket.GetName()))
 	cacheFeedStatsMap := db.DbStats.Database().CacheFeedMapStats
 	if err := db.mutationListener.Start(ctx, db.Bucket, cacheFeedStatsMap.Map, db.Scopes, db.MetadataStore); err != nil {
-		cleanupFunctions = append(cleanupFunctions, func() {
-			db.channelCache.Stop(ctx)
-			db.channelCache = nil
-		})
 		return err
 	}
 
