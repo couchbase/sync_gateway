@@ -40,6 +40,9 @@ type BlipTesterClientOpts struct {
 
 	// a deltaSrc rev ID for which to reject a delta
 	rejectDeltasForSrcRev string
+
+	// optional Origin header
+	origin *string
 }
 
 // BlipTesterClient is a fully fledged client to emulate CBL behaviour on both push and pull replications through methods on this type.
@@ -557,6 +560,7 @@ func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, s
 		connectingUserChannelGrants:   btc.Channels,
 		blipProtocols:                 btc.SupportedBLIPProtocols,
 		skipCollectionsInitialization: skipCollectionsInitialization,
+		origin:                        btc.origin,
 	}, btc.rt)
 	if err != nil {
 		return nil, err

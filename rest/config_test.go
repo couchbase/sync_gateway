@@ -2712,3 +2712,17 @@ func TestDatabaseConfigDropScopes(t *testing.T) {
 	require.Contains(t, resp.Body.String(), "cannot change scope")
 
 }
+
+func TestBadCORSValuesConfig(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	// expect database to be created with bad CORS values, but do log a warning
+	dbConfig := rt.NewDbConfig()
+	dbConfig.CORS = &auth.CORSConfig{
+		Origin: []string{"http://example.com", "1http://example.com"},
+	}
+	base.AssertLogContains(t, "cors.origin contains values", func() {
+		rt.CreateDatabase("db", dbConfig)
+	})
+}

@@ -65,7 +65,7 @@ func TestBlipSyncErrorUserinfo(t *testing.T) {
 			srvURL.Path = "/db1"
 			t.Logf("srvURL: %v", srvURL.String())
 
-			blipContext, err := NewSGBlipContext(base.TestCtx(t), t.Name())
+			blipContext, err := NewSGBlipContext(base.TestCtx(t), t.Name(), nil)
 			require.NoError(t, err)
 
 			_, err = blipSync(*srvURL, blipContext, false)
