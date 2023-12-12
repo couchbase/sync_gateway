@@ -69,6 +69,7 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 				if scopeName != manifestScope.Name {
 					continue
 				}
+				scopeFound = true
 				// should be less than or equal number of args.collections than cm.scope.collections, so iterate this way so that the inner loop completes quicker on average
 				for _, manifestCollection := range manifestScope.Collections {
 					found := false
@@ -84,6 +85,7 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 						return RedactErrorf("collection %s not found in scope %s", MD(manifestCollection.Name), MD(manifestScope.Name))
 					}
 				}
+				break
 			}
 			if !scopeFound {
 				return RedactErrorf("scope %s not found", MD(scopeName))
