@@ -8,7 +8,7 @@ require (
 	github.com/coreos/go-oidc v2.2.1+incompatible
 	github.com/couchbase/cbgt v1.3.9
 	github.com/couchbase/clog v0.1.0
-	github.com/couchbase/go-blip v0.0.0-20231212035722-c90712d6b984
+	github.com/couchbase/go-blip v0.0.0-20231212195435-3490e96d30e3
 	github.com/couchbase/gocb/v2 v2.6.5
 	github.com/couchbase/gocbcore/v10 v10.2.10
 	github.com/couchbase/gomemcached v0.2.1
@@ -30,6 +30,7 @@ require (
 	github.com/robertkrimen/otto v0.0.0-20211024170158-b87d35c0b86f
 	github.com/samuel/go-metrics v0.0.0-20150819231912-7ccf3e0e1fb1
 	github.com/shirou/gopsutil v3.21.11+incompatible
+	github.com/shirou/gopsutil/v3 v3.23.10
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/crypto v0.15.0
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
@@ -71,7 +72,6 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/sergi/go-diff v1.2.0 // indirect
-	github.com/shirou/gopsutil/v3 v3.23.10 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/stretchr/objx v0.5.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
