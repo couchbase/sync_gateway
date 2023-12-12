@@ -3297,3 +3297,31 @@ func (i *testBackgroundProcess) GetProcessStatus(status BackgroundManagerStatus)
 
 func (i *testBackgroundProcess) ResetStatus() {
 }
+
+// Make sure that closing a database context after a mutation feed fails to start results does not panic
+func TestBadDCPStart(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		t.Skip("This test requires collections support on server (7.0 or greater)")
+	}
+	defer bucket.Close(ctx)
+	dbcOptions := DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, bucket, 1),
+	}
+	dbCtx, err := NewDatabaseContext(ctx, "db", bucket, true, dbcOptions)
+	require.NoError(t, err)
+
+	// fake a bad DCP start by setting invalid scope. This test is fragile to the fact that DatabaseContext.mutationListener.Start is the first function to use the Scopes parameter
+	dbCtx.Scopes = map[string]Scope{
+		"1InvalidScope": Scope{
+			Collections: map[string]*DatabaseCollection{
+				"InvalidCollection": nil,
+			},
+		},
+	}
+	err = dbCtx.StartOnlineProcesses(ctx)
+	require.Error(t, err)
+
+	dbCtx.Close(ctx)
+}
