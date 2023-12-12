@@ -970,6 +970,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 	}
 
+	if dbConfig.CORS != nil {
+		_, err := hostOnlyCORS(dbConfig.CORS.Origin)
+		base.WarnfCtx(ctx, "The cors.origin contains values that will be ignored: %s", err)
+	}
 	return multiError.ErrorOrNil()
 }
 

@@ -48,11 +48,9 @@ func (h *handler) handleBLIPSync() error {
 		blip.CompressionLevel = *c
 	}
 
-	originPatterns, err := hostOnlyCORS(h.db.CORS.Origin)
-	if err != nil {
-		base.WarnfCtx(h.ctx(), "Unable to parse db CORS values: %s", err)
-		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to parse db CORS values")
-	}
+	// error is checked at the time of database load, and ignored at this time
+	originPatterns, _ := hostOnlyCORS(h.db.CORS.Origin)
+
 	// Create a BLIP context:
 	blipContext, err := db.NewSGBlipContext(h.ctx(), "", originPatterns)
 	if err != nil {
@@ -131,7 +129,8 @@ func (sc *ServerContext) decrementConcurrentReplications(ctx context.Context) {
 
 // hostOnlyCORS returns the host portion of the origin URL, suitable for passing to websocket library.
 func hostOnlyCORS(originPatterns []string) ([]string, error) {
-	origins := make([]string, 0, len(originPatterns))
+	var origins []string
+	var multiError *base.MultiError
 	for _, origin := range originPatterns {
 		// this is a special pattern for allowing all origins
 		if origin == "*" {
@@ -140,9 +139,10 @@ func hostOnlyCORS(originPatterns []string) ([]string, error) {
 		}
 		u, err := url.Parse(origin)
 		if err != nil {
-			return nil, err
+			multiError = multiError.Append(fmt.Errorf("%s is not a valid pattern for CORS config", err))
+			continue
 		}
 		origins = append(origins, u.Host)
 	}
-	return origins, nil
+	return origins, multiError.ErrorOrNil()
 }

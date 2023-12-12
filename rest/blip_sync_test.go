@@ -16,9 +16,11 @@ import (
 )
 
 func TestHostOnlyCORS(t *testing.T) {
+	const unparseableURL = "1http:///example.com"
 	testsCases := []struct {
-		input  []string
-		output []string
+		input    []string
+		output   []string
+		hasError bool
 	}{
 		{
 			input:  []string{"http://example.com"},
@@ -36,11 +38,34 @@ func TestHostOnlyCORS(t *testing.T) {
 			input:  []string{"wss://example.com"},
 			output: []string{"example.com"},
 		},
+		{
+			input:  []string{"http://example.com:12345"},
+			output: []string{"example.com:12345"},
+		},
+		{
+			input:    []string{unparseableURL},
+			output:   nil,
+			hasError: true,
+		},
+		{
+			input:    []string{"*", unparseableURL},
+			output:   []string{"*"},
+			hasError: true,
+		},
+		{
+			input:    []string{"*", unparseableURL, "http://example.com"},
+			output:   []string{"*", "example.com"},
+			hasError: true,
+		},
 	}
 	for _, test := range testsCases {
 		t.Run(fmt.Sprintf("%v->%v", test.input, test.output), func(t *testing.T) {
 			output, err := hostOnlyCORS(test.input)
-			assert.NoError(t, err)
+			if test.hasError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
 			assert.Equal(t, test.output, output)
 		})
 	}
