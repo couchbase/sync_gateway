@@ -961,6 +961,11 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 	}
 
+	if dbConfig.CORS != nil {
+		// these values will likely to be ignored by the CORS handler unless browser sends abornmal Origin headers
+		_, err := hostOnlyCORS(dbConfig.CORS.Origin)
+		base.WarnfCtx(ctx, "The cors.origin contains values that may be ignored: %s", err)
+	}
 	return multiError.ErrorOrNil()
 }
 

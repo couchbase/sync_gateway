@@ -207,7 +207,8 @@ func (ar *ActiveReplicator) GetStatus(ctx context.Context) *ReplicationStatus {
 func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sender, bsc *BlipSyncContext, err error) {
 	arc.replicationStats.NumConnectAttempts.Add(1)
 
-	blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix)
+	var originPatterns []string // no origin headers for ISGR
+	blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix, originPatterns)
 	if err != nil {
 		return nil, nil, err
 	}

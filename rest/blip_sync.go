@@ -13,6 +13,7 @@ package rest
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/couchbase/sync_gateway/db"
 
@@ -36,8 +37,11 @@ func (h *handler) handleBLIPSync() error {
 		blip.CompressionLevel = *c
 	}
 
+	// error is checked at the time of database load, and ignored at this time
+	originPatterns, _ := hostOnlyCORS(h.db.CORS.Origin)
+
 	// Create a BLIP context:
-	blipContext, err := db.NewSGBlipContext(h.ctx(), "")
+	blipContext, err := db.NewSGBlipContext(h.ctx(), "", originPatterns)
 	if err != nil {
 		return err
 	}
@@ -70,4 +74,24 @@ func (h *handler) handleBLIPSync() error {
 	middleware(server).ServeHTTP(h.response, h.rq)
 
 	return nil
+}
+
+// hostOnlyCORS returns the host portion of the origin URL, suitable for passing to websocket library.
+func hostOnlyCORS(originPatterns []string) ([]string, error) {
+	var origins []string
+	var multiError *base.MultiError
+	for _, origin := range originPatterns {
+		// this is a special pattern for allowing all origins
+		if origin == "*" {
+			origins = append(origins, origin)
+			continue
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			multiError = multiError.Append(fmt.Errorf("%s is not a valid pattern for CORS config", err))
+			continue
+		}
+		origins = append(origins, u.Host)
+	}
+	return origins, multiError.ErrorOrNil()
 }
