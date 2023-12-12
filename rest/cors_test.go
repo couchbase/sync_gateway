@@ -11,10 +11,10 @@ package rest
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/auth"
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -200,6 +200,7 @@ func TestCORSNoMux(t *testing.T) {
 	reqHeaders := map[string]string{
 		"Origin": "http://example.com",
 	}
+
 	// this method doesn't exist
 	for _, method := range []string{http.MethodGet, http.MethodOptions} {
 		response := rt.SendRequestWithHeaders(method, "/_notanendpoint/", "", reqHeaders)
@@ -286,6 +287,7 @@ func TestCORSUserNoAccess(t *testing.T) {
 
 func TestCORSOriginPerDatabase(t *testing.T) {
 	// Override the default (example.com) CORS configuration in the DbConfig for /db:
+	const perDBMaxAge = 1234
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
@@ -293,7 +295,7 @@ func TestCORSOriginPerDatabase(t *testing.T) {
 					Origin:      []string{"http://couchbase.com", "http://staging.couchbase.com"},
 					LoginOrigin: []string{"http://couchbase.com"},
 					Headers:     []string{},
-					MaxAge:      1728000,
+					MaxAge:      perDBMaxAge,
 				},
 			},
 		},
@@ -368,6 +370,13 @@ func TestCORSOriginPerDatabase(t *testing.T) {
 					require.Equal(t, http.StatusNoContent, response.Code)
 				}
 				require.Equal(t, test.headerResponse, response.Header().Get("Access-Control-Allow-Origin"))
+				if method == http.MethodOptions {
+					if strings.Contains(test.endpoint, "{{.db}}") {
+						require.Equal(t, strconv.Itoa(perDBMaxAge), response.Header().Get("Access-Control-Max-Age"))
+					} else {
+						require.Equal(t, strconv.Itoa(rt.ServerContext().Config.API.CORS.MaxAge), response.Header().Get("Access-Control-Max-Age"))
+					}
+				}
 			}
 
 		})
@@ -380,41 +389,19 @@ func TestCORSValidation(t *testing.T) {
 	})
 	defer rt.Close()
 
-	// CORS is set to http://example.com by RestTester ServerContext
-	dbName := "corsdb"
-	dbConfig := rt.NewDbConfig()
-	dbConfig.CORS = &auth.CORSConfig{
-		MaxAge: 1000,
-	}
-	resp := rt.CreateDatabase(dbName, dbConfig)
-	// walrus doesn't set ServerContext.persistentConfig so we miss some validation
-	if base.UnitTestUrlIsWalrus() {
-		RequireStatus(t, resp, http.StatusCreated)
-	} else {
-		RequireStatus(t, resp, http.StatusBadRequest)
-		require.Contains(t, resp.Body.String(), "max_age")
-		nonCORSDbConfig := rt.NewDbConfig()
-		resp := rt.CreateDatabase(dbName, nonCORSDbConfig)
-		RequireStatus(t, resp, http.StatusCreated)
-	}
-	resp = rt.UpsertDbConfig(dbName, dbConfig)
-	RequireStatus(t, resp, http.StatusBadRequest)
-	require.Contains(t, resp.Body.String(), "max_age")
-
-	resp = rt.ReplaceDbConfig(dbName, dbConfig)
-	RequireStatus(t, resp, http.StatusBadRequest)
-	require.Contains(t, resp.Body.String(), "max_age")
+	const dbName = "corsdb"
 
 	// make sure you are allowed to set CORS values that aren't max_age
-	originCORSDbConfig := rt.NewDbConfig()
-	originCORSDbConfig.CORS = &auth.CORSConfig{
+	CORSDbConfig := rt.NewDbConfig()
+	CORSDbConfig.CORS = &auth.CORSConfig{
 		Origin: []string{"http://example.com"},
+		MaxAge: 1000,
 	}
 
-	resp = rt.UpsertDbConfig(dbName, originCORSDbConfig)
+	resp := rt.CreateDatabase(dbName, CORSDbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	resp = rt.ReplaceDbConfig(dbName, originCORSDbConfig)
+	resp = rt.ReplaceDbConfig(dbName, CORSDbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 
 }
