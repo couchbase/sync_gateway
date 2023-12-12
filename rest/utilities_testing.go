@@ -552,7 +552,7 @@ func (rt *RestTester) WaitForPendingChanges() error {
 
 func (rt *RestTester) SetAdminParty(partyTime bool) error {
 	ctx := rt.Context()
-	a := rt.ServerContext().Database(ctx, rt.DatabaseConfig.Name).Authenticator(ctx)
+	a := rt.GetDatabase().Authenticator(ctx)
 	guest, err := a.GetUser("")
 	if err != nil {
 		return err
@@ -1237,6 +1237,12 @@ type BlipTesterSpec struct {
 
 	// If set, use custom sync function for all collections.
 	syncFn string
+
+	// Represents Origin header values to be used in the blip handshake.
+	origin *string
+
+	// If true, pass Allow-Header-Origin: to the hostname in the blip handshake.
+	useHostOrigin bool
 }
 
 // State associated with a BlipTester
@@ -1400,8 +1406,12 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 		protocols = []string{db.CBMobileReplicationV3.SubprotocolString()}
 	}
 
+	origin, err := hostOnlyCORS(bt.restTester.GetDatabase().CORS.Origin)
+	if err != nil {
+		return nil, err
+	}
 	// Make BLIP/Websocket connection
-	bt.blipContext, err = db.NewSGBlipContextWithProtocols(base.TestCtx(tb), "", protocols...)
+	bt.blipContext, err = db.NewSGBlipContextWithProtocols(base.TestCtx(tb), "", origin, protocols)
 	if err != nil {
 		return nil, err
 	}
@@ -1419,10 +1429,17 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 		URL: u.String(),
 	}
 
+	config.HTTPHeader = make(http.Header)
 	if len(spec.connectingUsername) > 0 {
-		config.HTTPHeader = http.Header{
-			"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(spec.connectingUsername+":"+spec.connectingPassword))},
+		config.HTTPHeader.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(spec.connectingUsername+":"+spec.connectingPassword)))
+	}
+	if spec.origin != nil {
+		if spec.useHostOrigin {
+			require.Fail(tb, "setting both origin and useHostOrigin is not supported")
 		}
+		config.HTTPHeader.Add("Origin", *spec.origin)
+	} else if spec.useHostOrigin {
+		config.HTTPHeader.Add("Origin", "https://"+u.Host)
 	}
 
 	bt.sender, err = bt.blipContext.DialConfig(&config)

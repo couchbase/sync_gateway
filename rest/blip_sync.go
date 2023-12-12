@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/couchbase/sync_gateway/db"
 
@@ -47,8 +48,13 @@ func (h *handler) handleBLIPSync() error {
 		blip.CompressionLevel = *c
 	}
 
+	originPatterns, err := hostOnlyCORS(h.db.CORS.Origin)
+	if err != nil {
+		base.WarnfCtx(h.ctx(), "Unable to parse db CORS values: %s", err)
+		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to parse db CORS values")
+	}
 	// Create a BLIP context:
-	blipContext, err := db.NewSGBlipContext(h.ctx(), "")
+	blipContext, err := db.NewSGBlipContext(h.ctx(), "", originPatterns)
 	if err != nil {
 		return err
 	}
@@ -74,7 +80,6 @@ func (h *handler) handleBLIPSync() error {
 			base.InfofCtx(h.ctx(), base.KeyHTTP, "%s:    --> BLIP+WebSocket handshake failed: %v", h.formatSerialNumber(), err)
 			return
 		}
-
 		// ActiveSubprotocol only available after handshake via ServeHTTP(), so have to get go-blip to invoke callback between handshake and serving BLIP messages
 		subprotocol := blipContext.ActiveSubprotocol()
 		h.logStatus(http.StatusSwitchingProtocols, fmt.Sprintf("[%s] Upgraded to WebSocket protocol %s+%s%s", blipContext.ID, blip.WebSocketSubProtocolPrefix, subprotocol, h.formattedEffectiveUserName()))
@@ -122,4 +127,22 @@ func (sc *ServerContext) decrementConcurrentReplications(ctx context.Context) {
 	connections := sc.ActiveReplicationsCounter.activeReplicatorLimit
 	sc.ActiveReplicationsCounter.activeReplicatorCount--
 	base.TracefCtx(ctx, base.KeyHTTP, "Released replication slot (active: %d/%d)", sc.activeReplicatorCount, connections)
+}
+
+// hostOnlyCORS returns the host portion of the origin URL, suitable for passing to websocket library.
+func hostOnlyCORS(originPatterns []string) ([]string, error) {
+	origins := make([]string, 0, len(originPatterns))
+	for _, origin := range originPatterns {
+		// this is a special pattern for allowing all origins
+		if origin == "*" {
+			origins = append(origins, origin)
+			continue
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			return nil, err
+		}
+		origins = append(origins, u.Host)
+	}
+	return origins, nil
 }

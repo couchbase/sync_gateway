@@ -36,15 +36,19 @@ var (
 )
 
 // NewSGBlipContext returns a go-blip context with the given ID, initialized for use in Sync Gateway.
-func NewSGBlipContext(ctx context.Context, id string) (bc *blip.Context, err error) {
-	return NewSGBlipContextWithProtocols(ctx, id, supportedSubprotocols()...)
+func NewSGBlipContext(ctx context.Context, id string, origin []string) (bc *blip.Context, err error) {
+	return NewSGBlipContextWithProtocols(ctx, id, origin, supportedSubprotocols())
 }
 
-func NewSGBlipContextWithProtocols(ctx context.Context, id string, protocol ...string) (bc *blip.Context, err error) {
+func NewSGBlipContextWithProtocols(ctx context.Context, id string, origin []string, protocols []string) (bc *blip.Context, err error) {
+	opts := blip.ContextOptions{
+		Origin:      origin,
+		ProtocolIds: protocols,
+	}
 	if id == "" {
-		bc, err = blip.NewContext(protocol...)
+		bc, err = blip.NewContext(opts)
 	} else {
-		bc, err = blip.NewContextCustomID(id, protocol...)
+		bc, err = blip.NewContextCustomID(id, opts)
 	}
 
 	bc.LogMessages = base.LogDebugEnabled(ctx, base.KeyWebSocket)
