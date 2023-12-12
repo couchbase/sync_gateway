@@ -43,18 +43,22 @@ var (
 )
 
 // NewSGBlipContext returns a go-blip context with the given ID, initialized for use in Sync Gateway.
-func NewSGBlipContext(ctx context.Context, id string) (bc *blip.Context, err error) {
+func NewSGBlipContext(ctx context.Context, id string, origin []string) (bc *blip.Context, err error) {
 	// V3 is first here as it is the preferred communication method
 	// In the host case this means SGW can accept both V3 and V2 clients
 	// In the client case this means we prefer V3 but can fallback to V2
-	return NewSGBlipContextWithProtocols(ctx, id, BlipCBMobileReplicationV3, BlipCBMobileReplicationV2)
+	return NewSGBlipContextWithProtocols(ctx, id, origin, []string{BlipCBMobileReplicationV3, BlipCBMobileReplicationV2})
 }
 
-func NewSGBlipContextWithProtocols(ctx context.Context, id string, protocol ...string) (bc *blip.Context, err error) {
+func NewSGBlipContextWithProtocols(ctx context.Context, id string, origin []string, protocols []string) (bc *blip.Context, err error) {
+	opts := blip.ContextOptions{
+		Origin:      origin,
+		ProtocolIds: protocols,
+	}
 	if id == "" {
-		bc, err = blip.NewContext(protocol...)
+		bc, err = blip.NewContext(opts)
 	} else {
-		bc, err = blip.NewContextCustomID(id, protocol...)
+		bc, err = blip.NewContextCustomID(id, opts)
 	}
 
 	bc.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)
