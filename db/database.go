@@ -2230,6 +2230,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 		cleanupFunctions = append(cleanupFunctions, func() {
 			db.Heartbeater.Stop(ctx)
+			db.Heartbeater = nil
 		})
 	}
 
