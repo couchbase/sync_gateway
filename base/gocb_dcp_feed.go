@@ -64,10 +64,13 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 
 		// should only be one args.Scope so cheaper to iterate this way around
 		for scopeName, collections := range args.Scopes {
+			scopeFound := false
 			for _, manifestScope := range cm.Scopes {
 				if scopeName != manifestScope.Name {
 					continue
 				}
+				scopeFound = true
+				collectionsFound := make(map[string]struct{})
 				// should be less than or equal number of args.collections than cm.scope.collections, so iterate this way so that the inner loop completes quicker on average
 				for _, manifestCollection := range manifestScope.Collections {
 					for _, collectionName := range collections {
@@ -75,8 +78,20 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 							continue
 						}
 						collectionIDs = append(collectionIDs, manifestCollection.UID)
+						collectionsFound[collectionName] = struct{}{}
 					}
 				}
+				if len(collectionsFound) != len(collections) {
+					for _, collectionName := range collections {
+						if _, ok := collectionsFound[collectionName]; !ok {
+							return RedactErrorf("collection %s not found in scope %s %+v", MD(collectionName), MD(manifestScope.Name), manifestScope.Collections)
+						}
+					}
+				}
+				break
+			}
+			if !scopeFound {
+				return RedactErrorf("scope %s not found", MD(scopeName))
 			}
 		}
 	}

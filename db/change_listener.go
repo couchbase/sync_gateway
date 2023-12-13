@@ -110,10 +110,12 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 	return listener.StartMutationFeed(ctx, bucket, dbStats)
 }
 
-func (listener *changeListener) StartMutationFeed(ctx context.Context, bucket base.Bucket, dbStats *expvar.Map) error {
+func (listener *changeListener) StartMutationFeed(ctx context.Context, bucket base.Bucket, dbStats *expvar.Map) (err error) {
 
 	defer func() {
-		listener.started.Set(true)
+		if err == nil {
+			listener.started.Set(true)
+		}
 	}()
 
 	// Uses DCP by default, unless TAP is explicitly specified
