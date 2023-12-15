@@ -2583,7 +2583,7 @@ func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, expecte
 	require.EqualValues(t, expectedDbNames, dbNames)
 }
 
-// ForceDbConfigsReload forces the reload db cionfiog from bucket process (like the ConfigUpdate background process)
+// ForceDbConfigsReload forces the reload db config from bucket process (like the ConfigUpdate background process)
 func (sc *ServerContext) ForceDbConfigsReload(t *testing.T, ctx context.Context) {
 	_, err := sc.fetchAndLoadConfigs(ctx, false)
 	require.NoError(t, err)
