@@ -884,9 +884,9 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 			d.HLV.ImportCAS = d.Cas
 		} else {
 			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
-			newVVEntry := SourceAndVersion{}
+			newVVEntry := Version{}
 			newVVEntry.SourceID = db.dbCtx.BucketUUID
-			newVVEntry.Version = hlvExpandMacroCASValue
+			newVVEntry.Value = hlvExpandMacroCASValue
 			err := d.SyncData.HLV.AddVersion(newVVEntry)
 			if err != nil {
 				return nil, err
@@ -897,9 +897,9 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
-		newVVEntry := SourceAndVersion{}
+		newVVEntry := Version{}
 		newVVEntry.SourceID = db.dbCtx.BucketUUID
-		newVVEntry.Version = hlvExpandMacroCASValue
+		newVVEntry.Value = hlvExpandMacroCASValue
 		err := d.SyncData.HLV.AddVersion(newVVEntry)
 		if err != nil {
 			return nil, err
@@ -1059,7 +1059,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	return newRevID, doc, err
 }
 
-func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, docHLV HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *SourceAndVersion, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, docHLV HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *Version, newRevID string, err error) {
 	var matchRev string
 	if existingDoc != nil {
 		doc, unmarshalErr := unmarshalDocumentWithXattr(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattr, existingDoc.UserXattr, existingDoc.Cas, DocUnmarshalRev)
@@ -1146,11 +1146,11 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 
 	if doc != nil && doc.HLV != nil {
 		if cv == nil {
-			cv = &SourceAndVersion{}
+			cv = &Version{}
 		}
 		source, version := doc.HLV.GetCurrentVersion()
 		cv.SourceID = source
-		cv.Version = version
+		cv.Value = version
 	}
 
 	return doc, cv, newRevID, err
@@ -2190,7 +2190,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Expiry:           doc.Expiry,
 			Deleted:          doc.History[newRevID].Deleted,
 			_shallowCopyBody: storedDoc.Body(ctx),
-			CV:               &SourceAndVersion{Version: doc.HLV.Version, SourceID: doc.HLV.SourceID},
+			CV:               &Version{Value: doc.HLV.Version, SourceID: doc.HLV.SourceID},
 		}
 
 		if createNewRevIDSkipped {
