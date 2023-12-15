@@ -57,7 +57,7 @@ type ChangeEntry struct {
 	principalDoc   bool         // Used to indicate _user/_role docs
 	Revoked        bool         `json:"revoked,omitempty"`
 	collectionID   uint32
-	CurrentVersion *SourceAndVersion `json:"current_version,omitempty"` // the current version of the change entry
+	CurrentVersion *Version `json:"current_version,omitempty"` // the current version of the change entry
 }
 
 const (
@@ -486,7 +486,7 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channel channels.ID) 
 	// This allows current version to be nil in event of CV not being populated on log entry
 	// allowing omitempty to work as expected
 	if logEntry.SourceID != "" && logEntry.Version != 0 {
-		change.CurrentVersion = &SourceAndVersion{SourceID: logEntry.SourceID, Version: logEntry.Version}
+		change.CurrentVersion = &Version{SourceID: logEntry.SourceID, Value: logEntry.Version}
 	}
 	if logEntry.Flags&channels.Removed != 0 {
 		change.Removed = base.SetOf(channel.Name)
@@ -1289,8 +1289,8 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
 
 	if populatedDoc.HLV != nil {
-		cv := SourceAndVersion{}
-		cv.SourceID, cv.Version = populatedDoc.HLV.GetCurrentVersion()
+		cv := Version{}
+		cv.SourceID, cv.Value = populatedDoc.HLV.GetCurrentVersion()
 		row.CurrentVersion = &cv
 	}
 
