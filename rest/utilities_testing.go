@@ -2600,6 +2600,12 @@ func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, expecte
 	require.EqualValues(t, expectedDbNames, dbNames)
 }
 
+// ForceDbConfigsReload forces the reload db config from bucket process (like the ConfigUpdate background process)
+func (sc *ServerContext) ForceDbConfigsReload(t *testing.T, ctx context.Context) {
+	_, err := sc.fetchAndLoadConfigs(ctx, false)
+	require.NoError(t, err)
+}
+
 // AllInvalidDatabaseNames returns the names of all the databases that have invalid configs. Testing only since this locks the database context.
 func (sc *ServerContext) AllInvalidDatabaseNames(_ *testing.T) []string {
 	sc.invalidDatabaseConfigTracking.m.RLock()
