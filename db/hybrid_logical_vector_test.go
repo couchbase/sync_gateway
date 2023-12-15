@@ -37,13 +37,13 @@ func TestInternalHLVFunctions(t *testing.T) {
 	const newSource = "s_testsource"
 
 	// create a new version vector entry that will error method AddVersion
-	badNewVector := SourceAndVersion{
-		Version:  123345,
+	badNewVector := Version{
+		Value:    123345,
 		SourceID: currSourceId,
 	}
 	// create a new version vector entry that should be added to HLV successfully
-	newVersionVector := SourceAndVersion{
-		Version:  newCAS,
+	newVersionVector := Version{
+		Value:    newCAS,
 		SourceID: currSourceId,
 	}
 
