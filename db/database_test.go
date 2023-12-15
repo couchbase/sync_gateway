@@ -1138,7 +1138,7 @@ func TestConflicts(t *testing.T) {
 		Changes:        []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}},
 		branched:       true,
 		collectionID:   collectionID,
-		CurrentVersion: &SourceAndVersion{SourceID: bucketUUID, Version: fetchedDoc.Cas},
+		CurrentVersion: &Version{SourceID: bucketUUID, Value: fetchedDoc.Cas},
 	}, changes[0],
 	)
 
@@ -1174,7 +1174,7 @@ func TestConflicts(t *testing.T) {
 		Changes:        []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
 		branched:       true,
 		collectionID:   collectionID,
-		CurrentVersion: &SourceAndVersion{SourceID: bucketUUID, Version: doc.Cas},
+		CurrentVersion: &Version{SourceID: bucketUUID, Value: doc.Cas},
 	}, changes[0])
 
 }

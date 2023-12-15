@@ -320,7 +320,7 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 
 	assert.Equal(t, doc.ID, changes[0].ID)
 	assert.Equal(t, bucketUUID, changes[0].CurrentVersion.SourceID)
-	assert.Equal(t, doc.Cas, changes[0].CurrentVersion.Version)
+	assert.Equal(t, doc.Cas, changes[0].CurrentVersion.Value)
 }
 
 func TestDocDeletionFromChannelCoalesced(t *testing.T) {
