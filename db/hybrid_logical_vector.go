@@ -47,9 +47,9 @@ func CreateVersion(source string, version uint64) Version {
 
 // String returns a Couchbase Lite-compatible string representation of the version.
 func (v Version) String() string {
-	timestamp := base.Uint64CASToLittleEndianHex(v.Value)
+	timestamp := string(base.Uint64CASToLittleEndianHex(v.Value))
 	source := base64.StdEncoding.EncodeToString([]byte(v.SourceID))
-	return fmt.Sprintf("%s@%s", timestamp, source)
+	return timestamp + "@" + source
 }
 
 // PersistedHybridLogicalVector is the marshalled format of HybridLogicalVector.
