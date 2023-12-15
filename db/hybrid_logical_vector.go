@@ -9,6 +9,7 @@
 package db
 
 import (
+	"encoding/base64"
 	"fmt"
 	"math"
 
@@ -19,6 +20,7 @@ import (
 // hlvExpandMacroCASValue causes the field to be populated by CAS value by macro expansion
 const hlvExpandMacroCASValue = math.MaxUint64
 
+// HybridLogicalVector (HLV) is a type that represents a vector of Hybrid Logical Clocks.
 type HybridLogicalVector struct {
 	CurrentVersionCAS uint64            // current version cas (or cvCAS) stores the current CAS at the time of replication
 	ImportCAS         uint64            // Set when an import modifies the document CAS but preserves the HLV (import of a version replicated by XDCR)
@@ -28,19 +30,30 @@ type HybridLogicalVector struct {
 	PreviousVersions  map[string]uint64 // map of previous versions for fast efficient lookup
 }
 
-// SourceAndVersion is a structure used to add a new entry to a HLV
-type SourceAndVersion struct {
+// Version is representative of a single entry in a HybridLogicalVector.
+type Version struct {
+	// SourceID is an ID representing the source of the value (e.g. Couchbase Lite ID)
 	SourceID string `json:"source_id"`
-	Version  uint64 `json:"version"`
+	// Value is a Hybrid Logical Clock value (In Couchbase Server, CAS is a HLC)
+	Value uint64 `json:"version"`
 }
 
-func CreateVersion(source string, version uint64) SourceAndVersion {
-	return SourceAndVersion{
+func CreateVersion(source string, version uint64) Version {
+	return Version{
 		SourceID: source,
-		Version:  version,
+		Value:    version,
 	}
 }
 
+// String returns a Couchbase Lite-compatible string representation of the version.
+func (v Version) String() string {
+	timestamp := string(base.Uint64CASToLittleEndianHex(v.Value))
+	source := base64.StdEncoding.EncodeToString([]byte(v.SourceID))
+	return timestamp + "@" + source
+}
+
+// PersistedHybridLogicalVector is the marshalled format of HybridLogicalVector.
+// This representation needs to be kept in sync with XDCR.
 type PersistedHybridLogicalVector struct {
 	CurrentVersionCAS string            `json:"cvCas,omitempty"`
 	ImportCAS         string            `json:"importCAS,omitempty"`
@@ -50,7 +63,7 @@ type PersistedHybridLogicalVector struct {
 	PreviousVersions  map[string]string `json:"pv,omitempty"`
 }
 
-// NewHybridLogicalVector returns a HybridLogicalVector struct with maps initialised in the struct
+// NewHybridLogicalVector returns an initialised HybridLogicalVector.
 func NewHybridLogicalVector() HybridLogicalVector {
 	return HybridLogicalVector{
 		PreviousVersions: make(map[string]uint64),
@@ -58,12 +71,12 @@ func NewHybridLogicalVector() HybridLogicalVector {
 	}
 }
 
-// GetCurrentVersion return the current version vector from the HLV in memory
+// GetCurrentVersion returns the current version from the HLV in memory.
 func (hlv *HybridLogicalVector) GetCurrentVersion() (string, uint64) {
 	return hlv.SourceID, hlv.Version
 }
 
-// IsInConflict tests to see if in memory HLV is conflicting with another HLV
+// IsInConflict tests to see if in memory HLV is conflicting with another HLV.
 func (hlv *HybridLogicalVector) IsInConflict(otherVector HybridLogicalVector) bool {
 	// test if either HLV(A) or HLV(B) are dominating over each other. If so they are not in conflict
 	if hlv.isDominating(otherVector) || otherVector.isDominating(*hlv) {
@@ -73,21 +86,20 @@ func (hlv *HybridLogicalVector) IsInConflict(otherVector HybridLogicalVector) bo
 	return true
 }
 
-// AddVersion adds a version vector to the in memory representation of a HLV and moves current version vector to
-// previous versions on the HLV if needed
-func (hlv *HybridLogicalVector) AddVersion(newVersion SourceAndVersion) error {
-	if newVersion.Version < hlv.Version {
-		return fmt.Errorf("attempting to add new version vector entry with a CAS that is less than the current version CAS value. Current cas: %d new cas %d", hlv.Version, newVersion.Version)
+// AddVersion adds newVersion to the in memory representation of the HLV.
+func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
+	if newVersion.Value < hlv.Version {
+		return fmt.Errorf("attempting to add new version vector entry with a CAS that is less than the current version CAS value. Current cas: %d new cas %d", hlv.Version, newVersion.Value)
 	}
 	// check if this is the first time we're adding a source - version pair
 	if hlv.SourceID == "" {
-		hlv.Version = newVersion.Version
+		hlv.Version = newVersion.Value
 		hlv.SourceID = newVersion.SourceID
 		return nil
 	}
 	// if new entry has the same source we simple just update the version
 	if newVersion.SourceID == hlv.SourceID {
-		hlv.Version = newVersion.Version
+		hlv.Version = newVersion.Value
 		return nil
 	}
 	// if we get here this is a new version from a different sourceID thus need to move current sourceID to previous versions and update current version
@@ -107,12 +119,13 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion SourceAndVersion) error {
 		// source doesn't exist in PV so add
 		hlv.PreviousVersions[hlv.SourceID] = hlv.Version
 	}
-	hlv.Version = newVersion.Version
+	hlv.Version = newVersion.Value
 	hlv.SourceID = newVersion.SourceID
 	return nil
 }
 
-// Remove removes a vector from previous versions section of in memory HLV
+// Remove removes a source from previous versions of the HLV.
+// TODO: Does this need to remove source from current version as well? Merge Versions?
 func (hlv *HybridLogicalVector) Remove(source string) error {
 	// if entry is not found in previous versions we return error
 	if hlv.PreviousVersions[source] == 0 {
@@ -215,7 +228,7 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector
 
 	// create current version for incoming vector and attempt to add it to the local HLV, AddVersion will handle if attempting to add older
 	// version than local HLVs CV pair
-	otherVectorCV := SourceAndVersion{SourceID: otherVector.SourceID, Version: otherVector.Version}
+	otherVectorCV := Version{SourceID: otherVector.SourceID, Value: otherVector.Version}
 	err := hlv.AddVersion(otherVectorCV)
 	if err != nil {
 		return err
