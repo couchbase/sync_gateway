@@ -1828,6 +1828,83 @@ func TestChannelView(t *testing.T) {
 		log.Printf("View Query returned entry (%d): %v", i, entry)
 	}
 	assert.Equal(t, 1, len(entries))
+	require.Equal(t, "doc1", entries[0].DocID)
+	collection.RequireCurrentVersion(t, "doc1", entries[0].SourceID, entries[0].Version)
+}
+
+func TestChannelQuery(t *testing.T) {
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
+		channel(doc.channels);
+	}`)
+	require.NoError(t, err)
+
+	// Create doc
+	body := Body{"key1": "value1", "key2": 1234, "channels": "ABC"}
+	rev1ID, _, err := collection.Put(ctx, "doc1", body)
+	require.NoError(t, err, "Couldn't create doc1")
+
+	// Create a doc to test removal handling.  Needs three revisions so that the removal rev (2) isn't
+	// the current revision
+	removedDocID := "removed_doc"
+	removedDocRev1, _, err := collection.Put(ctx, removedDocID, body)
+	require.NoError(t, err, "Couldn't create removed_doc")
+	removalSource, removalVersion := collection.GetDocumentCurrentVersion(t, removedDocID)
+
+	updatedChannelBody := Body{"_rev": removedDocRev1, "key1": "value1", "key2": 1234, "channels": "DEF"}
+	removalRev, _, err := collection.Put(ctx, removedDocID, updatedChannelBody)
+	require.NoError(t, err, "Couldn't update removed_doc")
+
+	updatedChannelBody = Body{"_rev": removalRev, "key1": "value1", "key2": 2345, "channels": "DEF"}
+	removedDocRev3, _, err := collection.Put(ctx, removedDocID, updatedChannelBody)
+	require.NoError(t, err, "Couldn't update removed_doc")
+
+	var entries LogEntries
+
+	// Test query retrieval via star channel and named channel (queries use different indexes)
+	testCases := []struct {
+		testName    string
+		channelName string
+	}{
+		{
+			testName:    "star channel",
+			channelName: "*",
+		},
+		{
+			testName:    "named channel",
+			channelName: "ABC",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.testName, func(t *testing.T) {
+			entries, err = collection.getChangesInChannelFromQuery(ctx, testCase.channelName, 0, 100, 0, false)
+
+			for i, entry := range entries {
+				log.Printf("Channel Query returned entry (%d): %v", i, entry)
+			}
+			assert.Equal(t, 2, len(entries))
+			require.Equal(t, "doc1", entries[0].DocID)
+			require.Equal(t, rev1ID, entries[0].RevID)
+			collection.RequireCurrentVersion(t, "doc1", entries[0].SourceID, entries[0].Version)
+
+			removedDocEntry := entries[1]
+			require.Equal(t, removedDocID, removedDocEntry.DocID)
+			if testCase.channelName == "*" {
+				require.Equal(t, removedDocRev3, removedDocEntry.RevID)
+				collection.RequireCurrentVersion(t, removedDocID, removedDocEntry.SourceID, removedDocEntry.Version)
+			} else {
+				require.Equal(t, removalRev, removedDocEntry.RevID)
+				// TODO: Pending channel removal rev handling, CBG-3213
+				log.Printf("removal rev check of removal cv %s@%d is pending CBG-3213", removalSource, removalVersion)
+				//require.Equal(t, removalSource, removedDocEntry.SourceID)
+				//require.Equal(t, removalVersion, removedDocEntry.Version)
+			}
+		})
+	}
 
 }
 
@@ -2451,7 +2528,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	assert.NoError(t, err)
 
 	var doc Body
-	var xattr Body
+	var xattr SyncData
 
 	// Ensure document has been added
 	waitAndAssertCondition(t, func() bool {
@@ -2462,8 +2539,8 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	assert.Equal(t, int64(1), db.DbStats.SharedBucketImport().ImportCount.Value())
 
 	assert.Nil(t, doc)
-	assert.Equal(t, "1-2cac91faf7b3f5e5fd56ff377bdb5466", xattr["rev"])
-	assert.Equal(t, float64(2), xattr["sequence"])
+	assert.Equal(t, "1-2cac91faf7b3f5e5fd56ff377bdb5466", xattr.CurrentRev)
+	assert.Equal(t, uint64(2), xattr.Sequence)
 }
 
 func TestResyncUpdateAllDocChannels(t *testing.T) {

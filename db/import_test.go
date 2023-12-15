@@ -424,13 +424,13 @@ func TestImportNullDocRaw(t *testing.T) {
 }
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
-	xattr := map[string]interface{}{}
-	_, err := dataStore.GetWithXattr(base.TestCtx(t), key, base.SyncXattrName, "", nil, &xattr, nil)
+
+	var syncData SyncData
+	_, err := dataStore.GetWithXattr(base.TestCtx(t), key, base.SyncXattrName, "", nil, &syncData, nil)
 	assert.NoError(t, err, "Error Getting Xattr")
-	revision, ok := xattr["rev"]
-	assert.True(t, ok)
-	generation, _ := ParseRevID(base.TestCtx(t), revision.(string))
-	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
+	assert.True(t, syncData.CurrentRev != "")
+	generation, _ := ParseRevID(base.TestCtx(t), syncData.CurrentRev)
+	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, syncData.CurrentRev)
 	assert.True(t, generation == expectedRevGeneration)
 }
 

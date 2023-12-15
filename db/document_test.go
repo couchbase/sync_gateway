@@ -291,6 +291,97 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
 }
 
+// TestRevAndVersion tests marshalling and unmarshalling rev and current version
+func TestRevAndVersion(t *testing.T) {
+
+	ctx := base.TestCtx(t)
+	testCases := []struct {
+		testName  string
+		revTreeID string
+		source    string
+		version   uint64
+	}{
+		{
+			testName:  "rev_and_version",
+			revTreeID: "1-abc",
+			source:    "source1",
+			version:   1,
+		},
+		{
+			testName:  "both_empty",
+			revTreeID: "",
+			source:    "",
+			version:   0,
+		},
+		{
+			testName:  "revTreeID_only",
+			revTreeID: "1-abc",
+			source:    "",
+			version:   0,
+		},
+		{
+			testName:  "currentVersion_only",
+			revTreeID: "",
+			source:    "source1",
+			version:   1,
+		},
+	}
+
+	var expectedSequence = uint64(100)
+	for _, test := range testCases {
+		t.Run(test.testName, func(t *testing.T) {
+			syncData := &SyncData{
+				CurrentRev: test.revTreeID,
+				Sequence:   expectedSequence,
+			}
+			if test.source != "" {
+				syncData.HLV = &HybridLogicalVector{
+					SourceID: test.source,
+					Version:  test.version,
+				}
+			}
+			// SyncData test
+			marshalledSyncData, err := base.JSONMarshal(syncData)
+			require.NoError(t, err)
+			log.Printf("marshalled:%s", marshalledSyncData)
+
+			var newSyncData SyncData
+			err = base.JSONUnmarshal(marshalledSyncData, &newSyncData)
+			require.NoError(t, err)
+			require.Equal(t, test.revTreeID, newSyncData.CurrentRev)
+			require.Equal(t, expectedSequence, newSyncData.Sequence)
+			if test.source != "" {
+				require.NotNil(t, newSyncData.HLV)
+				require.Equal(t, test.source, newSyncData.HLV.SourceID)
+				require.Equal(t, test.version, newSyncData.HLV.Version)
+			}
+			//require.Equal(t, test.expectedCombinedVersion, newSyncData.RevAndVersion)
+
+			// Document test
+			document := NewDocument("docID")
+			document.SyncData.CurrentRev = test.revTreeID
+			document.SyncData.HLV = &HybridLogicalVector{
+				SourceID: test.source,
+				Version:  test.version,
+			}
+			marshalledDoc, marshalledXattr, err := document.MarshalWithXattr()
+			require.NoError(t, err)
+
+			newDocument := NewDocument("docID")
+			err = newDocument.UnmarshalWithXattr(ctx, marshalledDoc, marshalledXattr, DocUnmarshalAll)
+			require.NoError(t, err)
+			require.Equal(t, test.revTreeID, newDocument.CurrentRev)
+			require.Equal(t, expectedSequence, newSyncData.Sequence)
+			if test.source != "" {
+				require.NotNil(t, newDocument.HLV)
+				require.Equal(t, test.source, newDocument.HLV.SourceID)
+				require.Equal(t, test.version, newDocument.HLV.Version)
+			}
+			//require.Equal(t, test.expectedCombinedVersion, newDocument.RevAndVersion)
+		})
+	}
+}
+
 func TestParseXattr(t *testing.T) {
 	zeroByte := byte(0)
 	// Build payload for single xattr pair and body

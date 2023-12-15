@@ -120,6 +120,14 @@ func (entry *LogEntry) SetDeleted() {
 	entry.Flags |= channels.Deleted
 }
 
+func (entry *LogEntry) SetRevAndVersion(rv RevAndVersion) {
+	entry.RevID = rv.RevTreeID
+	if rv.CurrentSource != "" {
+		entry.SourceID = rv.CurrentSource
+		entry.Version = base.HexCasToUint64(rv.CurrentVersion)
+	}
+}
+
 type LogEntries []*LogEntry
 
 // A priority-queue of LogEntries, kept ordered by increasing sequence #.
