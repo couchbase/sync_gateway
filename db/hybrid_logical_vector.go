@@ -67,6 +67,13 @@ func (v Version) String() string {
 	return timestamp + "@" + source
 }
 
+// String returns a Couchbase Lite-compatible string representation of the version.
+func (v Version) String() string {
+	timestamp := string(base.Uint64CASToLittleEndianHex(v.Value))
+	source := base64.StdEncoding.EncodeToString([]byte(v.SourceID))
+	return timestamp + "@" + source
+}
+
 // PersistedHybridLogicalVector is the marshalled format of HybridLogicalVector.
 // This representation needs to be kept in sync with XDCR.
 type PersistedHybridLogicalVector struct {
