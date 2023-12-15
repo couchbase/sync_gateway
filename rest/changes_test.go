@@ -434,7 +434,7 @@ func TestCVPopulationOnChangesViaAPI(t *testing.T) {
 
 	assert.Equal(t, "doc1", changes.Results[0].ID)
 	assert.Equal(t, bucketUUID, changes.Results[0].CurrentVersion.SourceID)
-	assert.Equal(t, fetchedDoc.Cas, changes.Results[0].CurrentVersion.Version)
+	assert.Equal(t, fetchedDoc.Cas, changes.Results[0].CurrentVersion.Value)
 }
 
 func TestCVPopulationOnDocIDChanges(t *testing.T) {
@@ -464,5 +464,5 @@ func TestCVPopulationOnDocIDChanges(t *testing.T) {
 
 	assert.Equal(t, "doc1", changes.Results[0].ID)
 	assert.Equal(t, bucketUUID, changes.Results[0].CurrentVersion.SourceID)
-	assert.Equal(t, fetchedDoc.Cas, changes.Results[0].CurrentVersion.Version)
+	assert.Equal(t, fetchedDoc.Cas, changes.Results[0].CurrentVersion.Value)
 }
