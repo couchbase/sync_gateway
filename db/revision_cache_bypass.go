@@ -51,7 +51,7 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 }
 
 // GetWithCV fetches the Current Version for the given docID and CV immediately from the bucket.
-func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *SourceAndVersion, collectionID uint32, includeDelta bool) (docRev DocumentRevision, err error) {
+func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool) (docRev DocumentRevision, err error) {
 
 	docRev = DocumentRevision{
 		CV: cv,
@@ -113,7 +113,7 @@ func (rc *BypassRevisionCache) RemoveWithRev(docID, revID string, collectionID u
 	// no-op
 }
 
-func (rc *BypassRevisionCache) RemoveWithCV(docID string, cv *SourceAndVersion, collectionID uint32) {
+func (rc *BypassRevisionCache) RemoveWithCV(docID string, cv *Version, collectionID uint32) {
 	// no-op
 }
 
