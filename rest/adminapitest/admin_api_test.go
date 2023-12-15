@@ -1474,11 +1474,12 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
-			// configure the interval time to pick up new configs from the bucket to every 50 milliseconds
-			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
+			// configure the interval time to large interval, so it doesn't run during test
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(10 * time.Minute)
 		},
 	})
 	defer rt.Close()
+	ctx := base.TestCtx(t)
 
 	// create db with correct config
 	dbConfig := rt.NewDbConfig()
@@ -1498,12 +1499,8 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	_, err = rt.UpdatePersistedBucketName(&databaseConfig, &newBucketName)
 	require.NoError(t, err)
 
-	// wait for some time for interval to remove the db
-	err = rt.WaitForConditionWithOptions(func() bool {
-		list := rt.ServerContext().AllDatabaseNames()
-		return len(list) == 0
-	}, 200, 1000)
-	require.NoError(t, err)
+	// force reload of configs from bucket
+	rt.ServerContext().ForceDbConfigsReload(t, ctx)
 
 	// assert that the in memory representation of the db config on the server context is gone now we have broken the config
 	responseConfig := rt.ServerContext().GetDbConfig("db1")
@@ -1530,17 +1527,18 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	resp = rt.CreateDatabase("db1", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	// wait some time for interval to pick up change
-	err = rt.WaitForConditionWithOptions(func() bool {
-		list := rt.ServerContext().AllDatabaseNames()
-		numInvalid := len(rt.ServerContext().AllInvalidDatabaseNames(t))
-		return len(list) == 1 && numInvalid == 0
-	}, 200, 1000)
-	require.NoError(t, err)
+	// force reload of configs from bucket
+	rt.ServerContext().ForceDbConfigsReload(t, ctx)
 
 	// assert that the config is back in memory even after another interval update pass and asser the persisted config
 	// bucket name matches rest tester bucket name
-	dbCtx, err := rt.ServerContext().GetDatabase(base.TestCtx(t), "db1")
+	var dbCtx *db.DatabaseContext
+	// wait for db to be active on the server context
+	err = rt.WaitForConditionWithOptions(func() bool {
+		var err error
+		dbCtx, err = rt.ServerContext().GetActiveDatabase("db1")
+		return err == nil
+	}, 200, 1000)
 	require.NoError(t, err)
 	assert.NotNil(t, dbCtx)
 	assert.Equal(t, rt.CustomTestBucket.GetName(), dbCtx.Bucket.GetName())
