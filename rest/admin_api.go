@@ -118,17 +118,7 @@ func (h *handler) handleCreateDB() error {
 
 		_, err = h.server._applyConfig(contextNoCancel, loadedConfig, true, false)
 		if err != nil {
-			var httpErr *base.HTTPError
-			if errors.As(err, &httpErr) {
-				return httpErr
-			}
-			if errors.Is(err, base.ErrAuthError) {
-				return base.HTTPErrorf(http.StatusForbidden, "Provided credentials do not have access to specified bucket/scope/collection")
-			}
-			if errors.Is(err, base.ErrAlreadyExists) {
-				return base.HTTPErrorf(http.StatusConflict, "couldn't load database: %s", err)
-			}
-			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
+			return databaseLoadErrorAsHTTPError(err)
 		}
 
 		// now we've started the db successfully, we can persist it to the cluster first checking if this db used to be a corrupt db
@@ -167,10 +157,7 @@ func (h *handler) handleCreateDB() error {
 
 		// load database in-memory for non-persistent nodes
 		if _, err := h.server.AddDatabaseFromConfigFailFast(contextNoCancel, DatabaseConfig{DbConfig: *config}); err != nil {
-			if errors.Is(err, base.ErrAuthError) {
-				return base.HTTPErrorf(http.StatusForbidden, "auth failure using provided bucket credentials for database %s", base.MD(config.Name))
-			}
-			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
+			return databaseLoadErrorAsHTTPError(err)
 		}
 	}
 
@@ -1767,4 +1754,19 @@ func (h *handler) handleGetClusterInfo() error {
 	}
 	h.writeJSON(clusterInfo)
 	return nil
+}
+
+// databaseLoadErrorAsHTTPError converts an error loading a database into an error with an http status code. Pulled into a function so we can duplicate persistent and non persistent config logic.
+func databaseLoadErrorAsHTTPError(err error) error {
+	var httpErr *base.HTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr
+	}
+	if errors.Is(err, base.ErrAuthError) {
+		return base.HTTPErrorf(http.StatusForbidden, "Provided credentials do not have access to specified bucket/scope/collection")
+	}
+	if errors.Is(err, base.ErrAlreadyExists) {
+		return base.HTTPErrorf(http.StatusConflict, "couldn't load database: %s", err)
+	}
+	return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
 }

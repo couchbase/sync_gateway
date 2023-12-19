@@ -4430,3 +4430,14 @@ func TestDeleteDatabaseCBGTTeardown(t *testing.T) {
 		time.Sleep(1 * time.Second) // some time for polling
 	}
 }
+
+func TestDatabaseCreationErrorCode(t *testing.T) {
+	for _, persistentConfig := range []bool{true, false} {
+		rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: persistentConfig})
+		defer rt.Close()
+
+		rt.CreateDatabase("db", rt.NewDbConfig())
+		resp := rt.SendAdminRequest(http.MethodPut, "/db/", `{"bucket": "irrelevant"}`)
+		rest.RequireStatus(t, resp, http.StatusPreconditionFailed)
+	}
+}
