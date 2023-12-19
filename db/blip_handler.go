@@ -945,13 +945,13 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 	// Doc metadata comes from the BLIP message metadata, not magic document properties:
 	docID, found := revMessage.ID()
-	version, rfound := revMessage.Rev()
+	rev, rfound := revMessage.Rev()
 	if !found || !rfound {
-		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
+		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or rev")
 	}
 
 	if bh.readOnly {
-		return base.HTTPErrorf(http.StatusForbidden, "Replication context is read-only, docID: %s, revID:%s", docID, version)
+		return base.HTTPErrorf(http.StatusForbidden, "Replication context is read-only, docID: %s, rev:%s", docID, rev)
 	}
 
 	base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
@@ -971,7 +971,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			return err
 		}
 		if removed, ok := body[BodyRemoved].(bool); ok && removed {
-			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), version)
+			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), rev)
 			if err := bh.collection.Purge(bh.loggingCtx, docID); err != nil {
 				return err
 			}
@@ -983,7 +983,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				if err != nil {
 					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqStr, err)
 				} else {
-					bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: version})
+					bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: rev})
 				}
 			}
 			return nil
@@ -993,13 +993,13 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	var history []string
 	if bh.activeCBMobileSubprotocol < CBMobileReplicationV4 {
 		// include current rev propery in history
-		history = append(history, version)
+		history = append(history, rev)
 	}
 	var versionVectorStr string
 	if historyStr := rq.Properties[RevMessageHistory]; historyStr != "" && bh.activeCBMobileSubprotocol < CBMobileReplicationV4 {
 		history = append(history, strings.Split(historyStr, ",")...)
 	} else if historyStr != "" {
-		versionVectorStr = version + ";" + historyStr
+		versionVectorStr = rev + ";" + historyStr
 	}
 
 	var incomingHLV HybridLogicalVector
@@ -1014,7 +1014,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		ID: docID,
 	}
 	if bh.activeCBMobileSubprotocol < CBMobileReplicationV4 {
-		newDoc.RevID = version
+		newDoc.RevID = rev
 	} else {
 		newDoc.HLV = &incomingHLV
 	}
@@ -1028,7 +1028,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 		//  TODO: Doing a GetRevCopy here duplicates some rev cache retrieval effort, since deltaRevSrc is always
 		//        going to be the current rev (no conflicts), and PutExistingRev will need to retrieve the
-		//        current rev over again.  Should push this handling down PutExistingRev and use the version
+		//        current rev over again.  Should push this handling down PutExistingRev and use the rev
 		//        returned via callback in WriteUpdate, but blocked by moving attachment metadata to a rev property first
 		//        (otherwise we don't have information needed to do downloadOrVerifyAttachments below prior to PutExistingRev)
 
@@ -1070,7 +1070,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		// err should only ever be a FleeceDeltaError here - but to be defensive, handle other errors too (e.g. somehow reaching this code in a CE build)
 		if err != nil {
 			// Something went wrong in the diffing library. We want to know about this!
-			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for doc %s with delta - err: %v", deltaSrcRevID, version, base.UD(docID), err)
+			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for doc %s with delta - err: %v", deltaSrcRevID, rev, base.UD(docID), err)
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error patching deltaSrc with delta: %s", err)
 		}
 
@@ -1152,7 +1152,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				if !ok {
 					// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
 					// update to ensure it's fetched and uploaded
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, version)
+					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, rev)
 					continue
 				}
 
@@ -1192,7 +1192,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				// digest is different we need to override the revpos and set it to the current revision to ensure
 				// the attachment is requested and stored
 				if int(incomingAttachmentRevpos) <= minRevpos && currentAttachmentDigest != incomingAttachmentDigest {
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, version)
+					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, rev)
 				}
 			}
 
@@ -1200,7 +1200,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 
 		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID, currentDigests); err != nil {
-			base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), version, err)
+			base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), rev, err)
 			return err
 		}
 
@@ -1240,7 +1240,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		if err != nil {
 			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqProperty, err)
 		} else {
-			bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: version})
+			bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: rev})
 		}
 	}
 
