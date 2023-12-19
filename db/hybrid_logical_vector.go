@@ -413,13 +413,13 @@ func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, er
 
 	// add current version (should always be present)
 	cvStr := vectorFields[0]
-	sourceAndVersion := strings.Split(cvStr, "@")
+	version := strings.Split(cvStr, "@")
 
-	vrs, err := strconv.ParseUint(sourceAndVersion[0], 10, 64)
+	vrs, err := strconv.ParseUint(version[0], 10, 64)
 	if err != nil {
 		return HybridLogicalVector{}, err
 	}
-	err = hlv.AddVersion(SourceAndVersion{SourceID: sourceAndVersion[1], Version: vrs})
+	err = hlv.AddVersion(Version{SourceID: version[1], Value: vrs})
 	if err != nil {
 		return HybridLogicalVector{}, err
 	}
@@ -435,7 +435,7 @@ func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, er
 		}
 		hlv.PreviousVersions = make(map[string]uint64)
 		for _, v := range sourceVersionListPV {
-			hlv.PreviousVersions[v.SourceID] = v.Version
+			hlv.PreviousVersions[v.SourceID] = v.Value
 		}
 		return hlv, nil
 	case 3:
@@ -447,14 +447,14 @@ func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, er
 			return HybridLogicalVector{}, err
 		}
 		for _, pv := range sourceVersionListPV {
-			hlv.PreviousVersions[pv.SourceID] = pv.Version
+			hlv.PreviousVersions[pv.SourceID] = pv.Value
 		}
 		sourceVersionListMV, err := parseVectorValues(vectorFields[1])
 		if err != nil {
 			return HybridLogicalVector{}, err
 		}
 		for _, mv := range sourceVersionListMV {
-			hlv.MergeVersions[mv.SourceID] = mv.Version
+			hlv.MergeVersions[mv.SourceID] = mv.Value
 		}
 		return hlv, nil
 	default:
@@ -464,7 +464,7 @@ func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, er
 
 // parseVectorValues takes a HLV section (for example previous versions) in Blip string form and split that into
 // source and version pairs
-func parseVectorValues(vectorStr string) (sourceVersionList []SourceAndVersion, err error) {
+func parseVectorValues(vectorStr string) (sourceVersionList []Version, err error) {
 	vectorPairs := strings.Split(vectorStr, ",")
 
 	// remove any leading whitespace form the string value
@@ -480,7 +480,7 @@ func parseVectorValues(vectorStr string) (sourceVersionList []SourceAndVersion, 
 		if err != nil {
 			return nil, err
 		}
-		sourceVersionList = append(sourceVersionList, SourceAndVersion{SourceID: sourceAndVersion[1], Version: vrs})
+		sourceVersionList = append(sourceVersionList, Version{SourceID: sourceAndVersion[1], Value: vrs})
 	}
 	return sourceVersionList, nil
 }

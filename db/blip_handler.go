@@ -1038,8 +1038,8 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
 		var deltaSrcRev DocumentRevision
 		if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
-			cv := SourceAndVersion{}
-			cv.SourceID, cv.Version = incomingHLV.GetCurrentVersion()
+			cv := Version{}
+			cv.SourceID, cv.Value = incomingHLV.GetCurrentVersion()
 			// swap for GetCV once merged (CBG-3212)
 			deltaSrcRev, err = bh.collection.revisionCache.GetWithCV(bh.loggingCtx, docID, &cv, RevCacheOmitBody, RevCacheOmitDelta)
 		} else {

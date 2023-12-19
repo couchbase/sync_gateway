@@ -1869,8 +1869,8 @@ func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 }
 
 func TestCVToString(t *testing.T) {
-	cv := SourceAndVersion{
-		Version:  33,
+	cv := Version{
+		Value:    33,
 		SourceID: "test",
 	}
 	expectedStr := "33@test"

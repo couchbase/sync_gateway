@@ -2778,12 +2778,12 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 	if err != nil {
 		return ProposedRev_Error, ""
 	}
-	incomingDocCV := SourceAndVersion{SourceID: incomingHLV.SourceID, Version: incomingHLV.Version}
+	incomingDocCV := Version{SourceID: incomingHLV.SourceID, Value: incomingHLV.Version}
 
-	localDocCV := SourceAndVersion{}
+	localDocCV := Version{}
 	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalVV)
 	if doc.HLV != nil {
-		localDocCV.SourceID, localDocCV.Version = doc.HLV.GetCurrentVersion()
+		localDocCV.SourceID, localDocCV.Value = doc.HLV.GetCurrentVersion()
 	}
 	if err != nil {
 		if !base.IsDocNotFoundError(err) && err != base.ErrXattrNotFound {
@@ -2802,9 +2802,9 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 
 }
 
-// cvToString converts SourceAndVersion struct to Blip CV string format
-func cvToString(cv SourceAndVersion) string {
-	return strconv.FormatUint(cv.Version, 10) + "@" + cv.SourceID
+// cvToString converts Version struct to Blip CV string format
+func cvToString(cv Version) string {
+	return strconv.FormatUint(cv.Value, 10) + "@" + cv.SourceID
 }
 
 const (
