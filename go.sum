@@ -61,8 +61,8 @@ github.com/couchbaselabs/gocaves/client v0.0.0-20230404095311-05e3ba4f0259 h1:2T
 github.com/couchbaselabs/gocaves/client v0.0.0-20230404095311-05e3ba4f0259/go.mod h1:AVekAZwIY2stsJOMWLAS/0uA/+qdp7pjO8EHnl61QkY=
 github.com/couchbaselabs/gocbconnstr v1.0.5 h1:e0JokB5qbcz7rfnxEhNRTKz8q1svoRvDoZihsiwNigA=
 github.com/couchbaselabs/gocbconnstr v1.0.5/go.mod h1:KV3fnIKMi8/AzX0O9zOrO9rofEqrRF1d2rG7qqjxC7o=
-github.com/couchbaselabs/rosmar v0.0.0-20231201142951-3238beccd96c h1:vJx/eKtme9z6zGBLy8XH+ECSVqjT+hhP5AMxsyRH3e8=
-github.com/couchbaselabs/rosmar v0.0.0-20231201142951-3238beccd96c/go.mod h1:+AjMZkAOGCeQRLjIBwehXKyWsNCPFrMKYz6lIaZ1idc=
+github.com/couchbaselabs/rosmar v0.0.0-20231220172938-669667777223 h1:o56DcFusNJsIiCbnCdCLk9lNQmFDZVTLUQzmLQkJncg=
+github.com/couchbaselabs/rosmar v0.0.0-20231220172938-669667777223/go.mod h1:+AjMZkAOGCeQRLjIBwehXKyWsNCPFrMKYz6lIaZ1idc=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
