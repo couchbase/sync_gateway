@@ -68,6 +68,18 @@ const (
 	DefaultMinConfigFetchInterval = time.Second
 )
 
+// serverType indicates which type of HTTP server sync gateway is running
+type serverType string
+
+const (
+	// serverTypePublic indicates the public interface for sync gateway
+	publicServer = "public"
+	// serverTypeAdmin indicates the admin interface for sync gateway
+	adminServer = "admin"
+	// serverTypeMetrics indicates the metrics interface for sync gateway
+	metricsServer = "metrics"
+)
+
 // Bucket configuration elements - used by db, index
 type BucketConfig struct {
 	Server                *string `json:"server,omitempty"`                   // Couchbase server URL
@@ -1224,7 +1236,7 @@ func SetMaxFileDescriptors(ctx context.Context, maxP *uint64) error {
 	return nil
 }
 
-func (sc *ServerContext) Serve(ctx context.Context, config *StartupConfig, addr string, handler http.Handler) error {
+func (sc *ServerContext) Serve(ctx context.Context, config *StartupConfig, t serverType, addr string, handler http.Handler) error {
 	http2Enabled := false
 	if config.Unsupported.HTTP2 != nil && config.Unsupported.HTTP2.Enabled != nil {
 		http2Enabled = *config.Unsupported.HTTP2.Enabled
@@ -1232,7 +1244,7 @@ func (sc *ServerContext) Serve(ctx context.Context, config *StartupConfig, addr 
 
 	tlsMinVersion := GetTLSVersionFromString(&config.API.HTTPS.TLSMinimumVersion)
 
-	serveFn, server, err := base.ListenAndServeHTTP(
+	serveFn, listenerAddr, server, err := base.ListenAndServeHTTP(
 		ctx,
 		addr,
 		config.API.MaximumConnections,
@@ -1250,15 +1262,15 @@ func (sc *ServerContext) Serve(ctx context.Context, config *StartupConfig, addr 
 		return err
 	}
 
-	sc.addHTTPServer(server)
+	sc.addHTTPServer(t, &serverInfo{server: server, addr: listenerAddr})
 
 	return serveFn()
 }
 
-func (sc *ServerContext) addHTTPServer(s *http.Server) {
+func (sc *ServerContext) addHTTPServer(t serverType, s *serverInfo) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	sc._httpServers = append(sc._httpServers, s)
+	sc._httpServers[t] = s
 }
 
 // Validate returns errors errors if invalid config is present
@@ -1880,20 +1892,20 @@ func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) 
 
 	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
 	go func() {
-		if err := sc.Serve(ctx, config, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
+		if err := sc.Serve(ctx, config, metricsServer, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
 			base.ErrorfCtx(ctx, "Error serving the Metrics API: %v", err)
 		}
 	}()
 
 	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting admin server on %s", config.API.AdminInterface)
 	go func() {
-		if err := sc.Serve(ctx, config, config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
+		if err := sc.Serve(ctx, config, adminServer, config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
 			base.ErrorfCtx(ctx, "Error serving the Admin API: %v", err)
 		}
 	}()
 
 	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting server on %s ...", config.API.PublicInterface)
-	return sc.Serve(ctx, config, config.API.PublicInterface, CreatePublicHandler(sc))
+	return sc.Serve(ctx, config, publicServer, config.API.PublicInterface, CreatePublicHandler(sc))
 }
 
 func sharedBucketDatabaseCheck(ctx context.Context, sc *ServerContext) (errors error) {

@@ -981,137 +981,6 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 
 }
 
-func TestResyncForNamedCollection(t *testing.T) {
-	base.TestRequiresCollections(t)
-
-	base.RequireNumTestDataStores(t, 2)
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
-	serverErr := make(chan error)
-
-	syncFn := `
-	function(doc) {
-		channel("x")
-	}`
-
-	rt := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: syncFn,
-		},
-	)
-	defer rt.Close()
-
-	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
-	if !ok {
-		t.Skip("This test only works when ResyncManager is used")
-	}
-	// Start SG with no databases
-	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and add new scopes and collections to it.
-	tb := base.GetTestBucket(t)
-	defer func() {
-		log.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
-
-	dataStore1, err := tb.GetNamedDataStore(0)
-	require.NoError(t, err)
-	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
-	require.True(t, ok)
-	dataStore2, err := tb.GetNamedDataStore(1)
-	require.NoError(t, err)
-	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
-	require.True(t, ok)
-
-	keyspace1 := fmt.Sprintf("db.%s.%s", dataStore1Name.ScopeName(),
-		dataStore1Name.CollectionName())
-	keyspace2 := fmt.Sprintf("db.%s.%s", dataStore2Name.ScopeName(),
-		dataStore2Name.CollectionName())
-
-	resp := rt.SendAdminRequest(http.MethodPost, "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}, "%s":{}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
-		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(), dataStore2Name.CollectionName(),
-	))
-	rest.RequireStatus(t, resp, http.StatusCreated)
-
-	// put a docs in both collections
-	for i := 1; i <= 10; i++ {
-		resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/1000%d", keyspace1, i), `{"type":"test_doc"}`)
-		rest.RequireStatus(t, resp, http.StatusCreated)
-
-		resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/1000%d", keyspace2, i), `{"type":"test_doc"}`)
-		rest.RequireStatus(t, resp, http.StatusCreated)
-	}
-
-	resp = rt.SendAdminRequest(http.MethodPost, "/db/_offline", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-
-	rest.WaitAndAssertCondition(t, func() bool {
-		state := atomic.LoadUint32(&rt.GetDatabase().State)
-		return state == db.DBOffline
-	})
-
-	// Run resync for single collection // Request body {"scopes": "scopeName": ["collection1Name", "collection2Name"]}}
-	body := fmt.Sprintf(`{
-			"scopes" :{
-				"%s": ["%s"]
-			}
-		}`, dataStore1Name.ScopeName(), dataStore1Name.CollectionName())
-	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", body)
-	rest.RequireStatus(t, resp, http.StatusOK)
-
-	var resyncManagerStatus db.ResyncManagerResponse
-	err = rt.WaitForConditionWithOptions(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
-		assert.NoError(t, err)
-
-		if resyncManagerStatus.State == db.BackgroundProcessStateCompleted {
-			return true
-		} else {
-			return false
-		}
-	}, 200, 200)
-	require.NoError(t, err)
-
-	assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
-	assert.Equal(t, 10, resyncManagerStatus.DocsProcessed)
-
-	// Run resync for all collections
-	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-
-	resyncManagerStatus = db.ResyncManagerResponse{}
-	err = rt.WaitForConditionWithOptions(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
-		assert.NoError(t, err)
-
-		if resyncManagerStatus.State == db.BackgroundProcessStateCompleted {
-			return true
-		} else {
-			return false
-		}
-	}, 200, 200)
-	require.NoError(t, err)
-
-	assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
-	assert.Equal(t, 20, resyncManagerStatus.DocsProcessed)
-}
-
 func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("DCP client doesn't work with walrus. Waiting on CBG-2661")
@@ -3306,95 +3175,6 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/100", `{"type":"test_doc1"}`), http.StatusCreated)
 }
 
-func TestPutDBConfigOIDC(t *testing.T) {
-	rest.RequireNonParallelBootstrapTests(t)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
-
-	serverErr := make(chan error, 0)
-
-	// Start SG with no databases
-	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
-		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
-		),
-	)
-	resp.RequireStatus(http.StatusCreated)
-
-	// Attempt to update the config with an invalid OIDC issuer - should fail
-	invalidOIDCConfig := fmt.Sprintf(
-		`{
-			"bucket": "%s",
-			"num_index_replicas": 0,
-			"enable_shared_bucket_access": %t,
-			"use_views": %t,
-			"oidc": {
-				"providers": {
-					"test": {
-						"issuer": "https://test.invalid",
-						"client_id": "test"
-					}
-				}
-			}
-		}`,
-		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
-	)
-
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config", invalidOIDCConfig)
-	resp.RequireStatus(http.StatusBadRequest)
-
-	// Now pass the parameter to skip the validation
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config?disable_oidc_validation=true", invalidOIDCConfig)
-	resp.RequireStatus(http.StatusCreated)
-
-	// Now check with a valid OIDC issuer
-	validOIDCConfig := fmt.Sprintf(
-		`{
-			"bucket": "%s",
-			"num_index_replicas": 0,
-			"enable_shared_bucket_access": %t,
-			"use_views": %t,
-			"unsupported": {
-				"oidc_test_provider": {
-					"enabled": true
-				}
-			},
-			"oidc": {
-				"providers": {
-					"test": {
-						"issuer": "http://localhost:%d/db/_oidc_testing",
-						"client_id": "sync_gateway"
-					}
-				}
-			}
-		}`,
-		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), 4984+rest.BootstrapTestPortOffset,
-	)
-
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config", validOIDCConfig)
-	resp.RequireStatus(http.StatusCreated)
-}
-
 func TestNotExistentDBRequest(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
@@ -3420,38 +3200,24 @@ func TestNotExistentDBRequest(t *testing.T) {
 }
 
 func TestConfigsIncludeDefaults(t *testing.T) {
-	rest.RequireNonParallelBootstrapTests(t)
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
-	serverErr := make(chan error, 0)
-
 	ctx := base.TestCtx(t)
 	// Get a test bucket, to use to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
+	defer tb.Close(ctx)
 
 	// Start SG with no databases
 	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
 	config.Logging.Console.LogKeys = []string{base.KeyDCP.String()}
 	config.Logging.Console.LogLevel.Set(base.LevelDebug)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
 
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
+	sc, closeFn := rest.StartServerWithConfig(t, &config)
+	defer closeFn()
 
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
+	resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
@@ -3460,9 +3226,9 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	var dbConfig rest.DatabaseConfig
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config?include_runtime=true", "")
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/db/_config?include_runtime=true", "")
 	resp.RequireStatus(http.StatusOK)
-	err = base.JSONUnmarshal([]byte(resp.Body), &dbConfig)
+	err := base.JSONUnmarshal([]byte(resp.Body), &dbConfig)
 	assert.NoError(t, err)
 
 	// Validate a few default values to ensure they are set
@@ -3476,7 +3242,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	assert.Equal(t, dbConfig.Logging.Console.LogKeys, []string{base.KeyDCP.String()})
 
 	var runtimeServerConfigResponse rest.RunTimeServerConfigResponse
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/_config?include_runtime=true", "")
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/_config?include_runtime=true", "")
 	resp.RequireStatus(http.StatusOK)
 	err = base.JSONUnmarshal([]byte(resp.Body), &runtimeServerConfigResponse)
 	assert.NoError(t, err)
@@ -3491,16 +3257,14 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 
 	// Test unsupported options
 	tb2 := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket 2")
-		tb2.Close(ctx)
-	}()
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/",
+	defer tb2.Close(ctx)
+
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/",
 		`{"bucket": "`+tb2.GetName()+`", "num_index_replicas": 0, "unsupported": {"disable_clean_skipped_query": true}}`,
 	)
 	resp.RequireStatus(http.StatusCreated)
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/_config?include_runtime=true", "")
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/_config?include_runtime=true", "")
 	resp.RequireStatus(http.StatusOK)
 	err = base.JSONUnmarshal([]byte(resp.Body), &runtimeServerConfigResponse)
 	assert.NoError(t, err)
@@ -3511,26 +3275,34 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 }
 
 func TestLegacyCredentialInheritance(t *testing.T) {
-	rest.RequireNonParallelBootstrapTests(t)
 	rest.RequireBucketSpecificCredentials(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
-	serverErr := make(chan error, 0)
-
-	// Start SG with no databases
 	ctx := base.TestCtx(t)
 	config := rest.BootstrapStartupConfigForTest(t)
+	// explicitly start with persistent config disabled
 	sc, err := rest.SetupServerContext(ctx, &config, false)
 	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
 
+	serverErr := make(chan error)
+
+	closeFn := func() {
+		sc.Close(ctx)
+		assert.NoError(t, <-serverErr)
+	}
+
+	started := false
+	defer func() {
+		if !started {
+			closeFn()
+		}
+
+	}()
 	go func() {
 		serverErr <- rest.StartServer(ctx, &config, sc)
 	}()
+
 	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
@@ -3538,7 +3310,7 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 	defer tb.Close(ctx)
 
 	// No credentials should fail
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db1/",
+	resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
@@ -3547,13 +3319,13 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 	resp.RequireStatus(http.StatusForbidden)
 
 	// Wrong credentials should fail
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/",
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/",
 		`{"bucket": "`+tb.GetName()+`", "username": "test", "password": "invalid_password"}`,
 	)
 	resp.RequireStatus(http.StatusForbidden)
 
 	// Proper credentials should pass
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db3/",
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db3/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "username": "%s", "password": "%s"}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), base.TestClusterUsername(), base.TestClusterPassword(),
@@ -3633,10 +3405,7 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 
 // TestDbConfigPersistentSGVersions ensures that cluster-wide config updates are not applied to older nodes to avoid pushing invalid configuration.
 func TestDbConfigPersistentSGVersions(t *testing.T) {
-	rest.RequireNonParallelBootstrapTests(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyConfig)
-
-	serverErr := make(chan error, 0)
 
 	// Start SG with no databases
 	config := rest.BootstrapStartupConfigForTest(t)
@@ -3644,15 +3413,8 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	// enable the background update worker for this test only
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Millisecond * 250)
 
+	sc, closeFn := rest.StartServerWithConfig(t, &config)
 	ctx := base.TestCtx(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	ctx = sc.SetContextLogID(ctx, "initial")
-
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -3673,11 +3435,13 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 			RevsLimit:        base.Uint32Ptr(123), // use RevsLimit to detect config changes
 		},
 	}
+	var err error
 	dbConfig.Version, err = rest.GenerateDatabaseConfigVersionID(ctx, "", &dbConfig.DbConfig)
 	require.NoError(t, err)
 
+	groupID := sc.Config.Bootstrap.ConfigGroupID
 	// initialise with db config
-	_, err = sc.BootstrapContext.InsertConfig(ctx, tb.GetName(), t.Name(), &dbConfig)
+	_, err = sc.BootstrapContext.InsertConfig(ctx, tb.GetName(), groupID, &dbConfig)
 	require.NoError(t, err)
 
 	assertRevsLimit := func(sc *rest.ServerContext, revsLimit uint32) {
@@ -3698,7 +3462,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	assertRevsLimit(sc, 123)
 
 	writeRevsLimitConfigWithVersion := func(sc *rest.ServerContext, version string, revsLimit uint32) error {
-		_, err = sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), t.Name(), dbName, func(db *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
+		_, err = sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), groupID, dbName, func(db *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
 
 			db.SGVersion = version
 			db.DbConfig.RevsLimit = base.Uint32Ptr(revsLimit)
@@ -3728,22 +3492,11 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	assertRevsLimit(sc, 789)
 
 	// Shut down the first SG node
-	sc.Close(ctx)
-	require.NoError(t, <-serverErr)
+	closeFn()
 
 	// Start a new SG node and ensure we *can* load the "newer" config version on initial startup, to support downgrade
-	sc, err = rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	ctx = sc.SetContextLogID(ctx, "newerconfig")
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
+	sc, closeFn = rest.StartServerWithConfig(t, &config)
+	defer closeFn()
 
 	assertRevsLimit(sc, 654)
 
@@ -3957,20 +3710,9 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server with xattrs")
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
-	// Start SG with no databases in bucket(s)
+	sc, closeFn := rest.StartBootstrapServer(t)
+	defer closeFn()
 	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	serverErr := make(chan error, 0)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
 	defer func() {
@@ -3986,14 +3728,14 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
    "use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
    "num_index_replicas": 0 }`
 
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db1/", fmt.Sprintf(dbConfig, "db1"))
+	resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/", fmt.Sprintf(dbConfig, "db1"))
 	resp.RequireStatus(http.StatusCreated)
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodDelete, "/db1/", "")
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodDelete, "/db1/", "")
 	resp.RequireStatus(http.StatusOK)
 
 	// Make another database that uses import in-order to trigger the panic instantly instead of having to time.Sleep
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
+	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
 	resp.RequireStatus(http.StatusCreated)
 
 	scopeName := ""
@@ -4005,9 +3747,9 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	assert.NoError(t, fetchDb2DestErr)
 }
 
-func BootstrapWaitForDatabaseState(t *testing.T, dbName string, state uint32) {
+func BootstrapWaitForDatabaseState(t *testing.T, sc *rest.ServerContext, dbName string, state uint32) {
 	err := base.WaitForNoError(base.TestCtx(t), func() error {
-		resp := rest.BootstrapAdminRequest(t, http.MethodGet, "/"+dbName+"/", "")
+		resp := rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+dbName+"/", "")
 		if resp.StatusCode != http.StatusOK {
 			return errors.New("expected 200 status")
 		}
@@ -4291,19 +4033,8 @@ func TestPerDBCredsOverride(t *testing.T) {
 		},
 	}
 
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-
-	serverErr := make(chan error, 0)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
+	sc, closeFn := rest.StartServerWithConfig(t, &config)
+	defer closeFn()
 
 	bootstrapConnection, err := rest.CreateBootstrapConnectionFromStartupConfig(ctx, sc.Config, base.PerUseClusterConnections)
 	require.NoError(t, err)
@@ -4316,13 +4047,13 @@ func TestPerDBCredsOverride(t *testing.T) {
 		"num_index_replicas": 0
 	}`
 
-	res := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
+	res := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/", dbConfig)
 	// Make sure request failed as it could authenticate with the bucket
 	assert.Equal(t, http.StatusForbidden, res.StatusCode)
 
 	// Allow database to be created sucessfully
 	sc.Config.DatabaseCredentials = map[string]*base.CredentialsConfig{}
-	res = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
+	res = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/", dbConfig)
 	assert.Equal(t, http.StatusCreated, res.StatusCode)
 
 	// Confirm fetch configs causes bucket credentials to be overrode

@@ -2670,3 +2670,75 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 	assert.NoError(t, res.Body.Close())
 	assert.Equal(t, http.StatusForbidden, res.StatusCode, "Shouldn't have access")
 }
+
+func TestPutDBConfigOIDC(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	resp := BootstrapAdminRequest(t, sc, http.MethodPut, "/db/",
+		fmt.Sprintf(
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		),
+	)
+	resp.RequireStatus(http.StatusCreated)
+
+	// Attempt to update the config with an invalid OIDC issuer - should fail
+	invalidOIDCConfig := fmt.Sprintf(
+		`{
+			"bucket": "%s",
+			"num_index_replicas": 0,
+			"enable_shared_bucket_access": %t,
+			"use_views": %t,
+			"oidc": {
+				"providers": {
+					"test": {
+						"issuer": "https://test.invalid",
+						"client_id": "test"
+					}
+				}
+			}
+		}`,
+		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+	)
+
+	resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/db/_config", invalidOIDCConfig)
+	resp.RequireStatus(http.StatusBadRequest)
+
+	// Now pass the parameter to skip the validation
+	resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/db/_config?disable_oidc_validation=true", invalidOIDCConfig)
+	resp.RequireStatus(http.StatusCreated)
+
+	// Now check with a valid OIDC issuer
+	validOIDCConfig := fmt.Sprintf(
+		`{
+			"bucket": "%s",
+			"num_index_replicas": 0,
+			"enable_shared_bucket_access": %t,
+			"use_views": %t,
+			"unsupported": {
+				"oidc_test_provider": {
+					"enabled": true
+				}
+			},
+			"oidc": {
+				"providers": {
+					"test": {
+						"issuer": "http://%s/db/_oidc_testing",
+						"client_id": "sync_gateway"
+					}
+				}
+			}
+		}`,
+		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), sc.getServerAddr(t, publicServer),
+	)
+
+	resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/db/_config", validOIDCConfig)
+	resp.RequireStatus(http.StatusCreated)
+}
