@@ -44,14 +44,34 @@ func WaitForPrimaryIndexEmpty(ctx context.Context, store base.N1QLStore) error {
 		retryWorker,
 		base.CreateMaxDoublingSleeperFunc(60, 500, 5000),
 	)
+	var retryError *base.RetryTimeoutError
+	if errors.As(err, &retryError) {
+		files, err := getPrimaryIndexFiles(ctx, store, 0)
+		if err != nil {
+			return fmt.Errorf("Error getting files from primary index: %w", err)
+		}
+		return fmt.Errorf("Files left behind after waiting for primary index to be emptied: %s", files)
+	}
 	return err
-
 }
 
-// isPrimaryIndexEmpty returs true if there are no documents in the primary index
+// isPrimaryIndexEmpty returns true if there are no documents in the primary index
 func isPrimaryIndexEmpty(ctx context.Context, store base.N1QLStore) (bool, error) {
+	// only look for a single file to make query faster
+	docs, err := getPrimaryIndexFiles(ctx, store, 1)
+	if err != nil {
+		return false, err
+	}
+	return len(docs) == 0, err
+}
+
+// getPrimaryIndexFiles returs true if there are no documents in the primary index
+func getPrimaryIndexFiles(ctx context.Context, store base.N1QLStore, numFiles int) ([]string, error) {
 	// Create the star channel query
-	statement := fmt.Sprintf("SELECT * FROM %s LIMIT 1", base.KeyspaceQueryToken)
+	statement := fmt.Sprintf("SELECT META().id FROM %s", base.KeyspaceQueryToken)
+	if numFiles != 0 {
+		statement += " LIMIT 1"
+	}
 	params := map[string]interface{}{}
 	params[QueryParamStartSeq] = 0
 	params[QueryParamEndSeq] = N1QLMaxInt64
@@ -62,18 +82,19 @@ func isPrimaryIndexEmpty(ctx context.Context, store base.N1QLStore) (bool, error
 	// If there was an error, then retry.  Assume it's an "index rollback" error which happens as
 	// the index processes the bucket flush operation
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
-	// If it's empty, we're done
-	var queryRow map[string]interface{}
-	found := results.Next(ctx, &queryRow)
+	var documents []string
+	var queryRow map[string]string
+	for results.Next(ctx, &queryRow) {
+		documents = append(documents, queryRow["id"])
+	}
 	resultsCloseErr := results.Close()
 	if resultsCloseErr != nil {
-		return false, err
+		return documents, err
 	}
-
-	return !found, nil
+	return documents, nil
 }
 
 func (db *DatabaseContext) CacheCompactActive() bool {
