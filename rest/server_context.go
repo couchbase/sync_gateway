@@ -2085,7 +2085,7 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 						base.WarnfCtx(ctx, "Couldn't load configs from bucket for group %q when polled: %v", sc.Config.Bootstrap.ConfigGroupID, err)
 					}
 					if count > 0 {
-						base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %d from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
+						base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %q from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
 					}
 				}
 			}
