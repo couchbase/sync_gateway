@@ -46,11 +46,11 @@ func WaitForPrimaryIndexEmpty(ctx context.Context, store base.N1QLStore) error {
 	)
 	var retryError *base.RetryTimeoutError
 	if errors.As(err, &retryError) {
-		files, err := getPrimaryIndexFiles(ctx, store, 0)
+		files, err := getPrimaryIndexDocuments(ctx, store, true)
 		if err != nil {
 			return fmt.Errorf("Error getting files from primary index: %w", err)
 		}
-		return fmt.Errorf("Files left behind after waiting for primary index to be emptied: %s", files)
+		return fmt.Errorf("Documents left behind after waiting for primary index to be emptied: %s", files)
 	}
 	return err
 }
@@ -58,18 +58,18 @@ func WaitForPrimaryIndexEmpty(ctx context.Context, store base.N1QLStore) error {
 // isPrimaryIndexEmpty returns true if there are no documents in the primary index
 func isPrimaryIndexEmpty(ctx context.Context, store base.N1QLStore) (bool, error) {
 	// only look for a single file to make query faster
-	docs, err := getPrimaryIndexFiles(ctx, store, 1)
+	docs, err := getPrimaryIndexDocuments(ctx, store, false)
 	if err != nil {
 		return false, err
 	}
 	return len(docs) == 0, err
 }
 
-// getPrimaryIndexFiles returs true if there are no documents in the primary index
-func getPrimaryIndexFiles(ctx context.Context, store base.N1QLStore, numFiles int) ([]string, error) {
+// getPrimaryIndexDocuments returs true if there are no documents in the primary index
+func getPrimaryIndexDocuments(ctx context.Context, store base.N1QLStore, allDocuments bool) ([]string, error) {
 	// Create the star channel query
 	statement := fmt.Sprintf("SELECT META().id FROM %s", base.KeyspaceQueryToken)
-	if numFiles != 0 {
+	if !allDocuments {
 		statement += " LIMIT 1"
 	}
 	params := map[string]interface{}{}
@@ -90,11 +90,8 @@ func getPrimaryIndexFiles(ctx context.Context, store base.N1QLStore, numFiles in
 	for results.Next(ctx, &queryRow) {
 		documents = append(documents, queryRow["id"])
 	}
-	resultsCloseErr := results.Close()
-	if resultsCloseErr != nil {
-		return documents, err
-	}
-	return documents, nil
+	err = results.Close()
+	return documents, err
 }
 
 func (db *DatabaseContext) CacheCompactActive() bool {
