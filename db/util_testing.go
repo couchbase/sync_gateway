@@ -65,7 +65,7 @@ func isPrimaryIndexEmpty(ctx context.Context, store base.N1QLStore) (bool, error
 	return len(docs) == 0, err
 }
 
-// getPrimaryIndexDocuments returs true if there are no documents in the primary index
+// getPrimaryIndexDocuments returs true if there are no documents in the primary index and returns the documents. If allDocuments is false, only check for a single document.
 func getPrimaryIndexDocuments(ctx context.Context, store base.N1QLStore, allDocuments bool) ([]string, error) {
 	// Create the star channel query
 	statement := fmt.Sprintf("SELECT META().id FROM %s", base.KeyspaceQueryToken)
