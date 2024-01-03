@@ -2427,7 +2427,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport:   true,
-			UserXattrKey: xattrKey,
+			UserXattrKey: &xattrKey,
 		}},
 		SyncFn: `
 			function (doc, oldDoc, meta){
@@ -2545,7 +2545,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport:   false,
-			UserXattrKey: xattrKey,
+			UserXattrKey: &xattrKey,
 		}},
 		SyncFn: `
 			function (doc, oldDoc, meta){
@@ -2642,7 +2642,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport:   false,
-			UserXattrKey: xattrKey,
+			UserXattrKey: &xattrKey,
 		}},
 		SyncFn: `
 			function (doc, oldDoc, meta){

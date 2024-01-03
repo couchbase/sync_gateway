@@ -567,7 +567,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport:   true,
-				UserXattrKey: xattrKey,
+				UserXattrKey: &xattrKey,
 			},
 		},
 	})
@@ -1184,7 +1184,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			rt := NewRestTester(t, &RestTesterConfig{
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					AutoImport:   testCase.autoImport,
-					UserXattrKey: xattrKey,
+					UserXattrKey: &xattrKey,
 				}},
 				SyncFn: `
 			function (doc, oldDoc, meta){
@@ -1275,7 +1275,7 @@ func TestUserXattrRevCache(t *testing.T) {
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:       true,
-			UserXattrKey:     xattrKey,
+			UserXattrKey:     &xattrKey,
 			ImportPartitions: base.Uint16Ptr(2), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 		}},
 		SyncFn: syncFn,
@@ -1287,7 +1287,7 @@ func TestUserXattrRevCache(t *testing.T) {
 
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:       true,
-			UserXattrKey:     xattrKey,
+			UserXattrKey:     &xattrKey,
 			ImportPartitions: base.Uint16Ptr(2), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 		}},
 		SyncFn: syncFn,
@@ -1369,7 +1369,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			ImportPartitions: base.Uint16Ptr(2), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 			AutoImport:       true,
-			UserXattrKey:     xattrKey,
+			UserXattrKey:     &xattrKey,
 		}},
 		SyncFn: syncFn,
 	})
@@ -1380,7 +1380,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			ImportPartitions: base.Uint16Ptr(2), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 			AutoImport:       true,
-			UserXattrKey:     xattrKey,
+			UserXattrKey:     &xattrKey,
 		}},
 		SyncFn: syncFn,
 	})
@@ -1449,7 +1449,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:   true,
-			UserXattrKey: xattrKey,
+			UserXattrKey: &xattrKey,
 		}},
 		SyncFn: `
 			function (doc, oldDoc, meta){

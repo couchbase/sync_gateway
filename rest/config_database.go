@@ -171,7 +171,7 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		Replications:                     nil,
 		ServeInsecureAttachmentTypes:     base.BoolPtr(false),
 		QueryPaginationLimit:             base.IntPtr(db.DefaultQueryPaginationLimit),
-		UserXattrKey:                     "",
+		UserXattrKey:                     nil,
 		ClientPartitionWindowSecs:        base.IntPtr(int(base.DefaultClientPartitionWindow.Seconds())),
 		JavascriptTimeoutSecs:            base.Uint32Ptr(base.DefaultJavascriptTimeoutSecs),
 		Suspendable:                      base.BoolPtr(sc.IsServerless()),

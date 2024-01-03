@@ -1476,7 +1476,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:   true,
-			UserXattrKey: xattrKey,
+			UserXattrKey: &xattrKey,
 		}},
 		SyncFn: `
 			function (doc, oldDoc, meta){

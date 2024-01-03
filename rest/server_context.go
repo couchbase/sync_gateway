@@ -1170,7 +1170,8 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		localDocExpirySecs = *config.LocalDocExpirySecs
 	}
 
-	if config.UserXattrKey != "" {
+	var userXattrKey string
+	if config.UserXattrKey != nil && *config.UserXattrKey != "" {
 		if !base.IsEnterpriseEdition() {
 			return db.DatabaseContextOptions{}, fmt.Errorf("user_xattr_key is only supported in enterpise edition")
 		}
@@ -1178,6 +1179,8 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		if !config.UseXattrs() {
 			return db.DatabaseContextOptions{}, fmt.Errorf("use of user_xattr_key requires shared_bucket_access to be enabled")
 		}
+
+		userXattrKey = *config.UserXattrKey
 	}
 
 	clientPartitionWindow := base.DefaultClientPartitionWindow
@@ -1234,7 +1237,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		DeltaSyncOptions:              deltaSyncOptions,
 		CompactInterval:               compactIntervalSecs,
 		QueryPaginationLimit:          queryPaginationLimit,
-		UserXattrKey:                  config.UserXattrKey,
+		UserXattrKey:                  userXattrKey,
 		SGReplicateOptions: db.SGReplicateOptions{
 			Enabled:               sgReplicateEnabled,
 			WebsocketPingInterval: sgReplicateWebsocketPingInterval,
