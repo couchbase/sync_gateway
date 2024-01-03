@@ -27,17 +27,20 @@ func TestUserXattrSetUnsetDBConfig(t *testing.T) {
 	}
 
 	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			UserXattrKey: base.StringPtr("myXattr"),
-		}},
+		PersistentConfig: true,
 	})
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/db/_config", "")
+	dbConfig := rt.NewDbConfig()
+	dbConfig.UserXattrKey = base.StringPtr("myXattr")
+	resp := rt.CreateDatabase("db", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config", "")
 	rest.AssertStatus(t, resp, http.StatusOK)
 	assert.Contains(t, string(resp.BodyBytes()), `"user_xattr_key":"myXattr"`)
 
-	// upsert an explicit empty string (instead of nil) to ensure we can remove the config option
+	// upsert an empty string to ensure we can remove the config option
 	resp = rt.UpsertDbConfig(rt.GetDatabase().Name, rest.DbConfig{UserXattrKey: base.StringPtr("")})
 	rest.AssertStatus(t, resp, http.StatusCreated)
 
@@ -47,9 +50,8 @@ func TestUserXattrSetUnsetDBConfig(t *testing.T) {
 	assert.Contains(t, string(resp.BodyBytes()), `"user_xattr_key":""`)
 
 	// PUT to fully remove the config option (nil)
-	dbConfig := rt.DatabaseConfig
 	dbConfig.UserXattrKey = nil
-	resp = rt.ReplaceDbConfig(rt.GetDatabase().Name, dbConfig.DbConfig)
+	resp = rt.ReplaceDbConfig(rt.GetDatabase().Name, dbConfig)
 	rest.AssertStatus(t, resp, http.StatusCreated)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config", "")
