@@ -19,9 +19,11 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	if !base.TestUseXattrs() { // import tests only run if xattrs are enabled
+	// user xattr tests require xattrs and EE
+	if !base.TestUseXattrs() || !base.IsEnterpriseEdition() {
 		return
 	}
+
 	ctx := context.Background() // start of test process
 	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
 	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)

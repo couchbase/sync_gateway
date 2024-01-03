@@ -22,14 +22,6 @@ import (
 func TestUserXattrRevCache(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
-	if !base.IsEnterpriseEdition() {
-		t.Skipf("test is EE only - user xattrs")
-	}
-
 	ctx := base.TestCtx(t)
 	docKey := t.Name()
 	xattrKey := "channels"
@@ -69,9 +61,7 @@ func TestUserXattrRevCache(t *testing.T) {
 
 	dataStore := rt2.GetSingleDataStore()
 	userXattrStore, ok := base.AsUserXattrStore(dataStore)
-	if !ok {
-		t.Skip("Test requires Couchbase Bucket")
-	}
+	require.True(t, ok)
 
 	ctx = rt2.Context()
 	a := rt2.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -115,13 +105,6 @@ func TestUserXattrRevCache(t *testing.T) {
 func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
-	if !base.IsEnterpriseEdition() {
-		t.Skipf("test is EE only - user xattrs")
-	}
 	ctx := base.TestCtx(t)
 	// Sync function to set channel access to a channels UserXattrKey
 	syncFn := `
@@ -161,9 +144,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 
 	dataStore := rt2.GetSingleDataStore()
 	userXattrStore, ok := base.AsUserXattrStore(dataStore)
-	if !ok {
-		t.Skip("Test requires Couchbase Bucket")
-	}
+	require.True(t, ok)
 
 	ctx = rt2.Context()
 	a := rt2.ServerContext().Database(ctx, "db").Authenticator(ctx)

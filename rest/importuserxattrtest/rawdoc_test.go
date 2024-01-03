@@ -20,14 +20,6 @@ import (
 )
 
 func TestUserXattrsRawGet(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("Test requires xattrs to be enabled")
-	}
-
-	if !base.IsEnterpriseEdition() {
-		t.Skipf("test is EE only - user xattrs")
-	}
-
 	docKey := t.Name()
 	xattrKey := "xattrKey"
 
@@ -42,9 +34,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	defer rt.Close()
 
 	userXattrStore, ok := base.AsUserXattrStore(rt.GetSingleDataStore())
-	if !ok {
-		t.Skip("Test requires Couchbase Bucket")
-	}
+	require.True(t, ok)
 
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, "{}")
 	rest.RequireStatus(t, resp, http.StatusCreated)

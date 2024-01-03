@@ -18,15 +18,7 @@ import (
 )
 
 func TestUserXattrSetUnsetDBConfig(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
-	if !base.IsEnterpriseEdition() {
-		t.Skipf("test is EE only - user xattrs")
-	}
-
-	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
 	})
 	defer rt.Close()

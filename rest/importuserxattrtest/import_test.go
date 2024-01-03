@@ -16,17 +16,10 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestUserXattrAutoImport(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
-	if !base.IsEnterpriseEdition() {
-		t.Skipf("test is EE only - user xattrs")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	docKey := t.Name()
@@ -51,9 +44,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 
 	dataStore := rt.GetSingleDataStore()
 	userXattrStore, ok := base.AsUserXattrStore(dataStore)
-	if !ok {
-		t.Skip("Test requires Couchbase Bucket")
-	}
+	require.True(t, ok)
 
 	// Add doc
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, "{}")
@@ -137,14 +128,6 @@ func TestUserXattrAutoImport(t *testing.T) {
 }
 
 func TestUserXattrOnDemandImportGET(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
-	if !base.IsEnterpriseEdition() {
-		t.Skipf("test is EE only - user xattrs")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	docKey := t.Name()
@@ -170,9 +153,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	dataStore := rt.GetSingleDataStore()
 
 	userXattrStore, ok := base.AsUserXattrStore(dataStore)
-	if !ok {
-		t.Skip("Test requires Couchbase Bucket")
-	}
+	require.True(t, ok)
 
 	// Add doc with SDK
 	err := dataStore.Set(docKey, 0, nil, []byte(`{}`))
@@ -234,14 +215,6 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 }
 
 func TestUserXattrOnDemandImportWrite(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
-	if !base.IsEnterpriseEdition() {
-		t.Skipf("test is EE only - user xattrs")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	docKey := t.Name()
@@ -267,9 +240,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	dataStore := rt.GetSingleDataStore()
 
 	userXattrStore, ok := base.AsUserXattrStore(dataStore)
-	if !ok {
-		t.Skip("Test requires Couchbase Bucket")
-	}
+	require.True(t, ok)
 
 	// Initial PUT
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
