@@ -596,46 +596,6 @@ func TestDBGetConfigCustomLogging(t *testing.T) {
 	assert.Equal(t, body.Logging.Console.LogKeys, logKeys)
 }
 
-// Take DB offline and ensure can post _resync
-func TestDBOfflinePostResync(t *testing.T) {
-
-	rt := rest.NewRestTester(t, nil)
-	defer rt.Close()
-
-	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
-	if !ok {
-		t.Skip("This test only works when ResyncManager is used")
-	}
-
-	log.Printf("Taking DB offline")
-	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.True(t, body["state"].(string) == "Online")
-
-	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	rest.RequireStatus(t, response, 200)
-
-	response = rt.SendAdminRequest("GET", "/db/", "")
-	body = nil
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.True(t, body["state"].(string) == "Offline")
-
-	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 200)
-	err := rt.WaitForCondition(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		var status db.ResyncManagerResponse
-		err := json.Unmarshal(response.BodyBytes(), &status)
-		assert.NoError(t, err)
-
-		var val interface{}
-		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
-
-		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
-	})
-	assert.NoError(t, err)
-}
-
 func TestDBOfflinePostResyncUsingDCPStream(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test requires gocb buckets")
@@ -645,9 +605,7 @@ func TestDBOfflinePostResyncUsingDCPStream(t *testing.T) {
 	defer rt.Close()
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
-	if !ok {
-		t.Skip("This test only works when ResyncManagerDCP is used")
-	}
+	require.True(t, ok)
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
@@ -665,51 +623,6 @@ func TestDBOfflinePostResyncUsingDCPStream(t *testing.T) {
 
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 200)
 	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-}
-
-// Take DB offline and ensure only one _resync can be in progress
-func TestDBOfflineSingleResync(t *testing.T) {
-
-	syncFn := `
-	function(doc) {
-		channel("x")
-	}`
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: syncFn})
-	defer rt.Close()
-
-	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
-	if !ok {
-		t.Skip("This test only works when ResyncManager is used")
-	}
-	// create documents in DB to cause resync to take a few seconds
-	for i := 0; i < 1000; i++ {
-		rt.CreateTestDoc(fmt.Sprintf("doc%v", i))
-	}
-	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
-
-	log.Printf("Taking DB offline")
-	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.True(t, body["state"].(string) == "Online")
-
-	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	rest.RequireStatus(t, response, 200)
-
-	response = rt.SendAdminRequest("GET", "/db/", "")
-	body = nil
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.True(t, body["state"].(string) == "Offline")
-
-	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-	rest.RequireStatus(t, response, http.StatusOK)
-
-	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
-	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
-
-	_ = rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
-
-	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
 
 func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
@@ -724,9 +637,7 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 	defer rt.Close()
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
-	if !ok {
-		t.Skip("This test only works when ResyncManagerDCP is used")
-	}
+	require.True(t, ok)
 
 	// create documents in DB to cause resync to take a few seconds
 	for i := 0; i < 1000; i++ {
@@ -758,7 +669,7 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
 
-func TestResync(t *testing.T) {
+func TestResyncQueryBased(t *testing.T) {
 	base.LongRunningTest(t)
 
 	testCases := []struct {
@@ -802,16 +713,18 @@ func TestResync(t *testing.T) {
 				&rest.RestTesterConfig{
 					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 						QueryPaginationLimit: &testCase.queryLimit,
-					}},
+						Unsupported: &db.UnsupportedOptions{
+							UseQueryBasedResyncManager: true,
+						},
+					},
+					},
 					SyncFn: syncFn,
 				},
 			)
 			defer rt.Close()
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
-			if !ok {
-				rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore(), rt.GetDatabase().MetadataKeys)
-			}
+			require.True(t, ok)
 
 			for i := 0; i < testCase.docsCreated; i++ {
 				rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
@@ -878,9 +791,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 			defer rt.Close()
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
-			if !ok {
-				rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs(), rt.GetDatabase().MetadataKeys)
-			}
+			require.True(t, ok)
 
 			for i := 0; i < testCase.docsCreated; i++ {
 				rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
@@ -937,9 +848,7 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 	const numDocs = 1000
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
-	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs(), rt.GetDatabase().MetadataKeys)
-	}
+	require.True(t, ok)
 
 	// create some docs
 	for i := 0; i < numDocs; i++ {
@@ -1064,14 +973,15 @@ func TestResyncErrorScenarios(t *testing.T) {
 		&rest.RestTesterConfig{
 			SyncFn:           syncFn,
 			CustomTestBucket: leakyTestBucket,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Unsupported: &db.UnsupportedOptions{UseQueryBasedResyncManager: true},
+			}},
 		},
 	)
 	defer rt.Close()
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
-	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore(), rt.GetDatabase().MetadataKeys)
-	}
+	require.True(t, ok)
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
 	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
@@ -1172,9 +1082,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 	defer rt.Close()
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
-	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs(), rt.GetDatabase().MetadataKeys)
-	}
+	require.True(t, ok)
 
 	numOfDocs := 1000
 	for i := 0; i < numOfDocs; i++ {
@@ -1252,6 +1160,7 @@ func TestResyncStop(t *testing.T) {
 			SyncFn: syncFn,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 				QueryPaginationLimit: base.IntPtr(10),
+				Unsupported:          &db.UnsupportedOptions{UseQueryBasedResyncManager: true},
 			}},
 			CustomTestBucket: leakyTestBucket,
 		},
@@ -1259,9 +1168,7 @@ func TestResyncStop(t *testing.T) {
 	defer rt.Close()
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
-	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore(), rt.GetDatabase().MetadataKeys)
-	}
+	require.True(t, ok)
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
 	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)

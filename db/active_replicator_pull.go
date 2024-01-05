@@ -299,7 +299,6 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks(c *activeReplicat
 
 // Stop stops the pull replication and waits for the sub changes goroutine to finish.
 func (apr *ActivePullReplicator) Stop() error {
-	base.TracefCtx(apr.ctx, base.KeyReplicate, "Calling stop and disconnect from Stop()")
 	if err := apr.stopAndDisconnect(); err != nil {
 		return err
 	}

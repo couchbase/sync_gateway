@@ -247,7 +247,7 @@ const (
 
 	NumDocWritesDesc = "The total number of documents written by any means (replication, rest API interaction or imports) since Sync Gateway node startup."
 
-	NumReplicationsActiveDesc = "The total number of active replications. This metric only counts continuous pull replications."
+	NumReplicationsActiveDesc = "The total number of active replications."
 
 	NumReplicationsTotalDesc = "The total number of replications created since Sync Gateway node startup."
 
