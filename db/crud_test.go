@@ -1915,7 +1915,7 @@ func TestGetCVWithDocResidentInCache(t *testing.T) {
 
 			vrs := doc.HLV.Version
 			src := doc.HLV.SourceID
-			sv := &SourceAndVersion{Version: vrs, SourceID: src}
+			sv := &Version{Value: vrs, SourceID: src}
 			revision, err := collection.GetCV(ctx, docID, sv, true)
 			require.NoError(t, err)
 			if testCase.access {
@@ -1972,7 +1972,7 @@ func TestGetByCVForDocNotResidentInCache(t *testing.T) {
 	// get by CV should force a load from bucket and have a cache miss
 	vrs := doc.HLV.Version
 	src := doc.HLV.SourceID
-	sv := &SourceAndVersion{Version: vrs, SourceID: src}
+	sv := &Version{Value: vrs, SourceID: src}
 	revision, err := collection.GetCV(ctx, doc1ID, sv, true)
 	require.NoError(t, err)
 
@@ -2033,7 +2033,7 @@ func TestGetCVActivePathway(t *testing.T) {
 				require.NoError(t, err)
 				vrs := doc.HLV.Version
 				src := doc.HLV.SourceID
-				sv := &SourceAndVersion{Version: vrs, SourceID: src}
+				sv := &Version{Value: vrs, SourceID: src}
 				assert.Equal(t, rev, revision.RevID)
 				assert.Equal(t, sv, revision.CV)
 				assert.Equal(t, docID, revision.DocID)
