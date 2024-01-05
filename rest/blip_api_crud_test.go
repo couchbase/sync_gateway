@@ -1699,7 +1699,7 @@ func TestPutRevV4(t *testing.T) {
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// assert on bucket doc
-	doc, _, err := collection.GetDocWithXattr(base.TestCtx(t), "foo", db.DocUnmarshalVV)
+	doc, _, err := collection.GetDocWithXattr(base.TestCtx(t), "foo", db.DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
 	// assert the persisted HLV based on what was sent through the blip tester
@@ -1718,7 +1718,7 @@ func TestPutRevV4(t *testing.T) {
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// assert on bucket doc
-	doc, _, err = collection.GetDocWithXattr(base.TestCtx(t), "boo", db.DocUnmarshalVV)
+	doc, _, err = collection.GetDocWithXattr(base.TestCtx(t), "boo", db.DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
 	mv := make(map[string]uint64)

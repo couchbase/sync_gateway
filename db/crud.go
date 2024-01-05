@@ -2781,7 +2781,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 	incomingDocCV := Version{SourceID: incomingHLV.SourceID, Value: incomingHLV.Version}
 
 	localDocCV := Version{}
-	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalVV)
+	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalNoHistory)
 	if doc.HLV != nil {
 		localDocCV.SourceID, localDocCV.Value = doc.HLV.GetCurrentVersion()
 	}
