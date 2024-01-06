@@ -1538,7 +1538,7 @@ func GetHttpClient(insecureSkipVerify bool) *http.Client {
 		transport.TLSClientConfig.InsecureSkipVerify = true
 		return &http.Client{Transport: transport}
 	}
-	return http.DefaultClient
+	return &http.Client{}
 }
 
 // Like GetHttpClient, and also turns off the NODELAY option on the underlying TCP socket.

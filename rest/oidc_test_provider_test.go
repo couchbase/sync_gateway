@@ -328,7 +328,7 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 			require.NoError(t, err, "Error creating new request")
 			jar, err := cookiejar.New(nil)
 			require.NoError(t, err, "Error creating new cookie jar")
-			client := http.DefaultClient
+			client := &http.Client{}
 			client.Jar = jar
 			response, err := client.Do(request)
 			require.NoError(t, err, "Error sending request")
@@ -431,7 +431,7 @@ func TestOIDCWithBasicAuthDisabled(t *testing.T) {
 	require.NoError(t, err, "Error creating new request")
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err, "Error creating new cookie jar")
-	client := http.DefaultClient
+	client := http.Client{}
 	client.Jar = jar
 	response, err := client.Do(request)
 	require.NoError(t, err, "Error sending request")
