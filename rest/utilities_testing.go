@@ -1093,11 +1093,18 @@ type TestResponse struct {
 // BodyBytes takes a copy of the bytes in the response buffer, and saves them for future callers.
 func (r TestResponse) BodyBytes() []byte {
 	if r.bodyCache == nil {
+		// since we are reading the underlying write buffer here, we do not need to close. If call r.Result().Body, then this needs to be closed.
 		r.bodyCache = r.ResponseRecorder.Body.Bytes()
 	}
 	return r.bodyCache
 }
 
+// BodyString returns the string of the response body. This is cached once the first time it is called.
+func (r TestResponse) BodyString() string {
+	return string(r.BodyBytes())
+}
+
+// DumpBody returns the byte array of the response body. This is cached once the first time it is called.
 func (r TestResponse) DumpBody() {
 	log.Printf("%v", r.Body.String())
 }

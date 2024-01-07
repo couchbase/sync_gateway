@@ -555,13 +555,6 @@ func retrievePurgeInterval(ctx context.Context, bucket CouchbaseBucketStore, uri
 	return time.Duration(purgeIntervalHours) * time.Hour, nil
 }
 
-func ensureBodyClosed(ctx context.Context, body io.ReadCloser) {
-	err := body.Close()
-	if err != nil {
-		DebugfCtx(ctx, KeyBucket, "Failed to close socket: %v", err)
-	}
-}
-
 // AsViewStore returns a ViewStore if the underlying dataStore implements ViewStore.
 func AsViewStore(ds DataStore) (sgbucket.ViewStore, bool) {
 	viewStore, ok := ds.(sgbucket.ViewStore)

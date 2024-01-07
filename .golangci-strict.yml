@@ -13,7 +13,7 @@ run:
 
 linters:
   enable:
-    #- bodyclose # checks whether HTTP response body is closed successfully
+    - bodyclose # checks whether HTTP response body is closed successfully
     #- dupl # Tool for code clone detection
     - errcheck # Errcheck is a program for checking for unchecked errors in go programs. These unchecked errors can be critical bugs in some cases
     #- goconst # Finds repeated strings that could be replaced by a constant
@@ -59,7 +59,6 @@ linters:
     - whitespace # Tool for detection of leading and trailing whitespace
     - wsl # Whitespace Linter - Forces you to use empty lines!
     # Once fixed, should enable
-    - bodyclose # checks whether HTTP response body is closed successfully
     - deadcode # Finds unused code
     - dupl # Tool for code clone detection
     - goconst # Finds repeated strings that could be replaced by a constant

@@ -2287,6 +2287,7 @@ func TestEventuallyReachableOIDCClient(t *testing.T) {
 			request := createOIDCRequest(t, sessionEndpoint, token)
 			response, err := http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
+			defer func() { assert.NoError(t, response.Body.Close()) }()
 			assert.Equal(t, http.StatusUnauthorized, response.StatusCode) // Status code when unreachable
 
 			// Now reachable - success

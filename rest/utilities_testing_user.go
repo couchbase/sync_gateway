@@ -37,6 +37,7 @@ func MakeUser(t *testing.T, httpClient *http.Client, serverURL, username, passwo
 		if err != nil {
 			return true, err, resp
 		}
+		assert.NoError(t, resp.Body.Close())
 		return false, err, resp
 	}
 
@@ -64,6 +65,7 @@ func DeleteUser(t *testing.T, httpClient *http.Client, serverURL, username strin
 		if err != nil {
 			return true, err, resp
 		}
+		assert.NoError(t, resp.Body.Close())
 		return false, err, resp
 	}
 
