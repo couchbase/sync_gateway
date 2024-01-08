@@ -108,10 +108,9 @@ func TestPublicRESTStatCount(t *testing.T) {
 
 	srv := httptest.NewServer(rt.TestMetricsHandler())
 	defer srv.Close()
-	httpClient := http.DefaultClient
 
 	// test metrics endpoint
-	response, err := httpClient.Get(srv.URL + "/_metrics")
+	response, err := http.Get(srv.URL + "/_metrics")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	// assert the stat doesn't increment
@@ -2674,10 +2673,8 @@ func TestMetricsHandler(t *testing.T) {
 	srv := httptest.NewServer(rt.TestMetricsHandler())
 	defer srv.Close()
 
-	httpClient := http.DefaultClient
-
 	// Ensure metrics endpoint is accessible and that db database has entries
-	resp, err := httpClient.Get(srv.URL + "/_metrics")
+	resp, err := http.Get(srv.URL + "/_metrics")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	bodyString, err := io.ReadAll(resp.Body)
@@ -2693,7 +2690,7 @@ func TestMetricsHandler(t *testing.T) {
 	defer context.Close(context.AddDatabaseLogContext(ctx))
 
 	// Validate that metrics still works with both db and db2 databases and that they have entries
-	resp, err = httpClient.Get(srv.URL + "/_metrics")
+	resp, err = http.Get(srv.URL + "/_metrics")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	bodyString, err = io.ReadAll(resp.Body)
@@ -2704,7 +2701,7 @@ func TestMetricsHandler(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Ensure metrics endpoint is not serving any other routes
-	resp, err = httpClient.Get(srv.URL + "/" + rt.GetSingleKeyspace() + "/")
+	resp, err = http.Get(srv.URL + "/" + rt.GetSingleKeyspace() + "/")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	err = resp.Body.Close()
