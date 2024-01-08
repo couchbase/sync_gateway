@@ -359,6 +359,7 @@ type DbStats struct {
 	SecurityStats           *SecurityStats                `json:"security,omitempty"`
 	SharedBucketImportStats *SharedBucketImportStats      `json:"shared_bucket_import,omitempty"`
 	CollectionStats         map[string]*CollectionStats   `json:"per_collection,omitempty"`
+	replicatorMutex         sync.Mutex
 }
 
 type CacheStats struct {
@@ -1096,7 +1097,8 @@ func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled 
 	s.dbStatsMapMutex.Lock()
 	defer s.dbStatsMapMutex.Unlock()
 	dbStats := &DbStats{
-		dbName: name,
+		dbName:            name,
+		DbReplicatorStats: make(map[string]*DbReplicatorStats),
 	}
 
 	// These have a pretty good chance of being used so we'll initialise these for every database stat struct created
@@ -1823,6 +1825,7 @@ func (d *DbStats) initSecurityStats() error {
 }
 
 func (d *DbStats) unregisterReplicationStats(replicationID string) {
+
 	if d.DbReplicatorStats[replicationID] == nil {
 		return
 	}
@@ -1957,132 +1960,131 @@ func (d *DbStats) InitCollectionStats(scopeAndCollectionNames ...string) error {
 }
 
 func (d *DbStats) DBReplicatorStats(replicationID string) (*DbReplicatorStats, error) {
+	d.replicatorMutex.Lock()
+	defer d.replicatorMutex.Unlock()
+
+	if _, ok := d.DbReplicatorStats[replicationID]; ok {
+		return d.DbReplicatorStats[replicationID], nil
+	}
 	var err error
 	resUtil := &DbReplicatorStats{}
-	if d.DbReplicatorStats == nil {
-		d.DbReplicatorStats = map[string]*DbReplicatorStats{}
+	labelKeys := []string{DatabaseLabelKey, ReplicationLabelKey}
+	labelVals := []string{d.dbName, replicationID}
+
+	resUtil.NumAttachmentBytesPushed, err = NewIntStat(SubsystemReplication, "sgr_num_attachment_bytes_pushed", StatUnitBytes, SGRNumAttachmentBytesPushedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.NumAttachmentPushed, err = NewIntStat(SubsystemReplication, "sgr_num_attachments_pushed", StatUnitNoUnits, SGRNumAttachmentsPushedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.NumDocPushed, err = NewIntStat(SubsystemReplication, "sgr_num_docs_pushed", StatUnitNoUnits, SGRNumDocsPushedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.NumDocsFailedToPush, err = NewIntStat(SubsystemReplication, "sgr_num_docs_failed_to_push", StatUnitNoUnits, SGRNumDocsFailedToPushDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.PushConflictCount, err = NewIntStat(SubsystemReplication, "sgr_push_conflict_count", StatUnitNoUnits, SGRPushConflictCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.PushRejectedCount, err = NewIntStat(SubsystemReplication, "sgr_push_rejected_count", StatUnitNoUnits, SGRPushRejectedCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.PushDeltaSentCount, err = NewIntStat(SubsystemReplication, "sgr_deltas_sent", StatUnitNoUnits, SGRDeltasSentDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.DocsCheckedSent, err = NewIntStat(SubsystemReplication, "sgr_docs_checked_sent", StatUnitNoUnits, SGRDocsCheckedSentDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.NumConnectAttemptsPush, err = NewIntStat(SubsystemReplication, "sgr_num_connect_attempts_push", StatUnitNoUnits, SGRNumConnectAttemptsPushDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.NumReconnectsAbortedPush, err = NewIntStat(SubsystemReplication, "sgr_num_reconnects_aborted_push", StatUnitNoUnits, SGRNumReconnectsAbortedPushDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.NumAttachmentBytesPulled, err = NewIntStat(SubsystemReplication, "sgr_num_attachment_bytes_pulled", StatUnitBytes, SGRNumAttachmentBytesPulledDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.NumAttachmentsPulled, err = NewIntStat(SubsystemReplication, "sgr_num_attachments_pulled", StatUnitNoUnits, SGRNumAttachmentsPulledDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.PulledCount, err = NewIntStat(SubsystemReplication, "sgr_num_docs_pulled", StatUnitNoUnits, SGRNumDocsPulledDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.PurgedCount, err = NewIntStat(SubsystemReplication, "sgr_num_docs_purged", StatUnitNoUnits, SGRNumDocsPurgedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.FailedToPullCount, err = NewIntStat(SubsystemReplication, "sgr_num_docs_failed_to_pull", StatUnitNoUnits, SGRNumDocsFailedToPullDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.DeltaReceivedCount, err = NewIntStat(SubsystemReplication, "sgr_deltas_recv", StatUnitNoUnits, SGRDeltasRecvDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.DeltaRequestedCount, err = NewIntStat(SubsystemReplication, "sgr_deltas_requested", StatUnitNoUnits, SGRDeltasRequestedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.DocsCheckedReceived, err = NewIntStat(SubsystemReplication, "sgr_docs_checked_recv", StatUnitNoUnits, SGRDocsCheckedRecvDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.ConflictResolvedLocalCount, err = NewIntStat(SubsystemReplication, "sgr_conflict_resolved_local_count", StatUnitNoUnits, SGRConflictResolvedLocalCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.ConflictResolvedRemoteCount, err = NewIntStat(SubsystemReplication, "sgr_conflict_resolved_remote_count", StatUnitNoUnits, SGRConflictResolvedRemoteCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.ConflictResolvedMergedCount, err = NewIntStat(SubsystemReplication, "sgr_conflict_resolved_merge_count", StatUnitNoUnits, SGRConflictResolvedMergeCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.NumConnectAttemptsPull, err = NewIntStat(SubsystemReplication, "sgr_num_connect_attempts_pull", StatUnitNoUnits, SGRNumConnectAttemptsPullDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.NumReconnectsAbortedPull, err = NewIntStat(SubsystemReplication, "sgr_num_reconnects_aborted_pull", StatUnitNoUnits, SGRNumReconnectsAbortedPullDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.NumHandlersPanicked, err = NewIntStat(SubsystemReplication, "sgr_num_handlers_panicked", StatUnitNoUnits, SGRNumHandlersPanickedDesc, StatAddedVersion3dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.ExpectedSequenceLen, err = NewIntStat(SubsystemReplication, "expected_sequence_len", StatUnitNoUnits, SGRExpectedSequenceLengthDesc, StatAddedVersion3dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.ExpectedSequenceLenPostCleanup, err = NewIntStat(SubsystemReplication, "expected_sequence_len_post_cleanup", StatUnitNoUnits, SGRExpectedSequenceLengthPostCleanupDesc, StatAddedVersion3dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.ProcessedSequenceLen, err = NewIntStat(SubsystemReplication, "processed_sequence_len", StatUnitNoUnits, SGRProcessedSequenceLength, StatAddedVersion3dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	resUtil.ProcessedSequenceLenPostCleanup, err = NewIntStat(SubsystemReplication, "processed_sequence_len_post_cleanup", StatUnitNoUnits, SGRProcessedSequenceLengthPostCleanupDesc, StatAddedVersion3dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
 	}
 
-	if _, ok := d.DbReplicatorStats[replicationID]; !ok {
-		labelKeys := []string{DatabaseLabelKey, ReplicationLabelKey}
-		labelVals := []string{d.dbName, replicationID}
-
-		resUtil.NumAttachmentBytesPushed, err = NewIntStat(SubsystemReplication, "sgr_num_attachment_bytes_pushed", StatUnitBytes, SGRNumAttachmentBytesPushedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.NumAttachmentPushed, err = NewIntStat(SubsystemReplication, "sgr_num_attachments_pushed", StatUnitNoUnits, SGRNumAttachmentsPushedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.NumDocPushed, err = NewIntStat(SubsystemReplication, "sgr_num_docs_pushed", StatUnitNoUnits, SGRNumDocsPushedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.NumDocsFailedToPush, err = NewIntStat(SubsystemReplication, "sgr_num_docs_failed_to_push", StatUnitNoUnits, SGRNumDocsFailedToPushDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.PushConflictCount, err = NewIntStat(SubsystemReplication, "sgr_push_conflict_count", StatUnitNoUnits, SGRPushConflictCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.PushRejectedCount, err = NewIntStat(SubsystemReplication, "sgr_push_rejected_count", StatUnitNoUnits, SGRPushRejectedCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.PushDeltaSentCount, err = NewIntStat(SubsystemReplication, "sgr_deltas_sent", StatUnitNoUnits, SGRDeltasSentDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.DocsCheckedSent, err = NewIntStat(SubsystemReplication, "sgr_docs_checked_sent", StatUnitNoUnits, SGRDocsCheckedSentDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.NumConnectAttemptsPush, err = NewIntStat(SubsystemReplication, "sgr_num_connect_attempts_push", StatUnitNoUnits, SGRNumConnectAttemptsPushDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.NumReconnectsAbortedPush, err = NewIntStat(SubsystemReplication, "sgr_num_reconnects_aborted_push", StatUnitNoUnits, SGRNumReconnectsAbortedPushDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.NumAttachmentBytesPulled, err = NewIntStat(SubsystemReplication, "sgr_num_attachment_bytes_pulled", StatUnitBytes, SGRNumAttachmentBytesPulledDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.NumAttachmentsPulled, err = NewIntStat(SubsystemReplication, "sgr_num_attachments_pulled", StatUnitNoUnits, SGRNumAttachmentsPulledDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.PulledCount, err = NewIntStat(SubsystemReplication, "sgr_num_docs_pulled", StatUnitNoUnits, SGRNumDocsPulledDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.PurgedCount, err = NewIntStat(SubsystemReplication, "sgr_num_docs_purged", StatUnitNoUnits, SGRNumDocsPurgedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.FailedToPullCount, err = NewIntStat(SubsystemReplication, "sgr_num_docs_failed_to_pull", StatUnitNoUnits, SGRNumDocsFailedToPullDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.DeltaReceivedCount, err = NewIntStat(SubsystemReplication, "sgr_deltas_recv", StatUnitNoUnits, SGRDeltasRecvDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.DeltaRequestedCount, err = NewIntStat(SubsystemReplication, "sgr_deltas_requested", StatUnitNoUnits, SGRDeltasRequestedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.DocsCheckedReceived, err = NewIntStat(SubsystemReplication, "sgr_docs_checked_recv", StatUnitNoUnits, SGRDocsCheckedRecvDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.ConflictResolvedLocalCount, err = NewIntStat(SubsystemReplication, "sgr_conflict_resolved_local_count", StatUnitNoUnits, SGRConflictResolvedLocalCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.ConflictResolvedRemoteCount, err = NewIntStat(SubsystemReplication, "sgr_conflict_resolved_remote_count", StatUnitNoUnits, SGRConflictResolvedRemoteCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.ConflictResolvedMergedCount, err = NewIntStat(SubsystemReplication, "sgr_conflict_resolved_merge_count", StatUnitNoUnits, SGRConflictResolvedMergeCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.NumConnectAttemptsPull, err = NewIntStat(SubsystemReplication, "sgr_num_connect_attempts_pull", StatUnitNoUnits, SGRNumConnectAttemptsPullDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.NumReconnectsAbortedPull, err = NewIntStat(SubsystemReplication, "sgr_num_reconnects_aborted_pull", StatUnitNoUnits, SGRNumReconnectsAbortedPullDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.NumHandlersPanicked, err = NewIntStat(SubsystemReplication, "sgr_num_handlers_panicked", StatUnitNoUnits, SGRNumHandlersPanickedDesc, StatAddedVersion3dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.ExpectedSequenceLen, err = NewIntStat(SubsystemReplication, "expected_sequence_len", StatUnitNoUnits, SGRExpectedSequenceLengthDesc, StatAddedVersion3dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.ExpectedSequenceLenPostCleanup, err = NewIntStat(SubsystemReplication, "expected_sequence_len_post_cleanup", StatUnitNoUnits, SGRExpectedSequenceLengthPostCleanupDesc, StatAddedVersion3dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.ProcessedSequenceLen, err = NewIntStat(SubsystemReplication, "processed_sequence_len", StatUnitNoUnits, SGRProcessedSequenceLength, StatAddedVersion3dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-		resUtil.ProcessedSequenceLenPostCleanup, err = NewIntStat(SubsystemReplication, "processed_sequence_len_post_cleanup", StatUnitNoUnits, SGRProcessedSequenceLengthPostCleanupDesc, StatAddedVersion3dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-		if err != nil {
-			return nil, err
-		}
-
-		d.DbReplicatorStats[replicationID] = resUtil
-
-	}
+	d.DbReplicatorStats[replicationID] = resUtil
 
 	return d.DbReplicatorStats[replicationID], nil
 }

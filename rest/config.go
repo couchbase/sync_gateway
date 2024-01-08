@@ -1205,6 +1205,10 @@ func envDefaultExpansion(ctx context.Context, key string, getEnvFn func(string) 
 // SetupAndValidateLogging validates logging config and initializes all logging.
 func (sc *StartupConfig) SetupAndValidateLogging(ctx context.Context) (err error) {
 
+	// for testing only, skip logging setup since base.InitLogging() will modify a global
+	if sc.avoidLoggingSetup {
+		return nil
+	}
 	base.SetRedaction(sc.Logging.RedactionLevel)
 
 	if sc.Logging.LogFilePath == "" {

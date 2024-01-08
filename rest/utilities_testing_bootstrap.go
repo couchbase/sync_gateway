@@ -141,6 +141,7 @@ func StartBootstrapServerWithGroupID(t *testing.T, groupID *string) (*ServerCont
 // StartServerWithConfig starts a server from given config, and returns a function to close the server. Prefer use of RestTester for more ergonomic APIs.
 func StartServerWithConfig(t *testing.T, config *StartupConfig) (*ServerContext, func()) {
 	ctx := base.TestCtx(t)
+	config.avoidLoggingSetup = true
 	sc, err := SetupServerContext(ctx, config, true)
 	require.NoError(t, err)
 

@@ -85,6 +85,8 @@ type StartupConfig struct {
 	CouchbaseKeepaliveInterval *int   `json:"couchbase_keepalive_interval,omitempty" help:"TCP keep-alive interval between SG and Couchbase server"`
 
 	DeprecatedConfig *DeprecatedConfig `json:"-,omitempty" help:"Deprecated options that can be set from a legacy config upgrade, but cannot be set from a 3.0 config."`
+
+	avoidLoggingSetup bool `json:"-"` // Used to avoid logging setup so as to not modify globals. This only used for testing multiple ServerContexts simultaneously. This will use the same logging configuration as is already set up.
 }
 
 // BootstrapConfig describes the set of properties required in order to bootstrap config from Couchbase Server.
