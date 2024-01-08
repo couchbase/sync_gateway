@@ -47,6 +47,12 @@ var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named co
 
 var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
 
+// serverInfo represents an instance of an HTTP server from sync gateway
+type serverInfo struct {
+	server *http.Server // server is the HTTP server instance
+	addr   net.Addr     // addr is the addr of the listener, which will be resolvable always, whereas server.Addr can be :0
+}
+
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
@@ -63,16 +69,16 @@ type ServerContext struct {
 	statsContext                  *statsContext
 	BootstrapContext              *bootstrapContext
 	HTTPClient                    *http.Client
-	cpuPprofFileMutex             sync.Mutex           // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
-	cpuPprofFile                  *os.File             // An open file descriptor holds the reference during CPU profiling
-	_httpServers                  []*http.Server       // A list of HTTP servers running under the ServerContext
-	GoCBAgent                     *gocbcore.Agent      // GoCB Agent to use when obtaining management endpoints
-	NoX509HTTPClient              *http.Client         // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
-	hasStarted                    chan struct{}        // A channel that is closed via PostStartup once the ServerContext has fully started
-	LogContextID                  string               // ID to differentiate log messages from different server context
-	fetchConfigsLastUpdate        time.Time            // The last time fetchConfigsWithTTL() updated dbConfigs
-	allowScopesInPersistentConfig bool                 // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
-	DatabaseInitManager           *DatabaseInitManager // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
+	cpuPprofFileMutex             sync.Mutex                 // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
+	cpuPprofFile                  *os.File                   // An open file descriptor holds the reference during CPU profiling
+	_httpServers                  map[serverType]*serverInfo // A list of HTTP servers running under the ServerContext
+	GoCBAgent                     *gocbcore.Agent            // GoCB Agent to use when obtaining management endpoints
+	NoX509HTTPClient              *http.Client               // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
+	hasStarted                    chan struct{}              // A channel that is closed via PostStartup once the ServerContext has fully started
+	LogContextID                  string                     // ID to differentiate log messages from different server context
+	fetchConfigsLastUpdate        time.Time                  // The last time fetchConfigsWithTTL() updated dbConfigs
+	allowScopesInPersistentConfig bool                       // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
+	DatabaseInitManager           *DatabaseInitManager       // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
 }
@@ -144,6 +150,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		statsContext:       &statsContext{},
 		BootstrapContext:   &bootstrapContext{sgVersion: *base.ProductVersion},
 		hasStarted:         make(chan struct{}),
+		_httpServers:       map[serverType]*serverInfo{},
 	}
 	sc.invalidDatabaseConfigTracking = invalidDatabaseConfigs{
 		dbNames: map[string]*invalidConfigInfo{},
@@ -228,9 +235,9 @@ func (sc *ServerContext) Close(ctx context.Context) {
 	sc.invalidDatabaseConfigTracking.dbNames = nil
 
 	for _, s := range sc._httpServers {
-		base.InfofCtx(ctx, base.KeyHTTP, "Closing HTTP Server: %v", s.Addr)
-		if err := s.Close(); err != nil {
-			base.WarnfCtx(ctx, "Error closing HTTP server %q: %v", s.Addr, err)
+		base.InfofCtx(ctx, base.KeyHTTP, "Closing HTTP Server: %v", s.addr)
+		if err := s.server.Close(); err != nil {
+			base.WarnfCtx(ctx, "Error closing HTTP server %q: %v", s.addr, err)
 		}
 	}
 	sc._httpServers = nil

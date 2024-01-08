@@ -2635,3 +2635,17 @@ func RequireBucketSpecificCredentials(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server since rosmar has no bucket specific credentials")
 	}
 }
+
+// RequireN1QLIndexes skips tests if N1QL indexes are required
+func RequireN1QLIndexes(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server since rosmar has no support for N1QL indexes")
+	}
+}
+
+// RequireGocbDCPResync skips tests if not gocb backed buckets.
+func RequireGocbDCPResync(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server since rosmar has no support for DCP resync")
+	}
+}

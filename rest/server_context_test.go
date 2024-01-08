@@ -353,45 +353,14 @@ outerLoop:
 func TestStartAndStopHTTPServers(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 
-	config := DefaultStartupConfig("")
-
-	// choose high ports to avoid port conflicts when testing
-	config.API.PublicInterface = "127.0.0.1:24984"
-	config.API.AdminInterface = "127.0.0.1:24985"
-	config.API.MetricsInterface = "127.0.0.1:24986"
-
-	config.Bootstrap.Server = base.UnitTestUrl()
-	config.Bootstrap.UseTLSServer = base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl()))
-	config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
-	config.Bootstrap.Username = base.TestClusterUsername()
-	config.Bootstrap.Password = base.TestClusterPassword()
-
-	sc, err := SetupServerContext(ctx, &config, false)
+	resp, err := http.Get("http://" + sc.getServerAddr(t, publicServer))
 	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	serveErr := make(chan error, 0)
-	go func() {
-		serveErr <- StartServer(ctx, &config, sc)
-	}()
-
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serveErr)
-	}()
-
-	err, _ = base.RetryLoop(ctx, "try http request", func() (shouldRetry bool, err error, value interface{}) {
-		resp, err := http.Get("http://" + config.API.PublicInterface)
-		if err != nil {
-			return true, err, nil
-		}
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		return false, nil, nil
-	}, base.CreateMaxDoublingSleeperFunc(10, 10, 1000))
-	assert.NoError(t, err)
 }
 
 // CBG-1518 - Test CA Certificate behaviour with and with Bootstrap.ServerTLSSkipVerify
