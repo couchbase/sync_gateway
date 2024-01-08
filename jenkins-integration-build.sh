@@ -107,9 +107,9 @@ fi
 
 if [ "${RUN_WALRUS}" == "true" ]; then
     # EE
-    go test -shuffle=on -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_enterprise $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ee.out.raw 2>&1 | true
+    go test -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_enterprise $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ee.out.raw 2>&1 | true
     # CE
-    go test -shuffle=on -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ce.out.raw 2>&1 | true
+    go test -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ce.out.raw 2>&1 | true
 fi
 
 # Run CBS
@@ -135,7 +135,7 @@ if [ "${SG_EDITION}" == "EE" ]; then
     GO_TEST_FLAGS="${GO_TEST_FLAGS} -tags cb_sg_enterprise"
 fi
 
-go test -shuffle=on ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out.raw" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
+go test ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out.raw" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
 if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
     echo "Go test failed! Parsing logs to find cause..."
     TEST_FAILED=true
