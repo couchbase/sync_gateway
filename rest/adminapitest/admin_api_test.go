@@ -3110,6 +3110,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
+	defer rest.RunBootstrapLoggerInitialization(t)()
 	ctx := base.TestCtx(t)
 	// Get a test bucket, to use to create the database.
 	tb := base.GetTestBucket(t)
@@ -3120,7 +3121,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	config.Logging.Console.LogKeys = []string{base.KeyDCP.String()}
 	config.Logging.Console.LogLevel.Set(base.LevelDebug)
 
-	sc, closeFn := rest.StartServerWithConfig(t, &config, rest.BootstrapStartupConfigWithLogging{})
+	sc, closeFn := rest.StartServerWithConfig(t, &config)
 	defer closeFn()
 
 	resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/",

@@ -11,18 +11,15 @@ licenses/APL2.txt.
 package importtest
 
 import (
-	"context"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/rest"
 )
 
 func TestMain(m *testing.M) {
 	if !base.TestUseXattrs() { // import tests only run if xattrs are enabled
 		return
 	}
-	ctx := context.Background() // start of test process
-	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
-	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
+	rest.TestBucketPool(m)
 }

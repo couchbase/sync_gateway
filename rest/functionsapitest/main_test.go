@@ -11,15 +11,11 @@ licenses/APL2.txt.
 package functionsapitest
 
 import (
-	"context"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/rest"
 )
 
 func TestMain(m *testing.M) {
-	ctx := context.Background() // start of test process
-	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 18192}
-	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
+	rest.TestBucketPool(m)
 }

@@ -138,25 +138,9 @@ func StartBootstrapServerWithGroupID(t *testing.T, groupID *string) (*ServerCont
 
 }
 
-// BootstrapStartupConfigOption represents an option to pass to starting a boostrap server in a test environment.
-type BootstrapStartupConfigOption interface {
-	apply(*StartupConfig)
-}
-
-// BootstrapStartupConfigWithLogging specifies that logging should be set up. This has the potential to override the logging state from other bootstrap servers and should only be passed when needed.
-type BootstrapStartupConfigWithLogging struct{}
-
-func (b BootstrapStartupConfigWithLogging) apply(config *StartupConfig) {
-	config.avoidLoggingSetup = false
-}
-
 // StartServerWithConfig starts a server from given config, and returns a function to close the server. Prefer use of RestTester for more ergonomic APIs.
-func StartServerWithConfig(t *testing.T, config *StartupConfig, opts ...BootstrapStartupConfigOption) (*ServerContext, func()) {
+func StartServerWithConfig(t *testing.T, config *StartupConfig) (*ServerContext, func()) {
 	ctx := base.TestCtx(t)
-	config.avoidLoggingSetup = true
-	for _, opt := range opts {
-		opt.apply(config)
-	}
 	sc, err := SetupServerContext(ctx, config, true)
 	require.NoError(t, err)
 
@@ -181,4 +165,10 @@ func StartServerWithConfig(t *testing.T, config *StartupConfig, opts ...Bootstra
 	require.NoError(t, sc.WaitForRESTAPIs(ctx))
 	started = true
 	return sc, closeFn
+}
+
+// RunBootstrapLoggerInitialization forces the logger initialization to run. This code is sensitive to race conditions if another ServerContext is in use.
+func RunBootstrapLoggerInitialization(*testing.T) func() {
+	loggerInitialized = false
+	return func() { loggerInitialized = true }
 }

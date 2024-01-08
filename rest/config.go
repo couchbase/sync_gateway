@@ -47,6 +47,9 @@ var (
 
 	// The value of defaultLogFilePath is populated by -defaultLogFilePath by command line flag from service scripts.
 	defaultLogFilePath string
+
+	// loggerInitialized is used to track whether the logger has been initialized, useful to avoid reinitialization in the test harness.
+	loggerInitialized = false
 )
 
 const (
@@ -1204,11 +1207,6 @@ func envDefaultExpansion(ctx context.Context, key string, getEnvFn func(string) 
 
 // SetupAndValidateLogging validates logging config and initializes all logging.
 func (sc *StartupConfig) SetupAndValidateLogging(ctx context.Context) (err error) {
-
-	// for testing only, skip logging setup since base.InitLogging() is called by the test harness as a global
-	if sc.avoidLoggingSetup {
-		return nil
-	}
 	base.SetRedaction(sc.Logging.RedactionLevel)
 
 	if sc.Logging.LogFilePath == "" {
@@ -1348,16 +1346,18 @@ func (sc *StartupConfig) Validate(ctx context.Context, isEnterpriseEdition bool)
 
 // SetupServerContext creates a new ServerContext given its configuration and performs the context validation.
 func SetupServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
-	// Logging config will now have been loaded from command line
-	// or from a sync_gateway config file so we can validate the
-	// configuration and setup logging now
-	if err := config.SetupAndValidateLogging(ctx); err != nil {
-		// If we didn't set up logging correctly, we *probably* can't log via normal means...
-		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
-		log.Printf("[ERR] Error setting up logging: %v", err)
-		return nil, fmt.Errorf("error setting up logging: %v", err)
+	// logger will be initialized only when running tests
+	if !loggerInitialized {
+		// Logging config will now have been loaded from command line
+		// or from a sync_gateway config file so we can validate the
+		// configuration and setup logging now
+		if err := config.SetupAndValidateLogging(ctx); err != nil {
+			// If we didn't set up logging correctly, we *probably* can't log via normal means...
+			// as a best-effort, last-ditch attempt, we'll log to stderr as well.
+			log.Printf("[ERR] Error setting up logging: %v", err)
+			return nil, fmt.Errorf("error setting up logging: %v", err)
+		}
 	}
-
 	base.FlushLoggerBuffers()
 
 	base.InfofCtx(ctx, base.KeyAll, "Logging: Console level: %v", base.ConsoleLogLevel())
