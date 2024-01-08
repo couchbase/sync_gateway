@@ -1205,7 +1205,7 @@ func envDefaultExpansion(ctx context.Context, key string, getEnvFn func(string) 
 // SetupAndValidateLogging validates logging config and initializes all logging.
 func (sc *StartupConfig) SetupAndValidateLogging(ctx context.Context) (err error) {
 
-	// for testing only, skip logging setup since base.InitLogging() will modify a global
+	// for testing only, skip logging setup since base.InitLogging() is called by the test harness as a global
 	if sc.avoidLoggingSetup {
 		return nil
 	}

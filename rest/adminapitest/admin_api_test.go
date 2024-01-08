@@ -3108,7 +3108,6 @@ func TestNotExistentDBRequest(t *testing.T) {
 
 func TestConfigsIncludeDefaults(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	ctx := base.TestCtx(t)
@@ -3121,7 +3120,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	config.Logging.Console.LogKeys = []string{base.KeyDCP.String()}
 	config.Logging.Console.LogLevel.Set(base.LevelDebug)
 
-	sc, closeFn := rest.StartServerWithConfig(t, &config)
+	sc, closeFn := rest.StartServerWithConfig(t, &config, rest.BootstrapStartupConfigWithLogging{})
 	defer closeFn()
 
 	resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/",
