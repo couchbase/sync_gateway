@@ -49,10 +49,8 @@ func TestDescriptionPopulation(t *testing.T) {
 	srv := httptest.NewServer(rt.TestMetricsHandler())
 	defer srv.Close()
 
-	httpClient := http.DefaultClient
-
 	// Ensure metrics endpoint is accessible and that db database has entries
-	resp, err := httpClient.Get(srv.URL + "/_metrics")
+	resp, err := http.Get(srv.URL + "/_metrics")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 

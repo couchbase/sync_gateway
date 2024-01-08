@@ -66,10 +66,9 @@ func TestBytesReadDocOperations(t *testing.T) {
 
 	srv := httptest.NewServer(rt.TestMetricsHandler())
 	defer srv.Close()
-	httpClient := http.DefaultClient
 
 	// test metrics endpoint, assert the stat doesn't increment
-	response, err := httpClient.Get(srv.URL + "/_metrics")
+	response, err := http.Get(srv.URL + "/_metrics")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 
