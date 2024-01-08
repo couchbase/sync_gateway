@@ -14,15 +14,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
 )
 
+// registerImportPindexImplMutex locks access to cbgt.RegisterImportPindexImpl.
+var registerImportPindexImplMutex = sync.Mutex{}
+
 // RegisterImportPindexImpl registers the PIndex type definition.  This is invoked by cbgt when a Pindex (collection of
 // vbuckets) is assigned to this node.
-
 func RegisterImportPindexImpl(ctx context.Context, configGroup string) {
+	registerImportPindexImplMutex.Lock()
+	defer registerImportPindexImplMutex.Unlock()
 
 	// Since RegisterPIndexImplType is a global var without synchronization, index type needs to be
 	// config group scoped.  The associated importListener within the context is retrieved based on the
