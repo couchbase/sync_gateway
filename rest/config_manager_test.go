@@ -19,7 +19,6 @@ import (
 )
 
 func TestBootstrapConfig(t *testing.T) {
-	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyDCP)
@@ -37,10 +36,8 @@ func TestBootstrapConfig(t *testing.T) {
 
 	// Get a test bucket for bootstrap testing
 	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
+	defer tb.Close(ctx)
+
 	bucketName := tb.GetName()
 	db1Name := "db"
 	configGroup1 := "cg1"

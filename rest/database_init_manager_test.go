@@ -20,22 +20,14 @@ import (
 )
 
 func TestDatabaseInitManager(t *testing.T) {
+	RequireN1QLIndexes(t)
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server - requires bootstrap support")
-	}
-
-	// Start SG with no databases
-	config := BootstrapStartupConfigForTest(t)
-	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-	}()
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 
 	initMgr := sc.DatabaseInitManager
 
+	ctx := base.TestCtx(t)
 	// Get a test bucket for bootstrap testing, and create dbconfig targeting that bucket
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
@@ -68,22 +60,12 @@ func TestDatabaseInitManager(t *testing.T) {
 //  1. InitalizeDatabase called concurrently for the same collection set, verifies that active init worker is identified and reused
 //  2. InitalizeDatabase called after previous InitalizeDatabase completes - verifies that new init worker is started
 func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
-
+	RequireN1QLIndexes(t)
 	base.TestRequiresCollections(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server - requires bootstrap support")
-	}
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
-
-	// Start SG with no databases
-	config := BootstrapStartupConfigForTest(t)
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-	}()
 
 	// Get a test bucket for bootstrap testing, and drop indexes created by bucket pool readier
 	tb := base.GetTestBucket(t)
@@ -159,20 +141,14 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 
 	base.TestRequiresCollections(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server - requires bootstrap support")
-	}
+	RequireN1QLIndexes(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	// Start SG with no databases
-	config := BootstrapStartupConfigForTest(t)
-	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-	}()
+	base.TestRequiresCollections(t)
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 
+	ctx := base.TestCtx(t)
 	// Get a test bucket for bootstrap testing, and drop indexes created by bucket pool readier
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
@@ -243,20 +219,16 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 // Uses initManager callbacks to simulate slow index creation and concurrent init requests.
 func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 
+	RequireN1QLIndexes(t)
 	base.TestRequiresCollections(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server - requires bootstrap support")
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	// Start SG with no databases
-	config := BootstrapStartupConfigForTest(t)
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-	}()
 
 	// Get a test bucket for bootstrap testing, and drop indexes created by bucket pool readier
 	tb := base.GetTestBucket(t)
@@ -328,20 +300,14 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
+	RequireN1QLIndexes(t)
 	base.TestRequiresCollections(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server - requires bootstrap support")
-	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
 	// Start SG with no databases
-	config := BootstrapStartupConfigForTest(t)
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-	}()
 
 	// Get two test buckets for bootstrap testing, and drop indexes created by bucket pool readier
 	tb1 := base.GetTestBucket(t)
@@ -426,20 +392,13 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 // watcher is added but never receives a done notification.
 func TestDatabaseInitTeardownTiming(t *testing.T) {
 
+	RequireN1QLIndexes(t)
 	base.TestRequiresCollections(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server - requires bootstrap support")
-	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	// Start SG with no databases
-	config := BootstrapStartupConfigForTest(t)
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-	}()
 
 	// Get a test bucket for bootstrap testing, and drop indexes created by bucket pool readier
 	tb := base.GetTestBucket(t)

@@ -7844,9 +7844,11 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 // Tests replications to make sure they are namespaced by group ID
 func TestGroupIDReplications(t *testing.T) {
-	rest.RequireNonParallelBootstrapTests(t)
 	if !base.TestUseXattrs() {
 		t.Skip("This test requires xattrs")
+	}
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Requires EE to use GroupID")
 	}
 	base.RequireNumTestBuckets(t, 2)
 
@@ -7868,35 +7870,17 @@ func TestGroupIDReplications(t *testing.T) {
 
 	// Start SG nodes for default group, group A and group B
 	groupIDs := []string{"", "GroupA", "GroupB"}
-	adminHosts := make([]string, 0, len(groupIDs))
 	serverContexts := make([]*rest.ServerContext, 0, len(groupIDs))
-	for i, group := range groupIDs {
-		serverErr := make(chan error)
+	for _, group := range groupIDs {
 
 		config := rest.BootstrapStartupConfigForTest(t)
-		portOffset := i * 10
-		adminInterface := fmt.Sprintf("127.0.0.1:%d", 4985+rest.BootstrapTestPortOffset+portOffset)
-		adminHosts = append(adminHosts, "http://"+adminInterface)
-		config.API.PublicInterface = fmt.Sprintf("127.0.0.1:%d", 4984+rest.BootstrapTestPortOffset+portOffset)
-		config.API.AdminInterface = adminInterface
-		config.API.MetricsInterface = fmt.Sprintf("127.0.0.1:%d", 4986+rest.BootstrapTestPortOffset+portOffset)
 		uniqueUUID, err := uuid.NewRandom()
 		require.NoError(t, err)
 		config.Bootstrap.ConfigGroupID = group + uniqueUUID.String()
+		sc, closeFn := rest.StartServerWithConfig(t, &config)
+		defer closeFn()
 
-		ctx := base.TestCtx(t)
-		sc, err := rest.SetupServerContext(ctx, &config, true)
-		require.NoError(t, err)
 		serverContexts = append(serverContexts, sc)
-		ctx = sc.SetContextLogID(ctx, config.Bootstrap.ConfigGroupID)
-		defer func() {
-			sc.Close(ctx)
-			require.NoError(t, <-serverErr)
-		}()
-		go func() {
-			serverErr <- rest.StartServer(ctx, &config, sc)
-		}()
-		require.NoError(t, sc.WaitForRESTAPIs(ctx))
 
 		dbConfig := rest.DbConfig{
 			AutoImport: true,
@@ -7917,7 +7901,7 @@ func TestGroupIDReplications(t *testing.T) {
 		dbcJSON, err := base.JSONMarshal(dbConfig)
 		require.NoError(t, err)
 
-		resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodPut, adminHosts[i], "/db/", string(dbcJSON))
+		resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/", string(dbcJSON))
 		resp.RequireStatus(http.StatusCreated)
 	}
 
@@ -7935,7 +7919,7 @@ func TestGroupIDReplications(t *testing.T) {
 			ConflictResolutionType: db.ConflictResolverDefault,
 			CollectionsEnabled:     !rt.GetDatabase().OnlyDefaultCollection(),
 		}
-		resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodPost, adminHosts[i], "/db/_replication/", rest.MarshalConfig(t, replicationConfig))
+		resp := rest.BootstrapAdminRequest(t, serverContexts[i], http.MethodPost, "/db/_replication/", rest.MarshalConfig(t, replicationConfig))
 		resp.RequireStatus(http.StatusCreated)
 	}
 
@@ -7957,8 +7941,8 @@ func TestGroupIDReplications(t *testing.T) {
 		require.True(t, added)
 
 		// Force on-demand import and cache
-		for _, host := range adminHosts {
-			resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodGet, host, keyspace+key, "")
+		for _, sc := range serverContexts {
+			resp := rest.BootstrapAdminRequest(t, sc, http.MethodGet, keyspace+key, "")
 			resp.RequireStatus(http.StatusOK)
 		}
 

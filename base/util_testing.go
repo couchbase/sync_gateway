@@ -746,6 +746,11 @@ func TestRequiresDCPResync(t testing.TB) {
 	}
 }
 
+// RequireDocNotFoundError asserts that the given error represents a document not found error.
+func RequireDocNotFoundError(t testing.TB, e error) {
+	require.True(t, IsDocNotFoundError(e), fmt.Sprintf("Expected error to be a doc not found error, but was: %v", e))
+}
+
 // SkipImportTestsIfNotEnabled skips test that exercise import features
 func SkipImportTestsIfNotEnabled(t *testing.T) {
 

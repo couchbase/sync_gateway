@@ -470,35 +470,15 @@ func TestPersistentConfigWithCollectionConflicts(t *testing.T) {
 //  5. UpdateConfig to a different db, with collection conflict with the failed create (should fail with conflict, but succeed after GetDatabaseConfigs runs)
 //  6. DeleteConfig for the same db name (triggers rollback, then returns ErrNotFound for the delete operation)
 func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
-	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	serverErr := make(chan error, 0)
+	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
+	defer closeFn()
 
-	// Set up test for persistent config
-	config := BootstrapStartupConfigForTest(t)
-	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
-	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
+	defer tb.Close(ctx)
 
 	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
@@ -614,35 +594,15 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 //  5. DeleteConfig for the same db name (triggers rollback, then successfully deletes)
 
 func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
-	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	serverErr := make(chan error, 0)
+	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
+	defer closeFn()
 
-	// Set up test for persistent config
-	config := BootstrapStartupConfigForTest(t)
-	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
-	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
+	defer tb.Close(ctx)
 
 	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
@@ -664,7 +624,7 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 
 	// Create database with collection 1
 	collection1db1Config := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "1-a")
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
+	_, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
 	require.NoError(t, err)
 
 	// simulateUpdateFailure updates the database registry but doesn't persist the updated config. Simulates
@@ -765,35 +725,15 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 //  4. Attempt recreation of database with earlier version generation, after delete fails.  Should resolve delete and succeed
 //  5. Attempt update of database after delete fails.  Should return "database does not exist" error
 func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
-	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	serverErr := make(chan error, 0)
+	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
+	defer closeFn()
 
-	// Set up test for persistent config
-	config := BootstrapStartupConfigForTest(t)
-	// "disable" config polling for this test, to avoid noise with explicit reload calls
-	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
+	defer tb.Close(ctx)
 
 	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
@@ -815,7 +755,7 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 
 	// Create database with collection 1
 	collection1db1Config := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "1-a")
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
+	_, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
 	require.NoError(t, err)
 
 	// simulateDeleteFailure removes the database from the database registry but doesn't remove the associated config file.
@@ -879,35 +819,15 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 // triggers rollback before the config document is updated. Verifies that the original create operation
 // fails and returns an appropriate error
 func TestPersistentConfigSlowCreateFailure(t *testing.T) {
-	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	serverErr := make(chan error, 0)
+	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
+	defer closeFn()
 
-	// Set up test for persistent config
-	config := BootstrapStartupConfigForTest(t)
-	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
-	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
+	defer tb.Close(ctx)
 
 	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
@@ -954,38 +874,15 @@ func TestPersistentConfigSlowCreateFailure(t *testing.T) {
 }
 
 func TestMigratev30PersistentConfig(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	serverErr := make(chan error, 0)
+	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
+	defer closeFn()
 
-	// Set up test for persistent config
-	config := BootstrapStartupConfigForTest(t)
-	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
-	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
+	defer tb.Close(ctx)
 
 	bucketName := tb.GetName()
 	groupID := sc.Config.Bootstrap.ConfigGroupID
@@ -1012,7 +909,7 @@ func TestMigratev30PersistentConfig(t *testing.T) {
 	require.Equal(t, "1-abc", migratedDb.Version)
 	// Verify legacy config has been removed
 	_, getError := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
-	require.Equal(t, base.ErrNotFound, getError)
+	base.RequireDocNotFoundError(t, getError)
 
 	// Update the db in the registry, and recreate legacy config.  Verify migration doesn't overwrite
 	_, insertError = sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
@@ -1033,19 +930,12 @@ func TestMigratev30PersistentConfig(t *testing.T) {
 
 	// Verify legacy config has been removed
 	_, getError = sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
-	require.Equal(t, base.ErrNotFound, getError)
-
+	base.RequireDocNotFoundError(t, getError)
 }
 
 func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("xattr storage is only enabled with CBS and not RosmarCluster")
-	}
-
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
-
-	serverErr := make(chan error, 0)
 
 	// Set up test for persistent config
 	config := BootstrapStartupConfigForTest(t)
@@ -1053,24 +943,10 @@ func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
 	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
+	sc, closeFn := StartServerWithConfig(t, &config)
+	defer closeFn()
 	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
+	defer tb.Close(ctx)
 
 	bucketName := tb.GetName()
 	groupID := sc.Config.Bootstrap.ConfigGroupID
@@ -1097,7 +973,7 @@ func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
 	require.Equal(t, "1-abc", migratedDb.Version)
 	// Verify legacy config has been removed
 	_, getError := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
-	require.Equal(t, base.ErrNotFound, getError)
+	base.RequireDocNotFoundError(t, getError)
 
 	// Update the db in the registry, and recreate legacy config.  Verify migration doesn't overwrite
 	_, insertError = sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
@@ -1118,42 +994,22 @@ func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
 
 	// Verify legacy config has been removed
 	_, getError = sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
-	require.Equal(t, base.ErrNotFound, getError)
+	base.RequireDocNotFoundError(t, getError)
 
 }
 
 // TestMigratev30PersistentConfigCollision sets up a 3.1 database targeting the default collection, then attempts
 // migration of another database in the 3.0 format (which also targets the default collection)
 func TestMigratev30PersistentConfigCollision(t *testing.T) {
-	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	serverErr := make(chan error, 0)
+	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
+	defer closeFn()
 
-	// Set up test for persistent config
-	config := BootstrapStartupConfigForTest(t)
-	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
-	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
+	defer tb.Close(ctx)
 
 	bucketName := tb.GetName()
 	groupID := sc.Config.Bootstrap.ConfigGroupID
@@ -1161,7 +1017,7 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 	// Set up a new database targeting the default collection
 	newDefaultDbName := "newDefaultDb"
 	newDefaultDbConfig := getTestDatabaseConfig(bucketName, newDefaultDbName, DefaultOnlyScopesConfig, "1-a")
-	_, err = sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, newDefaultDbConfig)
+	_, err := sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, newDefaultDbConfig)
 	require.NoError(t, err)
 
 	// Insert a legacy db config with a different name directly to the bucket, and attempt to migrate
@@ -1194,35 +1050,15 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 
 // TestLegacyDuplicate tests the behaviour of GetDatabaseConfigs when the same database exists in legacy and non-legacy format
 func TestLegacyDuplicate(t *testing.T) {
-	RequireNonParallelBootstrapTests(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	serverErr := make(chan error, 0)
+	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
+	defer closeFn()
 
-	// Set up test for persistent config
-	config := BootstrapStartupConfigForTest(t)
-	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
-	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close(ctx)
-	}()
+	defer tb.Close(ctx)
 
 	bucketName := tb.GetName()
 	groupID := sc.Config.Bootstrap.ConfigGroupID
@@ -1230,7 +1066,7 @@ func TestLegacyDuplicate(t *testing.T) {
 	// Set up a 3.1 database targeting the default collection
 	defaultDbName := "defaultDb"
 	newDefaultDbConfig := getTestDatabaseConfig(bucketName, defaultDbName, DefaultOnlyScopesConfig, "3.1")
-	_, err = sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, newDefaultDbConfig)
+	_, err := sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, newDefaultDbConfig)
 	require.NoError(t, err)
 
 	// Insert a 3.0 db config for the same database name directly to the bucket
@@ -1376,4 +1212,13 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
 	_, _ = base.WaitForStat(t, base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Value, dbBucketMismatch+1)
+}
+
+// startBootstrapServerWithoutConfigPolling starts a server with config polling disabled, and returns the server context.
+func startBootstrapServerWithoutConfigPolling(t *testing.T) (*ServerContext, func()) {
+	config := BootstrapStartupConfigForTest(t)
+	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
+	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
+	return StartServerWithConfig(t, &config)
+
 }

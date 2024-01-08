@@ -36,7 +36,7 @@ const (
 // uses ThrottledListen to limit the number of open HTTP connections.
 func ListenAndServeHTTP(ctx context.Context, addr string, connLimit uint, certFile, keyFile string, handler http.Handler,
 	readTimeout, writeTimeout, readHeaderTimeout, idleTimeout time.Duration, http2Enabled bool,
-	tlsMinVersion uint16) (serveFn func() error, server *http.Server, err error) {
+	tlsMinVersion uint16) (serveFn func() error, listenerAddr net.Addr, server *http.Server, err error) {
 	var config *tls.Config
 	if certFile != "" {
 		config = &tls.Config{}
@@ -51,7 +51,7 @@ func ListenAndServeHTTP(ctx context.Context, addr string, connLimit uint, certFi
 		var err error
 		config.Certificates[0], err = tls.LoadX509KeyPair(certFile, keyFile)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 
@@ -64,7 +64,7 @@ func ListenAndServeHTTP(ctx context.Context, addr string, connLimit uint, certFi
 
 	listener, err := ThrottledListen("tcp", addr, connLimit)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if config != nil {
 		listener = tls.NewListener(listener, config)
@@ -90,7 +90,7 @@ func ListenAndServeHTTP(ctx context.Context, addr string, connLimit uint, certFi
 		return nil
 	}
 
-	return serveFn, server, nil
+	return serveFn, listener.Addr(), server, nil
 }
 
 type throttledListener struct {
