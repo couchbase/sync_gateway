@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -2795,16 +2794,10 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 
 		return ProposedRev_Exists, ""
 	} else if doc.HLV.IsInConflict(incomingHLV) {
-		return ProposedRev_Conflict, cvToString(localDocCV)
-	} else {
-		return ProposedRev_OK, ""
+		return ProposedRev_Conflict, localDocCV.String()
 	}
 
-}
-
-// cvToString converts Version struct to Blip CV string format
-func cvToString(cv Version) string {
-	return strconv.FormatUint(cv.Value, 10) + "@" + cv.SourceID
+	return ProposedRev_OK, ""
 }
 
 const (

@@ -992,7 +992,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 	var history []string
 	if bh.activeCBMobileSubprotocol < CBMobileReplicationV4 {
-		// include current rev propery in history
+		// include current rev property in history
 		history = append(history, rev)
 	}
 	var versionVectorStr string
@@ -1028,7 +1028,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 		//  TODO: Doing a GetRevCopy here duplicates some rev cache retrieval effort, since deltaRevSrc is always
 		//        going to be the current rev (no conflicts), and PutExistingRev will need to retrieve the
-		//        current rev over again.  Should push this handling down PutExistingRev and use the rev
+		//        current rev over again.  Should push this handling down PutExistingRev and use the version
 		//        returned via callback in WriteUpdate, but blocked by moving attachment metadata to a rev property first
 		//        (otherwise we don't have information needed to do downloadOrVerifyAttachments below prior to PutExistingRev)
 
