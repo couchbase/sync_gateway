@@ -209,11 +209,12 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 
 	var originPatterns []string // no origin headers for ISGR
 
-	// Commented out following line pending work to get ISGR workiong woth Version Vectors.
-	//blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix, originPatterns)
+	// TODO: CBG-3661 ActiveReplicator subprotocol versions
+	// - make this configurable for testing mixed-version replications
+	// - if unspecified, default to v2 and v3 until VV is supported with ISGR, then also include v4
+	protocols := []string{CBMobileReplicationV2.SubprotocolString(), CBMobileReplicationV3.SubprotocolString()}
 
-	// force use of V3 and below subprotocol versions
-	protocols := []string{"CBMobile_3", "CBMobile_2"}
+	//blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix, originPatterns)
 	blipContext, err := NewSGBlipContextWithProtocols(arc.ctx, arc.config.ID+idSuffix, originPatterns, protocols)
 	if err != nil {
 		return nil, nil, err
