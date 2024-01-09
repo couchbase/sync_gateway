@@ -301,8 +301,9 @@ func TestHLVImport(t *testing.T) {
 	existingHLVKey := "existingHLV_" + t.Name()
 	_ = hlvHelper.insertWithHLV(ctx, existingHLVKey)
 
-	existingBody, existingXattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, existingHLVKey, "_sync", "", nil)
+	existingBody, existingXattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, existingHLVKey, []string{base.SyncXattrName})
 	require.NoError(t, err)
+	existingXattr := existingXattrs[base.SyncXattrName]
 
 	_, err = collection.ImportDocRaw(ctx, existingHLVKey, existingBody, existingXattrs, nil, false, cas, nil, ImportFromFeed)
 	require.NoError(t, err, "import error")
@@ -355,7 +356,12 @@ func (h *HLVAgent) insertWithHLV(ctx context.Context, key string) (casOut uint64
 		MacroExpansion: hlv.computeMacroExpansions(),
 	}
 
-	cas, err := h.datastore.WriteWithXattrs(ctx, key, h.xattrName, 0, 0, defaultHelperBody, syncDataBytes, mutateInOpts)
+	docBody := base.MustJSONMarshal(h.t, defaultHelperBody)
+	xattrData := map[string][]byte{
+		h.xattrName: syncDataBytes,
+	}
+
+	cas, err := h.datastore.WriteWithXattrs(ctx, key, 0, 0, docBody, xattrData, mutateInOpts)
 	require.NoError(h.t, err)
 	return cas
 }
