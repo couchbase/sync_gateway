@@ -99,25 +99,6 @@ type SyncData struct {
 	currentRevChannels base.Set // A base.Set of the current revision's channels (determined by SyncData.Channels at UnmarshalJSON time)
 }
 
-func (sd *SyncData) UnmarshalJSON(b []byte) error {
-
-	// type alias avoids UnmarshalJSON stack overflow (forces fallback to standard JSON unmarshal instead of this one)
-	type stdSyncData SyncData
-	var tmp stdSyncData
-
-	err := base.JSONUnmarshal(b, &tmp)
-	if err != nil {
-		return err
-	}
-
-	*sd = SyncData(tmp)
-
-	// determine current revision's channels and store in-memory (avoids Channels iteration at access-check time)
-	sd.currentRevChannels = sd.getCurrentChannels()
-
-	return nil
-}
-
 // determine set of current channels based on removal entries.
 func (sd *SyncData) getCurrentChannels() base.Set {
 	ch := base.SetOf()
