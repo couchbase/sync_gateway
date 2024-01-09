@@ -785,7 +785,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 	for i, change := range changeList {
 		docID := change[0].(string)
-		version := change[1].(string)
+		rev := change[1].(string) // rev can represent a RevTree entry ID or HLV Version
 		parentRevID := ""
 		if len(change) > 2 {
 			parentRevID = change[2].(string)
@@ -793,9 +793,9 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 		var status ProposedRevStatus
 		var currentRev string
 		if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
-			status, currentRev = bh.collection.CheckProposedVersion(bh.loggingCtx, docID, version)
+			status, currentRev = bh.collection.CheckProposedVersion(bh.loggingCtx, docID, rev)
 		} else {
-			status, currentRev = bh.collection.CheckProposedRev(bh.loggingCtx, docID, version, parentRevID)
+			status, currentRev = bh.collection.CheckProposedRev(bh.loggingCtx, docID, rev, parentRevID)
 		}
 		if status == ProposedRev_OK_IsNew {
 			// Remember that the doc doesn't exist locally, in order to optimize the upcoming Put:
