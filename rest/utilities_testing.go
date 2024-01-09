@@ -1036,12 +1036,13 @@ func (rt *RestTester) SetAdminChannels(username string, keyspace string, channel
 
 type SimpleSync struct {
 	Channels map[string]interface{}
-	Rev      string
+	Rev      db.RevAndVersion
 	Sequence uint64
 }
 
 type RawResponse struct {
-	Sync SimpleSync `json:"_sync"`
+	Sync    SimpleSync `json:"_sync"`
+	Deleted bool       `json:"_deleted"`
 }
 
 // GetDocumentSequence looks up the sequence for a document using the _raw endpoint.
