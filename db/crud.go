@@ -2925,10 +2925,11 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 }
 
 const (
-	xattrMacroCas           = "cas"          // standard _sync property name for CAS
-	xattrMacroValueCrc32c   = "value_crc32c" // standard _sync property name for crc32c
-	versionVectorVrsMacro   = "_vv.vrs"
-	versionVectorCVCASMacro = "_vv.cvCas"
+	xattrMacroCas               = "cas"          // SyncData.Cas
+	xattrMacroValueCrc32c       = "value_crc32c" // SyncData.Crc32c
+	xattrMacroCurrentRevVersion = "rev.vrs"      // SyncDataJSON.RevAndVersion.CurrentVersion
+	versionVectorVrsMacro       = "_vv.vrs"      // PersistedHybridLogicalVector.Version
+	versionVectorCVCASMacro     = "_vv.cvCas"    // PersistedHybridLogicalVector.CurrentVersionCAS
 
 	expandMacroCASValue = "expand" // static value that indicates that a CAS macro expansion should be applied to a property
 )
@@ -2952,6 +2953,10 @@ func xattrCrc32cPath(xattrKey string) string {
 
 func xattrMouCasPath() string {
 	return base.MouXattrName + "." + xattrMacroCas
+}
+
+func xattrCurrentRevVersionPath(xattrKey string) string {
+	return xattrKey + "." + xattrMacroCurrentRevVersion
 }
 
 func xattrCurrentVersionPath(xattrKey string) string {
