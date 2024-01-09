@@ -402,6 +402,7 @@ func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64
 }
 
 // extractHLVFromBlipMessage extracts the full HLV a string in the format seen over Blip
+// TODO: CBG-3662 - Optimise once we've settled on and tested the format with CBL
 func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, error) {
 	hlv := HybridLogicalVector{}
 
