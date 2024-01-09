@@ -465,23 +465,26 @@ func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, er
 
 // parseVectorValues takes a HLV section (for example previous versions) in Blip string form and split that into
 // source and version pairs
-func parseVectorValues(vectorStr string) (sourceVersionList []Version, err error) {
-	vectorPairs := strings.Split(vectorStr, ",")
+func parseVectorValues(vectorStr string) (versions []Version, err error) {
+	versionsStr := strings.Split(vectorStr, ",")
+	versions = make([]Version, 0, len(versionsStr))
 
 	// remove any leading whitespace form the string value
-	for i, v := range vectorPairs {
+	// TODO: Can avoid by restricting spec
+	for i, v := range versionsStr {
 		if v[0] == ' ' {
 			v = v[1:]
-			vectorPairs[i] = v
+			versionsStr[i] = v
 		}
 	}
-	for _, v := range vectorPairs {
-		sourceAndVersion := strings.Split(v, "@")
-		vrs, err := strconv.ParseUint(sourceAndVersion[0], 10, 64)
+
+	for _, v := range versionsStr {
+		version, err := CreateVersionFromString(v)
 		if err != nil {
 			return nil, err
 		}
-		sourceVersionList = append(sourceVersionList, Version{SourceID: sourceAndVersion[1], Value: vrs})
+		versions = append(versions, version)
 	}
-	return sourceVersionList, nil
+
+	return versions, nil
 }
