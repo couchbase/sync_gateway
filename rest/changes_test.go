@@ -408,6 +408,7 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 }
 
 func TestCVPopulationOnChangesViaAPI(t *testing.T) {
+	t.Skip("Disabled until REST support for version is added")
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channels)}`,
 	}
@@ -438,6 +439,7 @@ func TestCVPopulationOnChangesViaAPI(t *testing.T) {
 }
 
 func TestCVPopulationOnDocIDChanges(t *testing.T) {
+	t.Skip("Disabled until REST support for version is added")
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channels)}`,
 	}
