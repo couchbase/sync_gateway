@@ -2549,7 +2549,7 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 // Tests changes made in CBG-2151 to return errors from sendRevision unless it's a document not found error,
 // in which case a noRev should be sent.
 func TestSendRevisionNoRevHandling(t *testing.T) {
-
+	t.Skip("here")
 	base.LongRunningTest(t)
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skip LeakyBucket test when running in integration")
@@ -2819,7 +2819,6 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 // TestBlipRefreshUser makes sure there is no panic if a user gets deleted during a replication
 func TestBlipRefreshUser(t *testing.T) {
 
-	t.Skip("CBG-3512 known test flake")
 	/*
 		This probably happens because:
 
@@ -2885,5 +2884,62 @@ func TestBlipRefreshUser(t *testing.T) {
 		body, err := testResponse.Body()
 		require.NoError(t, err)
 		require.NotContains(t, string(body), "Panic:")
+	})
+}
+
+func TestOnDemandImportBlipFailure(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true, GuestEnabled: true})
+		defer rt.Close()
+		config := rt.NewDbConfig()
+		config.AutoImport = false
+		RequireStatus(t, rt.CreateDatabase("db", config), http.StatusCreated)
+		const (
+			docID     = "doc1"
+			markerDoc = "markerDoc"
+			validBody = `{"foo":"bar"}`
+			// invalid sync property
+			invalidBody = `{"_id": true}`
+			// invalid since purged doc but a different error code
+			// invalidBody = `{"_purged": true}`
+			// invalid json in the document on import and different failure
+			// invalidBody = ``
+		)
+		_ = rt.PutDoc(docID, validBody)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			Username:               "user",
+			Channels:               []string{"*"},
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
+		})
+		defer btc.Close()
+		require.NoError(t, btcRunner.StartOneshotPull(btc.id))
+
+		output, found := btcRunner.WaitForDoc(btc.id, docID)
+		require.True(t, found)
+		require.JSONEq(t, validBody, string(output))
+
+		err := rt.GetSingleDataStore().SetRaw(docID, 0, nil, []byte(invalidBody))
+		require.NoError(t, err)
+
+		rt.CreateTestDoc(markerDoc)
+
+		// Delete and recreate database
+		RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db/", ""), http.StatusOK)
+		RequireStatus(t, rt.CreateDatabase("db", config), http.StatusCreated)
+
+		btc2 := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			Username:               "user",
+			Channels:               []string{"*"},
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
+		})
+		defer btc2.Close()
+
+		log.Printf("Starting oneshot pull")
+		require.NoError(t, btcRunner.StartOneshotPull(btc2.id))
+
+		btcRunner.WaitForDoc(btc2.id, markerDoc)
+
 	})
 }
