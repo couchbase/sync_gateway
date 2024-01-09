@@ -359,7 +359,7 @@ type DbStats struct {
 	SecurityStats           *SecurityStats                `json:"security,omitempty"`
 	SharedBucketImportStats *SharedBucketImportStats      `json:"shared_bucket_import,omitempty"`
 	CollectionStats         map[string]*CollectionStats   `json:"per_collection,omitempty"`
-	replicatorMutex         sync.Mutex
+	dbReplicatorStatsMutex         sync.Mutex
 }
 
 type CacheStats struct {
