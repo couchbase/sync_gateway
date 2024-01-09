@@ -583,6 +583,7 @@ func SetUpGlobalTestLogging(ctx context.Context, m *testing.M) (teardownFn func(
 //
 // This function will panic if called multiple times in the same test.
 func SetUpTestLogging(tb testing.TB, logLevel LogLevel, logKeys ...LogKey) {
+	loggingInitialized.Store(true)
 	caller := GetCallersName(1, false)
 	InfofCtx(context.Background(), KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)
 	cleanup := setTestLogging(logLevel, caller, logKeys...)

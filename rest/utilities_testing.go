@@ -2649,11 +2649,3 @@ func RequireGocbDCPResync(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server since rosmar has no support for DCP resync")
 	}
 }
-
-// TestBucketPool creates a bucket pool used for rest and its subpackages
-func TestBucketPool(m *testing.M) {
-	ctx := context.Background() // start of test process
-	loggerInitialized = true
-	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 8192}
-	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
-}

@@ -11,11 +11,15 @@ licenses/APL2.txt.
 package attachmentcompactiontest
 
 import (
+	"context"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/rest"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 )
 
 func TestMain(m *testing.M) {
-	rest.TestBucketPool(m)
+	ctx := context.Background() // start of test process
+	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
+	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }

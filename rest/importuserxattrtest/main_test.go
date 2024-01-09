@@ -11,10 +11,11 @@ licenses/APL2.txt.
 package importuserxattrtest
 
 import (
+	"context"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/rest"
+	"github.com/couchbase/sync_gateway/db"
 )
 
 func TestMain(m *testing.M) {
@@ -22,5 +23,8 @@ func TestMain(m *testing.M) {
 	if !base.TestUseXattrs() || !base.IsEnterpriseEdition() {
 		return
 	}
-	rest.TestBucketPool(m)
+
+	ctx := context.Background() // start of test process
+	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
+	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }

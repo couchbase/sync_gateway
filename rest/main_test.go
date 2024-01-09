@@ -11,15 +11,19 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"context"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
-	TestBucketPool(m)
+	ctx := context.Background() // start of test process
+	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 8192}
+	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }
 
 func TestConfigOverwritesLegacyFlags(t *testing.T) {

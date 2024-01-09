@@ -166,9 +166,3 @@ func StartServerWithConfig(t *testing.T, config *StartupConfig) (*ServerContext,
 	started = true
 	return sc, closeFn
 }
-
-// RunBootstrapLoggerInitialization forces the logger initialization to run. This code is sensitive to race conditions if another ServerContext is in use.
-func RunBootstrapLoggerInitialization(*testing.T) func() {
-	loggerInitialized = false
-	return func() { loggerInitialized = true }
-}
