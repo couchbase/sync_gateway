@@ -1655,10 +1655,9 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	xattrs, _, err := rt.GetSingleDataStore().GetXattrs(rt.Context(), "-21SK00U-ujxUO9fU2HezxL", []string{base.SyncXattrName})
 	require.NoError(t, err)
 	require.Contains(t, xattrs, base.SyncXattrName)
-	var retrievedXattr map[string]any
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
-	assert.NoError(t, err, "Unexpected Error")
-	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedXattr["rev"])
+	var retrievedSyncData db.SyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedSyncData))
+	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedSyncData.CurrentRev)
 
 }
 

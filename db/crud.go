@@ -1042,7 +1042,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, docHLV HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *Version, newRevID string, err error) {
 	var matchRev string
 	if existingDoc != nil {
-		doc, unmarshalErr := unmarshalDocumentWithXattr(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattr, existingDoc.UserXattr, existingDoc.Cas, DocUnmarshalRev)
+		doc, unmarshalErr := db.unmarshalDocumentWithXattrs(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattrs, existingDoc.Cas, DocUnmarshalRev)
 		if unmarshalErr != nil {
 			return nil, nil, "", base.HTTPErrorf(http.StatusBadRequest, "Error unmarshaling exsiting doc")
 		}
@@ -1056,7 +1056,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 
 	docUpdateEvent := ExistingVersion
 	allowImport := db.UseXattrs()
-	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, docUpdateEvent, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, docUpdateEvent, existingDoc, false, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -2850,10 +2850,11 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 }
 
 const (
-	xattrMacroCas           = "cas"          // standard _sync property name for CAS
-	xattrMacroValueCrc32c   = "value_crc32c" // standard _sync property name for crc32c
-	versionVectorVrsMacro   = "_vv.vrs"
-	versionVectorCVCASMacro = "_vv.cvCas"
+	xattrMacroCas               = "cas"          // SyncData.Cas
+	xattrMacroValueCrc32c       = "value_crc32c" // SyncData.Crc32c
+	xattrMacroCurrentRevVersion = "rev.vrs"      // SyncDataJSON.RevAndVersion.CurrentVersion
+	versionVectorVrsMacro       = "_vv.vrs"      // PersistedHybridLogicalVector.Version
+	versionVectorCVCASMacro     = "_vv.cvCas"    // PersistedHybridLogicalVector.CurrentVersionCAS
 
 	expandMacroCASValue = "expand" // static value that indicates that a CAS macro expansion should be applied to a property
 )
@@ -2877,6 +2878,10 @@ func xattrCrc32cPath(xattrKey string) string {
 
 func xattrMouCasPath() string {
 	return base.MouXattrName + "." + xattrMacroCas
+}
+
+func xattrCurrentRevVersionPath(xattrKey string) string {
+	return xattrKey + "." + xattrMacroCurrentRevVersion
 }
 
 func xattrCurrentVersionPath(xattrKey string) string {
