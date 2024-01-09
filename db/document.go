@@ -66,7 +66,7 @@ type ChannelSetEntry struct {
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type SyncData struct {
-	CurrentRev        string               `json:"rev"`
+	CurrentRev        string               `json:"-"`                 // CurrentRev.  Persisted as RevAndVersion in SyncDataJSON
 	NewestRev         string               `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
 	Flags             uint8                `json:"flags,omitempty"`
 	Sequence          uint64               `json:"sequence,omitempty"`
@@ -193,7 +193,7 @@ type historyOnlySyncData struct {
 
 type revOnlySyncData struct {
 	casOnlySyncData
-	CurrentRev string `json:"rev"`
+	CurrentRev RevAndVersion `json:"rev"`
 }
 
 type casOnlySyncData struct {
@@ -1161,7 +1161,7 @@ func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata 
 			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
 		doc.SyncData = SyncData{
-			CurrentRev: historyOnlyMeta.CurrentRev,
+			CurrentRev: historyOnlyMeta.CurrentRev.RevTreeID,
 			History:    historyOnlyMeta.History,
 			Cas:        historyOnlyMeta.Cas,
 		}
@@ -1174,7 +1174,7 @@ func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata 
 			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalRev).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
 		doc.SyncData = SyncData{
-			CurrentRev: revOnlyMeta.CurrentRev,
+			CurrentRev: revOnlyMeta.CurrentRev.RevTreeID,
 			Cas:        revOnlyMeta.Cas,
 		}
 		doc._rawBody = data
@@ -1231,7 +1231,7 @@ func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 		}
 	}
 
-	xdata, err = base.JSONMarshal(doc.SyncData)
+	xdata, err = base.JSONMarshal(&doc.SyncData)
 	if err != nil {
 		return nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattr() doc SyncData with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
@@ -1251,4 +1251,83 @@ func (d *Document) HasCurrentVersion(cv Version) error {
 		return base.RedactErrorf("mismatch between specified current version and fetched document current version for doc %s", base.UD(d.ID))
 	}
 	return nil
+}
+
+// SyncDataAlias is an alias for SyncData that doesn't define custom MarshalJSON/UnmarshalJSON
+type SyncDataAlias SyncData
+
+// SyncDataJSON is the persisted form of SyncData, with RevAndVersion populated at marshal time
+type SyncDataJSON struct {
+	*SyncDataAlias
+	RevAndVersion RevAndVersion `json:"rev"`
+}
+
+// MarshalJSON populates RevAndVersion using CurrentRev and the HLV (current) source and version.
+// Marshals using SyncDataAlias to avoid recursion, and SyncDataJSON to add the combined RevAndVersion.
+func (s SyncData) MarshalJSON() (data []byte, err error) {
+
+	var sdj SyncDataJSON
+	var sd SyncDataAlias
+	sd = (SyncDataAlias)(s)
+	sdj.SyncDataAlias = &sd
+	sdj.RevAndVersion.RevTreeID = s.CurrentRev
+	if s.HLV != nil {
+		sdj.RevAndVersion.CurrentSource = s.HLV.SourceID
+		sdj.RevAndVersion.CurrentVersion = string(base.Uint64CASToLittleEndianHex(s.HLV.Version))
+	}
+	return base.JSONMarshal(sdj)
+}
+
+// UnmarshalJSON unmarshals using SyncDataJSON, then sets currentRev on SyncData based on the value in RevAndVersion.
+// The HLV's current version stored in RevAndVersion is ignored at unmarshal time - the value in the HLV is the source
+// of truth.
+func (s *SyncData) UnmarshalJSON(data []byte) error {
+
+	var sdj *SyncDataJSON
+	err := base.JSONUnmarshal(data, &sdj)
+	if err != nil {
+		return err
+	}
+	*s = SyncData(*sdj.SyncDataAlias)
+	s.CurrentRev = sdj.RevAndVersion.RevTreeID
+	return nil
+}
+
+// RevAndVersion is used to store both revTreeID and currentVersion in a single property, for backwards compatibility
+// with existing indexes using rev.  When only RevTreeID is specified, is marshalled/unmarshalled as a string.  Otherwise
+// marshalled normally.
+type RevAndVersion struct {
+	RevTreeID      string `json:"rev,omitempty"`
+	CurrentSource  string `json:"src,omitempty"`
+	CurrentVersion string `json:"vrs,omitempty"` // String representation of version
+}
+
+// RevAndVersionJSON aliases RevAndVersion to support conditional unmarshalling from either string (revTreeID) or
+// map (RevAndVersion) representations
+type RevAndVersionJSON RevAndVersion
+
+// Marshals RevAndVersion as simple string when only RevTreeID is specified - otherwise performs standard
+// marshalling
+func (rv RevAndVersion) MarshalJSON() (data []byte, err error) {
+
+	if rv.CurrentSource == "" {
+		return base.JSONMarshal(rv.RevTreeID)
+	}
+	return base.JSONMarshal(RevAndVersionJSON(rv))
+}
+
+// Unmarshals either from string (legacy, revID only) or standard RevAndVersion unmarshalling.
+func (rv *RevAndVersion) UnmarshalJSON(data []byte) error {
+
+	if len(data) == 0 {
+		return nil
+	}
+	switch data[0] {
+	case '"':
+		return base.JSONUnmarshal(data, &rv.RevTreeID)
+	case '{':
+		return base.JSONUnmarshal(data, (*RevAndVersionJSON)(rv))
+	default:
+		return fmt.Errorf("unrecognized JSON format for RevAndVersion: %s", data)
+	}
 }

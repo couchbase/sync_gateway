@@ -1042,7 +1042,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, docHLV HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *Version, newRevID string, err error) {
 	var matchRev string
 	if existingDoc != nil {
-		doc, unmarshalErr := unmarshalDocumentWithXattr(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattr, existingDoc.UserXattr, existingDoc.Cas, DocUnmarshalRev)
+		doc, unmarshalErr := unmarshalDocumentWithXattr(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattrs[base.SyncXattrName], existingDoc.Xattrs[db.userXattrKey()], existingDoc.Cas, DocUnmarshalRev)
 		if unmarshalErr != nil {
 			return nil, nil, "", base.HTTPErrorf(http.StatusBadRequest, "Error unmarshaling exsiting doc")
 		}
@@ -2828,10 +2828,11 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 }
 
 const (
-	xattrMacroCas           = "cas"
-	xattrMacroValueCrc32c   = "value_crc32c"
-	versionVectorVrsMacro   = "_vv.vrs"
-	versionVectorCVCASMacro = "_vv.cvCas"
+	xattrMacroCas               = "cas"          // SyncData.Cas
+	xattrMacroValueCrc32c       = "value_crc32c" // SyncData.Crc32c
+	xattrMacroCurrentRevVersion = "rev.vrs"      // SyncDataJSON.RevAndVersion.CurrentVersion
+	versionVectorVrsMacro       = "_vv.vrs"      // PersistedHybridLogicalVector.Version
+	versionVectorCVCASMacro     = "_vv.cvCas"    // PersistedHybridLogicalVector.CurrentVersionCAS
 )
 
 func macroExpandSpec(xattrName string) []sgbucket.MacroExpansionSpec {
@@ -2849,6 +2850,10 @@ func xattrCasPath(xattrKey string) string {
 
 func xattrCrc32cPath(xattrKey string) string {
 	return xattrKey + "." + xattrMacroValueCrc32c
+}
+
+func xattrCurrentRevVersionPath(xattrKey string) string {
+	return xattrKey + "." + xattrMacroCurrentRevVersion
 }
 
 func xattrCurrentVersionPath(xattrKey string) string {
