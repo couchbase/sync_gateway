@@ -355,7 +355,6 @@ func TestRevAndVersion(t *testing.T) {
 				require.Equal(t, test.source, newSyncData.HLV.SourceID)
 				require.Equal(t, test.version, newSyncData.HLV.Version)
 			}
-			//require.Equal(t, test.expectedCombinedVersion, newSyncData.RevAndVersion)
 
 			// Document test
 			document := NewDocument("docID")

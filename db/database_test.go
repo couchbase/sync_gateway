@@ -1882,11 +1882,12 @@ func TestChannelQuery(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.testName, func(t *testing.T) {
 			entries, err = collection.getChangesInChannelFromQuery(ctx, testCase.channelName, 0, 100, 0, false)
+			require.NoError(t, err)
 
 			for i, entry := range entries {
 				log.Printf("Channel Query returned entry (%d): %v", i, entry)
 			}
-			assert.Equal(t, 2, len(entries))
+			require.Len(t, entries, 2)
 			require.Equal(t, "doc1", entries[0].DocID)
 			require.Equal(t, rev1ID, entries[0].RevID)
 			collection.RequireCurrentVersion(t, "doc1", entries[0].SourceID, entries[0].Version)

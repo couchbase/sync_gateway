@@ -427,11 +427,11 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, ke
 
 	var syncData SyncData
 	_, err := dataStore.GetWithXattr(base.TestCtx(t), key, base.SyncXattrName, "", nil, &syncData, nil)
-	assert.NoError(t, err, "Error Getting Xattr")
-	assert.True(t, syncData.CurrentRev != "")
+	require.NoError(t, err, "Error Getting Xattr")
+	require.True(t, syncData.CurrentRev != "")
 	generation, _ := ParseRevID(base.TestCtx(t), syncData.CurrentRev)
 	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, syncData.CurrentRev)
-	assert.True(t, generation == expectedRevGeneration)
+	assert.Equal(t, generation, expectedRevGeneration)
 }
 
 func TestEvaluateFunction(t *testing.T) {

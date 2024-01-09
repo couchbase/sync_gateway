@@ -675,7 +675,7 @@ func (c *DatabaseCollection) RequireCurrentVersion(t *testing.T, key string, sou
 	require.Equal(t, doc.HLV.Version, version)
 }
 
-// requireCurrentVersion fetches the document by key, and validates that cv matches.
+// GetDocumentCurrentVersion fetches the document by key and returns the current version
 func (c *DatabaseCollection) GetDocumentCurrentVersion(t *testing.T, key string) (source string, version uint64) {
 	ctx := base.TestCtx(t)
 	doc, err := c.GetDocument(ctx, key, DocUnmarshalSync)
