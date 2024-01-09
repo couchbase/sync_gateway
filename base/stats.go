@@ -359,7 +359,7 @@ type DbStats struct {
 	SecurityStats           *SecurityStats                `json:"security,omitempty"`
 	SharedBucketImportStats *SharedBucketImportStats      `json:"shared_bucket_import,omitempty"`
 	CollectionStats         map[string]*CollectionStats   `json:"per_collection,omitempty"`
-	dbReplicatorStatsMutex         sync.Mutex
+	dbReplicatorStatsMutex  sync.Mutex
 }
 
 type CacheStats struct {
@@ -1960,8 +1960,8 @@ func (d *DbStats) InitCollectionStats(scopeAndCollectionNames ...string) error {
 }
 
 func (d *DbStats) DBReplicatorStats(replicationID string) (*DbReplicatorStats, error) {
-	d.replicatorMutex.Lock()
-	defer d.replicatorMutex.Unlock()
+	d.dbReplicatorStatsMutex.Lock()
+	defer d.dbReplicatorStatsMutex.Unlock()
 
 	if _, ok := d.DbReplicatorStats[replicationID]; ok {
 		return d.DbReplicatorStats[replicationID], nil
