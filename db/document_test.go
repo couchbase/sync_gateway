@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"log"
+	"reflect"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -187,6 +188,196 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 				}
 
 			}
+		})
+	}
+}
+
+const doc_meta_with_vv = `{
+    "rev": "3-89758294abc63157354c2b08547c2d21",
+    "sequence": 7,
+    "recent_sequences": [
+      5,
+      6,
+      7
+    ],
+    "history": {
+      "revs": [
+        "1-fc591a068c153d6c3d26023d0d93dcc1",
+        "2-0eab03571bc55510c8fc4bfac9fe4412",
+        "3-89758294abc63157354c2b08547c2d21"
+      ],
+      "parents": [
+        -1,
+        0,
+        1
+      ],
+      "channels": [
+        [
+          "ABC",
+          "DEF"
+        ],
+        [
+          "ABC",
+          "DEF",
+          "GHI"
+        ],
+        [
+          "ABC",
+          "GHI"
+        ]
+      ]
+    },
+    "channels": {
+      "ABC": null,
+      "DEF": {
+        "seq": 7,
+        "rev": "3-89758294abc63157354c2b08547c2d21"
+      },
+      "GHI": null
+    },
+	"_vv":{
+   		"cvCas":"0x40e2010000000000",
+   		"src":"cb06dc003846116d9b66d2ab23887a96",
+   		"vrs":"0x40e2010000000000",
+   		"mv":{
+      		"s_LhRPsa7CpjEvP5zeXTXEBA":"c0ff05d7ac059a16",
+      		"s_NqiIe0LekFPLeX4JvTO6Iw":"1c008cd6ac059a16"
+		},
+		"pv":{
+      		"s_YZvBpEaztom9z5V/hDoeIw":"f0ff44d6ac059a16"
+   		}
+	},
+    "cas": "",
+    "time_saved": "2017-10-25T12:45:29.622450174-07:00"
+  }`
+
+func TestParseVersionVectorSyncData(t *testing.T) {
+	mv := make(map[string]uint64)
+	pv := make(map[string]uint64)
+	mv["s_LhRPsa7CpjEvP5zeXTXEBA"] = 1628620455147864000
+	mv["s_NqiIe0LekFPLeX4JvTO6Iw"] = 1628620455139868700
+	pv["s_YZvBpEaztom9z5V/hDoeIw"] = 1628620455135215600
+
+	ctx := base.TestCtx(t)
+
+	doc_meta := []byte(doc_meta_with_vv)
+	doc, err := unmarshalDocumentWithXattr(ctx, "doc_1k", nil, doc_meta, nil, 1, DocUnmarshalVV)
+	require.NoError(t, err)
+
+	// assert on doc version vector values
+	assert.Equal(t, uint64(123456), doc.SyncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, uint64(123456), doc.SyncData.HLV.Version)
+	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
+	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
+	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
+
+	doc, err = unmarshalDocumentWithXattr(ctx, "doc1", nil, doc_meta, nil, 1, DocUnmarshalAll)
+	require.NoError(t, err)
+
+	// assert on doc version vector values
+	assert.Equal(t, uint64(123456), doc.SyncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, uint64(123456), doc.SyncData.HLV.Version)
+	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
+	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
+	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
+
+	doc, err = unmarshalDocumentWithXattr(ctx, "doc1", nil, doc_meta, nil, 1, DocUnmarshalNoHistory)
+	require.NoError(t, err)
+
+	// assert on doc version vector values
+	assert.Equal(t, uint64(123456), doc.SyncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, uint64(123456), doc.SyncData.HLV.Version)
+	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
+	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
+	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
+}
+
+// TestRevAndVersion tests marshalling and unmarshalling rev and current version
+func TestRevAndVersion(t *testing.T) {
+
+	ctx := base.TestCtx(t)
+	testCases := []struct {
+		testName  string
+		revTreeID string
+		source    string
+		version   uint64
+	}{
+		{
+			testName:  "rev_and_version",
+			revTreeID: "1-abc",
+			source:    "source1",
+			version:   1,
+		},
+		{
+			testName:  "both_empty",
+			revTreeID: "",
+			source:    "",
+			version:   0,
+		},
+		{
+			testName:  "revTreeID_only",
+			revTreeID: "1-abc",
+			source:    "",
+			version:   0,
+		},
+		{
+			testName:  "currentVersion_only",
+			revTreeID: "",
+			source:    "source1",
+			version:   1,
+		},
+	}
+
+	var expectedSequence = uint64(100)
+	for _, test := range testCases {
+		t.Run(test.testName, func(t *testing.T) {
+			syncData := &SyncData{
+				CurrentRev: test.revTreeID,
+				Sequence:   expectedSequence,
+			}
+			if test.source != "" {
+				syncData.HLV = &HybridLogicalVector{
+					SourceID: test.source,
+					Version:  test.version,
+				}
+			}
+			// SyncData test
+			marshalledSyncData, err := base.JSONMarshal(syncData)
+			require.NoError(t, err)
+			log.Printf("marshalled:%s", marshalledSyncData)
+
+			var newSyncData SyncData
+			err = base.JSONUnmarshal(marshalledSyncData, &newSyncData)
+			require.NoError(t, err)
+			require.Equal(t, test.revTreeID, newSyncData.CurrentRev)
+			require.Equal(t, expectedSequence, newSyncData.Sequence)
+			if test.source != "" {
+				require.NotNil(t, newSyncData.HLV)
+				require.Equal(t, test.source, newSyncData.HLV.SourceID)
+				require.Equal(t, test.version, newSyncData.HLV.Version)
+			}
+
+			// Document test
+			document := NewDocument("docID")
+			document.SyncData.CurrentRev = test.revTreeID
+			document.SyncData.HLV = &HybridLogicalVector{
+				SourceID: test.source,
+				Version:  test.version,
+			}
+			marshalledDoc, marshalledXattr, err := document.MarshalWithXattr()
+			require.NoError(t, err)
+
+			newDocument := NewDocument("docID")
+			err = newDocument.UnmarshalWithXattr(ctx, marshalledDoc, marshalledXattr, DocUnmarshalAll)
+			require.NoError(t, err)
+			require.Equal(t, test.revTreeID, newDocument.CurrentRev)
+			require.Equal(t, expectedSequence, newSyncData.Sequence)
+			if test.source != "" {
+				require.NotNil(t, newDocument.HLV)
+				require.Equal(t, test.source, newDocument.HLV.SourceID)
+				require.Equal(t, test.version, newDocument.HLV.Version)
+			}
+			//require.Equal(t, test.expectedCombinedVersion, newDocument.RevAndVersion)
 		})
 	}
 }

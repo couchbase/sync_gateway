@@ -959,7 +959,7 @@ func (c *DatabaseCollection) processForEachDocIDResults(ctx context.Context, cal
 			found = results.Next(ctx, &viewRow)
 			if found {
 				docid = viewRow.Key
-				revid = viewRow.Value.RevID
+				revid = viewRow.Value.RevID.RevTreeID
 				seq = viewRow.Value.Sequence
 				channels = viewRow.Value.Channels
 			}
@@ -967,7 +967,7 @@ func (c *DatabaseCollection) processForEachDocIDResults(ctx context.Context, cal
 			found = results.Next(ctx, &queryRow)
 			if found {
 				docid = queryRow.Id
-				revid = queryRow.RevID
+				revid = queryRow.RevID.RevTreeID
 				seq = queryRow.Sequence
 				channels = make([]string, 0)
 				// Query returns all channels, but we only want to return active channels
