@@ -9,7 +9,6 @@
 package changestest
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -901,9 +900,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	changes, err := rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes", "bernard", false)
 	require.NoError(t, err, "Error retrieving changes results")
 	for index, result := range changes.Results {
-		var expectedChange db.ChangeEntry
-		require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-		assert.Equal(t, expectedChange, result)
+		assertChangeEntryMatches(t, expectedResults[index], result)
 	}
 
 	// create doc that dynamically grants both users access to PBS and HBO
@@ -921,9 +918,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 		fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "bernard", false)
 	require.NoError(t, err, "Error retrieving changes results")
 	for index, result := range changes.Results {
-		var expectedChange db.ChangeEntry
-		require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-		assert.Equal(t, expectedChange, result)
+		assertChangeEntryMatches(t, expectedResults[index], result)
 	}
 
 	// Write another doc
@@ -947,9 +942,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 		changes, err = rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes?since=8:1", "alice", false)
 		require.NoError(t, err, "Error retrieving changes results for alice")
 		for index, result := range changes.Results {
-			var expectedChange db.ChangeEntry
-			require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-			assert.Equal(t, expectedChange, result)
+			assertChangeEntryMatches(t, expectedResults[index], result)
 		}
 	})
 
@@ -957,11 +950,31 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 		changes, err = rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes?since=8:1", "bernard", false)
 		require.NoError(t, err, "Error retrieving changes results for bernard")
 		for index, result := range changes.Results {
-			var expectedChange db.ChangeEntry
-			require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-			assert.Equal(t, expectedChange, result)
+			assertChangeEntryMatches(t, expectedResults[index], result)
 		}
 	})
+}
+
+// TODO: enhance to compare source/version when expectedChanges are updated to include
+func assertChangeEntryMatches(t *testing.T, expectedChangeEntryString string, result db.ChangeEntry) {
+	var expectedChange db.ChangeEntry
+	require.NoError(t, base.JSONUnmarshal([]byte(expectedChangeEntryString), &expectedChange))
+	assert.Equal(t, expectedChange.Seq, result.Seq)
+	assert.Equal(t, expectedChange.ID, result.ID)
+	assert.Equal(t, expectedChange.Changes, result.Changes)
+	assert.Equal(t, expectedChange.Deleted, result.Deleted)
+	assert.Equal(t, expectedChange.Removed, result.Removed)
+
+	if expectedChange.Doc != nil {
+		// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
+		var expectedBody db.Body
+		var resultBody db.Body
+		assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
+		assert.NoError(t, resultBody.Unmarshal(result.Doc))
+		db.AssertEqualBodies(t, expectedBody, resultBody)
+	} else {
+		assert.Equal(t, expectedChange.Doc, result.Doc)
+	}
 }
 
 // Ensures that changes feed goroutines blocked on a ChangeWaiter are closed when the changes feed is terminated.
@@ -2115,26 +2128,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assert.Equal(t, len(expectedResults), len(changes.Results))
 
 	for index, result := range changes.Results {
-		var expectedChange db.ChangeEntry
-		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-
-		assert.Equal(t, expectedChange.ID, result.ID)
-		assert.Equal(t, expectedChange.Seq, result.Seq)
-		assert.Equal(t, expectedChange.Deleted, result.Deleted)
-		assert.Equal(t, expectedChange.Changes, result.Changes)
-		assert.Equal(t, expectedChange.Err, result.Err)
-		assert.Equal(t, expectedChange.Removed, result.Removed)
-
-		if expectedChange.Doc != nil {
-			// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
-			var expectedBody db.Body
-			var resultBody db.Body
-			assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
-			assert.NoError(t, resultBody.Unmarshal(result.Doc))
-			db.AssertEqualBodies(t, expectedBody, resultBody)
-		} else {
-			assert.Equal(t, expectedChange.Doc, result.Doc)
-		}
+		assertChangeEntryMatches(t, expectedResults[index], result)
 	}
 
 	// Flush the rev cache, and issue changes again to ensure successful handling for rev cache misses
@@ -2150,16 +2144,10 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assert.Equal(t, len(expectedResults), len(postFlushChanges.Results))
 
 	for index, result := range postFlushChanges.Results {
+
+		assertChangeEntryMatches(t, expectedResults[index], result)
 		var expectedChange db.ChangeEntry
 		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-
-		assert.Equal(t, expectedChange.ID, result.ID)
-		assert.Equal(t, expectedChange.Seq, result.Seq)
-		assert.Equal(t, expectedChange.Deleted, result.Deleted)
-		assert.Equal(t, expectedChange.Changes, result.Changes)
-		assert.Equal(t, expectedChange.Err, result.Err)
-		assert.Equal(t, expectedChange.Removed, result.Removed)
-
 		if expectedChange.Doc != nil {
 			// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
 			var expectedBody db.Body
@@ -2186,14 +2174,12 @@ func TestChangesIncludeDocs(t *testing.T) {
 	expectedStyleAllDocs[9] = `{"seq":26,"id":"doc_resolved_conflict","changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"},{"rev":"3-f25ad98ef169791adec6c1d385717b84"}]}`
 
 	styleAllDocsChangesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?style=all_docs", "", "user1")
-	var allDocsChanges struct {
-		Results []*json.RawMessage
-	}
+	var allDocsChanges rest.ChangesResults
 	err = base.JSONUnmarshal(styleAllDocsChangesResponse.Body.Bytes(), &allDocsChanges)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	assert.Equal(t, len(expectedStyleAllDocs), len(allDocsChanges.Results))
 	for index, result := range allDocsChanges.Results {
-		assert.Equal(t, expectedStyleAllDocs[index], fmt.Sprintf("%s", *result))
+		assertChangeEntryMatches(t, expectedStyleAllDocs[index], result)
 	}
 
 	// Validate style=all_docs, include_docs=true permutations.  Only modified doc from include_docs test is doc_conflict (adds open revisions)
@@ -2206,26 +2192,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assert.Equal(t, len(expectedResults), len(combinedChanges.Results))
 
 	for index, result := range combinedChanges.Results {
-		var expectedChange db.ChangeEntry
-		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-
-		assert.Equal(t, expectedChange.ID, result.ID)
-		assert.Equal(t, expectedChange.Seq, result.Seq)
-		assert.Equal(t, expectedChange.Deleted, result.Deleted)
-		assert.Equal(t, expectedChange.Changes, result.Changes)
-		assert.Equal(t, expectedChange.Err, result.Err)
-		assert.Equal(t, expectedChange.Removed, result.Removed)
-
-		if expectedChange.Doc != nil {
-			// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
-			var expectedBody db.Body
-			var resultBody db.Body
-			assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
-			assert.NoError(t, resultBody.Unmarshal(result.Doc))
-			db.AssertEqualBodies(t, expectedBody, resultBody)
-		} else {
-			assert.Equal(t, expectedChange.Doc, result.Doc)
-		}
+		assertChangeEntryMatches(t, expectedResults[index], result)
 	}
 }
 
