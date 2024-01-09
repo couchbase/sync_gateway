@@ -229,7 +229,7 @@ type CacheConfig struct {
 	DeprecatedCacheConfig
 }
 
-// Deprecated: Kept around for CBG-356 backwards compatability
+// Deprecated: Kept around for CBG-356 backwards compatibility
 type DeprecatedCacheConfig struct {
 	DeprecatedCachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"`         // Max wait for pending sequence before skipping
 	DeprecatedCachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`          // Max number of pending sequences before skipping
@@ -1851,7 +1851,7 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 
 // addLegacyPrincipals takes a map of databases that each have a map of names with principle configs.
 // Call this function to install the legacy principles to the upgraded database that use a persistent config.
-// Only call this function after the databases have been initalised via SetupServerContext.
+// Only call this function after the databases have been initialised via SetupServerContext.
 func (sc *ServerContext) addLegacyPrincipals(ctx context.Context, legacyDbUsers, legacyDbRoles map[string]map[string]*auth.PrincipalConfig) {
 	for dbName, dbUser := range legacyDbUsers {
 		dbCtx, err := sc.GetDatabase(ctx, dbName)

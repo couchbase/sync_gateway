@@ -99,7 +99,7 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 // Given a dbName, generate a unique and length-constrained index name for CBGT to use as part of their DCP name.
 func GenerateIndexName(dbName string) string {
 	// Index names *must* start with a letter, so we'll prepend 'db' before the per-database checksum (which starts with '0x')
-	// Don't use Crc32cHashString here becuase this is intentionally non zero padded to match
+	// Don't use Crc32cHashString here because this is intentionally non zero padded to match
 	// existing values.
 	return fmt.Sprintf("db0x%x_index", Crc32cHash([]byte(dbName)))
 }

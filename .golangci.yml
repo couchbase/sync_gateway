@@ -24,6 +24,7 @@ linters:
     - gosimple # (megacheck) Linter for Go source code that specializes in simplifying a code
     - govet # (vet, vetshadow) Vet examines Go source code and reports suspicious constructs, such as Printf calls whose arguments do not align with the format string
     - ineffassign # Detects when assignments to existing variables are not used
+    - misspell # Finds commonly misspelled English words in comments
     - nakedret # Finds naked returns in functions greater than a specified function length
     - prealloc # Finds slice declarations that could potentially be preallocated
     - revive # Golint differs from gofmt. Gofmt reformats Go source code, whereas golint prints out style mistakes
@@ -49,7 +50,6 @@ linters:
     - gomodguard # Allow and block list linter for direct Go module dependencies.
     - interfacer # Linter that suggests narrower interface types
     - lll # Reports long lines
-    - misspell # Finds commonly misspelled English words in comments
     - nestif # Reports deeply nested if statements
     - nolintlint # Reports ill-formed or insufficient nolint directives
     - rowserrcheck # checks whether Err of rows is checked successfully

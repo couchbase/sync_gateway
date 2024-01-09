@@ -2769,7 +2769,7 @@ func TestServerlessChannelLimitsRoles(t *testing.T) {
 			Name: "Single role",
 		},
 		{
-			Name: "Muliple roles",
+			Name: "Multiple roles",
 		},
 	}
 	for _, testCase := range testCases {

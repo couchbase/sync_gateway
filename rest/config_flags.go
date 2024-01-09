@@ -59,9 +59,9 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"api.https.tls_cert_path":       {&config.API.HTTPS.TLSCertPath, fs.String("api.https.tls_cert_path", "", "The TLS cert file to use for the REST APIs")},
 		"api.https.tls_key_path":        {&config.API.HTTPS.TLSKeyPath, fs.String("api.https.tls_key_path", "", "The TLS key file to use for the REST APIs")},
 
-		"api.cors.origin":       {&config.API.CORS.Origin, fs.String("api.cors.origin", "", "List of comma seperated allowed origins. Use '*' to allow access from everywhere")},
-		"api.cors.login_origin": {&config.API.CORS.LoginOrigin, fs.String("api.cors.login_origin", "", "List of comma seperated allowed login origins")},
-		"api.cors.headers":      {&config.API.CORS.Headers, fs.String("api.cors.headers", "", "List of comma seperated allowed headers")},
+		"api.cors.origin":       {&config.API.CORS.Origin, fs.String("api.cors.origin", "", "List of comma separated allowed origins. Use '*' to allow access from everywhere")},
+		"api.cors.login_origin": {&config.API.CORS.LoginOrigin, fs.String("api.cors.login_origin", "", "List of comma separated allowed login origins")},
+		"api.cors.headers":      {&config.API.CORS.Headers, fs.String("api.cors.headers", "", "List of comma separated allowed headers")},
 		"api.cors.max_age":      {&config.API.CORS.MaxAge, fs.Int("api.cors.max_age", 0, "Maximum age of the CORS Options request")},
 
 		"logging.log_file_path":   {&config.Logging.LogFilePath, fs.String("logging.log_file_path", "", "Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file")},
@@ -74,7 +74,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"logging.console.rotation.rotated_logs_size_limit": {&config.Logging.Console.Rotation.RotatedLogsSizeLimit, fs.Int("logging.console.rotation.rotated_logs_size_limit", 0, "")},
 		"logging.console.collation_buffer_size":            {&config.Logging.Console.CollationBufferSize, fs.Int("logging.console.collation_buffer_size", 0, "")},
 		"logging.console.log_level":                        {&config.Logging.Console.LogLevel, fs.String("logging.console.log_level", "", "Options: none, error, warn, info, debug, trace")},
-		"logging.console.log_keys":                         {&config.Logging.Console.LogKeys, fs.String("logging.console.log_keys", "", "Comma seperated log keys")},
+		"logging.console.log_keys":                         {&config.Logging.Console.LogKeys, fs.String("logging.console.log_keys", "", "Comma separated log keys")},
 		"logging.console.color_enabled":                    {&config.Logging.Console.ColorEnabled, fs.Bool("logging.console.color_enabled", false, "")},
 		"logging.console.file_output":                      {&config.Logging.Console.FileOutput, fs.String("logging.console.file_output", "", "")}, // can be used to override the default stderr output, and write to the file specified instead.
 

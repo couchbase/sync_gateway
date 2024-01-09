@@ -348,7 +348,7 @@ func TestFunctionMutability(t *testing.T) {
 				Allow:    &functions.Allow{Channels: []string{"*"}},
 				Mutating: true,
 			},
-			//using context.admin priviledge overides its own mutatibility flag, it acts as though the REST API were called by an administrator.
+			// using context.admin privilege overides its own mutatibility flag, it acts as though the REST API were called by an administrator.
 			"callerOverride": {
 				Type:     "javascript",
 				Code:     "function(context,args) { var funcName = args.funcName; delete args.funcName; return context.admin.function(funcName, args);}",
@@ -418,7 +418,7 @@ func TestFunctionMutability(t *testing.T) {
 		assert.EqualValues(t, "\"Test123\"", string(response.BodyBytes()))
 	})
 
-	//using context.admin priviledge overides its own mutatibility flag, it acts as though the REST API were called by an administrator.
+	// using context.admin privilege overides its own mutatibility flag, it acts as though the REST API were called by an administrator.
 	t.Run("context.admin to call a mutating function", func(t *testing.T) {
 		putFuncName = "putDocMutabilityTrue"
 		callerFuncName = "callerOverride"
