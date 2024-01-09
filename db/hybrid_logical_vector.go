@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math"
+	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -45,6 +46,20 @@ func CreateVersion(source string, version uint64) Version {
 	}
 }
 
+func CreateVersionFromString(versionString string) (version Version, err error) {
+	timestampString, sourceBase64, found := strings.Cut(versionString, "@")
+	if !found {
+		return version, fmt.Errorf("Malformed version string %s, delimiter not found", versionString)
+	}
+	sourceBytes, err := base64.StdEncoding.DecodeString(sourceBase64)
+	if err != nil {
+		return version, fmt.Errorf("Unable to decode sourceID for version %s: %w", versionString, err)
+	}
+	version.SourceID = string(sourceBytes)
+	version.Value = base.HexCasToUint64(timestampString)
+	return version, nil
+}
+
 // String returns a Couchbase Lite-compatible string representation of the version.
 func (v Version) String() string {
 	timestamp := string(base.Uint64CASToLittleEndianHex(v.Value))
@@ -76,7 +91,19 @@ func (hlv *HybridLogicalVector) GetCurrentVersion() (string, uint64) {
 	return hlv.SourceID, hlv.Version
 }
 
-// IsInConflict tests to see if in memory HLV is conflicting with another HLV.
+// GetCurrentVersion returns the current version in transport format
+func (hlv *HybridLogicalVector) GetCurrentVersionString() string {
+	if hlv == nil || hlv.SourceID == "" {
+		return ""
+	}
+	version := Version{
+		SourceID: hlv.SourceID,
+		Value:    hlv.Version,
+	}
+	return version.String()
+}
+
+// IsInConflict tests to see if in memory HLV is conflicting with another HLV
 func (hlv *HybridLogicalVector) IsInConflict(otherVector HybridLogicalVector) bool {
 	// test if either HLV(A) or HLV(B) are dominating over each other. If so they are not in conflict
 	if hlv.isDominating(otherVector) || otherVector.isDominating(*hlv) {
@@ -354,6 +381,9 @@ func (hlv *HybridLogicalVector) computeMacroExpansions() []sgbucket.MacroExpansi
 	if hlv.Version == hlvExpandMacroCASValue {
 		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionPath(base.SyncXattrName), sgbucket.MacroCas)
 		outputSpec = append(outputSpec, spec)
+		// If version is being expanded, we need to also specify the macro expansion for the expanded rev property
+		currentRevSpec := sgbucket.NewMacroExpansionSpec(xattrCurrentRevVersionPath(base.SyncXattrName), sgbucket.MacroCas)
+		outputSpec = append(outputSpec, currentRevSpec)
 	}
 	if hlv.CurrentVersionCAS == hlvExpandMacroCASValue {
 		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(base.SyncXattrName), sgbucket.MacroCas)

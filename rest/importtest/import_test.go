@@ -1612,7 +1612,7 @@ func TestImportRevisionCopy(t *testing.T) {
 	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
-	rev1id := rawInsertResponse.Sync.Rev
+	rev1id := rawInsertResponse.Sync.Rev.RevTreeID
 
 	// 3. Update via SDK
 	updatedBody := make(map[string]interface{})
@@ -1673,7 +1673,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
-	rev1id := rawInsertResponse.Sync.Rev
+	rev1id := rawInsertResponse.Sync.Rev.RevTreeID
 
 	// 3. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
@@ -1903,7 +1903,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
-	rev1id := rawInsertResponse.Sync.Rev
+	rev1id := rawInsertResponse.Sync.Rev.RevTreeID
 
 	// 3. Update via SDK
 	updatedBody := make(map[string]interface{})
@@ -2077,13 +2077,12 @@ func rawDocWithSyncMeta() string {
 }
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
-	xattr := map[string]interface{}{}
-	_, err := dataStore.GetWithXattr(base.TestCtx(t), key, base.SyncXattrName, "", nil, &xattr, nil)
+	var syncData db.SyncData
+	_, err := dataStore.GetWithXattr(base.TestCtx(t), key, base.SyncXattrName, "", nil, &syncData, nil)
 	assert.NoError(t, err, "Error Getting Xattr")
-	revision, ok := xattr["rev"]
-	assert.True(t, ok)
-	generation, _ := db.ParseRevID(base.TestCtx(t), revision.(string))
-	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
+	assert.True(t, syncData.CurrentRev != "")
+	generation, _ := db.ParseRevID(base.TestCtx(t), syncData.CurrentRev)
+	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, syncData.CurrentRev)
 	assert.True(t, generation == expectedRevGeneration)
 }
 
@@ -2108,13 +2107,12 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 	// Get the doc and check deleted revision is getting imported
 	response = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docId, "")
 	assert.Equal(t, http.StatusOK, response.Code)
-	rawResponse := make(map[string]interface{})
+	var rawResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawResponse)
 	require.NoError(t, err, "Unable to unmarshal raw response")
 
-	assert.True(t, rawResponse[db.BodyDeleted].(bool))
-	syncMeta := rawResponse["_sync"].(map[string]interface{})
-	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", syncMeta["rev"])
+	assert.True(t, rawResponse.Deleted)
+	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", rawResponse.Sync.Rev.RevTreeID)
 }
 
 // Check deleted document via SDK is getting imported if it is included in through ImportFilter function.
@@ -2148,10 +2146,9 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	endpoint := fmt.Sprintf("/{{.keyspace}}/_raw/%s?redact=false", key)
 	response := rt.SendAdminRequest(http.MethodGet, endpoint, "")
 	assert.Equal(t, http.StatusOK, response.Code)
-	var respBody db.Body
+	var respBody rest.RawResponse
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
-	syncMeta := respBody[base.SyncPropertyName].(map[string]interface{})
-	assert.NotEmpty(t, syncMeta["rev"].(string))
+	assert.NotEmpty(t, respBody.Sync.Rev.RevTreeID)
 
 	// Delete the document via SDK
 	err = dataStore.Delete(key)
@@ -2161,9 +2158,8 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet, endpoint, "")
 	assert.Equal(t, http.StatusOK, response.Code)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
-	assert.True(t, respBody[db.BodyDeleted].(bool))
-	syncMeta = respBody[base.SyncPropertyName].(map[string]interface{})
-	assert.NotEmpty(t, syncMeta["rev"].(string))
+	assert.True(t, respBody.Deleted)
+	assert.NotEmpty(t, respBody.Sync.Rev.RevTreeID)
 }
 
 // CBG-1995: Test the support for using an underscore prefix in the top-level body of a document
@@ -2332,7 +2328,7 @@ func TestImportTouch(t *testing.T) {
 	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
 	require.NoError(t, err, "Unable to unmarshal raw response")
-	initialRev := rawInsertResponse.Sync.Rev
+	initialRev := rawInsertResponse.Sync.Rev.RevTreeID
 
 	// 2. Test import behaviour after SDK touch
 	_, err = dataStore.Touch(key, 1000000)
@@ -2344,7 +2340,7 @@ func TestImportTouch(t *testing.T) {
 	var rawUpdateResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawUpdateResponse)
 	require.NoError(t, err, "Unable to unmarshal raw response")
-	require.Equal(t, initialRev, rawUpdateResponse.Sync.Rev)
+	require.Equal(t, initialRev, rawUpdateResponse.Sync.Rev.RevTreeID)
 }
 func TestImportingPurgedDocument(t *testing.T) {
 	if !base.TestUseXattrs() {
