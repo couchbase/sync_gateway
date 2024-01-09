@@ -154,12 +154,12 @@ var QuerySequences = SGQuery{
 }
 
 type QueryChannelsRow struct {
-	Id         string `json:"id,omitempty"`
-	Rev        string `json:"rev,omitempty"`
-	Sequence   uint64 `json:"seq,omitempty"`
-	Flags      uint8  `json:"flags,omitempty"`
-	RemovalRev string `json:"rRev,omitempty"`
-	RemovalDel bool   `json:"rDel,omitempty"`
+	Id         string        `json:"id,omitempty"`
+	Rev        RevAndVersion `json:"rev,omitempty"`
+	Sequence   uint64        `json:"seq,omitempty"`
+	Flags      uint8         `json:"flags,omitempty"`
+	RemovalRev string        `json:"rRev,omitempty"`
+	RemovalDel bool          `json:"rDel,omitempty"`
 }
 
 var QueryPrincipals = SGQuery{
@@ -688,15 +688,15 @@ func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey stri
 type AllDocsViewQueryRow struct {
 	Key   string
 	Value struct {
-		RevID    string   `json:"r"`
-		Sequence uint64   `json:"s"`
-		Channels []string `json:"c"`
+		RevID    RevAndVersion `json:"r"`
+		Sequence uint64        `json:"s"`
+		Channels []string      `json:"c"`
 	}
 }
 
 type AllDocsIndexQueryRow struct {
 	Id       string
-	RevID    string              `json:"r"`
+	RevID    RevAndVersion       `json:"r"`
 	Sequence uint64              `json:"s"`
 	Channels channels.ChannelMap `json:"c"`
 }
