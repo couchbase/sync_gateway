@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -47,6 +48,9 @@ var (
 
 	// The value of defaultLogFilePath is populated by -defaultLogFilePath by command line flag from service scripts.
 	defaultLogFilePath string
+
+	// serverContextGlobalsInitialized is set the first time that a server context has been initialized
+	serverContextGlobalsInitialized = atomic.Bool{}
 )
 
 const (
@@ -1344,25 +1348,30 @@ func (sc *StartupConfig) Validate(ctx context.Context, isEnterpriseEdition bool)
 
 // SetupServerContext creates a new ServerContext given its configuration and performs the context validation.
 func SetupServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
-	// Logging config will now have been loaded from command line
-	// or from a sync_gateway config file so we can validate the
-	// configuration and setup logging now
-	if err := config.SetupAndValidateLogging(ctx); err != nil {
-		// If we didn't set up logging correctly, we *probably* can't log via normal means...
-		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
-		log.Printf("[ERR] Error setting up logging: %v", err)
-		return nil, fmt.Errorf("error setting up logging: %v", err)
-	}
+	// If SetupServerContext is called while any other go routines that might use logging are running, it will
+	// cause a data race, therefore only initialize logging and other globals on the first call. From a main
+	// program, there is only one ServerContext.
+	if serverContextGlobalsInitialized.CompareAndSwap(false, true) {
+		// Logging config will now have been loaded from command line
+		// or from a sync_gateway config file so we can validate the
+		// configuration and setup logging now
 
-	base.FlushLoggerBuffers()
+		if err := config.SetupAndValidateLogging(ctx); err != nil {
+			// If we didn't set up logging correctly, we *probably* can't log via normal means...
+			// as a best-effort, last-ditch attempt, we'll log to stderr as well.
+			log.Printf("[ERR] Error setting up logging: %v", err)
+			return nil, fmt.Errorf("error setting up logging: %v", err)
+		}
+		base.FlushLoggerBuffers()
+
+		if err := setGlobalConfig(ctx, config); err != nil {
+			return nil, err
+		}
+	}
 
 	base.InfofCtx(ctx, base.KeyAll, "Logging: Console level: %v", base.ConsoleLogLevel())
 	base.InfofCtx(ctx, base.KeyAll, "Logging: Console keys: %v", base.ConsoleLogKey().EnabledLogKeys())
 	base.InfofCtx(ctx, base.KeyAll, "Logging: Redaction level: %s", config.Logging.RedactionLevel)
-
-	if err := setGlobalConfig(ctx, config); err != nil {
-		return nil, err
-	}
 
 	if err := config.Validate(ctx, base.IsEnterpriseEdition()); err != nil {
 		return nil, err
