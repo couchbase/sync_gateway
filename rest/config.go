@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"testing"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -1344,16 +1345,19 @@ func (sc *StartupConfig) Validate(ctx context.Context, isEnterpriseEdition bool)
 
 // SetupServerContext creates a new ServerContext given its configuration and performs the context validation.
 func SetupServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
-	// Logging config will now have been loaded from command line
-	// or from a sync_gateway config file so we can validate the
-	// configuration and setup logging now
-	if err := config.SetupAndValidateLogging(ctx); err != nil {
-		// If we didn't set up logging correctly, we *probably* can't log via normal means...
-		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
-		log.Printf("[ERR] Error setting up logging: %v", err)
-		return nil, fmt.Errorf("error setting up logging: %v", err)
-	}
+	// This logging is global, so do not reinitialize for test logs.
+	if !testing.Testing() {
+		// Logging config will now have been loaded from command line
+		// or from a sync_gateway config file so we can validate the
+		// configuration and setup logging now
 
+		if err := config.SetupAndValidateLogging(ctx); err != nil {
+			// If we didn't set up logging correctly, we *probably* can't log via normal means...
+			// as a best-effort, last-ditch attempt, we'll log to stderr as well.
+			log.Printf("[ERR] Error setting up logging: %v", err)
+			return nil, fmt.Errorf("error setting up logging: %v", err)
+		}
+	}
 	base.FlushLoggerBuffers()
 
 	base.InfofCtx(ctx, base.KeyAll, "Logging: Console level: %v", base.ConsoleLogLevel())

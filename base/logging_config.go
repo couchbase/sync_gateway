@@ -16,7 +16,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -40,9 +39,6 @@ const (
 	fileLoggerCollateFlushTimeout    = 10 * time.Millisecond
 )
 
-// loggingInitialized is used to ensure logging is only initialized once. In test, this is done by SetUpTestLogging, and in main this is done with InitLogging when the single ServerContext is initialized.
-var loggingInitialized = atomic.Bool{}
-
 // ErrUnsetLogFilePath is returned when no log_file_path, or --defaultLogFilePath fallback can be used.
 var ErrUnsetLogFilePath = errors.New("No log_file_path property specified in config, and --defaultLogFilePath command line flag was not set. Log files required for product support are not being generated.")
 
@@ -61,10 +57,6 @@ type LegacyLoggingConfig struct {
 func InitLogging(ctx context.Context, logFilePath string,
 	console *ConsoleLoggerConfig,
 	error, warn, info, debug, trace, stats *FileLoggerConfig) (err error) {
-
-	if !loggingInitialized.CompareAndSwap(false, true) {
-		return
-	}
 
 	consoleLogger, err = NewConsoleLogger(ctx, true, console)
 	if err != nil {
