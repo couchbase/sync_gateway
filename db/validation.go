@@ -27,12 +27,12 @@ func validateNewBody(body Body) error {
 
 	// Reject bodies that contains the "_purged" property.
 	if _, ok := body[BodyPurged]; ok {
-		return base.HTTPErrorf(http.StatusNotFound, "user defined top-level property '_purged' is not allowed in document body")
+		return base.HTTPErrorf(http.StatusBadRequest, "user defined top-level property '_purged' is not allowed in document body")
 	}
 
 	for key := range body {
 		if strings.HasPrefix(key, BodyInternalPrefix) {
-			return base.HTTPErrorf(http.StatusNotFound, "user defined top-level properties that start with '_sync_' are not allowed in document body")
+			return base.HTTPErrorf(http.StatusBadRequest, "user defined top-level properties that start with '_sync_' are not allowed in document body")
 		}
 	}
 	return nil
@@ -51,10 +51,6 @@ func validateAPIDocUpdate(body Body) error {
 
 // validateImportBody validates incoming import bodies
 func validateImportBody(body Body) error {
-	if body == nil {
-		return base.ErrEmptyDocument
-	}
-
 	if isPurged, ok := body[BodyPurged].(bool); ok && isPurged {
 		return base.ErrImportCancelledPurged
 	}

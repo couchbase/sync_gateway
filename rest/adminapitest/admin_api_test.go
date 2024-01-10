@@ -3714,7 +3714,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 		{
 			name:                "_purged",
 			inputBody:           map[string]interface{}{"_purged": false},
-			expectedErrorStatus: base.IntPtr(http.StatusNotFound),
+			expectedErrorStatus: base.IntPtr(http.StatusBadRequest),
 		},
 		{
 			name:                "_removed",
@@ -3724,7 +3724,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 		{
 			name:                "_sync_cookies",
 			inputBody:           map[string]interface{}{"_sync_cookies": true},
-			expectedErrorStatus: base.IntPtr(http.StatusNotFound),
+			expectedErrorStatus: base.IntPtr(http.StatusBadRequest),
 		},
 		{
 			name: "Valid user defined uppercase properties", // Uses internal properties names but in upper case
