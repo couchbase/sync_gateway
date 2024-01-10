@@ -25,8 +25,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
-	"testing"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -48,6 +48,9 @@ var (
 
 	// The value of defaultLogFilePath is populated by -defaultLogFilePath by command line flag from service scripts.
 	defaultLogFilePath string
+
+	// serverContextLoggingInitialized is set the first time that logging has been initialized
+	serverContextLoggingInitialized = atomic.Bool{}
 )
 
 const (
@@ -1345,8 +1348,10 @@ func (sc *StartupConfig) Validate(ctx context.Context, isEnterpriseEdition bool)
 
 // SetupServerContext creates a new ServerContext given its configuration and performs the context validation.
 func SetupServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
-	// This logging is global, so do not reinitialize for test logs.
-	if !testing.Testing() {
+	// If SetupServerContext is called while any other go routines that might use logging are running, it will
+	// cause a data race, therefore only initialize logging on the first call. From a main program, there is
+	// only one ServerContext.
+	if serverContextLoggingInitialized.CompareAndSwap(false, true) {
 		// Logging config will now have been loaded from command line
 		// or from a sync_gateway config file so we can validate the
 		// configuration and setup logging now
