@@ -101,7 +101,7 @@ func TestLogLevelText(t *testing.T) {
 		})
 	}
 
-	// nil pointer recievers
+	// nil pointer receivers
 	var logLevelPtr *LogLevel
 	_, err := logLevelPtr.MarshalText()
 	assert.Contains(t, err.Error(), "unrecognized log level")

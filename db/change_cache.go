@@ -68,7 +68,7 @@ type changeCache struct {
 	channelCache       ChannelCache                        // Underlying channel cache
 	lastAddPendingTime int64                               // The most recent time _addPendingLogs was run, as epoch time
 	internalStats      changeCacheStats                    // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
-	cfgEventCallback   base.CfgEventNotifyFunc             // Callback for Cfg updates recieved over the caching feed
+	cfgEventCallback   base.CfgEventNotifyFunc             // Callback for Cfg updates received over the caching feed
 	sgCfgPrefix        string                              // Prefix for SG Cfg doc keys
 	metaKeys           *base.MetadataKeys                  // Metadata key formatter
 }
@@ -159,7 +159,7 @@ func DefaultCacheOptions() CacheOptions {
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
 // notifyChange is an optional function that will be called to notify of channel changes.
-// After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
+// After calling Init(), you must call .Start() to start using the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
 
 func (c *changeCache) Init(ctx context.Context, dbContext *DatabaseContext, channelCache ChannelCache, notifyChange func(context.Context, channels.Set), options *CacheOptions, metaKeys *base.MetadataKeys) error {

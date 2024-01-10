@@ -382,7 +382,7 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 		SyncFn:             channels.DocChannelsSyncFunction,
 	}
 	activeRT = NewRestTester(t, activeRTConfig)
-	// Initalize RT and bucket
+	// Initialize RT and bucket
 	_ = activeRT.Bucket()
 
 	teardown = func() {

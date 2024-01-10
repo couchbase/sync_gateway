@@ -688,7 +688,7 @@ func TestImportPartitionsServerless(t *testing.T) {
 		t.Skip("This test requires cbgt")
 	}
 	if !base.TestUseXattrs() {
-		t.Skip("tests import which is not avaiable without xattrs")
+		t.Skip("tests import which is not available without xattrs")
 	}
 	tests := []struct {
 		name               string

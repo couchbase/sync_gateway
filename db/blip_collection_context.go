@@ -80,7 +80,7 @@ func (bsc *blipSyncCollectionContext) checkPendingInsertion(docID string) (found
 	return
 }
 
-// setNonCollectionAware adds a single collection matching _default._default collection, to be refered to if no Collection property is set on a blip message.
+// setNonCollectionAware adds a single collection matching _default._default collection, to be referred to if no Collection property is set on a blip message.
 func (b *blipCollections) setNonCollectionAware(collectionCtx *blipSyncCollectionContext) {
 	b.Lock()
 	defer b.Unlock()

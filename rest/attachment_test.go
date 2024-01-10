@@ -369,7 +369,7 @@ func TestManualAttachment(t *testing.T) {
 	}
 }
 
-// PUT attachment on non-existant docid should create empty doc
+// PUT attachment on non-existent docid should create empty doc
 func TestManualAttachmentNewDoc(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()

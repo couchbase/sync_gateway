@@ -15,7 +15,7 @@ import (
 	"net/http"
 )
 
-// NonCountedResponseWriter is a passhtrough http.ResponseWriter that satisifes the CoutableResponseWriter interface.
+// NonCountedResponseWriter is a passhtrough http.ResponseWriter that satisfies the CoutableResponseWriter interface.
 type NonCountedResponseWriter struct {
 	http.ResponseWriter
 }
