@@ -27,12 +27,12 @@ func validateNewBody(body Body) error {
 
 	// Reject bodies that contains the "_purged" property.
 	if _, ok := body[BodyPurged]; ok {
-		return base.HTTPErrorf(http.StatusBadRequest, "user defined top-level property '_purged' is not allowed in document body")
+		return base.HTTPErrorf(http.StatusNotFound, "user defined top-level property '_purged' is not allowed in document body")
 	}
 
 	for key := range body {
 		if strings.HasPrefix(key, BodyInternalPrefix) {
-			return base.HTTPErrorf(http.StatusBadRequest, "user defined top-level properties that start with '_sync_' are not allowed in document body")
+			return base.HTTPErrorf(http.StatusNotFound, "user defined top-level properties that start with '_sync_' are not allowed in document body")
 		}
 	}
 	return nil
@@ -63,7 +63,7 @@ func validateImportBody(body Body) error {
 	disallowed := []string{BodyId, BodyRev, BodyExpiry, BodyRevisions}
 	for _, prop := range disallowed {
 		if _, ok := body[prop]; ok {
-			return base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+prop+"' is a reserved internal property therefore cannot be imported")
+			return base.HTTPErrorf(http.StatusNotFound, "top-level property '"+prop+"' is a reserved internal property therefore cannot be imported")
 		}
 	}
 	// TODO: Validate attachment data to ensure user is not setting invalid attachments
@@ -80,7 +80,7 @@ func validateBlipBody(ctx context.Context, rawBody []byte, doc *Document) error 
 		// Only unmarshal if raw body contains the disallowed property
 		if bytes.Contains(rawBody, []byte(`"`+prop+`"`)) {
 			if _, ok := doc.Body(ctx)[prop]; ok {
-				return base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+prop+"' is a reserved internal property")
+				return base.HTTPErrorf(http.StatusNotFound, "top-level property '"+prop+"' is a reserved internal property")
 			}
 		}
 	}

@@ -7627,7 +7627,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	// Add disallowed _purged tag in document
 	rawDoc = fmt.Sprintf(`{"_rev": "%s","_purged": true}`, doc["_rev"])
 	resp = activeRT.SendAdminRequest("PUT", "/{{.keyspace}}/"+docID, rawDoc)
-	rest.RequireStatus(t, resp, 400)
+	rest.RequireStatus(t, resp, 404)
 }
 
 // TestActiveReplicatorBlipsync uses an ActiveReplicator with another RestTester instance to connect and cleanly disconnect.
