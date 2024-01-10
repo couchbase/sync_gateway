@@ -194,7 +194,7 @@ type sgCollectOptions struct {
 
 // validateOutputDirectory will check that the given path exists, and is a directory.
 func validateOutputDirectory(dir string) error {
-	// Clean the given path first, mainly for cross-platform compatability.
+	// Clean the given path first, mainly for cross-platform compatibility.
 	dir = filepath.Clean(dir)
 
 	// Validate given output directory exists, and is a directory.

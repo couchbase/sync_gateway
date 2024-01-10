@@ -190,7 +190,7 @@ func (keyMask *LogKeyMask) EnabledLogKeys() []string {
 }
 
 // ToLogKey takes a slice of case-sensitive log key names and will return a LogKeyMask bitfield
-// and a slice of deferred log functions for any warnings that may occurr.
+// and a slice of deferred log functions for any warnings that may occur.
 func ToLogKey(ctx context.Context, keysStr []string) (logKeys LogKeyMask) {
 
 	for _, key := range keysStr {

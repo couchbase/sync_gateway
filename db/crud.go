@@ -1691,7 +1691,7 @@ func (doc *Document) updateExpiry(syncExpiry, updatedExpiry *uint32, expiry *uin
 
 // IsIllegalConflict returns true if the given operation is forbidden due to conflicts.
 // AllowConflicts is whether or not the database allows conflicts,
-// and 'noConflicts' is whether or not the request should allow conflicts to occurr.
+// and 'noConflicts' is whether or not the request should allow conflicts to occur.
 /*
 Truth table for AllowConflicts and noConflicts combinations:
 

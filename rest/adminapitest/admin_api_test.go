@@ -3958,7 +3958,7 @@ func TestPerDBCredsOverride(t *testing.T) {
 	// Make sure request failed as it could authenticate with the bucket
 	assert.Equal(t, http.StatusForbidden, res.StatusCode)
 
-	// Allow database to be created sucessfully
+	// Allow database to be created successfully
 	sc.Config.DatabaseCredentials = map[string]*base.CredentialsConfig{}
 	res = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/", dbConfig)
 	assert.Equal(t, http.StatusCreated, res.StatusCode)

@@ -77,7 +77,7 @@ var (
 	ErrMaximumChannelsForUserExceeded = &sgError{fmt.Sprintf("User has exceeded maximum of %d channels", ServerlessChannelLimit)}
 
 	// ErrReplicationLimitExceeded is returned when then replication connection threshold is exceeded
-	ErrReplicationLimitExceeded = &sgError{"Replication limit exceeded. Try agin later."}
+	ErrReplicationLimitExceeded = &sgError{"Replication limit exceeded. Try again later."}
 )
 
 func (e *sgError) Error() string {

@@ -255,7 +255,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	}
 }
 
-// GetExistingBucket opens a bucket conection to an existing bucket
+// GetExistingBucket opens a bucket connection to an existing bucket
 func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSpec, teardown func(context.Context)) {
 	ctx := TestCtx(t)
 

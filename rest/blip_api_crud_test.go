@@ -1238,13 +1238,13 @@ func AssertChangeEquals(t *testing.T, change []interface{}, expectedChange Expec
 }
 
 // Make sure it's not possible to have two outstanding subChanges w/ continuous=true.
-// Expected behavior is that the first continous change subscription should get discarded in favor of 2nd.
+// Expected behavior is that the first continuous change subscription should get discarded in favor of 2nd.
 func TestConcurrentChangesSubscriptions(t *testing.T) {
 	// TODO: Write tests to cover scenario
 	t.Skip("not tested")
 }
 
-// Create a continous changes subscription that has docs in multiple channels, and make sure
+// Create a continuous changes subscription that has docs in multiple channels, and make sure
 // all docs are received
 func TestMultiChannelContinousChangesSubscription(t *testing.T) {
 	// TODO: Write tests to cover scenario
@@ -2223,7 +2223,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 0)
 	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 1)
 
-	// Send continous subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
+	// Send continuous subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	subChangesRequest = bt.newRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"

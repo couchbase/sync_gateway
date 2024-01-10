@@ -1204,7 +1204,7 @@ func (sc *ServerContext) AddDatabaseFromConfigWithBucket(ctx context.Context, tb
 // The parameters used to create a BlipTester
 type BlipTesterSpec struct {
 
-	// Run Sync Gateway in "No conflicts" mode.  Will be propgated to the underyling RestTester
+	// Run Sync Gateway in "No conflicts" mode.  Will be propgated to the underlying RestTester
 	noConflictsMode bool
 
 	// If an underlying RestTester is created, it will propagate this setting to the underlying RestTester.
@@ -1260,7 +1260,7 @@ type BlipTester struct {
 	// some areas.
 	avoidRestTesterClose bool
 
-	// The blip context which contains blip related state and the sender/reciever goroutines associated
+	// The blip context which contains blip related state and the sender/receiver goroutines associated
 	// with this websocket connection
 	blipContext       *blip.Context
 	activeSubprotocol db.CBMobileSubprotocolVersion

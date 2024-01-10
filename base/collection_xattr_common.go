@@ -339,7 +339,7 @@ func DeleteWithXattr(ctx context.Context, store *Collection, k string, xattrKey 
 }
 
 // A function that will be called back after the first delete attempt but before second delete attempt
-// to simulate the doc having changed state (artifiically injected race condition)
+// to simulate the doc having changed state (artificially injected race condition)
 type deleteWithXattrRaceInjection func(k string, xattrKey string)
 
 func deleteWithXattrInternal(ctx context.Context, store *Collection, k string, xattrKey string, callback deleteWithXattrRaceInjection) error {

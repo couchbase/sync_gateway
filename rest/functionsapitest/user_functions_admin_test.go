@@ -633,7 +633,7 @@ func TestSaveAndDeleteAndGet(t *testing.T) {
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
 
-	t.Run("Get All Non-exisitng Functions And Check HTTP Status", func(t *testing.T) {
+	t.Run("Get All Non-existing Functions And Check HTTP Status", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 
