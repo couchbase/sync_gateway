@@ -1425,6 +1425,8 @@ func (sc *ServerContext) fetchAndLoadDatabaseSince(ctx context.Context, dbName s
 }
 
 func (sc *ServerContext) fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string) (found bool, err error) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
 	return sc._fetchAndLoadDatabase(nonContextStruct, dbName)
 }
 
