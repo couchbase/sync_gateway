@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -40,7 +41,7 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 		err := body.Unmarshal(value)
 		if err != nil {
 			base.InfofCtx(ctx, base.KeyImport, "Unmarshal error during importDoc %v", err)
-			return nil, err
+			return nil, base.HTTPErrorf(http.StatusNotFound, "Error unmarshalling %s: %s", base.UD(docid).Redact(), err)
 		}
 
 		err = validateImportBody(body)

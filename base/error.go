@@ -41,7 +41,7 @@ var (
 	ErrAlreadyExists         = &sgError{"Already exists"}
 	ErrNotFound              = &sgError{"Not Found"}
 	ErrUpdateCancel          = &sgError{"Cancel update"}
-	ErrImportCancelledPurged = &sgError{"Import Cancelled Due to Purge"}
+	ErrImportCancelledPurged = HTTPErrorf(http.StatusNotFound, "Import Cancelled Due to Purge")
 	ErrChannelFeed           = &sgError{"Error while building channel feed"}
 	ErrTimeout               = &sgError{"Operation timed out"}
 	ErrPathNotFound          = sgbucket.ErrPathNotFound
