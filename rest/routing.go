@@ -345,6 +345,12 @@ func CreateMetricHandler(sc *ServerContext) http.Handler {
 	return wrapRouter(sc, metricsPrivs, router)
 }
 
+// CreateDiagnosticHandler Creates the HTTP handler for the diagnostic API of a gateway server.
+func CreateDiagnosticHandler(sc *ServerContext) http.Handler {
+	router := CreateDiagnosticRouter(sc)
+	return wrapRouter(sc, diagnosticPrivs, router)
+}
+
 func CreateMetricRouter(sc *ServerContext) *mux.Router {
 	r := mux.NewRouter()
 	r.StrictSlash(true)
@@ -353,6 +359,14 @@ func CreateMetricRouter(sc *ServerContext) *mux.Router {
 	r.Handle("/metrics", makeSilentHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
 	r.Handle("/_metrics", makeSilentHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
 	r.Handle(kDebugURLPathPrefix, makeSilentHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleExpvar)).Methods("GET")
+
+	return r
+}
+
+func CreateDiagnosticRouter(sc *ServerContext) *mux.Router {
+	r := mux.NewRouter()
+	r.StrictSlash(true)
+	r.Handle("/_ping", makeSilentHandler(sc, publicPrivs, nil, nil, (*handler).handlePing)).Methods("GET", "HEAD")
 
 	return r
 }

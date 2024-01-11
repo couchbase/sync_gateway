@@ -61,10 +61,12 @@ type LegacyServerConfig struct {
 	ReplicatorCompression                     *int                           `json:"replicator_compression,omitempty"` // BLIP data compression level (0-9)
 	BcryptCost                                int                            `json:"bcrypt_cost,omitempty"`            // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
 	MetricsInterface                          *string                        `json:"metricsInterface,omitempty"`       // Interface to bind metrics to. If not set then metrics isn't accessible
+	DiagnosticInterface                       *string                        `json:"diagnosticInterface,omitempty"`    // Interface to bind diagnostic API to. If not set then diagnostic API isn't accessible
 	HideProductVersion                        bool                           `json:"hide_product_version,omitempty"`   // Determines whether product versions removed from Server headers and REST API responses. This setting does not apply to the Admin REST API.
 	DisablePersistentConfig                   *bool                          `json:"disable_persistent_config,omitempty" help:"Can be set to true to disable 3.0/persistent config handling."`
 	AdminInterfaceAuthentication              *bool                          `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
 	MetricsInterfaceAuthentication            *bool                          `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
+	DiagnosticInterfaceAuthentication         *bool                          `json:"diagnostic_interface_authentication,omitempty" help:"Whether the diagnostic API requires authentication"`
 	EnableAdminAuthenticationPermissionsCheck *bool                          `json:"enable_advanced_auth_dp,omitempty" help:"Whether to enable the permissions check feature of admin auth"`
 	ConfigUpgradeGroupID                      string                         `json:"config_upgrade_group_id,omitempty"` // If set, determines the config group ID used when this legacy config is upgraded to a persistent config.
 	RemovedLegacyServerConfig
@@ -175,9 +177,11 @@ func (lc *LegacyServerConfig) ToStartupConfig(ctx context.Context) (*StartupConf
 	sc := StartupConfig{
 		Bootstrap: *bsc,
 		API: APIConfig{
-			CompressResponses:                         lc.CompressResponses,
-			AdminInterfaceAuthentication:              lc.AdminInterfaceAuthentication,
-			MetricsInterfaceAuthentication:            lc.MetricsInterfaceAuthentication,
+			CompressResponses:                 lc.CompressResponses,
+			AdminInterfaceAuthentication:      lc.AdminInterfaceAuthentication,
+			MetricsInterfaceAuthentication:    lc.MetricsInterfaceAuthentication,
+			DiagnosticInterfaceAuthentication: lc.DiagnosticInterfaceAuthentication,
+
 			EnableAdminAuthenticationPermissionsCheck: lc.EnableAdminAuthenticationPermissionsCheck,
 		},
 		Logging: base.LoggingConfig{},
@@ -246,6 +250,9 @@ func (lc *LegacyServerConfig) ToStartupConfig(ctx context.Context) (*StartupConf
 	}
 	if lc.MetricsInterface != nil {
 		sc.API.MetricsInterface = *lc.MetricsInterface
+	}
+	if lc.DiagnosticInterface != nil {
+		sc.API.DiagnosticInterface = *lc.DiagnosticInterface
 	}
 	if lc.ProfileInterface != nil {
 		sc.API.ProfileInterface = *lc.ProfileInterface
@@ -653,6 +660,8 @@ func ParseCommandLine(ctx context.Context, args []string, handling flag.ErrorHan
 	if config.MetricsInterface == nil {
 		config.MetricsInterface = &DefaultMetricsInterface
 	}
-
+	if config.DiagnosticInterface == nil {
+		config.DiagnosticInterface = &DefaultDiagnosticInterface
+	}
 	return config, err
 }

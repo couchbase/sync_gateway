@@ -42,6 +42,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"api.public_interface":                              {&config.API.PublicInterface, fs.String("api.public_interface", "", "Network interface to bind public API to")},
 		"api.admin_interface":                               {&config.API.AdminInterface, fs.String("api.admin_interface", "", "Network interface to bind admin API to")},
 		"api.metrics_interface":                             {&config.API.MetricsInterface, fs.String("api.metrics_interface", "", "Network interface to bind metrics API to")},
+		"api.diagnostic_interface":                          {&config.API.DiagnosticInterface, fs.String("api.diagnostic_interface", "", "Network interface to bind diagnostic API to")},
 		"api.profile_interface":                             {&config.API.ProfileInterface, fs.String("api.profile_interface", "", "Network interface to bind profiling API to")},
 		"api.admin_interface_authentication":                {&config.API.AdminInterfaceAuthentication, fs.Bool("api.admin_interface_authentication", false, "Whether the admin API requires authentication")},
 		"api.metrics_interface_authentication":              {&config.API.MetricsInterfaceAuthentication, fs.Bool("api.metrics_interface_authentication", false, "Whether the metrics API requires authentication")},

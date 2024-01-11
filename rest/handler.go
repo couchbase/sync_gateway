@@ -114,6 +114,7 @@ const (
 	publicPrivs         // Handler Handler checks auth and falls back to guest if invalid or missing
 	adminPrivs          // Handler ignores auth, always runs with root/admin privs
 	metricsPrivs
+	diagnosticPrivs
 )
 
 type handlerMethod func(*handler) error

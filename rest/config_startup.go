@@ -36,11 +36,12 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			UseTLSServer:          base.BoolPtr(DefaultUseTLSServer),
 		},
 		API: APIConfig{
-			PublicInterface:    DefaultPublicInterface,
-			AdminInterface:     DefaultAdminInterface,
-			MetricsInterface:   DefaultMetricsInterface,
-			MaximumConnections: DefaultMaxIncomingConnections,
-			CompressResponses:  base.BoolPtr(true),
+			PublicInterface:     DefaultPublicInterface,
+			AdminInterface:      DefaultAdminInterface,
+			MetricsInterface:    DefaultMetricsInterface,
+			DiagnosticInterface: DefaultDiagnosticInterface,
+			MaximumConnections:  DefaultMaxIncomingConnections,
+			CompressResponses:   base.BoolPtr(true),
 			HTTPS: HTTPSConfig{
 				TLSMinimumVersion: "tlsv1.2",
 			},
@@ -102,13 +103,16 @@ type BootstrapConfig struct {
 }
 
 type APIConfig struct {
-	PublicInterface  string `json:"public_interface,omitempty"  help:"Network interface to bind public API to"`
-	AdminInterface   string `json:"admin_interface,omitempty"   help:"Network interface to bind admin API to"`
-	MetricsInterface string `json:"metrics_interface,omitempty" help:"Network interface to bind metrics API to"`
-	ProfileInterface string `json:"profile_interface,omitempty" help:"Network interface to bind profiling API to"`
+	PublicInterface     string `json:"public_interface,omitempty"  help:"Network interface to bind public API to"`
+	AdminInterface      string `json:"admin_interface,omitempty"   help:"Network interface to bind admin API to"`
+	MetricsInterface    string `json:"metrics_interface,omitempty" help:"Network interface to bind metrics API to"`
+	DiagnosticInterface string `json:"diagnostic_interface,omitempty" help:"Network interface to bind diagnostic API to"`
+	ProfileInterface    string `json:"profile_interface,omitempty" help:"Network interface to bind profiling API to"`
 
-	AdminInterfaceAuthentication              *bool `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
-	MetricsInterfaceAuthentication            *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
+	AdminInterfaceAuthentication      *bool `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
+	MetricsInterfaceAuthentication    *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
+	DiagnosticInterfaceAuthentication *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
+
 	EnableAdminAuthenticationPermissionsCheck *bool `json:"enable_advanced_auth_dp,omitempty" help:"Whether to enable the DP permissions check feature of admin auth"`
 
 	ServerReadTimeout  *base.ConfigDuration `json:"server_read_timeout,omitempty"  help:"Maximum duration.Second before timing out read of the HTTP(S) request"`
