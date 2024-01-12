@@ -46,6 +46,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"api.profile_interface":                             {&config.API.ProfileInterface, fs.String("api.profile_interface", "", "Network interface to bind profiling API to")},
 		"api.admin_interface_authentication":                {&config.API.AdminInterfaceAuthentication, fs.Bool("api.admin_interface_authentication", false, "Whether the admin API requires authentication")},
 		"api.metrics_interface_authentication":              {&config.API.MetricsInterfaceAuthentication, fs.Bool("api.metrics_interface_authentication", false, "Whether the metrics API requires authentication")},
+		"api.diagnostic_interface_authentication":           {&config.API.DiagnosticInterfaceAuthentication, fs.Bool("api.diagnostic_interface_authentication", false, "Whether the diagnostic API requires authentication")},
 		"api.enable_admin_authentication_permissions_check": {&config.API.EnableAdminAuthenticationPermissionsCheck, fs.Bool("api.enable_admin_authentication_permissions_check", false, "Whether to enable the DP permissions check feature of admin auth")},
 		"api.server_read_timeout":                           {&config.API.ServerReadTimeout, fs.String("api.server_read_timeout", "", "Maximum duration.Second before timing out read of the HTTP(S) request")},
 		"api.server_write_timeout":                          {&config.API.ServerWriteTimeout, fs.String("api.server_write_timeout", "", "Maximum duration.Second before timing out write of the HTTP(S) response")},
