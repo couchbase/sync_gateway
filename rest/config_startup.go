@@ -111,7 +111,7 @@ type APIConfig struct {
 
 	AdminInterfaceAuthentication      *bool `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
 	MetricsInterfaceAuthentication    *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
-	DiagnosticInterfaceAuthentication *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
+	DiagnosticInterfaceAuthentication *bool `json:"diagnostic_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
 
 	EnableAdminAuthenticationPermissionsCheck *bool `json:"enable_advanced_auth_dp,omitempty" help:"Whether to enable the DP permissions check feature of admin auth"`
 
