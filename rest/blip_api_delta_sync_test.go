@@ -111,10 +111,11 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
-			t.Skip("delta sync not implemented for Version Vectors replication")
-		}
+		//if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+		//	t.Skip("delta sync not implemented for Version Vectors replication")
+		//}
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
@@ -186,12 +187,13 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		GuestEnabled: true,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
 	const doc1ID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
-			t.Skip("delta sync not implemented for Version Vectors replication")
-		}
+		//if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+		//	t.Skip("delta sync not implemented for Version Vectors replication")
+		//}
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
@@ -290,10 +292,11 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	const docID = "doc1"
 	var deltaSentCount int64
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
-			t.Skip("delta sync not implemented for Version Vectors replication")
-		}
+		//if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+		//	t.Skip("delta sync not implemented for Version Vectors replication")
+		//}
 		rt := NewRestTester(t,
 			rtConfig)
 		defer rt.Close()
@@ -371,10 +374,11 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		GuestEnabled: true,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
-			t.Skip("delta sync not implemented for Version Vectors replication")
-		}
+		//if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+		//	t.Skip("delta sync not implemented for Version Vectors replication")
+		//}
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()
@@ -447,7 +451,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipVersionVectorInitialization = true // v2 protocol test
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // v2 protocol test
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -515,6 +519,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication"
 
 	var deltaCacheHitsStart int64
 	var deltaCacheMissesStart int64
@@ -522,9 +527,9 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	var deltasSentStart int64
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
-			t.Skip("delta sync not implemented for Version Vectors replication")
-		}
+		//if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+		//	t.Skip("delta sync not implemented for Version Vectors replication")
+		//}
 		rt := NewRestTester(t,
 			rtConfig)
 		defer rt.Close()
@@ -616,12 +621,13 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}}
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
-			t.Skip("delta sync not implemented for Version Vectors replication")
-		}
+		//if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+		//	t.Skip("delta sync not implemented for Version Vectors replication")
+		//}
 		rt := NewRestTester(t,
 			rtConfig)
 		defer rt.Close()
@@ -767,11 +773,12 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	}
 	const docID = "doc1"
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
-			t.Skip("delta sync not implemented for Version Vectors replication")
-		}
+		//if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+		//	t.Skip("delta sync not implemented for Version Vectors replication")
+		//}
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()
@@ -859,12 +866,13 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		GuestEnabled: true,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
-			t.Skip("delta sync not implemented for Version Vectors replication")
-		}
+		//if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+		//	t.Skip("delta sync not implemented for Version Vectors replication")
+		//}
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()
@@ -971,12 +979,13 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		GuestEnabled: true,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
-			t.Skip("delta sync not implemented for Version Vectors replication")
-		}
+		//if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+		//	t.Skip("delta sync not implemented for Version Vectors replication")
+		//}
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()

@@ -31,6 +31,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	VersionVectorSubtestName = "versionVector"
+	RevtreeSubtestName       = "revTree"
+)
+
 type BlipTesterClientOpts struct {
 	ClientDeltas                  bool // Support deltas on the client side
 	Username                      string
@@ -76,11 +81,10 @@ type BlipTesterCollectionClient struct {
 
 // BlipTestClientRunner is for running the blip tester client and its associated methods in test framework
 type BlipTestClientRunner struct {
-	clients                         map[uint32]*BlipTesterClient // map of created BlipTesterClient's
-	t                               *testing.T
-	initialisedInsideRunnerCode     bool // flag to check that the BlipTesterClient is being initialised in the correct area (inside the Run() method)
-	SkipVersionVectorInitialization bool // used to skip the version vector subtest
-	SkipNonHLVAwareReplication      bool
+	clients                     map[uint32]*BlipTesterClient // map of created BlipTesterClient's
+	t                           *testing.T
+	initialisedInsideRunnerCode bool            // flag to check that the BlipTesterClient is being initialised in the correct area (inside the Run() method)
+	SkipSubtest                 map[string]bool // map of sub tests on the blip tester runner to skip
 }
 
 type BodyMessagePair struct {
@@ -102,8 +106,9 @@ type BlipTesterReplicator struct {
 // NewBlipTesterClientRunner creates a BlipTestClientRunner type
 func NewBlipTesterClientRunner(t *testing.T) *BlipTestClientRunner {
 	return &BlipTestClientRunner{
-		t:       t,
-		clients: make(map[uint32]*BlipTesterClient),
+		t:           t,
+		clients:     make(map[uint32]*BlipTesterClient),
+		SkipSubtest: make(map[string]bool),
 	}
 }
 
@@ -631,20 +636,17 @@ func (btcRunner *BlipTestClientRunner) Run(test func(t *testing.T, SupportedBLIP
 	btcRunner.initialisedInsideRunnerCode = true
 	// reset to protect against someone creating a new client after Run() is run
 	defer func() { btcRunner.initialisedInsideRunnerCode = false }()
-	btcRunner.t.Run("revTree", func(t *testing.T) {
-		if btcRunner.SkipNonHLVAwareReplication {
-			return
-		}
-		test(t, []string{db.CBMobileReplicationV3.SubprotocolString()})
-	})
-	// if test is not wanting version vector subprotocol to be run, return before we start this subtest
-	if btcRunner.SkipVersionVectorInitialization {
-		return
+	if !btcRunner.SkipSubtest[RevtreeSubtestName] {
+		btcRunner.t.Run(RevtreeSubtestName, func(t *testing.T) {
+			test(t, []string{db.CBMobileReplicationV3.SubprotocolString()})
+		})
 	}
-	btcRunner.t.Run("versionVector", func(t *testing.T) {
-		// bump sub protocol version here and pass into test function pending CBG-3253
-		test(t, []string{db.CBMobileReplicationV4.SubprotocolString()})
-	})
+	if !btcRunner.SkipSubtest[VersionVectorSubtestName] {
+		btcRunner.t.Run(VersionVectorSubtestName, func(t *testing.T) {
+			// bump sub protocol version here
+			test(t, []string{db.CBMobileReplicationV4.SubprotocolString()})
+		})
+	}
 }
 
 func (btc *BlipTesterClient) tearDownBlipClientReplications() {

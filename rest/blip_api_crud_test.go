@@ -1884,7 +1884,7 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 		GuestEnabled: true,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipNonHLVAwareReplication = true // V4 replication only test
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // V4 replication only test
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &rtConfig)
