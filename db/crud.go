@@ -2226,8 +2226,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Expiry:           doc.Expiry,
 			Deleted:          doc.History[newRevID].Deleted,
 			_shallowCopyBody: storedDoc.Body(ctx),
-			//CV:               &Version{Value: doc.HLV.Version, SourceID: doc.HLV.SourceID},
-			HLV: doc.HLV,
+			HLV:              doc.HLV,
 		}
 
 		if createNewRevIDSkipped {

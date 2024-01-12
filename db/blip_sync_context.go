@@ -357,7 +357,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 
 			var err error
 			if deltaSrcRevID != "" {
-				// need to error here temporaily if v4 protocol
+				// error here for v4 protocol, delta sync not yet implemented for v4
 				if bsc.activeCBMobileSubprotocol > CBMobileReplicationV3 {
 					return fmt.Errorf("delta sync not yet supported in v4 protocol")
 				}
@@ -617,7 +617,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, rev string,
 	if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
 		docRev, err = handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, rev, true, nil)
 	} else {
-		// extract cv from hlv
+		// extract cv string rev representation
 		version, vrsErr := CreateVersionFromString(rev)
 		if vrsErr != nil {
 			return vrsErr
@@ -703,6 +703,7 @@ func toHistoryForHLV(hlv *HybridLogicalVector) string {
 	// take pv and mv from hlv if defined and add to history
 	var pvString, mvString string
 	var s strings.Builder
+	// Merge versions must be defined first if they exist
 	if hlv.MergeVersions != nil {
 		mvString = extractStringFromMap(hlv.MergeVersions)
 		if mvString != "" {

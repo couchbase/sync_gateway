@@ -478,7 +478,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					}
 
 				}
-				// tidy thius up + I think we need to send full VV here? Need help here I think
+				// if V3 and below populate change row with rev id
 				if bh.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
 					for _, item := range change.Changes {
 						changeRow := bh.buildChangesRow(change, item["rev"])
@@ -488,8 +488,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 						}
 					}
 				} else {
-					// maybe create version of CreateVersionFromString for this in HLV file
-					//str := change.CurrentVersion.String()
+					// populate change row with current version
 					changeRow := bh.buildChangesRow(change, change.CurrentVersion.String())
 					pendingChanges = append(pendingChanges, changeRow)
 					if err := sendPendingChangesAt(opts.batchSize); err != nil {

@@ -259,9 +259,10 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, include
 
 	if err != nil {
 		rc.removeValue(value) // don't keep failed loads in the cache
+	} else {
+		// add successfully fetched value to cv lookup map too
+		rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.HLV.ExtractCurrentVersionFromHLV())
 	}
-	// add successfully fetched value to cv lookup map too
-	rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.HLV.ExtractCurrentVersionFromHLV())
 
 	return docRev, err
 }
@@ -602,8 +603,7 @@ func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) 
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 		Deleted:     value.deleted,
 		Removed:     value.removed,
-		//CV:          &Version{Value: value.cv.Value, SourceID: value.cv.SourceID}, //REMOVE
-		HLV: &value.HLV,
+		HLV:         &value.HLV,
 	}
 	if body != nil {
 		docRev._shallowCopyBody = body.ShallowCopy()
