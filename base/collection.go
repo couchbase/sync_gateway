@@ -461,10 +461,9 @@ func (b *GocbV2Bucket) BucketName() string {
 	return b.GetName()
 }
 
-func (b *GocbV2Bucket) mgmtRequest(ctx context.Context, method, uri, contentType string, body io.Reader) (*http.Response, error) {
+func (b *GocbV2Bucket) MgmtRequest(ctx context.Context, method, uri, contentType string, body io.Reader) (*http.Response, error) {
 	if contentType == "" && body != nil {
-		// TODO: CBG-1948
-		panic("Content-type must be specified for non-null body.")
+		return nil, errors.New("Content-type must be specified for non-null body.")
 	}
 
 	mgmtEp, err := GoCBBucketMgmtEndpoint(b)
@@ -485,7 +484,6 @@ func (b *GocbV2Bucket) mgmtRequest(ctx context.Context, method, uri, contentType
 		username, password, _ := b.Spec.Auth.GetCredentials()
 		req.SetBasicAuth(username, password)
 	}
-
 	return b.HttpClient(ctx).Do(req)
 }
 

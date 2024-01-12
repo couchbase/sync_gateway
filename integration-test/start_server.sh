@@ -29,6 +29,10 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [-m] [-h] containername"
             exit 1
             ;;
+        --non-dockerhub)
+            DOCKERHUB=false
+            shift
+            ;;
         *)
             COUCHBASE_DOCKER_IMAGE_NAME="$1"
             shift
@@ -59,7 +63,7 @@ docker rm ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
 # --volume: Makes and mounts a CBS folder for storing a CBCollect if needed
 
 # use dockerhub if no registry is specified, allows for pre-release images from alternative registries
-if [[ "${COUCHBASE_DOCKER_IMAGE_NAME}" != *"/"* ]]; then
+if [ "${DOCKERHUB:-}" != "false" ]; then
     COUCHBASE_DOCKER_IMAGE_NAME="couchbase/server:${COUCHBASE_DOCKER_IMAGE_NAME}"
 fi
 
