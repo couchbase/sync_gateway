@@ -36,6 +36,7 @@ func BootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config.API.PublicInterface = randomPort
 	config.API.AdminInterface = randomPort
 	config.API.MetricsInterface = randomPort
+	config.API.DiagnosticInterface = randomPort
 
 	config.Bootstrap.Server = base.UnitTestUrl()
 	config.Bootstrap.Username = base.TestClusterUsername()
