@@ -333,6 +333,7 @@ func (cc *CouchbaseCluster) GetMetadataDocument(ctx context.Context, location, d
 
 	defer teardown()
 
+	SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 	return cc.configPersistence.loadConfig(ctx, b.DefaultCollection(), docID, valuePtr)
 }
 

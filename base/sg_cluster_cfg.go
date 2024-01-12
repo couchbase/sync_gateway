@@ -95,8 +95,8 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 		return 0, fmt.Errorf("cfg_sg: key cannot start with a colon")
 	}
 
+	SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 	bucketKey := c.sgCfgBucketKey(cfgKey)
-
 	casOut, err := c.datastore.WriteCas(bucketKey, 0, 0, cas, val, 0)
 
 	if IsCasMismatch(err) {

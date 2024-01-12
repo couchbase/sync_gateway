@@ -280,6 +280,7 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats(ctx context.Context) error {
 			continue
 		}
 
+		SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 		timeoutDocID := heartbeatTimeoutDocID(heartbeatNodeUUID, h.keyPrefix)
 		_, _, err := h.datastore.GetRaw(timeoutDocID)
 		if err != nil {
@@ -307,6 +308,7 @@ func (h *couchbaseHeartBeater) sendHeartbeat() error {
 
 	docID := heartbeatTimeoutDocID(h.nodeUUID, h.keyPrefix)
 
+	SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 	_, touchErr := h.datastore.Touch(docID, h.heartbeatExpirySeconds)
 	if touchErr == nil {
 		h.sendCount++
@@ -315,6 +317,7 @@ func (h *couchbaseHeartBeater) sendHeartbeat() error {
 
 	// On KeyNotFound, recreate heartbeat timeout doc
 	if IsKeyNotFoundError(h.datastore, touchErr) {
+		SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 		heartbeatDocBody := []byte(h.nodeUUID)
 		setErr := h.datastore.SetRaw(docID, h.heartbeatExpirySeconds, nil, heartbeatDocBody)
 		if setErr != nil {
@@ -465,6 +468,7 @@ func (dh *documentBackedListener) updateNodeList(ctx context.Context, nodeID str
 
 func (dh *documentBackedListener) loadNodeIDs() error {
 
+	SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 	docBytes, cas, err := dh.datastore.GetRaw(dh.nodeListKey)
 	if err != nil {
 		dh.cas = 0
