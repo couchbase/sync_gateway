@@ -68,8 +68,8 @@ type CouchbaseBucketStore interface {
 	// a map of UUIDS and a map of high sequence numbers (map from vbno -> seq)
 	GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error)
 
-	// mgmtRequest uses the CouchbaseBucketStore's http client to make an http request against a management endpoint.
-	mgmtRequest(ctx context.Context, method, uri, contentType string, body io.Reader) (*http.Response, error)
+	// MgmtRequest uses the CouchbaseBucketStore's http client to make an http request against a management endpoint.
+	MgmtRequest(ctx context.Context, method, uri, contentType string, body io.Reader) (*http.Response, error)
 }
 
 func AsCouchbaseBucketStore(b Bucket) (CouchbaseBucketStore, bool) {
@@ -452,7 +452,7 @@ func getMaxTTL(ctx context.Context, store CouchbaseBucketStore) (int, error) {
 	}
 
 	uri := fmt.Sprintf("/pools/default/buckets/%s", store.GetSpec().BucketName)
-	resp, err := store.mgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
+	resp, err := store.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
 	if err != nil {
 		return -1, err
 	}
@@ -473,7 +473,7 @@ func getMaxTTL(ctx context.Context, store CouchbaseBucketStore) (int, error) {
 
 // Get the Server UUID of the bucket, this is also known as the Cluster UUID
 func GetServerUUID(ctx context.Context, store CouchbaseBucketStore) (uuid string, err error) {
-	resp, err := store.mgmtRequest(ctx, http.MethodGet, "/pools", "application/json", nil)
+	resp, err := store.MgmtRequest(ctx, http.MethodGet, "/pools", "application/json", nil)
 	if err != nil {
 		return "", err
 	}
@@ -528,7 +528,7 @@ func retrievePurgeInterval(ctx context.Context, bucket CouchbaseBucketStore, uri
 		PurgeInterval float64 `json:"purgeInterval,omitempty"`
 	}
 
-	resp, err := bucket.mgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
+	resp, err := bucket.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
 	if err != nil {
 		return 0, err
 	}
