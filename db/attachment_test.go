@@ -54,7 +54,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	rev1ID, _, err := collection.Put(ctx, docID, rev1Body)
+	rev1ID, _, _, err := collection.Put(ctx, docID, rev1Body)
 	require.NoError(t, err)
 	assert.Equal(t, "1-12ff9ce1dd501524378fe092ce9aee8f", rev1ID)
 
@@ -107,7 +107,7 @@ func TestAttachments(t *testing.T) {
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	revid, _, err := collection.Put(ctx, "doc1", body)
+	revid, _, _, err := collection.Put(ctx, "doc1", body)
 	rev1id := revid
 	assert.NoError(t, err, "Couldn't create document")
 
@@ -133,7 +133,7 @@ func TestAttachments(t *testing.T) {
 	var body2 Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev2str), &body2))
 	body2[BodyRev] = revid
-	revid, _, err = collection.Put(ctx, "doc1", body2)
+	revid, _, _, err = collection.Put(ctx, "doc1", body2)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", revid)
 
@@ -177,7 +177,7 @@ func TestAttachments(t *testing.T) {
 	var body3 Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev3str), &body3))
 	body3[BodyRev] = revid
-	revid, _, err = collection.Put(ctx, "doc1", body3)
+	revid, _, _, err = collection.Put(ctx, "doc1", body3)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.Equal(t, "3-aa3ff4ca3aad12e1479b65cb1e602676", revid)
 
@@ -217,7 +217,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 	docBody := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	var body Body
 	require.NoError(t, base.JSONUnmarshal([]byte(docBody), &body))
-	_, _, err := collection.Put(ctx, "doc1", unjson(docBody))
+	_, _, _, err := collection.Put(ctx, "doc1", unjson(docBody))
 	require.Error(t, err)
 
 	// Attempt to retrieve the attachment doc
@@ -234,7 +234,7 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	// Test creating & updating a document:
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},
                                     "bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
-	_, _, err := collection.Put(ctx, "doc1", unjson(rev1input))
+	_, _, _, err := collection.Put(ctx, "doc1", unjson(rev1input))
 	require.NoError(t, err, "Couldn't create document")
 
 	initCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
@@ -304,7 +304,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 
 	// 1. Create a document with no attachment
 	rev1Json := `{"prop1":"value1"}`
-	rev1ID, _, err := collection.Put(ctx, "doc1", unjson(rev1Json))
+	rev1ID, _, _, err := collection.Put(ctx, "doc1", unjson(rev1Json))
 	assert.NoError(t, err, "Couldn't create document")
 
 	// 2. Create rev 2 with new attachment - done in callback
@@ -367,7 +367,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 
 	// 1. Create a document with no attachment
 	rev1Json := `{"prop1":"value1"}`
-	rev1ID, _, err := collection.Put(ctx, "doc1", unjson(rev1Json))
+	rev1ID, _, _, err := collection.Put(ctx, "doc1", unjson(rev1Json))
 	assert.NoError(t, err, "Couldn't create document")
 
 	// 2. Create rev 2 with no attachment
@@ -632,7 +632,7 @@ func TestStoreAttachments(t *testing.T) {
 	// attachment metadata. It should throw "Invalid _attachments" error.
 	revText := `{"key1": "value1", "_attachments": {"att1.txt": "YXR0MS50eHQ="}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
-	revId, doc, err := collection.Put(ctx, "doc1", revBody)
+	revId, _, doc, err := collection.Put(ctx, "doc1", revBody)
 	assert.Empty(t, revId, "The revId should be empty since the request has attachment")
 	assert.Empty(t, doc, "The doc should be empty since the request has attachment")
 	assert.Error(t, err, "It should throw 400 Invalid _attachments")
@@ -641,7 +641,7 @@ func TestStoreAttachments(t *testing.T) {
 	// Simulate illegal base64 data error while storing attachments in Couchbase database.
 	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "%$^&**"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
-	revId, doc, err = collection.Put(ctx, "doc1", revBody)
+	revId, _, doc, err = collection.Put(ctx, "doc1", revBody)
 	assert.Empty(t, revId, "The revId should be empty since illegal base64 data in attachment")
 	assert.Empty(t, doc, "The doc should be empty since illegal base64 data in attachment")
 	assert.Error(t, err, "It should throw illegal base64 data at input byte 0 error")
@@ -651,7 +651,7 @@ func TestStoreAttachments(t *testing.T) {
 	// Include content type, encoding, attachment length  in attachment metadata.
 	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ=", "content_type": "text/plain", "encoding": "utf-8", "length": 12}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
-	revId, doc, err = collection.Put(ctx, "doc1", revBody)
+	revId, _, doc, err = collection.Put(ctx, "doc1", revBody)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
 	require.NotNil(t, doc)
@@ -669,7 +669,7 @@ func TestStoreAttachments(t *testing.T) {
 	// Include content type, encoding in attachment metadata but no attachment length.
 	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ=", "content_type": "text/plain", "encoding": "utf-8"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
-	revId, doc, err = collection.Put(ctx, "doc2", revBody)
+	revId, _, doc, err = collection.Put(ctx, "doc2", revBody)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
 	require.NotNil(t, doc)
@@ -688,7 +688,7 @@ func TestStoreAttachments(t *testing.T) {
 	// Attachment length should be calculated automatically in this case.
 	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ=", "content_type": "text/plain"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
-	revId, doc, err = collection.Put(ctx, "doc3", revBody)
+	revId, _, doc, err = collection.Put(ctx, "doc3", revBody)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
 	require.NotNil(t, doc)
@@ -706,7 +706,7 @@ func TestStoreAttachments(t *testing.T) {
 	// empty in attachment, the attachment must be a stub that repeats a parent attachment.
 	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"revpos": 2}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
-	revId, doc, err = collection.Put(ctx, "doc4", revBody)
+	revId, _, doc, err = collection.Put(ctx, "doc4", revBody)
 	assert.Empty(t, revId, "The revId should be empty since stub is not included in attachment")
 	assert.Empty(t, doc, "The doc should be empty since stub is not included in attachment")
 	assert.Error(t, err, "It should throw 400 Missing data of attachment error")
@@ -716,7 +716,7 @@ func TestStoreAttachments(t *testing.T) {
 	// empty in attachment, the attachment must be a stub that repeats a parent attachment.
 	revText = `{"key2": "value1", "_attachments": {"att1.txt": {"stub": true}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
-	revId, doc, err = collection.Put(ctx, "doc5", revBody)
+	revId, _, doc, err = collection.Put(ctx, "doc5", revBody)
 	assert.Empty(t, revId, "The revId should be empty since revpos is not included in attachment")
 	assert.Empty(t, doc, "The doc should be empty since revpos is not included in attachment")
 	assert.Error(t, err, "It should throw 400 Missing digest in stub attachment")
@@ -738,7 +738,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 		var body Body
 		assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
-		_, _, err := collection.Put(ctx, "doc1", body)
+		_, _, _, err := collection.Put(ctx, "doc1", body)
 		assert.NoError(t, err, "Couldn't create document")
 
 		gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
@@ -912,7 +912,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 				},
 			},
 		}
-		newRevID, _, err := collection.Put(ctx, docKey, newBody)
+		newRevID, _, _, err := collection.Put(ctx, docKey, newBody)
 		require.NoError(t, err)
 
 		gen, _ := ParseRevID(ctx, newRevID)
@@ -970,7 +970,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		require.NoError(t, err)
 		newBody[BodyRev] = "3-a"
 		newBody[BodyAttachments] = newAtts
-		newRevID, _, err := collection.Put(ctx, docKey, newBody)
+		newRevID, _, _, err := collection.Put(ctx, docKey, newBody)
 		require.NoError(t, err)
 
 		gen, _ := ParseRevID(ctx, newRevID)
@@ -1013,7 +1013,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},"bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
 	var body Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
-	_, _, err := collection.Put(ctx, "doc1", body)
+	_, _, _, err := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "Couldn't create document")
 
 	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
@@ -1164,7 +1164,7 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},"bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="},"new.txt": {"data":"bmV3IGRhdGE="}}}`
 	var body Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
-	_, _, err := collection.Put(ctx, "doc1", body)
+	_, _, _, err := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "Couldn't create document")
 
 	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
@@ -1514,7 +1514,7 @@ func TestLargeAttachments(t *testing.T) {
 	oversizeAttachment := base.FastRandBytes(t, 25*1024*1024) // memcached would send an E2BIG
 	hugeAttachment := base.FastRandBytes(t, 35*1024*1024)     // memcached would abruptly close our connection
 
-	_, _, err := collection.Put(ctx, "testdoc", Body{
+	_, _, _, err := collection.Put(ctx, "testdoc", Body{
 		"_attachments": AttachmentsMeta{
 			"foo.bin": map[string]interface{}{
 				"data": base64.StdEncoding.EncodeToString(normalAttachment),
@@ -1523,7 +1523,7 @@ func TestLargeAttachments(t *testing.T) {
 	})
 	require.NoError(t, err, "Couldn't create appropriately sized attachment")
 
-	_, _, err = collection.Put(ctx, "bigdoc", Body{
+	_, _, _, err = collection.Put(ctx, "bigdoc", Body{
 		"_attachments": AttachmentsMeta{
 			"foo.bin": map[string]interface{}{
 				"data": base64.StdEncoding.EncodeToString(oversizeAttachment),
@@ -1534,7 +1534,7 @@ func TestLargeAttachments(t *testing.T) {
 	require.ErrorAs(t, err, &httpErr, "Created doc with oversize attachment")
 	require.Equal(t, http.StatusRequestEntityTooLarge, httpErr.Status)
 
-	_, _, err = collection.Put(ctx, "hugedoc", Body{
+	_, _, _, err = collection.Put(ctx, "hugedoc", Body{
 		"_attachments": AttachmentsMeta{
 			"foo.bin": map[string]interface{}{
 				"data": base64.StdEncoding.EncodeToString(hugeAttachment),

@@ -2271,6 +2271,9 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+			t.Skip("attachments not yet replicated in V4 protocol")
+		}
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
@@ -2331,6 +2334,9 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+			t.Skip("attachments not yet replicated in V4 protocol")
+		}
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
@@ -2382,6 +2388,9 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 	const docID = "doc"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+			t.Skip("attachments not yet replicated in V4 protocol")
+		}
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
@@ -2423,6 +2432,9 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+			t.Skip("attachments not yet replicated in V4 protocol")
+		}
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
@@ -2610,6 +2622,9 @@ func TestCBLRevposHandling(t *testing.T) {
 	)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		if SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+			t.Skip("attachments not yet replicated in V4 protocol")
+		}
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 

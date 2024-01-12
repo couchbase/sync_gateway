@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -328,7 +329,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 	for i, knownRevsArrayInterface := range answer {
 		seq := changeArray[i][0].(SequenceID)
 		docID := changeArray[i][1].(string)
-		revID := changeArray[i][2].(string)
+		rev := changeArray[i][2].(string)
 
 		if knownRevsArray, ok := knownRevsArrayInterface.([]interface{}); ok {
 			deltaSrcRevID := ""
@@ -356,9 +357,13 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 
 			var err error
 			if deltaSrcRevID != "" {
-				err = bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
+				// need to error here temporaily if v4 protocol
+				if bsc.activeCBMobileSubprotocol > CBMobileReplicationV3 {
+					return fmt.Errorf("delta sync not yet supported in v4 protocol")
+				}
+				err = bsc.sendRevAsDelta(sender, docID, rev, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
 			} else {
-				err = bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
+				err = bsc.sendRevision(sender, docID, rev, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
 			}
 			if err != nil {
 				return err
@@ -371,7 +376,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 				sentSeqs = append(sentSeqs, seq)
 			}
 		} else {
-			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Peer didn't want revision %s / %s (seq:%v)", base.UD(docID), revID, seq)
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Peer didn't want revision %s / %s (seq:%v)", base.UD(docID), rev, seq)
 			if collectionCtx.sgr2PushAlreadyKnownSeqsCallback != nil {
 				alreadyKnownSeqs = append(alreadyKnownSeqs, seq)
 			}
@@ -549,7 +554,7 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 
 func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
 
-	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
+	properties := bsc.blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
@@ -606,52 +611,68 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 }
 
 // Pushes a revision body to the client
-func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
-	rev, err := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, revID, true, nil)
+func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, rev string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
+	var err error
+	var docRev DocumentRevision
+	if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+		docRev, err = handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, rev, true, nil)
+	} else {
+		// extract cv from hlv
+		version, vrsErr := CreateVersionFromString(rev)
+		if vrsErr != nil {
+			return vrsErr
+		}
+		// replace with GetCV pending merge of CBG-3212
+		docRev, err = handleChangesResponseCollection.revisionCache.GetWithCV(bsc.loggingCtx, docID, &version, RevCacheOmitBody, RevCacheOmitDelta)
+	}
 	if base.IsDocNotFoundError(err) {
-		return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
+		return bsc.sendNoRev(sender, docID, rev, collectionIdx, seq, err)
 	} else if err != nil {
-		return fmt.Errorf("failed to GetRev for doc %s with rev %s: %w", base.UD(docID).Redact(), base.MD(revID).Redact(), err)
+		return fmt.Errorf("failed to GetRev for doc %s with rev %s: %w", base.UD(docID).Redact(), base.MD(rev).Redact(), err)
 	}
 
-	base.TracefCtx(bsc.loggingCtx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
-	attachmentStorageMeta := ToAttachmentStorageMeta(rev.Attachments)
+	base.TracefCtx(bsc.loggingCtx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), rev, base.UD(docRev.Attachments))
+	attachmentStorageMeta := ToAttachmentStorageMeta(docRev.Attachments)
 	var bodyBytes []byte
 	if base.IsEnterpriseEdition() {
 		// Still need to stamp _attachments into BLIP messages
-		if len(rev.Attachments) > 0 {
-			DeleteAttachmentVersion(rev.Attachments)
-			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: rev.Attachments})
+		if len(docRev.Attachments) > 0 {
+			DeleteAttachmentVersion(docRev.Attachments)
+			bodyBytes, err = base.InjectJSONProperties(docRev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: docRev.Attachments})
 			if err != nil {
 				return err
 			}
 		} else {
-			bodyBytes = rev.BodyBytes
+			bodyBytes = docRev.BodyBytes
 		}
 	} else {
-		body, err := rev.Body()
+		body, err := docRev.Body()
 		if err != nil {
-			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
+			return bsc.sendNoRev(sender, docID, rev, collectionIdx, seq, err)
 		}
 
 		// Still need to stamp _attachments into BLIP messages
-		if len(rev.Attachments) > 0 {
-			DeleteAttachmentVersion(rev.Attachments)
-			body[BodyAttachments] = rev.Attachments
+		if len(docRev.Attachments) > 0 {
+			DeleteAttachmentVersion(docRev.Attachments)
+			body[BodyAttachments] = docRev.Attachments
 		}
 
 		bodyBytes, err = base.JSONMarshalCanonical(body)
 		if err != nil {
-			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
+			return bsc.sendNoRev(sender, docID, rev, collectionIdx, seq, err)
 		}
 	}
-
-	history := toHistory(rev.History, knownRevs, maxHistory)
-	properties := blipRevMessageProperties(history, rev.Deleted, seq)
-	if base.LogDebugEnabled(bsc.loggingCtx, base.KeySync) {
-		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), digests(attachmentStorageMeta))
+	var history []string
+	if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+		history = toHistory(docRev.History, knownRevs, maxHistory)
+	} else {
+		history = append(history, toHistoryForHLV(docRev.HLV))
 	}
-	return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, bodyBytes, attachmentStorageMeta, properties, seq, nil)
+	properties := bsc.blipRevMessageProperties(history, docRev.Deleted, seq)
+	if base.LogDebugEnabled(bsc.loggingCtx, base.KeySync) {
+		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), rev, len(knownRevs), digests(attachmentStorageMeta))
+	}
+	return bsc.sendRevisionWithProperties(sender, docID, rev, collectionIdx, bodyBytes, attachmentStorageMeta, properties, seq, nil)
 }
 
 // digests returns a slice of digest extracted from the given attachment meta.
@@ -675,6 +696,41 @@ func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) [
 		}
 	}
 	return history
+}
+
+// toHistoryForHLV formats blip History property for V4 replication and above
+func toHistoryForHLV(hlv *HybridLogicalVector) string {
+	// take pv and mv from hlv if defined and add to history
+	var pvString, mvString string
+	var s strings.Builder
+	if hlv.MergeVersions != nil {
+		mvString = extractStringFromMap(hlv.MergeVersions)
+		if mvString != "" {
+			s.WriteString(mvString)
+		}
+	}
+	if hlv.PreviousVersions != nil {
+		pvString = extractStringFromMap(hlv.PreviousVersions)
+		if pvString != "" {
+			// if mv is defined we need separator
+			if mvString != "" {
+				s.WriteString(";")
+			}
+			s.WriteString(pvString)
+		}
+	}
+	return s.String()
+}
+
+// extractStringFromMap returns Couchbase Lite-compatible string representation of the map
+func extractStringFromMap(hlvMap map[string]uint64) string {
+	var pairList []string
+	for key, value := range hlvMap {
+		vrs := Version{SourceID: key, Value: value}
+		pairStr := vrs.String()
+		pairList = append(pairList, pairStr)
+	}
+	return strings.Join(pairList, ",")
 }
 
 // timeElapsedForStatsReporting will return true if enough time has passed since the previous report.

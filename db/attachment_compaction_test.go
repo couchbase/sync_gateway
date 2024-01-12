@@ -40,7 +40,7 @@ func TestAttachmentMark(t *testing.T) {
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, _, err := databaseCollection.Put(ctx, key, body)
+		_, _, _, err := databaseCollection.Put(ctx, key, body)
 		assert.NoError(t, err)
 	}
 
@@ -749,7 +749,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCo
 	err = base.JSONUnmarshal(body, &unmarshalledBody)
 	require.NoError(t, err)
 
-	_, _, err = db.Put(ctx, docID, unmarshalledBody)
+	_, _, _, err = db.Put(ctx, docID, unmarshalledBody)
 	require.NoError(t, err)
 
 	_, err = db.dataStore.WriteUpdateWithXattr(ctx, docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, updatedSpec []sgbucket.MacroExpansionSpec, err error) {
@@ -897,7 +897,7 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 	err := base.JSONUnmarshal(docBody, &body)
 	assert.NoError(t, err)
 
-	_, _, err = db.Put(ctx, docID, body)
+	_, _, _, err = db.Put(ctx, docID, body)
 	assert.NoError(t, err)
 
 	attDigest := Sha1DigestKey(attBody)
@@ -962,7 +962,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	t.Logf("Creating %d docs - may take a while...", docsToCreate)
 	for i := 0; i < docsToCreate; i++ {
 		iStr := strconv.Itoa(i)
-		_, _, err := collection.Put(ctx, t.Name()+"_"+iStr, body)
+		_, _, _, err := collection.Put(ctx, t.Name()+"_"+iStr, body)
 		require.NoError(t, err)
 	}
 

@@ -73,7 +73,7 @@ func defaultBlipLogger(ctx context.Context) blip.LogFn {
 }
 
 // blipRevMessageProperties returns a set of BLIP message properties for the given parameters.
-func blipRevMessageProperties(revisionHistory []string, deleted bool, seq SequenceID) blip.Properties {
+func (bsc *BlipSyncContext) blipRevMessageProperties(revisionHistory []string, deleted bool, seq SequenceID) blip.Properties {
 	properties := make(blip.Properties)
 
 	// TODO: Assert? db.SequenceID.MarshalJSON can never error
@@ -81,7 +81,12 @@ func blipRevMessageProperties(revisionHistory []string, deleted bool, seq Sequen
 	properties[RevMessageSequence] = string(seqJSON)
 
 	if len(revisionHistory) > 0 {
-		properties[RevMessageHistory] = strings.Join(revisionHistory, ",")
+		if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+			properties[RevMessageHistory] = strings.Join(revisionHistory, ",")
+		} else {
+			// v4 and above will already be formatted
+			properties[RevMessageHistory] = revisionHistory[0]
+		}
 	}
 
 	if deleted {

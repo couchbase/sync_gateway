@@ -122,6 +122,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipVersionVectorInitialization = true
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {

@@ -1845,7 +1845,10 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer client.Close()
-		client.ClientDeltas = true
+		if SupportedBLIPProtocols[0] != db.CBMobileReplicationV4.SubprotocolString() {
+			// delta sync not yet implemented on v4 protocol
+			client.ClientDeltas = true
+		}
 
 		err := btcRunner.StartPull(client.id)
 		assert.NoError(t, err)
@@ -1867,7 +1870,68 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 
 		msg, ok := client.pullReplication.WaitForMessage(5)
 		assert.True(t, ok)
-		assert.Equal(t, version1.RevID, msg.Properties[db.RevMessageHistory]) // CBG-3268 update to use version
+		client.AssertOnBlipHistory(t, msg, version1)
+	})
+}
+
+// TestPullReplicationUpdateOnOtherHLVAwarePeer:
+//   - Main purpose is to test if history is correctly populated on HLV aware replication
+//   - Making use of HLV agent to mock a doc from a HLV aware peer coming over replicator
+//   - Update this same doc through sync gateway then assert that the history is populated with the old current version
+func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	rtConfig := RestTesterConfig{
+		GuestEnabled: true,
+	}
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipNonHLVAwareReplication = true // V4 replication only test
+
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+		ctx := base.TestCtx(t)
+		collection := rt.GetSingleTestDatabaseCollectionWithUser()
+
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		err := btcRunner.StartPull(client.id)
+		assert.NoError(t, err)
+
+		const docID = "doc1"
+		otherSource := "otherSource"
+		hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_sync")
+		existingHLVKey := "doc1"
+		cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey)
+
+		// force import of this write
+		_, _ = rt.GetDoc(docID)
+		bucketDoc, _, err := collection.GetDocWithXattr(ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+
+		// create doc version of the above doc write
+		version1 := DocVersion{
+			RevID: bucketDoc.CurrentRev,
+			CV: db.Version{
+				SourceID: otherSource,
+				Value:    cas,
+			},
+		}
+		data, ok := btcRunner.WaitForVersion(client.id, docID, version1)
+		assert.True(t, ok)
+
+		// update the above doc
+		version2 := rt.UpdateDoc("doc1", version1, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+
+		data, ok = btcRunner.WaitForVersion(client.id, docID, version2)
+		assert.True(t, ok)
+		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+
+		// assert that history in blip properties is correct
+		msg, ok := client.pullReplication.WaitForMessage(5)
+		assert.True(t, ok)
+		client.AssertOnBlipHistory(t, msg, version1)
 	})
 }
 

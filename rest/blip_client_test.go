@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -79,6 +80,7 @@ type BlipTestClientRunner struct {
 	t                               *testing.T
 	initialisedInsideRunnerCode     bool // flag to check that the BlipTesterClient is being initialised in the correct area (inside the Run() method)
 	SkipVersionVectorInitialization bool // used to skip the version vector subtest
+	SkipNonHLVAwareReplication      bool
 }
 
 type BodyMessagePair struct {
@@ -624,11 +626,15 @@ func (btc *BlipTesterClient) Close() {
 	}
 }
 
+// Add suybtest to skip in runner code, if that is notes we skip the subtest. Remove skipnon hlv aware and version vector one
 func (btcRunner *BlipTestClientRunner) Run(test func(t *testing.T, SupportedBLIPProtocols []string)) {
 	btcRunner.initialisedInsideRunnerCode = true
 	// reset to protect against someone creating a new client after Run() is run
 	defer func() { btcRunner.initialisedInsideRunnerCode = false }()
 	btcRunner.t.Run("revTree", func(t *testing.T) {
+		if btcRunner.SkipNonHLVAwareReplication {
+			return
+		}
 		test(t, []string{db.CBMobileReplicationV3.SubprotocolString()})
 	})
 	// if test is not wanting version vector subprotocol to be run, return before we start this subtest
@@ -636,9 +642,8 @@ func (btcRunner *BlipTestClientRunner) Run(test func(t *testing.T, SupportedBLIP
 		return
 	}
 	btcRunner.t.Run("versionVector", func(t *testing.T) {
-		t.Skip("skip VV subtest on master")
 		// bump sub protocol version here and pass into test function pending CBG-3253
-		test(t, nil)
+		test(t, []string{db.CBMobileReplicationV4.SubprotocolString()})
 	})
 }
 
@@ -1028,9 +1033,24 @@ func (btc *BlipTesterCollectionClient) GetVersion(docID string, docVersion DocVe
 		if data, ok := rev[docVersion.RevID]; ok && data != nil {
 			return data.body, true
 		}
+		// lookup by cv if not found using revid
+		if data, ok := rev[docVersion.CV.String()]; ok && data != nil {
+			return data.body, true
+		}
 	}
 
 	return nil, false
+}
+
+func (btc *BlipTesterClient) AssertOnBlipHistory(t *testing.T, msg *blip.Message, docVersion DocVersion) {
+	if btc.SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
+		// history could be empty a lot of the time in HLV messages
+		if msg.Properties[db.RevMessageHistory] != "" {
+			assert.Equal(t, docVersion.CV.String(), msg.Properties[db.RevMessageHistory])
+		}
+	} else {
+		assert.Equal(t, docVersion.RevID, msg.Properties[db.RevMessageHistory])
+	}
 }
 
 // WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found.
@@ -1147,19 +1167,24 @@ func (btc *BlipTesterCollectionClient) WaitForBlipRevMessage(docID string, docVe
 			btc.parent.rt.TB.Fatalf("BlipTesterClient timed out waiting for BLIP message docID: %v, revID: %v", docID, docVersion.RevID)
 			return nil, false
 		case <-ticker.C:
-			if data, found := btc.GetBlipRevMessage(docID, docVersion.RevID); found {
+			if data, found := btc.GetBlipRevMessage(docID, docVersion); found {
 				return data, found
 			}
 		}
 	}
 }
 
-func (btc *BlipTesterCollectionClient) GetBlipRevMessage(docID, revID string) (msg *blip.Message, found bool) {
+func (btc *BlipTesterCollectionClient) GetBlipRevMessage(docID string, version DocVersion) (msg *blip.Message, found bool) {
 	btc.docsLock.RLock()
 	defer btc.docsLock.RUnlock()
 
 	if rev, ok := btc.docs[docID]; ok {
-		if pair, found := rev[revID]; found {
+		if pair, found := rev[version.RevID]; found {
+			found = pair.message != nil
+			return pair.message, found
+		}
+		// lookup by cv if not found using revid
+		if pair, found := rev[version.CV.String()]; found {
 			found = pair.message != nil
 			return pair.message, found
 		}

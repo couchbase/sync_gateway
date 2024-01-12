@@ -50,7 +50,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db
 	err = base.JSONUnmarshal(body, &unmarshalledBody)
 	require.NoError(t, err)
 
-	_, _, err = collection.Put(ctx, docID, unmarshalledBody)
+	_, _, _, err = collection.Put(ctx, docID, unmarshalledBody)
 	require.NoError(t, err)
 
 	_, err = dataStore.WriteUpdateWithXattr(ctx, docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, updatedSpec []sgbucket.MacroExpansionSpec, err error) {

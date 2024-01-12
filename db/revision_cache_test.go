@@ -113,7 +113,8 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	// Fill up the rev cache with the first 10 docs
 	for docID := 0; docID < 10; docID++ {
 		id := strconv.Itoa(docID)
-		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", CV: &Version{Value: uint64(docID), SourceID: "test"}, History: Revisions{"start": 1}})
+		hlv := createHLVForTest(t, []string{"test@" + id})
+		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", HLV: &hlv, History: Revisions{"start": 1}})
 	}
 
 	// Get them back out
@@ -130,7 +131,8 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	// Add 3 more docs to the now full revcache
 	for i := 10; i < 13; i++ {
 		docID := strconv.Itoa(i)
-		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: docID, RevID: "1-abc", CV: &Version{Value: uint64(i), SourceID: "test"}, History: Revisions{"start": 1}})
+		hlv := createHLVForTest(t, []string{"test@" + docID})
+		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: docID, RevID: "1-abc", HLV: &hlv, History: Revisions{"start": 1}})
 	}
 
 	// Check that the first 3 docs were evicted
@@ -173,7 +175,8 @@ func TestLRURevisionCacheEvictionMixedRevAndCV(t *testing.T) {
 	// Fill up the rev cache with the first 10 docs
 	for docID := 0; docID < 10; docID++ {
 		id := strconv.Itoa(docID)
-		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", CV: &Version{Value: uint64(docID), SourceID: "test"}, History: Revisions{"start": 1}})
+		hlv := createHLVForTest(t, []string{"test@" + id})
+		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", HLV: &hlv, History: Revisions{"start": 1}})
 	}
 
 	// assert that the list has 10 elements along with both lookup maps
@@ -184,7 +187,8 @@ func TestLRURevisionCacheEvictionMixedRevAndCV(t *testing.T) {
 	// Add 3 more docs to the now full rev cache to trigger eviction
 	for docID := 10; docID < 13; docID++ {
 		id := strconv.Itoa(docID)
-		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", CV: &Version{Value: uint64(docID), SourceID: "test"}, History: Revisions{"start": 1}})
+		hlv := createHLVForTest(t, []string{"test@" + id})
+		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", HLV: &hlv, History: Revisions{"start": 1}})
 	}
 	// assert the cache and associated lookup maps only have 10 items in them (i.e.e is eviction working?)
 	assert.Equal(t, 10, len(cache.hlvCache))
@@ -278,8 +282,8 @@ func TestBackingStoreCV(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "doc1", docRev.DocID)
 	assert.NotNil(t, docRev.Channels)
-	assert.Equal(t, "test", docRev.CV.SourceID)
-	assert.Equal(t, uint64(123), docRev.CV.Value)
+	assert.Equal(t, "test", docRev.HLV.SourceID)
+	assert.Equal(t, uint64(123), docRev.HLV.Version)
 	assert.Equal(t, int64(0), cacheHitCounter.Value())
 	assert.Equal(t, int64(1), cacheMissCounter.Value())
 	assert.Equal(t, int64(1), getDocumentCounter.Value())
@@ -289,8 +293,8 @@ func TestBackingStoreCV(t *testing.T) {
 	docRev, err = cache.GetWithCV(base.TestCtx(t), "doc1", &cv, RevCacheOmitBody, RevCacheOmitDelta)
 	assert.NoError(t, err)
 	assert.Equal(t, "doc1", docRev.DocID)
-	assert.Equal(t, "test", docRev.CV.SourceID)
-	assert.Equal(t, uint64(123), docRev.CV.Value)
+	assert.Equal(t, "test", docRev.HLV.SourceID)
+	assert.Equal(t, uint64(123), docRev.HLV.Version)
 	assert.Equal(t, int64(1), cacheHitCounter.Value())
 	assert.Equal(t, int64(1), cacheMissCounter.Value())
 	assert.Equal(t, int64(1), getDocumentCounter.Value())
@@ -328,7 +332,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 		"value":       1234,
 		BodyRevisions: "unexpected data",
 	}
-	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
+	rev1id, _, _, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	// Get the raw document directly from the bucket, validate _revisions property isn't found
@@ -378,12 +382,12 @@ func TestBypassRevisionCache(t *testing.T) {
 		"value": 1234,
 	}
 	key := "doc1"
-	rev1, _, err := collection.Put(ctx, key, docBody)
+	rev1, _, _, err := collection.Put(ctx, key, docBody)
 	assert.NoError(t, err)
 
 	docBody["_rev"] = rev1
 	docBody["value"] = 5678
-	rev2, _, err := collection.Put(ctx, key, docBody)
+	rev2, _, _, err := collection.Put(ctx, key, docBody)
 	assert.NoError(t, err)
 
 	bypassStat := base.SgwIntStat{}
@@ -441,7 +445,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 	}
 	rev1key := "doc1"
-	rev1id, _, err := collection.Put(ctx, rev1key, rev1body)
+	rev1id, _, _, err := collection.Put(ctx, rev1key, rev1body)
 	assert.NoError(t, err, "Unexpected error calling collection.Put")
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found
@@ -483,7 +487,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	rev1body := Body{
 		"value": 1234,
 	}
-	rev1id, _, err := collection.Put(ctx, docKey, rev1body)
+	rev1id, _, _, err := collection.Put(ctx, docKey, rev1body)
 	assert.NoError(t, err, "Unexpected error calling collection.Put")
 
 	rev2id := "2-xxx"
@@ -560,7 +564,8 @@ func TestSingleLoad(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
-	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc123", RevID: "1-abc", CV: &Version{Value: uint64(123), SourceID: "test"}, History: Revisions{"start": 1}})
+	hlv := createHLVForTest(t, []string{"test@123"})
+	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc123", RevID: "1-abc", HLV: &hlv, History: Revisions{"start": 1}})
 	_, err := cache.GetWithRev(base.TestCtx(t), "doc123", "1-abc", true, false)
 	assert.NoError(t, err)
 }
@@ -570,7 +575,8 @@ func TestConcurrentLoad(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
-	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: uint64(1234), SourceID: "test"}, History: Revisions{"start": 1}})
+	hlv := createHLVForTest(t, []string{"test@1234"})
+	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc1", RevID: "1-abc", HLV: &hlv, History: Revisions{"start": 1}})
 
 	// Trigger load into cache
 	var wg sync.WaitGroup
@@ -592,7 +598,7 @@ func TestRevisionCacheRemove(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	rev1id, _, err := collection.Put(ctx, "doc", Body{"val": 123})
+	rev1id, _, _, err := collection.Put(ctx, "doc", Body{"val": 123})
 	assert.NoError(t, err)
 
 	docRev, err := collection.revisionCache.GetWithRev(base.TestCtx(t), "doc", rev1id, true, true)
@@ -636,13 +642,14 @@ func TestRevCacheOperationsCV(t *testing.T) {
 	cache := NewLRURevisionCache(10, &testBackingStore{[]string{"test_doc"}, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	cv := Version{SourceID: "test", Value: 123}
+	hlv := createHLVForTest(t, []string{"test@123"})
 	documentRevision := DocumentRevision{
 		DocID:     "doc1",
 		RevID:     "1-abc",
 		BodyBytes: []byte(`{"test":"1234"}`),
 		Channels:  base.SetOf("chan1"),
 		History:   Revisions{"start": 1},
-		CV:        &cv,
+		HLV:       &hlv,
 	}
 	cache.Put(base.TestCtx(t), documentRevision)
 
@@ -650,8 +657,8 @@ func TestRevCacheOperationsCV(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "doc1", docRev.DocID)
 	assert.Equal(t, base.SetOf("chan1"), docRev.Channels)
-	assert.Equal(t, "test", docRev.CV.SourceID)
-	assert.Equal(t, uint64(123), docRev.CV.Value)
+	assert.Equal(t, "test", docRev.HLV.SourceID)
+	assert.Equal(t, uint64(123), docRev.HLV.Version)
 	assert.Equal(t, int64(1), cacheHitCounter.Value())
 	assert.Equal(t, int64(0), cacheMissCounter.Value())
 
@@ -663,8 +670,8 @@ func TestRevCacheOperationsCV(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "doc1", docRev.DocID)
 	assert.Equal(t, base.SetOf("chan1"), docRev.Channels)
-	assert.Equal(t, "test", docRev.CV.SourceID)
-	assert.Equal(t, uint64(123), docRev.CV.Value)
+	assert.Equal(t, "test", docRev.HLV.SourceID)
+	assert.Equal(t, uint64(123), docRev.HLV.Version)
 	assert.Equal(t, []byte(`{"test":"12345"}`), docRev.BodyBytes)
 	assert.Equal(t, int64(2), cacheHitCounter.Value())
 	assert.Equal(t, int64(0), cacheMissCounter.Value())
@@ -773,7 +780,7 @@ func TestGetActive(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	rev1id, doc, err := collection.Put(ctx, "doc", Body{"val": 123})
+	rev1id, cv, _, err := collection.Put(ctx, "doc", Body{"val": 123})
 	require.NoError(t, err)
 
 	expectedCV := Version{
@@ -788,7 +795,7 @@ func TestGetActive(t *testing.T) {
 	docRev, err := collection.revisionCache.GetActive(base.TestCtx(t), "doc", true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
-	assert.Equal(t, expectedCV, *docRev.CV)
+	assert.Equal(t, cv, *docRev.HLV.ExtractCurrentVersionFromHLV())
 }
 
 // TestConcurrentPutAndGetOnRevCache:
@@ -804,14 +811,14 @@ func TestConcurrentPutAndGetOnRevCache(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 
-	cv := Version{SourceID: "test", Value: 123}
+	hlv := createHLVForTest(t, []string{"test@123"})
 	docRev := DocumentRevision{
 		DocID:     "doc1",
 		RevID:     "1-abc",
 		BodyBytes: []byte(`{"test":"1234"}`),
 		Channels:  base.SetOf("chan1"),
 		History:   Revisions{"start": 1},
-		CV:        &cv,
+		HLV:       &hlv,
 	}
 
 	go func() {

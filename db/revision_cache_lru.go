@@ -104,6 +104,7 @@ type revCacheValue struct {
 	body        Body
 	id          string
 	cv          Version
+	HLV         HybridLogicalVector
 	revID       string
 	bodyBytes   []byte
 	lock        sync.RWMutex
@@ -168,8 +169,9 @@ func (rc *LRURevisionCache) getFromCacheByRev(ctx context.Context, docID, revID 
 	if err != nil {
 		rc.removeValue(value) // don't keep failed loads in the cache
 	}
-	if !cacheHit {
-		rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.CV)
+	if !cacheHit && err == nil {
+		cv := docRev.HLV.ExtractCurrentVersionFromHLV()
+		rc.addToHLVMapPostLoad(docID, docRev.RevID, cv)
 	}
 
 	return docRev, err
@@ -188,8 +190,9 @@ func (rc *LRURevisionCache) getFromCacheByCV(ctx context.Context, docID string, 
 		rc.removeValue(value) // don't keep failed loads in the cache
 	}
 
-	if !cacheHit {
-		rc.addToRevMapPostLoad(docID, docRev.RevID, docRev.CV)
+	if !cacheHit && err == nil {
+		loadedCV := docRev.HLV.ExtractCurrentVersionFromHLV()
+		rc.addToRevMapPostLoad(docID, docRev.RevID, loadedCV)
 	}
 
 	return docRev, err
@@ -258,7 +261,7 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, include
 		rc.removeValue(value) // don't keep failed loads in the cache
 	}
 	// add successfully fetched value to cv lookup map too
-	rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.CV)
+	rc.addToHLVMapPostLoad(docID, docRev.RevID, docRev.HLV.ExtractCurrentVersionFromHLV())
 
 	return docRev, err
 }
@@ -280,19 +283,19 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision) {
 	}
 	// doc should always have a cv present in a PUT operation on the cache (update HLV is called before hand in doc update process)
 	// thus we can call getValueByCV directly the update the rev lookup post this
-	value := rc.getValueByCV(docRev.DocID, docRev.CV, true)
+	value := rc.getValueByCV(docRev.DocID, docRev.HLV.ExtractCurrentVersionFromHLV(), true)
 	// store the created value
 	value.store(docRev)
 
 	// add new doc version to the rev id lookup map
-	rc.addToRevMapPostLoad(docRev.DocID, docRev.RevID, docRev.CV)
+	rc.addToRevMapPostLoad(docRev.DocID, docRev.RevID, docRev.HLV.ExtractCurrentVersionFromHLV())
 }
 
 // Upsert a revision in the cache.
 func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision) {
 	var value *revCacheValue
 	// similar to PUT operation we should have the CV defined by this point (updateHLV is called before calling this)
-	key := IDandCV{DocID: docRev.DocID, Source: docRev.CV.SourceID, Version: docRev.CV.Value}
+	key := IDandCV{DocID: docRev.DocID, Source: docRev.HLV.SourceID, Version: docRev.HLV.Version}
 	legacyKey := IDAndRev{DocID: docRev.DocID, RevID: docRev.RevID}
 
 	rc.lock.Lock()
@@ -305,7 +308,7 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision)
 
 	// Add new value and overwrite existing cache key, pushing to front to maintain order
 	// also ensure we add to rev id lookup map too
-	value = &revCacheValue{id: docRev.DocID, cv: *docRev.CV}
+	value = &revCacheValue{id: docRev.DocID, cv: *docRev.HLV.ExtractCurrentVersionFromHLV(), HLV: *docRev.HLV}
 	elem := rc.lruList.PushFront(value)
 	rc.hlvCache[key] = elem
 	rc.cache[legacyKey] = elem
@@ -499,7 +502,6 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 	// to reduce locking when includeDelta=false
 	var delta *RevisionDelta
 	var docRevBody Body
-	var fetchedCV *Version
 	var revid string
 
 	// Attempt to read cached value.
@@ -538,15 +540,21 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 		cacheHit = false
 		if value.revID == "" {
 			hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value}
-			value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, revid, value.err = revCacheLoaderForCv(ctx, backingStore, hlvKey, includeBody)
+			hlv := &HybridLogicalVector{}
+			value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, revid, hlv, value.err = revCacheLoaderForCv(ctx, backingStore, hlvKey, includeBody)
 			// based off the current value load we need to populate the revid key with what has been fetched from the bucket (for use of populating the opposite lookup map)
 			value.revID = revid
+			if hlv != nil {
+				value.HLV = *hlv
+			}
 		} else {
+			hlv := &HybridLogicalVector{}
 			revKey := IDAndRev{DocID: value.id, RevID: value.revID}
-			value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, fetchedCV, value.err = revCacheLoader(ctx, backingStore, revKey, includeBody)
+			value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, hlv, value.err = revCacheLoader(ctx, backingStore, revKey, includeBody)
 			// based off the revision load we need to populate the hlv key with what has been fetched from the bucket (for use of populating the opposite lookup map)
-			if fetchedCV != nil {
-				value.cv = *fetchedCV
+			if hlv != nil {
+				value.cv = *hlv.ExtractCurrentVersionFromHLV()
+				value.HLV = *hlv
 			}
 		}
 	}
@@ -594,7 +602,8 @@ func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) 
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 		Deleted:     value.deleted,
 		Removed:     value.removed,
-		CV:          &Version{Value: value.cv.Value, SourceID: value.cv.SourceID},
+		//CV:          &Version{Value: value.cv.Value, SourceID: value.cv.SourceID}, //REMOVE
+		HLV: &value.HLV,
 	}
 	if body != nil {
 		docRev._shallowCopyBody = body.ShallowCopy()
@@ -609,7 +618,6 @@ func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) 
 func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, includeBody bool) (docRev DocumentRevision, cacheHit bool, err error) {
 
 	var docRevBody Body
-	var fetchedCV *Version
 	var revid string
 	value.lock.RLock()
 	if value.bodyBytes != nil || value.err != nil {
@@ -645,13 +653,16 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 		}
 	} else {
 		cacheHit = false
+		hlv := &HybridLogicalVector{}
 		if value.revID == "" {
-			value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, revid, value.err = revCacheLoaderForDocumentCV(ctx, backingStore, doc, value.cv)
+			value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, revid, hlv, value.err = revCacheLoaderForDocumentCV(ctx, backingStore, doc, value.cv)
 			value.revID = revid
+			value.HLV = *hlv
 		} else {
-			value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, fetchedCV, value.err = revCacheLoaderForDocument(ctx, backingStore, doc, value.revID)
-			if fetchedCV != nil {
-				value.cv = *fetchedCV
+			value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, hlv, value.err = revCacheLoaderForDocument(ctx, backingStore, doc, value.revID)
+			if hlv != nil {
+				value.cv = *hlv.ExtractCurrentVersionFromHLV()
+				value.HLV = *hlv
 			}
 		}
 	}
@@ -677,6 +688,7 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		value.deleted = docRev.Deleted
 		value.err = nil
 		value.body = docRev._shallowCopyBody.ShallowCopy()
+		value.HLV = *docRev.HLV
 	}
 	value.lock.Unlock()
 }

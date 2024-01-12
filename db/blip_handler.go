@@ -478,8 +478,19 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					}
 
 				}
-				for _, item := range change.Changes {
-					changeRow := bh.buildChangesRow(change, item["rev"])
+				// tidy thius up + I think we need to send full VV here? Need help here I think
+				if bh.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+					for _, item := range change.Changes {
+						changeRow := bh.buildChangesRow(change, item["rev"])
+						pendingChanges = append(pendingChanges, changeRow)
+						if err := sendPendingChangesAt(opts.batchSize); err != nil {
+							return err
+						}
+					}
+				} else {
+					// maybe create version of CreateVersionFromString for this in HLV file
+					//str := change.CurrentVersion.String()
+					changeRow := bh.buildChangesRow(change, change.CurrentVersion.String())
 					pendingChanges = append(pendingChanges, changeRow)
 					if err := sendPendingChangesAt(opts.batchSize); err != nil {
 						return err
@@ -851,7 +862,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID str
 
 	if redactedRev != nil {
 		history := toHistory(redactedRev.History, knownRevs, maxHistory)
-		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq)
+		properties := bsc.blipRevMessageProperties(history, redactedRev.Deleted, seq)
 		return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, redactedRev.BodyBytes, nil, properties, seq, nil)
 	}
 

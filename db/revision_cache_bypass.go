@@ -45,7 +45,7 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 	docRev = DocumentRevision{
 		RevID: revID,
 	}
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.CV, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, revID)
+	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.HLV, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, revID)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -62,16 +62,13 @@ func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *
 	if includeBody {
 		unmarshalLevel = DocUnmarshalAll
 	}
-	docRev = DocumentRevision{
-		CV: cv,
-	}
 
 	doc, err := rc.backingStore.GetDocument(ctx, docID, unmarshalLevel)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
 
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.RevID, err = revCacheLoaderForDocumentCV(ctx, rc.backingStore, doc, *cv)
+	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.RevID, docRev.HLV, err = revCacheLoaderForDocumentCV(ctx, rc.backingStore, doc, *cv)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -97,7 +94,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, incl
 		RevID: doc.CurrentRev,
 	}
 
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.CV, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, doc.SyncData.CurrentRev)
+	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.HLV, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, doc.SyncData.CurrentRev)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
