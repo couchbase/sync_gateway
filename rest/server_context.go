@@ -186,7 +186,7 @@ func (sc *ServerContext) WaitForRESTAPIs(ctx context.Context) error {
 	err, _ := base.RetryLoop(ctx, "Wait for REST APIs", func() (shouldRetry bool, err error, value interface{}) {
 		sc.lock.RLock()
 		defer sc.lock.RUnlock()
-		if len(sc._httpServers) == 3 {
+		if len(sc._httpServers) == 4 {
 			return false, nil, nil
 		}
 		return true, nil, nil
