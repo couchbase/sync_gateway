@@ -539,9 +539,9 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 		}
 	} else {
 		cacheHit = false
+		hlv := &HybridLogicalVector{}
 		if value.revID == "" {
 			hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value}
-			hlv := &HybridLogicalVector{}
 			value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, revid, hlv, value.err = revCacheLoaderForCv(ctx, backingStore, hlvKey, includeBody)
 			// based off the current value load we need to populate the revid key with what has been fetched from the bucket (for use of populating the opposite lookup map)
 			value.revID = revid
@@ -549,7 +549,6 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 				value.HLV = *hlv
 			}
 		} else {
-			hlv := &HybridLogicalVector{}
 			revKey := IDAndRev{DocID: value.id, RevID: value.revID}
 			value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, hlv, value.err = revCacheLoader(ctx, backingStore, revKey, includeBody)
 			// based off the revision load we need to populate the hlv key with what has been fetched from the bucket (for use of populating the opposite lookup map)

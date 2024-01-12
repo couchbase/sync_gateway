@@ -1918,13 +1918,13 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 				Value:    cas,
 			},
 		}
-		data, ok := btcRunner.WaitForVersion(client.id, docID, version1)
+		_, ok := btcRunner.WaitForVersion(client.id, docID, version1)
 		assert.True(t, ok)
 
 		// update the above doc
 		version2 := rt.UpdateDoc("doc1", version1, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
-		data, ok = btcRunner.WaitForVersion(client.id, docID, version2)
+		data, ok := btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.True(t, ok)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
