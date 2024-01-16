@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"testing"
 
 	"ruleguard/internal/test_pkg/base"
 )
@@ -27,6 +28,7 @@ func testlogwrappederr() {
 	err := fmt.Errorf("test: %w", errors.New("an error"))
 	id := 1234
 	user := "alice"
+	t := testing.T{}
 
 	// ok
 	PanicfCtx(ctx, "oops: %s", user)
@@ -54,6 +56,10 @@ func testlogwrappederr() {
 	log.Printf("oops: %d %v", id, err)
 	log.Printf("oops: %d %v (%s)", id, err, user)
 	log.Printf("oops: %v (%s)", err, user)
+	t.Logf("oops: %v (%s)", err, user)
+	t.Fatalf("oops: %v (%s)", err, user)
+	t.Errorf("oops: %v (%s)", err, user)
+	t.Skipf("oops: %v (%s)", err, user)
 
 	// misuse of %w
 	PanicfCtx(ctx, "oops: %w", user) // not an error but still invalid
@@ -81,6 +87,10 @@ func testlogwrappederr() {
 	log.Printf("oops: %d %w", id, err)
 	log.Printf("oops: %d %w (%s)", id, err, user)
 	log.Printf("oops: %w (%s)", err, user)
+	t.Logf("oops: %w (%s)", err, user)
+	t.Fatalf("oops: %w (%s)", err, user)
+	t.Errorf("oops: %w (%s)", err, user)
+	t.Skipf("oops: %w (%s)", err, user)
 }
 
 // non-imported variant
