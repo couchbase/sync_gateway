@@ -37,12 +37,11 @@ func init() {
 // This is the common functionality of the public and admin ports.
 // The 'privs' parameter specifies the authentication the handler will use.
 func createCommonRouter(sc *ServerContext, privs handlerPrivs) (root, db, keyspace *mux.Router) {
-	root = mux.NewRouter()
+	root = CreatePingRouter(sc)
 	root.StrictSlash(true)
 
 	// Global operations:
 	root.Handle("/", makeHandler(sc, privs, nil, nil, (*handler).handleRoot)).Methods("GET", "HEAD")
-	root.Handle("/_ping", makeSilentHandler(sc, publicPrivs, nil, nil, (*handler).handlePing)).Methods("GET", "HEAD")
 
 	// Operations on databases:
 	root.Handle("/{db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, []Permission{PermDevOps}, nil, (*handler).handleGetDB)).Methods("GET", "HEAD")
@@ -348,13 +347,19 @@ func CreateMetricHandler(sc *ServerContext) http.Handler {
 // CreateDiagnosticHandler Creates the HTTP handler for the diagnostic API of a gateway server.
 func CreateDiagnosticHandler(sc *ServerContext) http.Handler {
 	router := CreateDiagnosticRouter(sc)
-	return wrapRouter(sc, diagnosticPrivs, router)
+	return wrapRouter(sc, adminPrivs, router)
 }
 
-func CreateMetricRouter(sc *ServerContext) *mux.Router {
+func CreatePingRouter(sc *ServerContext) *mux.Router {
 	r := mux.NewRouter()
 	r.StrictSlash(true)
 	r.Handle("/_ping", makeSilentHandler(sc, publicPrivs, nil, nil, (*handler).handlePing)).Methods("GET", "HEAD")
+	return r
+}
+
+func CreateMetricRouter(sc *ServerContext) *mux.Router {
+	r := CreatePingRouter(sc)
+	r.StrictSlash(true)
 
 	r.Handle("/metrics", makeSilentHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
 	r.Handle("/_metrics", makeSilentHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
@@ -364,9 +369,9 @@ func CreateMetricRouter(sc *ServerContext) *mux.Router {
 }
 
 func CreateDiagnosticRouter(sc *ServerContext) *mux.Router {
-	r := mux.NewRouter()
+	r := CreatePingRouter(sc)
+
 	r.StrictSlash(true)
-	r.Handle("/_ping", makeSilentHandler(sc, publicPrivs, nil, nil, (*handler).handlePing)).Methods("GET", "HEAD")
 
 	return r
 }
