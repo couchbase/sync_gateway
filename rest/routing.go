@@ -38,7 +38,6 @@ func init() {
 // The 'privs' parameter specifies the authentication the handler will use.
 func createCommonRouter(sc *ServerContext, privs handlerPrivs) (root, db, keyspace *mux.Router) {
 	root = CreatePingRouter(sc)
-	root.StrictSlash(true)
 
 	// Global operations:
 	root.Handle("/", makeHandler(sc, privs, nil, nil, (*handler).handleRoot)).Methods("GET", "HEAD")
@@ -359,7 +358,6 @@ func CreatePingRouter(sc *ServerContext) *mux.Router {
 
 func CreateMetricRouter(sc *ServerContext) *mux.Router {
 	r := CreatePingRouter(sc)
-	r.StrictSlash(true)
 
 	r.Handle("/metrics", makeSilentHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
 	r.Handle("/_metrics", makeSilentHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
@@ -370,8 +368,6 @@ func CreateMetricRouter(sc *ServerContext) *mux.Router {
 
 func CreateDiagnosticRouter(sc *ServerContext) *mux.Router {
 	r := CreatePingRouter(sc)
-
-	r.StrictSlash(true)
 
 	return r
 }

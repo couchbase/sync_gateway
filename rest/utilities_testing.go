@@ -97,6 +97,8 @@ type RestTester struct {
 	publicHandlerOnce       sync.Once
 	MetricsHandler          http.Handler
 	metricsHandlerOnce      sync.Once
+	DiagnosticHandler       http.Handler
+	diagnosticHandlerOnce   sync.Once
 	closed                  bool
 }
 
@@ -707,6 +709,17 @@ func (rt *RestTester) sendMetrics(request *http.Request) *TestResponse {
 	return response
 }
 
+func (rt *RestTester) SendDiagnosticRequest(method, resource, body string) *TestResponse {
+	return rt.sendDiagnostic(Request(method, rt.mustTemplateResource(resource), body))
+}
+
+func (rt *RestTester) sendDiagnostic(request *http.Request) *TestResponse {
+	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
+	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
+	rt.TestDiagnosticHandler().ServeHTTP(response, request)
+	return response
+}
+
 func (rt *RestTester) TestAdminHandlerNoConflictsMode() http.Handler {
 	rt.EnableNoConflictsMode = true
 	return rt.TestAdminHandler()
@@ -731,6 +744,13 @@ func (rt *RestTester) TestMetricsHandler() http.Handler {
 		rt.MetricsHandler = CreateMetricHandler(rt.ServerContext())
 	})
 	return rt.MetricsHandler
+}
+
+func (rt *RestTester) TestDiagnosticHandler() http.Handler {
+	rt.diagnosticHandlerOnce.Do(func() {
+		rt.DiagnosticHandler = CreateDiagnosticHandler(rt.ServerContext())
+	})
+	return rt.DiagnosticHandler
 }
 
 type ChangesResults struct {
