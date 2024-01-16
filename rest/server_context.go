@@ -47,6 +47,8 @@ var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named co
 
 var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
 
+var allServers = []string{publicServer, adminServer, metricsServer, diagnosticServer}
+
 // serverInfo represents an instance of an HTTP server from sync gateway
 type serverInfo struct {
 	server *http.Server // server is the HTTP server instance
@@ -186,7 +188,7 @@ func (sc *ServerContext) WaitForRESTAPIs(ctx context.Context) error {
 	err, _ := base.RetryLoop(ctx, "Wait for REST APIs", func() (shouldRetry bool, err error, value interface{}) {
 		sc.lock.RLock()
 		defer sc.lock.RUnlock()
-		if len(sc._httpServers) == 4 {
+		if len(sc._httpServers) == len(allServers) {
 			return false, nil, nil
 		}
 		return true, nil, nil

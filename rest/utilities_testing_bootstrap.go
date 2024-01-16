@@ -124,6 +124,36 @@ func doBootstrapAdminRequest(t *testing.T, sc *ServerContext, method, path, body
 	}
 }
 
+func doBootstrapRequest(t *testing.T, sc *ServerContext, method, path, body string, headers map[string]string, server serverType) bootstrapAdminResponse {
+	host := "http://" + sc.getServerAddr(t, server)
+	url := host + path
+
+	buf := bytes.NewBufferString(body)
+	req, err := http.NewRequest(method, url, buf)
+	require.NoError(t, err)
+
+	for headerName, headerVal := range headers {
+		req.Header.Set(headerName, headerVal)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+
+	defer func() {
+		assert.NoError(t, resp.Body.Close())
+	}()
+
+	rBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	return bootstrapAdminResponse{
+		t:          t,
+		StatusCode: resp.StatusCode,
+		Body:       string(rBody),
+		Header:     resp.Header,
+	}
+}
+
 // StartBootstrapServer starts a server with a default bootstrap config, and returns a function to close the server. This differs from RestTester in that this is running a real server listening on random port. Prefer use of RestTester for more ergnomic APIs.
 func StartBootstrapServer(t *testing.T) (*ServerContext, func()) {
 	return StartBootstrapServerWithGroupID(t, nil)
