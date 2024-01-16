@@ -100,16 +100,13 @@ type SyncData struct {
 
 // determine set of current channels based on removal entries.
 func (sd *SyncData) getCurrentChannels() base.Set {
-	if len(sd.Channels) > 0 {
-		ch := base.SetOf()
-		for channelName, channelRemoval := range sd.Channels {
-			if channelRemoval == nil || channelRemoval.Seq == 0 {
-				ch.Add(channelName)
-			}
+	ch := base.SetOf()
+	for channelName, channelRemoval := range sd.Channels {
+		if channelRemoval == nil || channelRemoval.Seq == 0 {
+			ch.Add(channelName)
 		}
-		return ch
 	}
-	return nil
+	return ch
 }
 
 func (sd *SyncData) HashRedact(salt string) SyncData {
@@ -984,6 +981,7 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 			doc.updateChannelHistory(channel, doc.Sequence, true)
 		}
 	}
+	doc.currentRevChannels = newChannels
 	if changed != nil {
 		base.InfofCtx(ctx, base.KeyCRUD, "\tDoc %q / %q in channels %q", base.UD(doc.ID), doc.CurrentRev, base.UD(newChannels))
 		changedChannels, err = channels.SetFromArray(changed, channels.KeepStar)
