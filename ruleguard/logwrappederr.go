@@ -6,6 +6,9 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
+//build +ruleguard
+
+//nolint:unused // functions in here are invoked by ruleguard, but aren't imported/used by anything Go can detect.
 package ruleguard
 
 import (
