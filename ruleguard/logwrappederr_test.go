@@ -22,7 +22,7 @@ import (
 	"ruleguard/internal/test_pkg/base"
 )
 
-// should have 25 valid usages and 25 invalid usages when ruleguard is run on this file/function
+// should have 29 valid usages and 29 invalid usages when ruleguard is run on this file/function
 func testlogwrappederr() {
 	ctx := context.Background()
 	err := fmt.Errorf("test: %w", errors.New("an error"))

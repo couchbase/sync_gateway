@@ -37,6 +37,9 @@ func logwrappederr(m dsl.Matcher) {
 			`fmt.Printf($format, $*_)`,
 			`log.Printf($format, $*_)`,
 			`t.Logf($format, $*_)`,
+			`t.Fatalf($format, $*_)`,
+			`t.Errorf($format, $*_)`,
+			`t.Skipf($format, $*_)`,
 		).
 		Where(
 			m["format"].Type.Is("string") && m["format"].Text.Matches(`.*%w.*`)).
