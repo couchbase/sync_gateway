@@ -2381,15 +2381,13 @@ func NewDocVersionFromFakeRev(fakeRev string) DocVersion {
 // DocVersionFromPutResponse returns a DocRevisionID from the given response to PUT /{, or fails the given test if a rev ID was not found.
 func DocVersionFromPutResponse(t testing.TB, response *TestResponse) DocVersion {
 	var r struct {
-		DocID *string     `json:"id"`
-		RevID *string     `json:"rev"`
-		CV    *db.Version `json:"current_version"`
+		DocID *string `json:"id"`
+		RevID *string `json:"rev"`
 	}
 	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r))
 	require.NotNil(t, r.RevID, "expecting non-nil rev ID from response: %s", string(response.BodyBytes()))
-	require.NotNil(t, r.CV, "expecting non-nil current version from response: %s", string(response.BodyBytes()))
 	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
-	return DocVersion{RevID: *r.RevID, CV: *r.CV}
+	return DocVersion{RevID: *r.RevID}
 }
 
 func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {

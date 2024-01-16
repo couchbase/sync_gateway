@@ -45,9 +45,14 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 	docRev = DocumentRevision{
 		RevID: revID,
 	}
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.HLV, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, revID)
+	hlv := &HybridLogicalVector{}
+	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, hlv, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, revID)
 	if err != nil {
 		return DocumentRevision{}, err
+	}
+	if hlv != nil {
+		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
+		docRev.hlvHistory = hlv.toHistoryForHLV()
 	}
 
 	rc.bypassStat.Add(1)
@@ -68,9 +73,14 @@ func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *
 		return DocumentRevision{}, err
 	}
 
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.RevID, docRev.HLV, err = revCacheLoaderForDocumentCV(ctx, rc.backingStore, doc, *cv)
+	hlv := &HybridLogicalVector{}
+	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.RevID, hlv, err = revCacheLoaderForDocumentCV(ctx, rc.backingStore, doc, *cv)
 	if err != nil {
 		return DocumentRevision{}, err
+	}
+	if hlv != nil {
+		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
+		docRev.hlvHistory = hlv.toHistoryForHLV()
 	}
 
 	rc.bypassStat.Add(1)
@@ -94,9 +104,14 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, incl
 		RevID: doc.CurrentRev,
 	}
 
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.HLV, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, doc.SyncData.CurrentRev)
+	hlv := &HybridLogicalVector{}
+	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, hlv, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, doc.SyncData.CurrentRev)
 	if err != nil {
 		return DocumentRevision{}, err
+	}
+	if hlv != nil {
+		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
+		docRev.hlvHistory = hlv.toHistoryForHLV()
 	}
 
 	rc.bypassStat.Add(1)

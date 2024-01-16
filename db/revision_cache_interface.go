@@ -128,7 +128,8 @@ type DocumentRevision struct {
 	Delta       *RevisionDelta
 	Deleted     bool
 	Removed     bool // True if the revision is a removal.
-	HLV         *HybridLogicalVector
+	CV          *Version
+	hlvHistory  string
 
 	_shallowCopyBody Body // an unmarshalled body that can produce shallow copies
 }

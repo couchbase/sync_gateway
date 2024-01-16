@@ -190,7 +190,7 @@ func TestDatabase(t *testing.T) {
 	// Test creating & updating a document:
 	log.Printf("Create rev 1...")
 	body := Body{"key1": "value1", "key2": 1234}
-	rev1id, _, doc, err := collection.Put(ctx, "doc1", body)
+	rev1id, doc, err := collection.Put(ctx, "doc1", body)
 	body[BodyId] = doc.ID
 	body[BodyRev] = rev1id
 	assert.NoError(t, err, "Couldn't create document")
@@ -199,7 +199,7 @@ func TestDatabase(t *testing.T) {
 	log.Printf("Create rev 2...")
 	body["key1"] = "new value"
 	body["key2"] = int64(4321)
-	rev2id, _, _, err := collection.Put(ctx, "doc1", body)
+	rev2id, _, err := collection.Put(ctx, "doc1", body)
 	body[BodyId] = "doc1"
 	body[BodyRev] = rev2id
 	assert.NoError(t, err, "Couldn't update document")
@@ -314,7 +314,7 @@ func TestGetDeleted(t *testing.T) {
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	body := Body{"key1": 1234}
-	rev1id, _, _, err := collection.Put(ctx, "doc1", body)
+	rev1id, _, err := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "Put")
 
 	rev2id, _, err := collection.DeleteDoc(ctx, "doc1", rev1id)
@@ -359,7 +359,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, _, _, err := collection.Put(ctx, "doc1", rev1body)
+	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -367,7 +367,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev1id,
 	}
-	rev2id, _, _, err := collection.Put(ctx, "doc1", rev2body)
+	rev2id, _, err := collection.Put(ctx, "doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -376,7 +376,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev2id,
 	}
-	_, _, _, err = collection.Put(ctx, "doc1", rev3body)
+	_, _, err = collection.Put(ctx, "doc1", rev3body)
 	assert.NoError(t, err, "Put Rev 3")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
@@ -479,7 +479,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 		"k1":       "v1",
 		"channels": []string{"ABC", "NBC"},
 	}
-	rev1ID, _, _, err := collection.Put(ctx, "doc1", rev1Body)
+	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
 	require.NoError(t, err, "Error creating doc")
 
 	// Create the second revision of doc1 on channel ABC as removal from channel NBC.
@@ -488,7 +488,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 		"channels": []string{"ABC"},
 		BodyRev:    rev1ID,
 	}
-	rev2ID, _, _, err := collection.Put(ctx, "doc1", rev2Body)
+	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
 	require.NoError(t, err, "Error creating doc")
 
 	// Create the third revision of doc1 on channel ABC.
@@ -497,7 +497,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 		"channels": []string{"ABC"},
 		BodyRev:    rev2ID,
 	}
-	rev3ID, _, _, err := collection.Put(ctx, "doc1", rev3Body)
+	rev3ID, _, err := collection.Put(ctx, "doc1", rev3Body)
 	require.NoError(t, err, "Error creating doc")
 	require.NotEmpty(t, rev3ID, "Error creating doc")
 
@@ -574,7 +574,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 		"k1":       "v1",
 		"channels": []string{"ABC", "NBC"},
 	}
-	rev1ID, _, _, err := collection.Put(ctx, "doc1", rev1Body)
+	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
 	require.NoError(t, err, "Error creating doc")
 
 	// Create the second revision of doc1 on channel ABC as removal from channel NBC.
@@ -583,7 +583,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 		"channels": []string{"ABC"},
 		BodyRev:    rev1ID,
 	}
-	rev2ID, _, _, err := collection.Put(ctx, "doc1", rev2Body)
+	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
 	require.NoError(t, err, "Error creating doc")
 
 	// Create the third revision of doc1 on channel ABC.
@@ -592,7 +592,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 		"channels": []string{"ABC"},
 		BodyRev:    rev2ID,
 	}
-	rev3ID, _, _, err := collection.Put(ctx, "doc1", rev3Body)
+	rev3ID, _, err := collection.Put(ctx, "doc1", rev3Body)
 	require.NoError(t, err, "Error creating doc")
 	require.NotEmpty(t, rev3ID, "Error creating doc")
 
@@ -641,7 +641,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 		"k1":       "v1",
 		"channels": []string{"ABC", "NBC"},
 	}
-	rev1ID, _, _, err := collection.Put(ctx, "doc1", rev1Body)
+	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
 	require.NoError(t, err, "Error creating doc")
 
 	// Create the second revision of doc1 on channel ABC as removal from channel NBC.
@@ -650,7 +650,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 		"channels": []string{"ABC"},
 		BodyRev:    rev1ID,
 	}
-	rev2ID, _, _, err := collection.Put(ctx, "doc1", rev2Body)
+	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
 	require.NoError(t, err, "Error creating doc")
 
 	// Create the third revision of doc1 on channel ABC.
@@ -659,7 +659,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 		"channels": []string{"ABC"},
 		BodyRev:    rev2ID,
 	}
-	rev3ID, _, _, err := collection.Put(ctx, "doc1", rev3Body)
+	rev3ID, _, err := collection.Put(ctx, "doc1", rev3Body)
 	require.NoError(t, err, "Error creating doc")
 	require.NotEmpty(t, rev3ID, "Error creating doc")
 
@@ -707,7 +707,7 @@ func TestGetRemoved(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, _, _, err := collection.Put(ctx, "doc1", rev1body)
+	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -715,7 +715,7 @@ func TestGetRemoved(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev1id,
 	}
-	rev2id, _, _, err := collection.Put(ctx, "doc1", rev2body)
+	rev2id, _, err := collection.Put(ctx, "doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -724,7 +724,7 @@ func TestGetRemoved(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev2id,
 	}
-	_, _, _, err = collection.Put(ctx, "doc1", rev3body)
+	_, _, err = collection.Put(ctx, "doc1", rev3body)
 	assert.NoError(t, err, "Put Rev 3")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
@@ -775,7 +775,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, _, _, err := collection.Put(ctx, "doc1", rev1body)
+	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -783,7 +783,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		BodyDeleted: true,
 		BodyRev:     rev1id,
 	}
-	rev2id, _, _, err := collection.Put(ctx, "doc1", rev2body)
+	rev2id, _, err := collection.Put(ctx, "doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -792,7 +792,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev2id,
 	}
-	_, _, _, err = collection.Put(ctx, "doc1", rev3body)
+	_, _, err = collection.Put(ctx, "doc1", rev3body)
 	assert.NoError(t, err, "Put Rev 3")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
@@ -883,7 +883,7 @@ func TestAllDocsOnly(t *testing.T) {
 		}
 		body := Body{"serialnumber": int64(i), "channels": channels}
 		ids[i].DocID = fmt.Sprintf("alldoc-%02d", i)
-		revid, _, _, err := collection.Put(ctx, ids[i].DocID, body)
+		revid, _, err := collection.Put(ctx, ids[i].DocID, body)
 		ids[i].RevID = revid
 		ids[i].Sequence = uint64(i + 1)
 		ids[i].Channels = channels
@@ -1274,15 +1274,15 @@ func TestNoConflictsMode(t *testing.T) {
 	// Now use Put instead of PutExistingRev:
 
 	// Successfully add a new revision:
-	_, _, _, err = collection.Put(ctx, "doc", Body{BodyRev: "5-f", "foo": -1})
+	_, _, err = collection.Put(ctx, "doc", Body{BodyRev: "5-f", "foo": -1})
 	assert.NoError(t, err, "Put rev after 1-f")
 
 	// Try to create a conflict:
-	_, _, _, err = collection.Put(ctx, "doc", Body{BodyRev: "3-a", "foo": 7})
+	_, _, err = collection.Put(ctx, "doc", Body{BodyRev: "3-a", "foo": 7})
 	assertHTTPError(t, err, 409)
 
 	// Conflict with no ancestry:
-	_, _, _, err = collection.Put(ctx, "doc", Body{"foo": 7})
+	_, _, err = collection.Put(ctx, "doc", Body{"foo": 7})
 	assertHTTPError(t, err, 409)
 }
 
@@ -1328,7 +1328,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	// Tombstone the non-winning branch of a conflicted document
 	body[BodyRev] = "2-a"
 	body[BodyDeleted] = true
-	tombstoneRev, _, _, putErr := collection.Put(ctx, "doc1", body)
+	tombstoneRev, _, putErr := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, putErr, "tombstone 2-a")
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
@@ -1337,13 +1337,13 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	// Attempt to add a tombstone rev w/ the previous tombstone as parent
 	body[BodyRev] = tombstoneRev
 	body[BodyDeleted] = true
-	_, _, _, putErr = collection.Put(ctx, "doc1", body)
+	_, _, putErr = collection.Put(ctx, "doc1", body)
 	assert.True(t, putErr != nil, "Expect error tombstoning a tombstone")
 
 	// Tombstone the winning branch of a conflicted document
 	body[BodyRev] = "2-b"
 	body[BodyDeleted] = true
-	_, _, _, putErr = collection.Put(ctx, "doc2", body)
+	_, _, putErr = collection.Put(ctx, "doc2", body)
 	assert.NoError(t, putErr, "tombstone 2-b")
 	doc, err = collection.GetDocument(ctx, "doc2", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
@@ -1353,7 +1353,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	db.RevsLimit = uint32(1)
 	body[BodyRev] = "2-a"
 	body[BodyDeleted] = true
-	_, _, _, putErr = collection.Put(ctx, "doc3", body)
+	_, _, putErr = collection.Put(ctx, "doc3", body)
 	assert.NoError(t, putErr, "tombstone 2-a w/ revslimit=1")
 	doc, err = collection.GetDocument(ctx, "doc3", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
@@ -1448,7 +1448,7 @@ func TestSyncFnOnPush(t *testing.T) {
 
 	// Create first revision:
 	body := Body{"key1": "value1", "key2": 1234, "channels": []string{"public"}}
-	rev1id, _, _, err := collection.Put(ctx, "doc1", body)
+	rev1id, _, err := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "Couldn't create document")
 
 	// Add several revisions at once to a doc, as on a push:
@@ -1482,7 +1482,7 @@ func TestInvalidChannel(t *testing.T) {
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	body := Body{"channels": []string{"bad,name"}}
-	_, _, _, err := collection.Put(ctx, "doc", body)
+	_, _, err := collection.Put(ctx, "doc", body)
 	assertHTTPError(t, err, 500)
 }
 
@@ -1496,27 +1496,27 @@ func TestAccessFunctionValidation(t *testing.T) {
 	require.NoError(t, err)
 
 	body := Body{"users": []string{"username"}, "userChannels": []string{"BBC1"}}
-	_, _, _, err = collection.Put(ctx, "doc1", body)
+	_, _, err = collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "")
 
 	body = Body{"users": []string{"role:rolename"}, "userChannels": []string{"BBC1"}}
-	_, _, _, err = collection.Put(ctx, "doc2", body)
+	_, _, err = collection.Put(ctx, "doc2", body)
 	assert.NoError(t, err, "")
 
 	body = Body{"users": []string{"bad,username"}, "userChannels": []string{"BBC1"}}
-	_, _, _, err = collection.Put(ctx, "doc3", body)
+	_, _, err = collection.Put(ctx, "doc3", body)
 	assertHTTPError(t, err, 500)
 
 	body = Body{"users": []string{"role:bad:rolename"}, "userChannels": []string{"BBC1"}}
-	_, _, _, err = collection.Put(ctx, "doc4", body)
+	_, _, err = collection.Put(ctx, "doc4", body)
 	assertHTTPError(t, err, 500)
 
 	body = Body{"users": []string{",.,.,.,.,."}, "userChannels": []string{"BBC1"}}
-	_, _, _, err = collection.Put(ctx, "doc5", body)
+	_, _, err = collection.Put(ctx, "doc5", body)
 	assertHTTPError(t, err, 500)
 
 	body = Body{"users": []string{"username"}, "userChannels": []string{"bad,name"}}
-	_, _, _, err = collection.Put(ctx, "doc6", body)
+	_, _, err = collection.Put(ctx, "doc6", body)
 	assertHTTPError(t, err, 500)
 }
 
@@ -1537,11 +1537,11 @@ func TestAccessFunctionDb(t *testing.T) {
 	assert.NoError(t, authenticator.Save(user), "Save")
 
 	body := Body{"users": []string{"naomi"}, "userChannels": []string{"Hulu"}}
-	_, _, _, err = collection.Put(ctx, "doc1", body)
+	_, _, err = collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "")
 
 	body = Body{"users": []string{"role:animefan"}, "userChannels": []string{"CrunchyRoll"}}
-	_, _, _, err = collection.Put(ctx, "doc2", body)
+	_, _, err = collection.Put(ctx, "doc2", body)
 	assert.NoError(t, err, "")
 
 	// Create the role _after_ creating the documents, to make sure the previously-indexed access
@@ -1703,7 +1703,7 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	// Test that posting an update with a user special property does update the document
 	log.Printf("Update document with existing id...")
 	body = Body{BodyId: customDocId, BodyRev: rev1id, "_special": "value", "key1": "value1", "key2": "existing"}
-	rev2id, _, _, err := collection.Put(ctx, docid, body)
+	rev2id, _, err := collection.Put(ctx, docid, body)
 	assert.NoError(t, err)
 
 	// Test retrieval gets rev2
@@ -1724,7 +1724,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	// Validate recent sequence is written
 	body := Body{"val": "one"}
-	revid, _, doc, err := collection.Put(ctx, "doc1", body)
+	revid, doc, err := collection.Put(ctx, "doc1", body)
 	require.NoError(t, err)
 	body[BodyId] = doc.ID
 	body[BodyRev] = revid
@@ -1739,7 +1739,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	// Add up to kMaxRecentSequences revisions - validate they are retained when total is less than max
 	for i := 1; i < kMaxRecentSequences; i++ {
-		revid, _, doc, err = collection.Put(ctx, "doc1", body)
+		revid, doc, err = collection.Put(ctx, "doc1", body)
 		require.NoError(t, err)
 		body[BodyId] = doc.ID
 		body[BodyRev] = revid
@@ -1758,7 +1758,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add another sequence to validate pruning when past max (20)
-	revid, _, doc, err = collection.Put(ctx, "doc1", body)
+	revid, doc, err = collection.Put(ctx, "doc1", body)
 	require.NoError(t, err)
 	body[BodyId] = doc.ID
 	body[BodyRev] = revid
@@ -1771,12 +1771,12 @@ func TestRecentSequenceHistory(t *testing.T) {
 	// Ensure pruning works when sequences aren't sequential
 	doc2Body := Body{"val": "two"}
 	for i := 0; i < kMaxRecentSequences; i++ {
-		revid, _, doc, err = collection.Put(ctx, "doc1", body)
+		revid, doc, err = collection.Put(ctx, "doc1", body)
 		require.NoError(t, err)
 		body[BodyId] = doc.ID
 		body[BodyRev] = revid
 		seqTracker++
-		revid, _, doc, err = collection.Put(ctx, "doc2", doc2Body)
+		revid, doc, err = collection.Put(ctx, "doc2", doc2Body)
 		require.NoError(t, err)
 		doc2Body[BodyId] = doc.ID
 		doc2Body[BodyRev] = revid
@@ -1785,7 +1785,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	err = db.changeCache.waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence) //
 	require.NoError(t, err)
-	revid, _, doc, err = collection.Put(ctx, "doc1", body)
+	revid, doc, err = collection.Put(ctx, "doc1", body)
 	require.NoError(t, err)
 	body[BodyId] = doc.ID
 	body[BodyRev] = revid
@@ -1806,7 +1806,7 @@ func TestChannelView(t *testing.T) {
 	// Create doc
 	log.Printf("Create doc 1...")
 	body := Body{"key1": "value1", "key2": 1234}
-	rev1id, _, _, err := collection.Put(ctx, "doc1", body)
+	rev1id, _, err := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "Couldn't create document")
 	assert.Equal(t, "1-cb0c9a22be0e5a1b01084ec019defa81", rev1id)
 
@@ -1844,22 +1844,22 @@ func TestChannelQuery(t *testing.T) {
 
 	// Create doc
 	body := Body{"key1": "value1", "key2": 1234, "channels": "ABC"}
-	rev1ID, _, _, err := collection.Put(ctx, "doc1", body)
+	rev1ID, _, err := collection.Put(ctx, "doc1", body)
 	require.NoError(t, err, "Couldn't create doc1")
 
 	// Create a doc to test removal handling.  Needs three revisions so that the removal rev (2) isn't
 	// the current revision
 	removedDocID := "removed_doc"
-	removedDocRev1, _, _, err := collection.Put(ctx, removedDocID, body)
+	removedDocRev1, _, err := collection.Put(ctx, removedDocID, body)
 	require.NoError(t, err, "Couldn't create removed_doc")
 	removalSource, removalVersion := collection.GetDocumentCurrentVersion(t, removedDocID)
 
 	updatedChannelBody := Body{"_rev": removedDocRev1, "key1": "value1", "key2": 1234, "channels": "DEF"}
-	removalRev, _, _, err := collection.Put(ctx, removedDocID, updatedChannelBody)
+	removalRev, _, err := collection.Put(ctx, removedDocID, updatedChannelBody)
 	require.NoError(t, err, "Couldn't update removed_doc")
 
 	updatedChannelBody = Body{"_rev": removalRev, "key1": "value1", "key2": 2345, "channels": "DEF"}
-	removedDocRev3, _, _, err := collection.Put(ctx, removedDocID, updatedChannelBody)
+	removedDocRev3, _, err := collection.Put(ctx, removedDocID, updatedChannelBody)
 	require.NoError(t, err, "Couldn't update removed_doc")
 
 	var entries LogEntries
@@ -1900,7 +1900,7 @@ func TestChannelQuery(t *testing.T) {
 			} else {
 				require.Equal(t, removalRev, removedDocEntry.RevID)
 				// TODO: Pending channel removal rev handling, CBG-3213
-				log.Printf("removal rev check of removal cv %s@%d is pending CBG-3213", removalSource, removalVersion)
+				log.Printf("removal rev check of removal CV %s@%d is pending CBG-3213", removalSource, removalVersion)
 				//require.Equal(t, removalSource, removedDocEntry.SourceID)
 				//require.Equal(t, removalVersion, removedDocEntry.Version)
 			}
@@ -1958,7 +1958,7 @@ func BenchmarkDatabase(b *testing.B) {
 		collection := GetSingleDatabaseCollectionWithUser(b, db)
 
 		body := Body{"key1": "value1", "key2": 1234}
-		_, _, _, _ = collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
+		_, _, _ = collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
 
 		db.Close(ctx)
 	}
@@ -1980,7 +1980,7 @@ func BenchmarkPut(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _, _, _ = collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
+		_, _, _ = collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
 	}
 
 	db.Close(ctx)
@@ -2160,7 +2160,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 
 	// Create first revision:
 	body := Body{"key1": "value1", "key2": Body{"subkey1": "subvalue1"}, "channels": []string{"public"}}
-	rev1id, _, _, err := collection.Put(ctx, "doc1", body)
+	rev1id, _, err := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "Couldn't create document")
 
 	rev, err := collection.GetRev(ctx, "doc1", rev1id, false, nil)
@@ -2187,7 +2187,7 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 			enableCallback = false
 			body := Body{"name": "Bob", "age": 52}
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
-			revId, _, _, err := collection.Put(ctx, "doc1", body)
+			revId, _, err := collection.Put(ctx, "doc1", body)
 			assert.NoError(t, err, "Couldn't create document")
 			assert.NotEmpty(t, revId)
 		}
@@ -2205,7 +2205,7 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 	enableCallback = true
 
 	body := Body{"name": "Bob", "age": 52}
-	_, _, _, err := collection.Put(ctx, "doc1", body)
+	_, _, err := collection.Put(ctx, "doc1", body)
 	require.Error(t, err)
 	assert.Equal(t, "409 Document exists", err.Error())
 
@@ -2429,7 +2429,7 @@ func TestIncreasingRecentSequences(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create a doc
-	revid, _, _, err = collection.Put(ctx, "doc1", body)
+	revid, _, err = collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err)
 
 	enableCallback = true
@@ -2457,7 +2457,7 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a doc
-	revid, _, _, err = collection.Put(ctx, "doc1", body)
+	revid, _, err = collection.Put(ctx, "doc1", body)
 	require.NoError(t, err)
 
 	// Update the doc a few times to populate recent sequences
@@ -2465,7 +2465,7 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 		updateBody := make(map[string]interface{})
 		updateBody["prop"] = i
 		updateBody["_rev"] = revid
-		revid, _, _, err = collection.Put(ctx, "doc1", updateBody)
+		revid, _, err = collection.Put(ctx, "doc1", updateBody)
 		require.NoError(t, err)
 	}
 
@@ -2497,7 +2497,7 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	updateBody := make(map[string]interface{})
 	updateBody["prop"] = 12
 	updateBody["_rev"] = revid
-	_, _, _, err = collection.Put(ctx, "doc1", updateBody)
+	_, _, err = collection.Put(ctx, "doc1", updateBody)
 	require.NoError(t, err)
 
 	syncData, err = collection.GetDocSyncData(ctx, "doc1")
@@ -2525,7 +2525,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	})
 
 	// Ensure deleted doc with double operation isn't treated as import
-	_, _, _, err = collection.Put(ctx, "doc", map[string]interface{}{"_deleted": true})
+	_, _, err = collection.Put(ctx, "doc", map[string]interface{}{"_deleted": true})
 	assert.NoError(t, err)
 
 	var doc Body
@@ -2561,7 +2561,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		updateBody := make(map[string]interface{})
 		updateBody["val"] = i
-		_, _, _, err := collection.Put(ctx, fmt.Sprintf("doc%d", i), updateBody)
+		_, _, err := collection.Put(ctx, fmt.Sprintf("doc%d", i), updateBody)
 		require.NoError(t, err)
 	}
 
@@ -2599,7 +2599,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 
 	for i := 0; i < 300; i++ {
 		docID := fmt.Sprintf("doc%d", i)
-		rev, _, _, err := collection.Put(ctx, docID, Body{})
+		rev, _, err := collection.Put(ctx, docID, Body{})
 		assert.NoError(t, err)
 		_, _, err = collection.DeleteDoc(ctx, docID, rev)
 		assert.NoError(t, err)
@@ -2903,7 +2903,7 @@ func Test_resyncDocument(t *testing.T) {
 
 	updateBody := make(map[string]interface{})
 	updateBody["val"] = "value"
-	_, _, doc, err := collection.Put(ctx, docID, updateBody)
+	_, doc, err := collection.Put(ctx, docID, updateBody)
 	require.NoError(t, err)
 	assert.NotNil(t, doc)
 
@@ -2979,7 +2979,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 		docID := uuid.NewString()
 		updateBody := make(map[string]interface{})
 		updateBody["val"] = "value"
-		_, _, doc, err := collection.Put(ctx, docID, updateBody)
+		_, doc, err := collection.Put(ctx, docID, updateBody)
 		require.NoError(t, err)
 		assert.NotNil(t, doc)
 
@@ -3022,7 +3022,7 @@ func TestImportCompactPanic(t *testing.T) {
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create a document, then delete it, to create a tombstone
-	rev, _, doc, err := collection.Put(ctx, "test", Body{})
+	rev, doc, err := collection.Put(ctx, "test", Body{})
 	require.NoError(t, err)
 	_, _, err = collection.DeleteDoc(ctx, doc.ID, rev)
 	require.NoError(t, err)

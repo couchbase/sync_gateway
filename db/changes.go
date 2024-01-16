@@ -57,7 +57,7 @@ type ChangeEntry struct {
 	principalDoc   bool         // Used to indicate _user/_role docs
 	Revoked        bool         `json:"revoked,omitempty"`
 	collectionID   uint32
-	CurrentVersion *Version `json:"-"` // the current version of the change entry.  (Not marshalled, pending REST support for cv)
+	CurrentVersion *Version `json:"-"` // the current version of the change entry.  (Not marshalled, pending REST support for CV)
 }
 
 const (

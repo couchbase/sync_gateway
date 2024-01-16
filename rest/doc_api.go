@@ -346,13 +346,13 @@ func (h *handler) handlePutAttachment() error {
 	attachments[attachmentName] = attachment
 	body[db.BodyAttachments] = attachments
 
-	newRev, cv, _, err := h.collection.Put(h.ctx(), docid, body)
+	newRev, _, err := h.collection.Put(h.ctx(), docid, body)
 	if err != nil {
 		return err
 	}
 	h.setEtag(newRev)
 
-	h.writeRawJSONStatus(http.StatusCreated, []byte(fmt.Sprintf(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`", "current_version": {"source_id":"`+cv.SourceID+`", "version": %d}}`, cv.Value)))
+	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
 	return nil
 }
 
@@ -401,7 +401,7 @@ func (h *handler) handleDeleteAttachment() error {
 	delete(attachments, attachmentName)
 	body[db.BodyAttachments] = attachments
 
-	newRev, _, _, err := h.collection.Put(h.ctx(), docid, body)
+	newRev, _, err := h.collection.Put(h.ctx(), docid, body)
 	if err != nil {
 		return err
 	}
@@ -437,7 +437,6 @@ func (h *handler) handlePutDoc() error {
 		return err
 	}
 
-	var cv db.Version
 	if body == nil {
 		return base.ErrEmptyDocument
 	}
@@ -461,7 +460,7 @@ func (h *handler) handlePutDoc() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Revision IDs provided do not match")
 		}
 
-		newRev, cv, doc, err = h.collection.Put(h.ctx(), docid, body)
+		newRev, doc, err = h.collection.Put(h.ctx(), docid, body)
 		if err != nil {
 			return err
 		}
@@ -484,7 +483,7 @@ func (h *handler) handlePutDoc() error {
 		}
 	}
 
-	h.writeRawJSONStatus(http.StatusCreated, []byte(fmt.Sprintf(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`", "current_version": {"source_id":"`+cv.SourceID+`", "version": %d}}`, cv.Value)))
+	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
 	return nil
 }
 
@@ -606,9 +605,9 @@ func (h *handler) handleDeleteDoc() error {
 			return err
 		}
 	}
-	newRev, cv, err := h.collection.DeleteDoc(h.ctx(), docid, revid)
+	newRev, _, err := h.collection.DeleteDoc(h.ctx(), docid, revid)
 	if err == nil {
-		h.writeRawJSONStatus(http.StatusOK, []byte(fmt.Sprintf(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`", "current_version": {"source_id":"`+cv.SourceID+`", "version": %d}}`, cv.Value)))
+		h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
 	}
 	return err
 }

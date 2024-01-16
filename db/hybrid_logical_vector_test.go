@@ -352,7 +352,7 @@ func TestHLVMapToCBLString(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			hlv := createHLVForTest(t, test.inputHLV)
-			historyStr := toHistoryForHLV(&hlv)
+			historyStr := hlv.toHistoryForHLV()
 
 			if test.both {
 				initial := strings.Split(historyStr, ";")

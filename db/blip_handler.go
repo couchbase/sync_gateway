@@ -861,7 +861,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID str
 
 	if redactedRev != nil {
 		history := toHistory(redactedRev.History, knownRevs, maxHistory)
-		properties := bsc.blipRevMessageProperties(history, redactedRev.Deleted, seq)
+		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq)
 		return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, redactedRev.BodyBytes, nil, properties, seq, nil)
 	}
 

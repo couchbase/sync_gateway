@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"runtime/debug"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -357,9 +356,9 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 
 			var err error
 			if deltaSrcRevID != "" {
-				// error here for v4 protocol, delta sync not yet implemented for v4
+				// fall back to sending full revision v4 protocol, delta sync not yet implemented for v4
 				if bsc.activeCBMobileSubprotocol > CBMobileReplicationV3 {
-					return fmt.Errorf("delta sync not yet supported in v4 protocol")
+					err = bsc.sendRevision(sender, docID, rev, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
 				}
 				err = bsc.sendRevAsDelta(sender, docID, rev, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
 			} else {
@@ -554,7 +553,7 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 
 func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
 
-	properties := bsc.blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
+	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
@@ -617,7 +616,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, rev string,
 	if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
 		docRev, err = handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, rev, true, nil)
 	} else {
-		// extract cv string rev representation
+		// extract CV string rev representation
 		version, vrsErr := CreateVersionFromString(rev)
 		if vrsErr != nil {
 			return vrsErr
@@ -666,9 +665,9 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, rev string,
 	if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
 		history = toHistory(docRev.History, knownRevs, maxHistory)
 	} else {
-		history = append(history, toHistoryForHLV(docRev.HLV))
+		history = append(history, docRev.hlvHistory)
 	}
-	properties := bsc.blipRevMessageProperties(history, docRev.Deleted, seq)
+	properties := blipRevMessageProperties(history, docRev.Deleted, seq)
 	if base.LogDebugEnabled(bsc.loggingCtx, base.KeySync) {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), rev, len(knownRevs), digests(attachmentStorageMeta))
 	}
@@ -696,42 +695,6 @@ func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) [
 		}
 	}
 	return history
-}
-
-// toHistoryForHLV formats blip History property for V4 replication and above
-func toHistoryForHLV(hlv *HybridLogicalVector) string {
-	// take pv and mv from hlv if defined and add to history
-	var pvString, mvString string
-	var s strings.Builder
-	// Merge versions must be defined first if they exist
-	if hlv.MergeVersions != nil {
-		mvString = extractStringFromMap(hlv.MergeVersions)
-		if mvString != "" {
-			s.WriteString(mvString)
-		}
-	}
-	if hlv.PreviousVersions != nil {
-		pvString = extractStringFromMap(hlv.PreviousVersions)
-		if pvString != "" {
-			// if mv is defined we need separator
-			if mvString != "" {
-				s.WriteString(";")
-			}
-			s.WriteString(pvString)
-		}
-	}
-	return s.String()
-}
-
-// extractStringFromMap returns Couchbase Lite-compatible string representation of the map
-func extractStringFromMap(hlvMap map[string]uint64) string {
-	var pairList []string
-	for key, value := range hlvMap {
-		vrs := Version{SourceID: key, Value: value}
-		pairStr := vrs.String()
-		pairList = append(pairList, pairStr)
-	}
-	return strings.Join(pairList, ",")
 }
 
 // timeElapsedForStatsReporting will return true if enough time has passed since the previous report.

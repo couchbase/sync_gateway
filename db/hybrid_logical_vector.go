@@ -406,3 +406,51 @@ func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64
 	}
 	hlv.PreviousVersions[source] = version
 }
+
+// toHistoryForHLV formats blip History property for V4 replication and above
+func (hlv *HybridLogicalVector) toHistoryForHLV() string {
+	// take pv and mv from hlv if defined and add to history
+	var pvString, mvString string
+	var s strings.Builder
+	// Merge versions must be defined first if they exist
+	if hlv.MergeVersions != nil {
+		mvString = extractStringFromMap(hlv.MergeVersions)
+		if mvString != "" {
+			s.WriteString(mvString)
+		}
+	}
+	if hlv.PreviousVersions != nil {
+		pvString = extractStringFromMap(hlv.PreviousVersions)
+		if pvString != "" {
+			// if mv is defined we need separator
+			if mvString != "" {
+				s.WriteString(";")
+			}
+			s.WriteString(pvString)
+		}
+	}
+	return s.String()
+}
+
+// extractStringFromMap returns Couchbase Lite-compatible string representation of the map
+func extractStringFromMap(hlvMap map[string]uint64) string {
+	var pairList []string
+	for key, value := range hlvMap {
+		vrs := Version{SourceID: key, Value: value}
+		pairStr := vrs.String()
+		pairList = append(pairList, pairStr)
+	}
+	return strings.Join(pairList, ",")
+}
+
+func stringToMap(hlvArr []string) (map[string]uint64, error) {
+	m := make(map[string]uint64)
+	for _, v := range hlvArr {
+		vrs, err := CreateVersionFromString(v)
+		if err != nil {
+			return nil, err
+		}
+		m[vrs.SourceID] = vrs.Value
+	}
+	return m, nil
+}

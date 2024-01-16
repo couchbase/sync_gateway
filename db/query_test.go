@@ -39,13 +39,13 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
 
-	_, _, doc, err := collection.Put(ctx, "queryTestDoc1", Body{"channels": []string{"ABC"}})
+	_, doc, err := collection.Put(ctx, "queryTestDoc1", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err, "Put queryDoc1")
 	docSeqMap["queryTestDoc1"] = doc.Sequence
-	_, _, doc, err = collection.Put(ctx, "queryTestDoc2", Body{"channels": []string{"ABC"}})
+	_, doc, err = collection.Put(ctx, "queryTestDoc2", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err, "Put queryDoc2")
 	docSeqMap["queryTestDoc2"] = doc.Sequence
-	_, _, doc, err = collection.Put(ctx, "queryTestDoc3", Body{"channels": []string{"ABC"}})
+	_, doc, err = collection.Put(ctx, "queryTestDoc3", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err, "Put queryDoc3")
 	docSeqMap["queryTestDoc3"] = doc.Sequence
 
@@ -91,13 +91,13 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
 
-	_, _, doc, err := collection.Put(ctx, "queryTestDoc1", Body{"channels": []string{"ABC"}})
+	_, doc, err := collection.Put(ctx, "queryTestDoc1", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err, "Put queryDoc1")
 	docSeqMap["queryTestDoc1"] = doc.Sequence
-	_, _, doc, err = collection.Put(ctx, "queryTestDoc2", Body{"channels": []string{"ABC"}})
+	_, doc, err = collection.Put(ctx, "queryTestDoc2", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err, "Put queryDoc2")
 	docSeqMap["queryTestDoc2"] = doc.Sequence
-	_, _, doc, err = collection.Put(ctx, "queryTestDoc3", Body{"channels": []string{"ABC"}})
+	_, doc, err = collection.Put(ctx, "queryTestDoc3", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err, "Put queryDoc3")
 	docSeqMap["queryTestDoc3"] = doc.Sequence
 
@@ -188,7 +188,7 @@ func TestAllDocsQuery(t *testing.T) {
 
 	// Add docs with channel assignment
 	for i := 1; i <= 10; i++ {
-		_, _, _, err := collection.Put(ctx, fmt.Sprintf("allDocsTest%d", i), Body{"channels": []string{"ABC"}})
+		_, _, err := collection.Put(ctx, fmt.Sprintf("allDocsTest%d", i), Body{"channels": []string{"ABC"}})
 		assert.NoError(t, err, "Put allDocsTest doc")
 	}
 
@@ -265,7 +265,7 @@ func TestAccessQuery(t *testing.T) {
 		db.Options.JavascriptTimeout)
 	// Add docs with access grants assignment
 	for i := 1; i <= 5; i++ {
-		_, _, _, err := collection.Put(ctx, fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
+		_, _, err := collection.Put(ctx, fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
 		assert.NoError(t, err, "Put accessTest doc")
 	}
 
@@ -308,7 +308,7 @@ func TestRoleAccessQuery(t *testing.T) {
 }`, db.Options.JavascriptTimeout)
 	// Add docs with access grants assignment
 	for i := 1; i <= 5; i++ {
-		_, _, _, err := collection.Put(ctx, fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
+		_, _, err := collection.Put(ctx, fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
 		assert.NoError(t, err, "Put accessTest doc")
 	}
 
