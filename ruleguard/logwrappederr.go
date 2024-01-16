@@ -20,8 +20,6 @@ import (
 func logwrappederr(m dsl.Matcher) {
 	m.
 		Match(
-			// this is horrible but the variadics after $err don't match with the optional wildcards $*_
-			// also no way to regex match to provide non-package qualified versions
 			`base.PanicfCtx($ctx, $format, $*_)`,
 			`PanicfCtx($ctx, $format, $*_)`,
 			`base.FatalfCtx($ctx, $format, $*_)`,
@@ -38,6 +36,7 @@ func logwrappederr(m dsl.Matcher) {
 			`TracefCtx($ctx, $logkey, $format, $*_)`,
 			`fmt.Printf($format, $*_)`,
 			`log.Printf($format, $*_)`,
+			`t.Logf($format, $*_)`,
 		).
 		Where(
 			m["format"].Type.Is("string") && m["format"].Text.Matches(`.*%w.*`)).
