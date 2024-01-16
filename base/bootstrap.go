@@ -333,8 +333,9 @@ func (cc *CouchbaseCluster) GetMetadataDocument(ctx context.Context, location, d
 
 	defer teardown()
 
+	cas, err = cc.configPersistence.loadConfig(ctx, b.DefaultCollection(), docID, valuePtr)
 	SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
-	return cc.configPersistence.loadConfig(ctx, b.DefaultCollection(), docID, valuePtr)
+	return cas, err
 }
 
 func (cc *CouchbaseCluster) InsertMetadataDocument(ctx context.Context, location, key string, value interface{}) (newCAS uint64, err error) {
