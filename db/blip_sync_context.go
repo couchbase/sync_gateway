@@ -355,11 +355,8 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 			}
 
 			var err error
-			if deltaSrcRevID != "" {
-				// fall back to sending full revision v4 protocol, delta sync not yet implemented for v4
-				if bsc.activeCBMobileSubprotocol > CBMobileReplicationV3 {
-					err = bsc.sendRevision(sender, docID, rev, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
-				}
+			// fall back to sending full revision v4 protocol, delta sync not yet implemented for v4
+			if deltaSrcRevID != "" && bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
 				err = bsc.sendRevAsDelta(sender, docID, rev, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
 			} else {
 				err = bsc.sendRevision(sender, docID, rev, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)

@@ -264,7 +264,7 @@ func TestBackingStore(t *testing.T) {
 }
 
 // TestBackingStoreCV:
-// - Perform a Get on a doc by CV that is not currently in the rev cache, assert we get cache miss
+// - Perform a Get on a doc by cv that is not currently in the rev cache, assert we get cache miss
 // - Perform a Get again on the same doc and assert we get cache hit
 // - Perform a Get on doc that doesn't exist, so misses cache and will fail on retrieving doc from bucket
 // - Try a Get again on the same doc and assert it wasn't loaded into the cache as it doesn't exist
@@ -624,12 +624,12 @@ func TestRevisionCacheRemove(t *testing.T) {
 
 // TestRevCacheOperationsCV:
 //   - Create doc revision, put the revision into the cache
-//   - Perform a get on that doc by CV and assert that it has correctly been handled
+//   - Perform a get on that doc by cv and assert that it has correctly been handled
 //   - Updated doc revision and upsert the cache
-//   - Get the updated doc by CV and assert iot has been correctly handled
-//   - Peek the doc by CV and assert it has been found
+//   - Get the updated doc by cv and assert iot has been correctly handled
+//   - Peek the doc by cv and assert it has been found
 //   - Peek the rev id cache for the same doc and assert that doc also has been updated in that lookup cache
-//   - Remove the doc by CV, and asser that the doc is gone
+//   - Remove the doc by cv, and asser that the doc is gone
 func TestRevCacheOperationsCV(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &testBackingStore{[]string{"test_doc"}, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
@@ -699,14 +699,14 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 }
 
 // TestLoaderMismatchInCV:
-//   - Get doc that is not in cache by CV to trigger a load from bucket
-//   - Ensure the CV passed into the GET operation won't match the doc in the bucket
+//   - Get doc that is not in cache by cv to trigger a load from bucket
+//   - Ensure the cv passed into the GET operation won't match the doc in the bucket
 //   - Assert we get error and the value is not loaded into the cache
 func TestLoaderMismatchInCV(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &testBackingStore{[]string{"test_doc"}, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
-	// create CV with incorrect version to the one stored in backing store
+	// create cv with incorrect version to the one stored in backing store
 	cv := Version{SourceID: "test", Value: 1234}
 
 	_, err := cache.GetWithCV(base.TestCtx(t), "doc1", &cv, RevCacheOmitBody, RevCacheOmitDelta)
@@ -766,7 +766,7 @@ func TestConcurrentLoadByCVAndRevOnCache(t *testing.T) {
 
 // TestGetActive:
 //   - Create db, create a doc on the db
-//   - Call GetActive pn the rev cache and assert that the rev and CV are correct
+//   - Call GetActive pn the rev cache and assert that the rev and cv are correct
 func TestGetActive(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)

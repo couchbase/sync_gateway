@@ -1805,7 +1805,7 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 	_, rawDoc, err := collection.GetDocumentWithRaw(ctx, key, DocUnmarshalSync)
 	require.NoError(t, err)
 
-	// assert that a conflict is correctly identified and the resulting doc and CV are nil
+	// assert that a conflict is correctly identified and the resulting doc and cv are nil
 	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, rawDoc)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "Document revision conflict")

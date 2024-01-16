@@ -1900,7 +1900,7 @@ func TestChannelQuery(t *testing.T) {
 			} else {
 				require.Equal(t, removalRev, removedDocEntry.RevID)
 				// TODO: Pending channel removal rev handling, CBG-3213
-				log.Printf("removal rev check of removal CV %s@%d is pending CBG-3213", removalSource, removalVersion)
+				log.Printf("removal rev check of removal cv %s@%d is pending CBG-3213", removalSource, removalVersion)
 				//require.Equal(t, removalSource, removedDocEntry.SourceID)
 				//require.Equal(t, removalVersion, removedDocEntry.Version)
 			}

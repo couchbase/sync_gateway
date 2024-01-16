@@ -190,7 +190,6 @@ func (rc *LRURevisionCache) getFromCacheByCV(ctx context.Context, docID string, 
 	}
 
 	if !cacheHit && err == nil {
-		//loadedCV := docRev.HLV.ExtractCurrentVersionFromHLV()
 		rc.addToRevMapPostLoad(docID, docRev.RevID, docRev.CV)
 	}
 
@@ -281,7 +280,7 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision) {
 		// TODO: CBG-1948
 		panic("Missing history for RevisionCache.Put")
 	}
-	// doc should always have a CV present in a PUT operation on the cache (update HLV is called before hand in doc update process)
+	// doc should always have a cv present in a PUT operation on the cache (update HLV is called before hand in doc update process)
 	// thus we can call getValueByCV directly the update the rev lookup post this
 	value := rc.getValueByCV(docRev.DocID, docRev.CV, true)
 	// store the created value
@@ -386,7 +385,7 @@ func (rc *LRURevisionCache) addToRevMapPostLoad(docID, revID string, cv *Version
 			// already match, return
 			return
 		}
-		// if CV map and rev map are targeting different list elements, update to have both use the CV map element
+		// if cv map and rev map are targeting different list elements, update to have both use the CV map element
 		rc.cache[legacyKey] = cvElem
 		rc.lruList.Remove(revElem)
 	} else {
@@ -410,13 +409,13 @@ func (rc *LRURevisionCache) addToHLVMapPostLoad(docID, revID string, cv *Version
 		// need to return doc revision to caller still but no need repopulate the cache
 		return
 	}
-	// Check if another goroutine has already updated the CV map
+	// Check if another goroutine has already updated the cv map
 	if cvFound {
 		if cvElem == revElem {
 			// already match, return
 			return
 		}
-		// if CV map and rev map are targeting different list elements, update to have both use the CV map element
+		// if cv map and rev map are targeting different list elements, update to have both use the CV map element
 		rc.cache[legacyKey] = cvElem
 		rc.lruList.Remove(revElem)
 	}
@@ -459,7 +458,7 @@ func (rc *LRURevisionCache) removeFromCacheByRev(docID, revID string) {
 	if !ok {
 		return
 	}
-	// grab the CV key key from the value to enable us to remove the reference from the rev lookup map too
+	// grab the cv key from the value to enable us to remove the reference from the rev lookup map too
 	elem := element.Value.(*revCacheValue)
 	hlvKey := IDandCV{DocID: docID, Source: elem.cv.SourceID, Version: elem.cv.Value}
 	rc.lruList.Remove(element)
@@ -602,7 +601,7 @@ func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) 
 		Deleted:     value.deleted,
 		Removed:     value.removed,
 		hlvHistory:  value.hlvHistory,
-		CV:          &value.cv, // maybe use hlv. extyract current version
+		CV:          &value.cv,
 	}
 	if body != nil {
 		docRev._shallowCopyBody = body.ShallowCopy()

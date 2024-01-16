@@ -442,15 +442,3 @@ func extractStringFromMap(hlvMap map[string]uint64) string {
 	}
 	return strings.Join(pairList, ",")
 }
-
-func stringToMap(hlvArr []string) (map[string]uint64, error) {
-	m := make(map[string]uint64)
-	for _, v := range hlvArr {
-		vrs, err := CreateVersionFromString(v)
-		if err != nil {
-			return nil, err
-		}
-		m[vrs.SourceID] = vrs.Value
-	}
-	return m, nil
-}
