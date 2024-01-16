@@ -275,7 +275,7 @@ func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore,
 	return revCacheLoaderForDocument(ctx, backingStore, doc, id.RevID)
 }
 
-// revCacheLoaderForCv will load a document from the bucket using the CV, comapre the fetched doc and the CV specified in the function,
+// revCacheLoaderForCv will load a document from the bucket using the CV, compare the fetched doc and the CV specified in the function,
 // and will still return revid for purpose of populating the Rev ID lookup map on the cache
 func revCacheLoaderForCv(ctx context.Context, backingStore RevisionCacheBackingStore, id IDandCV, unmarshalBody bool) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, revid string, err error) {
 	cv := Version{

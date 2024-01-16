@@ -703,7 +703,7 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 
 // TestLoaderMismatchInCV:
 //   - Get doc that is not in cache by CV to trigger a load from bucket
-//   - Ensure the CV passed into teh GET operation won't match the doc in teh bucket
+//   - Ensure the CV passed into the GET operation won't match the doc in the bucket
 //   - Assert we get error and the value is not loaded into the cache
 func TestLoaderMismatchInCV(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
@@ -727,7 +727,7 @@ func TestLoaderMismatchInCV(t *testing.T) {
 //   - Now perform two concurrent Gets, one by CV and one by revid on a document that doesn't exist in the cache
 //   - This will trigger two concurrent loads from bucket in the CV code path and revid code path
 //   - In doing so we will have two processes trying to update lookup maps at the same time and a race condition will appear
-//   - In doing so will cause us to potentially have two of teh same elements the cache, one with nothing referencing it
+//   - In doing so will cause us to potentially have two of the same elements the cache, one with nothing referencing it
 //   - Assert after both gets are processed, that the cache only has one element in it and that both lookup maps have only one
 //     element
 //   - Grab the single element in the list and assert that both maps point to that element in the cache list
@@ -783,10 +783,10 @@ func TestGetActive(t *testing.T) {
 		Value:    doc.Cas,
 	}
 
-	// remove the entry form the rev cache to force teh cache to not have the active version in it
+	// remove the entry form the rev cache to force the cache to not have the active version in it
 	collection.revisionCache.RemoveWithCV("doc", &expectedCV)
 
-	// call get active to get teh active version from the bucket
+	// call get active to get the active version from the bucket
 	docRev, err := collection.revisionCache.GetActive(base.TestCtx(t), "doc", true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
