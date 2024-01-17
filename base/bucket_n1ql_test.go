@@ -26,9 +26,6 @@ var testN1qlOptions = &N1qlIndexOptions{
 
 func TestN1qlQuery(t *testing.T) {
 
-	// Disabled due to CBG-755:
-	t.Skip("WARNING: TEST DISABLED - the testIndex_value creation is causing issues with CB 6.5.0")
-
 	if TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
@@ -112,13 +109,14 @@ func TestN1qlQuery(t *testing.T) {
 		assert.True(t, queryResult.Val > 2, "Query returned unexpected result")
 		count++
 	}
+	assert.NoError(t, queryCloseErr, "Unexpected error closing query results")
 
 	// Requery the index, validate empty resultset behaviour
 	params = make(map[string]interface{})
 	params["minvalue"] = 10
 
 	queryResults, queryErr = n1qlStore.Query(ctx, queryExpression, params, RequestPlus, false)
-	assert.NoError(t, queryErr, "Error executing n1ql query")
+	require.NoError(t, queryErr, "Error executing n1ql query")
 
 	count = 0
 	for {
@@ -136,9 +134,6 @@ func TestN1qlQuery(t *testing.T) {
 }
 
 func TestN1qlFilterExpression(t *testing.T) {
-
-	// Disabled due to CBG-755:
-	t.Skip("WARNING: TEST DISABLED - the testIndex_value creation is causing issues with CB 6.5.0")
 
 	if TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
@@ -216,9 +211,6 @@ func TestN1qlFilterExpression(t *testing.T) {
 // Test index state retrieval
 func TestIndexMeta(t *testing.T) {
 
-	// Disabled due to CBG-755:
-	t.Skip("WARNING: TEST DISABLED - the testIndex_value creation is causing issues with CB 6.5.0")
-
 	if TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
@@ -236,8 +228,9 @@ func TestIndexMeta(t *testing.T) {
 
 	// Check index state pre-creation
 	exists, meta, err := n1qlStore.GetIndexMeta(ctx, "testIndex_value")
+	require.NoError(t, err, "Error getting meta for non-existent index")
 	assert.False(t, exists)
-	assert.NoError(t, err, "Error getting meta for non-existent index")
+	assert.Nil(t, meta)
 
 	indexExpression := "val"
 	err = n1qlStore.CreateIndex(ctx, "testIndex_value", indexExpression, "", testN1qlOptions)
@@ -259,9 +252,9 @@ func TestIndexMeta(t *testing.T) {
 
 	// Check index state post-creation
 	exists, meta, err = n1qlStore.GetIndexMeta(ctx, "testIndex_value")
+	require.NoError(t, err, "Error retrieving index state")
 	assert.True(t, exists)
 	assert.Equal(t, "online", meta.State)
-	assert.NoError(t, err, "Error retrieving index state")
 }
 
 // Ensure that n1ql query errors are handled and returned (and don't result in panic etc)

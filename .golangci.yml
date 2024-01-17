@@ -64,6 +64,44 @@ linters-settings:
     enable:
       - fieldalignment # detect Go structs that would take less memory if their fields were sorted
   gocritic:
+    enabled-checks:
+      # start defaults
+      - appendAssign
+      - argOrder
+      - assignOp
+      - badCall
+      - badCond
+      - captLocal
+      - caseOrder
+      - codegenComment
+      - commentFormatting
+      - defaultCaseOrder
+      - deprecatedComment
+      - dupArg
+      - dupBranchBody
+      - dupCase
+      - dupSubExpr
+      - elseif
+      - exitAfterDefer
+      - flagDeref
+      - flagName
+      - ifElseChain
+      - mapKey
+      - newDeref
+      - offBy1
+      - regexpMust
+      - singleCaseSwitch
+      - sloppyLen
+      - sloppyTypeAssert
+      - switchTrue
+      - typeSwitchVar
+      - underef
+      - unlambda
+      - unslice
+      - valSwap
+      - wrapperFunc
+      # end defaults
+      - ruleguard
     settings:
       ruleguard:
         rules: '${configDir}/ruleguard/*.go'
