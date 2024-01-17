@@ -55,10 +55,10 @@ doTest () {
     if [[ "$SG_TEST_PACKAGE" != "" ]]; then
         IFS=',' read -ra TEST <<< "$SG_TEST_PACKAGE"
         for i in "${TEST[@]}"; do
-            go test ${buildTags} "${@:2}" $EXTRA_FLAGS github.com/couchbase/sync_gateway/$i
+            go test -shuffle=on ${buildTags} "${@:2}" $EXTRA_FLAGS github.com/couchbase/sync_gateway/$i
         done
     else
-        go test ${buildTags} "${@:2}" $EXTRA_FLAGS github.com/couchbase/sync_gateway/...
+        go test -shuffle=on ${buildTags} "${@:2}" $EXTRA_FLAGS github.com/couchbase/sync_gateway/...
     fi
 
 }
