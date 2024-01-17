@@ -63,6 +63,10 @@ linters-settings:
   govet:
     enable:
       - fieldalignment # detect Go structs that would take less memory if their fields were sorted
+  gocritic:
+    settings:
+      ruleguard:
+        rules: '${configDir}/ruleguard/*.go'
 
 # Disable goconst in test files, often we have duplicated strings across tests, but don't make sense as constants.
 issues:
