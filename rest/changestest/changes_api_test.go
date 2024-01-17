@@ -938,7 +938,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 		`{"seq":9,"id":"mix-1","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
 	}
 
-	t.Run("grant via existing channel", func(t *testing.T) {
+	rt.Run("grant via existing channel", func(t *testing.T) {
 		changes, err = rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes?since=8:1", "alice", false)
 		require.NoError(t, err, "Error retrieving changes results for alice")
 		for index, result := range changes.Results {
@@ -948,7 +948,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 		}
 	})
 
-	t.Run("grant via new channel", func(t *testing.T) {
+	rt.Run("grant via new channel", func(t *testing.T) {
 		changes, err = rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes?since=8:1", "bernard", false)
 		require.NoError(t, err, "Error retrieving changes results for bernard")
 		for index, result := range changes.Results {
@@ -2838,7 +2838,7 @@ func TestChangesQueryBackfillWithLimit(t *testing.T) {
 
 	for _, test := range changesLimitTests {
 
-		t.Run(test.name, func(t *testing.T) {
+		rt.Run(test.name, func(t *testing.T) {
 			testDb.Options.CacheOptions.ChannelQueryLimit = test.queryLimit
 
 			// Create user

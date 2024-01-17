@@ -2295,7 +2295,7 @@ func TestRevocationMessage(t *testing.T) {
 		}
 
 		for _, testCase := range testCases {
-			t.Run(testCase.Name, func(t *testing.T) {
+			rt.Run(testCase.Name, func(t *testing.T) {
 				// Verify the deleted property in the changes message is "2" this indicated a revocation
 				for _, msg := range messages {
 					if msg.Properties[db.BlipProfile] == db.MessageChanges {

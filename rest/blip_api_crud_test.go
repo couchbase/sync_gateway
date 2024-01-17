@@ -2402,7 +2402,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 		changes.Last_Seq = "0"
 
 		for i, test := range testCases {
-			t.Run(test.name, func(t *testing.T) {
+			rt.Run(test.name, func(t *testing.T) {
 				docID := fmt.Sprintf("test%d", i)
 				rawBody, err := json.Marshal(test.inputBody)
 				require.NoError(t, err)
@@ -2928,7 +2928,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 			},
 		}
 		for i, testCase := range testCases {
-			t.Run(testCase.name, func(t *testing.T) {
+			rt.Run(testCase.name, func(t *testing.T) {
 				docID := fmt.Sprintf("doc%d,", i)
 				markerDoc := fmt.Sprintf("markerDoc%d", i)
 				validBody := `{"foo":"bar"}`

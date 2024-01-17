@@ -271,7 +271,7 @@ func TestCORSUserNoAccess(t *testing.T) {
 	RequireStatus(t, response, http.StatusCreated)
 
 	for _, endpoint := range []string{"/{{.db}}/", "/notadb/"} {
-		t.Run(endpoint, func(t *testing.T) {
+		rt.Run(endpoint, func(t *testing.T) {
 			reqHeaders := map[string]string{
 				"Origin": "http://couchbase.com",
 			}
@@ -369,7 +369,7 @@ func TestCORSOriginPerDatabase(t *testing.T) {
 		},
 	}
 	for _, test := range testCases {
-		t.Run(test.name, func(t *testing.T) {
+		rt.Run(test.name, func(t *testing.T) {
 			reqHeaders := map[string]string{
 				"Origin": test.origin,
 			}
@@ -452,7 +452,7 @@ func TestCORSBlipSync(t *testing.T) {
 		},
 	}
 	for _, test := range testCases {
-		t.Run(test.name, func(t *testing.T) {
+		rt.Run(test.name, func(t *testing.T) {
 
 			spec := getDefaultBlipTesterSpec()
 			spec.origin = test.origin
@@ -484,7 +484,7 @@ func TestCORSBlipSyncStar(t *testing.T) {
 	require.NoError(t, rt.SetAdminParty(true))
 	urls := []string{"http://example.com", "http://example2.com", "https://example.com"}
 	for _, url := range urls {
-		t.Run(url, func(t *testing.T) {
+		rt.Run(url, func(t *testing.T) {
 			spec := getDefaultBlipTesterSpec()
 			spec.origin = &url
 			_, err := createBlipTesterWithSpec(t, spec, rt)
@@ -514,7 +514,7 @@ func TestCORSBlipNoConfig(t *testing.T) {
 
 	urls := []string{"http://example.com", "http://example2.com", "https://example.com"}
 	for _, url := range urls {
-		t.Run(url, func(t *testing.T) {
+		rt.Run(url, func(t *testing.T) {
 			spec := getDefaultBlipTesterSpec()
 			spec.origin = &url
 			_, err := createBlipTesterWithSpec(t, spec, rt)
