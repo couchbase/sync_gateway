@@ -239,7 +239,17 @@ func (g *GlobalStat) initResourceUtilizationStats() error {
 	if err != nil {
 		return err
 	}
+
 	resUtil.Uptime, err = NewDurStat(ResourceUtilizationSubsystem, "uptime", nil, nil, prometheus.CounterValue, time.Now())
+
+	if err != nil {
+		return err
+	}
+	resUtil.NumIdleKvOps, err = NewIntStat(SubsystemDatabaseKey, "num_idle_kv_ops", nil, nil, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+
 	if err != nil {
 		return err
 	}
@@ -288,6 +298,10 @@ type ResourceUtilization struct {
 	// The CPU usage calculation is performed based on user and system CPU time, but it doesn’t include components such as iowait.
 	// The derivation means that the values of process_cpu_percent_utilization and %Cpu, returned when running the top command, will differ.
 	CpuPercentUtil *SgwFloatStat `json:"process_cpu_percent_utilization"`
+
+	// The number of background kv operations.
+	NumIdleKvOps *SgwIntStat `json:"idle_kv_ops"`
+
 	// The memory utilization (Resident Set Size) for the process, in bytes.
 	ProcessMemoryResident *SgwIntStat `json:"process_memory_resident"`
 	// The total number of bytes received (since node start-up) on the network interface to which the Sync Gateway api.public_interface is bound.

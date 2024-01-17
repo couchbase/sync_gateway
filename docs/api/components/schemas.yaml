@@ -122,6 +122,9 @@ ExpVars:
                   type: integer
                 num_goroutines:
                   type: integer
+                num_idle_kv_ops:
+                  type: integer
+                  description: "The total number of idle kv operations."
                 process_cpu_percent_utilization:
                   type: integer
                 process_memory_resident:
