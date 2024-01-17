@@ -112,13 +112,14 @@ func TestN1qlQuery(t *testing.T) {
 		assert.True(t, queryResult.Val > 2, "Query returned unexpected result")
 		count++
 	}
+	assert.NoError(t, queryCloseErr, "Unexpected error closing query results")
 
 	// Requery the index, validate empty resultset behaviour
 	params = make(map[string]interface{})
 	params["minvalue"] = 10
 
 	queryResults, queryErr = n1qlStore.Query(ctx, queryExpression, params, RequestPlus, false)
-	assert.NoError(t, queryErr, "Error executing n1ql query")
+	require.NoError(t, queryErr, "Error executing n1ql query")
 
 	count = 0
 	for {
