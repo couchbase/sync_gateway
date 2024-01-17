@@ -26,9 +26,6 @@ var testN1qlOptions = &N1qlIndexOptions{
 
 func TestN1qlQuery(t *testing.T) {
 
-	// Disabled due to CBG-755:
-	t.Skip("WARNING: TEST DISABLED - the testIndex_value creation is causing issues with CB 6.5.0")
-
 	if TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
@@ -138,9 +135,6 @@ func TestN1qlQuery(t *testing.T) {
 
 func TestN1qlFilterExpression(t *testing.T) {
 
-	// Disabled due to CBG-755:
-	t.Skip("WARNING: TEST DISABLED - the testIndex_value creation is causing issues with CB 6.5.0")
-
 	if TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
@@ -216,9 +210,6 @@ func TestN1qlFilterExpression(t *testing.T) {
 
 // Test index state retrieval
 func TestIndexMeta(t *testing.T) {
-
-	// Disabled due to CBG-755:
-	t.Skip("WARNING: TEST DISABLED - the testIndex_value creation is causing issues with CB 6.5.0")
 
 	if TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
