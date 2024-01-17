@@ -54,8 +54,6 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 	doc.Channels = channels.ChannelMap{
 		"*": &channels.ChannelRemoval{RevID: doc.CurrentRev},
 	}
-	// currentRevChannels usually populated on JSON unmarshal
-	doc.currentRevChannels = doc.getCurrentChannels()
 
 	doc.HLV = &HybridLogicalVector{
 		SourceID: "test",

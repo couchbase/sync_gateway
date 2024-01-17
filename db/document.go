@@ -188,12 +188,11 @@ type Document struct {
 	Cas          uint64 // Document cas
 	rawUserXattr []byte // Raw user xattr as retrieved from the bucket
 
-	Deleted            bool
-	DocExpiry          uint32
-	RevID              string
-	DocAttachments     AttachmentsMeta
-	inlineSyncData     bool
-	currentRevChannels base.Set // A base.Set of the current revision's channels (determined by SyncData.Channels at UnmarshalJSON time)
+	Deleted        bool
+	DocExpiry      uint32
+	RevID          string
+	DocAttachments AttachmentsMeta
+	inlineSyncData bool
 }
 
 type historyOnlySyncData struct {
@@ -981,7 +980,6 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 			doc.updateChannelHistory(channel, doc.Sequence, true)
 		}
 	}
-	doc.currentRevChannels = newChannels
 	if changed != nil {
 		base.InfofCtx(ctx, base.KeyCRUD, "\tDoc %q / %q in channels %q", base.UD(doc.ID), doc.CurrentRev, base.UD(newChannels))
 		changedChannels, err = channels.SetFromArray(changed, channels.KeepStar)
