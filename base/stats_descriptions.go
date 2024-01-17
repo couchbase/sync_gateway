@@ -291,6 +291,8 @@ const (
 	PublicRestBytesReadDesc = "The total amount of bytes read over the public REST api"
 
 	SyncProcessComputeDesc = "The compute unit for syncing with clients measured through cpu time and memory used for sync"
+
+	NumIdleKvOpsDesc = "The total number of idle kv operations."
 )
 
 // Delta Sync stats descriptions
