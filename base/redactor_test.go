@@ -52,18 +52,21 @@ func TestRedactHelper(t *testing.T) {
 }
 
 func TestSetRedaction(t *testing.T) {
+	// reset
+	defer SetRedaction(-1)
+
+	SetRedaction(RedactNone)
+	assert.Equal(t, false, RedactUserData)
+
 	// Hits the default case
 	SetRedaction(-1)
-	assert.Equal(t, true, RedactUserData)
-
-	SetRedaction(RedactFull)
 	assert.Equal(t, true, RedactUserData)
 
 	SetRedaction(RedactPartial)
 	assert.Equal(t, true, RedactUserData)
 
-	SetRedaction(RedactNone)
-	assert.Equal(t, false, RedactUserData)
+	SetRedaction(RedactFull)
+	assert.Equal(t, true, RedactUserData)
 }
 
 func TestRedactionLevelMarshalText(t *testing.T) {
