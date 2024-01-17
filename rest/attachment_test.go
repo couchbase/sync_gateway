@@ -257,7 +257,7 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 		},
 	}
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
+		rt.Run(testCase.name, func(t *testing.T) {
 
 			version := rt.CreateTestDoc(testCase.docID)
 
@@ -484,7 +484,7 @@ func TestAddingAttachment(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(tt *testing.T) {
+		rt.Run(testCase.name, func(tt *testing.T) {
 			version := rt.CreateTestDoc(testCase.docName)
 
 			attachmentBody := base64.StdEncoding.EncodeToString(make([]byte, testCase.byteSize))

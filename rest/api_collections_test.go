@@ -82,7 +82,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+		rt.Run(test.name, func(t *testing.T) {
 			if test.requireCollections {
 				base.TestRequiresCollections(t)
 			}

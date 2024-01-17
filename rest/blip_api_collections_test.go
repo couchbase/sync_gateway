@@ -121,7 +121,7 @@ func TestBlipGetCollections(t *testing.T) {
 		}
 
 		for _, testCase := range testCases {
-			t.Run(testCase.name, func(t *testing.T) {
+			rt.Run(testCase.name, func(t *testing.T) {
 				getCollectionsRequest, err := db.NewGetCollectionsMessage(testCase.requestBody)
 				require.NoError(t, err)
 

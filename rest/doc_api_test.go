@@ -106,7 +106,7 @@ func TestDocumentNumbers(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	for _, test := range tests {
-		t.Run(test.name, func(ts *testing.T) {
+		rt.Run(test.name, func(ts *testing.T) {
 			// Create document
 			response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+test.name, test.body)
 			RequireStatus(ts, response, 201)
