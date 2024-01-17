@@ -332,8 +332,8 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 // documentRevisionForRequest processes the given DocumentRevision and returns a version of it for a given client request, depending on access, deleted, etc.
 func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Context, docID string, revision DocumentRevision, revID *string, cv *Version, maxHistory int, historyFrom []string) (DocumentRevision, error) {
 	// ensure only one of cv or revID is specified
-	if (cv != nil && revID != nil) || (cv == nil && revID == nil) {
-		return DocumentRevision{}, fmt.Errorf("must have exactly one of cv or revID in documentRevisionForRequest (had %v %v)", cv, revID)
+	if cv != nil && revID != nil {
+		return DocumentRevision{}, fmt.Errorf("must have one of cv or revID in documentRevisionForRequest (had %v %v)", cv, revID)
 	}
 	var requestedVersion string
 	if revID != nil {
@@ -363,8 +363,7 @@ func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Con
 		_, requestedHistory = trimEncodedRevisionsToAncestor(ctx, requestedHistory, historyFrom, maxHistory)
 	}
 
-	revIDStr := base.StringDefault(revID, "")
-	isAuthorized, redactedRevision := db.authorizeUserForChannels(docID, revIDStr, cv, revision.Channels, revision.Deleted, requestedHistory)
+	isAuthorized, redactedRevision := db.authorizeUserForChannels(docID, revision.RevID, cv, revision.Channels, revision.Deleted, requestedHistory)
 	if !isAuthorized {
 		// client just wanted active revision, not a specific one
 		if requestedVersion == "" {
