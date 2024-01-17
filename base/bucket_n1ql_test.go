@@ -237,8 +237,9 @@ func TestIndexMeta(t *testing.T) {
 
 	// Check index state pre-creation
 	exists, meta, err := n1qlStore.GetIndexMeta(ctx, "testIndex_value")
+	require.NoError(t, err, "Error getting meta for non-existent index")
 	assert.False(t, exists)
-	assert.NoError(t, err, "Error getting meta for non-existent index")
+	assert.Nil(t, meta)
 
 	indexExpression := "val"
 	err = n1qlStore.CreateIndex(ctx, "testIndex_value", indexExpression, "", testN1qlOptions)
@@ -260,9 +261,9 @@ func TestIndexMeta(t *testing.T) {
 
 	// Check index state post-creation
 	exists, meta, err = n1qlStore.GetIndexMeta(ctx, "testIndex_value")
+	require.NoError(t, err, "Error retrieving index state")
 	assert.True(t, exists)
 	assert.Equal(t, "online", meta.State)
-	assert.NoError(t, err, "Error retrieving index state")
 }
 
 // Ensure that n1ql query errors are handled and returned (and don't result in panic etc)
