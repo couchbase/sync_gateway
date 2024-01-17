@@ -169,7 +169,7 @@ func TestValidateReplicationAPI(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+		rt.Run(test.name, func(t *testing.T) {
 			test.config.CollectionsEnabled = !rt.GetDatabase().OnlyDefaultCollection()
 			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.db}}/_replication/%s", test.ID), rest.MarshalConfig(t, test.config))
 			rest.RequireStatus(t, response, test.expectedResponseCode)

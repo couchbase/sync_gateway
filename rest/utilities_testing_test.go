@@ -189,7 +189,7 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 		},
 	}
 	for _, test := range testCases {
-		t.Run(test.input, func(t *testing.T) {
+		rt.Run(test.input, func(t *testing.T) {
 			output, err := rt.templateResource(test.input)
 			if test.errString == "" {
 				require.NoError(t, err)
@@ -243,7 +243,7 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 		},
 	}
 	for _, test := range testCases {
-		t.Run("dbone_"+test.input, func(t *testing.T) {
+		rt.Run("dbone_"+test.input, func(t *testing.T) {
 			output, err := rt.templateResource(test.input)
 			if test.errString == "" {
 				require.NoError(t, err)
@@ -321,7 +321,7 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 		},
 	}
 	for _, test := range testCases {
-		t.Run("twodb_"+test.input, func(t *testing.T) {
+		rt.Run("twodb_"+test.input, func(t *testing.T) {
 			output, err := rt.templateResource(test.input)
 			if test.errString == "" {
 				require.NoError(t, err)

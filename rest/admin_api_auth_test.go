@@ -123,7 +123,7 @@ func TestCheckPermissions(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, testCase := range testCases {
-		t.Run(testCase.Name, func(t *testing.T) {
+		rt.Run(testCase.Name, func(t *testing.T) {
 			if testCase.CreateUser != "" {
 				MakeUser(t, httpClient, eps[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateRoles)
 				defer DeleteUser(t, httpClient, eps[0], testCase.CreateUser)
@@ -415,7 +415,7 @@ func TestAdminAuth(t *testing.T) {
 		}
 		require.NoError(t, err)
 
-		t.Run(testCase.Name, func(t *testing.T) {
+		rt.Run(testCase.Name, func(t *testing.T) {
 			if testCase.CreateUser != "" {
 				MakeUser(t, httpClient, managementEndpoints[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateRoles)
 				defer DeleteUser(t, httpClient, managementEndpoints[0], testCase.CreateUser)
@@ -875,7 +875,7 @@ func TestAdminAPIAuth(t *testing.T) {
 			body = endPoint.body
 		}
 
-		t.Run(endPoint.Method+endPoint.Endpoint, func(t *testing.T) {
+		rt.Run(endPoint.Method+endPoint.Endpoint, func(t *testing.T) {
 			resp := rt.SendAdminRequest(endPoint.Method, endPoint.Endpoint, body)
 			RequireStatus(t, resp, http.StatusUnauthorized)
 			require.Contains(t, resp.Body.String(), ErrLoginRequired.Message)
@@ -968,7 +968,7 @@ func TestDisablePermissionCheck(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.Name, func(t *testing.T) {
+		rt.Run(testCase.Name, func(t *testing.T) {
 			if testCase.EEOnly && serverIsCE {
 				t.Skip("This test case only works against Couchbase Server EE")
 			}
