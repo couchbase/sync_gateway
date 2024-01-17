@@ -79,10 +79,11 @@ const (
 	StatFormatDuration = "duration"
 	StatFormatBool     = "bool"
 
-	StatAddedVersion3dot0dot0 = "3.0.0"
-	StatAddedVersion3dot1dot0 = "3.1.0"
-	StatAddedVersion3dot1dot2 = "3.1.2"
-	StatAddedVersion3dot2dot0 = "3.2.0"
+	StatAddedVersion3dot0dot0     = "3.0.0"
+	StatAddedVersion3dot1dot0     = "3.1.0"
+	StatAddedVersion3dot1dot2     = "3.1.2"
+	StatAddedVersion3dot1dot3dot1 = "3.1.3.1"
+	StatAddedVersion3dot2dot0     = "3.2.0"
 
 	StatDeprecatedVersionNotDeprecated = ""
 	StatDeprecatedVersion3dot2dot0     = "3.2.0"
@@ -274,6 +275,10 @@ func (g *GlobalStat) initResourceUtilizationStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.NumIdleKvOps, err = NewIntStat(SubsystemDatabaseKey, "num_idle_kv_ops", StatUnitNoUnits, NumIdleKvOpsDesc, StatAddedVersion3dot1dot3dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 
 	resUtil.Uptime, err = NewDurStat(ResourceUtilizationSubsystem, "uptime", StatUnitNanoseconds, UptimeDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, time.Now())
 	if err != nil {
@@ -327,6 +332,9 @@ type ResourceUtilization struct {
 
 	// The node CPU usage calculation based values from /proc of user + system since the last time this function was called.
 	NodeCpuPercentUtil *SgwFloatStat `json:"node_cpu_percent_utilization"`
+
+	// The number of background kv operations.
+	NumIdleKvOps *SgwIntStat `json:"idle_kv_ops"`
 
 	// The memory utilization (Resident Set Size) for the process, in bytes.
 	ProcessMemoryResident *SgwIntStat `json:"process_memory_resident"`

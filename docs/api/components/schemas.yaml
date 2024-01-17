@@ -135,6 +135,9 @@ ExpVars:
                 num_goroutines:
                   type: integer
                   description: "The total number of goroutines."
+                num_idle_kv_ops:
+                  type: integer
+                  description: "The total number of idle kv operations."
                 process_cpu_percent_utilization:
                   type: number
                   format: float
