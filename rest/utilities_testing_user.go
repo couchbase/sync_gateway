@@ -35,23 +35,20 @@ func MakeUser(t *testing.T, httpClient *http.Client, serverURL, username, passwo
 
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			return true, err, resp
+			return true, err, nil
 		}
-		assert.NoError(t, resp.Body.Close())
-		return false, err, resp
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			bodyResp, err := io.ReadAll(resp.Body)
+			assert.NoError(t, err, "Failed to create user: %s", bodyResp)
+		}
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		return false, err, nil
 	}
 
-	err, resp := base.RetryLoop(base.TestCtx(t), "Admin Auth testing MakeUser", retryWorker, base.CreateSleeperFunc(10, 100))
+	err, _ := base.RetryLoop(base.TestCtx(t), "Admin Auth testing MakeUser", retryWorker, base.CreateSleeperFunc(10, 100))
 	require.NoError(t, err)
 
-	if resp.(*http.Response).StatusCode != http.StatusOK {
-		bodyResp, err := io.ReadAll(resp.(*http.Response).Body)
-		assert.NoError(t, err)
-		fmt.Println(string(bodyResp))
-	}
-	require.Equal(t, http.StatusOK, resp.(*http.Response).StatusCode)
-
-	require.NoError(t, resp.(*http.Response).Body.Close(), "Error closing response body")
 }
 
 func DeleteUser(t *testing.T, httpClient *http.Client, serverURL, username string) {
