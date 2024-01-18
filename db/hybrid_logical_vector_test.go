@@ -303,9 +303,8 @@ func TestHLVImport(t *testing.T) {
 
 	existingBody, existingXattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, existingHLVKey, []string{base.SyncXattrName})
 	require.NoError(t, err)
-	existingXattr := existingXattrs[base.SyncXattrName]
 
-	_, err = collection.ImportDocRaw(ctx, existingHLVKey, existingBody, existingXattrs, nil, false, cas, nil, ImportFromFeed)
+	_, err = collection.ImportDocRaw(ctx, existingHLVKey, existingBody, existingXattrs, false, cas, nil, ImportFromFeed)
 	require.NoError(t, err, "import error")
 
 	importedDoc, _, err = collection.GetDocWithXattr(ctx, existingHLVKey, DocUnmarshalAll)
@@ -361,7 +360,7 @@ func (h *HLVAgent) insertWithHLV(ctx context.Context, key string) (casOut uint64
 		h.xattrName: syncDataBytes,
 	}
 
-	cas, err := h.datastore.WriteWithXattrs(ctx, key, 0, 0, docBody, xattrData, mutateInOpts)
+	cas, err := h.datastore.WriteWithXattrs(ctx, key, 0, 0, docBody, xattrData, nil, mutateInOpts)
 	require.NoError(h.t, err)
 	return cas
 }

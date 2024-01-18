@@ -364,11 +364,11 @@ func TestRevAndVersion(t *testing.T) {
 				SourceID: test.source,
 				Version:  test.version,
 			}
-			marshalledDoc, marshalledXattr, err := document.MarshalWithXattr()
+			marshalledDoc, marshalledSyncXattr, _, err := document.MarshalWithXattrs()
 			require.NoError(t, err)
 
 			newDocument := NewDocument("docID")
-			err = newDocument.UnmarshalWithXattr(ctx, marshalledDoc, marshalledXattr, DocUnmarshalAll)
+			err = newDocument.UnmarshalWithXattr(ctx, marshalledDoc, marshalledSyncXattr, DocUnmarshalAll)
 			require.NoError(t, err)
 			require.Equal(t, test.revTreeID, newDocument.CurrentRev)
 			require.Equal(t, expectedSequence, newSyncData.Sequence)
