@@ -37,7 +37,7 @@ func MakeUser(t *testing.T, httpClient *http.Client, serverURL, username, passwo
 		if err != nil {
 			return true, err, nil
 		}
-		defer resp.Body.Close()
+		defer func() { assert.NoError(t, resp.Body.Close()) }()
 		if resp.StatusCode != http.StatusOK {
 			bodyResp, err := io.ReadAll(resp.Body)
 			assert.NoError(t, err, "Failed to create user: %s", bodyResp)
