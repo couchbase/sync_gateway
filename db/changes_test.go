@@ -289,7 +289,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 func TestCVPopulationOnChangeEntry(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collectionID := collection.GetCollectionID()
 	bucketUUID := db.BucketUUID
 
@@ -561,7 +561,7 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyDCP, base.KeyCache, base.KeyHTTP)
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collectionID := collection.GetCollectionID()
 	bucketUUID := db.BucketUUID
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
