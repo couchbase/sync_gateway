@@ -26,7 +26,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 
 	dbConfig := rt.NewDbConfig()
 
-	dbName := "{{.keyspace}}"
+	dbName := "db"
 	rt.CreateDatabase("db", dbConfig)
 
 	// create sessions before users
