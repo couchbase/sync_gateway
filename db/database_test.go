@@ -1839,7 +1839,7 @@ func TestChannelQuery(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
 		channel(doc.channels);
 	}`)
