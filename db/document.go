@@ -103,6 +103,17 @@ type SyncData struct {
 	removedRevisionBodyKeys map[string]string // keys of non-winning revisions that have been removed (and so may require deletion), indexed by revID
 }
 
+// determine set of current channels based on removal entries.
+func (sd *SyncData) getCurrentChannels() base.Set {
+	ch := base.SetOf()
+	for channelName, channelRemoval := range sd.Channels {
+		if channelRemoval == nil || channelRemoval.Seq == 0 {
+			ch.Add(channelName)
+		}
+	}
+	return ch
+}
+
 func (sd *SyncData) HashRedact(salt string) SyncData {
 
 	// Creating a new SyncData with the redacted info. We copy all the information which stays the same and create new
@@ -183,12 +194,11 @@ type Document struct {
 	rawUserXattr       []byte              // Raw user xattr as retrieved from the bucket
 	metadataOnlyUpdate *MetadataOnlyUpdate // Contents of _mou xattr, marshalled/unmarshalled with document from xattrs
 
-	Deleted            bool
-	DocExpiry          uint32
-	RevID              string
-	DocAttachments     AttachmentsMeta
-	inlineSyncData     bool
-	currentRevChannels base.Set // A base.Set of the current revision's channels (determined by SyncData.Channels at UnmarshalJSON time)
+	Deleted        bool
+	DocExpiry      uint32
+	RevID          string
+	DocAttachments AttachmentsMeta
+	inlineSyncData bool
 }
 
 type historyOnlySyncData struct {
@@ -919,7 +929,6 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 			doc.updateChannelHistory(channel, doc.Sequence, true)
 		}
 	}
-	doc.currentRevChannels = newChannels
 	if changed != nil {
 		base.InfofCtx(ctx, base.KeyCRUD, "\tDoc %q / %q in channels %q", base.UD(doc.ID), doc.CurrentRev, base.UD(newChannels))
 		changedChannels, err = channels.SetFromArray(changed, channels.KeepStar)
@@ -1027,17 +1036,6 @@ func (doc *Document) UnmarshalJSON(data []byte) error {
 	}
 	if syncData.SyncData != nil {
 		doc.SyncData = *syncData.SyncData
-	}
-
-	// determine current revision's channels and store in-memory (avoids doc.Channels iteration at access-check time)
-	if len(doc.Channels) > 0 {
-		ch := base.SetOf()
-		for channelName, channelRemoval := range doc.Channels {
-			if channelRemoval == nil || channelRemoval.Seq == 0 {
-				ch.Add(channelName)
-			}
-		}
-		doc.currentRevChannels = ch
 	}
 
 	// Unmarshal the rest of the doc body as map[string]interface{}
