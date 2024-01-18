@@ -20,6 +20,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1866,4 +1867,182 @@ func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 	// update the pv map so we can assert we have correct pv map in HLV
 	assert.True(t, reflect.DeepEqual(syncData.HLV.PreviousVersions, pv))
 	assert.Equal(t, "1-3a208ea66e84121b528f05b5457d1134", syncData.CurrentRev)
+}
+
+// TestGetCVWithDocResidentInCache:
+//   - Two test cases, one with doc a user will have access to, one without
+//   - Purpose is to have a doc that is resident in rev cache and use the GetCV function to retrieve these docs
+//   - Assert that the doc the user has access to is corrected fetched
+//   - Assert the doc the user doesn't have access to is fetched but correctly redacted
+func TestGetCVWithDocResidentInCache(t *testing.T) {
+	const docID = "doc1"
+
+	testCases := []struct {
+		name        string
+		docChannels []string
+		access      bool
+	}{
+		{
+			name:        "getCVWithUserAccess",
+			docChannels: []string{"A"},
+			access:      true,
+		},
+		{
+			name:        "getCVWithoutUserAccess",
+			docChannels: []string{"B"},
+			access:      false,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			db, ctx := setupTestDB(t)
+			defer db.Close(ctx)
+			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+			// Create a user with access to channel A
+			authenticator := db.Authenticator(base.TestCtx(t))
+			user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+			require.NoError(t, err)
+			require.NoError(t, authenticator.Save(user))
+			collection.user, err = authenticator.GetUser("alice")
+			require.NoError(t, err)
+
+			// create doc with the channels for the test case
+			docBody := Body{"channels": testCase.docChannels}
+			rev, doc, err := collection.Put(ctx, docID, docBody)
+			require.NoError(t, err)
+
+			vrs := doc.HLV.Version
+			src := doc.HLV.SourceID
+			sv := &Version{Value: vrs, SourceID: src}
+			revision, err := collection.GetCV(ctx, docID, sv, true)
+			require.NoError(t, err)
+			if testCase.access {
+				assert.Equal(t, rev, revision.RevID)
+				assert.Equal(t, sv, revision.CV)
+				assert.Equal(t, docID, revision.DocID)
+				assert.Equal(t, []byte(`{"channels":["A"]}`), revision.BodyBytes)
+			} else {
+				assert.Equal(t, rev, revision.RevID)
+				assert.Equal(t, sv, revision.CV)
+				assert.Equal(t, docID, revision.DocID)
+				assert.Equal(t, []byte(RemovedRedactedDocument), revision.BodyBytes)
+			}
+		})
+	}
+}
+
+// TestGetByCVForDocNotResidentInCache:
+//   - Setup db with rev cache size of 1
+//   - Put two docs forcing eviction of the first doc
+//   - Use GetCV function to fetch the first doc, forcing the rev cache to load the doc from bucket
+//   - Assert the doc revision fetched is correct to the first doc we created
+func TestGetByCVForDocNotResidentInCache(t *testing.T) {
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			Size: 1,
+		},
+	})
+	defer db.Close(ctx)
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	// Create a user with access to channel A
+	authenticator := db.Authenticator(base.TestCtx(t))
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+	collection.user, err = authenticator.GetUser("alice")
+	require.NoError(t, err)
+
+	const (
+		doc1ID = "doc1"
+		doc2ID = "doc2"
+	)
+
+	revBody := Body{"channels": []string{"A"}}
+	rev, doc, err := collection.Put(ctx, doc1ID, revBody)
+	require.NoError(t, err)
+
+	// put another doc that should evict first doc from cache
+	_, _, err = collection.Put(ctx, doc2ID, revBody)
+	require.NoError(t, err)
+
+	// get by CV should force a load from bucket and have a cache miss
+	vrs := doc.HLV.Version
+	src := doc.HLV.SourceID
+	sv := &Version{Value: vrs, SourceID: src}
+	revision, err := collection.GetCV(ctx, doc1ID, sv, true)
+	require.NoError(t, err)
+
+	// assert the fetched doc is the first doc we added and assert that we did in fact get cache miss
+	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, rev, revision.RevID)
+	assert.Equal(t, sv, revision.CV)
+	assert.Equal(t, doc1ID, revision.DocID)
+	assert.Equal(t, []byte(`{"channels":["A"]}`), revision.BodyBytes)
+}
+
+// TestGetCVActivePathway:
+//   - Two test cases, one with doc a user will have access to, one without
+//   - Purpose is top specify nil CV to the GetCV function to force the GetActive code pathway
+//   - Assert doc that is created is fetched correctly when user has access to doc
+//   - Assert that correct error is returned when user has no access to the doc
+func TestGetCVActivePathway(t *testing.T) {
+	const docID = "doc1"
+
+	testCases := []struct {
+		name        string
+		docChannels []string
+		access      bool
+	}{
+		{
+			name:        "activeFetchWithUserAccess",
+			docChannels: []string{"A"},
+			access:      true,
+		},
+		{
+			name:        "activeFetchWithoutUserAccess",
+			docChannels: []string{"B"},
+			access:      false,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			db, ctx := setupTestDB(t)
+			defer db.Close(ctx)
+			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+			// Create a user with access to channel A
+			authenticator := db.Authenticator(base.TestCtx(t))
+			user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+			require.NoError(t, err)
+			require.NoError(t, authenticator.Save(user))
+			collection.user, err = authenticator.GetUser("alice")
+			require.NoError(t, err)
+
+			// test get active path by specifying nil cv
+			revBody := Body{"channels": testCase.docChannels}
+			rev, doc, err := collection.Put(ctx, docID, revBody)
+			require.NoError(t, err)
+			revision, err := collection.GetCV(ctx, docID, nil, true)
+
+			if testCase.access == true {
+				require.NoError(t, err)
+				vrs := doc.HLV.Version
+				src := doc.HLV.SourceID
+				sv := &Version{Value: vrs, SourceID: src}
+				assert.Equal(t, rev, revision.RevID)
+				assert.Equal(t, sv, revision.CV)
+				assert.Equal(t, docID, revision.DocID)
+				assert.Equal(t, []byte(`{"channels":["A"]}`), revision.BodyBytes)
+			} else {
+				require.Error(t, err)
+				assert.ErrorContains(t, err, ErrForbidden.Error())
+				assert.Equal(t, DocumentRevision{}, revision)
+			}
+		})
+	}
 }
