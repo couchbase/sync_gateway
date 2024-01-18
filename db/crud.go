@@ -333,7 +333,7 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Context, docID string, revision DocumentRevision, revID *string, cv *Version, maxHistory int, historyFrom []string) (DocumentRevision, error) {
 	// ensure only one of cv or revID is specified
 	if cv != nil && revID != nil {
-		return DocumentRevision{}, fmt.Errorf("must have one of cv or revID in documentRevisionForRequest (had %v %v)", cv, revID)
+		return DocumentRevision{}, fmt.Errorf("must have one of cv or revID in documentRevisionForRequest (had cv=%v revID=%v)", cv, revID)
 	}
 	var requestedVersion string
 	if revID != nil {
