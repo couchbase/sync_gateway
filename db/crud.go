@@ -313,14 +313,29 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 		// No rev ID given, so load active revision
 		revision, err = db.revisionCache.GetActive(ctx, docid, includeBody)
 	}
-
 	if err != nil {
 		return DocumentRevision{}, err
 	}
 
+	return db.documentRevisionForRequest(ctx, docid, revision, &revid, nil, maxHistory, historyFrom)
+}
+
+// documentRevisionForRequest processes the given DocumentRevision and returns a version of it for a given client request, depending on access, deleted, etc.
+func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Context, docID string, revision DocumentRevision, revID *string, cv *Version, maxHistory int, historyFrom []string) (DocumentRevision, error) {
+	// ensure only one of cv or revID is specified
+	if cv != nil && revID != nil {
+		return DocumentRevision{}, fmt.Errorf("must have one of cv or revID in documentRevisionForRequest (had cv=%v revID=%v)", cv, revID)
+	}
+	var requestedVersion string
+	if revID != nil {
+		requestedVersion = *revID
+	} else if cv != nil {
+		requestedVersion = cv.String()
+	}
+
 	if revision.BodyBytes == nil {
 		if db.ForceAPIForbiddenErrors() {
-			base.InfofCtx(ctx, base.KeyCRUD, "Doc: %s %s is missing", base.UD(docid), base.MD(revid))
+			base.InfofCtx(ctx, base.KeyCRUD, "Doc: %s %s is missing", base.UD(docID), base.MD(requestedVersion))
 			return DocumentRevision{}, ErrForbidden
 		}
 		return DocumentRevision{}, ErrMissing
@@ -339,16 +354,17 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 		_, requestedHistory = trimEncodedRevisionsToAncestor(ctx, requestedHistory, historyFrom, maxHistory)
 	}
 
-	isAuthorized, redactedRev := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, revision.Deleted, requestedHistory)
+	isAuthorized, redactedRevision := db.authorizeUserForChannels(docID, revision.RevID, cv, revision.Channels, revision.Deleted, requestedHistory)
 	if !isAuthorized {
-		if revid == "" {
+		// client just wanted active revision, not a specific one
+		if requestedVersion == "" {
 			return DocumentRevision{}, ErrForbidden
 		}
 		if db.ForceAPIForbiddenErrors() {
-			base.InfofCtx(ctx, base.KeyCRUD, "Not authorized to view doc: %s %s", base.UD(docid), base.MD(revid))
+			base.InfofCtx(ctx, base.KeyCRUD, "Not authorized to view doc: %s %s", base.UD(docID), base.MD(requestedVersion))
 			return DocumentRevision{}, ErrForbidden
 		}
-		return redactedRev, nil
+		return redactedRevision, nil
 	}
 
 	// If the revision is a removal cache entry (no body), but the user has access to that removal, then just
@@ -357,11 +373,24 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 		return DocumentRevision{}, ErrMissing
 	}
 
-	if revision.Deleted && revid == "" {
+	if revision.Deleted && requestedVersion == "" {
 		return DocumentRevision{}, ErrDeleted
 	}
 
 	return revision, nil
+}
+
+func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, cv *Version, includeBody bool) (revision DocumentRevision, err error) {
+	if cv != nil {
+		revision, err = db.revisionCache.GetWithCV(ctx, docid, cv, includeBody, RevCacheOmitDelta)
+	} else {
+		revision, err = db.revisionCache.GetActive(ctx, docid, includeBody)
+	}
+	if err != nil {
+		return DocumentRevision{}, err
+	}
+
+	return db.documentRevisionForRequest(ctx, docid, revision, nil, cv, 0, nil)
 }
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
@@ -395,7 +424,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	if fromRevision.Delta != nil {
 		if fromRevision.Delta.ToRevID == toRevID {
 
-			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevision.Delta.RevisionHistory))
+			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, nil, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevision.Delta.RevisionHistory))
 			if !isAuthorized {
 				return nil, &redactedBody, nil
 			}
@@ -418,7 +447,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		}
 
 		deleted := toRevision.Deleted
-		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, toRevision.Channels, deleted, toRevision.History)
+		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, nil, toRevision.Channels, deleted, toRevision.History)
 		if !isAuthorized {
 			return nil, &redactedBody, nil
 		}
@@ -477,7 +506,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	return nil, nil, nil
 }
 
-func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID string, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
+func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID string, cv *Version, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
 
 	if col.user != nil {
 		if err := col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, channels); err != nil {
@@ -489,6 +518,7 @@ func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID str
 				RevID:   revID,
 				History: history,
 				Deleted: isDeleted,
+				CV:      cv,
 			}
 			if isDeleted {
 				// Deletions are denoted by the deleted message property during 2.x replication
@@ -1044,7 +1074,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 	if existingDoc != nil {
 		doc, unmarshalErr := unmarshalDocumentWithXattr(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattrs[base.SyncXattrName], existingDoc.Xattrs[db.userXattrKey()], existingDoc.Cas, DocUnmarshalRev)
 		if unmarshalErr != nil {
-			return nil, nil, "", base.HTTPErrorf(http.StatusBadRequest, "Error unmarshaling exsiting doc")
+			return nil, nil, "", base.HTTPErrorf(http.StatusBadRequest, "Error unmarshaling existing doc")
 		}
 		matchRev = doc.CurrentRev
 	}
