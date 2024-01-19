@@ -10,10 +10,11 @@ package rest
 
 import (
 	"encoding/json"
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
 	"net/http"
 	"testing"
+
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/stretchr/testify/require"
 )
