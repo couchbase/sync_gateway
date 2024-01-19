@@ -8325,6 +8325,8 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	// Grab the bucket UUIDs for both rest testers
 	activeBucketUUID, err := activeRT.GetDatabase().Bucket.UUID()
 	require.NoError(t, err)
+	passiveBucketUUID, err := passiveRT.GetDatabase().Bucket.UUID()
+	require.NoError(t, err)
 
 	const rep = "replication"
 
@@ -8351,6 +8353,7 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	assert.NoError(t, err)
 	uintCAS = base.HexCasToUint64(syncData.Cas)
 
-	// TODO: assert that the SourceID and Verison pair are preserved correctly pending CBG-3211
+	assert.Equal(t, passiveBucketUUID, syncData.HLV.SourceID)
 	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, uintCAS, syncData.HLV.Version)
 }
