@@ -995,6 +995,10 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		// include current rev property in history
 		history = append(history, rev)
 	}
+
+	// TODO: Extract/parse HLV from history for MV and PV
+	// CV kept in rev property on its own
+
 	var versionVectorStr string
 	if historyStr := rq.Properties[RevMessageHistory]; historyStr != "" && bh.activeCBMobileSubprotocol < CBMobileReplicationV4 {
 		history = append(history, strings.Split(historyStr, ",")...)

@@ -307,14 +307,7 @@ func TestDatabase(t *testing.T) {
 
 }
 
-// TestCheckProposedVersion:
-//   - Create a doc on database
-//   - Run doc ID through CheckProposedVersion with the same CV as the local doc
-//   - Run doc ID through CheckProposedVersion with the non conflict hlv present
-//   - Run new doc ID through CheckProposedVersion
-//   - Run doc ID through CheckProposedVersion with conflicting hlv
-//   - Run doc ID through CheckProposedVersion with invalid HLV string
-//   - Assert all above scenarios return appropriate status
+// TestCheckProposedVersion ensures that a given CV will return the appropriate status based on the information present in the HLV.
 func TestCheckProposedVersion(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
@@ -328,32 +321,51 @@ func TestCheckProposedVersion(t *testing.T) {
 	_, doc, err := collection.Put(ctx, "doc1", body)
 	require.NoError(t, err)
 
-	src, vrs := doc.HLV.GetCurrentVersion()
-	hlvString := fmt.Sprint(vrs, "@", src)
+	t.Run("version exists", func(t *testing.T) {
+		var hlv HybridLogicalVector
+		assert.NoError(t, base.DeepCopyInefficient(&hlv, doc.HLV))
+		hlvString := hlv.GetCurrentVersionString()
+		status, _ := collection.CheckProposedVersion(ctx, "doc1", hlvString)
+		assert.Equal(t, ProposedRev_Exists, status)
+	})
 
-	// version exists scenario
-	status, _ := collection.CheckProposedVersion(ctx, "doc1", hlvString)
-	assert.Equal(t, ProposedRev_Exists, status)
+	t.Run("non conflict new version", func(t *testing.T) {
+		var hlv HybridLogicalVector
+		assert.NoError(t, base.DeepCopyInefficient(&hlv, doc.HLV))
+		err = hlv.AddVersion(Version{bucketUUID, hlv.CurrentVersionCAS + 100})
+		require.NoError(t, err)
+		// TODO: Get full BLIP formatted HLV
+		hlvString := hlv.GetCurrentVersionString()
+		status, _ := collection.CheckProposedVersion(ctx, "doc1", hlvString)
+		assert.Equal(t, ProposedRev_OK, status)
+	})
 
-	// non conflict new version scenario
-	hlvString = fmt.Sprint(vrs+100, "@", bucketUUID, ";", hlvString)
-	status, _ = collection.CheckProposedVersion(ctx, "doc1", hlvString)
-	assert.Equal(t, ProposedRev_OK, status)
+	t.Run("new doc same cv", func(t *testing.T) {
+		var hlv HybridLogicalVector
+		assert.NoError(t, base.DeepCopyInefficient(&hlv, doc.HLV))
+		hlvString := hlv.GetCurrentVersionString()
+		status, _ := collection.CheckProposedVersion(ctx, "doc2", hlvString)
+		assert.Equal(t, ProposedRev_OK_IsNew, status)
+	})
 
-	// new doc scenario
-	hlvString = fmt.Sprint(100, "@", bucketUUID)
-	status, _ = collection.CheckProposedVersion(ctx, "doc2", hlvString)
-	assert.Equal(t, ProposedRev_OK_IsNew, status)
+	t.Run("conflict", func(t *testing.T) {
+		var hlv HybridLogicalVector
+		assert.NoError(t, base.DeepCopyInefficient(&hlv, doc.HLV))
+		err = hlv.AddVersion(Version{"cluster2", hlv.CurrentVersionCAS + 1})
+		require.NoError(t, err)
+		err = hlv.AddVersion(Version{"cluster2", hlv.CurrentVersionCAS + 4})
+		require.NoError(t, err)
+		// TODO: Get full BLIP formatted HLV
+		hlvString := hlv.GetCurrentVersionString()
+		status, _ := collection.CheckProposedVersion(ctx, "doc1", hlvString)
+		assert.Equal(t, ProposedRev_Conflict, status)
+	})
 
-	// conflict scenario
-	hlvString = fmt.Sprint(4, "@", "cluster2", ";", 1, "@", "cluster2")
-	status, _ = collection.CheckProposedVersion(ctx, "doc1", hlvString)
-	assert.Equal(t, ProposedRev_Conflict, status)
-
-	// test error scenario
-	hlvString = fmt.Sprint("")
-	status, _ = collection.CheckProposedVersion(ctx, "doc1", hlvString)
-	assert.Equal(t, ProposedRev_Error, status)
+	t.Run("invalid hlv", func(t *testing.T) {
+		hlvString := ""
+		status, _ := collection.CheckProposedVersion(ctx, "doc1", hlvString)
+		assert.Equal(t, ProposedRev_Error, status)
+	})
 
 }
 

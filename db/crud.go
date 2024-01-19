@@ -2768,16 +2768,16 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 
 // CheckProposedVersion Given DocID and a version vector in string form (as seen over Blip), check whether
 // it can be added without conflict.
-func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, docid, versionVector string) (status ProposedRevStatus, currentVersion string) {
+func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, docid, proposedVersionStr string) (status ProposedRevStatus, currentVersion string) {
 	if strings.HasPrefix(docid, "_design/") && db.user != nil {
 		return ProposedRev_OK, "" // Users can't upload design docs, so ignore them
 	}
 
-	incomingHLV, err := extractHLVFromBlipMessage(versionVector)
+	proposedVersion, err := CreateVersionFromString(proposedVersionStr)
 	if err != nil {
+		base.WarnfCtx(ctx, "Couldn't parse proposed version for doc %q / %q: %v", base.UD(docid), proposedVersionStr, err)
 		return ProposedRev_Error, ""
 	}
-	incomingDocCV := Version{SourceID: incomingHLV.SourceID, Value: incomingHLV.Version}
 
 	localDocCV := Version{}
 	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalNoHistory)
@@ -2790,10 +2790,10 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 			return ProposedRev_Error, ""
 		}
 		return ProposedRev_OK_IsNew, ""
-	} else if localDocCV == incomingDocCV {
+	} else if localDocCV == proposedVersion {
 
 		return ProposedRev_Exists, ""
-	} else if doc.HLV.IsInConflict(incomingHLV) {
+	} else if doc.HLV.IsVersionInConflict(proposedVersion) {
 		return ProposedRev_Conflict, localDocCV.String()
 	}
 

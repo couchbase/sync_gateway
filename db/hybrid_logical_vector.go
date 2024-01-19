@@ -104,6 +104,15 @@ func (hlv *HybridLogicalVector) GetCurrentVersionString() string {
 	return version.String()
 }
 
+// IsVersionInConflict tests to see if a given version would be in conflict with the in memory HLV.
+func (hlv *HybridLogicalVector) IsVersionInConflict(version Version) bool {
+	// TODO: Complete
+	if hlv.isVersionDominating(version) {
+		return false
+	}
+	return true
+}
+
 // IsInConflict tests to see if in memory HLV is conflicting with another HLV
 func (hlv *HybridLogicalVector) IsInConflict(otherVector HybridLogicalVector) bool {
 	// test if either HLV(A) or HLV(B) are dominating over each other. If so they are not in conflict
@@ -176,6 +185,22 @@ func (hlv *HybridLogicalVector) isDominating(otherVector HybridLogicalVector) bo
 		return true
 	}
 	// HLV A is not dominating over HLV B
+	return false
+}
+
+// isVersionDominating tests if in memory HLV is dominating the given version
+func (hlv *HybridLogicalVector) isVersionDominating(version Version) bool {
+	// Dominating Criteria:
+	// HLV A dominates HLV B if source(A) == source(B) and version(A) > version(B)
+	// If there is an entry in pv(B) for A's current source and version(A) > B's version for that pv entry then A is dominating
+	// if there is an entry in mv(B) for A's current source and version(A) > B's version for that pv entry then A is dominating
+
+	// Grab the latest CAS version for HLV(A)'s sourceID in HLV(B), if HLV(A) version CAS is > HLV(B)'s then it is dominating
+	// If 0 CAS is returned then the sourceID does not exist on HLV(B)
+	if hlv.Version > version.Value {
+		return true
+	}
+	// HLV A is not dominating over version
 	return false
 }
 
