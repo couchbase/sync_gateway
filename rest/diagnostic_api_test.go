@@ -10,14 +10,18 @@ package rest
 
 import (
 	"encoding/json"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/stretchr/testify/assert"
 	"net/http"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGetAllChannelsByUser(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 		SyncFn:           `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`,
@@ -69,7 +73,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 
 	// Assign new channel to user bob and assert all_channels includes it
 	response = rt.SendAdminRequest(http.MethodPut,
-		"/"+dbName+"/doc1",
+		"/{{.keyspace}}/doc1",
 		`{"accessChannel":"NewChannel", "accessUser":["bob","alice"]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
