@@ -860,6 +860,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			client := &http.Client{Jar: jar}
 			response, err := client.Do(request)
 			require.NoError(t, err, "Error sending request")
+			defer func() { assert.NoError(t, response.Body.Close()) }()
 			if (forceError{}) != tc.forceAuthError {
 				assertHttpResponse(t, response, tc.forceAuthError)
 				return
@@ -868,7 +869,6 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			var authResponseActual OIDCTokenResponse
 			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&authResponseActual))
-			require.NoError(t, response.Body.Close(), "Error closing response body")
 			assert.NotEmpty(t, authResponseActual.SessionID, "session_id doesn't exist")
 			assert.Equal(t, "foo_noah", authResponseActual.Username, "name mismatch")
 
@@ -889,9 +889,9 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			request.Header.Add("Authorization", BearerToken+" "+authResponseActual.IDToken)
 			response, err = client.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
+			defer func() { assert.NoError(t, response.Body.Close()) }()
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBody))
-			require.NoError(t, response.Body.Close(), "Error closing response body")
 			assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
 
 			// Refresh auth token using the refresh token received from OP.
@@ -902,6 +902,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			require.NoError(t, err, "Error creating new request")
 			response, err = client.Do(request)
 			require.NoError(t, err, "Error sending request")
+			defer func() { assert.NoError(t, response.Body.Close()) }()
 			if (forceError{}) != tc.forceRefreshError {
 				assertHttpResponse(t, response, tc.forceRefreshError)
 				return
@@ -911,7 +912,6 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			// Validate received token refresh response.
 			var refreshResponseActual OIDCTokenResponse
 			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&refreshResponseActual))
-			require.NoError(t, response.Body.Close(), "Error closing response body")
 			refreshResponseExpected := mockAuthServer.options.tokenResponse
 			assert.NotEmpty(t, refreshResponseActual.SessionID, "session_id doesn't exist")
 			assert.Equal(t, "foo_noah", refreshResponseActual.Username, "name mismatch")
@@ -927,9 +927,9 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			request.Header.Add("Authorization", BearerToken+" "+refreshResponseActual.IDToken)
 			response, err = client.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
+			defer func() { assert.NoError(t, response.Body.Close()) }()
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBody))
-			require.NoError(t, response.Body.Close(), "Error closing response body")
 			assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
 
 			// Make a keyspace-scoped request
@@ -938,8 +938,8 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			request.Header.Add("Authorization", BearerToken+" "+refreshResponseActual.IDToken)
 			response, err = client.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
+			defer func() { assert.NoError(t, response.Body.Close()) }()
 			require.Equal(t, http.StatusCreated, response.StatusCode)
-			require.NoError(t, response.Body.Close(), "Error closing response body")
 		})
 	}
 }
@@ -1072,6 +1072,7 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 			request := createOIDCRequest(t, sessionEndpoint, token)
 			response, err := http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
+			defer func() { assert.NoError(t, response.Body.Close()) }()
 
 			if (forceError{}) != tc.expectedError {
 				assertHttpResponse(t, response, tc.expectedError)
@@ -1290,6 +1291,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 
 	runBadAuthTest := func(claimSet claimSet) {
 		response, err := sendAuthRequest(claimSet)
+		defer func() { assert.NoError(t, response.Body.Close()) }()
 		require.NoError(t, err, "Error sending request with bearer token")
 		expectedAuthError := forceError{
 			expectedErrorCode:    http.StatusUnauthorized,
@@ -1300,6 +1302,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 
 	runGoodAuthTest := func(claimSet claimSet, username string) {
 		response, err := sendAuthRequest(claimSet)
+		defer func() { assert.NoError(t, response.Body.Close()) }()
 		require.NoError(t, err, "Error sending request with bearer token")
 		checkGoodAuthResponse(t, restTester, response, username)
 	}
@@ -1930,6 +1933,7 @@ func TestCallbackStateClientCookies(t *testing.T) {
 	t.Run("unsuccessful auth when callback state enabled with no cookies support from client", func(t *testing.T) {
 		response, err := http.DefaultClient.Do(request)
 		require.NoError(t, err, "Error sending request")
+		defer func() { assert.NoError(t, response.Body.Close()) }()
 		expectedAuthError := forceError{
 			expectedErrorCode:    http.StatusBadRequest,
 			expectedErrorMessage: ErrNoStateCookie.Message,
@@ -1943,10 +1947,10 @@ func TestCallbackStateClientCookies(t *testing.T) {
 		client := &http.Client{Jar: jar}
 		response, err := client.Do(request)
 		require.NoError(t, err, "Error sending request")
+		defer func() { assert.NoError(t, response.Body.Close()) }()
 		require.Equal(t, http.StatusOK, response.StatusCode)
 		var authResponseActual OIDCTokenResponse
 		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&authResponseActual))
-		require.NoError(t, response.Body.Close(), "Error closing response body")
 		assert.NotEmpty(t, authResponseActual.SessionID, "session_id doesn't exist")
 		assert.Equal(t, "foo_noah", authResponseActual.Username, "name mismatch")
 	})
@@ -1955,11 +1959,11 @@ func TestCallbackStateClientCookies(t *testing.T) {
 		restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider().DisableCallbackState = true
 		response, err := http.DefaultClient.Do(request)
 		require.NoError(t, err, "Error sending request")
+		defer func() { assert.NoError(t, response.Body.Close()) }()
 		require.Equal(t, http.StatusOK, response.StatusCode)
 
 		var authResponseActual OIDCTokenResponse
 		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&authResponseActual))
-		require.NoError(t, response.Body.Close(), "Error closing response body")
 		assert.NotEmpty(t, authResponseActual.SessionID, "session_id doesn't exist")
 		assert.Equal(t, "foo_noah", authResponseActual.Username, "name mismatch")
 	})
@@ -2187,6 +2191,7 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 			client := &http.Client{Jar: jar}
 			response, err := client.Do(request)
 			require.NoError(t, err, "Error sending request")
+			defer func() { assert.NoError(t, response.Body.Close()) }()
 			if (forceError{}) != tc.authErrorExpected {
 				assertHttpResponse(t, response, tc.authErrorExpected)
 				return
@@ -2195,7 +2200,6 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			var authResponseActual OIDCTokenResponse
 			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&authResponseActual))
-			require.NoError(t, response.Body.Close(), "Error closing response body")
 			assert.NotEmpty(t, authResponseActual.SessionID, "session_id doesn't exist")
 			expectedUsername := tc.usernameExpected
 			if strings.Contains(expectedUsername, "$issuer") {
@@ -2215,9 +2219,9 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 			request.Header.Add("Authorization", BearerToken+" "+authResponseActual.IDToken)
 			response, err = client.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
+			defer func() { assert.NoError(t, response.Body.Close()) }()
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBody))
-			require.NoError(t, response.Body.Close(), "Error closing response body")
 			assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
 		})
 	}
@@ -2287,6 +2291,7 @@ func TestEventuallyReachableOIDCClient(t *testing.T) {
 			request := createOIDCRequest(t, sessionEndpoint, token)
 			response, err := http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
+			defer func() { assert.NoError(t, response.Body.Close()) }()
 			assert.Equal(t, http.StatusUnauthorized, response.StatusCode) // Status code when unreachable
 
 			// Now reachable - success
@@ -2294,6 +2299,7 @@ func TestEventuallyReachableOIDCClient(t *testing.T) {
 			request = createOIDCRequest(t, sessionEndpoint, token)
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
+			defer func() { assert.NoError(t, response.Body.Close()) }()
 			checkGoodAuthResponse(t, restTester, response, "foo_noah")
 
 			// Unreachable again after being reachable - still success
@@ -2301,6 +2307,7 @@ func TestEventuallyReachableOIDCClient(t *testing.T) {
 			request = createOIDCRequest(t, sessionEndpoint, token)
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
+			defer func() { assert.NoError(t, response.Body.Close()) }()
 			checkGoodAuthResponse(t, restTester, response, "foo_noah")
 		})
 	}
@@ -2415,11 +2422,11 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 			client := &http.Client{Jar: jar}
 			response, err := client.Do(request)
 			require.NoError(t, err, "Error sending request")
+			defer func() { assert.NoError(t, response.Body.Close()) }()
 			// Validate received token response
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			var authResponseActual OIDCTokenResponse
 			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&authResponseActual))
-			require.NoError(t, response.Body.Close(), "Error closing response body")
 			assert.NotEmpty(t, authResponseActual.SessionID, "session_id doesn't exist")
 
 			authResponseExpected := mockAuthServer.options.tokenResponse

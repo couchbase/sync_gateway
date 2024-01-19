@@ -150,6 +150,7 @@ func TestCECheck(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
 	require.Equal(t, resp.StatusCode, http.StatusBadRequest)
 }
 

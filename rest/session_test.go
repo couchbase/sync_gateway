@@ -280,7 +280,9 @@ func TestCustomCookieName(t *testing.T) {
 	assert.Equal(t, 200, resp.Code)
 
 	// Extract the cookie from the create session response to verify the "Set-Cookie" value returned by Sync Gateway
-	cookies := resp.Result().Cookies()
+	result := resp.Result()
+	defer func() { assert.NoError(t, result.Body.Close()) }()
+	cookies := result.Cookies()
 	assert.True(t, len(cookies) == 1)
 	cookie := cookies[0]
 	assert.Equal(t, customCookieName, cookie.Name)
@@ -290,13 +292,12 @@ func TestCustomCookieName(t *testing.T) {
 	headers := map[string]string{}
 	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, cookie.Value)
 	resp = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/foo", `{}`, headers)
-	assert.Equal(t, 401, resp.Result().StatusCode)
+	RequireStatus(t, resp, http.StatusUnauthorized)
 
 	// Attempt to use custom cookie name to authenticate
 	headers["Cookie"] = fmt.Sprintf("%s=%s", customCookieName, cookie.Value)
 	resp = rt.SendRequestWithHeaders("POST", "/{{.keyspace}}/", `{"_id": "foo", "key": "val"}`, headers)
-	assert.Equal(t, 200, resp.Result().StatusCode)
-
+	RequireStatus(t, resp, http.StatusOK)
 }
 
 // Test that TTL values greater than the default max offset TTL 2592000 seconds are processed correctly

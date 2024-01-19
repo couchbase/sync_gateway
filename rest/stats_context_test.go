@@ -52,6 +52,9 @@ func TestDescriptionPopulation(t *testing.T) {
 	// Ensure metrics endpoint is accessible and that db database has entries
 	resp, err := http.Get(srv.URL + "/_metrics")
 	require.NoError(t, err)
+	defer func() {
+		assert.NoError(t, resp.Body.Close())
+	}()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	bodyString, err := io.ReadAll(resp.Body)

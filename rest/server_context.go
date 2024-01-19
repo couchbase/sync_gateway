@@ -1979,7 +1979,7 @@ func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, p
 
 		req.SetBasicAuth(username, password)
 
-		httpResponse, err = httpClient.Do(req)
+		httpResponse, err = httpClient.Do(req) // nolint:bodyclose // The body is closed outside of the worker loop
 		if err == nil {
 			return false, nil, httpResponse
 		}
@@ -1992,7 +1992,7 @@ func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, p
 		return false, err, nil
 	}
 
-	err, result := base.RetryLoop(ctx, "", worker, base.CreateSleeperFunc(10, 100))
+	err, result := base.RetryLoop(ctx, "doHTTPAuthRequest", worker, base.CreateSleeperFunc(10, 100))
 	if err != nil {
 		return 0, nil, err
 	}

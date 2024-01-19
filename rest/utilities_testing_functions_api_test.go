@@ -10,6 +10,7 @@ package rest
 
 import (
 	"log"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -100,8 +101,7 @@ func TestFunctions(t *testing.T) {
 			response := rt.SendRequest("POST", "/{{.db}}/_graphql",
 				`{"query": "query($number:Int!){ square(n:$number) }",
 				  "variables": {"number": 13}}`)
-			return assert.Equal(t, 200, response.Result().StatusCode) &&
-				assert.Equal(t, "{\"data\":{\"square\":169}}", string(response.BodyBytes()))
+			return AssertStatus(t, response, http.StatusOK) && assert.Equal(t, "{\"data\":{\"square\":169}}", response.BodyString())
 		})
 	})
 }
@@ -113,15 +113,14 @@ func TestFunctionsConcurrently(t *testing.T) {
 	t.Run("Function", func(t *testing.T) {
 		testConcurrently(t, rt, func() bool {
 			response := rt.SendRequest("GET", "/{{.db}}/_function/square?n=13", "")
-			return assert.Equal(t, 200, response.Result().StatusCode) &&
-				assert.Equal(t, "169", string(response.BodyBytes()))
+			return AssertStatus(t, response, http.StatusOK) && assert.Equal(t, "169", response.BodyString())
 		})
 	})
 
 	t.Run("GraphQL", func(t *testing.T) {
 		testConcurrently(t, rt, func() bool {
 			response := rt.SendRequest("POST", "/{{.db}}/_graphql", `{"query":"query{ square(n:13) }"}`)
-			return assert.Equal(t, 200, response.Result().StatusCode) &&
+			return AssertStatus(t, response, http.StatusOK) &&
 				assert.Equal(t, "{\"data\":{\"square\":169}}", string(response.BodyBytes()))
 		})
 	})
@@ -132,7 +131,7 @@ func TestFunctionsConcurrently(t *testing.T) {
 		} else {
 			testConcurrently(t, rt, func() bool {
 				response := rt.SendRequest("GET", "/{{.db}}/_function/squareN1QL?n=13", "")
-				return assert.Equal(t, 200, response.Result().StatusCode) &&
+				return AssertStatus(t, response, http.StatusOK) &&
 					assert.Equal(t, "[{\"square\":169}\n]\n", string(response.BodyBytes()))
 			})
 		}
