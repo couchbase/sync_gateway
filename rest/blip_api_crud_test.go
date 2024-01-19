@@ -2889,6 +2889,9 @@ func TestBlipRefreshUser(t *testing.T) {
 }
 
 func TestOnDemandImportBlipFailure(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("Test performs import, not valid for non-xattr mode")
+	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
