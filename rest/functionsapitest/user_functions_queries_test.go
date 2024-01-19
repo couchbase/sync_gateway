@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 //////// FUNCTIONS EXECUTION API TESTS
@@ -72,63 +73,62 @@ func TestUserFunctions(t *testing.T) {
 }
 
 func TestJSFunctionAsGuest(t *testing.T) {
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
-	if rt == nil {
-		return
-	}
-	defer rt.Close()
-
-	rt.DatabaseConfig = &rest.DatabaseConfig{
-		DbConfig: rest.DbConfig{
-			UserFunctions: &kUserFunctionAuthTestConfig,
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		GuestEnabled:      true,
+		EnableUserQueries: true,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				UserFunctions: &kUserFunctionAuthTestConfig,
+			},
 		},
-	}
+	})
+	defer rt.Close()
 
 	sendReqFn := rt.SendRequest
 
 	t.Run("function not configured", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/xxxx", "")
-		assert.Equal(t, 401, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required")
+		rest.AssertStatus(t, response, http.StatusUnauthorized)
+		assert.Contains(t, response.BodyString(), "login required")
 	})
 
 	t.Run("allow all", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/allow_all", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, `"OK"`, string(response.BodyBytes()))
+		rest.AssertStatus(t, response, http.StatusOK)
+		assert.EqualValues(t, `"OK"`, response.BodyString())
 	})
 
 	t.Run("user required", func(t *testing.T) {
 		t.Skip("Does not work with SG_TEST_USE_DEFAULT_COLLECTION=true CBG-2702")
 		response := sendReqFn("POST", "/db/_function/square", `{"numero": 42}`)
-		assert.Equal(t, 401, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required")
+		rest.AssertStatus(t, response, http.StatusUnauthorized)
+		assert.Contains(t, "login required", response.BodyString())
 	})
 
 	t.Run("admin-only", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/admin_only", "")
-		assert.Equal(t, 401, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required")
+		rest.AssertStatus(t, response, http.StatusUnauthorized)
+		assert.Contains(t, response.BodyString(), "login required")
 	})
 }
 
 func testUserFunctionsCommon(t *testing.T, rt *rest.RestTester, sendReqFn func(string, string, string) *rest.TestResponse) {
 	t.Run("commons/passing a param", func(t *testing.T) {
 		response := sendReqFn("POST", "/db/_function/square", `{"numero": 42}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, "1764", string(response.BodyBytes()))
+		rest.AssertStatus(t, response, http.StatusOK)
+		assert.EqualValues(t, "1764", response.BodyString())
 	})
 
 	t.Run("commons/passing a param through query params", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/square?numero=42", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, "1764", string(response.BodyBytes()))
+		rest.AssertStatus(t, response, http.StatusOK)
+		assert.EqualValues(t, "1764", response.BodyString())
 	})
 
 	t.Run("commons/allow all", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/allow_all", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, `"OK"`, string(response.BodyBytes()))
+		rest.AssertStatus(t, response, http.StatusOK)
+		assert.EqualValues(t, `"OK"`, response.BodyString())
 	})
 }
 
@@ -137,14 +137,14 @@ func testUserFunctionsAsAdmin(t *testing.T, rt *rest.RestTester) {
 
 	t.Run("Admin-only", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_function/admin_only", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+		rest.AssertStatus(t, response, http.StatusOK)
+		assert.EqualValues(t, "\"OK\"", response.BodyString())
 	})
 
 	// negative cases:
 	t.Run("function not configured", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_function/xxxx", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.RequireStatus(t, response, http.StatusNotFound)
 	})
 }
 
@@ -158,12 +158,12 @@ func testUserFunctionsAsUser(t *testing.T, rt *rest.RestTester) {
 	// negative cases
 	t.Run("function not configured", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/xxxx", "")
-		assert.Equal(t, 403, response.Result().StatusCode)
+		rest.RequireStatus(t, response, http.StatusForbidden)
 	})
 
 	t.Run("admin-only", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/admin_only", "")
-		assert.Equal(t, 403, response.Result().StatusCode)
+		rest.RequireStatus(t, response, http.StatusForbidden)
 	})
 }
 
@@ -200,21 +200,16 @@ func TestUserN1QLQueries(t *testing.T) {
 	request, err := json.Marshal(kUserN1QLFunctionsAuthTestConfig)
 	assert.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
-	assert.Equal(t, 200, response.Result().StatusCode)
+	rest.RequireStatus(t, response, http.StatusOK)
 
 	t.Run("AsAdmin", func(t *testing.T) { testUserQueriesAsAdmin(t, rt) })
 	t.Run("AsUser", func(t *testing.T) { testUserQueriesAsUser(t, rt) })
 }
 
 func TestN1QLFunctionAsGuest(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test requires persistent configs")
-	}
+	TestRequireN1QLSupport(t)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
-	if rt == nil {
-		return
-	}
 	defer rt.Close()
 
 	rt.DatabaseConfig = &rest.DatabaseConfig{
@@ -227,13 +222,9 @@ func TestN1QLFunctionAsGuest(t *testing.T) {
 
 	t.Run("select user", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/user", "")
-		if !assert.Equal(t, 200, response.Result().StatusCode) {
-			return
-		}
+		rest.RequireStatus(t, response, http.StatusOK)
 		var body []map[string]any
-		if !assert.NoError(t, json.Unmarshal(response.BodyBytes(), &body)) {
-			return
-		}
+		require.NoError(t, json.Unmarshal(response.BodyBytes(), &body))
 		user, ok := body[0]["user"].(map[string]any)
 		assert.True(t, ok, "Result 'user' property is missing or not an object")
 		assert.Equal(t, "", user["name"])
@@ -242,20 +233,20 @@ func TestN1QLFunctionAsGuest(t *testing.T) {
 	t.Run("user required", func(t *testing.T) {
 		t.Skip("Does not work with SG_TEST_USE_DEFAULT_COLLECTION=true CBG-2702")
 		response := sendReqFn("POST", "/db/_function/square", `{"numero": 16}`)
-		assert.Equal(t, 401, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required")
+		rest.RequireStatus(t, response, http.StatusUnauthorized)
+		assert.Contains(t, response.BodyString(), "login required")
 	})
 
 	t.Run("admin only", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/admin_only", "")
-		assert.Equal(t, 401, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required")
+		rest.RequireStatus(t, response, http.StatusUnauthorized)
+		assert.Contains(t, response.BodyString(), "login required")
 	})
 
 	t.Run("unconfigured query", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/xxxx", "")
-		assert.Equal(t, 401, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required")
+		rest.RequireStatus(t, response, http.StatusUnauthorized)
+		assert.Contains(t, response.BodyString(), "login required")
 	})
 }
 
@@ -263,8 +254,8 @@ func testUserQueriesCommon(t *testing.T, rt *rest.RestTester, sendReqFn func(str
 	// positive cases:
 	t.Run("commons/passing a param", func(t *testing.T) {
 		response := sendReqFn("POST", "/db/_function/square", `{"numero": 16}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, "[{\"square\":256}\n]\n", string(response.BodyBytes()))
+		rest.AssertStatus(t, response, http.StatusOK)
+		assert.EqualValues(t, "[{\"square\":256}\n]\n", response.BodyString())
 	})
 }
 
@@ -274,20 +265,20 @@ func testUserQueriesAsAdmin(t *testing.T, rt *rest.RestTester) {
 	// positive cases:
 	t.Run("select user", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_function/user", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, "[{\"user\":{}}\n]\n", string(response.BodyBytes()))
+		rest.AssertStatus(t, response, http.StatusOK)
+		assert.EqualValues(t, "[{\"user\":{}}\n]\n", response.BodyString())
 	})
 
 	t.Run("admin only", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_function/admin_only", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, "[{\"status\":\"ok\"}\n]\n", string(response.BodyBytes()))
+		rest.AssertStatus(t, response, http.StatusOK)
+		assert.EqualValues(t, "[{\"status\":\"ok\"}\n]\n", response.BodyString())
 	})
 
 	//negative cases:
 	t.Run("unconfigured query", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_function/xxxx", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.RequireStatus(t, response, http.StatusNotFound)
 	})
 }
 
@@ -301,20 +292,20 @@ func testUserQueriesAsUser(t *testing.T, rt *rest.RestTester) {
 	// positive cases:
 	t.Run("select user", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/user", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.True(t, strings.HasPrefix(string(response.BodyBytes()), `[{"user":{"channels":["`))
-		assert.True(t, strings.HasSuffix(string(response.BodyBytes()), "\"],\"email\":\"\",\"name\":\"alice\"}}\n]\n"))
+		rest.AssertStatus(t, response, http.StatusOK)
+		assert.True(t, strings.HasPrefix(response.BodyString(), `[{"user":{"channels":["`))
+		assert.True(t, strings.HasSuffix(response.BodyString(), "\"],\"email\":\"\",\"name\":\"alice\"}}\n]\n"))
 	})
 
 	//negative cases:
 	t.Run("admin only", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/admin_only", "")
-		assert.Equal(t, 403, response.Result().StatusCode)
+		rest.RequireStatus(t, response, http.StatusForbidden)
 	})
 
 	t.Run("unconfigured query", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/xxxx", "")
-		assert.Equal(t, 403, response.Result().StatusCode)
+		rest.RequireStatus(t, response, http.StatusForbidden)
 	})
 }
 
@@ -377,28 +368,28 @@ func TestFunctionMutability(t *testing.T) {
 	var callerFuncName string
 
 	response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
-	assert.Equal(t, 200, response.Result().StatusCode)
+	rest.RequireStatus(t, response, http.StatusOK)
 
 	//Negative Cases
 	t.Run("Func with mutating True calls another function with a mutating value of False", func(t *testing.T) {
 		putFuncName = "putDocMutabilityFalse"
 		callerFuncName = "callerMutabilityTrue"
 		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
-		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+		rest.RequireStatus(t, response, http.StatusForbidden)
 	})
 
 	t.Run("Func with mutating False calls another function with a mutating value of True", func(t *testing.T) {
 		putFuncName = "putDocMutabilityTrue"
 		callerFuncName = "callerMutabilityFalse"
 		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
-		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+		rest.RequireStatus(t, response, http.StatusForbidden)
 	})
 
 	t.Run("Func with mutating False calls another function with a mutating value of False", func(t *testing.T) {
 		putFuncName = "putDocMutabilityFalse"
 		callerFuncName = "callerMutabilityFalse"
 		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
-		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+		rest.RequireStatus(t, response, http.StatusForbidden)
 	})
 
 	//Mutability of the function being called is false. Will fail as once you’ve lost the ability to mutate, you can’t get it back.
@@ -406,7 +397,7 @@ func TestFunctionMutability(t *testing.T) {
 		putFuncName = "putDocMutabilityFalse"
 		callerFuncName = "callerOverride"
 		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
-		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+		rest.RequireStatus(t, response, http.StatusForbidden)
 	})
 
 	//Positive Cases
@@ -414,8 +405,8 @@ func TestFunctionMutability(t *testing.T) {
 		putFuncName = "putDocMutabilityTrue"
 		callerFuncName = "callerMutabilityTrue"
 		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
-		assert.Equal(t, http.StatusOK, response.Result().StatusCode)
-		assert.EqualValues(t, "\"Test123\"", string(response.BodyBytes()))
+		rest.AssertStatus(t, response, http.StatusOK)
+		assert.EqualValues(t, "\"Test123\"", response.BodyString())
 	})
 
 	// using context.admin privilege overides its own mutatibility flag, it acts as though the REST API were called by an administrator.
@@ -423,8 +414,8 @@ func TestFunctionMutability(t *testing.T) {
 		putFuncName = "putDocMutabilityTrue"
 		callerFuncName = "callerOverride"
 		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
-		assert.Equal(t, http.StatusOK, response.Result().StatusCode)
-		assert.EqualValues(t, "\"Test123\"", string(response.BodyBytes()))
+		rest.AssertStatus(t, response, http.StatusOK)
+		assert.EqualValues(t, "\"Test123\"", response.BodyString())
 	})
 }
 
@@ -459,13 +450,19 @@ func TestFunctionTimeout(t *testing.T) {
 	t.Run("under time limit", func(t *testing.T) {
 		reqBody := `{"ms": 1}`
 		response := rt.SendAdminRequest("POST", "/db/_function/sleep", reqBody)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.RequireStatus(t, response, http.StatusOK)
 	})
 
 	// negative case:
 	t.Run("over time limit", func(t *testing.T) {
 		reqBody := fmt.Sprintf(`{"ms": %d}`, 2*timeout)
 		response := rt.SendAdminRequest("POST", "/db/_function/sleep", reqBody)
-		assert.Equal(t, 500, response.Result().StatusCode)
+		rest.RequireStatus(t, response, http.StatusInternalServerError)
 	})
+}
+
+func TestRequireN1QLSupport(t *testing.T) {
+	if base.TestsDisableGSI() {
+		t.Skip("This test requires Couchbase Server backed N1QL")
+	}
 }

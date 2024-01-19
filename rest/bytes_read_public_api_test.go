@@ -71,6 +71,7 @@ func TestBytesReadDocOperations(t *testing.T) {
 	response, err := http.Get(srv.URL + "/_metrics")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
+	require.NoError(t, response.Body.Close())
 
 	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()

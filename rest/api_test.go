@@ -112,6 +112,7 @@ func TestPublicRESTStatCount(t *testing.T) {
 	// test metrics endpoint
 	response, err := http.Get(srv.URL + "/_metrics")
 	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	// assert the stat doesn't increment
 	base.RequireWaitForStat(t, func() int64 {

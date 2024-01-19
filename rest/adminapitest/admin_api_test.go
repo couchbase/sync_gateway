@@ -3919,6 +3919,7 @@ func setServerPurgeInterval(t *testing.T, rt *rest.RestTester, newPurgeInterval 
 
 	resp, err := httpClient.Do(req)
 	require.NoError(t, err)
+	assert.NoError(t, resp.Body.Close())
 
 	require.Equal(t, resp.StatusCode, http.StatusOK)
 }

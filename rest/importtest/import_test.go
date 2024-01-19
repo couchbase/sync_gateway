@@ -1785,7 +1785,6 @@ func TestDcpBackfill(t *testing.T) {
 	newRt := rest.NewRestTester(t, &newRtConfig)
 	defer newRt.Close()
 	log.Printf("Poke the rest tester so it starts DCP processing:")
-	dataStore = newRt.GetSingleDataStore()
 
 	backfillComplete := false
 	var expectedBackfill, completedBackfill int

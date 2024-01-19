@@ -83,7 +83,12 @@ func putDDocForTombstones(ctx context.Context, name string, payload []byte, capi
 		return err
 	}
 
-	defer ensureBodyClosed(ctx, resp.Body)
+	defer func() {
+		err := resp.Body.Close()
+		if err != nil {
+			DebugfCtx(ctx, KeyBucket, "Failed to close socket: %v", err)
+		}
+	}()
 	if resp.StatusCode != 201 {
 		data, err := io.ReadAll(resp.Body)
 		if err != nil {
