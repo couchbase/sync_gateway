@@ -1045,8 +1045,9 @@ func (btc *BlipTesterCollectionClient) GetVersion(docID string, docVersion DocVe
 }
 
 func (btc *BlipTesterClient) AssertOnBlipHistory(t *testing.T, msg *blip.Message, docVersion DocVersion) {
-	if btc.SupportedBLIPProtocols[0] == db.CBMobileReplicationV4.SubprotocolString() {
-		// history could be empty a lot of the time in HLV messages as updates from the same source won't populate previous versions
+	subProtocol, err := db.ParseSubprotocolString(btc.SupportedBLIPProtocols[0])
+	require.NoError(t, err)
+	if subProtocol >= db.CBMobileReplicationV4 { // history could be empty a lot of the time in HLV messages as updates from the same source won't populate previous versions
 		if msg.Properties[db.RevMessageHistory] != "" {
 			assert.Equal(t, docVersion.CV.String(), msg.Properties[db.RevMessageHistory])
 		}

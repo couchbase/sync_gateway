@@ -483,17 +483,14 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					for _, item := range change.Changes {
 						changeRow := bh.buildChangesRow(change, item["rev"])
 						pendingChanges = append(pendingChanges, changeRow)
-						if err := sendPendingChangesAt(opts.batchSize); err != nil {
-							return err
-						}
 					}
 				} else {
-					// populate change row with current version
 					changeRow := bh.buildChangesRow(change, change.CurrentVersion.String())
 					pendingChanges = append(pendingChanges, changeRow)
-					if err := sendPendingChangesAt(opts.batchSize); err != nil {
-						return err
-					}
+				}
+
+				if err := sendPendingChangesAt(opts.batchSize); err != nil {
+					return err
 				}
 			}
 		}

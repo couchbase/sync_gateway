@@ -410,35 +410,32 @@ func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64
 // toHistoryForHLV formats blip History property for V4 replication and above
 func (hlv *HybridLogicalVector) toHistoryForHLV() string {
 	// take pv and mv from hlv if defined and add to history
-	var pvString, mvString string
 	var s strings.Builder
+	var separatorNeeded bool
 	// Merge versions must be defined first if they exist
 	if hlv.MergeVersions != nil {
-		mvString = extractStringFromMap(hlv.MergeVersions)
-		if mvString != "" {
-			s.WriteString(mvString)
+		var pairList []string
+		for key, value := range hlv.MergeVersions {
+			vrs := Version{SourceID: key, Value: value}
+			pairList = append(pairList, vrs.String())
+		}
+		if len(pairList) > 0 {
+			separatorNeeded = true
+			s.WriteString(strings.Join(pairList, ","))
 		}
 	}
 	if hlv.PreviousVersions != nil {
-		pvString = extractStringFromMap(hlv.PreviousVersions)
-		if pvString != "" {
-			// if mv is defined we need separator
-			if mvString != "" {
-				s.WriteString(";")
-			}
-			s.WriteString(pvString)
+		if separatorNeeded && len(hlv.PreviousVersions) != 0 {
+			s.WriteString(";")
+		}
+		var pairList []string
+		for key, value := range hlv.PreviousVersions {
+			vrs := Version{SourceID: key, Value: value}
+			pairList = append(pairList, vrs.String())
+		}
+		if len(pairList) > 0 {
+			s.WriteString(strings.Join(pairList, ","))
 		}
 	}
 	return s.String()
-}
-
-// extractStringFromMap returns Couchbase Lite-compatible string representation of the map
-func extractStringFromMap(hlvMap map[string]uint64) string {
-	var pairList []string
-	for key, value := range hlvMap {
-		vrs := Version{SourceID: key, Value: value}
-		pairStr := vrs.String()
-		pairList = append(pairList, pairStr)
-	}
-	return strings.Join(pairList, ",")
 }
