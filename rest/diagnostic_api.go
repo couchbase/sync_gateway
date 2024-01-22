@@ -30,6 +30,13 @@ func (h *handler) handleGetAllChannels() error {
 
 	channels := allChannels{Channels: info.Channels}
 	if !h.db.OnlyDefaultCollection() {
+		allCollectionChannels := make(map[string]map[string]allChannels)
+		for scope, collectionConfig := range info.CollectionAccess {
+			for collectionName, CAConfig := range collectionConfig {
+				allCollectionChannels[scope] = make(map[string]allChannels)
+				allCollectionChannels[scope][collectionName] = allChannels{Channels: CAConfig.Channels_}
+			}
+		}
 		bytes, err := base.JSONMarshal(info.CollectionAccess)
 		h.writeRawJSON(bytes)
 		return err

@@ -23,9 +23,6 @@ import (
 )
 
 func TestGetAllChannelsByUser(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
-	}
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 		SyncFn:           `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.user, doc.role);}`,
@@ -166,7 +163,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+alice+"/all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
-	t.Log(response.Body.String())
+
 	var channelMap map[string]map[string]*auth.CollectionAccessConfig
 	err := json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
@@ -196,13 +193,11 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 		fmt.Sprintf("/%s/%s", rt.GetKeyspaces()[0], "doc1"),
 		`{"accessChannel":"NewChannel", "accessUser":["bob","alice"]}`)
 	RequireStatus(t, response, http.StatusCreated)
-	t.Log(rt.GetKeyspaces()[1])
 
 	response = rt.SendAdminRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+bob+"/all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
-	t.Log(response.Body.String())
 
 	require.NoError(t, err)
 	assert.ElementsMatch(t, channelMap[scopeName][collection1Name].Channels_.ToArray(), []string{"!", "NewChannel"})
@@ -210,7 +205,6 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+alice+"/all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
-	t.Log(response.Body.String())
 
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
