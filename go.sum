@@ -61,8 +61,8 @@ github.com/couchbaselabs/gocaves/client v0.0.0-20230404095311-05e3ba4f0259 h1:2T
 github.com/couchbaselabs/gocaves/client v0.0.0-20230404095311-05e3ba4f0259/go.mod h1:AVekAZwIY2stsJOMWLAS/0uA/+qdp7pjO8EHnl61QkY=
 github.com/couchbaselabs/gocbconnstr v1.0.5 h1:e0JokB5qbcz7rfnxEhNRTKz8q1svoRvDoZihsiwNigA=
 github.com/couchbaselabs/gocbconnstr v1.0.5/go.mod h1:KV3fnIKMi8/AzX0O9zOrO9rofEqrRF1d2rG7qqjxC7o=
-github.com/couchbaselabs/rosmar v0.0.0-20231220172938-669667777223 h1:o56DcFusNJsIiCbnCdCLk9lNQmFDZVTLUQzmLQkJncg=
-github.com/couchbaselabs/rosmar v0.0.0-20231220172938-669667777223/go.mod h1:+AjMZkAOGCeQRLjIBwehXKyWsNCPFrMKYz6lIaZ1idc=
+github.com/couchbaselabs/rosmar v0.0.0-20240123164917-5264d4cce36e h1:ks0y0usa9Iq4Wm1FMw5BIDCDRzHIMJLgyFACAPaxs1w=
+github.com/couchbaselabs/rosmar v0.0.0-20240123164917-5264d4cce36e/go.mod h1:+AjMZkAOGCeQRLjIBwehXKyWsNCPFrMKYz6lIaZ1idc=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -142,8 +142,6 @@ github.com/prometheus/common v0.42.0 h1:EKsfXEYo4JpWMHH5cg+KOUWeuJSov1Id8zGR8eeI
 github.com/prometheus/common v0.42.0/go.mod h1:xBwqVerjNdUDjgODMpudtOMwlOwf2SaTr1yjz4b7Zbc=
 github.com/prometheus/procfs v0.10.1 h1:kYK1Va/YMlutzCGazswoHKo//tZVlFpKYh+PymziUAg=
 github.com/prometheus/procfs v0.10.1/go.mod h1:nwNm2aOCAYw8uTR/9bWRREkZFxAUcWzPHWJq+XBB/FM=
-github.com/quasilyte/go-ruleguard/dsl v0.3.22 h1:wd8zkOhSNr+I+8Qeciml08ivDt1pSXe60+5DqOpCjPE=
-github.com/quasilyte/go-ruleguard/dsl v0.3.22/go.mod h1:KeCP03KrjuSO0H1kTuZQCWlQPulDV6YMIXmpQss17rU=
 github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 h1:N/ElC8H3+5XpJzTSTfLsJV/mx9Q9g7kxmchpfZyxgzM=
 github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=
 github.com/robertkrimen/otto v0.0.0-20211024170158-b87d35c0b86f h1:a7clxaGmmqtdNTXyvrp/lVO/Gnkzlhc/+dLs5v965GM=
