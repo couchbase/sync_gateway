@@ -59,7 +59,18 @@ func TestCBSXDCR(t *testing.T) {
 			assert.Equal(c, body, value)
 		}, time.Second*5, time.Millisecond*100)
 	}
-	var value string
+
+	var value any
 	_, err = bucket2.DefaultDataStore().Get(syncDoc, &value)
 	require.True(t, base.IsKeyNotFoundError(bucket2.DefaultDataStore(), err))
+
+	// stats are not updated in real time, so we need to wait a bit
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		stats, err := xdcr.Stats(ctx)
+		assert.NoError(t, err)
+		assert.Equal(c, uint64(1), stats.DocsFiltered)
+		assert.Equal(c, uint64(2), stats.DocsWritten)
+
+	}, time.Second*5, time.Millisecond*100)
+
 }
