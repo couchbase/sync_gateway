@@ -335,7 +335,7 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 		// we need implementation of IsChannelRemoval for CV here.
 	}
 
-	if err = doc.HasCurrentVersion(cv); err != nil {
+	if err = doc.HasCurrentVersion(ctx, cv); err != nil {
 		return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, revid, hlv, err
 	}
 	channels = doc.SyncData.getCurrentChannels()

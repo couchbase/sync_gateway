@@ -385,7 +385,7 @@ func (rc *LRURevisionCache) addToRevMapPostLoad(docID, revID string, cv *Version
 			// already match, return
 			return
 		}
-		// if cv map and rev map are targeting different list elements, update to have both use the CV map element
+		// if CV map and rev map are targeting different list elements, update to have both use the cv map element
 		rc.cache[legacyKey] = cvElem
 		rc.lruList.Remove(revElem)
 	} else {
@@ -415,7 +415,7 @@ func (rc *LRURevisionCache) addToHLVMapPostLoad(docID, revID string, cv *Version
 			// already match, return
 			return
 		}
-		// if cv map and rev map are targeting different list elements, update to have both use the CV map element
+		// if CV map and rev map are targeting different list elements, update to have both use the cv map element
 		rc.cache[legacyKey] = cvElem
 		rc.lruList.Remove(revElem)
 	}

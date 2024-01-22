@@ -631,7 +631,7 @@ func (btc *BlipTesterClient) Close() {
 	}
 }
 
-// Add suybtest to skip in runner code, if that is notes we skip the subtest. Remove skipnon hlv aware and version vector one
+// Add subtest to skip in runner code, if that is notes we skip the subtest. Remove skipnon hlv aware and version vector one
 func (btcRunner *BlipTestClientRunner) Run(test func(t *testing.T, SupportedBLIPProtocols []string)) {
 	btcRunner.initialisedInsideRunnerCode = true
 	// reset to protect against someone creating a new client after Run() is run

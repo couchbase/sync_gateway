@@ -699,8 +699,8 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 }
 
 // TestLoaderMismatchInCV:
-//   - Get doc that is not in cache by cv to trigger a load from bucket
-//   - Ensure the cv passed into the GET operation won't match the doc in the bucket
+//   - Get doc that is not in cache by CV to trigger a load from bucket
+//   - Ensure the CV passed into the GET operation won't match the doc in the bucket
 //   - Assert we get error and the value is not loaded into the cache
 func TestLoaderMismatchInCV(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
@@ -711,7 +711,7 @@ func TestLoaderMismatchInCV(t *testing.T) {
 
 	_, err := cache.GetWithCV(base.TestCtx(t), "doc1", &cv, RevCacheOmitBody, RevCacheOmitDelta)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "mismatch between specified current version and fetched document current version for doc")
+	require.Error(t, err, base.ErrNotFound)
 	assert.Equal(t, int64(0), cacheHitCounter.Value())
 	assert.Equal(t, int64(1), cacheMissCounter.Value())
 	assert.Equal(t, 0, cache.lruList.Len())
