@@ -91,7 +91,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+alice+"/all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
-	err = json.Unmarshal(response.ResponseRecorder.Body.Bytes(), &channelMap)
+	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, channelMap.Channels.ToArray(), []string{"A", "B", "C", "!", "NewChannel"})
 
@@ -187,7 +187,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 		"/"+dbName+"/_user/"+bob+"/all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
 
-	err = json.Unmarshal(response.ResponseRecorder.Body.Bytes(), &channelMap)
+	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, channelMap[scopeName][collection1Name].Channels_.ToArray(), []string{"!"})
 
@@ -201,7 +201,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+bob+"/all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
-	err = json.Unmarshal(response.ResponseRecorder.Body.Bytes(), &channelMap)
+	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	t.Log(response.Body.String())
 
 	require.NoError(t, err)
@@ -212,7 +212,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	RequireStatus(t, response, http.StatusOK)
 	t.Log(response.Body.String())
 
-	err = json.Unmarshal(response.ResponseRecorder.Body.Bytes(), &channelMap)
+	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, channelMap[scopeName][collection1Name].Channels_.ToArray(), []string{"A", "B", "C", "!", "NewChannel"})
 }
