@@ -1459,7 +1459,7 @@ func TestSyncFnOnPush(t *testing.T) {
 	body["channels"] = "clibup"
 	history := []string{"4-four", "3-three", "2-488724414d0ed6b398d6d2aeb228d797",
 		rev1id}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, history, false, ExistingVersionWithUpdateToHLV)
+	newDoc, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, history, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "PutExistingRev failed")
 
 	// Check that the doc has the correct channel (test for issue #300)
@@ -1467,7 +1467,7 @@ func TestSyncFnOnPush(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, channels.ChannelMap{
 		"clibup": nil,
-		"public": &channels.ChannelRemoval{Seq: 2, RevID: "4-four"},
+		"public": &channels.ChannelRemoval{Seq: 2, Rev: channels.RevAndVersion{RevTreeID: "4-four", CurrentSource: newDoc.HLV.SourceID, CurrentVersion: string(base.Uint64CASToLittleEndianHex(newDoc.HLV.Version))}},
 	}, doc.Channels)
 
 	assert.Equal(t, base.SetOf("clibup"), doc.History["4-four"].Channels)
@@ -1850,17 +1850,20 @@ func TestChannelQuery(t *testing.T) {
 	// Create a doc to test removal handling.  Needs three revisions so that the removal rev (2) isn't
 	// the current revision
 	removedDocID := "removed_doc"
-	removedDocRev1, _, err := collection.Put(ctx, removedDocID, body)
+	removedDocRev1, rev1, err := collection.Put(ctx, removedDocID, body)
 	require.NoError(t, err, "Couldn't create removed_doc")
-	removalSource, removalVersion := collection.GetDocumentCurrentVersion(t, removedDocID)
 
 	updatedChannelBody := Body{"_rev": removedDocRev1, "key1": "value1", "key2": 1234, "channels": "DEF"}
-	removalRev, _, err := collection.Put(ctx, removedDocID, updatedChannelBody)
+	removalRev, rev2, err := collection.Put(ctx, removedDocID, updatedChannelBody)
 	require.NoError(t, err, "Couldn't update removed_doc")
 
 	updatedChannelBody = Body{"_rev": removalRev, "key1": "value1", "key2": 2345, "channels": "DEF"}
-	removedDocRev3, _, err := collection.Put(ctx, removedDocID, updatedChannelBody)
+	_, rev3, err := collection.Put(ctx, removedDocID, updatedChannelBody)
 	require.NoError(t, err, "Couldn't update removed_doc")
+
+	log.Printf("versions: [%v %v %v]", rev1.HLV.Version, rev2.HLV.Version, rev3.HLV.Version)
+
+	// TODO: check the case where the channel is removed with a putExistingRev mutation
 
 	var entries LogEntries
 
@@ -1868,14 +1871,17 @@ func TestChannelQuery(t *testing.T) {
 	testCases := []struct {
 		testName    string
 		channelName string
+		expectedRev channels.RevAndVersion
 	}{
 		{
 			testName:    "star channel",
 			channelName: "*",
+			expectedRev: rev3.GetRevAndVersion(),
 		},
 		{
 			testName:    "named channel",
 			channelName: "ABC",
+			expectedRev: rev2.GetRevAndVersion(),
 		},
 	}
 
@@ -1894,16 +1900,90 @@ func TestChannelQuery(t *testing.T) {
 
 			removedDocEntry := entries[1]
 			require.Equal(t, removedDocID, removedDocEntry.DocID)
-			if testCase.channelName == "*" {
-				require.Equal(t, removedDocRev3, removedDocEntry.RevID)
-				collection.RequireCurrentVersion(t, removedDocID, removedDocEntry.SourceID, removedDocEntry.Version)
-			} else {
-				require.Equal(t, removalRev, removedDocEntry.RevID)
-				// TODO: Pending channel removal rev handling, CBG-3213
-				log.Printf("removal rev check of removal cv %s@%d is pending CBG-3213", removalSource, removalVersion)
-				//require.Equal(t, removalSource, removedDocEntry.SourceID)
-				//require.Equal(t, removalVersion, removedDocEntry.Version)
+
+			log.Printf("removedDocEntry Version: %v", removedDocEntry.Version)
+			require.Equal(t, testCase.expectedRev.RevTreeID, removedDocEntry.RevID)
+			require.Equal(t, testCase.expectedRev.CurrentSource, removedDocEntry.SourceID)
+			require.Equal(t, base.HexCasToUint64(testCase.expectedRev.CurrentVersion), removedDocEntry.Version)
+		})
+	}
+
+}
+
+// TestChannelQueryRevocation ensures that the correct rev (revTreeID and cv) is returned by the channel query.
+func TestChannelQueryRevocation(t *testing.T) {
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
+		channel(doc.channels);
+	}`)
+	require.NoError(t, err)
+
+	// Create doc with three channels (ABC, DEF, GHI)
+	docID := "removalTestDoc"
+	body := Body{"key1": "value1", "key2": 1234, "channels": []string{"ABC", "DEF", "GHI"}}
+	rev1ID, _, err := collection.Put(ctx, docID, body)
+	require.NoError(t, err, "Couldn't create document")
+
+	// Update the doc with a simple PUT to remove channel ABC
+	updatedChannelBody := Body{"_rev": rev1ID, "key1": "value1", "key2": 1234, "channels": []string{"DEF", "GHI"}}
+	_, rev2, err := collection.Put(ctx, docID, updatedChannelBody)
+	require.NoError(t, err, "Couldn't update document via Put")
+
+	// Update the doc with PutExistingCurrentVersion to remove channel DEF
+	/* TODO: requires fix to HLV conflict detection
+	updatedChannelBody = Body{"_rev": rev2ID, "key1": "value1", "key2": 2345, "channels": "GHI"}
+	existingDoc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	cblVersion := Version{SourceID: "CBLSource", Value: existingDoc.HLV.Version + 10}
+	hlvErr := existingDoc.HLV.AddVersion(cblVersion)
+	require.NoError(t, hlvErr)
+	existingDoc.UpdateBody(updatedChannelBody)
+	rev3, _, _, err := collection.PutExistingCurrentVersion(ctx, existingDoc, *existingDoc.HLV, nil)
+	require.NoError(t, err, "Couldn't update document via PutExistingCurrentVersion")
+
+	*/
+
+	var entries LogEntries
+
+	// Test query retrieval via star channel and named channel (queries use different indexes)
+	testCases := []struct {
+		testName    string
+		channelName string
+		expectedRev channels.RevAndVersion
+	}{
+		{
+			testName:    "removal by SGW write",
+			channelName: "ABC",
+			expectedRev: rev2.GetRevAndVersion(),
+		},
+		/*
+			{
+				testName:    "removal by CBL write",
+				channelName: "DEF",
+				expectedRev: rev3.GetRevAndVersion(),
+			},
+		*/
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.testName, func(t *testing.T) {
+			entries, err = collection.getChangesInChannelFromQuery(ctx, testCase.channelName, 0, 100, 0, false)
+			require.NoError(t, err)
+
+			for i, entry := range entries {
+				log.Printf("Channel Query returned entry (%d): %v", i, entry)
 			}
+			require.Len(t, entries, 1)
+			removedDocEntry := entries[0]
+			require.Equal(t, docID, removedDocEntry.DocID)
+
+			log.Printf("removedDocEntry Version: %v", removedDocEntry.Version)
+			require.Equal(t, testCase.expectedRev.RevTreeID, removedDocEntry.RevID)
+			require.Equal(t, testCase.expectedRev.CurrentSource, removedDocEntry.SourceID)
+			require.Equal(t, base.HexCasToUint64(testCase.expectedRev.CurrentVersion), removedDocEntry.Version)
 		})
 	}
 
