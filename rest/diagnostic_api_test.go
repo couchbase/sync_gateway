@@ -23,9 +23,14 @@ import (
 )
 
 func TestGetAllChannelsByUser(t *testing.T) {
+	if base.TestsUseNamedCollections() {
+		t.Skip("Test requires Couchbase Server")
+	}
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
-		SyncFn:           `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.user, doc.role);}`,
+
+		SyncFn: `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.user, doc.role);}`,
 	})
 	defer rt.Close()
 
