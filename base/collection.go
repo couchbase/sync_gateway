@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,8 @@ import (
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
+	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
 )
 
 // GetGoCBv2Bucket opens a connection to the Couchbase cluster and returns a *GocbV2Bucket for the specified BucketSpec.
@@ -634,6 +637,44 @@ func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.Dat
 		return nil, err
 	}
 	return c, nil
+}
+
+// ServerMetrics returns all the metrics for couchbase server.
+func (b *GocbV2Bucket) ServerMetrics(ctx context.Context) (map[string]*dto.MetricFamily, error) {
+	url := "/metrics/"
+	resp, err := b.MgmtRequest(ctx, http.MethodGet, url, "application/x-www-form-urlencoded", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	output, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("Could not read body from %s", url)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Could not get metrics from %s. %s %s -> (%d) %s", b.GetName(), http.MethodGet, url, resp.StatusCode, output)
+	}
+
+	// filter duplicates from couchbase server or TextToMetricFamilies will fail MB-43772
+	lines := map[string]struct{}{}
+	filteredOutput := []string{}
+	for _, line := range strings.Split(string(output), "\n") {
+		_, ok := lines[line]
+		if ok {
+			continue
+		}
+		lines[line] = struct{}{}
+		filteredOutput = append(filteredOutput, line)
+	}
+	filteredOutput = append(filteredOutput, "")
+	var parser expfmt.TextParser
+	mf, err := parser.TextToMetricFamilies(strings.NewReader(strings.Join(filteredOutput, "\n")))
+	if err != nil {
+		return nil, err
+	}
+
+	return mf, nil
 }
 
 func GetCollectionID(dataStore DataStore) uint32 {

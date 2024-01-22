@@ -17,14 +17,17 @@ import (
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
+	dto "github.com/prometheus/client_model/go"
 )
 
 const (
 	cbsRemoteClustersEndpoint = "/pools/default/remoteClusters"
 	xdcrClusterName           = "sync_gateway_xdcr"
+	totalDocsFilteredStat     = "xdcr_docs_filtered_total"
+	totalDocsWrittenStat      = "xdcr_docs_written_total"
 )
 
-// couchbaseServerXDCR implements a XDCR setup cluster on Couchbase Server.
+// CouchbaseServerXDCR implements a XDCR setup cluster on Couchbase Server.
 type CouchbaseServerXDCR struct {
 	fromBucket    *base.GocbV2Bucket
 	toBucket      *base.GocbV2Bucket
@@ -182,4 +185,48 @@ func (x *CouchbaseServerXDCR) Stop(ctx context.Context) error {
 	}
 	x.replicationID = ""
 	return nil
+}
+
+// Stats returns the stats of the XDCR replication.
+func (x *CouchbaseServerXDCR) Stats(ctx context.Context) (*Stats, error) {
+	mf, err := x.fromBucket.ServerMetrics(ctx)
+	if err != nil {
+		return nil, err
+	}
+	stats := &Stats{}
+	stats.DocsFiltered, err = x.getValue(mf[totalDocsFilteredStat])
+	if err != nil {
+		return stats, err
+	}
+	stats.DocsWritten, err = x.getValue(mf[totalDocsWrittenStat])
+	if err != nil {
+		return stats, err
+	}
+	return stats, nil
+}
+
+func (x *CouchbaseServerXDCR) getValue(metrics *dto.MetricFamily) (uint64, error) {
+outer:
+	for _, metric := range metrics.GetMetric() {
+		for _, label := range metric.Label {
+			if label.GetName() == "pipelineType" && label.GetValue() != "Main" {
+				continue outer
+			}
+			if label.GetName() == "sourceBucketName" && label.GetValue() != x.fromBucket.GetName() {
+				continue outer
+			}
+			if label.GetName() == "targetBucketName" && label.GetValue() != x.toBucket.GetName() {
+				continue outer
+			}
+		}
+		switch *metrics.Type {
+		case dto.MetricType_COUNTER:
+			return uint64(metric.Counter.GetValue()), nil
+		case dto.MetricType_GAUGE:
+			return uint64(metric.Gauge.GetValue()), nil
+		default:
+			return 0, fmt.Errorf("Do not have a relevant type for %v", metrics.Type)
+		}
+	}
+	return 0, fmt.Errorf("Could not find relevant value for metrics %v", metrics)
 }

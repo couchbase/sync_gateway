@@ -17,6 +17,8 @@ type Replication interface {
 	Start(context.Context) error
 	// Stop terminates the replication.
 	Stop(context.Context) error
+	// Stats returns the stats for the replication.
+	Stats(context.Context) (*Stats, error)
 }
 
 var _ Replication = &CouchbaseServerXDCR{}
