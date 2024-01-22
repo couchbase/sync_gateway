@@ -41,7 +41,7 @@ paths:
   '/{db}/_user/{name}':
     $ref: './paths/admin/db-_user-name.yaml'
   '/{db}/_user/{name}/all_channels':
-    $ref: './paths/admin/db-_user-name/all_channels.yaml'
+    $ref: './paths/admin/db-_user-name-_all_channels.yaml'
   '/{db}/_user/{name}/_session':
     $ref: './paths/admin/db-_user-name-_session.yaml'
   '/{db}/_user/{name}/_session/{sessionid}':
