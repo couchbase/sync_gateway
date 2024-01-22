@@ -20,15 +20,20 @@ type allChannels struct {
 func (h *handler) handleGetAllChannels() error {
 	h.assertAdminOnly()
 	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
-	if user == nil {
-		if err == nil {
-			err = kNotFoundError
-		}
+	if err != nil {
 		return err
+	}
+	if user == nil {
+		return kNotFoundError
 	}
 	info := marshalPrincipal(h.db, user, true)
 
 	channels := allChannels{Channels: info.Channels}
+	if !h.db.OnlyDefaultCollection() {
+		bytes, err := base.JSONMarshal(info.CollectionAccess)
+		h.writeRawJSON(bytes)
+		return err
+	}
 	bytes, err := base.JSONMarshal(channels)
 	h.writeRawJSON(bytes)
 	return err
