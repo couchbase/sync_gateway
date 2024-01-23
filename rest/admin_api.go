@@ -1329,7 +1329,7 @@ func marshalPrincipal(database *db.Database, princ auth.Principal, includeDynami
 	return info
 }
 
-// marshalPrincipal outputs a PrincipalConfig in a format for REST API endpoints.
+// marshalChannels outputs a list of channels in a format for REST API endpoints.
 func marshalChannels(database *db.Database, princ auth.Principal, includeDynamicGrantInfo bool) auth.PrincipalConfig {
 	name := externalUserName(princ.Name())
 	info := auth.PrincipalConfig{
