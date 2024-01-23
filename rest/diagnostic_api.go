@@ -26,7 +26,7 @@ func (h *handler) handleGetAllChannels() error {
 	if user == nil {
 		return kNotFoundError
 	}
-	info := marshalPrincipal(h.db, user, true)
+	info := marshalChannels(h.db, user, true)
 
 	channels := allChannels{Channels: info.Channels}
 	if !h.db.OnlyDefaultCollection() {
