@@ -58,10 +58,12 @@ type DCPCommon struct {
 	feedID                 string                         // Unique feed ID, used for logging
 	loggingCtx             context.Context                // Logging context, prefixes feedID
 	checkpointPrefix       string                         // DCP checkpoint key prefix
+	janitorRollback        func()                         // This function will trigger a janitor_pindex_rollback
 }
 
+// NewDCPCommon creates a new DCPCommon which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. The bucket is the gocb bucket to stream events from. It stores checkpoints in the metaStore collection prefixes from metaKeys + checkpointPrefix. The feed name will start with feedID and DCPCommon will add unique string. Specific stats for DCP are stored in expvars rather than SgwStats. The janitorRollback function is supplied by the global cbgt.PIndexImplType.New function, for initial opening of a partition index, and cbgt.PIndexImplType.OpenUsing for reopening of a partition index. The rollback function provides a way to pass cbgt.JANITOR_ROLLBACK_PINDEX to cbgt.Mgr and is supplied.
 func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, metaStore DataStore,
-	maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string, metaKeys *MetadataKeys) (*DCPCommon, error) {
+	persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string, metaKeys *MetadataKeys, janitorRollback func()) (*DCPCommon, error) {
 	newBackfillStatus := backfillStatus{
 		metaKeys: metaKeys,
 	}
@@ -69,6 +71,11 @@ func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, 
 	couchbaseStore, ok := AsCouchbaseBucketStore(bucket)
 	if !ok {
 		return nil, errors.New("DCP not supported for non-Couchbase data source")
+	}
+
+	maxVbNo, err := bucket.GetMaxVbno()
+	if err != nil {
+		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCPCommon: %w", err)
 	}
 
 	c := &DCPCommon{
@@ -87,6 +94,7 @@ func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, 
 		backfill:               &newBackfillStatus,
 		feedID:                 feedID,
 		checkpointPrefix:       checkpointPrefix,
+		janitorRollback:        janitorRollback,
 	}
 
 	c.loggingCtx = CorrelationIDLogCtx(ctx, feedID)
@@ -160,23 +168,22 @@ func (c *DCPCommon) getMetaData(vbucketId uint16) (
 	return value, lastSeq, nil
 }
 
-// RollbackEx should be called by cbdatasource - Rollback required to maintain the interface.  In the event
-// it's called, logs warning and does a hard reset on metadata for the vbucket.  Returns error if metadata
-// persistence fails
-func (c *DCPCommon) rollback(vbucketId uint16, rollbackSeq uint64) error {
-	WarnfCtx(c.loggingCtx, "DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0.", vbucketId)
-	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
-	c.updateSeq(vbucketId, 0, false)
-	err := c.setMetaData(vbucketId, nil, true)
-	return err
+func (c *DCPCommon) Rollback(partition string, rollbackSeq uint64) error {
+	panic("Only RollbackEx should be called, this function is required to be implmented by cbgt.Dest interface. This function does not provide Sync Gateway with enough information to rollback.")
 }
 
-// RollbackEx includes the vbucketUUID needed to reset the metadata correctly
-func (c *DCPCommon) rollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64, rollbackMetaData []byte) error {
+// RollbackEx is called when a DCP stream request return as error. This function persists the metadata and will issue a command to cbgt.GocbcoreDCPFeed to restart.
+func (c *DCPCommon) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq uint64) error {
+	vbucketId := partitionToVbNo(c.loggingCtx, partition)
 	WarnfCtx(c.loggingCtx, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
+	rollbackMetaData := makeVbucketMetadataForSequence(vbucketUUID, rollbackSeq)
+
 	c.updateSeq(vbucketId, rollbackSeq, false)
+	// if we fail to set the metadata, and don't retry, the
 	err := c.setMetaData(vbucketId, rollbackMetaData, true)
+	// if we fail to persist the metadata, we still want to rollback to keep retrying. Returning the error will log it.
+	c.janitorRollback()
 	return err
 }
 
@@ -204,7 +211,7 @@ func (c *DCPCommon) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStar
 		}
 	}
 
-	var snapshotMetadata vBucketMetaData
+	var snapshotMetadata ShardedImportDCPMetadata
 	unmarshalErr := JSONUnmarshal(rawValue, &snapshotMetadata)
 	if unmarshalErr != nil {
 		return []byte{}, 0, 0, err

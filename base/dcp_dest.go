@@ -37,26 +37,25 @@ type SGDest interface {
 // is done on-demand per vbucket, as a given Dest isn't expected to manage the full set of vbuckets for a bucket.
 type DCPDest struct {
 	*DCPCommon
-	stats              *expvar.Map // DCP feed stats (rollback, backfill)
 	partitionCountStat *SgwIntStat // Stat for partition count.  Stored outside the DCP feed stats map
 	metaInitComplete   []bool      // Whether metadata initialization has been completed, per vbNo
 }
 
-func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool,
-	dcpStats *expvar.Map, feedID string, importPartitionStat *SgwIntStat, checkpointPrefix string, metaKeys *MetadataKeys) (SGDest, context.Context, error) {
+// NewDCPDest creates a new DCPDest which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. The bucket is the gocb bucket to stream events from. It optionally stores checkpoints in the _default._default collection if persistentCheckpoints is true with prefixes from metaKeys + checkpointPrefix. The feed name will start with feedID have a unique string appended. Specific stats for DCP are stored in expvars rather than SgwStats, except for importPartitionStat representing the number of import partitions. Each import partition will have a DCPDest object. The rollback function is supplied by the global cbgt.PIndexImplType.New function, for initial opening of a partition index, and cbgt.PIndexImplType.OpenUsing for reopening of a partition index. The rollback function provides a way to pass cbgt.JANITOR_ROLLBACK_PINDEX to cbgt.Mgr.
+func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, persistCheckpoints bool,
+	dcpStats *expvar.Map, feedID string, importPartitionStat *SgwIntStat, checkpointPrefix string, metaKeys *MetadataKeys, rollback func()) (SGDest, context.Context, error) {
 
 	// TODO: Metadata store?
 	metadataStore := bucket.DefaultDataStore()
-	dcpCommon, err := NewDCPCommon(ctx, callback, bucket, metadataStore, maxVbNo, persistCheckpoints, dcpStats, feedID, checkpointPrefix, metaKeys)
+	dcpCommon, err := NewDCPCommon(ctx, callback, bucket, metadataStore, persistCheckpoints, dcpStats, feedID, checkpointPrefix, metaKeys, rollback)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	d := &DCPDest{
 		DCPCommon:          dcpCommon,
-		stats:              dcpStats,
 		partitionCountStat: importPartitionStat,
-		metaInitComplete:   make([]bool, maxVbNo),
+		metaInitComplete:   make([]bool, dcpCommon.maxVbNo),
 	}
 
 	if d.partitionCountStat != nil {
@@ -186,15 +185,6 @@ func (d *DCPDest) OpaqueSet(partition string, value []byte) error {
 	}
 	_ = d.setMetaData(vbNo, value, false)
 	return nil
-}
-
-func (d *DCPDest) Rollback(partition string, rollbackSeq uint64) error {
-	return d.rollback(partitionToVbNo(d.loggingCtx, partition), rollbackSeq)
-}
-
-func (d *DCPDest) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq uint64) error {
-	cbgtMeta := makeVbucketMetadataForSequence(vbucketUUID, rollbackSeq)
-	return d.rollbackEx(partitionToVbNo(d.loggingCtx, partition), vbucketUUID, rollbackSeq, cbgtMeta)
 }
 
 // TODO: Not implemented, review potential usage

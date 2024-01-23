@@ -29,8 +29,8 @@ func makeFeedEventForMCRequest(rq *gomemcached.MCRequest, opcode sgbucket.FeedOp
 	return makeFeedEvent(rq.Key, rq.Body, rq.DataType, rq.Cas, ExtractExpiryFromDCPMutation(rq), rq.VBucket, 0, opcode)
 }
 
-// vBucketMetaData is an internal struct that is exposed to enable json marshaling.
-type vBucketMetaData struct {
+// ShardedImportDCPMetadata is an internal struct that is exposed to enable json marshaling, used by sharded import feed. It differs from DCPMetadata for reasons of backward compatibility.
+type ShardedImportDCPMetadata struct {
 	FailOverLog [][]uint64 `json:"failOverLog"`
 	SeqStart    uint64     `json:"seqStart"`
 	SeqEnd      uint64     `json:"seqEnd"`
@@ -43,7 +43,7 @@ func makeVbucketMetadata(vbucketUUID uint64, sequence uint64, snapStart uint64, 
 	failOver := make([][]uint64, 1)
 	failOverEntry := []uint64{vbucketUUID, 0}
 	failOver[0] = failOverEntry
-	metadata := &vBucketMetaData{
+	metadata := &ShardedImportDCPMetadata{
 		SeqStart:    sequence,
 		SeqEnd:      uint64(0xFFFFFFFFFFFFFFFF),
 		SnapStart:   snapStart,
