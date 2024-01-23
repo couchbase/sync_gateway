@@ -25,4 +25,4 @@ get:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Database Security
-  operationId: get_db-_user-name-_all_channels
+  operationId: get_db-_user-name-all_channels
