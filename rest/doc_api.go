@@ -160,6 +160,26 @@ func (h *handler) handleGetDoc() error {
 	return nil
 }
 
+// HTTP handler for a GET of a document
+func (h *handler) handleGetDocChannels() error {
+	docid := h.PathVar("docid")
+	_, _ = h.response.Write([]byte(`[` + "\n"))
+
+	doc, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
+	if err != nil {
+		return err
+	}
+	if doc == nil {
+		return kNotFoundError
+	}
+	err = h.addJSON(doc.Channels)
+
+	h.db.DbStats.Database().NumDocReadsRest.Add(1)
+	_, _ = h.response.Write([]byte(`]`))
+
+	return nil
+}
+
 func (h *handler) handleGetDocReplicator2(docid, revid string) error {
 	if !base.IsEnterpriseEdition() {
 		return base.HTTPErrorf(http.StatusNotImplemented, "replicator2 endpoints are only supported in EE")
