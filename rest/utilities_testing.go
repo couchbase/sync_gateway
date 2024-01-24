@@ -2334,6 +2334,7 @@ func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.Backgro
 // DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
 type DocVersion struct {
 	RevID string
+	CV    db.Version
 }
 
 func (v *DocVersion) String() string {

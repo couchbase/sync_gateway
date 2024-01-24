@@ -9,7 +9,6 @@
 package db
 
 import (
-	"context"
 	"reflect"
 	"strconv"
 	"strings"
@@ -300,7 +299,7 @@ func TestHLVImport(t *testing.T) {
 	otherSource := "otherSource"
 	hlvHelper := NewHLVAgent(t, collection.dataStore, otherSource, "_sync")
 	existingHLVKey := "existingHLV_" + t.Name()
-	_ = hlvHelper.insertWithHLV(ctx, existingHLVKey)
+	_ = hlvHelper.InsertWithHLV(ctx, existingHLVKey)
 
 	var existingBody, existingXattr []byte
 	cas, err = collection.dataStore.GetWithXattr(ctx, existingHLVKey, "_sync", "", &existingBody, &existingXattr, nil)
@@ -319,42 +318,52 @@ func TestHLVImport(t *testing.T) {
 	require.Equal(t, otherSource, importedHLV.SourceID)
 }
 
-// HLVAgent performs HLV updates directly (not via SG) for simulating/testing interaction with non-SG HLV agents
-type HLVAgent struct {
-	t         *testing.T
-	datastore base.DataStore
-	source    string // All writes by the HLVHelper are done as this source
-	xattrName string // xattr name to store the HLV
-}
+// TestHLVMapToCBLString:
+//   - Purpose is to test the ability to extract from HLV maps in CBL replication format
+//   - Three test cases, both MV and PV defined, only PV defined and only MV defined
+//   - To protect against flake added some splitting of the result string in test case 1 as we cannot guarantee the
+//     order the string will be made in given map iteration is random
+func TestHLVMapToCBLString(t *testing.T) {
 
-var defaultHelperBody = map[string]interface{}{"version": 1}
-
-func NewHLVAgent(t *testing.T, datastore base.DataStore, source string, xattrName string) *HLVAgent {
-	return &HLVAgent{
-		t:         t,
-		datastore: datastore,
-		source:    source, // all writes by the HLVHelper are done as this source
-		xattrName: xattrName,
+	testCases := []struct {
+		name        string
+		inputHLV    []string
+		expectedStr string
+		both        bool
+	}{
+		{
+			name: "Both PV and mv",
+			inputHLV: []string{"cb06dc003846116d9b66d2ab23887a96@123456", "YZvBpEaztom9z5V/hDoeIw@1628620455135215600", "m_NqiIe0LekFPLeX4JvTO6Iw@1628620455139868700",
+				"m_LhRPsa7CpjEvP5zeXTXEBA@1628620455147864000"},
+			expectedStr: "0x1c008cd6ac059a16@TnFpSWUwTGVrRlBMZVg0SnZUTzZJdw==,0xc0ff05d7ac059a16@TGhSUHNhN0NwakV2UDV6ZVhUWEVCQQ==;0xf0ff44d6ac059a16@WVp2QnBFYXp0b205ejVWL2hEb2VJdw==",
+			both:        true,
+		},
+		{
+			name:        "Just PV",
+			inputHLV:    []string{"cb06dc003846116d9b66d2ab23887a96@123456", "YZvBpEaztom9z5V/hDoeIw@1628620455135215600"},
+			expectedStr: "0xf0ff44d6ac059a16@WVp2QnBFYXp0b205ejVWL2hEb2VJdw==",
+		},
+		{
+			name:        "Just MV",
+			inputHLV:    []string{"cb06dc003846116d9b66d2ab23887a96@123456", "m_NqiIe0LekFPLeX4JvTO6Iw@1628620455139868700"},
+			expectedStr: "0x1c008cd6ac059a16@TnFpSWUwTGVrRlBMZVg0SnZUTzZJdw==",
+		},
 	}
-}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			hlv := createHLVForTest(t, test.inputHLV)
+			historyStr := hlv.toHistoryForHLV()
 
-// insertWithHLV inserts a new document into the bucket with a populated HLV (matching a write from
-// a different HLV-aware peer)
-func (h *HLVAgent) insertWithHLV(ctx context.Context, key string) (casOut uint64) {
-	hlv := &HybridLogicalVector{}
-	err := hlv.AddVersion(CreateVersion(h.source, hlvExpandMacroCASValue))
-	require.NoError(h.t, err)
-	hlv.CurrentVersionCAS = hlvExpandMacroCASValue
-
-	syncData := &SyncData{HLV: hlv}
-	syncDataBytes, err := base.JSONMarshal(syncData)
-	require.NoError(h.t, err)
-
-	mutateInOpts := &sgbucket.MutateInOptions{
-		MacroExpansion: hlv.computeMacroExpansions(),
+			if test.both {
+				initial := strings.Split(historyStr, ";")
+				mvSide := strings.Split(initial[0], ",")
+				assert.Contains(t, test.expectedStr, initial[1])
+				for _, v := range mvSide {
+					assert.Contains(t, test.expectedStr, v)
+				}
+			} else {
+				assert.Equal(t, test.expectedStr, historyStr)
+			}
+		})
 	}
-
-	cas, err := h.datastore.WriteCasWithXattr(ctx, key, h.xattrName, 0, 0, defaultHelperBody, syncDataBytes, mutateInOpts)
-	require.NoError(h.t, err)
-	return cas
 }
