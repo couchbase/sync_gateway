@@ -258,7 +258,7 @@ func TestCollectionsReplication(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
-		version := btc.rt.PutDoc(docID, "{}")
+		version := btc.rt.PutDocDirectly(docID, db.Body{})
 		require.NoError(t, btc.rt.WaitForPendingChanges())
 
 		btcCollection := btcRunner.SingleCollection(btc.id)
@@ -287,10 +287,9 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 		docName := "doc1"
 		body := `{"foo":"bar"}`
 		versions := make([]DocVersion, 0, len(btc.rt.GetKeyspaces()))
-		for _, keyspace := range btc.rt.GetKeyspaces() {
-			resp := btc.rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docName, `{"foo":"bar"}`)
-			RequireStatus(t, resp, http.StatusCreated)
-			versions = append(versions, DocVersionFromPutResponse(t, resp))
+		for _, collection := range btc.rt.GetDbCollections() {
+			docVersion := rt.PutDocDirectlyInCollection(collection, docName, db.Body{"foo": "bar"})
+			versions = append(versions, docVersion)
 		}
 		require.NoError(t, btc.rt.WaitForPendingChanges())
 
@@ -329,7 +328,7 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 		collectionDocIDs := make(map[string][]string)
 		collectionVersions := make(map[string][]DocVersion)
 		require.Len(t, btc.rt.GetKeyspaces(), 2)
-		for i, keyspace := range btc.rt.GetKeyspaces() {
+		for i, collection := range btc.rt.GetDbCollections() {
 			// intentionally create collections with different size replications to ensure one collection finishing won't cancel another one
 			docCount := 10
 			if i == 0 {
@@ -338,10 +337,8 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 			blipName := btc.rt.getCollectionsForBLIP()[i]
 			for j := 0; j < docCount; j++ {
 				docName := fmt.Sprintf("doc%d", j)
-				resp := btc.rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docName, body)
-				RequireStatus(t, resp, http.StatusCreated)
+				version := rt.PutDocDirectlyInCollection(collection, docName, db.Body{"foo": "bar"})
 
-				version := DocVersionFromPutResponse(t, resp)
 				collectionVersions[blipName] = append(collectionVersions[blipName], version)
 				collectionDocIDs[blipName] = append(collectionDocIDs[blipName], docName)
 			}
