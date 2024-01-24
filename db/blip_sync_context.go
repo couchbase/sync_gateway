@@ -344,7 +344,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 	for i, knownRevsArrayInterface := range answer {
 		seq := changeArray[i][0].(SequenceID)
 		docID := changeArray[i][1].(string)
-		revID := changeArray[i][2].(string)
+		rev := changeArray[i][2].(string)
 
 		if knownRevsArray, ok := knownRevsArrayInterface.([]interface{}); ok {
 			deltaSrcRevID := ""
@@ -371,10 +371,12 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 			}
 
 			var err error
-			if deltaSrcRevID != "" {
-				err = bsc.sendRevAsDelta(ctx, sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
+
+			// fall back to sending full revision v4 protocol, delta sync not yet implemented for v4
+			if deltaSrcRevID != "" && bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+				err = bsc.sendRevAsDelta(ctx, sender, docID, rev, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
 			} else {
-				err = bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
+				err = bsc.sendRevision(ctx, sender, docID, rev, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
 			}
 			if err != nil {
 				return err
@@ -386,7 +388,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 				sentSeqs = append(sentSeqs, seq)
 			}
 		} else {
-			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Peer didn't want revision %s / %s (seq:%v)", base.UD(docID), revID, seq)
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Peer didn't want revision %s / %s (seq:%v)", base.UD(docID), rev, seq)
 			if collectionCtx.sgr2PushAlreadyKnownSeqsCallback != nil {
 				alreadyKnownSeqs = append(alreadyKnownSeqs, seq)
 			}
@@ -622,7 +624,20 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 
 // Pushes a revision body to the client
 func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
-	rev, originalErr := handleChangesResponseCollection.GetRev(ctx, docID, revID, true, nil)
+
+	var originalErr error
+	var docRev DocumentRevision
+	if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+		docRev, originalErr = handleChangesResponseCollection.GetRev(ctx, docID, revID, true, nil)
+	} else {
+		// extract CV string rev representation
+		version, vrsErr := CreateVersionFromString(revID)
+		if vrsErr != nil {
+			return vrsErr
+		}
+		// replace with GetCV pending merge of CBG-3212
+		docRev, originalErr = handleChangesResponseCollection.revisionCache.GetWithCV(ctx, docID, &version, RevCacheOmitDelta)
+	}
 
 	// set if we find an alternative revision to send in the event the originally requested rev is unavailable
 	var replacedRevID string
@@ -656,37 +671,37 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 
 		replacedRevID = revID
 		revID = replacementRev.RevID
-		rev = replacementRev
+		docRev = replacementRev
 	} else if originalErr != nil {
 		return fmt.Errorf("failed to GetRev for doc %s with rev %s: %w", base.UD(docID).Redact(), base.MD(revID).Redact(), originalErr)
 	}
 
-	base.TracefCtx(ctx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
-	attachmentStorageMeta := ToAttachmentStorageMeta(rev.Attachments)
+	base.TracefCtx(ctx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(docRev.Attachments))
+	attachmentStorageMeta := ToAttachmentStorageMeta(docRev.Attachments)
 	var bodyBytes []byte
 	if base.IsEnterpriseEdition() {
 		// Still need to stamp _attachments into BLIP messages
-		if len(rev.Attachments) > 0 {
-			DeleteAttachmentVersion(rev.Attachments)
+		if len(docRev.Attachments) > 0 {
+			DeleteAttachmentVersion(docRev.Attachments)
 			var err error
-			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: rev.Attachments})
+			bodyBytes, err = base.InjectJSONProperties(docRev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: docRev.Attachments})
 			if err != nil {
 				return err
 			}
 		} else {
-			bodyBytes = rev.BodyBytes
+			bodyBytes = docRev.BodyBytes
 		}
 	} else {
-		body, err := rev.Body()
+		body, err := docRev.Body()
 		if err != nil {
 			base.DebugfCtx(ctx, base.KeySync, "Sending norev %q %s due to unavailable revision body: %v", base.UD(docID), revID, err)
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 		}
 
 		// Still need to stamp _attachments into BLIP messages
-		if len(rev.Attachments) > 0 {
-			DeleteAttachmentVersion(rev.Attachments)
-			body[BodyAttachments] = rev.Attachments
+		if len(docRev.Attachments) > 0 {
+			DeleteAttachmentVersion(docRev.Attachments)
+			body[BodyAttachments] = docRev.Attachments
 		}
 
 		bodyBytes, err = base.JSONMarshalCanonical(body)
@@ -699,9 +714,14 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	if replacedRevID != "" {
 		bsc.replicationStats.SendReplacementRevCount.Add(1)
 	}
+	var history []string
+	if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+		history = toHistory(docRev.History, knownRevs, maxHistory)
+	} else {
+		history = append(history, docRev.hlvHistory)
+	}
 
-	history := toHistory(rev.History, knownRevs, maxHistory)
-	properties := blipRevMessageProperties(history, rev.Deleted, seq, replacedRevID)
+	properties := blipRevMessageProperties(history, docRev.Deleted, seq, replacedRevID)
 	if base.LogDebugEnabled(ctx, base.KeySync) {
 		replacedRevMsg := ""
 		if replacedRevID != "" {

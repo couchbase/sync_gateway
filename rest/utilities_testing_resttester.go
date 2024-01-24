@@ -415,3 +415,36 @@ func (rt *RestTester) RequireDbOnline() {
 	require.NoError(rt.TB(), base.JSONUnmarshal(response.Body.Bytes(), &body))
 	require.Equal(rt.TB(), "Online", body["state"].(string))
 }
+
+// TEMPORARY HELPER METHODS FOR BLIP TEST CLIENT RUNNER
+func (rt *RestTester) PutDocDirectly(docID string, body db.Body) DocVersion {
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	rev, doc, err := collection.Put(ctx, docID, body)
+	require.NoError(rt.TB(), err)
+	return DocVersion{RevID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
+}
+
+func (rt *RestTester) UpdateDocDirectly(docID string, version DocVersion, body db.Body) DocVersion {
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	body[db.BodyId] = docID
+	body[db.BodyRev] = version.RevID
+	rev, doc, err := collection.Put(ctx, docID, body)
+	require.NoError(rt.TB(), err)
+	return DocVersion{RevID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
+}
+
+func (rt *RestTester) DeleteDocDirectly(docID string, version DocVersion) DocVersion {
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	rev, doc, err := collection.DeleteDoc(ctx, docID, version.RevID)
+	require.NoError(rt.TB(), err)
+	return DocVersion{RevID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
+}
+
+func (rt *RestTester) PutDocDirectlyInCollection(collection *db.DatabaseCollection, docID string, body db.Body) DocVersion {
+	dbUser := &db.DatabaseCollectionWithUser{
+		DatabaseCollection: collection,
+	}
+	rev, doc, err := dbUser.Put(rt.Context(), docID, body)
+	require.NoError(rt.TB(), err)
+	return DocVersion{RevID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
+}
