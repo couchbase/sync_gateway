@@ -1893,12 +1893,16 @@ func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) 
 
 	go sc.PostStartup()
 
-	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting diagnostic server on %s", config.API.DiagnosticInterface)
-	go func() {
-		if err := sc.Serve(ctx, config, diagnosticServer, config.API.DiagnosticInterface, CreateDiagnosticHandler(sc)); err != nil {
-			base.ErrorfCtx(ctx, "Error serving the Diagnostic API: %v", err)
-		}
-	}()
+	if config.API.DiagnosticInterface != "" {
+		base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting diagnostic server on %s", config.API.DiagnosticInterface)
+		go func() {
+			if err := sc.Serve(ctx, config, diagnosticServer, config.API.DiagnosticInterface, CreateDiagnosticHandler(sc)); err != nil {
+				base.ErrorfCtx(ctx, "Error serving the Diagnostic API: %v", err)
+			}
+		}()
+	} else {
+		base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Diagnostic API not enabled - skipping.")
+	}
 	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
 	go func() {
 		if err := sc.Serve(ctx, config, metricsServer, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
