@@ -484,12 +484,19 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					}
 
 				}
-				for _, item := range change.Changes {
-					changeRow := bh.buildChangesRow(change, item["rev"])
-					pendingChanges = append(pendingChanges, changeRow)
-					if err := sendPendingChangesAt(opts.batchSize); err != nil {
-						return err
+				// if V3 and below populate change row with rev id
+				if bh.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+					for _, item := range change.Changes {
+						changeRow := bh.buildChangesRow(change, item["rev"])
+						pendingChanges = append(pendingChanges, changeRow)
 					}
+				} else {
+					changeRow := bh.buildChangesRow(change, change.CurrentVersion.String())
+					pendingChanges = append(pendingChanges, changeRow)
+				}
+
+				if err := sendPendingChangesAt(opts.batchSize); err != nil {
+					return err
 				}
 			}
 		}

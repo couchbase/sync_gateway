@@ -425,7 +425,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	// Tombstone 5 documents
 	for i := 2; i <= 6; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, err = collection.DeleteDoc(ctx, key, revId)
+		_, _, err = collection.DeleteDoc(ctx, key, revId)
 		require.NoError(t, err, "Couldn't delete document")
 	}
 
