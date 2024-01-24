@@ -10,6 +10,7 @@ package xdcr
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -163,8 +164,13 @@ func writeDoc(ctx context.Context, datastore base.DataStore, originalCas uint64,
 	var body []byte
 	if event.DataType&sgbucket.FeedDataTypeXattr != 0 {
 		var err error
+		var dcpXattrs []sgbucket.Xattr
 		// TODO: convert xattrs from []Xattr to []byte
-		body, _, err = sgbucket.DecodeValueWithXattrs(event.Value)
+		body, dcpXattrs, err = sgbucket.DecodeValueWithXattrs(event.Value)
+		if err != nil {
+			return err
+		}
+		xattrs, err = xattrToBytes(dcpXattrs)
 		if err != nil {
 			return err
 		}
@@ -184,4 +190,13 @@ func (r *RosmarXDCR) Stats(context.Context) (*Stats, error) {
 	return &Stats{
 		DocsWritten:  r.docsWritten.Load(),
 		DocsFiltered: r.docsFiltered.Load()}, nil
+}
+
+// xattrToBytes converts a slice of Xattrs to a byte slice of marshalled json.
+func xattrToBytes(xattrs []sgbucket.Xattr) ([]byte, error) {
+	xattrMap := make(map[string]json.RawMessage)
+	for _, xattr := range xattrs {
+		xattrMap[xattr.Name] = xattr.Value
+	}
+	return base.JSONMarshal(xattrMap)
 }

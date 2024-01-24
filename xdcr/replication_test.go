@@ -128,10 +128,8 @@ func TestXattrMigration(t *testing.T) {
 		assert.Equal(c, startingCas, cas)
 		assert.Equal(c, mustUnmarshalJSON(t, body), toVal)
 		// need to fix marshalling of xattrs for rosmar
-		if !base.UnitTestUrlIsWalrus() {
-			assert.Equal(c, mustUnmarshalJSON(t, systemXattrVal), toSystemXattrVal)
-			assert.Equal(c, mustUnmarshalJSON(t, userXattrVal), toUserXattrVal)
-		}
+		assert.Equal(c, mustUnmarshalJSON(t, systemXattrVal), toSystemXattrVal)
+		assert.Equal(c, mustUnmarshalJSON(t, userXattrVal), toUserXattrVal)
 
 	}, time.Second*5, time.Millisecond*100)
 
