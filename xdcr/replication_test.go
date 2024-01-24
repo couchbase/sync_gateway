@@ -113,6 +113,23 @@ func TestXattrMigration(t *testing.T) {
 		deleteBody      = false
 	)
 
-	_, err = fromBucket.DefaultDataStore().WriteWithXattr(ctx, docID, systemXattrName, 0, 0, []byte(body), []byte(systemXattrVal), isDelete, deleteBody, nil)
+	startingCas, err := fromBucket.DefaultDataStore().WriteWithXattr(ctx, docID, systemXattrName, 0, 0, []byte(body), []byte(systemXattrVal), isDelete, deleteBody, nil)
 	require.NoError(t, err)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		toVal := map[string]string{}
+		toSystemXattrVal := map[string]string{}
+		toUserXattrVal := map[string]string{}
+		cas, err := toBucket.DefaultDataStore().GetWithXattr(ctx, docID, systemXattrName, userXattrName, &toVal, &toSystemXattrVal, &toUserXattrVal)
+		assert.NoError(c, err)
+		assert.Equal(c, startingCas, cas)
+		assert.Equal(c, mustMarshalJSON(t, body), val)
+	}, time.Second*5, time.Millisecond*100)
+
+}
+
+func mustMarshalJSON(t *testing.T, val interface{}) []byte {
+	bytes, err := base.JSONMarshal(val)
+	require.NoError(t, err)
+	return bytes
 }
