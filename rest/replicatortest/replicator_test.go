@@ -8579,7 +8579,8 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	resp := activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"source": "activeRT"}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	syncData, err := activeRT.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	activeCollection, activeCtx := activeRT.GetSingleTestDatabaseCollection()
+	syncData, err := activeCollection.GetDocSyncData(activeCtx, "doc1")
 	assert.NoError(t, err)
 	uintCAS := base.HexCasToUint64(syncData.Cas)
 
@@ -8594,7 +8595,8 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert on the HLV update on the passive node
-	syncData, err = passiveRT.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	passiveCollection, passiveCtx := passiveRT.GetSingleTestDatabaseCollection()
+	syncData, err = passiveCollection.GetDocSyncData(passiveCtx, "doc1")
 	assert.NoError(t, err)
 	uintCAS = base.HexCasToUint64(syncData.Cas)
 
