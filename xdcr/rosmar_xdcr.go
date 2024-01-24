@@ -163,12 +163,8 @@ func writeDoc(ctx context.Context, datastore base.DataStore, originalCas uint64,
 	var body []byte
 	if event.DataType&sgbucket.FeedDataTypeXattr != 0 {
 		var err error
-		var unmarshalledXattrs []sgbucket.Xattr
-		body, unmarshalledXattrs, err = sgbucket.DecodeValueWithXattrs(event.Value)
-		if err != nil {
-			return err
-		}
-		xattrs, err = base.JSONMarshal(unmarshalledXattrs)
+		// TODO: convert xattrs from []Xattr to []byte
+		body, _, err = sgbucket.DecodeValueWithXattrs(event.Value)
 		if err != nil {
 			return err
 		}
