@@ -2302,7 +2302,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Expiry:           doc.Expiry,
 			Deleted:          doc.History[newRevID].Deleted,
 			_shallowCopyBody: storedDoc.Body(ctx),
-			CV:               &Version{Value: doc.HLV.Version, SourceID: doc.HLV.SourceID},
+			hlvHistory:       doc.HLV.toHistoryForHLV(),
+			CV:               &Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version},
 		}
 
 		if createNewRevIDSkipped {
@@ -2531,10 +2532,10 @@ func (db *DatabaseCollectionWithUser) Post(ctx context.Context, body Body) (doci
 }
 
 // Deletes a document, by adding a new revision whose _deleted property is true.
-func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid string, revid string) (string, error) {
+func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid string, revid string) (string, *Document, error) {
 	body := Body{BodyDeleted: true, BodyRev: revid}
-	newRevID, _, err := db.Put(ctx, docid, body)
-	return newRevID, err
+	newRevID, doc, err := db.Put(ctx, docid, body)
+	return newRevID, doc, err
 }
 
 // Purges a document from the bucket (no tombstone)

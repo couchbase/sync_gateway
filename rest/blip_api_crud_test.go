@@ -1899,19 +1899,78 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 
 		const docID = "doc1"
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version1 := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+		version1 := rt.PutDocDirectly(docID, db.Body{"hello": "world!"})
 
 		data := btcRunner.WaitForVersion(client.id, docID, version1)
-		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+		assert.Equal(t, `{"hello":"world!"}`, string(data))
 
 		// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
-		version2 := rt.UpdateDoc(docID, version1, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
+		version2 := rt.UpdateDocDirectly(docID, version1, db.Body{"hello": "alice"})
 
 		data = btcRunner.WaitForVersion(client.id, docID, version2)
-		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
+		assert.Equal(t, `{"hello":"alice"}`, string(data))
 
 		msg := client.pullReplication.WaitForMessage(5)
-		assert.Equal(t, version1.RevID, msg.Properties[db.RevMessageHistory]) // CBG-3268 update to use version
+		client.AssertOnBlipHistory(t, msg, version1)
+	})
+}
+
+// TestPullReplicationUpdateOnOtherHLVAwarePeer:
+//   - Main purpose is to test if history is correctly populated on HLV aware replication
+//   - Making use of HLV agent to mock a doc from a HLV aware peer coming over replicator
+//   - Update this same doc through sync gateway then assert that the history is populated with the old current version
+func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	rtConfig := RestTesterConfig{
+		GuestEnabled: true,
+	}
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // V4 replication only test
+
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+		ctx := base.TestCtx(t)
+		collection := rt.GetSingleTestDatabaseCollectionWithUser()
+
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		err := btcRunner.StartPull(client.id)
+		assert.NoError(t, err)
+
+		const docID = "doc1"
+		otherSource := "otherSource"
+		hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_sync")
+		existingHLVKey := "doc1"
+		cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey)
+
+		// force import of this write
+		_, _ = rt.GetDoc(docID)
+		bucketDoc, _, err := collection.GetDocWithXattr(ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+
+		// create doc version of the above doc write
+		version1 := DocVersion{
+			RevID: bucketDoc.CurrentRev,
+			CV: db.Version{
+				SourceID: otherSource,
+				Value:    cas,
+			},
+		}
+
+		_ = btcRunner.WaitForVersion(client.id, docID, version1)
+
+		// update the above doc
+		version2 := rt.UpdateDocDirectly(docID, version1, db.Body{"hello": "world!"})
+
+		data := btcRunner.WaitForVersion(client.id, docID, version2)
+		assert.Equal(t, `{"hello":"world!"}`, string(data))
+
+		// assert that history in blip properties is correct
+		msg := client.pullReplication.WaitForMessage(5)
+		client.AssertOnBlipHistory(t, msg, version1)
 	})
 }
 
@@ -1932,7 +1991,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
-		version := rt.PutDoc(docID, `{"test":true}`)
+		version := rt.PutDocDirectly(docID, db.Body{"test": true})
 
 		// start an initial pull
 		require.NoError(t, btcRunner.StartPullSince(btc.id, "true", "0", "true"))
@@ -1940,7 +1999,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 		assert.Equal(t, `{"test":true}`, string(rev))
 
 		// delete the doc and make sure the client still gets the tombstone replicated
-		deletedVersion := rt.DeleteDocReturnVersion(docID, version)
+		deletedVersion := rt.DeleteDocDirectly(docID, version)
 
 		rev = btcRunner.WaitForVersion(btc.id, docID, deletedVersion)
 		assert.Equal(t, `{}`, string(rev))
@@ -2025,7 +2084,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		defer btc.Close()
 
 		const docID = "doc"
-		version := rt.PutDoc(docID, `{"channels": ["A", "B"]}`)
+		version := rt.PutDocDirectly(docID, db.Body{"channels": []string{"A", "B"}})
 
 		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 		require.NoError(t, err)
@@ -2037,7 +2096,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		assert.NoError(t, err)
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
-		version = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
+		version = rt.UpdateDocDirectly(docID, version, db.Body{"channels": []string{"B"}})
 
 		changes, err = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 		require.NoError(t, err)
@@ -2049,9 +2108,9 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		assert.NoError(t, err)
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
-		version = rt.UpdateDoc(docID, version, `{"channels": []}`)
+		version = rt.UpdateDocDirectly(docID, version, db.Body{"channels": []string{}})
 		const docMarker = "docmarker"
-		docMarkerVersion := rt.PutDoc(docMarker, `{"channels": ["!"]}`)
+		docMarkerVersion := rt.PutDocDirectly(docMarker, db.Body{"channels": []string{"!"}})
 
 		changes, err = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 		require.NoError(t, err)
@@ -2136,7 +2195,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		const (
 			docID = "doc"
 		)
-		version := rt.PutDoc(docID, `{"channels": ["A", "B"]}`)
+		version := rt.PutDocDirectly(docID, db.Body{"channels": []string{"A", "B"}})
 
 		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 		require.NoError(t, err)
@@ -2148,7 +2207,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		assert.NoError(t, err)
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
-		version = rt.UpdateDoc(docID, version, `{"channels": ["C"]}`)
+		version = rt.UpdateDocDirectly(docID, version, db.Body{"channels": []string{"C"}})
 		require.NoError(t, rt.WaitForPendingChanges())
 		// At this point changes should send revocation, as document isn't in any of the user's channels
 		changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
@@ -2163,7 +2222,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 
 		_ = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
 		markerID := "docmarker"
-		markerVersion := rt.PutDoc(markerID, `{"channels": ["A"]}`)
+		markerVersion := rt.PutDocDirectly(markerID, db.Body{"channels": []string{"A"}})
 		require.NoError(t, rt.WaitForPendingChanges())
 
 		// Revocation should not be sent over blip, as document is now in user's channels - only marker document should be received
@@ -2629,7 +2688,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 					recievedNoRevs <- msg
 				}
 
-				version := rt.PutDoc(docName, `{"foo":"bar"}`)
+				version := rt.PutDocDirectly(docName, db.Body{"foo": "bar"})
 
 				// Make the LeakyBucket return an error
 				leakyDataStore.SetGetRawCallback(func(key string) error {
@@ -2693,7 +2752,7 @@ func TestUnsubChanges(t *testing.T) {
 		err = btcRunner.StartPull(btc.id)
 		require.NoError(t, err)
 
-		doc1Version := rt.PutDoc(doc1ID, `{"key":"val1"}`)
+		doc1Version := rt.PutDocDirectly(doc1ID, db.Body{"key": "val1"})
 		_ = btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
 
 		activeReplStat := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplActiveContinuous
@@ -2707,7 +2766,7 @@ func TestUnsubChanges(t *testing.T) {
 		base.RequireWaitForStat(t, activeReplStat.Value, 0)
 
 		// Confirm no more changes are being sent
-		doc2Version := rt.PutDoc(doc2ID, `{"key":"val1"}`)
+		doc2Version := rt.PutDocDirectly(doc2ID, db.Body{"key": "val1"})
 		err = rt.WaitForConditionWithOptions(func() bool {
 			_, found := btcRunner.GetVersion(btc.id, "doc2", doc2Version)
 			return found
@@ -2886,7 +2945,7 @@ func TestBlipRefreshUser(t *testing.T) {
 		response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB, "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"chan1"}, nil))
 		RequireStatus(t, response, http.StatusOK)
 
-		version := rt.PutDoc(docID, `{"channels":["chan1"]}`)
+		version := rt.PutDocDirectly(docID, db.Body{"channels": []string{"chan1"}})
 
 		// Start a regular one-shot pull
 		err := btcRunner.StartPullSince(btc.id, "true", "0", "false")
