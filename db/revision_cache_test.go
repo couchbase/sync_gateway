@@ -843,7 +843,7 @@ func TestLoaderMismatchInCV(t *testing.T) {
 
 	_, err := cache.GetWithCV(base.TestCtx(t), "doc1", &cv, testCollectionID, RevCacheOmitDelta)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "mismatch between specified current version and fetched document current version for doc")
+	require.Error(t, err, base.ErrNotFound)
 	assert.Equal(t, int64(0), cacheHitCounter.Value())
 	assert.Equal(t, int64(1), cacheMissCounter.Value())
 	assert.Equal(t, 0, cache.lruList.Len())
