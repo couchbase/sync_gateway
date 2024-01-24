@@ -411,30 +411,33 @@ func (hlv *HybridLogicalVector) setPreviousVersion(source string, version uint64
 func (hlv *HybridLogicalVector) toHistoryForHLV() string {
 	// take pv and mv from hlv if defined and add to history
 	var s strings.Builder
-	var separatorNeeded bool
 	// Merge versions must be defined first if they exist
 	if hlv.MergeVersions != nil {
-		var pairList []string
+		// We need to keep track of where we are in the map, so we don't add a trailing ',' to end of string
+		itemNo := 1
 		for key, value := range hlv.MergeVersions {
 			vrs := Version{SourceID: key, Value: value}
-			pairList = append(pairList, vrs.String())
-		}
-		if len(pairList) > 0 {
-			separatorNeeded = true
-			s.WriteString(strings.Join(pairList, ","))
+			s.WriteString(vrs.String())
+			if itemNo < len(hlv.MergeVersions) {
+				s.WriteString(",")
+			}
+			itemNo++
 		}
 	}
 	if hlv.PreviousVersions != nil {
-		if separatorNeeded && len(hlv.PreviousVersions) != 0 {
+		// We need to keep track of where we are in the map, so we don't add a trailing ',' to end of string
+		itemNo := 1
+		// only need ';' if we have MV and PV both defined
+		if len(hlv.MergeVersions) > 0 && len(hlv.PreviousVersions) > 0 {
 			s.WriteString(";")
 		}
-		var pairList []string
 		for key, value := range hlv.PreviousVersions {
 			vrs := Version{SourceID: key, Value: value}
-			pairList = append(pairList, vrs.String())
-		}
-		if len(pairList) > 0 {
-			s.WriteString(strings.Join(pairList, ","))
+			s.WriteString(vrs.String())
+			if itemNo < len(hlv.PreviousVersions) {
+				s.WriteString(",")
+			}
+			itemNo++
 		}
 	}
 	return s.String()
