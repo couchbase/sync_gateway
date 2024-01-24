@@ -46,7 +46,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 
 	btcRunner := NewBlipTesterClientRunner(t)
 	// given this test is for v2 protocol, skip version vector test
-	btcRunner.SkipVersionVectorInitialization = true
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -119,6 +119,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -190,7 +191,7 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 	)
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipVersionVectorInitialization = true // v2 protocol test
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // v2 protocol test
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &rtConfig)
@@ -247,7 +248,7 @@ func TestBlipProveAttachmentV2Push(t *testing.T) {
 	)
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipVersionVectorInitialization = true // v2 protocol test
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // v2 protocol test
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &rtConfig)
