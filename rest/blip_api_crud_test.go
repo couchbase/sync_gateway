@@ -2932,8 +2932,8 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 		}
 		for i, testCase := range testCases {
 			rt.Run(testCase.name, func(t *testing.T) {
-				docID := fmt.Sprintf("doc%d,", i)
-				markerDoc := fmt.Sprintf("markerDoc%d", i)
+				docID := fmt.Sprintf("doc%d_%s,", i, strings.ReplaceAll(t.Name(), "/", "_"))
+				markerDoc := fmt.Sprintf("markerDoc%d_%s", i, strings.ReplaceAll(t.Name(), "/", "_"))
 				validBody := `{"foo":"bar"}`
 				_ = rt.PutDoc(docID, validBody)
 				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
