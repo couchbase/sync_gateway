@@ -36,11 +36,12 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			UseTLSServer:          base.BoolPtr(DefaultUseTLSServer),
 		},
 		API: APIConfig{
-			PublicInterface:    DefaultPublicInterface,
-			AdminInterface:     DefaultAdminInterface,
-			MetricsInterface:   DefaultMetricsInterface,
-			MaximumConnections: DefaultMaxIncomingConnections,
-			CompressResponses:  base.BoolPtr(true),
+			PublicInterface:     DefaultPublicInterface,
+			AdminInterface:      DefaultAdminInterface,
+			MetricsInterface:    DefaultMetricsInterface,
+			DiagnosticInterface: DefaultDiagnosticInterface, // Disabled by default
+			MaximumConnections:  DefaultMaxIncomingConnections,
+			CompressResponses:   base.BoolPtr(true),
 			HTTPS: HTTPSConfig{
 				TLSMinimumVersion: "tlsv1.2",
 			},

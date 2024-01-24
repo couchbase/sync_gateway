@@ -43,7 +43,7 @@ var (
 	DefaultPublicInterface        = ":4984"
 	DefaultAdminInterface         = "127.0.0.1:4985" // Only accessible on localhost!
 	DefaultMetricsInterface       = "127.0.0.1:4986" // Only accessible on localhost!
-	DefaultDiagnosticInterface    = "127.0.0.1:4987" // Only accessible on localhost!
+	DefaultDiagnosticInterface    = ""               // Disabled by default
 	DefaultMinimumTLSVersionConst = tls.VersionTLS12
 
 	// The value of defaultLogFilePath is populated by -defaultLogFilePath by command line flag from service scripts.
