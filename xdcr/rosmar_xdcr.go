@@ -96,6 +96,33 @@ func (r *RosmarXDCR) Start(ctx context.Context) error {
 				base.WarnfCtx(ctx, "Skipping replicating doc %s, could not before a kv op get doc in toBucket: %s", event.Key, err)
 				return false
 			}
+			/* full LWW conflict resolution is not implemented in rosmar yet
+			CBS algorithm is:
+
+			if (command.CAS > document.CAS)
+			  command succeeds
+			else if (command.CAS == document.CAS)
+			  // Check the RevSeqno
+			  if (command.RevSeqno > document.RevSeqno)
+			    command succeeds
+			  else if (command.RevSeqno == document.RevSeqno)
+			    // Check the expiry time
+			    if (command.Expiry > document.Expiry)
+			      command succeeds
+			    else if (command.Expiry == document.Expiry)
+			      // Finally check flags
+			      if (command.Flags < document.Flags)
+			        command succeeds
+
+			command fails
+
+			In the current state of rosmar:
+
+			1. all CAS values are unique.
+			2. RevSeqno is not implemented
+			3. Expiry is implemented and could be compared except all CAS values are unique.
+			4. Flags are not implemented
+			*/
 			if event.Cas <= originalCas {
 				base.TracefCtx(ctx, base.KeyWalrus, "Skipping replicating doc %s, cas %d <= %d", base.MD(docID), event.Cas, originalCas)
 				return true

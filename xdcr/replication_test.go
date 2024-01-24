@@ -85,3 +85,34 @@ func TestXDCR(t *testing.T) {
 	}, time.Second*5, time.Millisecond*100)
 
 }
+
+func TestXattrMigration(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	ctx := base.TestCtx(t)
+	fromBucket := base.GetTestBucket(t)
+	toBucket := base.GetTestBucket(t)
+	defer fromBucket.Close(ctx)
+	defer toBucket.Close(ctx)
+
+	xdcr, err := NewReplication(ctx, fromBucket, toBucket)
+	require.NoError(t, err)
+	err = xdcr.Start(ctx)
+	require.NoError(t, err)
+	defer func() {
+		assert.NoError(t, xdcr.Stop(ctx))
+	}()
+
+	const (
+		docID           = "doc1"
+		systemXattrName = "_system"
+		userXattrName   = "user"
+		body            = `{"foo": "bar"}`
+		systemXattrVal  = `{"bar": "baz"}`
+		userXattrVal    = `{"baz": "baz"}`
+		isDelete        = false
+		deleteBody      = false
+	)
+
+	_, err = fromBucket.DefaultDataStore().WriteWithXattr(ctx, docID, systemXattrName, 0, 0, []byte(body), []byte(systemXattrVal), isDelete, deleteBody, nil)
+	require.NoError(t, err)
+}
