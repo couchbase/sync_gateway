@@ -571,7 +571,6 @@ func TestConcurrentLoad(t *testing.T) {
 	cache := NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: uint64(1234), SourceID: "test"}, History: Revisions{"start": 1}})
-
 	// Trigger load into cache
 	var wg sync.WaitGroup
 	wg.Add(20)
@@ -712,7 +711,7 @@ func TestLoaderMismatchInCV(t *testing.T) {
 
 	_, err := cache.GetWithCV(base.TestCtx(t), "doc1", &cv, RevCacheOmitBody, RevCacheOmitDelta)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "mismatch between specified current version and fetched document current version for doc")
+	require.Error(t, err, base.ErrNotFound)
 	assert.Equal(t, int64(0), cacheHitCounter.Value())
 	assert.Equal(t, int64(1), cacheMissCounter.Value())
 	assert.Equal(t, 0, cache.lruList.Len())

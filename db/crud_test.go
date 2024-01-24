@@ -1272,7 +1272,7 @@ func TestGet1xRevAndChannels(t *testing.T) {
 	assert.Equal(t, []interface{}{"a"}, revisions[RevisionsIds])
 
 	// Delete the document, creating tombstone revision rev3
-	rev3, err := collection.DeleteDoc(ctx, docId, rev2)
+	rev3, _, err := collection.DeleteDoc(ctx, docId, rev2)
 	require.NoError(t, err)
 	bodyBytes, removed, err = collection.get1xRevFromDoc(ctx, doc2, rev3, true)
 	assert.False(t, removed)
