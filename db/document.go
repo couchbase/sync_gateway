@@ -1210,7 +1210,7 @@ func computeMetadataOnlyUpdate(currentCas uint64, currentMou *MetadataOnlyUpdate
 }
 
 // HasCurrentVersion Compares the specified CV with the fetched documents CV, returns error on mismatch between the two
-func (d *Document) HasCurrentVersion(cv Version) error {
+func (d *Document) HasCurrentVersion(ctx context.Context, cv Version) error {
 	if d.HLV == nil {
 		return base.RedactErrorf("no HLV present in fetched doc %s", base.UD(d.ID))
 	}
@@ -1218,7 +1218,9 @@ func (d *Document) HasCurrentVersion(cv Version) error {
 	// fetch the current version for the loaded doc and compare against the CV specified in the IDandCV key
 	fetchedDocSource, fetchedDocVersion := d.HLV.GetCurrentVersion()
 	if fetchedDocSource != cv.SourceID || fetchedDocVersion != cv.Value {
-		return base.RedactErrorf("mismatch between specified current version and fetched document current version for doc %s", base.UD(d.ID))
+		base.DebugfCtx(ctx, base.KeyCRUD, "mismatch between specified current version and fetched document current version for doc %s", base.UD(d.ID))
+		// return not found as specified cv does not match fetched doc cv
+		return base.ErrNotFound
 	}
 	return nil
 }
@@ -1258,8 +1260,10 @@ func (s *SyncData) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	*s = SyncData(*sdj.SyncDataAlias)
-	s.CurrentRev = sdj.RevAndVersion.RevTreeID
+	if sdj.SyncDataAlias != nil {
+		*s = SyncData(*sdj.SyncDataAlias)
+		s.CurrentRev = sdj.RevAndVersion.RevTreeID
+	}
 	return nil
 }
 
