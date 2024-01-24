@@ -165,7 +165,6 @@ func writeDoc(ctx context.Context, datastore base.DataStore, originalCas uint64,
 	if event.DataType&sgbucket.FeedDataTypeXattr != 0 {
 		var err error
 		var dcpXattrs []sgbucket.Xattr
-		// TODO: convert xattrs from []Xattr to []byte
 		body, dcpXattrs, err = sgbucket.DecodeValueWithXattrs(event.Value)
 		if err != nil {
 			return err
