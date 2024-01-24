@@ -115,7 +115,10 @@ func TestXattrMigration(t *testing.T) {
 
 	startingCas, err := fromBucket.DefaultDataStore().WriteWithXattr(ctx, docID, systemXattrName, 0, 0, []byte(body), []byte(systemXattrVal), isDelete, deleteBody, nil)
 	require.NoError(t, err)
+	require.Greater(t, startingCas, uint64(0))
 
+	startingCas, err = base.GetBaseDataStore(fromBucket.DefaultDataStore()).(sgbucket.UserXattrStore).WriteUserXattr(docID, userXattrName, mustUnmarshalJSON(t, userXattrVal))
+	require.NoError(t, err)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		toVal := map[string]string{}
 		toSystemXattrVal := map[string]string{}
@@ -123,13 +126,17 @@ func TestXattrMigration(t *testing.T) {
 		cas, err := toBucket.DefaultDataStore().GetWithXattr(ctx, docID, systemXattrName, userXattrName, &toVal, &toSystemXattrVal, &toUserXattrVal)
 		assert.NoError(c, err)
 		assert.Equal(c, startingCas, cas)
-		assert.Equal(c, mustMarshalJSON(t, body), val)
+		assert.Equal(c, mustUnmarshalJSON(t, body), toVal)
+		assert.Equal(c, mustUnmarshalJSON(t, systemXattrVal), toSystemXattrVal)
+		assert.Equal(c, mustUnmarshalJSON(t, userXattrVal), toUserXattrVal)
+
 	}, time.Second*5, time.Millisecond*100)
 
 }
 
-func mustMarshalJSON(t *testing.T, val interface{}) []byte {
-	bytes, err := base.JSONMarshal(val)
+func mustUnmarshalJSON(t *testing.T, val string) map[string]string {
+	var v map[string]string
+	err := base.JSONUnmarshal([]byte(val), &v)
 	require.NoError(t, err)
-	return bytes
+	return v
 }
