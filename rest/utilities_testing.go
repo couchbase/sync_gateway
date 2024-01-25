@@ -740,6 +740,7 @@ func (rt *RestTester) TestMetricsHandler() http.Handler {
 	return rt.MetricsHandler
 }
 
+// TestDiagnosticHandler is called to lazily create a handler against the diagnostic interface.
 func (rt *RestTester) TestDiagnosticHandler() http.Handler {
 	rt.diagnosticHandlerOnce.Do(func() {
 		rt.DiagnosticHandler = createDiagnosticHandler(rt.ServerContext())
