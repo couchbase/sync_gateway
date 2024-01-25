@@ -1893,10 +1893,10 @@ func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) 
 
 	go sc.PostStartup()
 
-	if config.API.DiagnosticInterface != "" {
-		base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting diagnostic server on %s", config.API.DiagnosticInterface)
+	if config.Unsupported.DiagnosticInterface != "" {
+		base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting diagnostic server on %s", config.Unsupported.DiagnosticInterface)
 		go func() {
-			if err := sc.Serve(ctx, config, diagnosticServer, config.API.DiagnosticInterface, createDiagnosticHandler(sc)); err != nil {
+			if err := sc.Serve(ctx, config, diagnosticServer, config.Unsupported.DiagnosticInterface, createDiagnosticHandler(sc)); err != nil {
 				base.ErrorfCtx(ctx, "Error serving the Diagnostic API: %v", err)
 			}
 		}()

@@ -36,12 +36,11 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			UseTLSServer:          base.BoolPtr(DefaultUseTLSServer),
 		},
 		API: APIConfig{
-			PublicInterface:     DefaultPublicInterface,
-			AdminInterface:      DefaultAdminInterface,
-			MetricsInterface:    DefaultMetricsInterface,
-			DiagnosticInterface: DefaultDiagnosticInterface, // Disabled by default
-			MaximumConnections:  DefaultMaxIncomingConnections,
-			CompressResponses:   base.BoolPtr(true),
+			PublicInterface:    DefaultPublicInterface,
+			AdminInterface:     DefaultAdminInterface,
+			MetricsInterface:   DefaultMetricsInterface,
+			MaximumConnections: DefaultMaxIncomingConnections,
+			CompressResponses:  base.BoolPtr(true),
 			HTTPS: HTTPSConfig{
 				TLSMinimumVersion: "tlsv1.2",
 			},
@@ -65,6 +64,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 				MinConfigFetchInterval: base.NewConfigDuration(DefaultMinConfigFetchInterval),
 			},
 			AllowDbConfigEnvVars: base.BoolPtr(true),
+			DiagnosticInterface:  DefaultDiagnosticInterface, // Disabled by default
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
 	}
@@ -103,15 +103,13 @@ type BootstrapConfig struct {
 }
 
 type APIConfig struct {
-	PublicInterface     string `json:"public_interface,omitempty"  help:"Network interface to bind public API to"`
-	AdminInterface      string `json:"admin_interface,omitempty"   help:"Network interface to bind admin API to"`
-	MetricsInterface    string `json:"metrics_interface,omitempty" help:"Network interface to bind metrics API to"`
-	DiagnosticInterface string `json:"diagnostic_interface,omitempty" help:"Network interface to bind diagnostic API to"`
-	ProfileInterface    string `json:"profile_interface,omitempty" help:"Network interface to bind profiling API to"`
+	PublicInterface  string `json:"public_interface,omitempty"  help:"Network interface to bind public API to"`
+	AdminInterface   string `json:"admin_interface,omitempty"   help:"Network interface to bind admin API to"`
+	MetricsInterface string `json:"metrics_interface,omitempty" help:"Network interface to bind metrics API to"`
+	ProfileInterface string `json:"profile_interface,omitempty" help:"Network interface to bind profiling API to"`
 
-	AdminInterfaceAuthentication      *bool `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
-	MetricsInterfaceAuthentication    *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
-	DiagnosticInterfaceAuthentication *bool `json:"diagnostic_interface_authentication,omitempty" help:"Whether the diagnostic API requires authentication"`
+	AdminInterfaceAuthentication   *bool `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
+	MetricsInterfaceAuthentication *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
 
 	EnableAdminAuthenticationPermissionsCheck *bool `json:"enable_advanced_auth_dp,omitempty" help:"Whether to enable the DP permissions check feature of admin auth"`
 
@@ -146,13 +144,15 @@ type ReplicatorConfig struct {
 }
 
 type UnsupportedConfig struct {
-	StatsLogFrequency    *base.ConfigDuration `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
-	UseStdlibJSON        *bool                `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
-	Serverless           ServerlessConfig     `json:"serverless,omitempty"`
-	HTTP2                *HTTP2Config         `json:"http2,omitempty"`
-	UserQueries          *bool                `json:"user_queries,omitempty"            help:"Feature flag for user N1QL/JS/GraphQL queries"`
-	UseXattrConfig       *bool                `json:"use_xattr_config,omitempty"        help:"Store database configurations in system xattrs"`
-	AllowDbConfigEnvVars *bool                `json:"allow_dbconfig_env_vars,omitempty" help:"Can be set to false to skip environment variable expansion in database configs"`
+	StatsLogFrequency                 *base.ConfigDuration `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
+	UseStdlibJSON                     *bool                `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
+	Serverless                        ServerlessConfig     `json:"serverless,omitempty"`
+	HTTP2                             *HTTP2Config         `json:"http2,omitempty"`
+	UserQueries                       *bool                `json:"user_queries,omitempty"            help:"Feature flag for user N1QL/JS/GraphQL queries"`
+	UseXattrConfig                    *bool                `json:"use_xattr_config,omitempty"        help:"Store database configurations in system xattrs"`
+	AllowDbConfigEnvVars              *bool                `json:"allow_dbconfig_env_vars,omitempty" help:"Can be set to false to skip environment variable expansion in database configs"`
+	DiagnosticInterface               string               `json:"diagnostic_interface,omitempty" help:"Network interface to bind diagnostic API to"`
+	DiagnosticInterfaceAuthentication *bool                `json:"diagnostic_interface_authentication,omitempty" help:"Whether the diagnostic API requires authentication"`
 }
 
 type ServerlessConfig struct {
