@@ -11,6 +11,7 @@ package db
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"math"
 	"net/http"
@@ -906,29 +907,30 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 	case ExistingVersion:
 		// preserve any other logic on the HLV that has been done by the client, only update to cvCAS will be needed
 		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
-		d.HLV.ImportCAS = 0 // remove importCAS for non-imports to save space
+		d.HLV.ImportCAS = "" // remove importCAS for non-imports to save space
 	case Import:
-		if d.HLV.CurrentVersionCAS == d.Cas {
+		encdedCAS := string(base.Uint64CASToLittleEndianHex(d.Cas))
+		if d.HLV.CurrentVersionCAS == encdedCAS {
 			// if cvCAS = document CAS, the HLV has already been updated for this mutation by another HLV-aware peer.
 			// Set ImportCAS to the previous document CAS, but don't otherwise modify HLV
-			d.HLV.ImportCAS = d.Cas
+			d.HLV.ImportCAS = encdedCAS
 		} else {
 			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
 			newVVEntry := Version{}
-			newVVEntry.SourceID = db.dbCtx.BucketUUID
+			newVVEntry.SourceID = base64.StdEncoding.EncodeToString([]byte(db.dbCtx.BucketUUID))
 			newVVEntry.Value = hlvExpandMacroCASValue
 			err := d.SyncData.HLV.AddVersion(newVVEntry)
 			if err != nil {
 				return nil, err
 			}
 			d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
-			d.HLV.ImportCAS = d.Cas
+			d.HLV.ImportCAS = encdedCAS
 		}
 
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
 		newVVEntry := Version{}
-		newVVEntry.SourceID = db.dbCtx.BucketUUID
+		newVVEntry.SourceID = base64.StdEncoding.EncodeToString([]byte(db.dbCtx.BucketUUID))
 		newVVEntry.Value = hlvExpandMacroCASValue
 		err := d.SyncData.HLV.AddVersion(newVVEntry)
 		if err != nil {
@@ -936,7 +938,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 		}
 		// update the cvCAS on the SGWrite event too
 		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
-		d.HLV.ImportCAS = 0 // remove importCAS for non-imports to save space
+		d.HLV.ImportCAS = "" // remove importCAS for non-imports to save space
 	}
 	return d, nil
 }
@@ -1137,7 +1139,10 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				return nil, nil, false, nil, addNewerVersionsErr
 			}
 		} else {
-			if !docHLV.IsInConflict(*doc.HLV) {
+			// TEMP
+			incomingDecodedHLV := docHLV.ToDecodedHybridLogicalVector()
+			localDecodedHLV := doc.HLV.ToDecodedHybridLogicalVector()
+			if !incomingDecodedHLV.IsInConflict(localDecodedHLV) {
 				// update hlv for all newer incoming source version pairs
 				addNewerVersionsErr := doc.HLV.AddNewerVersions(docHLV)
 				if addNewerVersionsErr != nil {
@@ -2315,10 +2320,10 @@ func postWriteUpdateHLV(doc *Document, casOut uint64) *Document {
 		return doc
 	}
 	if doc.HLV.Version == hlvExpandMacroCASValue {
-		doc.HLV.Version = casOut
+		doc.HLV.Version = string(base.Uint64CASToLittleEndianHex(casOut))
 	}
 	if doc.HLV.CurrentVersionCAS == hlvExpandMacroCASValue {
-		doc.HLV.CurrentVersionCAS = casOut
+		doc.HLV.CurrentVersionCAS = string(base.Uint64CASToLittleEndianHex(casOut))
 	}
 	return doc
 }

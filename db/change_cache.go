@@ -124,7 +124,7 @@ func (entry *LogEntry) SetRevAndVersion(rv channels.RevAndVersion) {
 	entry.RevID = rv.RevTreeID
 	if rv.CurrentSource != "" {
 		entry.SourceID = rv.CurrentSource
-		entry.Version = base.HexCasToUint64(rv.CurrentVersion)
+		entry.Version = rv.CurrentVersion
 	}
 }
 

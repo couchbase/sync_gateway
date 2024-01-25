@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -1054,7 +1055,7 @@ func TestConflicts(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	bucketUUID := db.BucketUUID
+	bucketUUID := base64.StdEncoding.EncodeToString([]byte(db.BucketUUID))
 
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
@@ -1126,8 +1127,7 @@ func TestConflicts(t *testing.T) {
 		Conflicts:  true,
 		ChangesCtx: base.TestCtx(t),
 	}
-	fetchedDoc, _, err := collection.GetDocWithXattr(ctx, "doc", DocUnmarshalCAS)
-	require.NoError(t, err)
+	source, version := collection.GetDocumentCurrentVersion(t, "doc")
 
 	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
@@ -1138,7 +1138,7 @@ func TestConflicts(t *testing.T) {
 		Changes:        []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}},
 		branched:       true,
 		collectionID:   collectionID,
-		CurrentVersion: &Version{SourceID: bucketUUID, Value: fetchedDoc.Cas},
+		CurrentVersion: &Version{SourceID: source, Value: version},
 	}, changes[0],
 	)
 
@@ -1174,7 +1174,7 @@ func TestConflicts(t *testing.T) {
 		Changes:        []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
 		branched:       true,
 		collectionID:   collectionID,
-		CurrentVersion: &Version{SourceID: bucketUUID, Value: doc.Cas},
+		CurrentVersion: &Version{SourceID: bucketUUID, Value: string(base.Uint64CASToLittleEndianHex(doc.Cas))},
 	}, changes[0])
 
 }
