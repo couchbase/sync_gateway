@@ -706,13 +706,11 @@ func (rt *RestTester) sendMetrics(request *http.Request) *TestResponse {
 	return response
 }
 
+// SendDiagnosticRequest runs a request against the diagnostic handler.
 func (rt *RestTester) SendDiagnosticRequest(method, resource, body string) *TestResponse {
-	return rt.sendDiagnostic(Request(method, rt.mustTemplateResource(resource), body))
-}
-
-func (rt *RestTester) sendDiagnostic(request *http.Request) *TestResponse {
+	request := Request(method, rt.mustTemplateResource(resource), body)
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-	rt.TestDiagnosticHandler().ServeHTTP(response, request)
+	rt.TestDiagnosticHandler().ServeHTTP(response, Request(method, rt.mustTemplateResource(resource), body))
 	return response
 }
 
@@ -744,7 +742,7 @@ func (rt *RestTester) TestMetricsHandler() http.Handler {
 
 func (rt *RestTester) TestDiagnosticHandler() http.Handler {
 	rt.diagnosticHandlerOnce.Do(func() {
-		rt.DiagnosticHandler = CreateDiagnosticHandler(rt.ServerContext())
+		rt.DiagnosticHandler = createDiagnosticHandler(rt.ServerContext())
 	})
 	return rt.DiagnosticHandler
 }

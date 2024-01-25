@@ -56,32 +56,32 @@ func BootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	return config
 }
 
-type bootstrapAdminResponse struct {
+type boostrapResponse struct {
 	Body       string
 	Header     http.Header
 	t          *testing.T
 	StatusCode int
 }
 
-func (r *bootstrapAdminResponse) RequireStatus(status int) {
+func (r *boostrapResponse) RequireStatus(status int) {
 	require.Equal(r.t, status, r.StatusCode, "unexpected status code - body: %s", r.Body)
 }
 
-func (r *bootstrapAdminResponse) RequireResponse(status int, body string) {
+func (r *boostrapResponse) RequireResponse(status int, body string) {
 	require.Equal(r.t, status, r.StatusCode, "unexpected status code - body: %s", r.Body)
 	require.Equal(r.t, body, r.Body, "unexpected body")
 }
 
-func (r *bootstrapAdminResponse) Unmarshal(v interface{}) {
+func (r *boostrapResponse) Unmarshal(v interface{}) {
 	err := base.JSONUnmarshal([]byte(r.Body), &v)
 	require.NoError(r.t, err, "Error unmarshalling bootstrap response body")
 }
 
-func BootstrapAdminRequest(t *testing.T, sc *ServerContext, method, path, body string) bootstrapAdminResponse {
+func BootstrapAdminRequest(t *testing.T, sc *ServerContext, method, path, body string) boostrapResponse {
 	return doBootstrapAdminRequest(t, sc, method, path, body, nil)
 }
 
-func BootstrapAdminRequestWithHeaders(t *testing.T, sc *ServerContext, method, path, body string, headers map[string]string) bootstrapAdminResponse {
+func BootstrapAdminRequestWithHeaders(t *testing.T, sc *ServerContext, method, path, body string, headers map[string]string) boostrapResponse {
 	return doBootstrapAdminRequest(t, sc, method, path, body, headers)
 }
 
@@ -94,7 +94,7 @@ func (sc *ServerContext) getServerAddr(t *testing.T, s serverType) string {
 	return server.addr.String()
 }
 
-func doBootstrapAdminRequest(t *testing.T, sc *ServerContext, method, path, body string, headers map[string]string) bootstrapAdminResponse {
+func doBootstrapAdminRequest(t *testing.T, sc *ServerContext, method, path, body string, headers map[string]string) boostrapResponse {
 	host := "http://" + sc.getServerAddr(t, adminServer)
 	url := host + path
 
@@ -116,7 +116,7 @@ func doBootstrapAdminRequest(t *testing.T, sc *ServerContext, method, path, body
 	rBody, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	return bootstrapAdminResponse{
+	return boostrapResponse{
 		t:          t,
 		StatusCode: resp.StatusCode,
 		Body:       string(rBody),
@@ -124,7 +124,7 @@ func doBootstrapAdminRequest(t *testing.T, sc *ServerContext, method, path, body
 	}
 }
 
-func doBootstrapRequest(t *testing.T, sc *ServerContext, method, path, body string, headers map[string]string, server serverType) bootstrapAdminResponse {
+func doBootstrapRequest(t *testing.T, sc *ServerContext, method, path, body string, headers map[string]string, server serverType) boostrapResponse {
 	host := "http://" + sc.getServerAddr(t, server)
 	url := host + path
 
@@ -146,7 +146,7 @@ func doBootstrapRequest(t *testing.T, sc *ServerContext, method, path, body stri
 	rBody, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	return bootstrapAdminResponse{
+	return boostrapResponse{
 		t:          t,
 		StatusCode: resp.StatusCode,
 		Body:       string(rBody),

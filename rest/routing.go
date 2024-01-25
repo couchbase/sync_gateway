@@ -343,9 +343,9 @@ func CreateMetricHandler(sc *ServerContext) http.Handler {
 	return wrapRouter(sc, metricsPrivs, router)
 }
 
-// CreateDiagnosticHandler Creates the HTTP handler for the diagnostic API of a gateway server.
-func CreateDiagnosticHandler(sc *ServerContext) http.Handler {
-	router := CreateDiagnosticRouter(sc)
+// createDiagnosticHandler Creates the HTTP handler for the diagnostic API of a gateway server.
+func createDiagnosticHandler(sc *ServerContext) http.Handler {
+	router := createDiagnosticRouter(sc)
 	return wrapRouter(sc, adminPrivs, router)
 }
 
@@ -366,7 +366,7 @@ func CreateMetricRouter(sc *ServerContext) *mux.Router {
 	return r
 }
 
-func CreateDiagnosticRouter(sc *ServerContext) *mux.Router {
+func createDiagnosticRouter(sc *ServerContext) *mux.Router {
 	r := CreatePingRouter(sc)
 
 	return r

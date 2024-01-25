@@ -1896,7 +1896,7 @@ func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) 
 	if config.API.DiagnosticInterface != "" {
 		base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting diagnostic server on %s", config.API.DiagnosticInterface)
 		go func() {
-			if err := sc.Serve(ctx, config, diagnosticServer, config.API.DiagnosticInterface, CreateDiagnosticHandler(sc)); err != nil {
+			if err := sc.Serve(ctx, config, diagnosticServer, config.API.DiagnosticInterface, createDiagnosticHandler(sc)); err != nil {
 				base.ErrorfCtx(ctx, "Error serving the Diagnostic API: %v", err)
 			}
 		}()
