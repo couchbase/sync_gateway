@@ -16,6 +16,7 @@ on:
     branches:
       - 'master'
       - 'release/*'
+      - 'beryllium'
       - 'CBG*'
       - 'ci-*'
       - 'api-ci-*'
@@ -26,6 +27,7 @@ on:
     branches:
       - 'master'
       - 'release/*'
+      - 'beryllium'
 
 jobs:
   api_validation:
