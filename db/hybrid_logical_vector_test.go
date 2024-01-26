@@ -202,10 +202,9 @@ func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
 		require.NoError(tb, err)
 		if strings.HasPrefix(currentVersionPair[0], "m_") {
 			// add entry to merge version removing the leading prefix for sourceID
-
 			hlvOutput.MergeVersions[base64.StdEncoding.EncodeToString([]byte(currentVersionPair[0][2:]))] = string(base.Uint64CASToLittleEndianHex(version))
 		} else {
-			// if its not got the prefix we assume its a previous version entry
+			// if it's not got the prefix we assume it's a previous version entry
 			hlvOutput.PreviousVersions[base64.StdEncoding.EncodeToString([]byte(currentVersionPair[0]))] = string(base.Uint64CASToLittleEndianHex(version))
 		}
 	}
@@ -278,7 +277,6 @@ func TestHLVImport(t *testing.T) {
 
 	// 2. Test import of write by HLV-aware peer (HLV is already updated, sync metadata is not).
 	otherSource := "otherSource"
-	encodedSource := base64.StdEncoding.EncodeToString([]byte(otherSource))
 	hlvHelper := NewHLVAgent(t, collection.dataStore, otherSource, "_sync")
 	existingHLVKey := "existingHLV_" + t.Name()
 	_ = hlvHelper.InsertWithHLV(ctx, existingHLVKey)
@@ -298,7 +296,7 @@ func TestHLVImport(t *testing.T) {
 	require.Equal(t, encodedCAS, importedHLV.ImportCAS)
 	require.Equal(t, encodedCAS, importedHLV.CurrentVersionCAS)
 	require.Equal(t, encodedCAS, importedHLV.Version)
-	require.Equal(t, encodedSource, importedHLV.SourceID)
+	require.Equal(t, hlvHelper.Source, importedHLV.SourceID)
 }
 
 func TestGreg(t *testing.T) {

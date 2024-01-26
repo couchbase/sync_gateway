@@ -909,11 +909,11 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 		d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
 		d.HLV.ImportCAS = "" // remove importCAS for non-imports to save space
 	case Import:
-		encdedCAS := string(base.Uint64CASToLittleEndianHex(d.Cas))
-		if d.HLV.CurrentVersionCAS == encdedCAS {
+		encodedCAS := string(base.Uint64CASToLittleEndianHex(d.Cas))
+		if d.HLV.CurrentVersionCAS == encodedCAS {
 			// if cvCAS = document CAS, the HLV has already been updated for this mutation by another HLV-aware peer.
 			// Set ImportCAS to the previous document CAS, but don't otherwise modify HLV
-			d.HLV.ImportCAS = encdedCAS
+			d.HLV.ImportCAS = encodedCAS
 		} else {
 			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
 			newVVEntry := Version{}
@@ -924,7 +924,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 				return nil, err
 			}
 			d.HLV.CurrentVersionCAS = hlvExpandMacroCASValue
-			d.HLV.ImportCAS = encdedCAS
+			d.HLV.ImportCAS = encodedCAS
 		}
 
 	case NewVersion, ExistingVersionWithUpdateToHLV:
@@ -2319,11 +2319,12 @@ func postWriteUpdateHLV(doc *Document, casOut uint64) *Document {
 	if doc.HLV == nil {
 		return doc
 	}
+	encodedCAS := string(base.Uint64CASToLittleEndianHex(casOut))
 	if doc.HLV.Version == hlvExpandMacroCASValue {
-		doc.HLV.Version = string(base.Uint64CASToLittleEndianHex(casOut))
+		doc.HLV.Version = encodedCAS
 	}
 	if doc.HLV.CurrentVersionCAS == hlvExpandMacroCASValue {
-		doc.HLV.CurrentVersionCAS = string(base.Uint64CASToLittleEndianHex(casOut))
+		doc.HLV.CurrentVersionCAS = encodedCAS
 	}
 	return doc
 }

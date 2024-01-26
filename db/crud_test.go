@@ -1720,7 +1720,6 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	assert.NoError(t, err)
 	docUpdateVersion := syncData.HLV.Version
 	docUpdateVersionInt := base.HexCasToUint64(docUpdateVersion)
-	require.NoError(t, err)
 
 	// construct a mock doc update coming over a replicator
 	body = Body{"key1": "value2"}
