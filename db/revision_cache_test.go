@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -51,13 +50,14 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 			Channels: base.SetOf("*"),
 		},
 	}
-	doc.Channels = channels.ChannelMap{
-		"*": &channels.ChannelRemoval{RevID: doc.CurrentRev},
-	}
 
 	doc.HLV = &HybridLogicalVector{
 		SourceID: "test",
 		Version:  123,
+	}
+	_, _, err = doc.updateChannels(ctx, base.SetOf("*"))
+	if err != nil {
+		return nil, err
 	}
 
 	return doc, nil
