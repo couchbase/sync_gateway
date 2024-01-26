@@ -1137,7 +1137,7 @@ func (rt *RestTester) SetAdminChannels(username string, keyspace string, channel
 
 type SimpleSync struct {
 	Channels map[string]interface{}
-	Rev      db.RevAndVersion
+	Rev      channels.RevAndVersion
 	Sequence uint64
 }
 

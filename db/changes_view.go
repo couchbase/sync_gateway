@@ -18,6 +18,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 )
 
 // One "changes" row in a channelsViewResult
@@ -25,7 +26,7 @@ type channelsViewRow struct {
 	ID    string
 	Key   []interface{} // Actually [channelName, sequence]
 	Value struct {
-		Rev   RevAndVersion
+		Rev   channels.RevAndVersion
 		Flags uint8
 	}
 }
@@ -66,8 +67,10 @@ func nextChannelQueryEntry(ctx context.Context, results sgbucket.QueryResultIter
 	}
 	entry.SetRevAndVersion(queryRow.Rev)
 
-	if queryRow.RemovalRev != "" {
-		entry.RevID = queryRow.RemovalRev
+	if queryRow.RemovalRev != nil {
+		entry.RevID = queryRow.RemovalRev.RevTreeID
+		entry.Version = base.HexCasToUint64(queryRow.RemovalRev.CurrentVersion)
+		entry.SourceID = queryRow.RemovalRev.CurrentSource
 		if queryRow.RemovalDel {
 			entry.SetDeleted()
 		}
