@@ -202,7 +202,7 @@ type historyOnlySyncData struct {
 
 type revOnlySyncData struct {
 	casOnlySyncData
-	CurrentRev RevAndVersion `json:"rev"`
+	CurrentRev channels.RevAndVersion `json:"rev"`
 }
 
 type casOnlySyncData struct {
@@ -882,7 +882,7 @@ func (doc *Document) addToChannelSetHistory(channelName string, historyEntry Cha
 
 // Updates the Channels property of a document object with current & past channels.
 // Returns the set of channels that have changed (document joined or left in this revision)
-func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (changedChannels base.Set, err error) {
+func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (changedChannels base.Set, revokedChannelsRequiringExpansion []string, err error) {
 	var changed []string
 	oldChannels := doc.Channels
 	if oldChannels == nil {
@@ -891,14 +891,19 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 	} else {
 		// Mark every no-longer-current channel as unsubscribed:
 		curSequence := doc.Sequence
+		curRevAndVersion := doc.GetRevAndVersion()
 		for channel, removal := range oldChannels {
 			if removal == nil && !newChannels.Contains(channel) {
 				oldChannels[channel] = &channels.ChannelRemoval{
 					Seq:     curSequence,
-					RevID:   doc.CurrentRev,
+					Rev:     curRevAndVersion,
 					Deleted: doc.hasFlag(channels.Deleted)}
 				doc.updateChannelHistory(channel, curSequence, false)
 				changed = append(changed, channel)
+				// If the current version requires macro expansion, new removal in channel map will also require macro expansion
+				if doc.HLV.Version == hlvExpandMacroCASValue {
+					revokedChannelsRequiringExpansion = append(revokedChannelsRequiringExpansion, channel)
+				}
 			}
 		}
 	}
@@ -927,7 +932,7 @@ func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBy
 
 	// Iterate over the document's channel history, looking for channels that were removed at revID.  If found, also identify whether the removal was a tombstone.
 	for channel, removal := range doc.Channels {
-		if removal != nil && removal.RevID == revID {
+		if removal != nil && removal.Rev.RevTreeID == revID {
 			removedChannels[channel] = struct{}{}
 			if removal.Deleted == true {
 				isDelete = true
@@ -1189,7 +1194,7 @@ type SyncDataAlias SyncData
 // SyncDataJSON is the persisted form of SyncData, with RevAndVersion populated at marshal time
 type SyncDataJSON struct {
 	*SyncDataAlias
-	RevAndVersion RevAndVersion `json:"rev"`
+	RevAndVersion channels.RevAndVersion `json:"rev"`
 }
 
 // MarshalJSON populates RevAndVersion using CurrentRev and the HLV (current) source and version.
@@ -1200,11 +1205,7 @@ func (s SyncData) MarshalJSON() (data []byte, err error) {
 	var sd SyncDataAlias
 	sd = (SyncDataAlias)(s)
 	sdj.SyncDataAlias = &sd
-	sdj.RevAndVersion.RevTreeID = s.CurrentRev
-	if s.HLV != nil {
-		sdj.RevAndVersion.CurrentSource = s.HLV.SourceID
-		sdj.RevAndVersion.CurrentVersion = string(base.Uint64CASToLittleEndianHex(s.HLV.Version))
-	}
+	sdj.RevAndVersion = s.GetRevAndVersion()
 	return base.JSONMarshal(sdj)
 }
 
@@ -1223,41 +1224,11 @@ func (s *SyncData) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// RevAndVersion is used to store both revTreeID and currentVersion in a single property, for backwards compatibility
-// with existing indexes using rev.  When only RevTreeID is specified, is marshalled/unmarshalled as a string.  Otherwise
-// marshalled normally.
-type RevAndVersion struct {
-	RevTreeID      string `json:"rev,omitempty"`
-	CurrentSource  string `json:"src,omitempty"`
-	CurrentVersion string `json:"vrs,omitempty"` // String representation of version
-}
-
-// RevAndVersionJSON aliases RevAndVersion to support conditional unmarshalling from either string (revTreeID) or
-// map (RevAndVersion) representations
-type RevAndVersionJSON RevAndVersion
-
-// Marshals RevAndVersion as simple string when only RevTreeID is specified - otherwise performs standard
-// marshalling
-func (rv RevAndVersion) MarshalJSON() (data []byte, err error) {
-
-	if rv.CurrentSource == "" {
-		return base.JSONMarshal(rv.RevTreeID)
+func (s *SyncData) GetRevAndVersion() (rav channels.RevAndVersion) {
+	rav.RevTreeID = s.CurrentRev
+	if s.HLV != nil {
+		rav.CurrentSource = s.HLV.SourceID
+		rav.CurrentVersion = string(base.Uint64CASToLittleEndianHex(s.HLV.Version))
 	}
-	return base.JSONMarshal(RevAndVersionJSON(rv))
-}
-
-// Unmarshals either from string (legacy, revID only) or standard RevAndVersion unmarshalling.
-func (rv *RevAndVersion) UnmarshalJSON(data []byte) error {
-
-	if len(data) == 0 {
-		return nil
-	}
-	switch data[0] {
-	case '"':
-		return base.JSONUnmarshal(data, &rv.RevTreeID)
-	case '{':
-		return base.JSONUnmarshal(data, (*RevAndVersionJSON)(rv))
-	default:
-		return fmt.Errorf("unrecognized JSON format for RevAndVersion: %s", data)
-	}
+	return rav
 }

@@ -256,7 +256,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	sync["recent_sequences"] = []uint64{1, 2, 3}
 
 	cm := make(channels.ChannelMap)
-	cm["A"] = &channels.ChannelRemoval{Seq: 2, RevID: "2-e99405a23fa102238fa8c3fd499b15bc"}
+	cm["A"] = &channels.ChannelRemoval{Seq: 2, Rev: channels.RevAndVersion{RevTreeID: "2-e99405a23fa102238fa8c3fd499b15bc"}}
 	sync["channels"] = cm
 
 	history := sync["history"].(map[string]interface{})
