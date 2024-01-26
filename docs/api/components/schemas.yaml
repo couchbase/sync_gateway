@@ -2037,9 +2037,9 @@ Startup-config:
           description: |-
             Network interface to bind the diagnostic API to.
 
-            By default, this will only be accessible to the localhost.
-          type: string
-          default: '127.0.0.1:4987'
+           An empty string will disable the diagnostics API. A suggested default is 127.0.0.1:4987
+           type: string
+          default: ''
         profile_interface:
           description: Network interface to bind profiling API to
           type: string
