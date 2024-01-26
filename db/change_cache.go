@@ -129,7 +129,7 @@ func (entry *LogEntry) IsUnusedRange() bool {
 	return entry.DocID == "" && entry.EndSequence > 0
 }
 
-func (entry *LogEntry) SetRevAndVersion(rv RevAndVersion) {
+func (entry *LogEntry) SetRevAndVersion(rv channels.RevAndVersion) {
 	entry.RevID = rv.RevTreeID
 	if rv.CurrentSource != "" {
 		entry.SourceID = rv.CurrentSource
@@ -493,9 +493,11 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 				// if the doc was removed from one or more channels at this sequence
 				// Set the removed flag and removed channel set on the LogEntry
-				if channelRemovals, atRevId := syncData.Channels.ChannelsRemovedAtSequence(seq); len(channelRemovals) > 0 {
+				if channelRemovals, atRev := syncData.Channels.ChannelsRemovedAtSequence(seq); len(channelRemovals) > 0 {
 					change.DocID = docID
-					change.RevID = atRevId
+					change.RevID = atRev.RevTreeID
+					change.SourceID = atRev.CurrentSource
+					change.Version = base.HexCasToUint64(atRev.CurrentVersion)
 					change.Channels = channelRemovals
 				}
 
