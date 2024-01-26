@@ -1977,7 +1977,27 @@ func (db *DatabaseCollectionWithUser) IsIllegalConflict(ctx context.Context, doc
 	return true
 }
 
-func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry *uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredDoc *Document, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, createNewRevIDSkipped bool, err error) {
+func (col *DatabaseCollectionWithUser) documentUpdateFunc(
+	ctx context.Context,
+	docExists bool,
+	doc *Document,
+	allowImport bool,
+	previousDocSequenceIn uint64,
+	unusedSequences []uint64,
+	callback updateAndReturnDocCallback,
+	expiry *uint32,
+	docUpdateEvent DocUpdateType,
+) (
+	retSyncFuncExpiry *uint32,
+	retNewRevID string,
+	retStoredDoc *Document,
+	retOldBodyJSON string,
+	retUnusedSequences []uint64,
+	changedAccessPrincipals []string,
+	changedRoleAccessUsers []string,
+	createNewRevIDSkipped bool,
+	revokedChannelsRequiringExpansion []string,
+	err error) {
 
 	err = validateExistingDoc(doc, allowImport, docExists)
 	if err != nil {
@@ -2026,6 +2046,14 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 		return
 	}
 
+	// The callback has updated the HLV for mutations coming from CBL.  Update the HLV so that the current version is set before
+	// we call updateChannels, which needs to set the current version for removals
+	// update the HLV values
+	doc, err = col.updateHLV(doc, docUpdateEvent)
+	if err != nil {
+		return
+	}
+
 	if doc.CurrentRev != prevCurrentRev || createNewRevIDSkipped {
 		// Most of the time this update will change the doc's current rev. (The exception is
 		// if the new rev is a conflict that doesn't win the revid comparison.) If so, we
@@ -2037,7 +2065,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 				return
 			}
 		}
-		_, err = doc.updateChannels(ctx, channelSet)
+		_, revokedChannelsRequiringExpansion, err = doc.updateChannels(ctx, channelSet)
 		if err != nil {
 			return
 		}
@@ -2062,7 +2090,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 
 	doc.ClusterUUID = col.serverUUID()
 	doc.TimeSaved = time.Now()
-	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err
+	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, revokedChannelsRequiringExpansion, err
 }
 
 // Function type for the callback passed into updateAndReturnDoc
@@ -2112,7 +2140,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 			prevCurrentRev = doc.CurrentRev
 			docExists := currentValue != nil
-			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, _, err = db.documentUpdateFunc(ctx, docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry, docUpdateEvent)
 			if err != nil {
 				return
 			}
@@ -2168,7 +2196,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			docExists := currentValue != nil
-			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			var revokedChannelsRequiringExpansion []string
+			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, revokedChannelsRequiringExpansion, err = db.documentUpdateFunc(ctx, docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry, docUpdateEvent)
 			if err != nil {
 				return
 			}
@@ -2184,13 +2213,10 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				return
 			}
 
-			// update the HLV values
-			doc, err = db.updateHLV(doc, docUpdateEvent)
-			if err != nil {
-				return
-			}
 			// update the mutate in options based on the above logic
 			updatedDoc.Spec = doc.SyncData.HLV.computeMacroExpansions()
+
+			updatedDoc.Spec = appendRevocationMacroExpansions(updatedDoc.Spec, revokedChannelsRequiringExpansion)
 
 			updatedDoc.IsTombstone = currentRevFromHistory.Deleted
 
@@ -2893,4 +2919,8 @@ func xattrCurrentVersionPath(xattrKey string) string {
 
 func xattrCurrentVersionCASPath(xattrKey string) string {
 	return xattrKey + "." + versionVectorCVCASMacro
+}
+
+func xattrRevokedChannelVersionPath(xattrKey string, channelName string) string {
+	return xattrKey + ".channels." + channelName + "." + xattrMacroCurrentRevVersion
 }
