@@ -126,6 +126,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"replicator.blip_compression":            {&config.Replicator.BLIPCompression, fs.Int("replicator.blip_compression", 0, "BLIP data compression level (0-9)")},
 		"replicator.max_concurrent_replications": {&config.Replicator.MaxConcurrentReplications, fs.Int("replicator.max_concurrent_replications", 0, "Maximum number of replication connections to the node")},
 
+		"unsupported.diagnostic_interface":                 {&config.Unsupported.DiagnosticInterface, fs.String("unsupported.diagnostic_interface", "", "Network interface to bind diagnostic API to")},
 		"unsupported.stats_log_frequency":                  {&config.Unsupported.StatsLogFrequency, fs.String("unsupported.stats_log_frequency", "", "How often should stats be written to stats logs")},
 		"unsupported.use_stdlib_json":                      {&config.Unsupported.UseStdlibJSON, fs.Bool("unsupported.use_stdlib_json", false, "Bypass the jsoniter package and use Go's stdlib instead")},
 		"unsupported.http2.enabled":                        {&config.Unsupported.HTTP2.Enabled, fs.Bool("unsupported.http2.enabled", false, "Whether HTTP2 support is enabled")},

@@ -97,6 +97,8 @@ type RestTester struct {
 	publicHandlerOnce       sync.Once
 	MetricsHandler          http.Handler
 	metricsHandlerOnce      sync.Once
+	DiagnosticHandler       http.Handler
+	diagnosticHandlerOnce   sync.Once
 	closed                  bool
 }
 
@@ -683,7 +685,6 @@ func (rt *RestTester) SendAdminRequestWithAuth(method, resource string, body str
 	request.SetBasicAuth(username, password)
 
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
 	rt.TestAdminHandler().ServeHTTP(response, request)
 	return response
@@ -691,7 +692,6 @@ func (rt *RestTester) SendAdminRequestWithAuth(method, resource string, body str
 
 func (rt *RestTester) Send(request *http.Request) *TestResponse {
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 	rt.TestPublicHandler().ServeHTTP(response, request)
 	return response
 }
@@ -702,8 +702,15 @@ func (rt *RestTester) SendMetricsRequest(method, resource, body string) *TestRes
 
 func (rt *RestTester) sendMetrics(request *http.Request) *TestResponse {
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 	rt.TestMetricsHandler().ServeHTTP(response, request)
+	return response
+}
+
+// SendDiagnosticRequest runs a request against the diagnostic handler.
+func (rt *RestTester) SendDiagnosticRequest(method, resource, body string) *TestResponse {
+	request := Request(method, rt.mustTemplateResource(resource), body)
+	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
+	rt.TestDiagnosticHandler().ServeHTTP(response, Request(method, rt.mustTemplateResource(resource), body))
 	return response
 }
 
@@ -731,6 +738,14 @@ func (rt *RestTester) TestMetricsHandler() http.Handler {
 		rt.MetricsHandler = CreateMetricHandler(rt.ServerContext())
 	})
 	return rt.MetricsHandler
+}
+
+// TestDiagnosticHandler is called to lazily create a handler against the diagnostic interface.
+func (rt *RestTester) TestDiagnosticHandler() http.Handler {
+	rt.diagnosticHandlerOnce.Do(func() {
+		rt.DiagnosticHandler = createDiagnosticHandler(rt.ServerContext())
+	})
+	return rt.DiagnosticHandler
 }
 
 type ChangesResults struct {
@@ -847,7 +862,6 @@ func (rt *RestTester) SendAdminRequest(method, resource, body string) *TestRespo
 	request := Request(method, rt.mustTemplateResource(resource), body)
 
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
 	rt.TestAdminHandler().ServeHTTP(response, request)
 	return response
@@ -991,7 +1005,6 @@ func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body 
 		request.Header.Set(k, v)
 	}
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
 	rt.TestAdminHandler().ServeHTTP(response, request)
 	return response

@@ -175,9 +175,10 @@ func (lc *LegacyServerConfig) ToStartupConfig(ctx context.Context) (*StartupConf
 	sc := StartupConfig{
 		Bootstrap: *bsc,
 		API: APIConfig{
-			CompressResponses:                         lc.CompressResponses,
-			AdminInterfaceAuthentication:              lc.AdminInterfaceAuthentication,
-			MetricsInterfaceAuthentication:            lc.MetricsInterfaceAuthentication,
+			CompressResponses:              lc.CompressResponses,
+			AdminInterfaceAuthentication:   lc.AdminInterfaceAuthentication,
+			MetricsInterfaceAuthentication: lc.MetricsInterfaceAuthentication,
+
 			EnableAdminAuthenticationPermissionsCheck: lc.EnableAdminAuthenticationPermissionsCheck,
 		},
 		Logging: base.LoggingConfig{},
@@ -653,6 +654,5 @@ func ParseCommandLine(ctx context.Context, args []string, handling flag.ErrorHan
 	if config.MetricsInterface == nil {
 		config.MetricsInterface = &DefaultMetricsInterface
 	}
-
 	return config, err
 }

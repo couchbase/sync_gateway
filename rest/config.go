@@ -44,6 +44,7 @@ var (
 	DefaultPublicInterface        = ":4984"
 	DefaultAdminInterface         = "127.0.0.1:4985" // Only accessible on localhost!
 	DefaultMetricsInterface       = "127.0.0.1:4986" // Only accessible on localhost!
+	DefaultDiagnosticInterface    = ""               // Disabled by default
 	DefaultMinimumTLSVersionConst = tls.VersionTLS12
 
 	// The value of defaultLogFilePath is populated by -defaultLogFilePath by command line flag from service scripts.
@@ -82,6 +83,8 @@ const (
 	adminServer = "admin"
 	// serverTypeMetrics indicates the metrics interface for sync gateway
 	metricsServer = "metrics"
+	// serverTypeDiagnostic indicates the diagnostic interface for sync gateway
+	diagnosticServer = "diagnostic"
 )
 
 // Bucket configuration elements - used by db, index
@@ -1901,6 +1904,16 @@ func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) 
 
 	go sc.PostStartup()
 
+	if config.Unsupported.DiagnosticInterface != "" {
+		base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting diagnostic server on %s", config.Unsupported.DiagnosticInterface)
+		go func() {
+			if err := sc.Serve(ctx, config, diagnosticServer, config.Unsupported.DiagnosticInterface, createDiagnosticHandler(sc)); err != nil {
+				base.ErrorfCtx(ctx, "Error serving the Diagnostic API: %v", err)
+			}
+		}()
+	} else {
+		base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Diagnostic API not enabled - skipping.")
+	}
 	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
 	go func() {
 		if err := sc.Serve(ctx, config, metricsServer, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {

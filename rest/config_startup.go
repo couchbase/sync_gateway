@@ -64,6 +64,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 				MinConfigFetchInterval: base.NewConfigDuration(DefaultMinConfigFetchInterval),
 			},
 			AllowDbConfigEnvVars: base.BoolPtr(true),
+			DiagnosticInterface:  DefaultDiagnosticInterface, // Disabled by default
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
 	}
@@ -107,8 +108,9 @@ type APIConfig struct {
 	MetricsInterface string `json:"metrics_interface,omitempty" help:"Network interface to bind metrics API to"`
 	ProfileInterface string `json:"profile_interface,omitempty" help:"Network interface to bind profiling API to"`
 
-	AdminInterfaceAuthentication              *bool `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
-	MetricsInterfaceAuthentication            *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
+	AdminInterfaceAuthentication   *bool `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
+	MetricsInterfaceAuthentication *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
+
 	EnableAdminAuthenticationPermissionsCheck *bool `json:"enable_advanced_auth_dp,omitempty" help:"Whether to enable the DP permissions check feature of admin auth"`
 
 	ServerReadTimeout  *base.ConfigDuration `json:"server_read_timeout,omitempty"  help:"Maximum duration.Second before timing out read of the HTTP(S) request"`
@@ -149,6 +151,7 @@ type UnsupportedConfig struct {
 	UserQueries          *bool                `json:"user_queries,omitempty"            help:"Feature flag for user N1QL/JS/GraphQL queries"`
 	UseXattrConfig       *bool                `json:"use_xattr_config,omitempty"        help:"Store database configurations in system xattrs"`
 	AllowDbConfigEnvVars *bool                `json:"allow_dbconfig_env_vars,omitempty" help:"Can be set to false to skip environment variable expansion in database configs"`
+	DiagnosticInterface  string               `json:"diagnostic_interface,omitempty" help:"Network interface to bind diagnostic API to"`
 }
 
 type ServerlessConfig struct {
