@@ -1139,7 +1139,6 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				return nil, nil, false, nil, addNewerVersionsErr
 			}
 		} else {
-			// TEMP
 			incomingDecodedHLV := docHLV.ToDecodedHybridLogicalVector()
 			localDecodedHLV := doc.HLV.ToDecodedHybridLogicalVector()
 			if !incomingDecodedHLV.IsInConflict(localDecodedHLV) {

@@ -47,7 +47,7 @@ type Version struct {
 	Value string `json:"version"`
 }
 
-// ConflictFormatVersion is a sourceID and version pair in string/uint64 format for use in conflict detection
+// DecodedVersion is a sourceID and version pair in string/uint64 format for use in conflict detection
 type DecodedVersion struct {
 	// SourceID is an ID representing the source of the value (e.g. Couchbase Lite ID)
 	SourceID string `json:"source_id"`
@@ -55,6 +55,7 @@ type DecodedVersion struct {
 	Value uint64 `json:"version"`
 }
 
+// CreateDecodedVersion creates a sourceID and version pair in string/uint64 format
 func CreateDecodedVersion(source string, version uint64) DecodedVersion {
 	return DecodedVersion{
 		SourceID: source,
@@ -62,6 +63,7 @@ func CreateDecodedVersion(source string, version uint64) DecodedVersion {
 	}
 }
 
+// CreateVersion creates an encoded sourceID and version pair
 func CreateVersion(source, version string) Version {
 	return Version{
 		SourceID: source,
@@ -86,6 +88,7 @@ func (v DecodedVersion) String() string {
 	return timestamp + "@" + source
 }
 
+// String returns a version/sourceID pair in CBL string format
 func (v Version) String() string {
 	return v.Value + "@" + v.SourceID
 }

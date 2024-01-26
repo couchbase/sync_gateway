@@ -62,7 +62,7 @@ type LogEntry struct {
 
 func (l LogEntry) String() string {
 	return fmt.Sprintf(
-		"seq: %d docid: %s revid: %s vbno: %d type: %v collectionID: %d source: %s version: %d",
+		"seq: %d docid: %s revid: %s vbno: %d type: %v collectionID: %d source: %s version: %s",
 		l.Sequence,
 		l.DocID,
 		l.RevID,

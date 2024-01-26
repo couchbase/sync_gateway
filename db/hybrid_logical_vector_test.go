@@ -10,7 +10,6 @@ package db
 
 import (
 	"encoding/base64"
-	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
@@ -189,8 +188,9 @@ func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
 	hlvOutput.SourceID = base64.StdEncoding.EncodeToString([]byte(currentVersionPair[0]))
 	version, err := strconv.ParseUint(currentVersionPair[1], 10, 64)
 	require.NoError(tb, err)
-	hlvOutput.Version = string(base.Uint64CASToLittleEndianHex(version))
-	hlvOutput.CurrentVersionCAS = string(base.Uint64CASToLittleEndianHex(version))
+	vrsEncoded := string(base.Uint64CASToLittleEndianHex(version))
+	hlvOutput.Version = vrsEncoded
+	hlvOutput.CurrentVersionCAS = vrsEncoded
 
 	// remove current version entry in list now we have parsed it into the HLV
 	inputList = inputList[1:]
@@ -198,7 +198,6 @@ func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
 	for _, value := range inputList {
 		currentVersionPair = strings.Split(value, "@")
 		version, err = strconv.ParseUint(currentVersionPair[1], 10, 64)
-		//strconv.ParseUint(decData.UID, 16, 64)
 		require.NoError(tb, err)
 		if strings.HasPrefix(currentVersionPair[0], "m_") {
 			// add entry to merge version removing the leading prefix for sourceID
@@ -297,11 +296,6 @@ func TestHLVImport(t *testing.T) {
 	require.Equal(t, encodedCAS, importedHLV.CurrentVersionCAS)
 	require.Equal(t, encodedCAS, importedHLV.Version)
 	require.Equal(t, hlvHelper.Source, importedHLV.SourceID)
-}
-
-func TestGreg(t *testing.T) {
-	lol := base.HexCasToUint64("")
-	fmt.Println(lol)
 }
 
 // TestHLVMapToCBLString:
