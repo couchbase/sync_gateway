@@ -442,3 +442,13 @@ func (hlv *HybridLogicalVector) toHistoryForHLV() string {
 	}
 	return s.String()
 }
+
+// appendRevocationMacroExpansions adds macro expansions for the channel map.  Not strictly an HLV operation
+// but putting the function here as it's required when the HLV's current version is being macro expanded
+func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, channelNames []string) (updatedSpec []sgbucket.MacroExpansionSpec) {
+	for _, channelName := range channelNames {
+		spec := sgbucket.NewMacroExpansionSpec(xattrRevokedChannelVersionPath(base.SyncXattrName, channelName), sgbucket.MacroCas)
+		currentSpec = append(currentSpec, spec)
+	}
+	return currentSpec
+}
