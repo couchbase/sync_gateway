@@ -15,6 +15,8 @@ package channels
 import (
 	"fmt"
 	"time"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // LogEntry
@@ -74,18 +76,18 @@ func (l LogEntry) String() string {
 
 type ChannelMap map[string]*ChannelRemoval
 type ChannelRemoval struct {
-	Seq     uint64 `json:"seq,omitempty"`
-	RevID   string `json:"rev"`
-	Deleted bool   `json:"del,omitempty"`
+	Seq     uint64        `json:"seq,omitempty"`
+	Rev     RevAndVersion `json:"rev"`
+	Deleted bool          `json:"del,omitempty"`
 }
 
-func (channelMap ChannelMap) ChannelsRemovedAtSequence(seq uint64) (ChannelMap, string) {
+func (channelMap ChannelMap) ChannelsRemovedAtSequence(seq uint64) (ChannelMap, RevAndVersion) {
 	var channelsRemoved = make(ChannelMap)
-	var revIdRemoved string
+	var revIdRemoved RevAndVersion
 	for channel, removal := range channelMap {
 		if removal != nil && removal.Seq == seq {
 			channelsRemoved[channel] = removal
-			revIdRemoved = removal.RevID // Will be the same RevID for each removal
+			revIdRemoved = removal.Rev // Will be the same Rev for each removal
 		}
 	}
 	return channelsRemoved, revIdRemoved
@@ -99,4 +101,43 @@ func (channelMap ChannelMap) KeySet() []string {
 		i++
 	}
 	return result
+}
+
+// RevAndVersion is used to store both revTreeID and currentVersion in a single property, for backwards compatibility
+// with existing indexes using rev.  When only RevTreeID is specified, is marshalled/unmarshalled as a string.  Otherwise
+// marshalled normally.
+type RevAndVersion struct {
+	RevTreeID      string `json:"rev,omitempty"`
+	CurrentSource  string `json:"src,omitempty"`
+	CurrentVersion string `json:"vrs,omitempty"` // String representation of version
+}
+
+// RevAndVersionJSON aliases RevAndVersion to support conditional unmarshalling from either string (revTreeID) or
+// map (RevAndVersion) representations
+type RevAndVersionJSON RevAndVersion
+
+// Marshals RevAndVersion as simple string when only RevTreeID is specified - otherwise performs standard
+// marshalling
+func (rv RevAndVersion) MarshalJSON() (data []byte, err error) {
+
+	if rv.CurrentSource == "" {
+		return base.JSONMarshal(rv.RevTreeID)
+	}
+	return base.JSONMarshal(RevAndVersionJSON(rv))
+}
+
+// Unmarshals either from string (legacy, revID only) or standard RevAndVersion unmarshalling.
+func (rv *RevAndVersion) UnmarshalJSON(data []byte) error {
+
+	if len(data) == 0 {
+		return nil
+	}
+	switch data[0] {
+	case '"':
+		return base.JSONUnmarshal(data, &rv.RevTreeID)
+	case '{':
+		return base.JSONUnmarshal(data, (*RevAndVersionJSON)(rv))
+	default:
+		return fmt.Errorf("unrecognized JSON format for RevAndVersion: %s", data)
+	}
 }
