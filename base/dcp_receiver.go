@@ -29,7 +29,7 @@ func makeFeedEventForMCRequest(rq *gomemcached.MCRequest, opcode sgbucket.FeedOp
 	return makeFeedEvent(rq.Key, rq.Body, rq.DataType, rq.Cas, ExtractExpiryFromDCPMutation(rq), rq.VBucket, 0, opcode)
 }
 
-// ShardedImportDCPMetadata is an internal struct that is exposed to enable json marshaling, used by sharded import feed. It differs from DCPMetadata for reasons of backward compatibility.
+// ShardedImportDCPMetadata is an internal struct that is exposed to enable json marshaling, used by sharded import feed. It differs from DCPMetadata because it must match the private struct used by cbgt.metadata.
 type ShardedImportDCPMetadata struct {
 	FailOverLog [][]uint64 `json:"failOverLog"`
 	SeqStart    uint64     `json:"seqStart"`

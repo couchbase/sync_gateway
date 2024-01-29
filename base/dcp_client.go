@@ -555,8 +555,8 @@ func (dc *DCPClient) verifyFailoverLog(vbID uint16, f []gocbcore.FailoverEntry) 
 }
 
 func (dc *DCPClient) deactivateVbucket(vbID uint16) {
-	dc.activeVbuckets.remove(vbID)
-	if dc.activeVbuckets.count() == 0 {
+	numActive := dc.activeVbuckets.remove(vbID)
+	if numActive == 0 {
 		dc.close()
 		// On successful one-shot feed completion, purge persisted checkpoints
 		if dc.oneShot {
@@ -675,11 +675,12 @@ func (v *vBucketSet) add(vbID uint16) {
 	v.vbuckets[vbID] = struct{}{}
 }
 
-// remove a vbucket ID from the set
-func (v *vBucketSet) remove(vbID uint16) {
+// remove a vbucket ID from the set and returns number of vbuckets in the set.
+func (v *vBucketSet) remove(vbID uint16) int {
 	v.lock.Lock()
 	defer v.lock.Unlock()
 	delete(v.vbuckets, vbID)
+	return len(v.vbuckets)
 }
 
 // count returns the number of items in the set
