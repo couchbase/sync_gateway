@@ -177,6 +177,10 @@ func (c *DCPCommon) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq
 	vbucketId := partitionToVbNo(c.loggingCtx, partition)
 	WarnfCtx(c.loggingCtx, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
+	// MB-60564 would fix this in cbgt, if sequence is zero, don't perform vbucketUUID check, in case it is mismatched
+	if rollbackSeq == 0 {
+		vbucketUUID = 0
+	}
 	rollbackMetaData := makeVbucketMetadataForSequence(vbucketUUID, rollbackSeq)
 
 	c.updateSeq(vbucketId, rollbackSeq, false)
