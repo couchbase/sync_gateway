@@ -11,7 +11,6 @@ package db
 import (
 	"encoding/base64"
 	"fmt"
-	"math"
 	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -149,15 +148,12 @@ func (hlv *DecodedHybridLogicalVector) IsInConflict(otherVector DecodedHybridLog
 // AddVersion adds newVersion to the in memory representation of the HLV.
 func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 	var newVersionCAS uint64
-	if newVersion.Value == hlvExpandMacroCASValue {
-		// if we have macro expand value then we need to add max uint64 here for below comparison
-		newVersionCAS = math.MaxUint64
-	} else {
-		newVersionCAS = base.HexCasToUint64(newVersion.Value)
-	}
 	hlvVersionCAS := base.HexCasToUint64(hlv.Version)
-	if newVersionCAS < hlvVersionCAS {
-		return fmt.Errorf("attempting to add new version vector entry with a CAS that is less than the current version CAS value. Current cas: %s new cas %s", hlv.Version, newVersion.Value)
+	if newVersion.Value != hlvExpandMacroCASValue {
+		newVersionCAS = base.HexCasToUint64(newVersion.Value)
+		if newVersionCAS < hlvVersionCAS {
+			return fmt.Errorf("attempting to add new version vector entry with a CAS that is less than the current version CAS value. Current cas: %s new cas %s", hlv.Version, newVersion.Value)
+		}
 	}
 	// check if this is the first time we're adding a source - version pair
 	if hlv.SourceID == "" {
@@ -337,12 +333,13 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector
 		for i, v := range otherVector.PreviousVersions {
 			if hlv.PreviousVersions[i] == "" {
 				hlv.setPreviousVersion(i, v)
-			}
-			// if we get here then there is entry for this source in PV dso we must check if its newer or not
-			otherHLVPVValue := base.HexCasToUint64(v)
-			localHLVPVValue := base.HexCasToUint64(hlv.PreviousVersions[i])
-			if localHLVPVValue < otherHLVPVValue {
-				hlv.setPreviousVersion(i, v)
+			} else {
+				// if we get here then there is entry for this source in PV so we must check if its newer or not
+				otherHLVPVValue := base.HexCasToUint64(v)
+				localHLVPVValue := base.HexCasToUint64(hlv.PreviousVersions[i])
+				if localHLVPVValue < otherHLVPVValue {
+					hlv.setPreviousVersion(i, v)
+				}
 			}
 		}
 	}
@@ -431,8 +428,8 @@ func (hlv *HybridLogicalVector) ToDecodedHybridLogicalVector() DecodedHybridLogi
 		Version:           decodedVersion,
 		ImportCAS:         decodedImportCAS,
 		SourceID:          hlv.SourceID,
-		PreviousVersions:  make(map[string]uint64),
-		MergeVersions:     make(map[string]uint64),
+		PreviousVersions:  make(map[string]uint64, len(hlv.PreviousVersions)),
+		MergeVersions:     make(map[string]uint64, len(hlv.MergeVersions)),
 	}
 
 	for i, v := range hlv.PreviousVersions {
