@@ -10,7 +10,6 @@ package db
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -1055,7 +1054,7 @@ func TestConflicts(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	bucketUUID := base64.StdEncoding.EncodeToString([]byte(db.BucketUUID))
+	bucketUUID := db.EncodedBucketUUID
 
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 

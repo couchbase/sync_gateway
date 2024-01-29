@@ -12,7 +12,6 @@ package db
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"log"
 	"reflect"
@@ -1689,7 +1688,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	bucketUUID := base64.StdEncoding.EncodeToString([]byte(db.BucketUUID))
+	bucketUUID := db.EncodedBucketUUID
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// create a new doc
@@ -1775,7 +1774,7 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	bucketUUID := base64.StdEncoding.EncodeToString([]byte(db.BucketUUID))
+	bucketUUID := db.EncodedBucketUUID
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// create a new doc

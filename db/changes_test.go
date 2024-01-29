@@ -11,7 +11,6 @@ package db
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"testing"
@@ -296,7 +295,7 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	collectionID := collection.GetCollectionID()
-	bucketUUID := base64.StdEncoding.EncodeToString([]byte(db.BucketUUID))
+	bucketUUID := db.EncodedBucketUUID
 
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
@@ -569,7 +568,7 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	collectionID := collection.GetCollectionID()
-	bucketUUID := base64.StdEncoding.EncodeToString([]byte(db.BucketUUID))
+	bucketUUID := db.EncodedBucketUUID
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Make channel active

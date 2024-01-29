@@ -12,7 +12,6 @@ package db
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -779,7 +778,7 @@ func TestGetActive(t *testing.T) {
 	syncCAS := string(base.Uint64CASToLittleEndianHex(doc.Cas))
 
 	expectedCV := Version{
-		SourceID: base64.StdEncoding.EncodeToString([]byte(db.BucketUUID)),
+		SourceID: db.EncodedBucketUUID,
 		Value:    syncCAS,
 	}
 

@@ -11,7 +11,6 @@ package db
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"math"
 	"net/http"
@@ -917,7 +916,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 		} else {
 			// Otherwise this is an SDK mutation made by the local cluster that should be added to HLV.
 			newVVEntry := Version{}
-			newVVEntry.SourceID = base64.StdEncoding.EncodeToString([]byte(db.dbCtx.BucketUUID))
+			newVVEntry.SourceID = db.dbCtx.EncodedBucketUUID
 			newVVEntry.Value = hlvExpandMacroCASValue
 			err := d.SyncData.HLV.AddVersion(newVVEntry)
 			if err != nil {
@@ -930,7 +929,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(d *Document, docUpdateEvent DocU
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// add a new entry to the version vector
 		newVVEntry := Version{}
-		newVVEntry.SourceID = base64.StdEncoding.EncodeToString([]byte(db.dbCtx.BucketUUID))
+		newVVEntry.SourceID = db.dbCtx.EncodedBucketUUID
 		newVVEntry.Value = hlvExpandMacroCASValue
 		err := d.SyncData.HLV.AddVersion(newVVEntry)
 		if err != nil {

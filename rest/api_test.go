@@ -2825,7 +2825,7 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	bucketUUID := base64.StdEncoding.EncodeToString([]byte(rt.GetDatabase().BucketUUID))
+	bucketUUID := rt.GetDatabase().EncodedBucketUUID
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"key": "value"}`)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -2876,7 +2876,7 @@ func TestHLVOnPutWithImportRejection(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	bucketUUID := base64.StdEncoding.EncodeToString([]byte(rt.GetDatabase().BucketUUID))
+	bucketUUID := rt.GetDatabase().EncodedBucketUUID
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"type": "mobile"}`)
 	RequireStatus(t, resp, http.StatusCreated)

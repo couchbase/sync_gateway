@@ -9,7 +9,6 @@
 package replicatortest
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"expvar"
 	"fmt"
@@ -8324,8 +8323,8 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	defer teardown()
 
 	// Grab the bucket UUIDs for both rest testers
-	activeBucketUUID := base64.StdEncoding.EncodeToString([]byte(activeRT.GetDatabase().BucketUUID))
-	passiveBucketUUID := base64.StdEncoding.EncodeToString([]byte(passiveRT.GetDatabase().BucketUUID))
+	activeBucketUUID := activeRT.GetDatabase().EncodedBucketUUID
+	passiveBucketUUID := passiveRT.GetDatabase().EncodedBucketUUID
 
 	const rep = "replication"
 
