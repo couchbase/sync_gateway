@@ -1466,7 +1466,7 @@ func TestSyncFnOnPush(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, channels.ChannelMap{
 		"clibup": nil,
-		"public": &channels.ChannelRemoval{Seq: 2, Rev: channels.RevAndVersion{RevTreeID: "4-four", CurrentSource: newDoc.HLV.SourceID, CurrentVersion: string(base.Uint64CASToLittleEndianHex(newDoc.HLV.Version))}},
+		"public": &channels.ChannelRemoval{Seq: 2, Rev: channels.RevAndVersion{RevTreeID: "4-four", CurrentSource: newDoc.HLV.SourceID, CurrentVersion: newDoc.HLV.Version}},
 	}, doc.Channels)
 
 	assert.Equal(t, base.SetOf("clibup"), doc.History["4-four"].Channels)
@@ -1903,7 +1903,7 @@ func TestChannelQuery(t *testing.T) {
 			log.Printf("removedDocEntry Version: %v", removedDocEntry.Version)
 			require.Equal(t, testCase.expectedRev.RevTreeID, removedDocEntry.RevID)
 			require.Equal(t, testCase.expectedRev.CurrentSource, removedDocEntry.SourceID)
-			require.Equal(t, base.HexCasToUint64(testCase.expectedRev.CurrentVersion), removedDocEntry.Version)
+			require.Equal(t, testCase.expectedRev.CurrentVersion, removedDocEntry.Version)
 		})
 	}
 
@@ -1982,7 +1982,7 @@ func TestChannelQueryRevocation(t *testing.T) {
 			log.Printf("removedDocEntry Version: %v", removedDocEntry.Version)
 			require.Equal(t, testCase.expectedRev.RevTreeID, removedDocEntry.RevID)
 			require.Equal(t, testCase.expectedRev.CurrentSource, removedDocEntry.SourceID)
-			require.Equal(t, base.HexCasToUint64(testCase.expectedRev.CurrentVersion), removedDocEntry.Version)
+			require.Equal(t, testCase.expectedRev.CurrentVersion, removedDocEntry.Version)
 		})
 	}
 

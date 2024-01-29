@@ -1297,7 +1297,7 @@ func (s *SyncData) GetRevAndVersion() (rav channels.RevAndVersion) {
 	rav.RevTreeID = s.CurrentRev
 	if s.HLV != nil {
 		rav.CurrentSource = s.HLV.SourceID
-		rav.CurrentVersion = string(base.Uint64CASToLittleEndianHex(s.HLV.Version))
+		rav.CurrentVersion = s.HLV.Version
 	}
 	return rav
 }

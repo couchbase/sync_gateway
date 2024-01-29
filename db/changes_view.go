@@ -69,7 +69,7 @@ func nextChannelQueryEntry(ctx context.Context, results sgbucket.QueryResultIter
 
 	if queryRow.RemovalRev != nil {
 		entry.RevID = queryRow.RemovalRev.RevTreeID
-		entry.Version = base.HexCasToUint64(queryRow.RemovalRev.CurrentVersion)
+		entry.Version = queryRow.RemovalRev.CurrentVersion
 		entry.SourceID = queryRow.RemovalRev.CurrentSource
 		if queryRow.RemovalDel {
 			entry.SetDeleted()
