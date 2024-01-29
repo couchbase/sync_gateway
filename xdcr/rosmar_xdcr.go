@@ -176,8 +176,7 @@ func writeDoc(ctx context.Context, datastore base.DataStore, originalCas uint64,
 	} else {
 		body = event.Value
 	}
-	isJSON := event.DataType&sgbucket.FeedDataTypeJSON != 0
-	err := collection.SetWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrs, body, isJSON)
+	err := collection.SetWithMeta(ctx, string(event.Key), originalCas, event.Cas, event.Expiry, xattrs, body, event.DataType)
 	if !base.IsCasMismatch(err) {
 		return err
 	}
