@@ -37,25 +37,29 @@ type SGDest interface {
 // is done on-demand per vbucket, as a given Dest isn't expected to manage the full set of vbuckets for a bucket.
 type DCPDest struct {
 	*DCPCommon
+	stats              *expvar.Map // DCP feed stats (rollback, backfill)
 	partitionCountStat *SgwIntStat // Stat for partition count.  Stored outside the DCP feed stats map
 	metaInitComplete   []bool      // Whether metadata initialization has been completed, per vbNo
+	janitorRollback    func()      // This function will trigger a janitor_pindex_rollback
 }
 
 // NewDCPDest creates a new DCPDest which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. The bucket is the gocb bucket to stream events from. It optionally stores checkpoints in the _default._default collection if persistentCheckpoints is true with prefixes from metaKeys + checkpointPrefix. The feed name will start with feedID have a unique string appended. Specific stats for DCP are stored in expvars rather than SgwStats, except for importPartitionStat representing the number of import partitions. Each import partition will have a DCPDest object. The rollback function is supplied by the global cbgt.PIndexImplType.New function, for initial opening of a partition index, and cbgt.PIndexImplType.OpenUsing for reopening of a partition index. The rollback function provides a way to pass cbgt.JANITOR_ROLLBACK_PINDEX to cbgt.Mgr.
-func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, persistCheckpoints bool,
+func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool,
 	dcpStats *expvar.Map, feedID string, importPartitionStat *SgwIntStat, checkpointPrefix string, metaKeys *MetadataKeys, rollback func()) (SGDest, context.Context, error) {
 
 	// TODO: Metadata store?
 	metadataStore := bucket.DefaultDataStore()
-	dcpCommon, err := NewDCPCommon(ctx, callback, bucket, metadataStore, persistCheckpoints, dcpStats, feedID, checkpointPrefix, metaKeys, rollback)
+	dcpCommon, err := NewDCPCommon(ctx, callback, bucket, maxVbNo, metadataStore, persistCheckpoints, dcpStats, feedID, checkpointPrefix, metaKeys)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	d := &DCPDest{
 		DCPCommon:          dcpCommon,
+		stats:              dcpStats,
 		partitionCountStat: importPartitionStat,
 		metaInitComplete:   make([]bool, dcpCommon.maxVbNo),
+		janitorRollback:    rollback,
 	}
 
 	if d.partitionCountStat != nil {
@@ -185,6 +189,21 @@ func (d *DCPDest) OpaqueSet(partition string, value []byte) error {
 	}
 	_ = d.setMetaData(vbNo, value, false)
 	return nil
+}
+
+// Rollback is required by cbgt.Dest interface but will not work when called by Sync Gateway as we need additional information to perform a rollback. Due to the design of cbgt.Dest this will not be called without a programming error.
+func (d *DCPDest) Rollback(partition string, rollbackSeq uint64) error {
+	panic("Only RollbackEx should be called, this function is required to be implmented by cbgt.Dest interface. This function does not provide Sync Gateway with enough information to rollback.")
+}
+
+// RollbackEx is called when a DCP stream request return as error. This function persists the metadata and will issue a command to cbgt.GocbcoreDCPFeed to restart.
+func (d *DCPDest) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq uint64) error {
+	// MB-60564 would fix this in cbgt, if sequence is zero, don't perform vbucketUUID check, in case it is mismatched
+	if rollbackSeq == 0 {
+		vbucketUUID = 0
+	}
+	cbgtMeta := makeVbucketMetadataForSequence(vbucketUUID, rollbackSeq)
+	return d.rollbackEx(partitionToVbNo(d.loggingCtx, partition), vbucketUUID, rollbackSeq, cbgtMeta, d.janitorRollback)
 }
 
 // TODO: Not implemented, review potential usage

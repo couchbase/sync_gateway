@@ -52,8 +52,8 @@ type DCPClient struct {
 	terminator                 chan bool                      // Used to close worker goroutines spawned by the DCPClient
 	doneChannel                chan error                     // Returns nil on successful completion of one-shot feed or external close of feed, error otherwise
 	metadata                   DCPMetadataStore               // Implementation of DCPMetadataStore for metadata persistence
-	activeVbuckets             *vBucketSet                    // vbuckets that have an open stream
-	connectedVbuckets          *vBucketSet                    // vbuckets that have a connected stream
+	activeVbuckets             map[uint16]struct{}            // vbuckets that have an open stream
+	activeVbucketLock          sync.Mutex                     // Synchronization for activeVbuckets
 	oneShot                    bool                           // Whether DCP feed should be one-shot
 	closing                    AtomicBool                     // Set when the client is closing (either due to internal or external request)
 	closeError                 error                          // Will be set to a non-nil value for unexpected error
@@ -116,8 +116,12 @@ func NewDCPClient(ctx context.Context, ID string, callback sgbucket.FeedEventCal
 		dbStats:             options.DbStats,
 		agentPriority:       options.AgentPriority,
 		collectionIDs:       options.CollectionIDs,
-		activeVbuckets:      newVBucketSet(numVbuckets),
-		connectedVbuckets:   newVBucketSet(0),
+	}
+
+	// Initialize active vbuckets
+	client.activeVbuckets = make(map[uint16]struct{})
+	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
+		client.activeVbuckets[vbNo] = struct{}{}
 	}
 
 	checkpointPrefix := fmt.Sprintf("%s:%v", client.checkpointPrefix, ID)
@@ -436,7 +440,6 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) error {
 
 		openStreamErr = dc.openStreamRequest(vbID)
 		if openStreamErr == nil {
-			dc.connectedVbuckets.add(vbID)
 			return nil
 		}
 
@@ -509,7 +512,7 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 	}
 
 	op, openErr := dc.agent.OpenStream(vbID,
-		memd.DcpStreamAddFlagActiveOnly|memd.DcpStreamAddFlagStrictVBUUID,
+		memd.DcpStreamAddFlagActiveOnly,
 		vbMeta.VbUUID,
 		vbMeta.StartSeqNo,
 		vbMeta.EndSeqNo,
@@ -555,8 +558,11 @@ func (dc *DCPClient) verifyFailoverLog(vbID uint16, f []gocbcore.FailoverEntry) 
 }
 
 func (dc *DCPClient) deactivateVbucket(vbID uint16) {
-	numActive := dc.activeVbuckets.remove(vbID)
-	if numActive == 0 {
+	dc.activeVbucketLock.Lock()
+	delete(dc.activeVbuckets, vbID)
+	activeCount := len(dc.activeVbuckets)
+	dc.activeVbucketLock.Unlock()
+	if activeCount == 0 {
 		dc.close()
 		// On successful one-shot feed completion, purge persisted checkpoints
 		if dc.oneShot {
@@ -566,7 +572,6 @@ func (dc *DCPClient) deactivateVbucket(vbID uint16) {
 }
 
 func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
-	dc.connectedVbuckets.remove(e.vbID)
 	if e.err == nil {
 		DebugfCtx(dc.ctx, KeyDCP, "Stream (vb:%d) closed, all items streamed", e.vbID)
 		dc.deactivateVbucket(e.vbID)
@@ -649,43 +654,4 @@ func getLatestVbUUID(failoverLog []gocbcore.FailoverEntry) (vbUUID gocbcore.VbUU
 
 func (dc *DCPClient) GetMetadataKeyPrefix() string {
 	return dc.metadata.GetKeyPrefix()
-}
-
-// vBucketSet is a thread-safe set of vbucket IDs
-type vBucketSet struct {
-	vbuckets map[uint16]struct{}
-	lock     sync.RWMutex
-}
-
-// newVBucketSet returns a new vBucketSet and turns on values specified up to value. Typical use would be newVBucketSet(1024) to initialize 0-1023 as values.
-func newVBucketSet(numVBuckets uint16) *vBucketSet {
-	v := vBucketSet{
-		vbuckets: make(map[uint16]struct{}),
-	}
-	for i := uint16(0); i < numVBuckets; i++ {
-		v.vbuckets[i] = struct{}{}
-	}
-	return &v
-}
-
-// add a vbucket ID from the set
-func (v *vBucketSet) add(vbID uint16) {
-	v.lock.Lock()
-	defer v.lock.Unlock()
-	v.vbuckets[vbID] = struct{}{}
-}
-
-// remove a vbucket ID from the set and returns number of vbuckets in the set.
-func (v *vBucketSet) remove(vbID uint16) int {
-	v.lock.Lock()
-	defer v.lock.Unlock()
-	delete(v.vbuckets, vbID)
-	return len(v.vbuckets)
-}
-
-// count returns the number of items in the set
-func (v *vBucketSet) count() int {
-	v.lock.RLock()
-	defer v.lock.RUnlock()
-	return len(v.vbuckets)
 }

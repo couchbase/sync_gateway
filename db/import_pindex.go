@@ -37,7 +37,7 @@ func RegisterImportPindexImpl(ctx context.Context, configGroup string) {
 	cbgt.RegisterPIndexImplType(pIndexType,
 		&cbgt.PIndexImplType{
 			New:       getNewPIndexImplType(ctx),
-			Open:      openImportPIndexImpl,
+			Open:      OpenImportPIndexImpl,
 			OpenUsing: getOpenImportPIndexImplUsing(ctx),
 			Description: "general/syncGateway-import " +
 				" - import processing for shared bucket access",
@@ -84,8 +84,8 @@ func getNewPIndexImplType(ctx context.Context) func(indexType, indexParams, path
 	return newImportPIndexImpl
 }
 
-// openImportPIndexImpl is required to have an implementation from cbgt.PIndexImplType.Open. When this function fails, PIndexImplType will fall back to using PIndexImplType.OpenUsing
-func openImportPIndexImpl(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+// OpenImportPIndexImpl is required to have an implementation from cbgt.PIndexImplType.Open. When this function fails, PIndexImplType will fall back to using PIndexImplType.OpenUsing
+func OpenImportPIndexImpl(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 	return nil, nil, errors.New("Open PIndexImpl not supported for SG 3.0 databases - must provide index params")
 }
 
@@ -102,10 +102,15 @@ func getOpenImportPIndexImplUsing(ctx context.Context) func(indexType, indexPara
 func (il *importListener) NewImportDest(janitorRollback func()) (cbgt.Dest, error) {
 	callback := il.ProcessFeedEvent
 
+	maxVbNo, err := il.bucket.GetMaxVbno() // can safely assume that all collections on the same bucket will have the same vbNo
+	if err != nil {
+		return nil, err
+	}
+
 	importFeedStatsMap := il.dbStats.ImportFeedMapStats
 	importPartitionStat := il.importStats.ImportPartitions
 
-	importDest, _, err := base.NewDCPDest(il.loggingCtx, callback, il.bucket, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat, il.checkpointPrefix, il.metadataKeys, janitorRollback)
+	importDest, _, err := base.NewDCPDest(il.loggingCtx, callback, il.bucket, maxVbNo, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat, il.checkpointPrefix, il.metadataKeys, janitorRollback)
 	if err != nil {
 		return nil, err
 	}

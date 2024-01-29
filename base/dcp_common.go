@@ -58,12 +58,11 @@ type DCPCommon struct {
 	feedID                 string                         // Unique feed ID, used for logging
 	loggingCtx             context.Context                // Logging context, prefixes feedID
 	checkpointPrefix       string                         // DCP checkpoint key prefix
-	janitorRollback        func()                         // This function will trigger a janitor_pindex_rollback
 }
 
 // NewDCPCommon creates a new DCPCommon which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. The bucket is the gocb bucket to stream events from. It stores checkpoints in the metaStore collection prefixes from metaKeys + checkpointPrefix. The feed name will start with feedID and DCPCommon will add unique string. Specific stats for DCP are stored in expvars rather than SgwStats. The janitorRollback function is supplied by the global cbgt.PIndexImplType.New function, for initial opening of a partition index, and cbgt.PIndexImplType.OpenUsing for reopening of a partition index. The rollback function provides a way to pass cbgt.JANITOR_ROLLBACK_PINDEX to cbgt.Mgr and is supplied.
-func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, metaStore DataStore,
-	persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string, metaKeys *MetadataKeys, janitorRollback func()) (*DCPCommon, error) {
+func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, metaStore DataStore,
+	persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string, metaKeys *MetadataKeys) (*DCPCommon, error) {
 	newBackfillStatus := backfillStatus{
 		metaKeys: metaKeys,
 	}
@@ -71,11 +70,6 @@ func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, 
 	couchbaseStore, ok := AsCouchbaseBucketStore(bucket)
 	if !ok {
 		return nil, errors.New("DCP not supported for non-Couchbase data source")
-	}
-
-	maxVbNo, err := bucket.GetMaxVbno()
-	if err != nil {
-		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCPCommon: %w", err)
 	}
 
 	c := &DCPCommon{
@@ -94,7 +88,6 @@ func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, 
 		backfill:               &newBackfillStatus,
 		feedID:                 feedID,
 		checkpointPrefix:       checkpointPrefix,
-		janitorRollback:        janitorRollback,
 	}
 
 	c.loggingCtx = CorrelationIDLogCtx(ctx, feedID)
@@ -172,22 +165,15 @@ func (c *DCPCommon) Rollback(partition string, rollbackSeq uint64) error {
 	panic("Only RollbackEx should be called, this function is required to be implmented by cbgt.Dest interface. This function does not provide Sync Gateway with enough information to rollback.")
 }
 
-// RollbackEx is called when a DCP stream request return as error. This function persists the metadata and will issue a command to cbgt.GocbcoreDCPFeed to restart.
-func (c *DCPCommon) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq uint64) error {
-	vbucketId := partitionToVbNo(c.loggingCtx, partition)
+// rollbackEx is called when a DCP stream issues a rollback. The metadata persisted for a given uuid and sequence number and then cbgt.Mgr JANITOR_ROLLBACK_PINDEX is issued via janitorRollback function.
+func (c *DCPCommon) rollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64, rollbackMetaData []byte, janitorRollback func()) error {
 	WarnfCtx(c.loggingCtx, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
-	// MB-60564 would fix this in cbgt, if sequence is zero, don't perform vbucketUUID check, in case it is mismatched
-	if rollbackSeq == 0 {
-		vbucketUUID = 0
-	}
-	rollbackMetaData := makeVbucketMetadataForSequence(vbucketUUID, rollbackSeq)
-
 	c.updateSeq(vbucketId, rollbackSeq, false)
 	// if we fail to set the metadata, and don't retry, the
 	err := c.setMetaData(vbucketId, rollbackMetaData, true)
 	// if we fail to persist the metadata, we still want to rollback to keep retrying. Returning the error will log it.
-	c.janitorRollback()
+	janitorRollback()
 	return err
 }
 

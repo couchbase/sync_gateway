@@ -2438,7 +2438,7 @@ func TestImportRollback(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP)
 	const (
 		rollbackWithoutFailover = "rollbackWithoutFailover"
-		rollbackWithFailover    = "rollbackWithFailover" // will fail until MB-60564
+		rollbackWithFailover    = "rollbackWithFailoverLogs"
 	)
 	for _, testType := range []string{rollbackWithoutFailover, rollbackWithFailover} {
 		t.Run(testType, func(t *testing.T) {

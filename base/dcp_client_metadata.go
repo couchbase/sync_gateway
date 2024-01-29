@@ -100,7 +100,7 @@ func NewDCPMetadataMem(numVbuckets uint16) *DCPMetadataMem {
 func (m *dcpMetadataBase) Rollback(ctx context.Context, vbID uint16, startSeqNo gocbcore.SeqNo) {
 	var rollbackVbuuid gocbcore.VbUUID
 	for _, failoverLog := range m.metadata[vbID].FailoverEntries {
-		if failoverLog.SeqNo <= startSeqNo && failoverLog.SeqNo != 0 {
+		if failoverLog.SeqNo <= startSeqNo {
 			rollbackVbuuid = failoverLog.VbUUID
 			break
 		}
