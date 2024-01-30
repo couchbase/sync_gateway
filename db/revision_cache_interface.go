@@ -59,6 +59,8 @@ type RevisionCache interface {
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
 	UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta)
+
+	UpdateDeltaCV(ctx context.Context, docID string, cv *Version, toDelta RevisionDelta)
 }
 
 const (
@@ -242,21 +244,25 @@ type IDandCV struct {
 
 // RevisionDelta stores data about a delta between a revision and ToRevID.
 type RevisionDelta struct {
-	ToRevID               string                  // Target revID for the delta
+	ToRevID               string // Target revID for the delta
+	ToCV                  string
 	DeltaBytes            []byte                  // The actual delta
 	AttachmentStorageMeta []AttachmentStorageMeta // Storage metadata of all attachments present on ToRevID
 	ToChannels            base.Set                // Full list of channels for the to revision
 	RevisionHistory       []string                // Revision history from parent of ToRevID to source revID, in descending order
-	ToDeleted             bool                    // Flag if ToRevID is a tombstone
+	HlvHistory            string
+	ToDeleted             bool // Flag if ToRevID is a tombstone
 }
 
 func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
 	return RevisionDelta{
 		ToRevID:               toRevision.RevID,
+		ToCV:                  toRevision.CV.String(),
 		DeltaBytes:            deltaBytes,
 		AttachmentStorageMeta: toRevAttStorageMeta,
 		ToChannels:            toRevision.Channels,
 		RevisionHistory:       toRevision.History.parseAncestorRevisions(fromRevID),
+		HlvHistory:            toRevision.hlvHistory,
 		ToDeleted:             deleted,
 	}
 }
