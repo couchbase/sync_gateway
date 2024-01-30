@@ -49,7 +49,7 @@ func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bu
 
 	// TODO: Metadata store?
 	metadataStore := bucket.DefaultDataStore()
-	dcpCommon, err := NewDCPCommon(ctx, callback, bucket, maxVbNo, metadataStore, persistCheckpoints, dcpStats, feedID, checkpointPrefix, metaKeys)
+	dcpCommon, err := NewDCPCommon(ctx, callback, bucket, metadataStore, maxVbNo, persistCheckpoints, dcpStats, feedID, checkpointPrefix, metaKeys)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -193,7 +193,9 @@ func (d *DCPDest) OpaqueSet(partition string, value []byte) error {
 
 // Rollback is required by cbgt.Dest interface but will not work when called by Sync Gateway as we need additional information to perform a rollback. Due to the design of cbgt.Dest this will not be called without a programming error.
 func (d *DCPDest) Rollback(partition string, rollbackSeq uint64) error {
-	panic("Only RollbackEx should be called, this function is required to be implmented by cbgt.Dest interface. This function does not provide Sync Gateway with enough information to rollback.")
+	err := errors.New("DCPDest.Rollback called but only RollbackEx should be called, this function is required to be implmented by cbgt.Dest interface. This function does not provide Sync Gateway with enough information to rollback and this DCP stream will not longer be running.")
+	WarnfCtx(d.loggingCtx, "%s", err)
+	return err
 }
 
 // RollbackEx is called when a DCP stream request return as error. This function persists the metadata and will issue a command to cbgt.GocbcoreDCPFeed to restart.

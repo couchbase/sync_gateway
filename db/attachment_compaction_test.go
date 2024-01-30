@@ -714,7 +714,8 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 
 	_, err = attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "error opening stream for vb 0: rollback is required")
+	require.ErrorAs(t, err, &base.ErrVbUUIDMismatch)
+	assert.Contains(t, err.Error(), "error opening stream for vb 0: VbUUID mismatch when failOnRollback set")
 }
 
 func WaitForConditionWithOptions(t testing.TB, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
