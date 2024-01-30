@@ -97,15 +97,13 @@ func makeFeedEventForMCRequest(rq *gomemcached.MCRequest, opcode sgbucket.FeedOp
 	return makeFeedEvent(rq.Key, rq.Body, rq.DataType, rq.Cas, ExtractExpiryFromDCPMutation(rq), rq.VBucket, 0, opcode)
 }
 
-func (r *DCPReceiver) SnapshotStart(vbNo uint16,
-	snapStart, snapEnd uint64, snapType uint32) error {
-	r.snapshotStart(vbNo, snapStart, snapEnd)
-	return nil
-}
-
-func (r *DCPReceiver) SetMetaData(vbucketId uint16, value []byte) error {
-	_ = r.setMetaData(vbucketId, value, false)
-	return nil
+// ShardedImportDCPMetadata is an internal struct that is exposed to enable json marshaling, used by sharded import feed. It differs from DCPMetadata because it must match the private struct used by cbgt.metadata.
+type ShardedImportDCPMetadata struct {
+	FailOverLog [][]uint64 `json:"failOverLog"`
+	SeqStart    uint64     `json:"seqStart"`
+	SeqEnd      uint64     `json:"seqEnd"`
+	SnapStart   uint64     `json:"snapStart"`
+	SnapEnd     uint64     `json:"snapEnd"`
 }
 
 func (r *DCPReceiver) GetMetaData(vbNo uint16) (
@@ -130,7 +128,7 @@ func makeVbucketMetadata(vbucketUUID uint64, sequence uint64, snapStart uint64, 
 	failOver := make([][]uint64, 1)
 	failOverEntry := []uint64{vbucketUUID, 0}
 	failOver[0] = failOverEntry
-	metadata := &cbdatasource.VBucketMetaData{
+	metadata := &ShardedImportDCPMetadata{
 		SeqStart:    sequence,
 		SeqEnd:      uint64(0xFFFFFFFFFFFFFFFF),
 		SnapStart:   snapStart,
