@@ -45,7 +45,7 @@ func RegisterImportPindexImpl(ctx context.Context, configGroup string) {
 }
 
 // getListenerForIndex looks up the importListener for the dbName specified in the index params
-func getListenerImportDest(ctx context.Context, indexParams string) (cbgt.Dest, error) {
+func getListenerImportDest(ctx context.Context, indexParams string, restart func()) (cbgt.Dest, error) {
 
 	var outerParams struct {
 		Params string `json:"params"`
@@ -66,7 +66,7 @@ func getListenerImportDest(ctx context.Context, indexParams string) (cbgt.Dest, 
 	if fetchErr != nil {
 		return nil, fmt.Errorf("error retrieving listener for indexParams %v: %v", indexParams, fetchErr)
 	}
-	return destFactory()
+	return destFactory(restart)
 }
 
 func getNewPIndexImplType(ctx context.Context) func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
@@ -75,7 +75,7 @@ func getNewPIndexImplType(ctx context.Context) func(indexType, indexParams, path
 	newImportPIndexImpl := func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 		defer base.FatalPanicHandler()
 
-		importDest, err := getListenerImportDest(ctx, indexParams)
+		importDest, err := getListenerImportDest(ctx, indexParams, restart)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Error creating NewImportDest during NewImportPIndexImpl: %v", err)
 		}
@@ -83,6 +83,8 @@ func getNewPIndexImplType(ctx context.Context) func(indexType, indexParams, path
 	}
 	return newImportPIndexImpl
 }
+
+// OpenImportPIndexImpl is required to have an implementation from cbgt.PIndexImplType.Open. When this function fails, PIndexImplType will fall back to using PIndexImplType.OpenUsing
 func OpenImportPIndexImpl(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 	return nil, nil, errors.New("Open PIndexImpl not supported for SG 3.0 databases - must provide index params")
 }
@@ -90,14 +92,14 @@ func OpenImportPIndexImpl(indexType, path string, restart func()) (cbgt.PIndexIm
 func getOpenImportPIndexImplUsing(ctx context.Context) func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 
 	openImportPIndexImplUsing := func(indexType, path, indexParams string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-		importDest, err := getListenerImportDest(ctx, indexParams)
+		importDest, err := getListenerImportDest(ctx, indexParams, restart)
 		return nil, importDest, err
 	}
 	return openImportPIndexImplUsing
 }
 
-// Returns a cbgt.Dest targeting the importListener's ProcessFeedEvent
-func (il *importListener) NewImportDest() (cbgt.Dest, error) {
+// NewImportDest returns a cbgt.Dest targeting the importListener's ProcessFeedEvent
+func (il *importListener) NewImportDest(janitorRollback func()) (cbgt.Dest, error) {
 	callback := il.ProcessFeedEvent
 
 	maxVbNo, err := il.bucket.GetMaxVbno() // can safely assume that all collections on the same bucket will have the same vbNo
@@ -108,7 +110,7 @@ func (il *importListener) NewImportDest() (cbgt.Dest, error) {
 	importFeedStatsMap := il.dbStats.ImportFeedMapStats
 	importPartitionStat := il.importStats.ImportPartitions
 
-	importDest, _, err := base.NewDCPDest(il.loggingCtx, callback, il.bucket, maxVbNo, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat, il.checkpointPrefix, il.metadataKeys)
+	importDest, _, err := base.NewDCPDest(il.loggingCtx, callback, il.bucket, maxVbNo, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat, il.checkpointPrefix, il.metadataKeys, janitorRollback)
 	if err != nil {
 		return nil, err
 	}
