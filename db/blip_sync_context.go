@@ -368,8 +368,8 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 			}
 
 			var err error
-			// fall back to sending full revision v4 protocol, delta sync not yet implemented for v4
-			if deltaSrcRevID != "" && bsc.activeCBMobileSubprotocol <= CBMobileReplicationV3 {
+			// fall back to sending full revision for v4 protocol and below
+			if deltaSrcRevID != "" && bsc.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
 				err = bsc.sendRevAsDelta(sender, docID, rev, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
 			} else {
 				err = bsc.sendRevision(sender, docID, rev, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
@@ -561,12 +561,23 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 
 func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
 
-	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
+	var history []string
+	if bsc.activeCBMobileSubprotocol < CBMobileReplicationV4 {
+		history = revDelta.RevisionHistory
+	} else {
+		history = append(history, revDelta.HlvHistory)
+	}
+	properties := blipRevMessageProperties(history, revDelta.ToDeleted, seq)
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
-	return bsc.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, collectionIdx, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
-		properties, seq, resendFullRevisionFunc)
+	if bsc.activeCBMobileSubprotocol < CBMobileReplicationV4 {
+		return bsc.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, collectionIdx, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
+			properties, seq, resendFullRevisionFunc)
+	} else {
+		return bsc.sendRevisionWithProperties(sender, docID, revDelta.ToCV, collectionIdx, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
+			properties, seq, resendFullRevisionFunc)
+	}
 }
 
 // sendBLIPMessage is a simple wrapper around all sent BLIP messages

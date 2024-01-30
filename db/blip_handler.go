@@ -855,7 +855,11 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
-	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(bsc.loggingCtx, docID, deltaSrcRevID, revID)
+	var updateByCV bool
+	if bsc.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
+		updateByCV = true
+	}
+	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(bsc.loggingCtx, docID, deltaSrcRevID, revID, updateByCV)
 	if err == ErrForbidden { // nolint: gocritic // can't convert if/else if to switch since base.IsFleeceDeltaError is not switchable
 		return err
 	} else if base.IsFleeceDeltaError(err) {
@@ -871,7 +875,12 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID str
 	}
 
 	if redactedRev != nil {
-		history := toHistory(redactedRev.History, knownRevs, maxHistory)
+		var history []string
+		if bsc.activeCBMobileSubprotocol < CBMobileReplicationV4 {
+			history = toHistory(redactedRev.History, knownRevs, maxHistory)
+		} else {
+			history = append(history, redactedRev.hlvHistory)
+		}
 		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq)
 		return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, redactedRev.BodyBytes, nil, properties, seq, nil)
 	}
@@ -1053,6 +1062,8 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta {
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
+		} else if bh.activeCBMobileSubprotocol < CBMobileReplicationV4 {
+			return base.HTTPErrorf(http.StatusBadRequest, "backwards compatability for deltas not yet implemented")
 		}
 
 		//  TODO: Doing a GetRevCopy here duplicates some rev cache retrieval effort, since deltaRevSrc is always

@@ -1215,7 +1215,7 @@ func (d *Document) HasCurrentVersion(ctx context.Context, cv Version) error {
 	if fetchedDocSource != cv.SourceID || fetchedDocVersion != cv.Value {
 		base.DebugfCtx(ctx, base.KeyCRUD, "mismatch between specified current version and fetched document current version for doc %s", base.UD(d.ID))
 		// return not found as specified cv does not match fetched doc cv
-		return base.ErrNotFound
+		return ErrMissing
 	}
 	return nil
 }
