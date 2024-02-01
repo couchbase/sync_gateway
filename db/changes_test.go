@@ -295,7 +295,7 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	collectionID := collection.GetCollectionID()
-	bucketUUID := db.BucketUUID
+	bucketUUID := db.EncodedBucketUUID
 
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
@@ -318,9 +318,10 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 	changes, err := collection.GetChanges(ctx, base.SetOf("A"), getChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err)
 
+	encodedCAS := string(base.Uint64CASToLittleEndianHex(doc.Cas))
 	assert.Equal(t, doc.ID, changes[0].ID)
 	assert.Equal(t, bucketUUID, changes[0].CurrentVersion.SourceID)
-	assert.Equal(t, doc.Cas, changes[0].CurrentVersion.Value)
+	assert.Equal(t, encodedCAS, changes[0].CurrentVersion.Value)
 }
 
 func TestDocDeletionFromChannelCoalesced(t *testing.T) {
@@ -567,7 +568,7 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	collectionID := collection.GetCollectionID()
-	bucketUUID := db.BucketUUID
+	bucketUUID := db.EncodedBucketUUID
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Make channel active
@@ -582,7 +583,6 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 
 	syncData, err := collection.GetDocSyncData(ctx, "doc1")
 	require.NoError(t, err)
-	uintCAS := base.HexCasToUint64(syncData.Cas)
 
 	// get entry of above doc from channel cache
 	entries, err := db.channelCache.GetChanges(ctx, channels.NewID("ABC", collectionID), getChangesOptionsWithZeroSeq(t))
@@ -591,7 +591,7 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 
 	// assert that the source and version has been populated with the channel cache entry for the doc
 	assert.Equal(t, "doc1", entries[0].DocID)
-	assert.Equal(t, uintCAS, entries[0].Version)
+	assert.Equal(t, syncData.Cas, entries[0].Version)
 	assert.Equal(t, bucketUUID, entries[0].SourceID)
 	assert.Equal(t, syncData.HLV.SourceID, entries[0].SourceID)
 	assert.Equal(t, syncData.HLV.Version, entries[0].Version)
