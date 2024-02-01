@@ -415,7 +415,7 @@ func TestCVPopulationOnChangesViaAPI(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	bucketUUID := rt.GetDatabase().BucketUUID
+	bucketUUID := rt.GetDatabase().EncodedBucketUUID
 	const DocID = "doc1"
 
 	// activate channel cache
@@ -446,7 +446,7 @@ func TestCVPopulationOnDocIDChanges(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	bucketUUID := rt.GetDatabase().BucketUUID
+	bucketUUID := rt.GetDatabase().EncodedBucketUUID
 	const DocID = "doc1"
 
 	// activate channel cache

@@ -444,7 +444,8 @@ func (rt *RestTester) PutDocDirectlyInCollection(collection *db.DatabaseCollecti
 	dbUser := &db.DatabaseCollectionWithUser{
 		DatabaseCollection: collection,
 	}
-	rev, doc, err := dbUser.Put(rt.Context(), docID, body)
+	ctx := base.UserLogCtx(collection.AddCollectionContext(rt.Context()), "gotest", base.UserDomainBuiltin, nil)
+	rev, doc, err := dbUser.Put(ctx, docID, body)
 	require.NoError(rt.TB(), err)
 	return DocVersion{RevID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }
