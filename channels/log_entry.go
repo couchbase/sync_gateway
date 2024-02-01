@@ -57,12 +57,12 @@ type LogEntry struct {
 	IsPrincipal  bool         // Whether the log-entry is a tracking entry for a principal doc
 	CollectionID uint32       // Collection ID
 	SourceID     string       // SourceID allocated to the doc's Current Version on the HLV
-	Version      uint64       // Version allocated to the doc's Current Version on the HLV
+	Version      string       // Version allocated to the doc's Current Version on the HLV
 }
 
 func (l LogEntry) String() string {
 	return fmt.Sprintf(
-		"seq: %d docid: %s revid: %s vbno: %d type: %v collectionID: %d source: %s version: %d",
+		"seq: %d docid: %s revid: %s vbno: %d type: %v collectionID: %d source: %s version: %s",
 		l.Sequence,
 		l.DocID,
 		l.RevID,

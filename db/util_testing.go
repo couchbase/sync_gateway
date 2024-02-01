@@ -679,7 +679,7 @@ func createTestDocument(docID string, revID string, body Body, deleted bool, exp
 }
 
 // requireCurrentVersion fetches the document by key, and validates that cv matches.
-func (c *DatabaseCollection) RequireCurrentVersion(t *testing.T, key string, source string, version uint64) {
+func (c *DatabaseCollection) RequireCurrentVersion(t *testing.T, key string, source string, version string) {
 	ctx := base.TestCtx(t)
 	doc, err := c.GetDocument(ctx, key, DocUnmarshalSync)
 	require.NoError(t, err)
@@ -694,12 +694,12 @@ func (c *DatabaseCollection) RequireCurrentVersion(t *testing.T, key string, sou
 }
 
 // GetDocumentCurrentVersion fetches the document by key and returns the current version
-func (c *DatabaseCollection) GetDocumentCurrentVersion(t *testing.T, key string) (source string, version uint64) {
+func (c *DatabaseCollection) GetDocumentCurrentVersion(t *testing.T, key string) (source string, version string) {
 	ctx := base.TestCtx(t)
 	doc, err := c.GetDocument(ctx, key, DocUnmarshalSync)
 	require.NoError(t, err)
 	if doc.HLV == nil {
-		return "", 0
+		return "", ""
 	}
 	return doc.HLV.SourceID, doc.HLV.Version
 }
