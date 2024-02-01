@@ -133,7 +133,7 @@ func (entry *LogEntry) SetRevAndVersion(rv channels.RevAndVersion) {
 	entry.RevID = rv.RevTreeID
 	if rv.CurrentSource != "" {
 		entry.SourceID = rv.CurrentSource
-		entry.Version = base.HexCasToUint64(rv.CurrentVersion)
+		entry.Version = rv.CurrentVersion
 	}
 }
 
@@ -497,7 +497,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 					change.DocID = docID
 					change.RevID = atRev.RevTreeID
 					change.SourceID = atRev.CurrentSource
-					change.Version = base.HexCasToUint64(atRev.CurrentVersion)
+					change.Version = atRev.CurrentVersion
 					change.Channels = channelRemovals
 				}
 

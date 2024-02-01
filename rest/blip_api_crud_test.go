@@ -1911,6 +1911,8 @@ func TestSendReplacementRevision(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // requires cv in PUT rest response
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
@@ -2078,8 +2080,8 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 		version1 := DocVersion{
 			RevID: bucketDoc.CurrentRev,
 			CV: db.Version{
-				SourceID: otherSource,
-				Value:    cas,
+				SourceID: hlvHelper.Source,
+				Value:    string(base.Uint64CASToLittleEndianHex(cas)),
 			},
 		}
 
@@ -3096,6 +3098,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyCache, base.KeyChanges)
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		syncFn := `function(doc) {
 						if (doc.invalid) {
