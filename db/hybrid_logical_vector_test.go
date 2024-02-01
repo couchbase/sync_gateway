@@ -9,6 +9,7 @@
 package db
 
 import (
+	"encoding/base64"
 	"reflect"
 	"strconv"
 	"strings"
@@ -24,20 +25,20 @@ import (
 //   - Tests internal api methods on the HLV work as expected
 //   - Tests methods GetCurrentVersion, AddVersion and Remove
 func TestInternalHLVFunctions(t *testing.T) {
-	pv := make(map[string]uint64)
-	currSourceId := "s_5pRi8Piv1yLcLJ1iVNJIsA"
-	const currVersion = 12345678
-	pv["s_YZvBpEaztom9z5V/hDoeIw"] = 64463204720
+	pv := make(map[string]string)
+	currSourceId := base64.StdEncoding.EncodeToString([]byte("5pRi8Piv1yLcLJ1iVNJIsA"))
+	currVersion := string(base.Uint64CASToLittleEndianHex(12345678))
+	pv[base64.StdEncoding.EncodeToString([]byte("YZvBpEaztom9z5V/hDoeIw"))] = string(base.Uint64CASToLittleEndianHex(64463204720))
 
-	inputHLV := []string{"s_5pRi8Piv1yLcLJ1iVNJIsA@12345678", "s_YZvBpEaztom9z5V/hDoeIw@64463204720", "m_s_NqiIe0LekFPLeX4JvTO6Iw@345454"}
+	inputHLV := []string{"5pRi8Piv1yLcLJ1iVNJIsA@12345678", "YZvBpEaztom9z5V/hDoeIw@64463204720", "m_NqiIe0LekFPLeX4JvTO6Iw@345454"}
 	hlv := createHLVForTest(t, inputHLV)
 
-	const newCAS = 123456789
+	newCAS := string(base.Uint64CASToLittleEndianHex(123456789))
 	const newSource = "s_testsource"
 
 	// create a new version vector entry that will error method AddVersion
 	badNewVector := Version{
-		Value:    123345,
+		Value:    string(base.Uint64CASToLittleEndianHex(123345)),
 		SourceID: currSourceId,
 	}
 	// create a new version vector entry that should be added to HLV successfully
@@ -49,7 +50,7 @@ func TestInternalHLVFunctions(t *testing.T) {
 	// Get current version vector, sourceID and CAS pair
 	source, version := hlv.GetCurrentVersion()
 	assert.Equal(t, currSourceId, source)
-	assert.Equal(t, uint64(currVersion), version)
+	assert.Equal(t, currVersion, version)
 
 	// add new version vector with same sourceID as current sourceID and assert it doesn't add to previous versions then restore HLV to previous state
 	require.NoError(t, hlv.AddVersion(newVersionVector))
@@ -64,7 +65,7 @@ func TestInternalHLVFunctions(t *testing.T) {
 	// Add a new version vector pair to the HLV structure and assert that it moves the current version vector pair to the previous versions section
 	newVersionVector.SourceID = newSource
 	require.NoError(t, hlv.AddVersion(newVersionVector))
-	assert.Equal(t, uint64(newCAS), hlv.Version)
+	assert.Equal(t, newCAS, hlv.Version)
 	assert.Equal(t, newSource, hlv.SourceID)
 	assert.True(t, reflect.DeepEqual(hlv.PreviousVersions, pv))
 
@@ -115,7 +116,9 @@ func TestConflictDetectionDominating(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			hlvA := createHLVForTest(t, testCase.inputListHLVA)
 			hlvB := createHLVForTest(t, testCase.inputListHLVB)
-			require.False(t, hlvA.IsInConflict(hlvB))
+			decHLVA := hlvA.ToDecodedHybridLogicalVector()
+			decHLVB := hlvB.ToDecodedHybridLogicalVector()
+			require.False(t, decHLVA.IsInConflict(decHLVB))
 		})
 	}
 }
@@ -131,25 +134,33 @@ func TestConflictEqualHLV(t *testing.T) {
 	inputHLVB := []string{"cluster1@10", "cluster2@4"}
 	hlvA := createHLVForTest(t, inputHLVA)
 	hlvB := createHLVForTest(t, inputHLVB)
-	require.True(t, hlvA.isEqual(hlvB))
+	decHLVA := hlvA.ToDecodedHybridLogicalVector()
+	decHLVB := hlvB.ToDecodedHybridLogicalVector()
+	require.True(t, decHLVA.isEqual(decHLVB))
 
 	// test conflict detection with different version CAS but same merge versions
 	inputHLVA = []string{"cluster2@12", "cluster3@3", "cluster4@2"}
 	inputHLVB = []string{"cluster1@10", "cluster3@3", "cluster4@2"}
 	hlvA = createHLVForTest(t, inputHLVA)
 	hlvB = createHLVForTest(t, inputHLVB)
-	require.True(t, hlvA.isEqual(hlvB))
+	decHLVA = hlvA.ToDecodedHybridLogicalVector()
+	decHLVB = hlvB.ToDecodedHybridLogicalVector()
+	require.True(t, decHLVA.isEqual(decHLVB))
 
 	// test conflict detection with different version CAS but same previous version vectors
 	inputHLVA = []string{"cluster3@2", "cluster1@3", "cluster2@5"}
 	hlvA = createHLVForTest(t, inputHLVA)
 	inputHLVB = []string{"cluster4@7", "cluster1@3", "cluster2@5"}
 	hlvB = createHLVForTest(t, inputHLVB)
-	require.True(t, hlvA.isEqual(hlvB))
+	decHLVA = hlvA.ToDecodedHybridLogicalVector()
+	decHLVB = hlvB.ToDecodedHybridLogicalVector()
+	require.True(t, decHLVA.isEqual(decHLVB))
 
+	cluster1Encoded := base64.StdEncoding.EncodeToString([]byte("cluster1"))
 	// remove an entry from one of the HLV PVs to assert we get false returned from isEqual
-	require.NoError(t, hlvA.Remove("cluster1"))
-	require.False(t, hlvA.isEqual(hlvB))
+	require.NoError(t, hlvA.Remove(cluster1Encoded))
+	decHLVA = hlvA.ToDecodedHybridLogicalVector()
+	require.False(t, decHLVA.isEqual(decHLVB))
 }
 
 // TestConflictExample:
@@ -161,7 +172,10 @@ func TestConflictExample(t *testing.T) {
 
 	input = []string{"cluster2@2", "cluster3@3"}
 	otherVector := createHLVForTest(t, input)
-	require.True(t, inMemoryHLV.IsInConflict(otherVector))
+
+	inMemoryHLVDec := inMemoryHLV.ToDecodedHybridLogicalVector()
+	otherVectorDec := otherVector.ToDecodedHybridLogicalVector()
+	require.True(t, inMemoryHLVDec.IsInConflict(otherVectorDec))
 }
 
 // createHLVForTest is a helper function to create a HLV for use in a test. Takes a list of strings in the format of <sourceID@version> and assumes
@@ -171,65 +185,29 @@ func createHLVForTest(tb *testing.T, inputList []string) HybridLogicalVector {
 
 	// first element will be current version and source pair
 	currentVersionPair := strings.Split(inputList[0], "@")
-	hlvOutput.SourceID = currentVersionPair[0]
-	version, err := strconv.Atoi(currentVersionPair[1])
+	hlvOutput.SourceID = base64.StdEncoding.EncodeToString([]byte(currentVersionPair[0]))
+	version, err := strconv.ParseUint(currentVersionPair[1], 10, 64)
 	require.NoError(tb, err)
-	hlvOutput.Version = uint64(version)
-	hlvOutput.CurrentVersionCAS = uint64(version)
+	vrsEncoded := string(base.Uint64CASToLittleEndianHex(version))
+	hlvOutput.Version = vrsEncoded
+	hlvOutput.CurrentVersionCAS = vrsEncoded
 
 	// remove current version entry in list now we have parsed it into the HLV
 	inputList = inputList[1:]
 
 	for _, value := range inputList {
 		currentVersionPair = strings.Split(value, "@")
-		version, err = strconv.Atoi(currentVersionPair[1])
+		version, err = strconv.ParseUint(currentVersionPair[1], 10, 64)
 		require.NoError(tb, err)
 		if strings.HasPrefix(currentVersionPair[0], "m_") {
 			// add entry to merge version removing the leading prefix for sourceID
-			hlvOutput.MergeVersions[currentVersionPair[0][2:]] = uint64(version)
+			hlvOutput.MergeVersions[base64.StdEncoding.EncodeToString([]byte(currentVersionPair[0][2:]))] = string(base.Uint64CASToLittleEndianHex(version))
 		} else {
-			// if its not got the prefix we assume its a previous version entry
-			hlvOutput.PreviousVersions[currentVersionPair[0]] = uint64(version)
+			// if it's not got the prefix we assume it's a previous version entry
+			hlvOutput.PreviousVersions[base64.StdEncoding.EncodeToString([]byte(currentVersionPair[0]))] = string(base.Uint64CASToLittleEndianHex(version))
 		}
 	}
 	return hlvOutput
-}
-
-// TestHybridLogicalVectorPersistence:
-//   - Tests the process of constructing in memory HLV and marshaling it to persisted format
-//   - Asserts on the format
-//   - Unmarshal the HLV and assert that the process works as expected
-func TestHybridLogicalVectorPersistence(t *testing.T) {
-	// create HLV
-	inputHLV := []string{"cb06dc003846116d9b66d2ab23887a96@123456", "s_YZvBpEaztom9z5V/hDoeIw@1628620455135215600", "m_s_NqiIe0LekFPLeX4JvTO6Iw@1628620455139868700",
-		"m_s_LhRPsa7CpjEvP5zeXTXEBA@1628620455147864000"}
-	inMemoryHLV := createHLVForTest(t, inputHLV)
-
-	// marshal in memory hlv into persisted form
-	byteArray, err := inMemoryHLV.MarshalJSON()
-	require.NoError(t, err)
-
-	// convert to string and assert the in memory struct is converted to persisted form correctly
-	// no guarantee the order of the marshaling of the mv part so just assert on the values
-	strHLV := string(byteArray)
-	assert.Contains(t, strHLV, `"cvCas":"0x40e2010000000000`)
-	assert.Contains(t, strHLV, `"src":"cb06dc003846116d9b66d2ab23887a96"`)
-	assert.Contains(t, strHLV, `"vrs":"0x40e2010000000000"`)
-	assert.Contains(t, strHLV, `"s_LhRPsa7CpjEvP5zeXTXEBA":"c0ff05d7ac059a16"`)
-	assert.Contains(t, strHLV, `"s_NqiIe0LekFPLeX4JvTO6Iw":"1c008cd6ac059a16"`)
-	assert.Contains(t, strHLV, `"pv":{"s_YZvBpEaztom9z5V/hDoeIw":"f0ff44d6ac059a16"}`)
-
-	// Unmarshal the in memory constructed HLV above
-	hlvFromPersistance := HybridLogicalVector{}
-	err = hlvFromPersistance.UnmarshalJSON(byteArray)
-	require.NoError(t, err)
-
-	// assertions on values of unmarshaled HLV
-	assert.Equal(t, inMemoryHLV.CurrentVersionCAS, hlvFromPersistance.CurrentVersionCAS)
-	assert.Equal(t, inMemoryHLV.SourceID, hlvFromPersistance.SourceID)
-	assert.Equal(t, inMemoryHLV.Version, hlvFromPersistance.Version)
-	assert.Equal(t, inMemoryHLV.PreviousVersions, hlvFromPersistance.PreviousVersions)
-	assert.Equal(t, inMemoryHLV.MergeVersions, hlvFromPersistance.MergeVersions)
 }
 
 func TestAddNewerVersionsBetweenTwoVectorsWhenNotInConflict(t *testing.T) {
@@ -277,7 +255,7 @@ func TestHLVImport(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	localSource := collection.dbCtx.BucketUUID
+	localSource := db.EncodedBucketUUID
 
 	// 1. Test standard import of an SDK write
 	standardImportKey := "standardImport_" + t.Name()
@@ -290,9 +268,10 @@ func TestHLVImport(t *testing.T) {
 	importedDoc, _, err := collection.GetDocWithXattr(ctx, standardImportKey, DocUnmarshalAll)
 	require.NoError(t, err)
 	importedHLV := importedDoc.HLV
-	require.Equal(t, cas, importedHLV.ImportCAS)
-	require.Equal(t, importedDoc.Cas, importedHLV.CurrentVersionCAS)
-	require.Equal(t, importedDoc.Cas, importedHLV.Version)
+	encodedCAS := string(base.Uint64CASToLittleEndianHex(cas))
+	require.Equal(t, encodedCAS, importedHLV.ImportCAS)
+	require.Equal(t, importedDoc.SyncData.Cas, importedHLV.CurrentVersionCAS)
+	require.Equal(t, importedDoc.SyncData.Cas, importedHLV.Version)
 	require.Equal(t, localSource, importedHLV.SourceID)
 
 	// 2. Test import of write by HLV-aware peer (HLV is already updated, sync metadata is not).
@@ -304,6 +283,7 @@ func TestHLVImport(t *testing.T) {
 	existingBody, existingXattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, existingHLVKey, []string{base.SyncXattrName})
 	require.NoError(t, err)
 	existingXattr := existingXattrs[base.SyncXattrName]
+	encodedCAS = string(base.Uint64CASToLittleEndianHex(cas))
 
 	_, err = collection.ImportDocRaw(ctx, existingHLVKey, existingBody, existingXattr, nil, false, cas, nil, ImportFromFeed)
 	require.NoError(t, err, "import error")
@@ -312,10 +292,10 @@ func TestHLVImport(t *testing.T) {
 	require.NoError(t, err)
 	importedHLV = importedDoc.HLV
 	// cas in the HLV's current version and cvCAS should not have changed, and should match importCAS
-	require.Equal(t, cas, importedHLV.ImportCAS)
-	require.Equal(t, cas, importedHLV.CurrentVersionCAS)
-	require.Equal(t, cas, importedHLV.Version)
-	require.Equal(t, otherSource, importedHLV.SourceID)
+	require.Equal(t, encodedCAS, importedHLV.ImportCAS)
+	require.Equal(t, encodedCAS, importedHLV.CurrentVersionCAS)
+	require.Equal(t, encodedCAS, importedHLV.Version)
+	require.Equal(t, hlvHelper.Source, importedHLV.SourceID)
 }
 
 // TestHLVMapToCBLString:

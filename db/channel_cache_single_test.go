@@ -961,7 +961,8 @@ func verifyCVEntries(entries []*LogEntry, cvs []cvValues) bool {
 		if entries[index].SourceID != cv.source {
 			return false
 		}
-		if entries[index].Version != cv.version {
+		encdedVrs := string(base.Uint64CASToLittleEndianHex(cv.version))
+		if entries[index].Version != encdedVrs {
 			return false
 		}
 	}
