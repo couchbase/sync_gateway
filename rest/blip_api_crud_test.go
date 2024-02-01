@@ -1955,8 +1955,8 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 		version1 := DocVersion{
 			RevID: bucketDoc.CurrentRev,
 			CV: db.Version{
-				SourceID: otherSource,
-				Value:    cas,
+				SourceID: hlvHelper.Source,
+				Value:    string(base.Uint64CASToLittleEndianHex(cas)),
 			},
 		}
 
@@ -3008,7 +3008,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 			},
 			{
 				name:        "_revisions property",
-				invalidBody: []byte(`{"_revisions": {"start": 0, "ids": ["foo", "def]"}}`),
+				invalidBody: []byte(`{"_revisions": {"start": 0, "ids": ["foo", "def"]}}`),
 			},
 
 			{

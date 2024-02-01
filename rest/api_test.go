@@ -2826,19 +2826,17 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	bucketUUID, err := rt.GetDatabase().Bucket.UUID()
-	require.NoError(t, err)
+	bucketUUID := rt.GetDatabase().EncodedBucketUUID
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"key": "value"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
 	assert.NoError(t, err)
-	uintCAS := base.HexCasToUint64(syncData.Cas)
 
 	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, uintCAS, syncData.HLV.Version)
-	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
+	assert.Equal(t, syncData.Cas, syncData.HLV.CurrentVersionCAS)
 
 	// Put a new revision of this doc and assert that the version vector SourceID and Version is updated
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev="+syncData.CurrentRev, `{"key1": "value1"}`)
@@ -2846,11 +2844,10 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 
 	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
 	assert.NoError(t, err)
-	uintCAS = base.HexCasToUint64(syncData.Cas)
 
 	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, uintCAS, syncData.HLV.Version)
-	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
+	assert.Equal(t, syncData.Cas, syncData.HLV.CurrentVersionCAS)
 
 	// Delete doc and assert that the version vector SourceID and Version is updated
 	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev="+syncData.CurrentRev, "")
@@ -2858,11 +2855,10 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 
 	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
 	assert.NoError(t, err)
-	uintCAS = base.HexCasToUint64(syncData.Cas)
 
 	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, uintCAS, syncData.HLV.Version)
-	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
+	assert.Equal(t, syncData.Cas, syncData.HLV.CurrentVersionCAS)
 }
 
 // TestHLVOnPutWithImportRejection:
@@ -2881,19 +2877,17 @@ func TestHLVOnPutWithImportRejection(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	bucketUUID, err := rt.GetDatabase().Bucket.UUID()
-	require.NoError(t, err)
+	bucketUUID := rt.GetDatabase().EncodedBucketUUID
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"type": "mobile"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
 	assert.NoError(t, err)
-	uintCAS := base.HexCasToUint64(syncData.Cas)
 
 	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, uintCAS, syncData.HLV.Version)
-	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
+	assert.Equal(t, syncData.Cas, syncData.HLV.CurrentVersionCAS)
 
 	// Put a doc that will be rejected by the import filter on the attempt to perform on demand import for write
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"type": "not-mobile"}`)
@@ -2902,11 +2896,10 @@ func TestHLVOnPutWithImportRejection(t *testing.T) {
 	// assert that the hlv is correctly updated and in tact after the import was cancelled on the doc
 	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc2")
 	assert.NoError(t, err)
-	uintCAS = base.HexCasToUint64(syncData.Cas)
 
 	assert.Equal(t, bucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, uintCAS, syncData.HLV.Version)
-	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
+	assert.Equal(t, syncData.Cas, syncData.HLV.CurrentVersionCAS)
 }
 
 func TestTombstoneCompactionAPI(t *testing.T) {

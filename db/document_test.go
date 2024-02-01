@@ -252,11 +252,11 @@ const doc_meta_with_vv = `{
   }`
 
 func TestParseVersionVectorSyncData(t *testing.T) {
-	mv := make(map[string]uint64)
-	pv := make(map[string]uint64)
-	mv["s_LhRPsa7CpjEvP5zeXTXEBA"] = 1628620455147864000
-	mv["s_NqiIe0LekFPLeX4JvTO6Iw"] = 1628620455139868700
-	pv["s_YZvBpEaztom9z5V/hDoeIw"] = 1628620455135215600
+	mv := make(map[string]string)
+	pv := make(map[string]string)
+	mv["s_LhRPsa7CpjEvP5zeXTXEBA"] = "c0ff05d7ac059a16"
+	mv["s_NqiIe0LekFPLeX4JvTO6Iw"] = "1c008cd6ac059a16"
+	pv["s_YZvBpEaztom9z5V/hDoeIw"] = "f0ff44d6ac059a16"
 
 	ctx := base.TestCtx(t)
 
@@ -264,9 +264,10 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	doc, err := unmarshalDocumentWithXattr(ctx, "doc_1k", nil, doc_meta, nil, 1, DocUnmarshalVV)
 	require.NoError(t, err)
 
+	strCAS := string(base.Uint64CASToLittleEndianHex(123456))
 	// assert on doc version vector values
-	assert.Equal(t, uint64(123456), doc.SyncData.HLV.CurrentVersionCAS)
-	assert.Equal(t, uint64(123456), doc.SyncData.HLV.Version)
+	assert.Equal(t, strCAS, doc.SyncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, strCAS, doc.SyncData.HLV.Version)
 	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
@@ -275,8 +276,8 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert on doc version vector values
-	assert.Equal(t, uint64(123456), doc.SyncData.HLV.CurrentVersionCAS)
-	assert.Equal(t, uint64(123456), doc.SyncData.HLV.Version)
+	assert.Equal(t, strCAS, doc.SyncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, strCAS, doc.SyncData.HLV.Version)
 	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
@@ -285,8 +286,8 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert on doc version vector values
-	assert.Equal(t, uint64(123456), doc.SyncData.HLV.CurrentVersionCAS)
-	assert.Equal(t, uint64(123456), doc.SyncData.HLV.Version)
+	assert.Equal(t, strCAS, doc.SyncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, strCAS, doc.SyncData.HLV.Version)
 	assert.Equal(t, "cb06dc003846116d9b66d2ab23887a96", doc.SyncData.HLV.SourceID)
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
@@ -300,31 +301,31 @@ func TestRevAndVersion(t *testing.T) {
 		testName  string
 		revTreeID string
 		source    string
-		version   uint64
+		version   string
 	}{
 		{
 			testName:  "rev_and_version",
 			revTreeID: "1-abc",
 			source:    "source1",
-			version:   1,
+			version:   "1",
 		},
 		{
 			testName:  "both_empty",
 			revTreeID: "",
 			source:    "",
-			version:   0,
+			version:   "0",
 		},
 		{
 			testName:  "revTreeID_only",
 			revTreeID: "1-abc",
 			source:    "",
-			version:   0,
+			version:   "0",
 		},
 		{
 			testName:  "currentVersion_only",
 			revTreeID: "",
 			source:    "source1",
-			version:   1,
+			version:   "1",
 		},
 	}
 
