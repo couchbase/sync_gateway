@@ -82,7 +82,7 @@ func testLogEntryWithCV(seq uint64, docid string, revid string, channelNames []s
 		TimeReceived: time.Now(),
 		CollectionID: collectionID,
 		SourceID:     sourceID,
-		Version:      version,
+		Version:      string(base.Uint64CASToLittleEndianHex(version)),
 	}
 	channelMap := make(channels.ChannelMap)
 	for _, channelName := range channelNames {
