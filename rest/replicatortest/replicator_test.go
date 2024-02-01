@@ -8568,10 +8568,8 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	defer teardown()
 
 	// Grab the bucket UUIDs for both rest testers
-	activeBucketUUID, err := activeRT.GetDatabase().Bucket.UUID()
-	require.NoError(t, err)
-	passiveBucketUUID, err := passiveRT.GetDatabase().Bucket.UUID()
-	require.NoError(t, err)
+	activeBucketUUID := activeRT.GetDatabase().EncodedBucketUUID
+	passiveBucketUUID := passiveRT.GetDatabase().EncodedBucketUUID
 
 	const rep = "replication"
 
@@ -8582,11 +8580,10 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	activeCollection, activeCtx := activeRT.GetSingleTestDatabaseCollection()
 	syncData, err := activeCollection.GetDocSyncData(activeCtx, "doc1")
 	assert.NoError(t, err)
-	uintCAS := base.HexCasToUint64(syncData.Cas)
 
 	assert.Equal(t, activeBucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, uintCAS, syncData.HLV.Version)
-	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
+	assert.Equal(t, syncData.Cas, syncData.HLV.CurrentVersionCAS)
 
 	// create the replication to push the doc to the passive node and wait for the doc to be replicated
 	activeRT.CreateReplication(rep, remoteURL, db.ActiveReplicatorTypePush, nil, false, db.ConflictResolverDefault)
@@ -8598,9 +8595,8 @@ func TestReplicatorUpdateHLVOnPut(t *testing.T) {
 	passiveCollection, passiveCtx := passiveRT.GetSingleTestDatabaseCollection()
 	syncData, err = passiveCollection.GetDocSyncData(passiveCtx, "doc1")
 	assert.NoError(t, err)
-	uintCAS = base.HexCasToUint64(syncData.Cas)
 
 	assert.Equal(t, passiveBucketUUID, syncData.HLV.SourceID)
-	assert.Equal(t, uintCAS, syncData.HLV.CurrentVersionCAS)
-	assert.Equal(t, uintCAS, syncData.HLV.Version)
+	assert.Equal(t, syncData.Cas, syncData.HLV.CurrentVersionCAS)
+	assert.Equal(t, syncData.Cas, syncData.HLV.Version)
 }
