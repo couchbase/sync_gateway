@@ -236,7 +236,7 @@ type IDAndRev struct {
 
 type IDandCV struct {
 	DocID   string
-	Version uint64
+	Version string
 	Source  string
 }
 

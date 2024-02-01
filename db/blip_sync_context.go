@@ -627,8 +627,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, rev string,
 		if vrsErr != nil {
 			return vrsErr
 		}
-		// replace with GetCV pending merge of CBG-3212
-		docRev, err = handleChangesResponseCollection.revisionCache.GetWithCV(bsc.loggingCtx, docID, &version, RevCacheOmitBody, RevCacheOmitDelta)
+		docRev, err = handleChangesResponseCollection.GetCV(bsc.loggingCtx, docID, &version, RevCacheOmitBody)
 	}
 	if base.IsDocNotFoundError(err) {
 		return bsc.sendNoRev(sender, docID, rev, collectionIdx, seq, err)

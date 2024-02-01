@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"encoding/base64"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -23,7 +24,7 @@ import (
 type HLVAgent struct {
 	t         *testing.T
 	datastore base.DataStore
-	source    string // All writes by the HLVHelper are done as this source
+	Source    string // All writes by the HLVHelper are done as this source
 	xattrName string // xattr name to store the HLV
 }
 
@@ -33,7 +34,7 @@ func NewHLVAgent(t *testing.T, datastore base.DataStore, source string, xattrNam
 	return &HLVAgent{
 		t:         t,
 		datastore: datastore,
-		source:    source, // all writes by the HLVHelper are done as this source
+		Source:    base64.StdEncoding.EncodeToString([]byte(source)), // all writes by the HLVHelper are done as this source
 		xattrName: xattrName,
 	}
 }
@@ -42,7 +43,7 @@ func NewHLVAgent(t *testing.T, datastore base.DataStore, source string, xattrNam
 // a different HLV-aware peer)
 func (h *HLVAgent) InsertWithHLV(ctx context.Context, key string) (casOut uint64) {
 	hlv := &HybridLogicalVector{}
-	err := hlv.AddVersion(CreateVersion(h.source, hlvExpandMacroCASValue))
+	err := hlv.AddVersion(CreateVersion(h.Source, hlvExpandMacroCASValue))
 	require.NoError(h.t, err)
 	hlv.CurrentVersionCAS = hlvExpandMacroCASValue
 
