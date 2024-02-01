@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -98,6 +99,7 @@ type DatabaseContext struct {
 	Bucket                      base.Bucket        // Storage
 	BucketSpec                  base.BucketSpec    // The BucketSpec
 	BucketUUID                  string             // The bucket UUID for the bucket the database is created against
+	EncodedBucketUUID           string             // The bucket UUID for the bucket the database is created against but encoded in base64
 	BucketLock                  sync.RWMutex       // Control Access to the underlying bucket object
 	mutationListener            changeListener     // Caching feed listener
 	ImportListener              *importListener    // Import feed listener
@@ -422,6 +424,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		MetadataStore:       metadataStore,
 		Bucket:              bucket,
 		BucketUUID:          bucketUUID,
+		EncodedBucketUUID:   base64.StdEncoding.EncodeToString([]byte(bucketUUID)),
 		StartTime:           time.Now(),
 		autoImport:          autoImport,
 		Options:             options,
