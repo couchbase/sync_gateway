@@ -1071,9 +1071,8 @@ func TestConflicts(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	bucketUUID := db.BucketUUID
+	bucketUUID := db.EncodedBucketUUID
 
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
@@ -1145,9 +1144,9 @@ func TestConflicts(t *testing.T) {
 		Conflicts:  true,
 		ChangesCtx: base.TestCtx(t),
 	}
+
 	changes := getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
-	fetchedDoc, _, err := collection.GetDocWithXattr(ctx, "doc", DocUnmarshalCAS)
-	require.NoError(t, err)
+	source, version := collection.GetDocumentCurrentVersion(t, "doc")
 
 	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
@@ -1156,7 +1155,7 @@ func TestConflicts(t *testing.T) {
 		Changes:        []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}},
 		branched:       true,
 		collectionID:   collectionID,
-		CurrentVersion: &Version{SourceID: bucketUUID, Value: fetchedDoc.Cas},
+		CurrentVersion: &Version{SourceID: source, Value: version},
 	}, changes[0],
 	)
 
@@ -1191,7 +1190,7 @@ func TestConflicts(t *testing.T) {
 		Changes:        []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
 		branched:       true,
 		collectionID:   collectionID,
-		CurrentVersion: &Version{SourceID: bucketUUID, Value: doc.Cas},
+		CurrentVersion: &Version{SourceID: bucketUUID, Value: string(base.Uint64CASToLittleEndianHex(doc.Cas))},
 	}, changes[0])
 
 }
@@ -1484,7 +1483,7 @@ func TestSyncFnOnPush(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, channels.ChannelMap{
 		"clibup": nil,
-		"public": &channels.ChannelRemoval{Seq: 2, Rev: channels.RevAndVersion{RevTreeID: "4-four", CurrentSource: newDoc.HLV.SourceID, CurrentVersion: string(base.Uint64CASToLittleEndianHex(newDoc.HLV.Version))}},
+		"public": &channels.ChannelRemoval{Seq: 2, Rev: channels.RevAndVersion{RevTreeID: "4-four", CurrentSource: newDoc.HLV.SourceID, CurrentVersion: newDoc.HLV.Version}},
 	}, doc.Channels)
 
 	assert.Equal(t, base.SetOf("clibup"), doc.History["4-four"].Channels)
@@ -1918,7 +1917,7 @@ func TestChannelQuery(t *testing.T) {
 			log.Printf("removedDocEntry Version: %v", removedDocEntry.Version)
 			require.Equal(t, testCase.expectedRev.RevTreeID, removedDocEntry.RevID)
 			require.Equal(t, testCase.expectedRev.CurrentSource, removedDocEntry.SourceID)
-			require.Equal(t, base.HexCasToUint64(testCase.expectedRev.CurrentVersion), removedDocEntry.Version)
+			require.Equal(t, testCase.expectedRev.CurrentVersion, removedDocEntry.Version)
 		})
 	}
 
@@ -1929,7 +1928,7 @@ func TestChannelQueryRevocation(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
 		channel(doc.channels);
 	}`)
@@ -1997,7 +1996,7 @@ func TestChannelQueryRevocation(t *testing.T) {
 			log.Printf("removedDocEntry Version: %v", removedDocEntry.Version)
 			require.Equal(t, testCase.expectedRev.RevTreeID, removedDocEntry.RevID)
 			require.Equal(t, testCase.expectedRev.CurrentSource, removedDocEntry.SourceID)
-			require.Equal(t, base.HexCasToUint64(testCase.expectedRev.CurrentVersion), removedDocEntry.Version)
+			require.Equal(t, testCase.expectedRev.CurrentVersion, removedDocEntry.Version)
 		})
 	}
 
