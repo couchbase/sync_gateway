@@ -352,6 +352,7 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 	channels = doc.SyncData.getCurrentChannels()
 	revid = doc.CurrentRev
 	hlv = doc.HLV
+	deleted = doc.Deleted
 
 	return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, revid, hlv, err
 }
