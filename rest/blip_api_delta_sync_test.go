@@ -185,7 +185,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		GuestEnabled: true,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for backwards compatability
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for backwards compatibility
 	const doc1ID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -287,7 +287,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	const docID = "doc1"
 	var deltaSentCount int64
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for backwards compatability
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for backwards compatibility
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t,
 			rtConfig)
@@ -366,7 +366,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		GuestEnabled: true,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for backwards compatability
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for backwards compatibility
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t,
 			&rtConfig)
@@ -509,7 +509,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for backwards compatability
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for backwards compatibility
 
 	var deltaCacheHitsStart int64
 	var deltaCacheMissesStart int64
@@ -606,7 +606,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for backwards compatability
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for backwards compatibility
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -750,7 +750,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	}
 	const docID = "doc1"
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for backwards compatability
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for backwards compatibility
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t,
