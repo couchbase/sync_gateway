@@ -201,7 +201,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 		bodyText := `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`
-		body := jsonToMap(t, bodyText)
+		body := JsonToMap(t, bodyText)
 		version := rt.PutDocDirectly(doc1ID, body)
 
 		data, ok := btcRunner.WaitForVersion(client.id, doc1ID, version)
@@ -210,7 +210,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 
 		// create doc1 rev 2-10000d5ec533b29b117e60274b1e3653 on SG with the first attachment
 		bodyText = `{"greetings": [{"hello": "world!"}, {"hi": "alice"}], "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
-		body = jsonToMap(t, bodyText)
+		body = JsonToMap(t, bodyText)
 		version2 := rt.UpdateDocDirectly(doc1ID, version, body)
 
 		data, ok = btcRunner.WaitForVersion(client.id, doc1ID, version2)
@@ -309,7 +309,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 		bodyText := `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`
-		body := jsonToMap(t, bodyText)
+		body := JsonToMap(t, bodyText)
 		version := rt.PutDocDirectly(docID, body)
 
 		data, ok := btcRunner.WaitForVersion(client.id, docID, version)
@@ -318,7 +318,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 
 		// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
 		bodyText = `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 1234567890123}]}`
-		version2 := rt.UpdateDocDirectly(docID, version, jsonToMap(t, bodyText))
+		version2 := rt.UpdateDocDirectly(docID, version, JsonToMap(t, bodyText))
 
 		data, ok = btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.True(t, ok)
@@ -381,7 +381,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		docID := "doc1"
 		// create doc1 rev 1
 		bodyText := `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`
-		docVersion1 := rt.PutDocDirectly(docID, jsonToMap(t, bodyText))
+		docVersion1 := rt.PutDocDirectly(docID, JsonToMap(t, bodyText))
 
 		deltaSentCount := rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 
@@ -407,7 +407,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 
 		// create doc1 rev 2
 		bodyText = `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 1234567890123}]}`
-		docVersion2 := rt.UpdateDocDirectly(docID, docVersion1, jsonToMap(t, bodyText))
+		docVersion2 := rt.UpdateDocDirectly(docID, docVersion1, JsonToMap(t, bodyText))
 
 		data, ok = btcRunner.WaitForVersion(client.id, docID, docVersion2)
 		assert.True(t, ok)
@@ -555,7 +555,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		const docID = "doc1"
 		// create doc1 rev 1-e89945d756a1d444fa212bffbbb31941
 		bodyText := `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`
-		version := rt.PutDocDirectly(docID, jsonToMap(t, bodyText))
+		version := rt.PutDocDirectly(docID, JsonToMap(t, bodyText))
 		data, ok := btcRunner.WaitForVersion(client.id, docID, version)
 		assert.True(t, ok)
 		assert.Contains(t, string(data), `"channels":["public"]`)
@@ -662,7 +662,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 		// create doc1 rev 1-e89945d756a1d444fa212bffbbb31941
 		bodyText := `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`
-		version := rt.PutDocDirectly(docID, jsonToMap(t, bodyText))
+		version := rt.PutDocDirectly(docID, JsonToMap(t, bodyText))
 
 		data, ok := btcRunner.WaitForVersion(client1.id, docID, version)
 		assert.True(t, ok)
@@ -789,7 +789,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 		bodyText := `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`
-		version1 := rt.PutDocDirectly(docID, jsonToMap(t, bodyText))
+		version1 := rt.PutDocDirectly(docID, JsonToMap(t, bodyText))
 
 		data, ok := btcRunner.WaitForVersion(client.id, docID, version1)
 		assert.True(t, ok)
@@ -808,7 +808,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 		// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
 		bodyText = `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": "bob"}]}`
-		version2 := rt.UpdateDocDirectly(docID, version1, jsonToMap(t, bodyText))
+		version2 := rt.UpdateDocDirectly(docID, version1, JsonToMap(t, bodyText))
 
 		data, ok = btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.True(t, ok)
