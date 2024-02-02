@@ -380,7 +380,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
 	if event.Opcode == sgbucket.FeedOpDeletion && len(docJSON) == 0 {
-		base.DebugfCtx(ctx, base.KeyImport, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))
+		base.DebugfCtx(ctx, base.KeyCache, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))
 		return
 	}
 
