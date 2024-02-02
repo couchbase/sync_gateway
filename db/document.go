@@ -979,7 +979,7 @@ func (doc *Document) IsChannelRemovalForCV(ctx context.Context, cv Version) (bod
 	var removalCV Version
 	for channel, removal := range doc.Channels {
 		if removal != nil {
-			removalCV = CreateVersion(removal.Rev.CurrentSource, base.HexCasToUint64(removal.Rev.CurrentVersion))
+			removalCV = CreateVersion(removal.Rev.CurrentSource, removal.Rev.CurrentVersion)
 			if removalCV == cv {
 				removedChannels[channel] = struct{}{}
 				if removal.Deleted {
