@@ -766,6 +766,11 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 // Handles a "proposeChanges" request, similar to "changes" but in no-conflicts mode
 func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
+	// we don't know whether this batch of changes has completed because they look like unsolicited revs to us,
+	// but we can stop clients swarming us with these causing CheckProposedRev work
+	bh.inFlightChangesThrottle <- struct{}{}
+	defer func() { <-bh.inFlightChangesThrottle }()
+
 	includeConflictRev := false
 	if val := rq.Properties[ProposeChangesConflictsIncludeRev]; val != "" {
 		includeConflictRev = val == trueProperty
