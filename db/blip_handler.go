@@ -1063,7 +1063,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
 		} else if bh.activeCBMobileSubprotocol < CBMobileReplicationV4 {
-			return base.HTTPErrorf(http.StatusBadRequest, "backwards compatability for deltas not yet implemented")
+			return base.HTTPErrorf(http.StatusBadRequest, "backwards compatibility for deltas not yet implemented")
 		}
 
 		//  TODO: Doing a GetRevCopy here duplicates some rev cache retrieval effort, since deltaRevSrc is always
