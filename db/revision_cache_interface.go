@@ -244,14 +244,14 @@ type IDandCV struct {
 
 // RevisionDelta stores data about a delta between a revision and ToRevID.
 type RevisionDelta struct {
-	ToRevID               string // Target revID for the delta
-	ToCV                  string
+	ToRevID               string                  // Target revID for the delta
+	ToCV                  string                  // Target CV for the delta
 	DeltaBytes            []byte                  // The actual delta
 	AttachmentStorageMeta []AttachmentStorageMeta // Storage metadata of all attachments present on ToRevID
 	ToChannels            base.Set                // Full list of channels for the to revision
 	RevisionHistory       []string                // Revision history from parent of ToRevID to source revID, in descending order
-	HlvHistory            string
-	ToDeleted             bool // Flag if ToRevID is a tombstone
+	HlvHistory            string                  // HLV History in CBL format
+	ToDeleted             bool                    // Flag if ToRevID is a tombstone
 }
 
 func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
