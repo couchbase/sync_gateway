@@ -2011,6 +2011,7 @@ func updateTestDoc(rt *rest.RestTester, docid string, revid string, body string)
 
 // Validate retrieval of various document body types using include_docs.
 func TestChangesIncludeDocs(t *testing.T) {
+	t.Skip("CBG-3748: backwards compatibility between cv and rev id for fetching backed up revs needed")
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 

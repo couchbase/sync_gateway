@@ -974,6 +974,31 @@ func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBy
 	return bodyBytes, history, activeChannels, true, isDelete, nil
 }
 
+func (doc *Document) IsChannelRemovalForCV(ctx context.Context, cv Version) (bodyBytes []byte, history Revisions, channels base.Set, isRemoval bool, isDelete bool, err error) {
+	removedChannels := make(base.Set)
+	var removalCV Version
+	for channel, removal := range doc.Channels {
+		if removal != nil {
+			removalCV = CreateVersion(removal.Rev.CurrentSource, base.HexCasToUint64(removal.Rev.CurrentVersion))
+			if removalCV == cv {
+				removedChannels[channel] = struct{}{}
+				if removal.Deleted {
+					isDelete = true
+				}
+			}
+		}
+	}
+	// If no matches found, return isRemoval=false
+	if len(removedChannels) == 0 {
+		return nil, nil, nil, false, false, nil
+	}
+
+	bodyBytes = []byte(RemovedRedactedDocument)
+	channels = doc.SyncData.getCurrentChannels()
+
+	return bodyBytes, history, channels, true, isDelete, nil
+}
+
 // Updates a document's channel/role UserAccessMap with new access settings from an AccessMap.
 // Returns an array of the user/role names whose access has changed as a result.
 func (accessMap *UserAccessMap) updateAccess(ctx context.Context, doc *Document, newAccess channels.AccessMap) (changedUsers []string) {

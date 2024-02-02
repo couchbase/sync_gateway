@@ -112,7 +112,7 @@ func TestBackupOldRevision(t *testing.T) {
 
 	docID := t.Name()
 
-	rev1ID, _, err := collection.Put(ctx, docID, Body{"test": true})
+	rev1ID, docRev1, err := collection.Put(ctx, docID, Body{"test": true})
 	require.NoError(t, err)
 
 	// make sure we didn't accidentally store an empty old revision
@@ -121,7 +121,8 @@ func TestBackupOldRevision(t *testing.T) {
 	assert.Equal(t, "404 missing", err.Error())
 
 	// check for current rev backup in xattr+delta case (to support deltas by sdk imports)
-	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, rev1ID)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility)
+	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	if deltasEnabled && xattrsEnabled {
 		require.NoError(t, err)
 	} else {
@@ -131,15 +132,17 @@ func TestBackupOldRevision(t *testing.T) {
 
 	// create rev 2 and check backups for both revs
 	rev2ID := "2-abc"
-	_, _, err = collection.PutExistingRevWithBody(ctx, docID, Body{"test": true, "updated": true}, []string{rev2ID, rev1ID}, true, ExistingVersionWithUpdateToHLV)
+	docRev2, _, err := collection.PutExistingRevWithBody(ctx, docID, Body{"test": true, "updated": true}, []string{rev2ID, rev1ID}, true, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
 
 	// now in all cases we'll have rev 1 backed up (for at least 5 minutes)
-	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, rev1ID)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility)
+	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	require.NoError(t, err)
 
 	// check for current rev backup in xattr+delta case (to support deltas by sdk imports)
-	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, rev2ID)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility)
+	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 	if deltasEnabled && xattrsEnabled {
 		require.NoError(t, err)
 	} else {

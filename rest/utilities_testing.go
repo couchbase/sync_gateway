@@ -2684,7 +2684,7 @@ func RequireGocbDCPResync(t *testing.T) {
 	}
 }
 
-func jsonToMap(t *testing.T, jsonStr string) map[string]interface{} {
+func JsonToMap(t *testing.T, jsonStr string) map[string]interface{} {
 	result := make(map[string]interface{})
 	err := json.Unmarshal([]byte(jsonStr), &result)
 	require.NoError(t, err)

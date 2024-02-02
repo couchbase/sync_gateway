@@ -229,10 +229,10 @@ const nonJSONPrefix = byte(1)
 
 // Looks up the raw JSON data of a revision that's been archived to a separate doc.
 // If the revision isn't found (e.g. has been deleted by compaction) returns 404 error.
-func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid string, revid string) ([]byte, error) {
-	data, _, err := c.dataStore.GetRaw(oldRevisionKey(docid, revid))
+func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid string, rev string) ([]byte, error) {
+	data, _, err := c.dataStore.GetRaw(oldRevisionKey(docid, rev))
 	if base.IsDocNotFoundError(err) {
-		base.DebugfCtx(ctx, base.KeyCRUD, "No old revision %q / %q", base.UD(docid), revid)
+		base.DebugfCtx(ctx, base.KeyCRUD, "No old revision %q / %q", base.UD(docid), rev)
 		err = ErrMissing
 	}
 	if data != nil {
@@ -240,7 +240,7 @@ func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid strin
 		if len(data) > 0 && data[0] == nonJSONPrefix {
 			data = data[1:]
 		}
-		base.DebugfCtx(ctx, base.KeyCRUD, "Got old revision %q / %q --> %d bytes", base.UD(docid), revid, len(data))
+		base.DebugfCtx(ctx, base.KeyCRUD, "Got old revision %q / %q --> %d bytes", base.UD(docid), rev, len(data))
 	}
 	return data, err
 }
@@ -254,47 +254,38 @@ func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid strin
 //	   - new revision stored (as duplicate), with expiry rev_max_age_seconds
 //	delta=true && shared_bucket_access=false
 //	   - old revision stored, with expiry rev_max_age_seconds
-func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, docId, newRevId, oldRevId string, newBody []byte, oldBody []byte, newAtts AttachmentsMeta) {
+func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, docId, newRev, oldRev string, newBody, oldBody []byte, newAtts AttachmentsMeta) (backupRev bool) {
 
 	// Without delta sync, store the old rev for in-flight replication purposes
 	if !db.deltaSyncEnabled() || db.deltaSyncRevMaxAgeSeconds() == 0 {
 		if len(oldBody) > 0 {
-			_ = db.setOldRevisionJSON(ctx, docId, oldRevId, oldBody, db.oldRevExpirySeconds())
+			oldRevHash := base.Crc32cHashString([]byte(oldRev))
+			_ = db.setOldRevisionJSON(ctx, docId, oldRevHash, oldBody, db.oldRevExpirySeconds())
 		}
-		return
+		return backupRev
 	}
 
 	// Otherwise, store the revs for delta generation purposes, with a longer expiry
 
 	// Special handling for Xattrs so that SG still has revisions that were updated by an SDK write
 	if db.UseXattrs() {
-		// Backup the current revision
-		var newBodyWithAtts = newBody
-		if len(newAtts) > 0 {
-			var err error
-			newBodyWithAtts, err = base.InjectJSONProperties(newBody, base.KVPair{
-				Key: BodyAttachments,
-				Val: newAtts,
-			})
-			if err != nil {
-				base.WarnfCtx(ctx, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(docId), newRevId, err)
-				return
-			}
-		}
-		_ = db.setOldRevisionJSON(ctx, docId, newRevId, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds())
+		backupRev = true
 
 		// Refresh the expiry on the previous revision backup
-		_ = db.refreshPreviousRevisionBackup(ctx, docId, oldRevId, oldBody, db.deltaSyncRevMaxAgeSeconds())
-		return
+		oldRevHash := base.Crc32cHashString([]byte(oldRev))
+		_ = db.refreshPreviousRevisionBackup(ctx, docId, oldRevHash, oldBody, db.deltaSyncRevMaxAgeSeconds())
+		return backupRev
 	}
 
 	// Non-xattr only need to store the previous revision, as all writes come through SG
 	if len(oldBody) > 0 {
-		_ = db.setOldRevisionJSON(ctx, docId, oldRevId, oldBody, db.deltaSyncRevMaxAgeSeconds())
+		oldRevHash := base.Crc32cHashString([]byte(oldRev))
+		_ = db.setOldRevisionJSON(ctx, docId, oldRevHash, oldBody, db.deltaSyncRevMaxAgeSeconds())
 	}
+	return backupRev
 }
 
-func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, docid string, revid string, body []byte, expiry uint32) error {
+func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, docid string, rev string, body []byte, expiry uint32) error {
 
 	// Setting the binary flag isn't sufficient to make N1QL ignore the doc - the binary flag is only used by the SDKs.
 	// To ensure it's not available via N1QL, need to prefix the raw bytes with non-JSON data.
@@ -302,11 +293,11 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, do
 	nonJSONBytes := make([]byte, 1, len(body)+1)
 	nonJSONBytes[0] = nonJSONPrefix
 	nonJSONBytes = append(nonJSONBytes, body...)
-	err := db.dataStore.SetRaw(oldRevisionKey(docid, revid), expiry, nil, nonJSONBytes)
+	err := db.dataStore.SetRaw(oldRevisionKey(docid, rev), expiry, nil, nonJSONBytes)
 	if err == nil {
-		base.DebugfCtx(ctx, base.KeyCRUD, "Backed up revision body %q/%q (%d bytes, ttl:%d)", base.UD(docid), revid, len(body), expiry)
+		base.DebugfCtx(ctx, base.KeyCRUD, "Backed up revision body %q/%q (%d bytes, ttl:%d)", base.UD(docid), rev, len(body), expiry)
 	} else {
-		base.WarnfCtx(ctx, "setOldRevisionJSON failed: doc=%q rev=%q err=%v", base.UD(docid), revid, err)
+		base.WarnfCtx(ctx, "setOldRevisionJSON failed: doc=%q rev=%q err=%v", base.UD(docid), rev, err)
 	}
 	return err
 }
@@ -330,8 +321,8 @@ func (c *DatabaseCollection) PurgeOldRevisionJSON(ctx context.Context, docid str
 
 // ////// UTILITY FUNCTIONS:
 
-func oldRevisionKey(docid string, revid string) string {
-	return fmt.Sprintf("%s%s:%d:%s", base.RevPrefix, docid, len(revid), revid)
+func oldRevisionKey(docid string, rev string) string {
+	return fmt.Sprintf("%s%s:%d:%s", base.RevPrefix, docid, len(rev), rev)
 }
 
 // Version of FixJSONNumbers (see base/util.go) that operates on a Body
