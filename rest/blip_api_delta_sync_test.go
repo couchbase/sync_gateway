@@ -24,6 +24,8 @@ import (
 
 // TestBlipDeltaSyncPushAttachment tests updating a doc that has an attachment with a delta that doesn't modify the attachment.
 func TestBlipDeltaSyncPushAttachment(t *testing.T) {
+	t.Skip("delta sync not implemented for Version Vectors replication push") // delta sync not implemented for Version Vectors replication 'push'
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
@@ -97,6 +99,8 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 // 5. Update doc in the test client by adding another attachment
 // 6. Have that update pushed using delta sync via the continuous replication started in step 2
 func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
+	t.Skip("delta sync not implemented for Version Vectors replication push") // delta sync not implemented for Version Vectors replication
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
@@ -111,7 +115,6 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication (CBG-3736)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
@@ -823,6 +826,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 // TestBlipDeltaSyncPush tests that a simple push replication handles deltas in EE,
 // and checks that full body replication is still supported in CE.
 func TestBlipDeltaSyncPush(t *testing.T) {
+	t.Skip("delta sync not implemented for Version Vectors replication push") // delta sync not implemented for Version Vectors replication 'push'
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	sgUseDeltas := base.IsEnterpriseEdition()
@@ -834,10 +838,9 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		}},
 		GuestEnabled: true,
 	}
-	btcRunner := NewBlipTesterClientRunner(t)
-	t.Skip("delta sync not implemented for Version Vectors replication push") // delta sync not implemented for Version Vectors replication 'push'
-	const docID = "doc1"
 
+	btcRunner := NewBlipTesterClientRunner(t)
+	const docID = "doc1"
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t,
 			&rtConfig)

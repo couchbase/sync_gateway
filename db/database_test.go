@@ -706,7 +706,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 		name          string
 		versionVector bool
 	}{
-		// Disabled pending work on backwards compatability for revtree in delta sync
+		// Disabled pending work on backwards compatibility for revtree in delta sync CBG-3748
 		//{
 		//	name:          "revTree test",
 		//	versionVector: false,
@@ -814,6 +814,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 		name          string
 		versionVector bool
 	}{
+		// Disabled pending work on backwards compatibility for revtree in delta sync CBG-3748
 		//{
 		//	name:          "revTree test",
 		//	versionVector: false,
