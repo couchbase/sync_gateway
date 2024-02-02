@@ -76,6 +76,8 @@ func newBlipHandler(ctx context.Context, bc *BlipSyncContext, db *Database, seri
 type BLIPSyncContextClientType string
 
 const (
+	BLIPCorrelationIDResponseHeader = "X-Correlation-ID"
+
 	BLIPSyncClientTypeQueryParam = "client"
 
 	BLIPClientTypeCBL2 BLIPSyncContextClientType = "cbl2"

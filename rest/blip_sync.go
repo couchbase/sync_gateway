@@ -48,6 +48,7 @@ func (h *handler) handleBLIPSync() error {
 
 	// Overwrite the existing logging context with the blip context ID
 	h.rqCtx = base.CorrelationIDLogCtx(h.ctx(), base.FormatBlipContextID(blipContext.ID))
+	h.response.Header().Set(db.BLIPCorrelationIDResponseHeader, blipContext.ID)
 
 	// Create a new BlipSyncContext attached to the given blipContext.
 	ctx := db.NewBlipSyncContext(h.rqCtx, blipContext, h.db, h.formatSerialNumber(), db.BlipSyncStatsForCBL(h.db.DbStats))
