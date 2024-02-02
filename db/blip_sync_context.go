@@ -44,6 +44,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		sgCanUseDeltas:          db.DeltaSyncEnabled(),
 		replicationStats:        replicationStats,
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
+		inFlightRevsThrottle:    make(chan struct{}, maxInFlightRevs),
 		collections:             &blipCollections{},
 	}
 	if bsc.replicationStats == nil {
@@ -108,6 +109,10 @@ type BlipSyncContext struct {
 	// before they've processed the revs for previous batches. Keeping this >1 allows the client to be fed a constant supply of rev messages,
 	// without making Sync Gateway buffer a bunch of stuff in memory too far in advance of the client being able to receive the revs.
 	inFlightChangesThrottle chan struct{}
+	// inFlightRevsThrottle is a small buffered channel to limit the amount of in-flight revs for this connection.
+	// Couchbase Lite limits this on the client side with changes batch size (but is usually hard-coded to 200)
+	// This is defensive measure to ensure a single client cannot use too much memory when replicating, and forces each changes batch to have a reduced amount of parallelism.
+	inFlightRevsThrottle chan struct{}
 
 	// fatalErrorCallback is called by the replicator code when the replicator using this blipSyncContext should be
 	// stopped
@@ -354,12 +359,18 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 				}
 			}
 
-			var err error
-			if deltaSrcRevID != "" {
-				err = bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
-			} else {
-				err = bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
-			}
+			err := func() error {
+				// throttle rev parallelism here (before we actually need to potentially fetch documents)
+				// whether the revisions are already cached or not, we still want to limit how much parallelism each client gets,
+				// since there's non-zero memory overhead after revcache retrieval to replicate the contents.
+				bsc.inFlightRevsThrottle <- struct{}{}
+				defer func() { <-bsc.inFlightRevsThrottle }()
+
+				if deltaSrcRevID != "" {
+					return bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
+				}
+				return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
+			}()
 			if err != nil {
 				return err
 			}

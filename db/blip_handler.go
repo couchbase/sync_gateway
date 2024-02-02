@@ -51,8 +51,13 @@ var kConnectedClientHandlersByProfile = map[string]blipHandlerFunc{
 	MessageGraphQL:  userBlipHandler((*blipHandler).handleGraphQL),
 }
 
-// maxInFlightChangesBatches is the maximum number of in-flight changes batches a client is allowed to send without being throttled.
-const maxInFlightChangesBatches = 2
+// Replication throttling
+const (
+	// maxInFlightChangesBatches is the maximum number of in-flight changes batches a client is allowed to send without being throttled.
+	maxInFlightChangesBatches = 2
+	// maxInFlightRevs is the maximum number of in-flight revisions a client is allowed to send or receive without being throttled.
+	maxInFlightRevs = 5
+)
 
 type blipHandler struct {
 	*BlipSyncContext
@@ -922,6 +927,9 @@ type processRevStats struct {
 // Processes a "rev" request, i.e. client is pushing a revision body
 // stats must always be provided, along with all the fields filled with valid pointers
 func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err error) {
+	bh.inFlightRevsThrottle <- struct{}{}
+	defer func() { <-bh.inFlightRevsThrottle }()
+
 	startTime := time.Now()
 	defer func() {
 		stats.processingTime.Add(time.Since(startTime).Nanoseconds())
