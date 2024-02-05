@@ -205,7 +205,7 @@ def test_stream_large_file(tmpdir, httpserver):
 
 def test_stream_file(tmpdir, httpserver):
     """
-    Write a file greater than 2GB to make sure it does not throw an exception.
+    Make sure that streaming the contents of a file show up when streaming.
     """
     p = tmpdir.join("testfile.txt")
     body = "foobar"
