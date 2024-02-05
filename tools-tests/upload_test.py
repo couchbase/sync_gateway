@@ -167,3 +167,15 @@ def test_main_keep_zip_deleted_on_upload_failure():
             assert exc.value.code == 1
     assert pathlib.Path(ZIP_NAME).exists()
     assert pathlib.Path(REDACTED_ZIP_NAME).exists()
+
+def test_stream_zip(tmpdir, httpserver):
+    p = tmpdir.join("testfile.txt")
+    body = "foobar"
+    p.write(body)
+    def handler(request):
+        assert request.data == body.encode()
+
+    httpserver.expect_request("/").respond_with_handler(handler)
+    assert tasks.do_upload(p, httpserver.url_for("/"), "") == 0
+
+    httpserver.check()
