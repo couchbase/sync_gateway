@@ -124,7 +124,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-github-actions-annotate-failures pytest-httpserver
+          pip install pytest pytest-github-actions-annotate-failures pytest-httpserver trustme
       - name: Run test
         run: |
           pytest
