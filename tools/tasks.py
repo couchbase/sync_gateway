@@ -1072,29 +1072,26 @@ def do_upload(path, url, proxy):
 
     with open(path, 'rb') as f:
 
-        # mmap the file to reduce the amount of memory required (see bit.ly/2aNENXC)
-        with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as filedata:
+        # Get proxies from environment/system
+        proxy_handler = urllib.request.ProxyHandler(urllib.request.getproxies())
+        if proxy != "":
+            # unless a proxy is explicitly passed, then use that instead
+            proxy_handler = urllib.request.ProxyHandler({'https': proxy, 'http': proxy})
 
-            # Get proxies from environment/system
-            proxy_handler = urllib.request.ProxyHandler(urllib.request.getproxies())
-            if proxy != "":
-                # unless a proxy is explicitly passed, then use that instead
-                proxy_handler = urllib.request.ProxyHandler({'https': proxy, 'http': proxy})
+        opener = urllib.request.build_opener(proxy_handler)
+        request = urllib.request.Request(url, data=f, method='PUT')
+        request.add_header(str('Content-Type'), str('application/zip'))
 
-            opener = urllib.request.build_opener(proxy_handler)
-            request = urllib.request.Request(url, data=filedata.read(), method='PUT')
-            request.add_header(str('Content-Type'), str('application/zip'))
-
-            exit_code = 0
-            try:
-                url = opener.open(request)
-                if url.getcode() == 200:
-                    log('Done uploading')
-                else:
-                    raise Exception('Error uploading, expected status code 200, got status code: {0}'.format(url.getcode()))
-            except Exception as e:
-                log(traceback.format_exc())
-                return 1
+        exit_code = 0
+        try:
+            url = opener.open(request)
+            if url.getcode() == 200:
+                log('Done uploading')
+            else:
+                raise Exception('Error uploading, expected status code 200, got status code: {0}'.format(url.getcode()))
+        except Exception as e:
+            log(traceback.format_exc())
+            return 1
 
     return 0
 
