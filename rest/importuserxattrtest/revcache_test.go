@@ -60,8 +60,6 @@ func TestUserXattrRevCache(t *testing.T) {
 	defer rt2.Close()
 
 	dataStore := rt2.GetSingleDataStore()
-	userXattrStore, ok := base.AsUserXattrStore(dataStore)
-	require.True(t, ok)
 
 	ctx = rt2.Context()
 	a := rt2.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -76,7 +74,7 @@ func TestUserXattrRevCache(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
-	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, "DEF")
+	_, err = dataStore.WriteUserXattr(docKey, xattrKey, "DEF")
 	assert.NoError(t, err)
 
 	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
@@ -86,7 +84,7 @@ func TestUserXattrRevCache(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// Add channel ABC to the userXattr
-	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
+	_, err = dataStore.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
 	// wait for import of the xattr change on both nodes
@@ -143,8 +141,6 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	defer rt2.Close()
 
 	dataStore := rt2.GetSingleDataStore()
-	userXattrStore, ok := base.AsUserXattrStore(dataStore)
-	require.True(t, ok)
 
 	ctx = rt2.Context()
 	a := rt2.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -158,7 +154,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Write DEF to the userXattrStore to give userDEF access
-	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, "DEF")
+	_, err = dataStore.WriteUserXattr(docKey, xattrKey, "DEF")
 	assert.NoError(t, err)
 
 	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
@@ -168,7 +164,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// Delete DEF from the userXattr, removing the doc from channel DEF
-	_, err = userXattrStore.DeleteUserXattr(docKey, xattrKey)
+	_, err = dataStore.DeleteUserXattr(docKey, xattrKey)
 	assert.NoError(t, err)
 
 	// wait for import of the xattr change on both nodes

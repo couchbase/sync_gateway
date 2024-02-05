@@ -22,14 +22,6 @@ const (
 	xattrMacroValueCrc32c = "value_crc32c"
 )
 
-// Utilities for creating/deleting user xattr.  For test use
-type UserXattrStore = sgbucket.UserXattrStore
-
-// KvXattrStore is used for xattr_common functions that perform subdoc and standard kv operations
-type KvXattrStore interface {
-	sgbucket.KVStore
-}
-
 // CAS-safe write of a document and it's associated named xattr
 func WriteCasWithXattr(ctx context.Context, store *Collection, k string, xattrKey string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xv interface{}) (casOut uint64, err error) {
 
@@ -402,19 +394,6 @@ func deleteDocXattrOnly(ctx context.Context, store *Collection, k string, xattrK
 	}
 	return nil
 
-}
-
-func AsUserXattrStore(dataStore DataStore) (UserXattrStore, bool) {
-
-	switch typedDataStore := dataStore.(type) {
-	case UserXattrStore:
-		return typedDataStore, true
-	case *LeakyDataStore:
-		return AsUserXattrStore(typedDataStore.dataStore)
-	default:
-		// bail out for unrecognised/unsupported buckets
-		return nil, false
-	}
 }
 
 func xattrCasPath(xattrKey string) string {

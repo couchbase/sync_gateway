@@ -44,6 +44,8 @@ github.com/couchbase/goutils v0.1.2 h1:gWr8B6XNWPIhfalHNog3qQKfGiYyh4K4VhO3P2o9B
 github.com/couchbase/goutils v0.1.2/go.mod h1:h89Ek/tiOxxqjz30nPPlwZdQbdB8BwgnuBxeoUe/ViE=
 github.com/couchbase/sg-bucket v0.0.0-20231116231254-16c1ad8b2483 h1:K6y82On0A3coA+GwW+HGKIwpCpca6ZSvTAJwwTmzCrg=
 github.com/couchbase/sg-bucket v0.0.0-20231116231254-16c1ad8b2483/go.mod h1:hy6J0RXx/Ry+5EiI8VVMetsVfBXQq5/djQLbvfRau0k=
+github.com/couchbase/sg-bucket v0.0.0-20240205145213-1381da0bbd5d h1:02+S3drhliTpQtOHnHchw+xQSFgmk0qMzqi8XpFtFfQ=
+github.com/couchbase/sg-bucket v0.0.0-20240205145213-1381da0bbd5d/go.mod h1:hy6J0RXx/Ry+5EiI8VVMetsVfBXQq5/djQLbvfRau0k=
 github.com/couchbase/tools-common/cloud v1.0.0 h1:SQZIccXoedbrThehc/r9BJbpi/JhwJ8X00PDjZ2gEBE=
 github.com/couchbase/tools-common/cloud v1.0.0/go.mod h1:6KVlRpbcnDWrvickUJ+xpqCWx1vgYYlEli/zL4xmZAg=
 github.com/couchbase/tools-common/fs v1.0.0 h1:HFA4xCF/r3BtZShFJUxzVvGuXtDkqGnaPzYJP3Kp1mw=

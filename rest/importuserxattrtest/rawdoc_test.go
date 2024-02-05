@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,14 +32,11 @@ func TestUserXattrsRawGet(t *testing.T) {
 	})
 	defer rt.Close()
 
-	userXattrStore, ok := base.AsUserXattrStore(rt.GetSingleDataStore())
-	require.True(t, ok)
-
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, "{}")
 	rest.RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	_, err := userXattrStore.WriteUserXattr(docKey, xattrKey, "val")
+	_, err := rt.GetSingleDataStore().WriteUserXattr(docKey, xattrKey, "val")
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
