@@ -32,7 +32,7 @@ func (c *Collection) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 }
 
 var _ sgbucket.XattrStore = &Collection{}
-var _ UserXattrStore = &Collection{}
+var _ sgbucket.UserXattrStore = &Collection{}
 
 func init() {
 	LookupOptsAccessDeleted = &gocb.LookupInOptions{}

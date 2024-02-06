@@ -45,8 +45,6 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	defer rt.Close()
 
 	dataStore := rt.GetSingleDataStore()
-	userXattrStore, ok := base.AsUserXattrStore(dataStore)
-	require.True(t, ok)
 
 	// Initial PUT
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
@@ -65,7 +63,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.Equal(t, syncData.CurrentRev, docRev.RevID)
 
 	// Write xattr to trigger import of user xattr
-	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
+	_, err = dataStore.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
 	// Wait for import
