@@ -2301,7 +2301,7 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 			name:               "Valid _id",
 			importBody:         map[string]interface{}{"_id": "documentid"},
 			expectReject:       true,
-			expectedStatusCode: base.IntPtr(400),
+			expectedStatusCode: base.IntPtr(http.StatusNotFound),
 		},
 		{
 			name:         "Valid _rev",
