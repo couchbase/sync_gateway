@@ -117,7 +117,7 @@ func TestXattrMigration(t *testing.T) {
 	require.NoError(t, err)
 	require.Greater(t, startingCas, uint64(0))
 
-	startingCas, err = base.GetBaseDataStore(fromBucket.DefaultDataStore()).(sgbucket.UserXattrStore).WriteUserXattr(docID, userXattrName, mustUnmarshalJSON(t, userXattrVal))
+	startingCas, err = fromBucket.DefaultDataStore().WriteUserXattr(docID, userXattrName, mustUnmarshalJSON(t, userXattrVal))
 	require.NoError(t, err)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		toVal := map[string]string{}
