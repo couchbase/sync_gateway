@@ -292,6 +292,14 @@ func (lds *LeakyDataStore) DeleteWithXattr(ctx context.Context, k string, xattr 
 	return lds.dataStore.DeleteWithXattr(ctx, k, xattr)
 }
 
+func (lds *LeakyDataStore) WriteUserXattr(docKey string, xattrKey string, xattrVal interface{}) (uint64, error) {
+	return lds.dataStore.WriteUserXattr(docKey, xattrKey, xattrVal)
+}
+
+func (lds *LeakyDataStore) DeleteUserXattr(docKey string, xattrKey string) (uint64, error) {
+	return lds.dataStore.DeleteUserXattr(docKey, xattrKey)
+}
+
 func (lds *LeakyDataStore) GetXattr(ctx context.Context, k string, xattr string, xv interface{}) (cas uint64, err error) {
 	return lds.dataStore.GetXattr(ctx, k, xattr, xv)
 }

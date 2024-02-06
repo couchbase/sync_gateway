@@ -2842,6 +2842,7 @@ func TestPing(t *testing.T) {
 		{"Public", rt.SendRequest},
 		{"Admin", rt.SendAdminRequest},
 		{"Metrics", rt.SendMetricsRequest},
+		{"Diagnostic", rt.SendDiagnosticRequest},
 	}
 
 	for _, test := range tests {

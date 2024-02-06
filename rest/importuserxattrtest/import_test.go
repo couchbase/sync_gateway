@@ -16,7 +16,6 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestUserXattrAutoImport(t *testing.T) {
@@ -43,15 +42,13 @@ func TestUserXattrAutoImport(t *testing.T) {
 	defer rt.Close()
 
 	dataStore := rt.GetSingleDataStore()
-	userXattrStore, ok := base.AsUserXattrStore(dataStore)
-	require.True(t, ok)
 
 	// Add doc
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, "{}")
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Add xattr to doc
-	_, err := userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
+	_, err := dataStore.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
 	// Wait for doc to be imported
@@ -72,7 +69,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
 
 	// Update xattr again but same value and ensure it isn't imported again (crc32 hash should match)
-	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
+	_, err = dataStore.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
@@ -152,9 +149,6 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 
 	dataStore := rt.GetSingleDataStore()
 
-	userXattrStore, ok := base.AsUserXattrStore(dataStore)
-	require.True(t, ok)
-
 	// Add doc with SDK
 	err := dataStore.Set(docKey, 0, nil, []byte(`{}`))
 	assert.NoError(t, err)
@@ -173,7 +167,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	// Write user xattr
-	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
+	_, err = dataStore.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
 	// GET to trigger import
@@ -198,7 +192,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
 
 	// Write same xattr value
-	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
+	_, err = dataStore.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
 	// Perform GET and ensure import isn't triggered as crc32 hash is the same
@@ -239,9 +233,6 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 
 	dataStore := rt.GetSingleDataStore()
 
-	userXattrStore, ok := base.AsUserXattrStore(dataStore)
-	require.True(t, ok)
-
 	// Initial PUT
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
@@ -264,7 +255,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	// Write user xattr
-	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
+	_, err = dataStore.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
 	// Trigger import

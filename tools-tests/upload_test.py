@@ -10,8 +10,10 @@ import os
 import pathlib
 import unittest.mock
 import urllib.error
+import ssl
 
 import pytest
+import trustme
 
 import sgcollect_info
 import tasks
@@ -167,3 +169,51 @@ def test_main_keep_zip_deleted_on_upload_failure():
             assert exc.value.code == 1
     assert pathlib.Path(ZIP_NAME).exists()
     assert pathlib.Path(REDACTED_ZIP_NAME).exists()
+
+@pytest.fixture(scope="session")
+def httpserver_ssl_context():
+    ca = trustme.CA()
+    client_context = ssl.SSLContext()
+    server_context = ssl.SSLContext()
+    server_cert = ca.issue_cert("test-host.example.org")
+    ca.configure_trust(client_context)
+    server_cert.configure_cert(server_context)
+
+    def default_context():
+        return client_context
+
+    ssl._create_default_https_context = default_context
+
+    return server_context
+
+def test_stream_large_file(tmpdir, httpserver):
+    """
+    Write a file greater than 2GB to make sure it does not throw an exception.
+    """
+    p = tmpdir.join("testfile.txt")
+    body = "foobar"
+    with open(p, "wb") as f:
+        for i in range(2200):
+            f.write(os.urandom(1_000_000))
+    def handler(request):
+        pass
+
+    httpserver.expect_request("/").respond_with_handler(handler)
+    assert tasks.do_upload(p, httpserver.url_for("/"), "") == 0
+
+    httpserver.check()
+
+def test_stream_file(tmpdir, httpserver):
+    """
+    Make sure that streaming the contents of a file show up when streaming.
+    """
+    p = tmpdir.join("testfile.txt")
+    body = "foobar"
+    p.write(body)
+    def handler(request):
+        assert request.data == body.encode()
+
+    httpserver.expect_request("/").respond_with_handler(handler)
+    assert tasks.do_upload(p, httpserver.url_for("/"), "") == 0
+
+    httpserver.check()

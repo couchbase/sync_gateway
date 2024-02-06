@@ -1035,9 +1035,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 
 	userXattrVal := map[string]interface{}{"val": "val"}
 
-	userXattrStore, ok := AsUserXattrStore(dataStore)
-	require.True(t, ok)
-	_, err = userXattrStore.WriteUserXattr(key, userXattrKey, userXattrVal)
+	_, err = dataStore.WriteUserXattr(key, userXattrKey, userXattrVal)
 	assert.NoError(t, err)
 
 	_, err = dataStore.WriteUpdateWithXattr(ctx, key, xattrKey, userXattrKey, 0, nil, nil, writeUpdateFunc)
@@ -2205,9 +2203,6 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 
-	userXattrStore, ok := AsUserXattrStore(dataStore)
-	require.True(t, ok)
-
 	docKey := t.Name()
 
 	docVal := map[string]interface{}{"val": "docVal"}
@@ -2217,10 +2212,10 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 	err := dataStore.Set(docKey, 0, nil, docVal)
 	assert.NoError(t, err)
 
-	_, err = userXattrStore.WriteUserXattr(docKey, "_sync", syncXattrVal)
+	_, err = dataStore.WriteUserXattr(docKey, "_sync", syncXattrVal)
 	assert.NoError(t, err)
 
-	_, err = userXattrStore.WriteUserXattr(docKey, "test", userXattrVal)
+	_, err = dataStore.WriteUserXattr(docKey, "test", userXattrVal)
 	assert.NoError(t, err)
 
 	var docValRet, syncXattrValRet, userXattrValRet map[string]interface{}
@@ -2248,9 +2243,7 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 	err := dataStore.Set(docKey, 0, nil, docVal)
 	assert.NoError(t, err)
 
-	userXattrStore, ok := AsUserXattrStore(dataStore)
-	require.True(t, ok)
-	_, err = userXattrStore.WriteUserXattr(docKey, "_sync", syncXattrVal)
+	_, err = dataStore.WriteUserXattr(docKey, "_sync", syncXattrVal)
 	assert.NoError(t, err)
 
 	var docValRet, syncXattrValRet, userXattrValRet map[string]interface{}

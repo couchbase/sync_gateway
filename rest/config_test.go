@@ -773,6 +773,7 @@ func TestParseCommandLine(t *testing.T) {
 	require.NoError(t, err, "Parsing commandline arguments without any config file")
 	assert.Equal(t, interfaceAddress, *config.Interface)
 	assert.Equal(t, adminInterface, *config.AdminInterface)
+
 	assert.Equal(t, configServer, *config.ConfigServer)
 	assert.Equal(t, logFilePath, config.Logging.LogFilePath)
 	assert.Equal(t, strings.Split(logKeys, ","), config.Logging.Console.LogKeys)

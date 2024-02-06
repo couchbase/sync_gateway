@@ -180,6 +180,17 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 	assert.Contains(t, resp.Body, `"num_doc_writes":1`)
 }
 
+// TestBootstrapDiagnosticAPI asserts on diagnostic API endpoints
+func TestBootstrapPingAPI(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
+
+	resp := doBootstrapRequest(t, sc, http.MethodGet, "/_ping/", "", nil, diagnosticServer)
+	resp.RequireStatus(http.StatusOK)
+}
+
 // Development-time test, expects locally running Couchbase Server and designed for long-running memory profiling
 func DevTestFetchConfigManual(t *testing.T) {
 

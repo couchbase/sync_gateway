@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     name: OpenAPI Validation
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: r7kamura/redocly-problem-matchers@v1
       - uses: mhiew/redoc-lint-github-action@v3
         with:
@@ -46,7 +46,7 @@ jobs:
     name: 'yamllint'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: karancode/yamllint-github-action@master
         with:
           yamllint_file_or_dir: 'docs/api'
