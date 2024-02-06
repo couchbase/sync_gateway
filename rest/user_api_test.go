@@ -1142,17 +1142,13 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			defer rt.Close()
 
-			gocbBucket, ok := base.AsUserXattrStore(rt.GetSingleDataStore())
-			if !ok {
-				t.Skip("Test requires Couchbase Bucket")
-			}
-
 			// Initial PUT
 			resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 			RequireStatus(t, resp, http.StatusCreated)
 
+			dataStore := rt.GetSingleDataStore()
 			// Add xattr
-			_, err := gocbBucket.WriteUserXattr(docKey, xattrKey, channelName)
+			_, err := dataStore.WriteUserXattr(docKey, xattrKey, channelName)
 			assert.NoError(t, err)
 
 			// Trigger import
@@ -1164,15 +1160,13 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Get sync data for doc and ensure user xattr has been used correctly to set channel
 			var syncData db.SyncData
-			dataStore := rt.GetSingleDataStore()
-			require.True(t, ok)
 			_, err = dataStore.GetXattr(rt.Context(), docKey, base.SyncXattrName, &syncData)
 			assert.NoError(t, err)
 
 			assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
 
 			// Delete user xattr
-			_, err = gocbBucket.DeleteUserXattr(docKey, xattrKey)
+			_, err = dataStore.DeleteUserXattr(docKey, xattrKey)
 			assert.NoError(t, err)
 
 			// Trigger import
