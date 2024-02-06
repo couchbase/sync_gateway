@@ -11,6 +11,7 @@ package db
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -21,7 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -538,21 +539,23 @@ func (db *DatabaseCollectionWithUser) Get1xRevAndChannels(ctx context.Context, d
 }
 
 // Returns an HTTP 403 error if the User is not allowed to access any of this revision's channels.
-func (col *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string) error {
+func (col *DatabaseCollectionWithUser) authorizeDoc(ctx context.Context, doc *Document, revid string) error {
 	user := col.user
 	if doc == nil || user == nil {
 		return nil // A nil User means access control is disabled
 	}
-	if revid == "" {
-		revid = doc.CurrentRev
-	}
-	if rev := doc.History[revid]; rev != nil {
-		// Authenticate against specific revision:
-		return col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, rev.Channels)
-	} else {
-		// No such revision; let the caller proceed and return a 404
+
+	channelsForRev, ok := doc.channelsForRev(revid)
+	if !ok {
+		// No such revision
+		// let the caller proceed and return a 404
 		return nil
+	} else if channelsForRev == nil {
+		// non-leaf (no channel info) - force 404 (caller would find the rev if it tried to look)
+		return ErrMissing
 	}
+
+	return col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, channelsForRev)
 }
 
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
@@ -690,14 +693,14 @@ func (db *DatabaseCollectionWithUser) getAncestorJSON(ctx context.Context, doc *
 // instead returns a minimal deletion or removal revision to let them know it's gone.
 func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *Document, revid string, listRevisions bool) (bodyBytes []byte, removed bool, err error) {
 	var attachments AttachmentsMeta
-	if err := db.authorizeDoc(doc, revid); err != nil {
+	if err := db.authorizeDoc(ctx, doc, revid); err != nil {
 		// As a special case, you don't need channel access to see a deletion revision,
 		// otherwise the client's replicator can't process the deletion (since deletions
 		// usually aren't on any channels at all!) But don't show the full body. (See #59)
 		// Update: this applies to non-deletions too, since the client may have lost access to
 		// the channel and gotten a "removed" entry in the _changes feed. It then needs to
 		// incorporate that tombstone and for that it needs to see the _revisions property.
-		if revid == "" || doc.History[revid] == nil {
+		if revid == "" || doc.History[revid] == nil || errors.Is(err, ErrMissing) {
 			return nil, false, err
 		}
 		if doc.History[revid].Deleted {
@@ -1577,7 +1580,7 @@ func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAtt
 		if errors.Is(err, ErrAttachmentTooLarge) || err.Error() == "document value was too large" {
 			err = base.HTTPErrorf(http.StatusRequestEntityTooLarge, "Attachment too large")
 		} else {
-			err = errors.Wrap(err, "Error adding attachment")
+			err = pkgerrors.Wrap(err, "Error adding attachment")
 		}
 	}
 	return err
@@ -1774,7 +1777,8 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 		return
 	}
 
-	if len(channelSet) > 0 {
+	isWinningRev := doc.CurrentRev == newRevID
+	if len(channelSet) > 0 && !isWinningRev {
 		doc.History[newRevID].Channels = channelSet
 	}
 
@@ -1801,7 +1805,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 				return
 			}
 		}
-		_, err = doc.updateChannels(ctx, channelSet)
+		_, err = doc.updateChannels(ctx, isWinningRev, channelSet)
 		if err != nil {
 			return
 		}
@@ -2026,7 +2030,11 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			return nil, "", err
 		}
 
-		revChannels := doc.History[newRevID].Channels
+		revChannels, ok := doc.channelsForRev(newRevID)
+		if !ok {
+			// Should be unreachable, as we've already checked History[newRevID] above ...
+			return nil, "", base.RedactErrorf("unable to determine channels for %s/%s", base.UD(docid), newRevID)
+		}
 		documentRevision := DocumentRevision{
 			DocID:            docid,
 			RevID:            newRevID,
