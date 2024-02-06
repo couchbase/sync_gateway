@@ -2838,79 +2838,77 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 		t.Skip("Test performs import, not valid for non-xattr mode")
 	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
-	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true, GuestEnabled: true})
-		defer rt.Close()
-		config := rt.NewDbConfig()
-		config.AutoImport = false
-		RequireStatus(t, rt.CreateDatabase("db", config), http.StatusCreated)
-		testCases := []struct {
-			name        string
-			invalidBody []byte
-		}{
-			{
-				name:        "_id property",
-				invalidBody: []byte(`{"_id": "doc1"}`),
-			},
-			{
-				name:        "_exp property",
-				invalidBody: []byte(`{"_exp": 1}`),
-			},
-			{
-				name:        "_rev property",
-				invalidBody: []byte(`{"_rev": "abc1"}`),
-			},
-			{
-				name:        "_revisions property",
-				invalidBody: []byte(`{"_revisions": {"start": 0, "ids": ["foo", "def]"}}`),
-			},
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true, GuestEnabled: true})
+	defer rt.Close()
+	config := rt.NewDbConfig()
+	config.AutoImport = false
+	RequireStatus(t, rt.CreateDatabase("db", config), http.StatusCreated)
+	testCases := []struct {
+		name        string
+		invalidBody []byte
+	}{
+		{
+			name:        "_id property",
+			invalidBody: []byte(`{"_id": "doc1"}`),
+		},
+		{
+			name:        "_exp property",
+			invalidBody: []byte(`{"_exp": 1}`),
+		},
+		{
+			name:        "_rev property",
+			invalidBody: []byte(`{"_rev": "abc1"}`),
+		},
+		{
+			name:        "_revisions property",
+			invalidBody: []byte(`{"_revisions": {"start": 0, "ids": ["foo", "def]"}}`),
+		},
 
-			{
-				name:        "_purged property",
-				invalidBody: []byte(`{"_purged": true}`),
-			},
-			{
-				name:        "invalid json",
-				invalidBody: []byte(``),
-			},
-		}
-		for i, testCase := range testCases {
-			t.Run(testCase.name, func(t *testing.T) {
-				docID := fmt.Sprintf("doc%d,", i)
-				markerDoc := fmt.Sprintf("markerDoc%d", i)
-				validBody := `{"foo":"bar"}`
-				_ = rt.PutDoc(docID, validBody)
-				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-					Username:               "user",
-					Channels:               []string{"*"},
-					SupportedBLIPProtocols: SupportedBLIPProtocols,
-				})
-				defer btc.Close()
-				require.NoError(t, btcRunner.StartOneshotPull(btc.id))
-
-				output, found := btcRunner.WaitForDoc(btc.id, docID)
-				require.True(t, found)
-				require.JSONEq(t, validBody, string(output))
-
-				err := rt.GetSingleDataStore().SetRaw(docID, 0, nil, testCase.invalidBody)
-				require.NoError(t, err)
-
-				rt.CreateTestDoc(markerDoc)
-
-				rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
-
-				btc2 := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-					Username:               "user",
-					Channels:               []string{"*"},
-					SupportedBLIPProtocols: SupportedBLIPProtocols,
-				})
-				defer btc2.Close()
-
-				require.NoError(t, btcRunner.StartOneshotPull(btc2.id))
-
-				btcRunner.WaitForDoc(btc2.id, markerDoc)
+		{
+			name:        "_purged property",
+			invalidBody: []byte(`{"_purged": true}`),
+		},
+		{
+			name:        "invalid json",
+			invalidBody: []byte(``),
+		},
+	}
+	for i, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			docID := fmt.Sprintf("doc%d,", i)
+			markerDoc := fmt.Sprintf("markerDoc%d", i)
+			validBody := `{"foo":"bar"}`
+			markerBody := `{"prop":true}`
+			_ = rt.PutDoc(docID, validBody)
+			btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+				Username: "user",
+				Channels: []string{"*"},
 			})
-		}
-	})
+			require.NoError(t, err)
+			defer btc.Close()
+			require.NoError(t, btc.StartOneshotPull())
+
+			output, found := btc.WaitForDoc(docID)
+			require.True(t, found)
+			require.JSONEq(t, validBody, string(output))
+
+			err = rt.GetSingleDataStore().SetRaw(docID, 0, nil, testCase.invalidBody)
+			require.NoError(t, err)
+
+			rt.PutDoc(markerDoc, markerBody)
+
+			rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+
+			btc2, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+				Username: "user",
+				Channels: []string{"*"},
+			})
+			require.NoError(t, err)
+			defer btc2.Close()
+
+			require.NoError(t, btc.StartOneshotPull())
+
+			btc.WaitForDoc(markerDoc)
+		})
+	}
 }
