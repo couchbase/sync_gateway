@@ -2036,7 +2036,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 		}
 
 		if count > 0 {
-			base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
+			base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %q from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
 		} else {
 			base.WarnfCtx(ctx, "Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.Config.Bootstrap.ConfigGroupID)
 		}
@@ -2060,10 +2060,10 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 						base.DebugfCtx(ctx, base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.Config.Bootstrap.ConfigGroupID)
 						count, err := sc.fetchAndLoadConfigs(ctx, false)
 						if err != nil {
-							base.WarnfCtx(ctx, "Couldn't load configs from bucket when polled: %v", err)
+							base.WarnfCtx(ctx, "Couldn't load configs from bucket for group %q when polled: %v", sc.Config.Bootstrap.ConfigGroupID, err)
 						}
 						if count > 0 {
-							base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
+							base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %d from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
 						}
 					}
 				}
