@@ -99,8 +99,11 @@ func (im *indexManager) GetAllIndexes() ([]gocb.QueryIndex, error) {
 	if im.collection != nil {
 		return im.collection.GetAllIndexes(opts)
 	}
-	opts.ScopeName = im.scopeName
-	opts.CollectionName = im.collectionName
+	// ScopeName and CollectionName options are deprecated (and skipped for staticcheck) as of gocb v2.7.0
+	// (GOCBC-1391). When these run on more than a single collection (CBG-3026) this should be replaced with
+	// a N1QL query rather than a gocb call.
+	opts.ScopeName = im.scopeName           // nolint:staticcheck
+	opts.CollectionName = im.collectionName // nolint:staticcheck
 	return im.cluster.GetAllIndexes(im.bucketName, opts)
 }
 

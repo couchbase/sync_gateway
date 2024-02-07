@@ -9,8 +9,8 @@ require (
 	github.com/couchbase/cbgt v1.3.9
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20231212195435-3490e96d30e3
-	github.com/couchbase/gocb/v2 v2.6.5
-	github.com/couchbase/gocbcore/v10 v10.2.10
+	github.com/couchbase/gocb/v2 v2.7.1
+	github.com/couchbase/gocbcore/v10 v10.3.1
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20240206113827-752ae6de6855
@@ -19,7 +19,7 @@ require (
 	github.com/couchbaselabs/rosmar v0.0.0-20231220172938-669667777223
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.3
-	github.com/google/uuid v1.3.1
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.0
 	github.com/graphql-go/graphql v0.8.1
 	github.com/json-iterator/go v1.1.12
@@ -35,10 +35,10 @@ require (
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/shirou/gopsutil/v3 v3.23.10
 	github.com/stretchr/testify v1.8.4
-	golang.org/x/crypto v0.17.0
+	golang.org/x/crypto v0.18.0
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
-	golang.org/x/net v0.17.0
-	golang.org/x/oauth2 v0.13.0
+	golang.org/x/net v0.20.0
+	golang.org/x/oauth2 v0.14.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
@@ -50,16 +50,20 @@ require (
 	github.com/couchbase/blance v0.1.5 // indirect
 	github.com/couchbase/cbauth v0.1.11 // indirect
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
+	github.com/couchbase/gocbcoreps v0.1.1 // indirect
+	github.com/couchbase/goprotostellar v1.0.1 // indirect
 	github.com/couchbase/tools-common/cloud v1.0.0 // indirect
 	github.com/couchbase/tools-common/fs v1.0.0 // indirect
 	github.com/couchbase/tools-common/testing v1.0.0 // indirect
 	github.com/couchbase/tools-common/types v1.0.0 // indirect
 	github.com/couchbase/tools-common/utils v1.0.0 // indirect
+	github.com/couchbaselabs/gocbconnstr/v2 v2.0.0-20230515165046-68b522a21131 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/pprof v0.0.0-20211214055906-6f57359322fd // indirect
+	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/klauspost/compress v1.17.3 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.17 // indirect
@@ -79,11 +83,15 @@ require (
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
-	golang.org/x/sys v0.15.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
+	go.uber.org/zap v1.26.0 // indirect
+	golang.org/x/sys v0.16.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
-	google.golang.org/protobuf v1.31.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240205150955-31a09d347014 // indirect
+	google.golang.org/grpc v1.61.0 // indirect
+	google.golang.org/protobuf v1.32.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
