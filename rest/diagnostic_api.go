@@ -58,6 +58,7 @@ func (h *handler) handleGetAllChannels() error {
 		collAccessAll := role.GetCollectionsAccess()
 		resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
 		resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
+
 		for scopeName, collections := range collAccessAll {
 			for collectionName, collectionAccess := range collections {
 				resp.AdminRoleGrants[roleName][scopeName+"."+collectionName] = make(map[string]auth.GrantHistory)
@@ -77,6 +78,46 @@ func (h *handler) handleGetAllChannels() error {
 					if seq.Sequence > chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq {
 						chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = seq.Sequence
 					}
+					if _, ok := user.ExplicitRoles()[roleName]; ok {
+						adminRoleChannelTimedHistory[channel] = chanHistory
+					} else {
+						dynamicRoleChannelTimedHistory[channel] = chanHistory
+					}
+				}
+
+				resp.AdminRoleGrants[roleName][scopeName+"."+collectionName] = adminRoleChannelTimedHistory
+				resp.DynamicRoleGrants[roleName][scopeName+"."+collectionName] = dynamicRoleChannelTimedHistory
+			}
+		}
+	}
+	for roleName, roleHist := range user.RoleHistory() {
+		role, err := h.db.Authenticator(h.ctx()).GetRole(roleName)
+		if err != nil {
+			return err
+		}
+		if role == nil {
+			continue
+		}
+		collAccessAll := role.GetCollectionsAccess()
+		resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
+		resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
+
+		for scopeName, collections := range collAccessAll {
+			for collectionName, collectionAccess := range collections {
+				resp.AdminRoleGrants[roleName][scopeName+"."+collectionName] = make(map[string]auth.GrantHistory)
+				resp.DynamicRoleGrants[roleName][scopeName+"."+collectionName] = make(map[string]auth.GrantHistory)
+				maps.Clear(dynamicRoleChannelTimedHistory)
+				maps.Clear(adminRoleChannelTimedHistory)
+				// loop over current role channels
+				for channel, _ := range collectionAccess.Channels() {
+					if _, ok := user.ExplicitRoles()[roleName]; ok {
+						adminRoleChannelTimedHistory[channel] = roleHist
+					} else {
+						dynamicRoleChannelTimedHistory[channel] = roleHist
+					}
+				}
+				// loop over previous role channels
+				for channel, chanHistory := range collectionAccess.ChannelHistory() {
 					if _, ok := user.ExplicitRoles()[roleName]; ok {
 						adminRoleChannelTimedHistory[channel] = chanHistory
 					} else {
