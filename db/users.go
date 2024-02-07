@@ -193,7 +193,6 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		if updates.ExplicitChannels != nil && updatedExplicitChannels.UpdateAtSequence(updates.ExplicitChannels, nextSeq) {
 			princ.SetExplicitChannels(updatedExplicitChannels, nextSeq)
 		}
-
 		if collectionAccessChanged {
 			dbc.UpdateCollectionExplicitChannels(ctx, princ, updates.CollectionAccess, nextSeq)
 		}
@@ -251,7 +250,14 @@ func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context
 					}
 					changed := updatedExplicitChannels.UpdateAtSequence(updatedCollectionAccess.ExplicitChannels_, seq)
 					if changed {
+						expChannels := princ.CollectionExplicitChannels(scopeName, collectionName).Copy()
 						princ.SetCollectionExplicitChannels(scopeName, collectionName, updatedExplicitChannels, seq)
+						history := auth.CalculateHistory(ctx, princ.GetChannelInvalSeq(), expChannels, princ.ExplicitChannels(), princ.ChannelHistory(), expChannels)
+						for channel, hist := range history {
+							hist.AdminAssigned = true
+							history[channel] = hist
+						}
+						princ.SetChannelHistory(history)
 					}
 				}
 			}

@@ -258,8 +258,10 @@ func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, col
 
 	channels := ca.ExplicitChannels().Copy()
 
+	var viewChannels ch.TimedSet
+	var err error
 	if auth.channelComputer != nil {
-		viewChannels, err := auth.channelComputer.ComputeChannelsForPrincipal(auth.LogCtx, princ, scope, collection)
+		viewChannels, err = auth.channelComputer.ComputeChannelsForPrincipal(auth.LogCtx, princ, scope, collection)
 		if err != nil {
 			base.WarnfCtx(auth.LogCtx, "channelComputer.ComputeChannelsForPrincipal returned error for %v: %v", base.UD(princ), err)
 			return err
@@ -276,9 +278,22 @@ func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, col
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
 
-	channelHistory := auth.calculateHistory(princ.Name(), ca.GetChannelInvalSeq(), ca.InvalidatedChannels(), channels, ca.ChannelHistory())
+	channelHistory := auth.calculateAndPruneHistory(princ.Name(), ca.GetChannelInvalSeq(), ca.InvalidatedChannels(), channels, ca.ChannelHistory(), viewChannels)
 
 	if len(channelHistory) != 0 {
+		// princ.history is explicit chan history with all admin channels
+		// flag all channels in princ.history as admin assigned
+		for channel, hist := range princ.ChannelHistory() {
+			entries := channelHistory[channel].Entries
+			if entries == nil {
+				entries = hist.Entries
+			}
+			channelHistory[channel] = GrantHistory{
+				Entries:       entries,
+				AdminAssigned: true,
+				UpdatedAt:     channelHistory[channel].UpdatedAt,
+			}
+		}
 		ca.SetChannelHistory(channelHistory)
 	}
 
@@ -290,18 +305,31 @@ func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, col
 }
 
 // Calculates history for either roles or channels
-func (auth *Authenticator) calculateHistory(princName string, invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimedSetHistory) TimedSetHistory {
+func CalculateHistory(LogCtx context.Context, invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimedSetHistory, viewChannels ch.TimedSet) TimedSetHistory {
 	// Initialize history if currently empty
 	if currentHistory == nil {
 		currentHistory = map[string]GrantHistory{}
 	}
+	base.InfofCtx(LogCtx, base.KeyCRUD, " %s,  %s, %s, %s", invalGrants.String(), newGrants.String(), currentHistory, viewChannels.String())
 
 	// Iterate over invalidated grants
+	if invalGrants != nil {
+		invalGrants.Add(newGrants)
+	}
 	for previousName, previousInfo := range invalGrants {
 
 		// Check if the invalidated grant exists in the new set
 		// If principal still has access to this grant then we don't need to build any history for it so skip
+		//if !viewChannels.Contains(previousName) && currentHistoryForGrant.AdminAssigned != false {
+		//	base.InfofCtx(LogCtx, base.KeyCRUD, "First IF")
+		//	currentHistoryForGrant.AdminAssigned = true
+		//} else {
+		//	base.InfofCtx(LogCtx, base.KeyCRUD, "second IF")
+		//	currentHistoryForGrant.AdminAssigned = false
+		//	currentHistory[previousName] = currentHistoryForGrant
+		//}
 		if _, ok := newGrants[previousName]; ok {
+			base.InfofCtx(LogCtx, base.KeyCRUD, "previous channel %s, CONTINUING", previousName)
 			continue
 		}
 
@@ -319,9 +347,18 @@ func (auth *Authenticator) calculateHistory(princName string, invalSeq uint64, i
 			StartSeq: previousInfo.Sequence,
 			EndSeq:   invalSeq,
 		})
+
+		base.InfofCtx(LogCtx, base.KeyCRUD, "previous channel %s, admin assigned %s", previousName, currentHistoryForGrant.AdminAssigned, viewChannels.String(), newGrants.String(), invalGrants.String())
 		currentHistory[previousName] = currentHistoryForGrant
 	}
 
+	return currentHistory
+}
+
+func (auth *Authenticator) calculateAndPruneHistory(princName string, invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimedSetHistory, viewChannels ch.TimedSet) TimedSetHistory {
+	base.InfofCtx(auth.LogCtx, base.KeyCRUD, "calculateAndPruneHistory //////")
+
+	currentHistory = CalculateHistory(auth.LogCtx, invalSeq, invalGrants, newGrants, currentHistory, viewChannels)
 	if prunedHistory := currentHistory.PruneHistory(auth.ClientPartitionWindow); len(prunedHistory) > 0 {
 		base.DebugfCtx(auth.LogCtx, base.KeyCRUD, "rebuildChannels: Pruned principal history on %s for %s", base.UD(princName), base.UD(prunedHistory))
 	}
@@ -377,7 +414,7 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		roles.Add(jwt)
 	}
 
-	roleHistory := auth.calculateHistory(user.Name(), user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory())
+	roleHistory := auth.calculateAndPruneHistory(user.Name(), user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory(), user.ExplicitChannels())
 
 	if len(roleHistory) != 0 {
 		user.SetRoleHistory(roleHistory)
@@ -678,8 +715,10 @@ func (auth *Authenticator) DeleteRole(role Role, purge bool, deleteSeq uint64) e
 		p.setDeleted(true)
 		p.SetSequence(deleteSeq)
 
-		channelHistory := auth.calculateHistory(p.Name(), deleteSeq, p.Channels(), nil, p.ChannelHistory())
+		channelHistory := auth.calculateAndPruneHistory(p.Name(), deleteSeq, p.Channels(), nil, p.ChannelHistory(), p.ExplicitChannels())
 		if len(channelHistory) != 0 {
+			base.InfofCtx(auth.LogCtx, base.KeyAccess, "Edited at DeleteRole %s", channelHistory)
+
 			p.SetChannelHistory(channelHistory)
 		}
 
