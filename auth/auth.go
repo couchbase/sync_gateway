@@ -310,26 +310,13 @@ func CalculateHistory(LogCtx context.Context, invalSeq uint64, invalGrants ch.Ti
 	if currentHistory == nil {
 		currentHistory = map[string]GrantHistory{}
 	}
-	base.InfofCtx(LogCtx, base.KeyCRUD, " %s,  %s, %s, %s", invalGrants.String(), newGrants.String(), currentHistory, viewChannels.String())
 
 	// Iterate over invalidated grants
-	if invalGrants != nil {
-		invalGrants.Add(newGrants)
-	}
 	for previousName, previousInfo := range invalGrants {
 
 		// Check if the invalidated grant exists in the new set
 		// If principal still has access to this grant then we don't need to build any history for it so skip
-		//if !viewChannels.Contains(previousName) && currentHistoryForGrant.AdminAssigned != false {
-		//	base.InfofCtx(LogCtx, base.KeyCRUD, "First IF")
-		//	currentHistoryForGrant.AdminAssigned = true
-		//} else {
-		//	base.InfofCtx(LogCtx, base.KeyCRUD, "second IF")
-		//	currentHistoryForGrant.AdminAssigned = false
-		//	currentHistory[previousName] = currentHistoryForGrant
-		//}
 		if _, ok := newGrants[previousName]; ok {
-			base.InfofCtx(LogCtx, base.KeyCRUD, "previous channel %s, CONTINUING", previousName)
 			continue
 		}
 
@@ -347,8 +334,6 @@ func CalculateHistory(LogCtx context.Context, invalSeq uint64, invalGrants ch.Ti
 			StartSeq: previousInfo.Sequence,
 			EndSeq:   invalSeq,
 		})
-
-		base.InfofCtx(LogCtx, base.KeyCRUD, "previous channel %s, admin assigned %s", previousName, currentHistoryForGrant.AdminAssigned, viewChannels.String(), newGrants.String(), invalGrants.String())
 		currentHistory[previousName] = currentHistoryForGrant
 	}
 
@@ -356,7 +341,6 @@ func CalculateHistory(LogCtx context.Context, invalSeq uint64, invalGrants ch.Ti
 }
 
 func (auth *Authenticator) calculateAndPruneHistory(princName string, invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimedSetHistory, viewChannels ch.TimedSet) TimedSetHistory {
-	base.InfofCtx(auth.LogCtx, base.KeyCRUD, "calculateAndPruneHistory //////")
 
 	currentHistory = CalculateHistory(auth.LogCtx, invalSeq, invalGrants, newGrants, currentHistory, viewChannels)
 	if prunedHistory := currentHistory.PruneHistory(auth.ClientPartitionWindow); len(prunedHistory) > 0 {
