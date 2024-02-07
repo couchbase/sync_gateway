@@ -74,6 +74,9 @@ func (h *handler) handleGetAllChannels() error {
 				}
 				// loop over previous role channels
 				for channel, chanHistory := range collectionAccess.ChannelHistory() {
+					if seq.Sequence > chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq {
+						chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = seq.Sequence
+					}
 					if _, ok := user.ExplicitRoles()[roleName]; ok {
 						adminRoleChannelTimedHistory[channel] = chanHistory
 					} else {
