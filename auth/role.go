@@ -52,8 +52,9 @@ func (timedSet TimedSetHistory) PruneHistory(partitionWindow time.Duration) []st
 }
 
 type GrantHistory struct {
-	UpdatedAt int64                      `json:"updated_at"` // Timestamp at which history was last updated, allows for pruning
-	Entries   []GrantHistorySequencePair `json:"entries"`    // Entry for a specific grant period
+	AdminAssigned bool                       `json:"admin_assigned,omitempty"` // Grant type
+	UpdatedAt     int64                      `json:"updated_at"`               // Timestamp at which history was last updated, allows for pruning
+	Entries       []GrantHistorySequencePair `json:"entries"`                  // Entry for a specific grant period
 }
 
 // Struct is for ease of internal use
