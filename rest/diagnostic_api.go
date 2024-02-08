@@ -82,7 +82,7 @@ func (h *handler) handleGetAllChannels() error {
 		}
 	}
 
-	// Loop over previous roles
+	// Loop over previous roles, no way to determine admin and dynamic atm
 	for roleName, roleHist := range user.RoleHistory() {
 		role, err := h.db.Authenticator(h.ctx()).GetRole(roleName)
 		if err != nil {
@@ -119,28 +119,28 @@ func (h *handler) handleGetAllChannels() error {
 			keyspace := scope + "." + collectionName
 			resp.AdminGrants[keyspace] = make(map[string]auth.GrantHistory)
 			resp.DynamicGrants[keyspace] = make(map[string]auth.GrantHistory)
+			// current channels
 			for channel, seq := range CAConfig.Channels() {
-				if CAConfig.ExplicitChannels_.Contains(channel) {
-					// If channel is in history, copy grant history
-					if _, ok := CAConfig.ChannelHistory_[channel]; ok {
-						resp.AdminGrants[keyspace][channel] = CAConfig.ChannelHistory_[channel]
-						// Else, assign sequence channel was granted as startSeq on new grant history
-					} else {
-						resp.AdminGrants[keyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
-					}
+				var history auth.GrantHistory
+				// If channel is in history, copy grant history
+				if _, ok := CAConfig.ChannelHistory_[channel]; ok {
+					history = CAConfig.ChannelHistory_[channel]
+					// Else, assign sequence channel was granted as startSeq on new grant history
 				} else {
-					if _, ok := CAConfig.ChannelHistory_[channel]; ok {
-						resp.DynamicGrants[keyspace][channel] = CAConfig.ChannelHistory_[channel]
-					} else {
-						resp.DynamicGrants[keyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
-					}
+					history = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
+				}
+
+				if CAConfig.ExplicitChannels_.Contains(channel) {
+					resp.AdminGrants[keyspace][channel] = history
+				} else {
+					resp.DynamicGrants[keyspace][channel] = history
 				}
 			}
 			for channel, chanHistory := range CAConfig.ChannelHistory() {
 				if chanHistory.AdminAssigned {
 					resp.AdminGrants[keyspace][channel] = CAConfig.ChannelHistory_[channel]
 				} else {
-					resp.AdminGrants[keyspace][channel] = CAConfig.ChannelHistory_[channel]
+					resp.DynamicGrants[keyspace][channel] = CAConfig.ChannelHistory_[channel]
 				}
 			}
 		}
