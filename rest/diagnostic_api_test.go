@@ -11,9 +11,10 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	"golang.org/x/exp/maps"
 	"net/http"
 	"testing"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -178,7 +179,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	var channelMap getAllChannelsResponse
 	err := json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[keyspace1]), []string{"A", "B", "C"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[keyspace1]), []string{"A", "B", "C", "!"})
 
 	// Assert non existent user returns 404
 	response = rt.SendDiagnosticRequest(http.MethodGet,
@@ -191,13 +192,13 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 		`{"name": "`+bob+`", "password": "`+RestTesterDefaultUserPassword+`", "admin_channels": []}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequest(http.MethodGet,
+	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+bob+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
 
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[keyspace1]), []string{})
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[keyspace1]), []string{"!"})
 
 	// Assign new channel to user bob and assert all_channels includes it
 	response = rt.SendAdminRequest(http.MethodPut,
@@ -205,7 +206,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 		`{"accessChannel":"NewChannel", "accessUser":["bob","alice"]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequest(http.MethodGet,
+	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+bob+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
@@ -213,11 +214,11 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	require.NoError(t, err)
 	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[keyspace1]), []string{"!", "NewChannel"})
 
-	response = rt.SendAdminRequest(http.MethodGet,
+	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+alice+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
 
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[keyspace1]), []string{"A", "B", "C", "!", "NewChannel"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[keyspace1]), []string{"A", "B", "C", "NewChannel", "!"})
 }
