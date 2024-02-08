@@ -20,6 +20,7 @@ type getAllChannelsResponse struct {
 	DynamicGrants     map[string]map[string]auth.GrantHistory            `json:"dynamic_grants,omitempty"`
 	AdminRoleGrants   map[string]map[string]map[string]auth.GrantHistory `json:"admin_role_grants,omitempty"`
 	DynamicRoleGrants map[string]map[string]map[string]auth.GrantHistory `json:"dynamic_role_grants,omitempty"`
+	RoleHistoryGrants map[string]map[string]map[string]auth.GrantHistory `json:"role_history_grants,omitempty"`
 }
 
 func (h *handler) handleGetAllChannels() error {
@@ -32,17 +33,11 @@ func (h *handler) handleGetAllChannels() error {
 		return kNotFoundError
 	}
 
-	if h.db.OnlyDefaultCollection() {
-		info := marshalPrincipal(h.db, user, true)
-		bytes, err := base.JSONMarshal(info.Channels.ToArray())
-		h.writeRawJSON(bytes)
-		return err
-	}
-
 	var resp getAllChannelsResponse
 
 	resp.DynamicRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory, len(user.RoleNames())-len(user.ExplicitRoles()))
 	resp.AdminRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory, len(user.ExplicitRoles()))
+	resp.RoleHistoryGrants = make(map[string]map[string]map[string]auth.GrantHistory, len(user.RoleNames())-len(user.ExplicitRoles()))
 	resp.AdminGrants = make(map[string]map[string]auth.GrantHistory, len(user.ExplicitChannels()))
 	resp.DynamicGrants = make(map[string]map[string]auth.GrantHistory, len(user.Channels())-len(user.ExplicitChannels()))
 
@@ -97,29 +92,22 @@ func (h *handler) handleGetAllChannels() error {
 			continue
 		}
 		collAccessAll := role.GetCollectionsAccess()
-		resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-		resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
+		resp.RoleHistoryGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
 
 		for scopeName, collections := range collAccessAll {
 			for collectionName, collectionAccess := range collections {
 				keyspace := scopeName + "." + collectionName
-				resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
-				resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+				resp.RoleHistoryGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
 				// loop over current role channels
 				for channel, _ := range collectionAccess.Channels() {
-					if _, ok := user.ExplicitRoles()[roleName]; ok {
-						resp.AdminRoleGrants[roleName][keyspace][channel] = roleHist
-					} else {
-						resp.DynamicRoleGrants[roleName][keyspace][channel] = roleHist
-					}
+					resp.RoleHistoryGrants[roleName][keyspace][channel] = roleHist
 				}
 				// loop over previous role channels
 				for channel, chanHistory := range collectionAccess.ChannelHistory() {
-					if _, ok := user.ExplicitRoles()[roleName]; ok {
-						resp.AdminRoleGrants[roleName][keyspace][channel] = chanHistory
-					} else {
-						resp.DynamicRoleGrants[roleName][keyspace][channel] = chanHistory
+					if chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq < roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
+						chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = roleHist.Entries[len(roleHist.Entries)-1].StartSeq
 					}
+					resp.RoleHistoryGrants[roleName][keyspace][channel] = chanHistory
 				}
 			}
 		}
@@ -131,36 +119,40 @@ func (h *handler) handleGetAllChannels() error {
 			keyspace := scope + "." + collectionName
 			resp.AdminGrants[keyspace] = make(map[string]auth.GrantHistory)
 			resp.DynamicGrants[keyspace] = make(map[string]auth.GrantHistory)
-
-			// current channels
 			for channel, seq := range CAConfig.Channels() {
-				var history auth.GrantHistory
-				// If channel is in history, copy grant history
-				if _, ok := CAConfig.ChannelHistory_[channel]; ok {
-					history = CAConfig.ChannelHistory_[channel]
-					// Else, assign sequence channel was granted as startSeq on new grant history
-				} else {
-					history = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
-				}
-
 				if CAConfig.ExplicitChannels_.Contains(channel) {
-					resp.AdminGrants[keyspace][channel] = history
+					// If channel is in history, copy grant history
+					if _, ok := CAConfig.ChannelHistory_[channel]; ok {
+						resp.AdminGrants[keyspace][channel] = CAConfig.ChannelHistory_[channel]
+						// Else, assign sequence channel was granted as startSeq on new grant history
+					} else {
+						resp.AdminGrants[keyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
+					}
 				} else {
-					resp.AdminGrants[keyspace][channel] = history
+					if _, ok := CAConfig.ChannelHistory_[channel]; ok {
+						resp.DynamicGrants[keyspace][channel] = CAConfig.ChannelHistory_[channel]
+					} else {
+						resp.DynamicGrants[keyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
+					}
 				}
 			}
-			// previous channels
 			for channel, chanHistory := range CAConfig.ChannelHistory() {
 				if chanHistory.AdminAssigned {
-					resp.AdminGrants[keyspace][channel] = chanHistory
+					resp.AdminGrants[keyspace][channel] = CAConfig.ChannelHistory_[channel]
 				} else {
-					resp.DynamicGrants[keyspace][channel] = chanHistory
+					resp.AdminGrants[keyspace][channel] = CAConfig.ChannelHistory_[channel]
 				}
 			}
 		}
 	}
 
-	bytes, err := base.JSONMarshal(resp)
+	if !h.db.OnlyDefaultCollection() {
+		bytes, err := base.JSONMarshal(resp)
+		h.writeRawJSON(bytes)
+		return err
+	}
+	info := marshalPrincipal(h.db, user, true)
+	bytes, err := base.JSONMarshal(info.Channels)
 	h.writeRawJSON(bytes)
 	return err
 }
