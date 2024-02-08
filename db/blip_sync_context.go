@@ -35,6 +35,15 @@ const (
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
 func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, contextID string, replicationStats *BlipSyncStats) *BlipSyncContext {
+	maxInFlightChangesBatches := DefaultMaxConcurrentChangesBatches
+	if db.Options.MaxConcurrentChangesBatches > 0 {
+		maxInFlightChangesBatches = db.Options.MaxConcurrentChangesBatches
+	}
+	maxInFlightRevs := DefaultMaxConcurrentRevs
+	if db.Options.MaxConcurrentChangesBatches > 0 {
+		maxInFlightRevs = db.Options.MaxConcurrentRevs
+	}
+
 	bsc := &BlipSyncContext{
 		blipContext:             bc,
 		blipContextDb:           db,

@@ -1261,6 +1261,8 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		// UserQueries:               config.UserQueries,   // behind feature flag (see below)
 		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
 		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)
+		MaxConcurrentChangesBatches: sc.Config.Replicator.MaxConcurrentChangesBatches,
+		MaxConcurrentRevs:           sc.Config.Replicator.MaxConcurrentRevs,
 	}
 
 	// Per-database console logging config overrides

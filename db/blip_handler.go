@@ -53,10 +53,10 @@ var kConnectedClientHandlersByProfile = map[string]blipHandlerFunc{
 
 // Replication throttling
 const (
-	// maxInFlightChangesBatches is the maximum number of in-flight changes batches a client is allowed to send without being throttled.
-	maxInFlightChangesBatches = 2
-	// maxInFlightRevs is the maximum number of in-flight revisions a client is allowed to send or receive without being throttled.
-	maxInFlightRevs = 5
+	// DefaultMaxConcurrentChangesBatches is the maximum number of in-flight changes batches a client is allowed to send concurrently without being throttled.
+	DefaultMaxConcurrentChangesBatches = 2
+	// DefaultMaxConcurrentRevs is the maximum number of in-flight revisions a client is allowed to send or receive concurrently without being throttled.
+	DefaultMaxConcurrentRevs = 5
 )
 
 type blipHandler struct {
