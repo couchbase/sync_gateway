@@ -241,8 +241,6 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 
 	revID := putResp.Rev
 
-	response = rt.SendAdminRequest(http.MethodGet, "/"+dbName+"/_user/"+bob, "")
-
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+bob+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
@@ -255,8 +253,6 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodDelete,
 		fmt.Sprintf("/{{.keyspace2}}/doc2?rev=%s", revID), "")
 	RequireStatus(t, response, http.StatusOK)
-
-	response = rt.SendAdminRequest(http.MethodGet, "/"+dbName+"/_user/"+bob, "")
 
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+bob+"/_all_channels", ``)
