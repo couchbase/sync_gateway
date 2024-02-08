@@ -183,9 +183,6 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	dbr.Handle("/_user/{name}",
 		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).deleteUser)).Methods("DELETE")
 
-	dbr.Handle("/_user/{name}/all_channels",
-		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal}, nil, (*handler).handleGetAllChannels)).Methods("GET")
-
 	dbr.Handle("/_user/{name}/_session",
 		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).deleteUserSessions)).Methods("DELETE")
 	dbr.Handle("/_user/{name}/_session/{sessionid}",
@@ -376,6 +373,8 @@ func createDiagnosticRouter(sc *ServerContext) *mux.Router {
 	keyspace := r.PathPrefix("/{keyspace:" + dbRegex + "}/").Subrouter()
 	keyspace.StrictSlash(true)
 	keyspace.Handle("/{docid:"+docRegex+"}/_all_channels", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetDocChannels)).Methods("GET")
+	dbr.Handle("/_user/{name}/_all_channels",
+		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal}, nil, (*handler).handleGetAllChannels)).Methods("GET")
 	keyspace.Handle("/_sync", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleSyncFnDryRun)).Methods("GET")
 	keyspace.Handle("/_import_filter", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleImportFilterDryRun)).Methods("GET")
 
