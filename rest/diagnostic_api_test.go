@@ -11,9 +11,10 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/couchbase/sync_gateway/auth"
 	"net/http"
 	"testing"
+
+	"github.com/couchbase/sync_gateway/auth"
 
 	"golang.org/x/exp/maps"
 
