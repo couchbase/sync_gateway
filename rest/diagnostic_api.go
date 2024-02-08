@@ -37,6 +37,13 @@ func (h *handler) handleGetAllChannels() error {
 		return kNotFoundError
 	}
 
+	if h.db.OnlyDefaultCollection() {
+		info := marshalPrincipal(h.db, user, true)
+		bytes, err := base.JSONMarshal(info.Channels.ToArray())
+		h.writeRawJSON(bytes)
+		return err
+	}
+
 	var resp getAllChannelsResponse
 
 	adminRoleChannelTimedHistory := map[string]auth.GrantHistory{}
@@ -61,16 +68,17 @@ func (h *handler) handleGetAllChannels() error {
 
 		for scopeName, collections := range collAccessAll {
 			for collectionName, collectionAccess := range collections {
-				resp.AdminRoleGrants[roleName][scopeName+"."+collectionName] = make(map[string]auth.GrantHistory)
-				resp.DynamicRoleGrants[roleName][scopeName+"."+collectionName] = make(map[string]auth.GrantHistory)
-				maps.Clear(dynamicRoleChannelTimedHistory)
-				maps.Clear(adminRoleChannelTimedHistory)
+				keyspace := scopeName + "." + collectionName
+				resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+				resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+				dynamicRoleChannelTimedHistory = make(map[string]auth.GrantHistory)
+				adminRoleChannelTimedHistory = make(map[string]auth.GrantHistory)
 				// loop over current role channels
 				for channel, _ := range collectionAccess.Channels() {
 					if _, ok := user.ExplicitRoles()[roleName]; ok {
-						adminRoleChannelTimedHistory[channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
+						resp.AdminRoleGrants[roleName][keyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
 					} else {
-						dynamicRoleChannelTimedHistory[channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
+						resp.DynamicRoleGrants[roleName][keyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
 					}
 				}
 				// loop over previous role channels
@@ -79,14 +87,14 @@ func (h *handler) handleGetAllChannels() error {
 						chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = seq.Sequence
 					}
 					if _, ok := user.ExplicitRoles()[roleName]; ok {
-						adminRoleChannelTimedHistory[channel] = chanHistory
+						resp.AdminRoleGrants[roleName][keyspace][channel] = chanHistory
 					} else {
-						dynamicRoleChannelTimedHistory[channel] = chanHistory
+						resp.DynamicRoleGrants[roleName][keyspace][channel] = chanHistory
 					}
 				}
-
-				resp.AdminRoleGrants[roleName][scopeName+"."+collectionName] = adminRoleChannelTimedHistory
-				resp.DynamicRoleGrants[roleName][scopeName+"."+collectionName] = dynamicRoleChannelTimedHistory
+				//
+				//resp.AdminRoleGrants[roleName][keyspace] = adminRoleChannelTimedHistory
+				//resp.DynamicRoleGrants[roleName][keyspace] = dynamicRoleChannelTimedHistory
 			}
 		}
 	}
@@ -167,13 +175,7 @@ func (h *handler) handleGetAllChannels() error {
 		}
 	}
 
-	if !h.db.OnlyDefaultCollection() {
-		bytes, err := base.JSONMarshal(resp)
-		h.writeRawJSON(bytes)
-		return err
-	}
-	info := marshalPrincipal(h.db, user, true)
-	bytes, err := base.JSONMarshal(info.Channels)
+	bytes, err := base.JSONMarshal(resp)
 	h.writeRawJSON(bytes)
 	return err
 }
