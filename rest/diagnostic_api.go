@@ -12,12 +12,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/gorilla/mux"
-	"golang.org/x/exp/maps"
 )
-
-type allChannels struct {
-	Channels auth.TimedSetHistory `json:"all_channels,omitempty"`
-}
 
 // each field in this response is a map of collection names to a map of channel names to grant history info
 type getAllChannelsResponse struct {
@@ -46,14 +41,11 @@ func (h *handler) handleGetAllChannels() error {
 
 	var resp getAllChannelsResponse
 
-	adminRoleChannelTimedHistory := map[string]auth.GrantHistory{}
-	dynamicRoleChannelTimedHistory := map[string]auth.GrantHistory{}
-
 	resp.DynamicRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory, len(user.RoleNames())-len(user.ExplicitRoles()))
 	resp.AdminRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory, len(user.ExplicitRoles()))
 	resp.AdminGrants = make(map[string]map[string]auth.GrantHistory, len(user.ExplicitChannels()))
 	resp.DynamicGrants = make(map[string]map[string]auth.GrantHistory, len(user.Channels())-len(user.ExplicitChannels()))
-	//
+
 	for roleName, seq := range user.RoleNames() {
 		role, err := h.db.Authenticator(h.ctx()).GetRole(roleName)
 		if err != nil {
@@ -71,8 +63,7 @@ func (h *handler) handleGetAllChannels() error {
 				keyspace := scopeName + "." + collectionName
 				resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
 				resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
-				dynamicRoleChannelTimedHistory = make(map[string]auth.GrantHistory)
-				adminRoleChannelTimedHistory = make(map[string]auth.GrantHistory)
+
 				// loop over current role channels
 				for channel, _ := range collectionAccess.Channels() {
 					if _, ok := user.ExplicitRoles()[roleName]; ok {
@@ -92,12 +83,11 @@ func (h *handler) handleGetAllChannels() error {
 						resp.DynamicRoleGrants[roleName][keyspace][channel] = chanHistory
 					}
 				}
-				//
-				//resp.AdminRoleGrants[roleName][keyspace] = adminRoleChannelTimedHistory
-				//resp.DynamicRoleGrants[roleName][keyspace] = dynamicRoleChannelTimedHistory
 			}
 		}
 	}
+
+	// Loop over previous roles
 	for roleName, roleHist := range user.RoleHistory() {
 		role, err := h.db.Authenticator(h.ctx()).GetRole(roleName)
 		if err != nil {
@@ -112,66 +102,61 @@ func (h *handler) handleGetAllChannels() error {
 
 		for scopeName, collections := range collAccessAll {
 			for collectionName, collectionAccess := range collections {
-				resp.AdminRoleGrants[roleName][scopeName+"."+collectionName] = make(map[string]auth.GrantHistory)
-				resp.DynamicRoleGrants[roleName][scopeName+"."+collectionName] = make(map[string]auth.GrantHistory)
-				maps.Clear(dynamicRoleChannelTimedHistory)
-				maps.Clear(adminRoleChannelTimedHistory)
+				keyspace := scopeName + "." + collectionName
+				resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+				resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
 				// loop over current role channels
 				for channel, _ := range collectionAccess.Channels() {
 					if _, ok := user.ExplicitRoles()[roleName]; ok {
-						adminRoleChannelTimedHistory[channel] = roleHist
+						resp.AdminRoleGrants[roleName][keyspace][channel] = roleHist
 					} else {
-						dynamicRoleChannelTimedHistory[channel] = roleHist
+						resp.DynamicRoleGrants[roleName][keyspace][channel] = roleHist
 					}
 				}
 				// loop over previous role channels
 				for channel, chanHistory := range collectionAccess.ChannelHistory() {
 					if _, ok := user.ExplicitRoles()[roleName]; ok {
-						adminRoleChannelTimedHistory[channel] = chanHistory
+						resp.AdminRoleGrants[roleName][keyspace][channel] = chanHistory
 					} else {
-						dynamicRoleChannelTimedHistory[channel] = chanHistory
+						resp.DynamicRoleGrants[roleName][keyspace][channel] = chanHistory
 					}
 				}
-
-				resp.AdminRoleGrants[roleName][scopeName+"."+collectionName] = adminRoleChannelTimedHistory
-				resp.DynamicRoleGrants[roleName][scopeName+"."+collectionName] = dynamicRoleChannelTimedHistory
 			}
 		}
 	}
 
-	adminChannelTimedHistory := map[string]auth.GrantHistory{}
-	dynamicChannelTimedHistory := map[string]auth.GrantHistory{}
+	// Loop over current and past channels
 	for scope, collectionConfig := range user.GetCollectionsAccess() {
 		for collectionName, CAConfig := range collectionConfig {
-			maps.Clear(dynamicChannelTimedHistory)
-			maps.Clear(adminChannelTimedHistory)
+			keyspace := scope + "." + collectionName
+			resp.AdminGrants[keyspace] = make(map[string]auth.GrantHistory)
+			resp.DynamicGrants[keyspace] = make(map[string]auth.GrantHistory)
+
+			// current channels
 			for channel, seq := range CAConfig.Channels() {
-				if CAConfig.ExplicitChannels_.Contains(channel) {
-					// If channel is in history, copy grant history
-					if _, ok := CAConfig.ChannelHistory_[channel]; ok {
-						adminChannelTimedHistory[channel] = CAConfig.ChannelHistory_[channel]
-						// Else, assign sequence channel was granted as startSeq on new grant history
-					} else {
-						adminChannelTimedHistory[channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
-					}
+				var history auth.GrantHistory
+				// If channel is in history, copy grant history
+				if _, ok := CAConfig.ChannelHistory_[channel]; ok {
+					history = CAConfig.ChannelHistory_[channel]
+					// Else, assign sequence channel was granted as startSeq on new grant history
 				} else {
-					if _, ok := CAConfig.ChannelHistory_[channel]; ok {
-						dynamicChannelTimedHistory[channel] = CAConfig.ChannelHistory_[channel]
-					} else {
-						dynamicChannelTimedHistory[channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
-					}
+					history = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
+				}
+
+				if CAConfig.ExplicitChannels_.Contains(channel) {
+					resp.AdminGrants[keyspace][channel] = history
+				} else {
+					resp.AdminGrants[keyspace][channel] = history
 				}
 			}
+			// previous channels
 			for channel, chanHistory := range CAConfig.ChannelHistory() {
 				if chanHistory.AdminAssigned {
-					adminChannelTimedHistory[channel] = CAConfig.ChannelHistory_[channel]
+					resp.AdminGrants[keyspace][channel] = chanHistory
 				} else {
-					dynamicChannelTimedHistory[channel] = CAConfig.ChannelHistory_[channel]
+					resp.DynamicGrants[keyspace][channel] = chanHistory
 				}
 			}
-
-			resp.AdminGrants[scope+"."+collectionName] = adminChannelTimedHistory
-			resp.DynamicGrants[scope+"."+collectionName] = dynamicChannelTimedHistory
 		}
 	}
 
