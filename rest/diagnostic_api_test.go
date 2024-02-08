@@ -238,6 +238,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 		Rev string `json:"rev"`
 	}
 	err = json.Unmarshal(response.BodyBytes(), &putResp)
+	require.NoError(t, err)
 
 	revID := putResp.Rev
 
