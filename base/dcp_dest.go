@@ -82,7 +82,7 @@ func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bu
 		DCPCommon:          dcpCommon,
 		stats:              dcpStats,
 		partitionCountStat: importPartitionStat,
-		metaInitComplete:   make([]bool, dcpCommon.maxVbNo),
+		metaInitComplete:   make([]bool, maxVbNo),
 		janitorRollback:    rollback,
 	}
 
