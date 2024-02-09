@@ -1403,9 +1403,9 @@ func TestChannelHistoryPruning(t *testing.T) {
 	role, err = authenticator.GetRole("foo")
 	assert.NoError(t, err)
 	channelHistory := role.CollectionChannelHistory(s, c)
-	aHistory := channelHistory["a"]
+	aHistory := channelHistory["b"]
 	aHistory.UpdatedAt = time.Now().Add(-61 * time.Hour * 24).Unix()
-	channelHistory["a"] = aHistory
+	channelHistory["b"] = aHistory
 	t.Log(aHistory)
 
 	role.SetChannelHistory(channelHistory)
@@ -1422,15 +1422,15 @@ func TestChannelHistoryPruning(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc3", `{"channels": ["random"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	//changes = revocationTester.getChanges(changes.Last_Seq, 1)
-	//assert.Len(t, changes.Results, 1)
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
 
 	role, err = authenticator.GetRole("foo")
 	assert.NoError(t, err)
 
 	t.Log(role.CollectionChannelHistory(s, c))
-	assert.NotContains(t, role.CollectionChannelHistory(s, c), "a")
-	assert.Contains(t, role.CollectionChannelHistory(s, c), "b")
+	assert.NotContains(t, role.CollectionChannelHistory(s, c), "b")
+	assert.Contains(t, role.CollectionChannelHistory(s, c), "a")
 }
 
 func TestChannelRevocationWithContiguousSequences(t *testing.T) {
