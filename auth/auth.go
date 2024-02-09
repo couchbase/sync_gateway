@@ -326,10 +326,10 @@ func CalculateHistory(LogCtx context.Context, invalSeq uint64, invalGrants ch.Ti
 		currentHistoryForGrant, ok := currentHistory[previousName]
 		if !ok {
 			currentHistoryForGrant = GrantHistory{}
+			currentHistoryForGrant.UpdatedAt = time.Now().Unix()
 		}
 
 		// Add grant to history
-		currentHistoryForGrant.UpdatedAt = time.Now().Unix()
 		currentHistoryForGrant.Entries = append(currentHistoryForGrant.Entries, GrantHistorySequencePair{
 			StartSeq: previousInfo.Sequence,
 			EndSeq:   invalSeq,
