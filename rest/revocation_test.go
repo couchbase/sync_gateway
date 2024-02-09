@@ -1404,7 +1404,7 @@ func TestChannelHistoryPruning(t *testing.T) {
 	assert.NoError(t, err)
 	channelHistory := role.CollectionChannelHistory(s, c)
 	aHistory := channelHistory["a"]
-	aHistory.UpdatedAt = time.Now().Add(-31 * time.Hour * 24).Unix()
+	aHistory.UpdatedAt = time.Now().Add(-61 * time.Hour * 24).Unix()
 	channelHistory["a"] = aHistory
 
 	role.SetChannelHistory(channelHistory)
