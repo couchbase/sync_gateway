@@ -249,6 +249,7 @@ def make_collect_logs_tasks(zip_dir, sg_url, sg_config_file_path, sg_username, s
         "sg_warn.log": "sg_warn.log",
         "sg_info.log": "sg_info.log",
         "sg_debug.log": "sg_debug.log",
+        "sg_trace.log": "sg_trace.log",
         "sg_stats.log": "sg_stats.log",
         "sync_gateway_access.log": "sync_gateway_access.log",
         "sync_gateway_error.log": "sync_gateway_error.log",
