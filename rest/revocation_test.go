@@ -1406,8 +1406,10 @@ func TestChannelHistoryPruning(t *testing.T) {
 	aHistory := channelHistory["a"]
 	aHistory.UpdatedAt = time.Now().Add(-61 * time.Hour * 24).Unix()
 	channelHistory["a"] = aHistory
+	t.Log(aHistory)
 
 	role.SetChannelHistory(channelHistory)
+	t.Log("CHANHIST", role.ChannelHistory())
 	err = authenticator.Save(role)
 	assert.NoError(t, err)
 
