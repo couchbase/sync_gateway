@@ -27,9 +27,15 @@ import (
 	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
-const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
-const DefaultImportPartitions = 16
-const DefaultImportPartitionsServerless = 6
+const (
+	CBGTIndexTypeSyncGatewayImport    = "syncGateway-import-"
+	DefaultImportPartitions           = 16
+	DefaultImportPartitionsServerless = 6
+	CBGTCfgIndexDefs                  = SyncDocPrefix + "cfgindexDefs"
+	CBGTCfgNodeDefsKnown              = SyncDocPrefix + "cfgnodeDefs-known"
+	CBGTCfgNodeDefsWanted             = SyncDocPrefix + "cfgnodeDefs-wanted"
+	CBGTCfgPlanPIndexes               = SyncDocPrefix + "cfgplanPIndexes"
+)
 
 // firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections.
 var firstVersionToSupportCollections = &ComparableVersion{
@@ -684,11 +690,12 @@ func (l *importHeartbeatListener) Stop() {
 // cbgtDestFactories map DCP feed keys (destKey) to a function that will generate cbgt.Dest.  Need to be stored in a
 // global map to avoid races between db creation and db addition to the server context database set
 
-type CbgtDestFactoryFunc = func() (cbgt.Dest, error)
+type CbgtDestFactoryFunc = func(rollback func()) (cbgt.Dest, error)
 
 var cbgtDestFactories = make(map[string]CbgtDestFactoryFunc)
 var cbgtDestFactoriesLock sync.Mutex
 
+// StoreDestFactory stores a factory function to create a cgbt.Dest object.
 func StoreDestFactory(ctx context.Context, destKey string, dest CbgtDestFactoryFunc) {
 	cbgtDestFactoriesLock.Lock()
 	_, ok := cbgtDestFactories[destKey]
