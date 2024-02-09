@@ -1415,6 +1415,10 @@ func TestChannelHistoryPruning(t *testing.T) {
 
 	// Add another so we have something to wait on
 	revocationTester.addRoleChannel("foo", "random")
+	role, err = authenticator.GetRole("foo")
+	assert.NoError(t, err)
+
+	t.Log(role.CollectionChannelHistory(s, c))
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc3", `{"channels": ["random"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
