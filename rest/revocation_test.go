@@ -1424,6 +1424,7 @@ func TestChannelHistoryPruning(t *testing.T) {
 	role, err = authenticator.GetRole("foo")
 	assert.NoError(t, err)
 
+	t.Log(role.CollectionChannelHistory(s, c))
 	assert.NotContains(t, role.CollectionChannelHistory(s, c), "a")
 	assert.Contains(t, role.CollectionChannelHistory(s, c), "b")
 }

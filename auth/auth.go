@@ -323,7 +323,6 @@ func CalculateHistory(LogCtx context.Context, invalSeq uint64, invalGrants ch.Ti
 		// If we got here we know the grant has been revoked from the principal
 
 		// Start building history for the principal. If it currently doesn't exist initialize it.
-		print("currentHistory", currentHistory)
 		currentHistoryForGrant, ok := currentHistory[previousName]
 		if !ok {
 			currentHistoryForGrant = GrantHistory{}
