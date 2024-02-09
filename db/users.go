@@ -248,11 +248,11 @@ func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context
 					if updatedExplicitChannels == nil {
 						updatedExplicitChannels = ch.TimedSet{}
 					}
+					expChannels := princ.CollectionExplicitChannels(scopeName, collectionName).Copy()
 					changed := updatedExplicitChannels.UpdateAtSequence(updatedCollectionAccess.ExplicitChannels_, seq)
 					if changed {
-						expChannels := princ.CollectionExplicitChannels(scopeName, collectionName).Copy()
 						princ.SetCollectionExplicitChannels(scopeName, collectionName, updatedExplicitChannels, seq)
-						history := auth.CalculateHistory(ctx, princ.GetChannelInvalSeq(), expChannels, princ.ExplicitChannels(), princ.ChannelHistory())
+						history := auth.CalculateHistory(ctx, princ.GetChannelInvalSeq(), expChannels, updatedExplicitChannels, princ.ChannelHistory())
 						for channel, hist := range history {
 							hist.AdminAssigned = true
 							history[channel] = hist
