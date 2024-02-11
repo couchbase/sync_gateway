@@ -34,7 +34,7 @@ import (
 // GetGoCBv2Bucket opens a connection to the Couchbase cluster and returns a *GocbV2Bucket for the specified BucketSpec.
 func GetGoCBv2Bucket(ctx context.Context, spec BucketSpec) (*GocbV2Bucket, error) {
 
-	connString, err := spec.GetGoCBConnString(nil)
+	connString, err := spec.GetGoCBConnString()
 	if err != nil {
 		WarnfCtx(ctx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
@@ -165,11 +165,7 @@ func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec
 	if mgmtEpsErr != nil && len(mgmtEps) > 0 {
 		nodeCount = len(mgmtEps)
 	}
-	numPools := 1
-	if spec.KvPoolSize > 0 {
-		numPools = spec.KvPoolSize
-	}
-	gocbv2Bucket.kvOps = make(chan struct{}, MaxConcurrentSingleOps*nodeCount*numPools)
+	gocbv2Bucket.kvOps = make(chan struct{}, MaxConcurrentSingleOps*nodeCount*spec.KvPoolSize)
 
 	return gocbv2Bucket, nil
 }

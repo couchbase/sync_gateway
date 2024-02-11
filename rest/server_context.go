@@ -455,9 +455,36 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(ctx context.Context, config 
 	return sc._getOrAddDatabaseFromConfig(ctx, config, options)
 }
 
-func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *StartupConfig) (spec base.BucketSpec, err error) {
+// GetBucketSpec returns a BucketSpec from a given DatabaseConfig and StartupConfig.
+func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *StartupConfig) (*base.BucketSpec, error) {
 
-	spec = config.MakeBucketSpec()
+	var server string
+	if config.Server != nil {
+		server = *config.Server
+	} else {
+		server = serverConfig.Bootstrap.Server
+	}
+	if serverConfig.IsServerless() {
+		params := base.ServerlessGoCBConnStringParams()
+		if config.Unsupported != nil {
+			if config.Unsupported.DCPReadBuffer != 0 {
+				params.DcpBufferSize = config.Unsupported.DCPReadBuffer
+			}
+			if config.Unsupported.KVBufferSize != 0 {
+				params.KvBufferSize = config.Unsupported.KVBufferSize
+			}
+		}
+		connStr, err := base.GetGoCBConnStringWithDefaults(server, params)
+		if err != nil {
+			return nil, err
+		}
+		server = connStr
+	}
+
+	spec, err := config.MakeBucketSpec(server)
+	if err != nil {
+		return nil, fmt.Errorf("Could not GetBucketSpec for database %s: %v", config.Name, err)
+	}
 
 	if serverConfig.Bootstrap.ServerTLSSkipVerify != nil {
 		spec.TLSSkipVerify = *serverConfig.Bootstrap.ServerTLSSkipVerify
@@ -471,13 +498,6 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 
 	if config.ViewQueryTimeoutSecs != nil {
 		spec.ViewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
-	}
-
-	if config.Unsupported != nil && config.Unsupported.KVBufferSize != 0 {
-		spec.KvBufferSize = config.Unsupported.KVBufferSize
-	}
-	if config.Unsupported != nil && config.Unsupported.DCPReadBuffer != 0 {
-		spec.DcpBuffer = config.Unsupported.DCPReadBuffer
 	}
 
 	spec.UseXattrs = config.UseXattrs()
@@ -528,24 +548,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if spec.Server == "" {
 		spec.Server = sc.Config.Bootstrap.Server
 	}
-	if sc.Config.IsServerless() {
-		params := &base.GoCBConnStringParams{
-			KVPoolSize:    base.DefaultGocbKvPoolSizeServerless,
-			KVBufferSize:  base.DefaultKvBufferSizeServerless,
-			DCPBufferSize: base.DefaultDCPBufferServerless,
-		}
-		if spec.KvBufferSize != 0 {
-			params.KVBufferSize = spec.KvBufferSize
-		}
-		if spec.DcpBuffer != 0 {
-			params.DCPBufferSize = spec.DcpBuffer
-		}
-		connStr, err := spec.GetGoCBConnString(params)
-		if err != nil {
-			return nil, err
-		}
-		spec.Server = connStr
-	}
 
 	if sc.databases_[dbName] != nil {
 		if options.useExisting {
@@ -567,9 +569,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// the connectToBucketFn is used for testing seam
 	if options.connectToBucketFn != nil {
 		// the connectToBucketFn is used for testing seam
-		bucket, err = options.connectToBucketFn(ctx, spec, options.failFast)
+		bucket, err = options.connectToBucketFn(ctx, *spec, options.failFast)
 	} else {
-		bucket, err = db.ConnectToBucket(ctx, spec, options.failFast)
+		bucket, err = db.ConnectToBucket(ctx, *spec, options.failFast)
 	}
 	if err != nil {
 		return nil, err
@@ -860,7 +862,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if err != nil {
 		return nil, err
 	}
-	dbcontext.BucketSpec = spec
+	dbcontext.BucketSpec = *spec
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
 	dbcontext.RequireResync = collectionsRequiringResync
@@ -2049,12 +2051,6 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 	couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(ctx, sc.Config, base.CachedClusterConnections)
 	if err != nil {
 		return err
-	}
-	if sc.Config.IsServerless() {
-		err := couchbaseCluster.SetConnectionStringServerless()
-		if err != nil {
-			return err
-		}
 	}
 
 	sc.BootstrapContext.Connection = couchbaseCluster

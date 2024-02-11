@@ -101,22 +101,18 @@ type BucketConfig struct {
 	MaxConcurrentQueryOps *int    `json:"max_concurrent_query_ops,omitempty"` // Max concurrent  query ops
 }
 
-func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
+// MakeBucketSpec creates a BucketSpec from the DatabaseConfig. Will return an error if the server value is not valid after basic parsing.
+func (dc *DbConfig) MakeBucketSpec(server string) (*base.BucketSpec, error) {
 	bc := &dc.BucketConfig
 
-	server := ""
 	bucketName := ""
 	tlsPort := 11207
 
-	if bc.Server != nil {
-		// treat all walrus: as in memory storage, any persistent storage would have to be converted to rosmar
-		if strings.HasPrefix(*bc.Server, "walrus:") {
-			server = rosmar.InMemoryURL
-		} else {
-			server = *bc.Server
-
-		}
+	// treat all walrus: as in memory storage, any persistent storage would have to be converted to rosmar
+	if strings.HasPrefix(server, "walrus:") {
+		server = rosmar.InMemoryURL
 	}
+
 	if bc.Bucket != nil {
 		bucketName = *bc.Bucket
 	}
@@ -125,7 +121,7 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		tlsPort = bc.KvTLSPort
 	}
 
-	return base.BucketSpec{
+	return base.NewBucketSpec(base.BucketSpecOptions{
 		Server:                server,
 		BucketName:            bucketName,
 		Keypath:               bc.KeyPath,
@@ -134,7 +130,7 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		KvTLSPort:             tlsPort,
 		Auth:                  bc,
 		MaxConcurrentQueryOps: bc.MaxConcurrentQueryOps,
-	}
+	})
 }
 
 // Implementation of AuthHandler interface for BucketConfig
@@ -419,8 +415,8 @@ func (dbConfig *DbConfig) setup(ctx context.Context, dbName string, bootstrapCon
 			urlStr := url.String()
 			dbConfig.Server = &urlStr
 		}
-	}
 
+	}
 	insecureSkipVerify := false
 	if dbConfig.Unsupported != nil {
 		insecureSkipVerify = dbConfig.Unsupported.RemoteConfigTlsSkipVerify

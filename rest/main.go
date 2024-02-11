@@ -373,7 +373,18 @@ func CreateBootstrapConnectionFromStartupConfig(ctx context.Context, config *Sta
 		cluster := base.NewRosmarCluster(config.Bootstrap.Server)
 		return cluster, nil
 	}
-	cluster, err := base.NewCouchbaseCluster(ctx, config.Bootstrap.Server, config.Bootstrap.Username, config.Bootstrap.Password,
+
+	var server string
+	var err error
+	if config.IsServerless() {
+		server, err = base.GetGoCBConnStringWithDefaults(config.Bootstrap.Server, base.ServerlessGoCBConnStringParams())
+	} else {
+		server, err = base.GetGoCBConnStringWithDefaults(config.Bootstrap.Server, base.DefaultGoCBConnStringParams())
+	}
+	if err != nil {
+		return nil, err
+	}
+	cluster, err := base.NewCouchbaseCluster(ctx, server, config.Bootstrap.Username, config.Bootstrap.Password,
 		config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath, config.Bootstrap.CACertPath,
 		config.IsServerless(), config.BucketCredentials, config.Bootstrap.ServerTLSSkipVerify, config.Unsupported.UseXattrConfig, bucketConnectionMode)
 	if err != nil {
