@@ -281,12 +281,6 @@ func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, col
 	channelHistory := auth.CalculateHistory(princ.Name(), ca.GetChannelInvalSeq(), ca.InvalidatedChannels(), channels, ca.ChannelHistory())
 
 	if len(channelHistory) != 0 {
-		for channel, hist := range princ.ChannelHistory() {
-			entries := channelHistory[channel].Entries
-			if entries == nil {
-				entries = hist.Entries
-			}
-		}
 		ca.SetChannelHistory(channelHistory)
 	}
 
