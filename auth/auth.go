@@ -281,8 +281,6 @@ func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, col
 	channelHistory := auth.CalculateHistory(princ.Name(), ca.GetChannelInvalSeq(), ca.InvalidatedChannels(), channels, ca.ChannelHistory())
 
 	if len(channelHistory) != 0 {
-		// princ.history is explicit chan history with all admin channels
-		// flag all channels in princ.history as admin assigned
 		for channel, hist := range princ.ChannelHistory() {
 			entries := channelHistory[channel].Entries
 			if entries == nil {
