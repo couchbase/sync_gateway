@@ -1198,6 +1198,48 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	assert.True(t, deletedValue)
 }
 
+// Sends many revisions concurrently and ensures that SG limits the processing on the server-side with MaxConcurrentRevs
+func TestBlipSendConcurrentRevs(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+
+	const (
+		maxConcurrentRevs    = 10
+		concurrentSendRevNum = 50
+	)
+	rt := NewRestTester(t, &RestTesterConfig{maxConcurrentRevs: maxConcurrentRevs})
+	defer rt.Close()
+	btSpec := BlipTesterSpec{
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+	}
+	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
+	require.NoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	wg := sync.WaitGroup{}
+	wg.Add(concurrentSendRevNum)
+	for i := 0; i < concurrentSendRevNum; i++ {
+		docID := fmt.Sprintf("%s-%d", t.Name(), i)
+		go func() {
+			defer wg.Done()
+			_, _, _, err := bt.SendRev(docID, "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
+			require.NoError(t, err)
+		}()
+	}
+
+	require.NoError(t, WaitWithTimeout(&wg, time.Second*30))
+
+	throttleCount := rt.GetDatabase().DbStats.CBLReplicationPush().WriteThrottledCount.Value()
+	throttleTime := rt.GetDatabase().DbStats.CBLReplicationPush().WriteThrottledTime.Value()
+	throttleDuration := time.Duration(throttleTime) * time.Nanosecond
+
+	assert.Greater(t, throttleCount, int64(0), "Expected throttled revs")
+	assert.Greater(t, throttleTime, int64(0), "Expected non-zero throttled revs time")
+
+	t.Logf("Throttled revs: %d, Throttled duration: %s", throttleCount, throttleDuration)
+}
+
 // Test send and retrieval of a doc with a large numeric value.  Ensure proper large number handling.
 //
 //	Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)

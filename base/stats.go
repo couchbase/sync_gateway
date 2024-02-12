@@ -483,6 +483,10 @@ type CBLReplicationPushStats struct {
 	ProposeChangeTime *SgwIntStat `json:"propose_change_time"`
 	// Total time spent processing writes. Measures complete request-to-response time for a write.
 	WriteProcessingTime *SgwIntStat `json:"write_processing_time"`
+	// WriteThrottledCount is the cumulative number of writes that were throttled.
+	WriteThrottledCount *SgwIntStat `json:"write_throttled_count"`
+	// WriteThrottledTime is the cumulative time spent throttling writes.
+	WriteThrottledTime *SgwIntStat `json:"write_throttled_time"`
 }
 
 // CollectionStats are stats that are tracked on a per-collection basis.
@@ -1497,6 +1501,14 @@ func (d *DbStats) initCBLReplicationPushStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.WriteThrottledCount, err = NewIntStat(SubsystemReplicationPush, "write_throttled_count", StatUnitNoUnits, WriteThrottledCountDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.WriteThrottledTime, err = NewIntStat(SubsystemReplicationPush, "write_throttled_time", StatUnitNanoseconds, WriteThrottledTimeDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 
 	d.CBLReplicationPushStats = resUtil
 	return nil
@@ -1510,6 +1522,8 @@ func (d *DbStats) unregisterCBLReplicationPushStats() {
 	prometheus.Unregister(d.CBLReplicationPushStats.ProposeChangeCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.ProposeChangeTime)
 	prometheus.Unregister(d.CBLReplicationPushStats.WriteProcessingTime)
+	prometheus.Unregister(d.CBLReplicationPushStats.WriteThrottledCount)
+	prometheus.Unregister(d.CBLReplicationPushStats.WriteThrottledTime)
 }
 
 func (d *DbStats) CBLReplicationPush() *CBLReplicationPushStats {

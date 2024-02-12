@@ -24,6 +24,8 @@ type BlipSyncStats struct {
 	HandleRevBytes                   *base.SgwIntStat
 	HandleRevProcessingTime          *base.SgwIntStat
 	HandleRevDocsPurgedCount         *base.SgwIntStat
+	HandleRevThrottledCount          *base.SgwIntStat
+	HandleRevThrottledTime           *base.SgwIntStat
 	HandleGetRevCount                *base.SgwIntStat // Connected Client API
 	HandlePutRevCount                *base.SgwIntStat // Connected Client API
 	HandlePutRevErrorCount           *base.SgwIntStat // Connected Client API
@@ -133,9 +135,10 @@ func BlipSyncStatsForCBL(dbStats *base.DbStats) *BlipSyncStats {
 
 	blipStats.HandleRevBytes = dbStats.Database().DocWritesBytesBlip
 	blipStats.HandleRevProcessingTime = dbStats.CBLReplicationPush().WriteProcessingTime
-
 	blipStats.HandleRevCount = dbStats.CBLReplicationPush().DocPushCount
 	blipStats.HandleRevErrorCount = dbStats.CBLReplicationPush().DocPushErrorCount
+	blipStats.HandleRevThrottledCount = dbStats.CBLReplicationPush().WriteThrottledCount
+	blipStats.HandleRevThrottledTime = dbStats.CBLReplicationPush().WriteThrottledTime
 
 	blipStats.HandleGetAttachment = dbStats.CBLReplicationPull().AttachmentPullCount
 	blipStats.HandleGetAttachmentBytes = dbStats.CBLReplicationPull().AttachmentPullBytes

@@ -921,18 +921,27 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 }
 
 type processRevStats struct {
-	count           *base.SgwIntStat // Increments when rev processed successfully
-	errorCount      *base.SgwIntStat
-	deltaRecvCount  *base.SgwIntStat
-	bytes           *base.SgwIntStat
-	processingTime  *base.SgwIntStat
-	docsPurgedCount *base.SgwIntStat
+	count            *base.SgwIntStat // Increments when rev processed successfully
+	errorCount       *base.SgwIntStat
+	deltaRecvCount   *base.SgwIntStat
+	bytes            *base.SgwIntStat
+	processingTime   *base.SgwIntStat
+	docsPurgedCount  *base.SgwIntStat
+	throttledRevs    *base.SgwIntStat
+	throttledRevTime *base.SgwIntStat
 }
 
 // Processes a "rev" request, i.e. client is pushing a revision body
 // stats must always be provided, along with all the fields filled with valid pointers
 func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err error) {
-	bh.inFlightRevsThrottle <- struct{}{}
+	select {
+	case bh.inFlightRevsThrottle <- struct{}{}:
+	default:
+		stats.throttledRevs.Add(1)
+		throttleStart := time.Now()
+		bh.inFlightRevsThrottle <- struct{}{}
+		stats.throttledRevTime.Add(time.Since(throttleStart).Nanoseconds())
+	}
 	defer func() { <-bh.inFlightRevsThrottle }()
 
 	startTime := time.Now()
@@ -1222,12 +1231,14 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 // Handler for when a rev is received from the client
 func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	stats := processRevStats{
-		count:           bh.replicationStats.HandleRevCount,
-		errorCount:      bh.replicationStats.HandleRevErrorCount,
-		deltaRecvCount:  bh.replicationStats.HandleRevDeltaRecvCount,
-		bytes:           bh.replicationStats.HandleRevBytes,
-		processingTime:  bh.replicationStats.HandleRevProcessingTime,
-		docsPurgedCount: bh.replicationStats.HandleRevDocsPurgedCount,
+		count:            bh.replicationStats.HandleRevCount,
+		errorCount:       bh.replicationStats.HandleRevErrorCount,
+		deltaRecvCount:   bh.replicationStats.HandleRevDeltaRecvCount,
+		bytes:            bh.replicationStats.HandleRevBytes,
+		processingTime:   bh.replicationStats.HandleRevProcessingTime,
+		docsPurgedCount:  bh.replicationStats.HandleRevDocsPurgedCount,
+		throttledRevs:    bh.replicationStats.HandleRevThrottledCount,
+		throttledRevTime: bh.replicationStats.HandleRevThrottledTime,
 	}
 	return bh.processRev(rq, &stats)
 }

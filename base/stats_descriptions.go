@@ -205,6 +205,9 @@ const (
 	WriteProcessingTimeDesc = "Total time spent processing writes. Measures complete request-to-response time for a write. The write_processing_time stat can be useful when: (a). Determining the average time per write: average time per write = write_processing_time / num_doc_writes stat value " +
 		"(b). Assessing the benefit of adding additional Sync Gateway nodes, as it can point to Sync Gateway being a bottleneck (c). Troubleshooting slow push replication, in which case it ought to be considered in conjunction with sync_function_time"
 
+	WriteThrottledCountDesc = "TODO"
+	WriteThrottledTimeDesc  = "TODO"
+
 	DocPushErrorCountDesc = "The total number of documents that failed to push."
 )
 
