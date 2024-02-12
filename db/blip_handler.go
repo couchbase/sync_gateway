@@ -172,7 +172,6 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 				bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.loggingCtx, bh.collection.DatabaseCollection))
 				bh.collectionCtx, _ = bh.collections.get(nil)
 			}
-			//bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.loggingCtx, bh.collection.DatabaseCollection))
 			return next(bh, bm)
 		}
 		if !bh.collections.hasNamedCollections() {
