@@ -54,8 +54,10 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	// Get current sync data
 	var syncData db.SyncData
-	_, err := dataStore.GetXattr(rt.Context(), docKey, base.SyncXattrName, &syncData)
-	assert.NoError(t, err)
+	xattrs, cas, err := dataStore.GetXattrs(rt.Context(), docKey, []string{base.SyncXattrName})
+	require.NoError(t, err)
+	require.Contains(t, xattrs, base.SyncXattrName)
+	assert.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
 	docRev, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
 	assert.NoError(t, err)
@@ -63,8 +65,8 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.Equal(t, syncData.CurrentRev, docRev.RevID)
 
 	// Write xattr to trigger import of user xattr
-	_, err = dataStore.WriteUserXattr(docKey, xattrKey, channelName)
-	assert.NoError(t, err)
+	_, err = dataStore.UpdateXattrs(rt.Context(), docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
+	require.NoError(t, err)
 
 	// Wait for import
 	err = rt.WaitForCondition(func() bool {
@@ -74,8 +76,10 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	// Ensure import worked and sequence incremented but that sequence did not
 	var syncData2 db.SyncData
-	_, err = dataStore.GetXattr(rt.Context(), docKey, base.SyncXattrName, &syncData2)
-	assert.NoError(t, err)
+	xattrs, _, err = dataStore.GetXattrs(rt.Context(), docKey, []string{base.SyncXattrName})
+	require.NoError(t, err)
+	require.Contains(t, xattrs, base.SyncXattrName)
+	assert.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData2))
 
 	docRev2, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
 	assert.NoError(t, err)
@@ -96,8 +100,10 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.NoError(t, err)
 
 	var syncData3 db.SyncData
-	_, err = dataStore.GetXattr(rt.Context(), docKey, base.SyncXattrName, &syncData2)
-	assert.NoError(t, err)
+	xattrs, _, err = dataStore.GetXattrs(rt.Context(), docKey, []string{base.SyncXattrName})
+	require.NoError(t, err)
+	require.Contains(t, xattrs, base.SyncXattrName)
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData3))
 
 	assert.NotEqual(t, syncData2.CurrentRev, syncData3.CurrentRev)
 }

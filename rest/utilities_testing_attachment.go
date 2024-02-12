@@ -53,7 +53,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db
 	_, _, err = collection.Put(ctx, docID, unmarshalledBody)
 	require.NoError(t, err)
 
-	_, err = dataStore.WriteUpdateWithXattr(ctx, docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, updatedSpec []sgbucket.MacroExpansionSpec, err error) {
+	_, err = dataStore.WriteUpdateWithXattrs(ctx, docID, []string{base.SyncXattrName}, 0, nil, nil, func(doc []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
 		attachmentSyncData := map[string]interface{}{
 			attID: map[string]interface{}{
 				"content_type": "application/json",
@@ -66,14 +66,20 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db
 
 		attachmentSyncDataBytes, err := base.JSONMarshal(attachmentSyncData)
 		require.NoError(t, err)
-
+		require.Contains(t, xattrs, base.SyncXattrName)
+		xattr := xattrs[base.SyncXattrName]
 		xattr, err = base.InjectJSONPropertiesFromBytes(xattr, base.KVPairBytes{
 			Key: "attachments",
 			Val: attachmentSyncDataBytes,
 		})
 		require.NoError(t, err)
 
-		return doc, xattr, false, nil, updatedSpec, nil
+		return sgbucket.UpdatedDoc{
+			Doc: doc,
+			Xattrs: map[string][]byte{
+				base.SyncXattrName: base.MustJSONMarshal(t, xattr),
+			},
+		}, nil
 	})
 	require.NoError(t, err)
 

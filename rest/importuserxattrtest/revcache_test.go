@@ -74,8 +74,12 @@ func TestUserXattrRevCache(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
-	_, err = dataStore.WriteUserXattr(docKey, xattrKey, "DEF")
-	assert.NoError(t, err)
+
+	cas, err := rt.GetSingleDataStore().Get(docKey, nil)
+	require.NoError(t, err)
+
+	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, "DEF")}, nil)
+	require.NoError(t, err)
 
 	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
 	assert.NoError(t, err)
@@ -83,9 +87,13 @@ func TestUserXattrRevCache(t *testing.T) {
 	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
+	// FIXME, why is cas different after import?
+	cas, err = rt.GetSingleDataStore().Get(docKey, nil)
+	require.NoError(t, err)
+
 	// Add channel ABC to the userXattr
-	_, err = dataStore.WriteUserXattr(docKey, xattrKey, channelName)
-	assert.NoError(t, err)
+	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
+	require.NoError(t, err)
 
 	// wait for import of the xattr change on both nodes
 	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userABC", false)
@@ -153,8 +161,11 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
 
+	cas, err := rt.GetSingleDataStore().Get(docKey, nil)
+	require.NoError(t, err)
+
 	// Write DEF to the userXattrStore to give userDEF access
-	_, err = dataStore.WriteUserXattr(docKey, xattrKey, "DEF")
+	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, "DEF")}, nil)
 	assert.NoError(t, err)
 
 	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
@@ -163,9 +174,13 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
+	// FIXME, why is cas different after import?
+	cas, err = rt.GetSingleDataStore().Get(docKey, nil)
+	require.NoError(t, err)
+
 	// Delete DEF from the userXattr, removing the doc from channel DEF
-	_, err = dataStore.DeleteUserXattr(docKey, xattrKey)
-	assert.NoError(t, err)
+	err = dataStore.RemoveXattrs(ctx, docKey, []string{xattrKey}, cas)
+	require.NoError(t, err)
 
 	// wait for import of the xattr change on both nodes
 	_, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)

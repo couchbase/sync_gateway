@@ -35,8 +35,12 @@ type treeMeta struct {
 func getRevTreeList(ctx context.Context, dataStore sgbucket.DataStore, key string, useXattrs bool) (revTreeList, error) {
 	switch useXattrs {
 	case true:
-		var rawDoc, rawXattr []byte
-		_, getErr := dataStore.GetWithXattr(ctx, key, base.SyncXattrName, "", &rawDoc, &rawXattr, nil)
+		var rawDoc []byte
+		xattrs, _, getErr := dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName}, &rawDoc)
+		rawXattr, ok := xattrs[base.SyncXattrName]
+		if !ok {
+			return revTreeList{}, base.ErrXattrNotFound
+		}
 		if getErr != nil {
 			return revTreeList{}, getErr
 		}
@@ -1625,9 +1629,11 @@ func TestPutStampClusterUUID(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 32, len(doc.ClusterUUID))
 
-	var xattr map[string]string
-	_, err = collection.dataStore.GetWithXattr(ctx, key, base.SyncXattrName, "", &body, &xattr, nil)
+	xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName}, &body)
 	require.NoError(t, err)
+	require.Contains(t, xattrs, base.SyncXattrName)
+	var xattr map[string]string
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
 	require.Equal(t, 32, len(xattr["cluster_uuid"]))
 }
 
@@ -1660,7 +1666,7 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 	err = json.Unmarshal(sd, &newSyncData)
 	require.NoError(t, err)
 	newSyncData["sequence"] = doc.SyncData.Sequence + otherClusterSequenceOffset
-	_, err = collection.dataStore.UpdateXattr(ctx, doc.ID, base.SyncXattrName, 0, doc.Cas, newSyncData, DefaultMutateInOpts())
+	_, err = collection.dataStore.UpdateXattrs(ctx, doc.ID, 0, doc.Cas, map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, newSyncData)}, DefaultMutateInOpts())
 	require.NoError(t, err)
 
 	_, doc, err = collection.Put(ctx, "doc1", Body{"foo": "buzz", BodyRev: rev})

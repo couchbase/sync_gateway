@@ -116,7 +116,9 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 
 		for attachmentName, attachmentDocID := range attachmentKeys {
 			// Stamp the current compaction ID into the attachment xattr. This is performing the actual marking
-			_, err = dataStore.SetXattr(ctx, attachmentDocID, getCompactionIDSubDocPath(compactionID), []byte(strconv.Itoa(int(time.Now().Unix()))))
+			_, err = dataStore.SetXattrs(ctx, attachmentDocID, map[string][]byte{
+				getCompactionIDSubDocPath(compactionID): []byte(strconv.Itoa(int(time.Now().Unix())))},
+			)
 
 			// If an error occurs while stamping in that ID we need to fail this process and then the entire compaction
 			// process. Otherwise, an attachment could end up getting erroneously deleted in the later sweep phase.
@@ -469,7 +471,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 			// Note that if this operation fails with a cas mismatch we will fall through to the following per ID
 			// delete. This can occur if another compact process ends up mutating / deleting the xattr.
 			if len(compactIDSyncMap) == len(toDeleteCompactIDPaths) {
-				err = dataStore.RemoveXattr(ctx, docID, base.AttachmentCompactionXattrName, event.Cas)
+				err = dataStore.RemoveXattrs(ctx, docID, []string{base.AttachmentCompactionXattrName}, event.Cas)
 				if err == nil {
 					return true
 				}
@@ -481,7 +483,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 			}
 
 			// If we only want to remove select compact IDs delete each one through a subdoc operation
-			err = dataStore.DeleteXattrs(ctx, docID, toDeleteCompactIDPaths...)
+			err = dataStore.DeleteSubDocPaths(ctx, docID, toDeleteCompactIDPaths...)
 			if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
 				base.WarnfCtx(ctx, "[%s] Failed to delete compaction IDs %s for doc %s: %v", compactionLoggingID, strings.Join(toDeleteCompactIDPaths, ","), base.UD(docID), err)
 				return true

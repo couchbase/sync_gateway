@@ -52,10 +52,12 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 	}
 
 	existingBucketDoc := &sgbucket.BucketDocument{
-		Body:      value,
-		Xattr:     xattrValue,
-		UserXattr: userXattrValue,
-		Cas:       cas,
+		Body: value,
+		Xattrs: map[string][]byte{
+			base.SyncXattrName: xattrValue,
+			db.userXattrKey():  userXattrValue,
+		},
+		Cas: cas,
 	}
 
 	return db.importDoc(ctx, docid, body, expiry, isDelete, existingBucketDoc, mode)
@@ -71,20 +73,22 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 	// TODO: We need to remarshal the existing doc into bytes.  Less performance overhead than the previous bucket op to get the value in WriteUpdateWithXattr,
 	//       but should refactor import processing to support using the already-unmarshalled doc.
 	existingBucketDoc := &sgbucket.BucketDocument{
-		Cas:       existingDoc.Cas,
-		UserXattr: existingDoc.rawUserXattr,
+		Cas: existingDoc.Cas,
+		Xattrs: map[string][]byte{
+			db.userXattrKey(): existingDoc.rawUserXattr,
+		},
 	}
 
 	// If we marked this as having inline Sync Data ensure that the existingBucketDoc we pass to importDoc has syncData
 	// in the body so we can detect this and perform the migrate
 	if existingDoc.inlineSyncData {
 		existingBucketDoc.Body, err = existingDoc.MarshalJSON()
-		existingBucketDoc.Xattr = nil
+		existingBucketDoc.Xattrs = nil
 	} else {
 		if existingDoc.Deleted {
-			existingBucketDoc.Xattr, err = base.JSONMarshal(existingDoc.SyncData)
+			existingBucketDoc.Xattrs[base.SyncXattrName], err = base.JSONMarshal(existingDoc.SyncData)
 		} else {
-			existingBucketDoc.Body, existingBucketDoc.Xattr, err = existingDoc.MarshalWithXattr()
+			existingBucketDoc.Body, existingBucketDoc.Xattrs[base.SyncXattrName], err = existingDoc.MarshalWithXattr()
 		}
 	}
 
@@ -270,7 +274,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			}
 		}
 
-		shouldGenerateNewRev := bodyChanged || len(existingDoc.UserXattr) == 0
+		shouldGenerateNewRev := bodyChanged || len(existingDoc.Xattrs[db.userXattrKey()]) == 0
 
 		// If the body has changed then the document has been updated and we should generate a new revision. Otherwise
 		// the import was triggered by a user xattr mutation and therefore should not generate a new revision.
@@ -386,9 +390,16 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	}
 
 	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
-	isDelete := doc.hasFlag(channels.Deleted)
-	deleteBody := isDelete && len(existingDoc.Body) > 0
-	casOut, writeErr := db.dataStore.WriteWithXattr(ctx, docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, value, xattrValue, isDelete, deleteBody, opts)
+	xattrs := map[string][]byte{
+		base.SyncXattrName: xattrValue,
+	}
+	var casOut uint64
+	var writeErr error
+	if !doc.hasFlag(channels.Deleted) {
+		casOut, writeErr = db.dataStore.WriteWithXattrs(ctx, docid, existingDoc.Expiry, existingDoc.Cas, value, xattrs, opts)
+	} else {
+		casOut, writeErr = db.dataStore.WriteTombstoneWithXattrs(ctx, docid, existingDoc.Expiry, existingDoc.Cas, xattrs, opts)
+	}
 	if writeErr == nil {
 		doc.Cas = casOut
 		base.InfofCtx(ctx, base.KeyMigrate, "Successfully migrated doc %q", base.UD(docid))

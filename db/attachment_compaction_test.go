@@ -10,7 +10,6 @@ package db
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -67,10 +66,11 @@ func TestAttachmentMark(t *testing.T) {
 	assert.Equal(t, int64(13), attachmentsMarked)
 
 	for _, attDocKey := range attKeys {
-		var attachmentData Body
-		_, err = dataStore.GetXattr(ctx, attDocKey, base.AttachmentCompactionXattrName, &attachmentData)
+		xattrs, _, err := dataStore.GetXattrs(ctx, attDocKey, []string{base.AttachmentCompactionXattrName})
 		assert.NoError(t, err)
-
+		require.Contains(t, xattrs, base.AttachmentCompactionXattrName)
+		var attachmentData Body
+		require.NoError(t, base.JSONUnmarshal(xattrs[base.AttachmentCompactionXattrName], &attachmentData))
 		compactIDSection, ok := attachmentData[CompactionIDKey]
 		require.True(t, ok)
 		require.NotNil(t, compactIDSection)
@@ -97,7 +97,9 @@ func TestAttachmentSweep(t *testing.T) {
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
-		_, err = dataStore.SetXattr(ctx, docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
+		_, err = dataStore.SetXattrs(ctx, docid, map[string][]byte{
+			getCompactionIDSubDocPath(compactID): []byte(strconv.Itoa(int(time.Now().Unix())))},
+		)
 		assert.NoError(t, err)
 	}
 
@@ -144,7 +146,9 @@ func TestAttachmentCleanup(t *testing.T) {
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
-		_, err = dataStore.SetXattr(ctx, docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
+		_, err = dataStore.SetXattrs(ctx, docid, map[string][]byte{
+			getCompactionIDSubDocPath(compactID): []byte(strconv.Itoa(int(time.Now().Unix())))},
+		)
 		assert.NoError(t, err)
 	}
 
@@ -153,7 +157,9 @@ func TestAttachmentCleanup(t *testing.T) {
 		assert.NoError(t, err)
 		compactIDsJSON, err := base.JSONMarshal(compactIDs)
 		assert.NoError(t, err)
-		_, err = dataStore.SetXattr(ctx, docid, base.AttachmentCompactionXattrName+"."+CompactionIDKey, compactIDsJSON)
+		_, err = dataStore.SetXattrs(ctx, docid, map[string][]byte{
+			base.AttachmentCompactionXattrName + "." + CompactionIDKey: compactIDsJSON,
+		})
 		assert.NoError(t, err)
 	}
 
@@ -202,32 +208,35 @@ func TestAttachmentCleanup(t *testing.T) {
 	assert.NoError(t, err)
 
 	for _, docID := range singleMarkedAttIDs {
-		var xattr map[string]interface{}
-		_, err := dataStore.GetXattr(ctx, docID, base.AttachmentCompactionXattrName, &xattr)
+		_, _, err := dataStore.GetXattrs(ctx, docID, []string{base.AttachmentCompactionXattrName})
 		assert.Error(t, err)
-		assert.True(t, errors.Is(err, base.ErrXattrNotFound))
+		require.ErrorIs(t, err, base.ErrXattrNotFound)
 	}
 
 	for _, docID := range recentMultiMarkedAttIDs {
-		var xattr map[string]interface{}
-		_, err := dataStore.GetXattr(ctx, docID, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
-		assert.NoError(t, err)
-
+		xattrName := base.AttachmentCompactionXattrName + "." + CompactionIDKey
+		xattrs, _, err := dataStore.GetXattrs(ctx, docID, []string{xattrName})
+		require.NoError(t, err)
+		require.Contains(t, xattrs, xattrName)
+		var xattr map[string]any
+		require.NoError(t, base.JSONUnmarshal(xattrs[xattrName], &xattr))
 		assert.NotContains(t, xattr, t.Name())
 		assert.Contains(t, xattr, "rand")
 	}
 
 	for _, docID := range oldMultiMarkedAttIDs {
-		var xattr map[string]interface{}
-		_, err := dataStore.GetXattr(ctx, docID, CompactionIDKey, &xattr)
+		_, _, err := dataStore.GetXattrs(ctx, docID, []string{CompactionIDKey})
 		assert.Error(t, err)
-		assert.True(t, errors.Is(err, base.ErrXattrNotFound))
+		require.ErrorIs(t, err, base.ErrXattrNotFound)
 	}
 
 	for _, docID := range oneRecentOneOldMultiMarkedAttIDs {
-		var xattr map[string]interface{}
-		_, err := dataStore.GetXattr(ctx, docID, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
-		assert.NoError(t, err)
+		xattrName := base.AttachmentCompactionXattrName + "." + CompactionIDKey
+		xattrs, _, err := dataStore.GetXattrs(ctx, docID, []string{xattrName})
+		require.NoError(t, err)
+
+		var xattr map[string]any
+		require.NoError(t, base.JSONUnmarshal(xattrs[xattrName], &xattr))
 
 		assert.NotContains(t, xattr, t.Name())
 		assert.NotContains(t, xattr, "old")
@@ -255,7 +264,9 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
-		_, err = dataStore.SetXattr(ctx, docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
+		_, err = dataStore.SetXattrs(ctx, docid, map[string][]byte{
+			getCompactionIDSubDocPath(compactID): []byte(strconv.Itoa(int(time.Now().Unix())))},
+		)
 		assert.NoError(t, err)
 	}
 
@@ -269,9 +280,8 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 
 	// assert there are marked attachments to clean up
 	for _, docID := range singleMarkedAttIDs {
-		var xattr map[string]interface{}
-		_, err := dataStore.GetXattr(ctx, docID, base.AttachmentCompactionXattrName, &xattr)
-		assert.NoError(t, err)
+		_, _, err := dataStore.GetXattrs(ctx, docID, []string{base.AttachmentCompactionXattrName})
+		require.NoError(t, err)
 	}
 
 	bucket, err := base.AsGocbV2Bucket(testDb.Bucket)
@@ -312,10 +322,8 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 
 	// assert that the marked attachments have been "cleaned up"
 	for _, docID := range singleMarkedAttIDs {
-		var xattr map[string]interface{}
-		_, err := dataStore.GetXattr(ctx, docID, base.AttachmentCompactionXattrName, &xattr)
-		assert.Error(t, err)
-		assert.True(t, errors.Is(err, base.ErrXattrNotFound))
+		_, _, err := dataStore.GetXattrs(ctx, docID, []string{base.AttachmentCompactionXattrName})
+		require.ErrorIs(t, err, base.ErrXattrNotFound)
 	}
 
 }
@@ -372,9 +380,12 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 			assert.Error(t, err)
 		} else {
 			assert.NoError(t, err)
-			var xattr map[string]interface{}
-			_, err = dataStore.GetXattr(ctx, attDocKey, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
-			assert.NoError(t, err)
+			xattrName := base.AttachmentCompactionXattrName + "." + CompactionIDKey
+			xattrs, _, err := dataStore.GetXattrs(ctx, attDocKey, []string{xattrName})
+			require.NoError(t, err)
+			require.Contains(t, xattrs, xattrName)
+			var xattr map[string]any
+			require.NoError(t, base.JSONUnmarshal(xattrs[xattrName], &xattr))
 			assert.Contains(t, xattr, t.Name())
 		}
 	}
@@ -387,10 +398,8 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		_, err = dataStore.Get(attDocKey, &back)
 		if !strings.Contains(attDocKey, "unmarked") {
 			assert.NoError(t, err)
-			var xattr map[string]interface{}
-			_, err = dataStore.GetXattr(ctx, attDocKey, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
-			assert.Error(t, err)
-			assert.True(t, errors.Is(err, base.ErrXattrNotFound))
+			_, _, err := dataStore.GetXattrs(ctx, attDocKey, []string{base.AttachmentCompactionXattrName + "." + CompactionIDKey})
+			require.ErrorIs(t, err, base.ErrXattrNotFound)
 		}
 	}
 }
@@ -753,7 +762,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCo
 	_, _, err = db.Put(ctx, docID, unmarshalledBody)
 	require.NoError(t, err)
 
-	_, err = db.dataStore.WriteUpdateWithXattr(ctx, docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, updatedSpec []sgbucket.MacroExpansionSpec, err error) {
+	_, err = db.dataStore.WriteUpdateWithXattrs(ctx, docID, []string{base.SyncXattrName}, 0, nil, nil, func(doc []byte, xattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
 		attachmentSyncData := map[string]interface{}{
 			attID: map[string]interface{}{
 				"content_type": "application/json",
@@ -767,13 +776,18 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCo
 		attachmentSyncDataBytes, err := base.JSONMarshal(attachmentSyncData)
 		require.NoError(t, err)
 
+		xattr := xattrs[base.SyncXattrName]
+
 		xattr, err = base.InjectJSONPropertiesFromBytes(xattr, base.KVPairBytes{
 			Key: "attachments",
 			Val: attachmentSyncDataBytes,
 		})
 		require.NoError(t, err)
 
-		return doc, xattr, false, nil, updatedSpec, nil
+		return sgbucket.UpdatedDoc{
+			Doc:    doc,
+			Xattrs: map[string][]byte{base.SyncXattrName: xattr},
+		}, nil
 	})
 	require.NoError(t, err)
 
@@ -818,7 +832,10 @@ func createConflictingDocOneLeafHasAttachmentBodyMap(t *testing.T, docID string,
       "time_saved": "2021-10-14T16:38:11.359443+01:00"
     }`
 
-	_, err := db.dataStore.WriteWithXattr(base.TestCtx(t), docID, base.SyncXattrName, 0, 0, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false, nil)
+	xattrs := map[string][]byte{
+		base.SyncXattrName: []byte(syncData),
+	}
+	_, err := db.dataStore.WriteWithXattrs(base.TestCtx(t), docID, 0, 0, []byte(`{"Winning Rev": true}`), xattrs, nil)
 	assert.NoError(t, err)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
@@ -867,7 +884,10 @@ func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string,
       "time_saved": "2021-10-21T12:48:39.549095+01:00"
     }`
 
-	_, err := db.dataStore.WriteWithXattr(base.TestCtx(t), docID, base.SyncXattrName, 0, 0, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false, nil)
+	xattrs := map[string][]byte{
+		base.SyncXattrName: []byte(syncData),
+	}
+	_, err := db.dataStore.WriteWithXattrs(base.TestCtx(t), docID, 0, 0, []byte(`{"Winning Rev": true}`), xattrs, nil)
 	assert.NoError(t, err)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)

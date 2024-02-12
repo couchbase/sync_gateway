@@ -244,7 +244,7 @@ FROM ` + base.KeyspaceQueryToken + ` AS ks USE INDEX (sg_allDocs_x1)`
 		// First, attempt to purge.
 		var purgeErr error
 		if base.TestUseXattrs() {
-			purgeErr = dataStore.DeleteWithXattr(ctx, row.Id, base.SyncXattrName)
+			purgeErr = dataStore.DeleteWithXattrs(ctx, row.Id, []string{base.SyncXattrName})
 		} else {
 			purgeErr = dataStore.Delete(row.Id)
 		}

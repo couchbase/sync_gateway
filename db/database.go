@@ -1792,37 +1792,41 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 		db.dbStats().DatabaseStats.ImportProcessCompute.Add(stat)
 	}()
 	if db.UseXattrs() {
-		writeUpdateFunc := func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (
-			raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, updatedSpec []sgbucket.MacroExpansionSpec, err error) {
+		writeUpdateFunc := func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
 			// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
 			// so deleteDoc is always returned as false.
 			if currentValue == nil || len(currentValue) == 0 {
-				return nil, nil, deleteDoc, nil, nil, base.ErrUpdateCancel
+				return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
 			}
-			doc, err := unmarshalDocumentWithXattr(ctx, docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
+			doc, err := unmarshalDocumentWithXattr(ctx, docid, currentValue, currentXattrs[base.SyncXattrName], currentXattrs[db.userXattrKey()], cas, DocUnmarshalAll)
 			if err != nil {
-				return nil, nil, deleteDoc, nil, nil, err
+				return sgbucket.UpdatedDoc{}, err
 			}
 			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences)
 			if err != nil {
-				return nil, nil, deleteDoc, nil, nil, err
+				return sgbucket.UpdatedDoc{}, err
 			}
-			if shouldUpdate {
-				base.InfofCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
-				if updatedExpiry != nil {
-					updatedDoc.UpdateExpiry(*updatedExpiry)
-				}
-				doc.SetCrc32cUserXattrHash()
-				raw, rawXattr, err = updatedDoc.MarshalWithXattr()
-				return raw, rawXattr, deleteDoc, updatedExpiry, updatedSpec, err
-			} else {
-				return nil, nil, deleteDoc, nil, nil, base.ErrUpdateCancel
+			if !shouldUpdate {
+				return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
 			}
+			base.InfofCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
+			if updatedExpiry != nil {
+				updatedDoc.UpdateExpiry(*updatedExpiry)
+			}
+			doc.SetCrc32cUserXattrHash()
+			raw, rawXattr, err := updatedDoc.MarshalWithXattr()
+			return sgbucket.UpdatedDoc{
+				Doc: raw,
+				Xattrs: map[string][]byte{
+					base.SyncXattrName: rawXattr,
+				},
+				Expiry: updatedExpiry,
+			}, err
 		}
 		opts := &sgbucket.MutateInOptions{
 			MacroExpansion: macroExpandSpec(base.SyncXattrName),
 		}
-		_, err = db.dataStore.WriteUpdateWithXattr(ctx, key, base.SyncXattrName, db.userXattrKey(), 0, nil, opts, writeUpdateFunc)
+		_, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, []string{base.SyncXattrName, db.userXattrKey()}, 0, nil, opts, writeUpdateFunc)
 	} else {
 		_, err = db.dataStore.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 			// Be careful: this block can be invoked multiple times if there are races!

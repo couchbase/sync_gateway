@@ -54,7 +54,7 @@ func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, ke
 	}
 	defer bucket.Close(ctx)
 
-	return bucket.DefaultDataStore().WriteCas(key, 0, 0, 0, value, 0)
+	return bucket.DefaultDataStore().WriteCas(key, 0, 0, value, 0)
 }
 
 // WriteMetadataDocument writes a metadata document, and fails on CAS mismatch
@@ -65,7 +65,7 @@ func (c *RosmarCluster) WriteMetadataDocument(ctx context.Context, location, doc
 	}
 	defer bucket.Close(ctx)
 
-	return bucket.DefaultDataStore().WriteCas(docID, 0, 0, cas, value, 0)
+	return bucket.DefaultDataStore().WriteCas(docID, 0, cas, value, 0)
 }
 
 // TouchMetadataDocument sets the specified property in a bootstrap metadata document for a given bucket and key.  Used to
@@ -124,7 +124,7 @@ func (c *RosmarCluster) UpdateMetadataDocument(ctx context.Context, location, do
 			return removeCasOut, nil
 		}
 
-		replaceCfgCasOut, err := bucket.DefaultDataStore().WriteCas(docID, 0, 0, cas, newConfig, 0)
+		replaceCfgCasOut, err := bucket.DefaultDataStore().WriteCas(docID, 0, cas, newConfig, 0)
 		if err != nil {
 			if errors.As(err, &sgbucket.CasMismatchErr{}) {
 				// retry on cas failure
