@@ -249,13 +249,17 @@ func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context
 						updatedExplicitChannels = ch.TimedSet{}
 					}
 					expChannels := princ.CollectionExplicitChannels(scopeName, collectionName).Copy()
+					allExplicitChannels := expChannels.Copy()
+					allExplicitChannels.Add(updatedExplicitChannels)
 					changed := updatedExplicitChannels.UpdateAtSequence(updatedCollectionAccess.ExplicitChannels_, seq)
 					if changed {
 						princ.SetCollectionExplicitChannels(scopeName, collectionName, updatedExplicitChannels, seq)
 						history := auth.CalculateHistory(ctx, princ.GetChannelInvalSeq(), expChannels, updatedExplicitChannels, princ.ChannelHistory())
 						for channel, hist := range history {
-							hist.AdminAssigned = true
-							history[channel] = hist
+							if _, ok := allExplicitChannels[channel]; ok {
+								hist.AdminAssigned = true
+								history[channel] = hist
+							}
 						}
 						princ.SetChannelHistory(history)
 					}
