@@ -934,16 +934,6 @@ type processRevStats struct {
 // Processes a "rev" request, i.e. client is pushing a revision body
 // stats must always be provided, along with all the fields filled with valid pointers
 func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err error) {
-	select {
-	case bh.inFlightRevsThrottle <- struct{}{}:
-	default:
-		stats.throttledRevs.Add(1)
-		throttleStart := time.Now()
-		bh.inFlightRevsThrottle <- struct{}{}
-		stats.throttledRevTime.Add(time.Since(throttleStart).Nanoseconds())
-	}
-	defer func() { <-bh.inFlightRevsThrottle }()
-
 	startTime := time.Now()
 	defer func() {
 		stats.processingTime.Add(time.Since(startTime).Nanoseconds())
@@ -953,6 +943,19 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			stats.errorCount.Add(1)
 		}
 	}()
+
+	// throttle concurrent revs
+	if cap(bh.inFlightRevsThrottle) > 0 {
+		select {
+		case bh.inFlightRevsThrottle <- struct{}{}:
+		default:
+			stats.throttledRevs.Add(1)
+			throttleStart := time.Now()
+			bh.inFlightRevsThrottle <- struct{}{}
+			stats.throttledRevTime.Add(time.Since(throttleStart).Nanoseconds())
+		}
+		defer func() { <-bh.inFlightRevsThrottle }()
+	}
 
 	// addRevisionParams := newAddRevisionParams(rq)
 	revMessage := RevMessage{Message: rq}

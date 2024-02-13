@@ -33,6 +33,8 @@ type BlipSyncStats struct {
 	HandlePutRevBytes                *base.SgwIntStat // Connected Client API
 	HandlePutRevProcessingTime       *base.SgwIntStat // Connected Client API
 	HandlePutRevDocsPurgedCount      *base.SgwIntStat // Connected Client API
+	HandlePutRevThrottledCount       *base.SgwIntStat // Connected Client API
+	HandlePutRevThrottledTime        *base.SgwIntStat // Connected Client API
 	SendRevCount                     *base.SgwIntStat // sendRev
 	SendRevDeltaRequestedCount       *base.SgwIntStat
 	SendRevDeltaSentCount            *base.SgwIntStat
@@ -74,6 +76,8 @@ func NewBlipSyncStats() *BlipSyncStats {
 		HandleRevBytes:                   &base.SgwIntStat{},
 		HandleRevProcessingTime:          &base.SgwIntStat{},
 		HandleRevDocsPurgedCount:         &base.SgwIntStat{},
+		HandleRevThrottledCount:          &base.SgwIntStat{},
+		HandleRevThrottledTime:           &base.SgwIntStat{},
 		HandleGetRevCount:                &base.SgwIntStat{},
 		HandlePutRevCount:                &base.SgwIntStat{},
 		HandlePutRevErrorCount:           &base.SgwIntStat{},
