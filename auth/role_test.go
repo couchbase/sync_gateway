@@ -46,7 +46,7 @@ func TestAuthorizeChannelsRole(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close(ctx)
 	dataStore := testBucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(ctx))
+	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
 
 	role, err := auth.NewRole("root", channels.BaseSetOf(t, "superuser"))
 	assert.NoError(t, err)
@@ -67,12 +67,12 @@ func TestRoleKeysHash(t *testing.T) {
 			defer testBucket.Close(ctx)
 			dataStore := testBucket.DefaultDataStore()
 
-			auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(ctx))
+			auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
 			if !metadataDefault {
 				namedMetadataOptions := DefaultAuthenticatorOptions(ctx)
 				namedMetadataOptions.MetaKeys = base.NewMetadataKeys("foo")
 
-				auth = NewAuthenticator(dataStore, nil, namedMetadataOptions)
+				auth = NewTestAuthenticator(t, dataStore, nil, namedMetadataOptions)
 
 			}
 			shortRoleName := "shortRole"
