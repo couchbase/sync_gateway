@@ -40,7 +40,7 @@ func TestUserCollectionAccess(t *testing.T) {
 			"collection1": struct{}{},
 		},
 	}
-	auth := NewAuthenticator(bucket.GetSingleDataStore(), nil, options)
+	auth := NewTestAuthenticator(t, bucket.GetSingleDataStore(), nil, options)
 	user, _ := auth.NewUser("foo", "password", nil)
 	scope := "scope1"
 	collection := "collection1"
@@ -172,7 +172,7 @@ func TestSerializeUserWithCollections(t *testing.T) {
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
-	auth := NewAuthenticator(bucket.GetSingleDataStore(), nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
+	auth := NewTestAuthenticator(t, bucket.GetSingleDataStore(), nil, DefaultAuthenticatorOptions(base.TestCtx(t)))
 	user, _ := auth.NewUser("me", "letmein", ch.BaseSetOf(t, "me", "public"))
 	encoded, err := base.JSONMarshal(user)
 	require.NoError(t, err)
