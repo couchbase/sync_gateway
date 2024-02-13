@@ -2515,7 +2515,7 @@ CollectionNames:
 AllUserChannels:
   description: |-
     All user channels split by how they were assigned to the user.
-    
+
     Split by keyspace. The Entries field shows the grant periods, each grant period contains the sequence the channel was assigned and
     the sequence the channel was lost. If it was never lost, the end sequence will be 0.
     Historic channels will be classified if they are admin or dynamic grants, otherwise they will be in role_history_grants with no information
@@ -2532,7 +2532,7 @@ AllUserChannels:
       type: object
     admin_role_grants:
       description: |-
-        Channels assigned to the user through the admin API, by assigning a role to the user through admin_roles, 
+        Channels assigned to the user through the admin API, by assigning a role to the user through admin_roles,
         and assigning the channels to that role.
       type: object
     dynamic_role_grants:
