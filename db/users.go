@@ -230,7 +230,6 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 // UpdateCollectionExplicitChannels identifies whether a config update requires an update to the principal's collectionAccess.
 func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context, princ auth.Principal, updates map[string]map[string]*auth.CollectionAccessConfig, seq uint64) {
 	authenticator := dbc.Authenticator(ctx)
-	base.InfofCtx(ctx, base.KeyAuth, "History at UpdateCollectionExplicitChannels", princ.ChannelHistory())
 
 	for scopeName, scope := range updates {
 		if scope == nil {
@@ -252,18 +251,14 @@ func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context
 						updatedExplicitChannels = ch.TimedSet{}
 					}
 					expChannels := princ.CollectionExplicitChannels(scopeName, collectionName).Copy()
-					allExplicitChannels := expChannels.Copy()
-					allExplicitChannels.Add(updatedExplicitChannels)
 					changed := updatedExplicitChannels.UpdateAtSequence(updatedCollectionAccess.ExplicitChannels_, seq)
 					if changed {
 						princ.SetCollectionExplicitChannels(scopeName, collectionName, updatedExplicitChannels, seq)
-						history := authenticator.CalculateHistory(princ.Name(), princ.GetChannelInvalSeq(), expChannels, updatedExplicitChannels, princ.ChannelHistory())
-						for channel, hist := range history {
-							if _, ok := allExplicitChannels[channel]; ok {
-								hist.AdminAssigned = true
-								history[channel] = hist
-							}
-						}
+						history := authenticator.CalculateHistory(princ.Name(), princ.GetChannelInvalSeq(), expChannels, updatedExplicitChannels, princ.ChannelHistory(), true)
+						//for channel, hist := range history {
+						//	hist.AdminAssigned = true
+						//	history[channel] = hist
+						//}
 						princ.SetChannelHistory(history)
 					}
 				}

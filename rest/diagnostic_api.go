@@ -153,7 +153,7 @@ func (h *handler) handleGetAllChannels() error {
 			}
 		}
 	}
-	
+
 	bytes, err := base.JSONMarshal(resp)
 	if err != nil {
 		return err
