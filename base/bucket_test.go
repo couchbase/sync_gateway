@@ -34,74 +34,51 @@ func TestGetGoCBConnString(t *testing.T) {
 	queryTimeout := uint32(30)
 
 	tests := []struct {
-		name                         string
-		bucketSpecOptions            BucketSpecOptions
-		expectedConnStr              string
-		expectedServerlessConnStr    string
-		expectedDCPConnStr           string
-		expectedServerlessDCPConnStr string
+		name               string
+		bucketSpec         BucketSpec
+		expectedConnStr    string
+		expectedDCPConnStr string
 	}{
 
 		{
 			name: "v2 default values",
-			bucketSpecOptions: BucketSpecOptions{
+			bucketSpec: BucketSpec{
 				Server: "http://localhost:8091",
 			},
-			expectedConnStr:              "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedServerlessConnStr:    "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedDCPConnStr:           "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedServerlessDCPConnStr: "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr:    "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedDCPConnStr: "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 		{
 			name: "v2 no CA cert path",
-			bucketSpecOptions: BucketSpecOptions{
+			bucketSpec: BucketSpec{
 				Server:               "http://localhost:8091?custom=true&kv_pool_size=3",
 				ViewQueryTimeoutSecs: &queryTimeout,
 			},
-			expectedConnStr:              "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedServerlessConnStr:    "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedDCPConnStr:           "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedServerlessDCPConnStr: "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr:    "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedDCPConnStr: "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 		{
 			name: "v2 all values",
-			bucketSpecOptions: BucketSpecOptions{
+			bucketSpec: BucketSpec{
 				Server:               "http://localhost:8091?custom=true&kv_pool_size=3",
 				ViewQueryTimeoutSecs: &queryTimeout,
 				Certpath:             "/myCertPath",
 				Keypath:              "/my/key/path",
 				CACertPath:           "./myCACertPath",
 			},
-			expectedConnStr:              "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedServerlessConnStr:    "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedDCPConnStr:           "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedServerlessDCPConnStr: "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr:    "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedDCPConnStr: "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			bucketSpec, err := NewBucketSpec(test.bucketSpecOptions)
-			require.NoError(t, err)
-
-			actualConnStr, err := bucketSpec.GetGoCBConnString()
+			actualConnStr, err := test.bucketSpec.GetGoCBConnString()
 			assert.NoError(t, err, "Unexpected error creating connection string for bucket spec")
 			assert.Equal(t, test.expectedConnStr, actualConnStr)
-			dcpConnStr, err := bucketSpec.GetGoCBConnStringForDCP()
+			dcpConnStr, err := test.bucketSpec.GetGoCBConnStringForDCP()
 			assert.NoError(t, err)
 			assert.Equal(t, test.expectedDCPConnStr, dcpConnStr)
-
-			bucketSpec, err = NewBucketSpecServerless(test.bucketSpecOptions)
-			require.NoError(t, err)
-
-			connStr, err := bucketSpec.GetGoCBConnString()
-			require.NoError(t, err)
-			assert.Equal(t, test.expectedServerlessConnStr, connStr)
-
-			dcpConnStr, err = bucketSpec.GetGoCBConnStringForDCP()
-			assert.NoError(t, err)
-			assert.Equal(t, test.expectedServerlessDCPConnStr, dcpConnStr)
-
 		})
 	}
 }
@@ -421,22 +398,18 @@ func TestTLSConfig(t *testing.T) {
 	clientCertPath, clientKeyPath, rootCertPath, rootKeyPath := mockCertificatesAndKeys(t)
 
 	// Simulate error creating tlsConfig for DCP processing
-	spec, err := NewBucketSpec(BucketSpecOptions{
+	spec := BucketSpec{
 		Server:     "http://localhost:8091",
 		Certpath:   "/var/lib/couchbase/unknown.client.cert",
 		Keypath:    "/var/lib/couchbase/unknown.client.key",
 		CACertPath: "/var/lib/couchbase/unknown.root.ca.pem",
-	})
-	require.NoError(t, err)
-
+	}
 	ctx := TestCtx(t)
 	conf := spec.TLSConfig(ctx)
 	assert.Nil(t, conf)
 
 	// Simulate valid configuration scenario with fake mocked certificates and keys;
-	spec, err = NewBucketSpec(BucketSpecOptions{Certpath: clientCertPath, Keypath: clientKeyPath, CACertPath: rootCertPath})
-	require.NoError(t, err)
-
+	spec = BucketSpec{Certpath: clientCertPath, Keypath: clientKeyPath, CACertPath: rootCertPath}
 	conf = spec.TLSConfig(ctx)
 	assert.NotEmpty(t, conf)
 	assert.NotNil(t, conf.RootCAs)
@@ -444,8 +417,7 @@ func TestTLSConfig(t *testing.T) {
 	assert.False(t, conf.InsecureSkipVerify)
 
 	// Check TLSConfig with no CA certificate, and TlsSkipVerify true; InsecureSkipVerify should be true
-	spec, err = NewBucketSpec(BucketSpecOptions{TLSSkipVerify: true, Certpath: clientCertPath, Keypath: clientKeyPath})
-	require.NoError(t, err)
+	spec = BucketSpec{TLSSkipVerify: true, Certpath: clientCertPath, Keypath: clientKeyPath}
 	conf = spec.TLSConfig(ctx)
 	assert.NotEmpty(t, conf)
 	assert.True(t, conf.InsecureSkipVerify)
@@ -453,8 +425,7 @@ func TestTLSConfig(t *testing.T) {
 	assert.Nil(t, conf.RootCAs)
 
 	// Check TLSConfig with no certificates provided, and TlsSkipVerify true. InsecureSkipVerify should be true and fields should be nil CBG-1518
-	spec, err = NewBucketSpec(BucketSpecOptions{TLSSkipVerify: true})
-	require.NoError(t, err)
+	spec = BucketSpec{TLSSkipVerify: true}
 	conf = spec.TLSConfig(ctx)
 	assert.NotEmpty(t, conf)
 	assert.True(t, conf.InsecureSkipVerify)
@@ -462,8 +433,7 @@ func TestTLSConfig(t *testing.T) {
 	assert.Nil(t, conf.Certificates)
 
 	// Check TLSConfig with no certs provided. InsecureSkipVerify should always be false. Should be empty config on Windows CBG-1518
-	spec, err = NewBucketSpec(BucketSpecOptions{})
-	require.NoError(t, err)
+	spec = BucketSpec{}
 	conf = spec.TLSConfig(ctx)
 	assert.NotEmpty(t, conf)
 	assert.False(t, conf.InsecureSkipVerify)
@@ -472,15 +442,13 @@ func TestTLSConfig(t *testing.T) {
 
 	// Check TLSConfig by providing invalid root CA certificate; provide root certificate key path
 	// instead of root CA certificate. It should throw "can't append certs from PEM" error.
-	spec, err = NewBucketSpec(BucketSpecOptions{Certpath: clientCertPath, Keypath: clientKeyPath, CACertPath: rootKeyPath})
-	require.NoError(t, err)
+	spec = BucketSpec{Certpath: clientCertPath, Keypath: clientKeyPath, CACertPath: rootKeyPath}
 	conf = spec.TLSConfig(ctx)
 	assert.Empty(t, conf)
 
 	// Provide invalid client certificate key along with valid certificate; It should fail while
 	// trying to add key and certificate to config as x509 key pair;
-	spec, err = NewBucketSpec(BucketSpecOptions{Certpath: clientCertPath, Keypath: rootKeyPath, CACertPath: rootCertPath})
-	require.NoError(t, err)
+	spec = BucketSpec{Certpath: clientCertPath, Keypath: rootKeyPath, CACertPath: rootCertPath}
 	conf = spec.TLSConfig(ctx)
 	assert.Empty(t, conf)
 }
@@ -512,48 +480,46 @@ func TestBaseBucket(t *testing.T) {
 
 func TestBucketSpecIsWalrusBucket(t *testing.T) {
 	tests := []struct {
-		specOptions BucketSpecOptions
-		expected    bool
+		spec     BucketSpec
+		expected bool
 	}{
 		{
-			specOptions: BucketSpecOptions{Server: ""},
-			expected:    false,
+			spec:     BucketSpec{Server: ""},
+			expected: false,
 		},
 		{
-			specOptions: BucketSpecOptions{Server: "walrus:"},
-			expected:    true,
+			spec:     BucketSpec{Server: "walrus:"},
+			expected: true,
 		},
 		{
-			specOptions: BucketSpecOptions{Server: "rosmar:"},
-			expected:    true,
+			spec:     BucketSpec{Server: "rosmar:"},
+			expected: true,
 		},
 		{
-			specOptions: BucketSpecOptions{Server: "file:"},
-			expected:    true,
+			spec:     BucketSpec{Server: "file:"},
+			expected: true,
 		},
 		{
-			specOptions: BucketSpecOptions{Server: "/foo"},
-			expected:    true,
+			spec:     BucketSpec{Server: "/foo"},
+			expected: true,
 		},
 		{
-			specOptions: BucketSpecOptions{Server: "./foo"},
-			expected:    true,
+			spec:     BucketSpec{Server: "./foo"},
+			expected: true,
 		},
 		{
-			specOptions: BucketSpecOptions{Server: "couchbase://walrus"},
-			expected:    false,
+			spec:     BucketSpec{Server: "couchbase://walrus"},
+			expected: false,
 		},
 		{
-			specOptions: BucketSpecOptions{Server: "http://walrus:8091"},
-			expected:    false,
+			spec:     BucketSpec{Server: "http://walrus:8091"},
+			expected: false,
 		},
 	}
 
 	for _, test := range tests {
-		t.Run(test.specOptions.Server, func(t *testing.T) {
-			spec, err := NewBucketSpec(test.specOptions)
-			require.NoError(t, err)
-			assert.Equal(t, test.expected, spec.IsWalrusBucket())
+		t.Run(test.spec.Server, func(t *testing.T) {
+			assert.Equal(t, test.expected, test.spec.IsWalrusBucket())
 		})
 	}
 
@@ -570,26 +536,4 @@ func TestKeyNotFound(t *testing.T) {
 
 	_, _, getRawErr := ds.GetRaw("nonexistentKey")
 	require.True(t, IsKeyNotFoundError(ds, getRawErr))
-}
-
-func TestBucketSpecError(t *testing.T) {
-	testCases := []struct {
-		name   string
-		server string
-	}{
-		{
-			name:   "non int kv_pool_size",
-			server: "couchbase://localhost?kv_pool_size=abc",
-		},
-		{
-			name:   "double kv_pool_size",
-			server: "couchbase://localhost?kv_pool_size=1&kv_pool_size=2",
-		},
-	}
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			_, err := NewBucketSpec(BucketSpecOptions{Server: testCase.server})
-			require.Error(t, err)
-		})
-	}
 }

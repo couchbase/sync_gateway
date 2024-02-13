@@ -505,12 +505,9 @@ func TestCBGTKvPoolSize(t *testing.T) {
 	spec := bucket.BucketSpec
 	spec.Server += "?kv_pool_size=8"
 
-	modifiedSpec, err := NewBucketSpec(spec.BucketSpecOptions)
-	require.NoError(t, err)
-
 	cfg, err := NewCbgtCfgMem()
 	require.NoError(t, err)
-	cbgtContext, err := initCBGTManager(ctx, bucket, *modifiedSpec, cfg, t.Name(), "fakeDb")
+	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, t.Name(), "fakeDb")
 	assert.NoError(t, err)
 	defer cbgtContext.Stop()
 	require.Contains(t, cbgtContext.Manager.Server(), "kv_pool_size=1")

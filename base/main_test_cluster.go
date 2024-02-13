@@ -60,14 +60,10 @@ func newTestClusterV2(ctx context.Context, server string, logger clusterLogFunc)
 func initV2Cluster(ctx context.Context, server string) *gocb.Cluster {
 
 	testClusterTimeout := 10 * time.Second
-	spec, err := NewBucketSpec(
-		BucketSpecOptions{
-			Server:          server,
-			TLSSkipVerify:   true,
-			BucketOpTimeout: &testClusterTimeout,
-		})
-	if err != nil {
-		FatalfCtx(ctx, "error creating bucket spec: %v", err)
+	spec := BucketSpec{
+		Server:          server,
+		TLSSkipVerify:   true,
+		BucketOpTimeout: &testClusterTimeout,
 	}
 	connStr, err := spec.GetGoCBConnString()
 	if err != nil {
@@ -160,12 +156,9 @@ func (c *tbpClusterV2) openTestBucket(ctx context.Context, testBucketName tbpBuc
 
 	bucketCluster := initV2Cluster(ctx, c.server)
 
-	bucketSpec, err := getTestBucketSpec(testBucketName)
-	if err != nil {
-		return nil, err
-	}
+	bucketSpec := getTestBucketSpec(testBucketName)
 
-	bucketFromSpec, err := GetGocbV2BucketFromCluster(ctx, bucketCluster, *bucketSpec, waitUntilReady, false)
+	bucketFromSpec, err := GetGocbV2BucketFromCluster(ctx, bucketCluster, bucketSpec, waitUntilReady, false)
 	if err != nil {
 		return nil, err
 	}

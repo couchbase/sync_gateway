@@ -118,11 +118,6 @@ type CouchbaseBucketType int
 
 // Full specification of how to connect to a bucket
 type BucketSpec struct {
-	BucketSpecOptions
-	KvPoolSize int // gocb kv_pool_size - number of pipelines per node. Initialized on GetGoCBConnString
-}
-
-type BucketSpecOptions struct {
 	Server, BucketName, FeedType  string
 	Auth                          AuthHandler
 	Certpath, Keypath, CACertPath string         // X.509 auth parameters
@@ -140,38 +135,6 @@ const defaultInitialRetryMS = 5
 // Create a RetrySleeper based on the default properties.  Used to retry bucket operations after transient errors.
 func DefaultRetrySleeper() RetrySleeper {
 	return CreateDoublingSleeperFunc(defaultNumRetries, defaultInitialRetryMS)
-}
-
-// NewBucketSpec creates a new BucketSpec from server and other settings.
-func NewBucketSpec(options BucketSpecOptions) (*BucketSpec, error) {
-	return newBucketSpec(options, false)
-}
-
-// NewBucketSpec creates a new BucketSpec from options with serverless settings for kv_pool_size.
-func NewBucketSpecServerless(options BucketSpecOptions) (*BucketSpec, error) {
-	return newBucketSpec(options, true)
-}
-
-// newBucketSpec creates a new BucketSpec from options. Will parse connection string for kv_pool_size to set value, if a gocb bucket.
-func newBucketSpec(options BucketSpecOptions, isServerless bool) (*BucketSpec, error) {
-	spec := BucketSpec{
-		BucketSpecOptions: options,
-	}
-	if spec.IsWalrusBucket() {
-		return &spec, nil
-	}
-	kvPoolSize, err := getKvPoolSize(spec.Server)
-	if err != nil {
-		return nil, err
-	}
-	if kvPoolSize != nil {
-		spec.KvPoolSize = *kvPoolSize
-	} else if isServerless {
-		spec.KvPoolSize = DefaultGocbKvPoolSizeServerless
-	} else {
-		spec.KvPoolSize = DefaultGocbKvPoolSize
-	}
-	return &spec, nil
 }
 
 func (spec BucketSpec) IsWalrusBucket() bool {
@@ -211,8 +174,8 @@ func (spec *BucketSpec) getGoCBConnString(forceKvPoolSize *int) (string, error) 
 
 	if forceKvPoolSize != nil {
 		asValues.Set(kvPoolSizeKey, strconv.Itoa(*forceKvPoolSize))
-	} else {
-		asValues.Set(kvPoolSizeKey, strconv.Itoa(spec.KvPoolSize))
+	} else if asValues.Get(kvPoolSizeKey) == "" {
+		asValues.Set(kvPoolSizeKey, strconv.Itoa(DefaultGocbKvPoolSize))
 	}
 
 	connSpec.Options = asValues
@@ -283,6 +246,33 @@ func (b BucketSpec) GocbcoreAuthProvider() (gocbcore.AuthProvider, error) {
 	}
 	return GoCBCoreAuthConfig(username, password, b.Certpath, b.Keypath)
 }
+
+// GetKvPoolSize returns the kv_pool_size from the connection string, if it exists. If it doesn't exist, return nil, or an error if the string is not parseable.
+func (b BucketSpec) GetKvPoolSize() (*int, error) {
+	connSpec, err := getGoCBConnSpec(b.Server, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	values := url.Values(connSpec.Options)
+
+	kvPoolSizeArg := values[kvPoolSizeKey]
+
+	if len(kvPoolSizeArg) == 0 {
+		return IntPtr(DefaultGocbKvPoolSize), nil
+	} else if len(kvPoolSizeArg) > 1 {
+		return nil, fmt.Errorf("Multiple kv_pool_size values found in connection string %s", b.Server)
+	}
+
+	kvPoolSize := kvPoolSizeArg[0]
+	kvPoolSizeInt, err := strconv.Atoi(kvPoolSize)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid kv_pool_size value %s in connection string %s, must be int", kvPoolSize, b.Server)
+	}
+	return &kvPoolSizeInt, nil
+}
+
+// getKvPoolSize returns the kv_pool_size from the connection string, if it exists, otherwise return the default value.
 
 func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 

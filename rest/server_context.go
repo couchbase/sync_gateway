@@ -481,10 +481,7 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 		server = connStr
 	}
 
-	spec, err := config.MakeBucketSpec(server)
-	if err != nil {
-		return nil, fmt.Errorf("Could not GetBucketSpec for database %s: %v", config.Name, err)
-	}
+	spec := config.MakeBucketSpec(server)
 
 	if serverConfig.Bootstrap.ServerTLSSkipVerify != nil {
 		spec.TLSSkipVerify = *serverConfig.Bootstrap.ServerTLSSkipVerify
@@ -509,7 +506,7 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 		operationTimeout := time.Millisecond * time.Duration(*config.BucketOpTimeoutMs)
 		spec.BucketOpTimeout = &operationTimeout
 	}
-	return spec, nil
+	return &spec, nil
 }
 
 // Adds a database to the ServerContext.  Attempts a read after it gets the write

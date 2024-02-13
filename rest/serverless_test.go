@@ -206,7 +206,6 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 
 			if test.specKvConn != "" {
 				tb.BucketSpec.Server = bucketServer + "?kv_pool_size=3"
-				tb.BucketSpec.KvPoolSize = 3
 			}
 
 			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true})
@@ -219,7 +218,9 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 			RequireStatus(t, resp, http.StatusCreated)
 
 			assert.Equal(t, test.expectedConnStr, sc.getConnectionString("db"))
-			assert.Equal(t, test.kvConnCount, sc.getKVConnectionPol("db"))
+			kvPoolSize, err := sc.getKVConnectionPol(t, "db")
+			require.NoError(t, err)
+			assert.Equal(t, test.kvConnCount, *kvPoolSize)
 		})
 	}
 

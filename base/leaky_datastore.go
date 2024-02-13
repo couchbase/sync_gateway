@@ -373,10 +373,8 @@ func (lds *LeakyDataStore) GetSpec() BucketSpec {
 	} else {
 		// Return a minimal struct:
 		return BucketSpec{
-			BucketSpecOptions: BucketSpecOptions{
-				BucketName: lds.bucket.GetName(),
-				UseXattrs:  true,
-			},
+			BucketName: lds.bucket.GetName(),
+			UseXattrs:  true,
 		}
 	}
 }

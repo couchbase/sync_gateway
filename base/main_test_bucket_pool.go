@@ -233,13 +233,10 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	openedStart := time.Now()
 	bucketClosed := &AtomicBool{}
 
-	bucketSpec, err := getTestBucketSpec(tbpBucketName(b.GetName()))
-	if err != nil {
-		tbp.Fatalf(ctx, "couldn't get bucket spec: %v", err)
-	}
+	bucketSpec := getTestBucketSpec(tbpBucketName(b.GetName()))
 	bucketSpec.Server = url
 
-	return b, *bucketSpec, func(ctx context.Context) {
+	return b, bucketSpec, func(ctx context.Context) {
 		if !bucketClosed.CompareAndSwap(false, true) {
 			tbp.Logf(ctx, "Bucket teardown was already called. Ignoring.")
 			return
@@ -265,17 +262,14 @@ func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSp
 	bucketCluster := initV2Cluster(ctx, UnitTestUrl())
 
 	bucketName := tbpBucketName(TestUseExistingBucketName())
-	bucketSpec, err := getTestBucketSpec(bucketName)
-	if err != nil {
-		tbp.Fatalf(ctx, "couldn't get bucket spec: %v", err)
-	}
-	bucketFromSpec, err := GetGocbV2BucketFromCluster(ctx, bucketCluster, *bucketSpec, waitForReadyBucketTimeout, false)
+	bucketSpec := getTestBucketSpec(bucketName)
+	bucketFromSpec, err := GetGocbV2BucketFromCluster(ctx, bucketCluster, bucketSpec, waitForReadyBucketTimeout, false)
 	if err != nil {
 		tbp.Fatalf(ctx, "couldn't get existing collection from cluster: %v", err)
 	}
 	DebugfCtx(ctx, KeySGTest, "opened bucket %s", bucketName)
 
-	return bucketFromSpec, *bucketSpec, func(ctx context.Context) {
+	return bucketFromSpec, bucketSpec, func(ctx context.Context) {
 		tbp.Logf(ctx, "Teardown called - Closing connection to existing bucket")
 		bucketFromSpec.Close(ctx)
 	}
@@ -332,11 +326,8 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, persistentBucket b
 	atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
 	bucketOpenStart := time.Now()
 	bucketClosed := &AtomicBool{}
-	bucketSpec, err := getTestBucketSpec(tbpBucketName(bucket.GetName()))
-	if err != nil {
-		t.Fatalf("Couldn't get bucket spec: %v", err)
-	}
-	return bucket, *bucketSpec, func(ctx context.Context) {
+	bucketSpec := getTestBucketSpec(tbpBucketName(bucket.GetName()))
+	return bucket, bucketSpec, func(ctx context.Context) {
 		if !bucketClosed.CompareAndSwap(false, true) {
 			tbp.Logf(ctx, "Bucket teardown was already called. Ignoring.")
 			return

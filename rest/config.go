@@ -102,7 +102,7 @@ type BucketConfig struct {
 }
 
 // MakeBucketSpec creates a BucketSpec from the DatabaseConfig. Will return an error if the server value is not valid after basic parsing.
-func (dc *DbConfig) MakeBucketSpec(server string) (*base.BucketSpec, error) {
+func (dc *DbConfig) MakeBucketSpec(server string) base.BucketSpec {
 	bc := &dc.BucketConfig
 
 	bucketName := ""
@@ -121,7 +121,7 @@ func (dc *DbConfig) MakeBucketSpec(server string) (*base.BucketSpec, error) {
 		tlsPort = bc.KvTLSPort
 	}
 
-	return base.NewBucketSpec(base.BucketSpecOptions{
+	return base.BucketSpec{
 		Server:                server,
 		BucketName:            bucketName,
 		Keypath:               bc.KeyPath,
@@ -130,7 +130,7 @@ func (dc *DbConfig) MakeBucketSpec(server string) (*base.BucketSpec, error) {
 		KvTLSPort:             tlsPort,
 		Auth:                  bc,
 		MaxConcurrentQueryOps: bc.MaxConcurrentQueryOps,
-	})
+	}
 }
 
 // Implementation of AuthHandler interface for BucketConfig

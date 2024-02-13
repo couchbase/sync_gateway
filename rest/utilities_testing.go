@@ -2431,10 +2431,10 @@ func (sc *ServerContext) getConnectionString(dbName string) string {
 	return sc.databases_[dbName].BucketSpec.Server
 }
 
-func (sc *ServerContext) getKVConnectionPol(dbName string) int {
+func (sc *ServerContext) getKVConnectionPol(t *testing.T, dbName string) (*int, error) {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
-	return sc.databases_[dbName].BucketSpec.KvPoolSize
+	return sc.databases_[dbName].BucketSpec.GetKvPoolSize()
 }
 
 func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbName string) error {

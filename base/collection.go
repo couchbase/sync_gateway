@@ -165,7 +165,14 @@ func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec
 	if mgmtEpsErr != nil && len(mgmtEps) > 0 {
 		nodeCount = len(mgmtEps)
 	}
-	gocbv2Bucket.kvOps = make(chan struct{}, MaxConcurrentSingleOps*nodeCount*spec.KvPoolSize)
+
+	numPools, err := spec.GetKvPoolSize()
+	if err != nil {
+		WarnfCtx(ctx, "Error getting kv pool size from connection string: %v", err)
+		_ = cluster.Close(&gocb.ClusterCloseOptions{})
+		return nil, err
+	}
+	gocbv2Bucket.kvOps = make(chan struct{}, MaxConcurrentSingleOps*nodeCount*(*numPools))
 
 	return gocbv2Bucket, nil
 }
