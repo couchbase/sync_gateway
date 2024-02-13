@@ -40,7 +40,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		maxInFlightChangesBatches = db.Options.MaxConcurrentChangesBatches
 	}
 	maxInFlightRevs := DefaultMaxConcurrentRevs
-	if db.Options.MaxConcurrentChangesBatches != 0 {
+	if db.Options.MaxConcurrentRevs != 0 {
 		maxInFlightRevs = db.Options.MaxConcurrentRevs
 	}
 
