@@ -316,7 +316,9 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 		KVBufferSize:  spec.KvBufferSize,
 		DCPBufferSize: spec.DcpBuffer,
 	}
-	connStr, err := spec.GetGoCBConnString(defaultValues)
+
+	// Force poolsize to 1, multiple clients results in DCP naming collision
+	connStr, err := spec.GetGoCBConnString(defaultValues, IntPtr(GoCBPoolSizeDCP))
 	if err != nil {
 		return err
 	}
@@ -337,8 +339,6 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 		return err
 	}
 
-	// Force poolsize to 1, multiple clients results in DCP naming collision
-	agentConfig.KVConfig.PoolSize = 1
 	agentConfig.BucketName = spec.BucketName
 	agentConfig.DCPConfig.AgentPriority = dc.agentPriority
 	agentConfig.SecurityConfig.Auth = auth

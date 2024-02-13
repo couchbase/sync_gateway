@@ -542,3 +542,19 @@ func legacyFeedParams(spec BucketSpec) (string, error) {
 	}
 	return string(paramBytes), nil
 }
+
+func TestCBGTKvPoolSize(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	spec := bucket.BucketSpec
+	spec.Server += "&kv_pool_size=8"
+
+	cfg, err := NewCbgtCfgMem()
+	require.NoError(t, err)
+	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, t.Name(), "fakeDb")
+	assert.NoError(t, err)
+	defer cbgtContext.Stop()
+	require.Contains(t, cbgtContext.Manager.Server(), "kv_pool_size=1")
+}

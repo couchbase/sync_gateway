@@ -65,7 +65,7 @@ func initV2Cluster(ctx context.Context, server string) *gocb.Cluster {
 		BucketOpTimeout: &testClusterTimeout,
 	}
 
-	connStr, err := spec.GetGoCBConnString(nil)
+	connStr, err := spec.GetGoCBConnString(nil, nil)
 	if err != nil {
 		FatalfCtx(ctx, "error getting connection string: %v", err)
 	}
