@@ -32,7 +32,15 @@ func (h *handler) handleGetAllChannels() error {
 	if user == nil {
 		return kNotFoundError
 	}
-
+	if h.db.OnlyDefaultCollection() {
+		info := marshalPrincipal(h.db, user, true)
+		bytes, err := base.JSONMarshal(info.Channels)
+		if err != nil {
+			return err
+		}
+		h.writeRawJSON(bytes)
+		return err
+	}
 	var resp getAllChannelsResponse
 
 	resp.DynamicRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory, len(user.RoleNames())-len(user.ExplicitRoles()))
@@ -145,14 +153,11 @@ func (h *handler) handleGetAllChannels() error {
 			}
 		}
 	}
-
-	if !h.db.OnlyDefaultCollection() {
-		bytes, err := base.JSONMarshal(resp)
-		h.writeRawJSON(bytes)
+	
+	bytes, err := base.JSONMarshal(resp)
+	if err != nil {
 		return err
 	}
-	info := marshalPrincipal(h.db, user, true)
-	bytes, err := base.JSONMarshal(info.Channels)
 	h.writeRawJSON(bytes)
 	return err
 }
