@@ -17,7 +17,9 @@ import (
 )
 
 const (
-	kvPoolSizeKey = "kv_pool_size"
+	dcpBufferSizeKey = "dcp_buffer_size"
+	kvBufferSizeKey  = "kv_buffer_size"
+	kvPoolSizeKey    = "kv_pool_size"
 )
 
 // GoCBConnStringParams represents parameters that are passed to gocb when creating a new connection string. These are the subset of values that are changed when running with serverless mode.
@@ -36,8 +38,8 @@ func DefaultGoCBConnStringParams() *GoCBConnStringParams {
 	}
 }
 
-// ServerlessGoCBConnStringParams returns a GoCBConnStringParams with the default values for serverless deployments.
-func ServerlessGoCBConnStringParams() *GoCBConnStringParams {
+// DefaultServerlessGoCBConnStringParams returns a GoCBConnStringParams with the default values for serverless deployments.
+func DefaultServerlessGoCBConnStringParams() *GoCBConnStringParams {
 	return &GoCBConnStringParams{
 		KvPoolSize:    DefaultGocbKvPoolSizeServerless,
 		KvBufferSize:  DefaultKvBufferSizeServerless,
@@ -45,7 +47,7 @@ func ServerlessGoCBConnStringParams() *GoCBConnStringParams {
 	}
 }
 
-// getGoCBConnSpec returns a gocb connection spec based on the server string. If defaults is not nil, it will override the default values in the connection string.
+// getGoCBConnSpec returns a gocb connection spec based on the server string. The provided defaults will be used only when the corresponding property is not set in the connection string.
 func getGoCBConnSpec(server string, defaults *GoCBConnStringParams) (*gocbconnstr.ConnSpec, error) {
 	connSpec, err := gocbconnstr.Parse(server)
 	if err != nil {
@@ -63,14 +65,14 @@ func getGoCBConnSpec(server string, defaults *GoCBConnStringParams) (*gocbconnst
 			asValues.Set(kvPoolSizeKey, strconv.Itoa(defaults.KvPoolSize))
 		}
 
-		kvBufferfromConnStr := asValues.Get("kv_buffer_size")
+		kvBufferfromConnStr := asValues.Get(kvBufferSizeKey)
 		if kvBufferfromConnStr == "" && defaults.KvBufferSize != 0 {
-			asValues.Set("kv_buffer_size", strconv.Itoa(defaults.KvBufferSize))
+			asValues.Set(kvBufferSizeKey, strconv.Itoa(defaults.KvBufferSize))
 		}
 
-		dcpBufferfromConnStr := asValues.Get("dcp_buffer_size")
+		dcpBufferfromConnStr := asValues.Get(dcpBufferSizeKey)
 		if dcpBufferfromConnStr == "" && defaults.DcpBufferSize != 0 {
-			asValues.Set("dcp_buffer_size", strconv.Itoa(defaults.DcpBufferSize))
+			asValues.Set(dcpBufferSizeKey, strconv.Itoa(defaults.DcpBufferSize))
 		}
 	}
 	asValues.Set("max_perhost_idle_http_connections", strconv.Itoa(DefaultHttpMaxIdleConnsPerHost))

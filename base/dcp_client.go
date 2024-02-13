@@ -340,7 +340,6 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 	}
 
 	// Force poolsize to 1, multiple clients results in DCP naming collision
-	agentConfig.KVConfig.PoolSize = 1
 	agentConfig.BucketName = spec.BucketName
 	agentConfig.DCPConfig.AgentPriority = dc.agentPriority
 	agentConfig.SecurityConfig.Auth = auth

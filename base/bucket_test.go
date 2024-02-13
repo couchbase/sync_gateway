@@ -72,10 +72,10 @@ func TestGetGoCBConnString(t *testing.T) {
 				Keypath:              "/my/key/path",
 				CACertPath:           "./myCACertPath",
 			},
-			expectedConnStr:              "http://localhost:8091?ca_cert_path=.%2FmyCACertPath&custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedServerlessConnStr:    "http://localhost:8091?ca_cert_path=.%2FmyCACertPath&custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedDCPConnStr:           "http://localhost:8091?ca_cert_path=.%2FmyCACertPath&custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedServerlessDCPConnStr: "http://localhost:8091?ca_cert_path=.%2FmyCACertPath&custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr:              "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedServerlessConnStr:    "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedDCPConnStr:           "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedServerlessDCPConnStr: "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 	}
 

@@ -36,7 +36,7 @@ func TestGetGoCBConnStringWithDefaults(t *testing.T) {
 			name:    "default, serverless params",
 			server:  "couchbase://localhost",
 			connStr: "couchbase://localhost?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			params:  ServerlessGoCBConnStringParams(),
+			params:  DefaultServerlessGoCBConnStringParams(),
 		},
 		{
 			name:    "kv_pool_size=8, no params",
@@ -53,7 +53,7 @@ func TestGetGoCBConnStringWithDefaults(t *testing.T) {
 			name:    "kv_pool_size=8, serverless params",
 			server:  "couchbase://localhost?kv_pool_size=8",
 			connStr: "couchbase://localhost?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=8&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			params:  ServerlessGoCBConnStringParams(),
+			params:  DefaultServerlessGoCBConnStringParams(),
 		},
 		{
 			name:    "kv_buffer_size=3, no params",
@@ -70,7 +70,7 @@ func TestGetGoCBConnStringWithDefaults(t *testing.T) {
 			name:    "kv_buffer_size=3, serverless params",
 			server:  "couchbase://localhost?kv_buffer_size=3",
 			connStr: "couchbase://localhost?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=3&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			params:  ServerlessGoCBConnStringParams(),
+			params:  DefaultServerlessGoCBConnStringParams(),
 		},
 		{
 			name:    "dcp_buffer_size=3, no params",
@@ -87,7 +87,7 @@ func TestGetGoCBConnStringWithDefaults(t *testing.T) {
 			name:    "dcp_pool_size=3, serverless params",
 			server:  "couchbase://localhost?dcp_buffer_size=3",
 			connStr: "couchbase://localhost?dcp_buffer_size=3&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			params:  ServerlessGoCBConnStringParams(),
+			params:  DefaultServerlessGoCBConnStringParams(),
 		},
 	}
 	for _, testCase := range testCases {

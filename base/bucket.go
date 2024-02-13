@@ -215,10 +215,6 @@ func (spec *BucketSpec) getGoCBConnString(forceKvPoolSize *int) (string, error) 
 		asValues.Set(kvPoolSizeKey, strconv.Itoa(spec.KvPoolSize))
 	}
 
-	if spec.CACertPath != "" {
-		asValues.Set("ca_cert_path", spec.CACertPath)
-	}
-
 	connSpec.Options = asValues
 	return connSpec.String(), nil
 }

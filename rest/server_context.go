@@ -465,7 +465,7 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 		server = serverConfig.Bootstrap.Server
 	}
 	if serverConfig.IsServerless() {
-		params := base.ServerlessGoCBConnStringParams()
+		params := base.DefaultServerlessGoCBConnStringParams()
 		if config.Unsupported != nil {
 			if config.Unsupported.DCPReadBuffer != 0 {
 				params.DcpBufferSize = config.Unsupported.DCPReadBuffer

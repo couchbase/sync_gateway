@@ -377,7 +377,7 @@ func CreateBootstrapConnectionFromStartupConfig(ctx context.Context, config *Sta
 	var server string
 	var err error
 	if config.IsServerless() {
-		server, err = base.GetGoCBConnStringWithDefaults(config.Bootstrap.Server, base.ServerlessGoCBConnStringParams())
+		server, err = base.GetGoCBConnStringWithDefaults(config.Bootstrap.Server, base.DefaultServerlessGoCBConnStringParams())
 	} else {
 		server, err = base.GetGoCBConnStringWithDefaults(config.Bootstrap.Server, base.DefaultGoCBConnStringParams())
 	}
