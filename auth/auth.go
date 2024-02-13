@@ -258,10 +258,8 @@ func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, col
 
 	channels := ca.ExplicitChannels().Copy()
 
-	var viewChannels ch.TimedSet
-	var err error
 	if auth.channelComputer != nil {
-		viewChannels, err = auth.channelComputer.ComputeChannelsForPrincipal(auth.LogCtx, princ, scope, collection)
+		viewChannels, err := auth.channelComputer.ComputeChannelsForPrincipal(auth.LogCtx, princ, scope, collection)
 		if err != nil {
 			base.WarnfCtx(auth.LogCtx, "channelComputer.ComputeChannelsForPrincipal returned error for %v: %v", base.UD(princ), err)
 			return err
@@ -278,7 +276,7 @@ func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, col
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
 
-	channelHistory := auth.CalculateHistory(princ.Name(), ca.GetChannelInvalSeq(), ca.InvalidatedChannels(), channels, ca.ChannelHistory())
+	channelHistory := auth.CalculateHistory(princ.Name(), ca.GetChannelInvalSeq(), ca.InvalidatedChannels(), channels, ca.ChannelHistory(), false)
 
 	if len(channelHistory) != 0 {
 		ca.SetChannelHistory(channelHistory)
@@ -292,7 +290,7 @@ func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, col
 }
 
 // Calculates history for either roles or channels
-func (auth *Authenticator) CalculateHistory(princName string, invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimedSetHistory) TimedSetHistory {
+func (auth *Authenticator) CalculateHistory(princName string, invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimedSetHistory, adminAssigned bool) TimedSetHistory {
 	// Initialize history if currently empty
 	if currentHistory == nil {
 		currentHistory = map[string]GrantHistory{}
@@ -316,6 +314,9 @@ func (auth *Authenticator) CalculateHistory(princName string, invalSeq uint64, i
 		}
 
 		// Add grant to history
+		if adminAssigned {
+			currentHistoryForGrant.AdminAssigned = adminAssigned
+		} // If adminAssigned is set to false, leave it
 		currentHistoryForGrant.UpdatedAt = time.Now().Unix()
 		currentHistoryForGrant.Entries = append(currentHistoryForGrant.Entries, GrantHistorySequencePair{
 			StartSeq: previousInfo.Sequence,
@@ -379,7 +380,7 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		roles.Add(jwt)
 	}
 
-	roleHistory := auth.CalculateHistory(user.Name(), user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory())
+	roleHistory := auth.CalculateHistory(user.Name(), user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory(), false)
 
 	if len(roleHistory) != 0 {
 		user.SetRoleHistory(roleHistory)
@@ -680,10 +681,8 @@ func (auth *Authenticator) DeleteRole(role Role, purge bool, deleteSeq uint64) e
 		p.setDeleted(true)
 		p.SetSequence(deleteSeq)
 
-		channelHistory := auth.CalculateHistory(p.Name(), deleteSeq, p.Channels(), nil, p.ChannelHistory())
+		channelHistory := auth.CalculateHistory(p.Name(), deleteSeq, p.Channels(), nil, p.ChannelHistory(), false)
 		if len(channelHistory) != 0 {
-			base.InfofCtx(auth.LogCtx, base.KeyAccess, "Edited at DeleteRole %s", channelHistory)
-
 			p.SetChannelHistory(channelHistory)
 		}
 
