@@ -66,6 +66,8 @@ func TestSetBcryptCost(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
+
+	// Not NewTestAuthenticator, since we're testing BcryptCost and want the actual bcrypt default.
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions(ctx))
 
 	err := auth.SetBcryptCost(DefaultBcryptCost - 1) // below minimum allowed value

@@ -1191,7 +1191,7 @@ func TestJWTRolesChannels(t *testing.T) {
 				roleChannels: map[string]ch.TimedSet{},
 			}
 
-			auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions(ctx))
+			auth := NewTestAuthenticator(t, dataStore, &testMockComputer, DefaultAuthenticatorOptions(ctx))
 
 			provider := &OIDCProvider{
 				Name: "foo",
