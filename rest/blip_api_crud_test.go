@@ -1201,8 +1201,6 @@ func TestBlipSendAndGetRev(t *testing.T) {
 // Sends many revisions concurrently and ensures that SG limits the processing on the server-side with MaxConcurrentRevs
 func TestBlipSendConcurrentRevs(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
-
 	const (
 		maxConcurrentRevs    = 10
 		concurrentSendRevNum = 50
