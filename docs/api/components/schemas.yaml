@@ -141,7 +141,7 @@ ExpVars:
                 process_cpu_percent_utilization:
                   type: number
                   format: float
-                  description: "The CPU's utilization as percentage value * 10. The extra 10 multiplier is a mistake left for backwards compability. Please consider using node_cpu_percent_utilization as of version 3.2. The CPU usage calculation is performed based on user and system CPU time, but it does not include components such as iowait. The derivation means that the values of process_cpu_percent_utilization and %Cpu, returned when running the top command, will differ."
+                  description: "The CPU utilization as percentage value * 10. The extra 10 multiplier is a mistake left for backwards compatibility. Please consider using node_cpu_percent_utilization as of version 3.2. The CPU usage calculation is performed based on user and system CPU time, but it does not include components such as iowait. The derivation means that the values of process_cpu_percent_utilization and %Cpu, returned when running the top command, will differ."
                 node_cpu_percent_utilization:
                   type: number
                   format: float
@@ -478,7 +478,7 @@ Document:
       type: string
     _exp:
       description: |-
-        Expiry time after which the document will be purged. The expiration time is set and managed on the Couchbase Server document. The value can be specified in two ways; in ISO-8601 format, for example the 6th of July 2022 at 17:00 in the BST timezone would be `2016-07-06T17:00:00+01:00`; it can also be specified as a numeric Couchbase Server expiry value. Couchbase Server expiries are specified as Unix time, and if the desired TTL is below 30 days then it can also represent an interval in seconds from the current time (for example, a value of 5 will remove the document 5 seconds after it is written to Couchbase Server). The document expiration time is returned in the response of `GET /{db}/{doc} ` when `show_exp=true` is included in the query.
+        Expiry time after which the document will be purged. The expiration time is set and managed on the Couchbase Server document. The value can be specified in two ways; in ISO-8601 format, for example the 6th of July 2022 at 17:00 in the BST timezone would be `2016-07-06T17:00:00+01:00`; it can also be specified as a numeric Couchbase Server expiry value. Couchbase Server expiry values are specified as Unix time, and if the desired TTL is below 30 days then it can also represent an interval in seconds from the current time (for example, a value of 5 will remove the document 5 seconds after it is written to Couchbase Server). The document expiration time is returned in the response of `GET /{db}/{doc} ` when `show_exp=true` is included in the query.
 
         As with the existing explicit purge mechanism, this applies only to the local database; it has nothing to do with replication. This expiration time is not propagated when the document is replicated. The purge of the document does not cause it to be deleted on any other database.
       type: string
@@ -677,7 +677,7 @@ Retrieved-replication:
 
         **Behaviour**
         * *default* - In priority order, this will cause
-          - Deletes to always win (the delete with the logest revision history wins if both revisions are deletes)
+          - Deletes to always win (the delete with the longest revision history wins if both revisions are deletes)
           - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest revision ID will win.
         * *localWins* - This will result in local revisions always being the winner in any conflict.
         * *remoteWins* - This will result in remote revisions always being the winner in any conflict.
@@ -905,7 +905,7 @@ Replication:
 
         **Behaviour**
         * *default* - In priority order, this will cause
-          - Deletes to always win (the delete with the logest revision history wins if both revisions are deletes)
+          - Deletes to always win (the delete with the longest revision history wins if both revisions are deletes)
           - The revision with the longest revision history to win. This means the the revision with the most changes and therefore the highest revision ID will win.
         * *localWins* - This will result in local revisions always being the winner in any conflict.
         * *remoteWins* - This will result in remote revisions always being the winner in any conflict.
@@ -1702,7 +1702,7 @@ Database:
       description: Force the use of views instead of GSI.
       type: boolean
       default: false
-    send_www_authentice_header:
+    send_www_authenticate_header:
       description: Controls whether to send a `WWW-Authenticate` header in `401 Unauthorized` HTTP responses.
       type: boolean
       default: true
