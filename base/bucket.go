@@ -177,8 +177,8 @@ func (p *GoCBConnStringParams) FillDefaults() {
 	}
 }
 
-// GetGoCBConnString builds a gocb connection string based on BucketSpec.Server.
-func (spec *BucketSpec) GetGoCBConnString(params *GoCBConnStringParams) (string, error) {
+// GetGoCBConnString builds a gocb connection string based on BucketSpec.Server. params defines the defaults that will be set for dcp_buffer_size, kv_buffer_size, kv_pool_size if they are non defined as nonzero. forceKvPoolSize will override the vlaue in BucketSpec.Server and the params. Both arguments are optional.
+func (spec *BucketSpec) GetGoCBConnString(params *GoCBConnStringParams, forceKvPoolSize *int) (string, error) {
 	if params == nil {
 		params = &GoCBConnStringParams{}
 	}
@@ -196,7 +196,10 @@ func (spec *BucketSpec) GetGoCBConnString(params *GoCBConnStringParams) (string,
 
 	// Add kv_pool_size as used in both GoCB versions
 	poolSizeFromConnStr := asValues.Get("kv_pool_size")
-	if poolSizeFromConnStr == "" {
+	if forceKvPoolSize != nil {
+		asValues.Set("kv_pool_size", strconv.Itoa(*forceKvPoolSize))
+		spec.KvPoolSize = *forceKvPoolSize
+	} else if poolSizeFromConnStr == "" {
 		asValues.Set("kv_pool_size", strconv.Itoa(params.KVPoolSize))
 		spec.KvPoolSize = params.KVPoolSize
 	} else {

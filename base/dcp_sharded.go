@@ -312,7 +312,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		DCPBufferSize: spec.DcpBuffer,
 	}
 
-	serverURL, err := spec.GetGoCBConnString(defaultValues)
+	serverURL, err := spec.GetGoCBConnString(defaultValues, IntPtr(GoCBPoolSizeDCP))
 	if err != nil {
 		return nil, err
 	}

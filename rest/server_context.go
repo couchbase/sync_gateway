@@ -523,7 +523,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if spec.DcpBuffer != 0 {
 			params.DCPBufferSize = spec.DcpBuffer
 		}
-		connStr, err := spec.GetGoCBConnString(params)
+		connStr, err := spec.GetGoCBConnString(params, nil)
 		if err != nil {
 			return nil, err
 		}
