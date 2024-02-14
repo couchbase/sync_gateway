@@ -27,6 +27,8 @@ apis:
       remove-x-internal: on
   metric-internal:
     root: "./docs/api/public.yaml"
+  diagnostic:
+    root: "./docs/api/diagnostic.yaml"
 
 extends:
   - minimal
