@@ -50,3 +50,26 @@ jobs:
       - uses: karancode/yamllint-github-action@master
         with:
           yamllint_file_or_dir: 'docs/api'
+
+  redocly_preview_links:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find Comment
+        uses: peter-evans/find-comment@v3
+        id: fc
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: Redocly previews
+      - name: Create or update comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## Redocly previews
+            - [Admin API](https://redocly.github.io/redoc/?url=https://raw.githubusercontent.com/couchbase/sync_gateway/${{ github.event.pull_request.head.sha }}/docs/api/admin.yaml)
+            - [Public API](https://redocly.github.io/redoc/?url=https://raw.githubusercontent.com/couchbase/sync_gateway/${{ github.event.pull_request.head.sha }}/docs/api/public.yaml)
+            - [Metric API](https://redocly.github.io/redoc/?url=https://raw.githubusercontent.com/couchbase/sync_gateway/${{ github.event.pull_request.head.sha }}/docs/api/metric.yaml)
+            - [Diagnostic API](https://redocly.github.io/redoc/?url=https://raw.githubusercontent.com/couchbase/sync_gateway/${{ github.event.pull_request.head.sha }}/docs/api/diagnostic.yaml)
+          edit-mode: replace
