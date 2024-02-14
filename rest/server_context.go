@@ -1231,13 +1231,13 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		minConcurrentRevs           = 5
 		maxConcurrentRevs           = 200
 	)
-	if size := sc.Config.Replicator.MaxConcurrentChangesBatches; size != 0 {
-		if size < minConcurrentChangesBatches || size > maxConcurrentChangesBatches {
+	if size := sc.Config.Replicator.MaxConcurrentChangesBatches; size != nil {
+		if *size < minConcurrentChangesBatches || *size > maxConcurrentChangesBatches {
 			return db.DatabaseContextOptions{}, fmt.Errorf("max_concurrent_changes_batches must be between %d and %d", minConcurrentChangesBatches, maxConcurrentChangesBatches)
 		}
 	}
-	if size := sc.Config.Replicator.MaxConcurrentRevs; size != 0 {
-		if size < minConcurrentRevs || size > maxConcurrentRevs {
+	if size := sc.Config.Replicator.MaxConcurrentRevs; size != nil {
+		if *size < minConcurrentRevs || *size > maxConcurrentRevs {
 			return db.DatabaseContextOptions{}, fmt.Errorf("max_concurrent_revs must be between %d and %d", minConcurrentRevs, maxConcurrentRevs)
 		}
 	}

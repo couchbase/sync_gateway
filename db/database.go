@@ -175,8 +175,8 @@ type DatabaseContextOptions struct {
 	ConfigPrincipals              *ConfigPrincipals
 	PurgeInterval                 *time.Duration // Add a custom purge interval, as a testing seam. If nil, this parameter is filled in by Couchbase Server, with a fallback to a default value SG has.
 	LoggingConfig                 DbLogConfig    // Per-database log configuration
-	MaxConcurrentChangesBatches   int            // Maximum number of changes batches to process concurrently per replication
-	MaxConcurrentRevs             int            // Maximum number of revs to process concurrently per replication
+	MaxConcurrentChangesBatches   *int           // Maximum number of changes batches to process concurrently per replication
+	MaxConcurrentRevs             *int           // Maximum number of revs to process concurrently per replication
 }
 
 // DbLogConfig can be used to customise the logging for logs associated with this database.

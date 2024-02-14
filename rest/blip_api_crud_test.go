@@ -1207,7 +1207,7 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 		maxConcurrentRevs    = 10
 		concurrentSendRevNum = 50
 	)
-	rt := NewRestTester(t, &RestTesterConfig{maxConcurrentRevs: maxConcurrentRevs})
+	rt := NewRestTester(t, &RestTesterConfig{maxConcurrentRevs: base.IntPtr(maxConcurrentRevs)})
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",

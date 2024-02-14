@@ -73,7 +73,7 @@ type RestTesterConfig struct {
 	numCollections                  int
 	syncGatewayVersion              *base.ComparableBuildVersion // alternate version of Sync Gateway to use on startup
 	allowDbConfigEnvVars            *bool
-	maxConcurrentRevs               int
+	maxConcurrentRevs               *int
 }
 
 type collectionConfiguration uint8

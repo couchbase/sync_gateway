@@ -59,8 +59,8 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			BcryptCost: auth.DefaultBcryptCost,
 		},
 		Replicator: ReplicatorConfig{
-			MaxConcurrentChangesBatches: db.DefaultMaxConcurrentChangesBatches,
-			MaxConcurrentRevs:           db.DefaultMaxConcurrentRevs,
+			MaxConcurrentChangesBatches: base.IntPtr(db.DefaultMaxConcurrentChangesBatches),
+			MaxConcurrentRevs:           base.IntPtr(db.DefaultMaxConcurrentRevs),
 		},
 		Unsupported: UnsupportedConfig{
 			StatsLogFrequency: base.NewConfigDuration(time.Minute),
@@ -146,8 +146,8 @@ type ReplicatorConfig struct {
 	MaxHeartbeat                *base.ConfigDuration `json:"max_heartbeat,omitempty"    help:"Max heartbeat value for _changes request"`
 	BLIPCompression             *int                 `json:"blip_compression,omitempty" help:"BLIP data compression level (0-9)"`
 	MaxConcurrentReplications   int                  `json:"max_concurrent_replications,omitempty"    help:"Maximum number of replication connections to the node"`
-	MaxConcurrentChangesBatches int                  `json:"max_concurrent_changes_batches,omitempty" help:"Maximum number of changes batches to process concurrently per replication (1-5)"`
-	MaxConcurrentRevs           int                  `json:"max_concurrent_revs,omitempty"            help:"Maximum number of revs to process concurrently per replication (5-200)"`
+	MaxConcurrentChangesBatches *int                 `json:"max_concurrent_changes_batches,omitempty" help:"Maximum number of changes batches to process concurrently per replication (1-5)"`
+	MaxConcurrentRevs           *int                 `json:"max_concurrent_revs,omitempty"            help:"Maximum number of revs to process concurrently per replication (5-200)"`
 }
 
 type UnsupportedConfig struct {
