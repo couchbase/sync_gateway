@@ -2527,7 +2527,7 @@ AllUserChannels:
         type: string
         additionalProperties:
           x-additionalPropertiesName: grantHistory
-          type: grantPeriod
+          type: string
           description: Start sequence to end sequence
     dynamic_grants:
       description: |-
@@ -2539,7 +2539,7 @@ AllUserChannels:
         type: string
         additionalProperties:
           x-additionalPropertiesName: grantHistory
-          type: grantPeriod
+          type: string
           description: Start sequence to end sequence
 
     admin_role_grants:
@@ -2553,7 +2553,7 @@ AllUserChannels:
         type: string
         additionalProperties:
           x-additionalPropertiesName: grantHistory
-          type: grantPeriod
+          type: string
           description: Start sequence to end sequence
 
     dynamic_role_grants:
@@ -2566,7 +2566,7 @@ AllUserChannels:
         type: string
         additionalProperties:
           x-additionalPropertiesName: grantHistory
-          type: grantPeriod
+          type: string
           description: Start sequence to end sequence
 
     role_history_grants:
@@ -2579,5 +2579,5 @@ AllUserChannels:
         type: string
         additionalProperties:
           x-additionalPropertiesName: grantHistory
-          type: grantPeriod
+          type: string
           description: Start sequence to end sequence
