@@ -17,104 +17,108 @@ import (
 // Note: To have any of these appear in expvars they must be connected to a stat inside of stats.go - This is done via
 // the BlipSyncStatsForCBL, BlipSyncStatsForSGRPush and BlipSyncStatsForSGRPull functions.
 type BlipSyncStats struct {
-	DeltaEnabledPullReplicationCount *base.SgwIntStat // global
-	HandleRevCount                   *base.SgwIntStat // handleRev
-	HandleRevErrorCount              *base.SgwIntStat
-	HandleRevDeltaRecvCount          *base.SgwIntStat
-	HandleRevBytes                   *base.SgwIntStat
-	HandleRevProcessingTime          *base.SgwIntStat
-	HandleRevDocsPurgedCount         *base.SgwIntStat
-	HandleRevThrottledCount          *base.SgwIntStat
-	HandleRevThrottledTime           *base.SgwIntStat
-	HandleGetRevCount                *base.SgwIntStat // Connected Client API
-	HandlePutRevCount                *base.SgwIntStat // Connected Client API
-	HandlePutRevErrorCount           *base.SgwIntStat // Connected Client API
-	HandlePutRevDeltaRecvCount       *base.SgwIntStat // Connected Client API
-	HandlePutRevBytes                *base.SgwIntStat // Connected Client API
-	HandlePutRevProcessingTime       *base.SgwIntStat // Connected Client API
-	HandlePutRevDocsPurgedCount      *base.SgwIntStat // Connected Client API
-	HandlePutRevThrottledCount       *base.SgwIntStat // Connected Client API
-	HandlePutRevThrottledTime        *base.SgwIntStat // Connected Client API
-	SendRevCount                     *base.SgwIntStat // sendRev
-	SendRevDeltaRequestedCount       *base.SgwIntStat
-	SendRevDeltaSentCount            *base.SgwIntStat
-	SendRevBytes                     *base.SgwIntStat
-	SendRevErrorTotal                *base.SgwIntStat
-	SendRevErrorConflictCount        *base.SgwIntStat
-	SendRevErrorRejectedCount        *base.SgwIntStat
-	SendRevErrorOtherCount           *base.SgwIntStat
-	HandleChangesCount               *base.SgwIntStat // handleChanges/handleProposeChanges
-	HandleChangesTime                *base.SgwIntStat
-	HandleChangesDeltaRequestedCount *base.SgwIntStat
-	HandleProveAttachment            *base.SgwIntStat // handleProveAttachment
-	HandleGetAttachment              *base.SgwIntStat // handleGetAttachment
-	HandleGetAttachmentBytes         *base.SgwIntStat
-	ProveAttachment                  *base.SgwIntStat // sendProveAttachment
-	GetAttachment                    *base.SgwIntStat // sendGetAttachment
-	GetAttachmentBytes               *base.SgwIntStat
-	HandleChangesResponseCount       *base.SgwIntStat // handleChangesResponse
-	HandleChangesResponseTime        *base.SgwIntStat
-	HandleChangesSendRevCount        *base.SgwIntStat //  - (duplicates SendRevCount, included for support of CBL expvars)
-	HandleChangesSendRevLatency      *base.SgwIntStat
-	HandleChangesSendRevTime         *base.SgwIntStat
-	SubChangesContinuousActive       *base.SgwIntStat // subChanges
-	SubChangesContinuousTotal        *base.SgwIntStat
-	SubChangesOneShotActive          *base.SgwIntStat
-	SubChangesOneShotTotal           *base.SgwIntStat
-	SendChangesCount                 *base.SgwIntStat // sendChanges
-	NumConnectAttempts               *base.SgwIntStat
-	NumReconnectsAborted             *base.SgwIntStat
-	NumHandlersPanicked              *base.SgwIntStat
+	DeltaEnabledPullReplicationCount  *base.SgwIntStat // global
+	HandleRevCount                    *base.SgwIntStat // handleRev
+	HandleRevErrorCount               *base.SgwIntStat
+	HandleRevDeltaRecvCount           *base.SgwIntStat
+	HandleRevBytes                    *base.SgwIntStat
+	HandleRevProcessingTime           *base.SgwIntStat
+	HandleRevDocsPurgedCount          *base.SgwIntStat
+	HandleRevThrottledCount           *base.SgwIntStat
+	HandleRevThrottledTime            *base.SgwIntStat
+	HandleGetRevCount                 *base.SgwIntStat // Connected Client API
+	HandlePutRevCount                 *base.SgwIntStat // Connected Client API
+	HandlePutRevErrorCount            *base.SgwIntStat // Connected Client API
+	HandlePutRevDeltaRecvCount        *base.SgwIntStat // Connected Client API
+	HandlePutRevBytes                 *base.SgwIntStat // Connected Client API
+	HandlePutRevProcessingTime        *base.SgwIntStat // Connected Client API
+	HandlePutRevDocsPurgedCount       *base.SgwIntStat // Connected Client API
+	HandlePutRevThrottledCount        *base.SgwIntStat // Connected Client API
+	HandlePutRevThrottledTime         *base.SgwIntStat // Connected Client API
+	SendRevCount                      *base.SgwIntStat // sendRev
+	SendRevDeltaRequestedCount        *base.SgwIntStat
+	SendRevDeltaSentCount             *base.SgwIntStat
+	SendRevBytes                      *base.SgwIntStat
+	SendRevErrorTotal                 *base.SgwIntStat
+	SendRevErrorConflictCount         *base.SgwIntStat
+	SendRevErrorRejectedCount         *base.SgwIntStat
+	SendRevErrorOtherCount            *base.SgwIntStat
+	HandleChangesCount                *base.SgwIntStat // handleChanges/handleProposeChanges
+	HandleChangesTime                 *base.SgwIntStat
+	HandleChangesDeltaRequestedCount  *base.SgwIntStat
+	HandleProveAttachment             *base.SgwIntStat // handleProveAttachment
+	HandleGetAttachment               *base.SgwIntStat // handleGetAttachment
+	HandleGetAttachmentBytes          *base.SgwIntStat
+	ProveAttachment                   *base.SgwIntStat // sendProveAttachment
+	GetAttachment                     *base.SgwIntStat // sendGetAttachment
+	GetAttachmentBytes                *base.SgwIntStat
+	HandleChangesResponseCount        *base.SgwIntStat // handleChangesResponse
+	HandleChangesResponseTime         *base.SgwIntStat
+	HandleChangesSendRevCount         *base.SgwIntStat //  - (duplicates SendRevCount, included for support of CBL expvars)
+	HandleChangesSendRevLatency       *base.SgwIntStat
+	HandleChangesSendRevTime          *base.SgwIntStat
+	HandleChangesSendRevThrottleCount *base.SgwIntStat
+	HandleChangesSendRevThrottleTime  *base.SgwIntStat
+	SubChangesContinuousActive        *base.SgwIntStat // subChanges
+	SubChangesContinuousTotal         *base.SgwIntStat
+	SubChangesOneShotActive           *base.SgwIntStat
+	SubChangesOneShotTotal            *base.SgwIntStat
+	SendChangesCount                  *base.SgwIntStat // sendChanges
+	NumConnectAttempts                *base.SgwIntStat
+	NumReconnectsAborted              *base.SgwIntStat
+	NumHandlersPanicked               *base.SgwIntStat
 }
 
 func NewBlipSyncStats() *BlipSyncStats {
 	return &BlipSyncStats{
-		DeltaEnabledPullReplicationCount: &base.SgwIntStat{}, // global
-		HandleRevCount:                   &base.SgwIntStat{}, // handleRev
-		HandleRevErrorCount:              &base.SgwIntStat{},
-		HandleRevDeltaRecvCount:          &base.SgwIntStat{},
-		HandleRevBytes:                   &base.SgwIntStat{},
-		HandleRevProcessingTime:          &base.SgwIntStat{},
-		HandleRevDocsPurgedCount:         &base.SgwIntStat{},
-		HandleRevThrottledCount:          &base.SgwIntStat{},
-		HandleRevThrottledTime:           &base.SgwIntStat{},
-		HandleGetRevCount:                &base.SgwIntStat{},
-		HandlePutRevCount:                &base.SgwIntStat{},
-		HandlePutRevErrorCount:           &base.SgwIntStat{},
-		HandlePutRevDeltaRecvCount:       &base.SgwIntStat{},
-		HandlePutRevBytes:                &base.SgwIntStat{},
-		HandlePutRevProcessingTime:       &base.SgwIntStat{},
-		HandlePutRevDocsPurgedCount:      &base.SgwIntStat{},
-		SendRevCount:                     &base.SgwIntStat{}, // sendRev
-		SendRevDeltaRequestedCount:       &base.SgwIntStat{},
-		SendRevDeltaSentCount:            &base.SgwIntStat{},
-		SendRevBytes:                     &base.SgwIntStat{},
-		SendRevErrorTotal:                &base.SgwIntStat{},
-		SendRevErrorConflictCount:        &base.SgwIntStat{},
-		SendRevErrorRejectedCount:        &base.SgwIntStat{},
-		SendRevErrorOtherCount:           &base.SgwIntStat{},
-		HandleChangesCount:               &base.SgwIntStat{}, // handleChanges/handleProposeChanges
-		HandleChangesTime:                &base.SgwIntStat{},
-		HandleChangesDeltaRequestedCount: &base.SgwIntStat{},
-		HandleProveAttachment:            &base.SgwIntStat{}, // handleProveAttachment
-		HandleGetAttachment:              &base.SgwIntStat{}, // handleGetAttachment
-		HandleGetAttachmentBytes:         &base.SgwIntStat{},
-		ProveAttachment:                  &base.SgwIntStat{}, // sendProveAttachment
-		GetAttachment:                    &base.SgwIntStat{}, // sendGetAttachment
-		GetAttachmentBytes:               &base.SgwIntStat{},
-		HandleChangesResponseCount:       &base.SgwIntStat{}, // handleChangesResponse
-		HandleChangesResponseTime:        &base.SgwIntStat{},
-		HandleChangesSendRevCount:        &base.SgwIntStat{}, //  - (duplicates SendRevCount, included for support of CBL expvars)
-		HandleChangesSendRevLatency:      &base.SgwIntStat{},
-		HandleChangesSendRevTime:         &base.SgwIntStat{},
-		SubChangesContinuousActive:       &base.SgwIntStat{}, // subChanges
-		SubChangesContinuousTotal:        &base.SgwIntStat{},
-		SubChangesOneShotActive:          &base.SgwIntStat{},
-		SubChangesOneShotTotal:           &base.SgwIntStat{},
-		SendChangesCount:                 &base.SgwIntStat{},
-		NumConnectAttempts:               &base.SgwIntStat{},
-		NumReconnectsAborted:             &base.SgwIntStat{},
-		NumHandlersPanicked:              &base.SgwIntStat{},
+		DeltaEnabledPullReplicationCount:  &base.SgwIntStat{}, // global
+		HandleRevCount:                    &base.SgwIntStat{}, // handleRev
+		HandleRevErrorCount:               &base.SgwIntStat{},
+		HandleRevDeltaRecvCount:           &base.SgwIntStat{},
+		HandleRevBytes:                    &base.SgwIntStat{},
+		HandleRevProcessingTime:           &base.SgwIntStat{},
+		HandleRevDocsPurgedCount:          &base.SgwIntStat{},
+		HandleRevThrottledCount:           &base.SgwIntStat{},
+		HandleRevThrottledTime:            &base.SgwIntStat{},
+		HandleGetRevCount:                 &base.SgwIntStat{},
+		HandlePutRevCount:                 &base.SgwIntStat{},
+		HandlePutRevErrorCount:            &base.SgwIntStat{},
+		HandlePutRevDeltaRecvCount:        &base.SgwIntStat{},
+		HandlePutRevBytes:                 &base.SgwIntStat{},
+		HandlePutRevProcessingTime:        &base.SgwIntStat{},
+		HandlePutRevDocsPurgedCount:       &base.SgwIntStat{},
+		SendRevCount:                      &base.SgwIntStat{}, // sendRev
+		SendRevDeltaRequestedCount:        &base.SgwIntStat{},
+		SendRevDeltaSentCount:             &base.SgwIntStat{},
+		SendRevBytes:                      &base.SgwIntStat{},
+		SendRevErrorTotal:                 &base.SgwIntStat{},
+		SendRevErrorConflictCount:         &base.SgwIntStat{},
+		SendRevErrorRejectedCount:         &base.SgwIntStat{},
+		SendRevErrorOtherCount:            &base.SgwIntStat{},
+		HandleChangesCount:                &base.SgwIntStat{}, // handleChanges/handleProposeChanges
+		HandleChangesTime:                 &base.SgwIntStat{},
+		HandleChangesDeltaRequestedCount:  &base.SgwIntStat{},
+		HandleProveAttachment:             &base.SgwIntStat{}, // handleProveAttachment
+		HandleGetAttachment:               &base.SgwIntStat{}, // handleGetAttachment
+		HandleGetAttachmentBytes:          &base.SgwIntStat{},
+		ProveAttachment:                   &base.SgwIntStat{}, // sendProveAttachment
+		GetAttachment:                     &base.SgwIntStat{}, // sendGetAttachment
+		GetAttachmentBytes:                &base.SgwIntStat{},
+		HandleChangesResponseCount:        &base.SgwIntStat{}, // handleChangesResponse
+		HandleChangesResponseTime:         &base.SgwIntStat{},
+		HandleChangesSendRevCount:         &base.SgwIntStat{}, //  - (duplicates SendRevCount, included for support of CBL expvars)
+		HandleChangesSendRevLatency:       &base.SgwIntStat{},
+		HandleChangesSendRevTime:          &base.SgwIntStat{},
+		HandleChangesSendRevThrottleCount: &base.SgwIntStat{},
+		HandleChangesSendRevThrottleTime:  &base.SgwIntStat{},
+		SubChangesContinuousActive:        &base.SgwIntStat{}, // subChanges
+		SubChangesContinuousTotal:         &base.SgwIntStat{},
+		SubChangesOneShotActive:           &base.SgwIntStat{},
+		SubChangesOneShotTotal:            &base.SgwIntStat{},
+		SendChangesCount:                  &base.SgwIntStat{},
+		NumConnectAttempts:                &base.SgwIntStat{},
+		NumReconnectsAborted:              &base.SgwIntStat{},
+		NumHandlersPanicked:               &base.SgwIntStat{},
 	}
 }
 
@@ -152,6 +156,8 @@ func BlipSyncStatsForCBL(dbStats *base.DbStats) *BlipSyncStats {
 	blipStats.HandleChangesSendRevCount = dbStats.CBLReplicationPull().RevSendCount
 	blipStats.HandleChangesSendRevLatency = dbStats.CBLReplicationPull().RevSendLatency
 	blipStats.HandleChangesSendRevTime = dbStats.CBLReplicationPull().RevProcessingTime
+	blipStats.HandleChangesSendRevThrottleCount = dbStats.CBLReplicationPull().ReadThrottledCount
+	blipStats.HandleChangesSendRevThrottleTime = dbStats.CBLReplicationPull().ReadThrottledTime
 
 	// TODO: these are strictly cross-replication stats, maybe do elsewhere?
 	blipStats.SubChangesContinuousActive = dbStats.CBLReplicationPull().NumPullReplActiveContinuous

@@ -83,6 +83,7 @@ const (
 	StatAddedVersion3dot1dot0     = "3.1.0"
 	StatAddedVersion3dot1dot2     = "3.1.2"
 	StatAddedVersion3dot1dot3dot1 = "3.1.3.1"
+	StatAddedVersion3dot1dot4     = "3.1.4"
 	StatAddedVersion3dot2dot0     = "3.2.0"
 
 	StatDeprecatedVersionNotDeprecated = ""
@@ -456,8 +457,12 @@ type CBLReplicationPullStats struct {
 	// The total amount of time processing rev messages (revisions) during pull revision.
 	RevProcessingTime *SgwIntStat `json:"rev_processing_time"`
 	// The total number of rev messages processed during replication.
-	RevSendCount  *SgwIntStat `json:"rev_send_count"`
-	RevErrorCount *SgwIntStat `json:"rev_error_count"`
+	RevSendCount *SgwIntStat `json:"rev_send_count"`
+	// The total number of rev messages that were throttled.
+	ReadThrottledCount *SgwIntStat `json:"read_throttled_count"`
+	// The total time spent throttling rev messages.
+	ReadThrottledTime *SgwIntStat `json:"read_throttled_time"`
+	RevErrorCount     *SgwIntStat `json:"rev_error_count"`
 	// The total amount of time between Sync Gateway receiving a request for a revision and that revision being sent.
 	//
 	// In a pull replication, Sync Gateway sends a /_changes request to the client and the client responds with the list of revisions it wants to receive.
@@ -1426,6 +1431,14 @@ func (d *DbStats) initCBLReplicationPullStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.ReadThrottledCount, err = NewIntStat(SubsystemReplicationPull, "read_throttled_count", StatUnitNoUnits, ReadThrottledCountDesc, StatAddedVersion3dot1dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.ReadThrottledTime, err = NewIntStat(SubsystemReplicationPull, "read_throttled_count", StatUnitNanoseconds, ReadThrottledTimeDesc, StatAddedVersion3dot1dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.RevSendCount, err = NewIntStat(SubsystemReplicationPull, "rev_send_count", StatUnitNoUnits, RevSendCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1460,6 +1473,8 @@ func (d *DbStats) unregisterCBLReplicationPullStats() {
 	prometheus.Unregister(d.CBLReplicationPullStats.RevProcessingTime)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevSendCount)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevErrorCount)
+	prometheus.Unregister(d.CBLReplicationPullStats.ReadThrottledCount)
+	prometheus.Unregister(d.CBLReplicationPullStats.ReadThrottledTime)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevSendLatency)
 }
 
@@ -1501,11 +1516,11 @@ func (d *DbStats) initCBLReplicationPushStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.WriteThrottledCount, err = NewIntStat(SubsystemReplicationPush, "write_throttled_count", StatUnitNoUnits, WriteThrottledCountDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.WriteThrottledCount, err = NewIntStat(SubsystemReplicationPush, "write_throttled_count", StatUnitNoUnits, WriteThrottledCountDesc, StatAddedVersion3dot1dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.WriteThrottledTime, err = NewIntStat(SubsystemReplicationPush, "write_throttled_time", StatUnitNanoseconds, WriteThrottledTimeDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.WriteThrottledTime, err = NewIntStat(SubsystemReplicationPush, "write_throttled_time", StatUnitNanoseconds, WriteThrottledTimeDesc, StatAddedVersion3dot1dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
