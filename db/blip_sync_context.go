@@ -368,18 +368,12 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 				}
 			}
 
-			err := func() error {
-				// throttle rev parallelism here (before we actually need to potentially fetch documents)
-				// whether the revisions are already cached or not, we still want to limit how much parallelism each client gets,
-				// since there's non-zero memory overhead after revcache retrieval to replicate the contents.
-				bsc.inFlightRevsThrottle <- struct{}{}
-				defer func() { <-bsc.inFlightRevsThrottle }()
-
-				if deltaSrcRevID != "" {
-					return bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
-				}
-				return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
-			}()
+			var err error
+			if deltaSrcRevID != "" {
+				err = bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
+			} else {
+				err = bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
+			}
 			if err != nil {
 				return err
 			}

@@ -170,9 +170,6 @@ const (
 		"Note: Measuring time from the /_changes response means that this stat will vary significantly depending on the changes batch size A larger batch size will result in a spike of this stat, even if the processing time per revision is unchanged. " +
 		"A more useful stat might be the average processing time per revision: average processing time per revision = rev_processing_time] / rev_send_count"
 
-	ReadThrottledCountDesc = "The total number of times a revision was throttled during pull replication to clients. The read_throttled_count stat can be useful to to determine an appropriate limit of concurrent revisions for each client. There's a direct tradeoff with memory and CPU usage for replicating clients and large amounts of concurrent revisions."
-	ReadThrottledTimeDesc  = "The total time (in nanoseconds) waiting for an available slot to handle a pulled revision after being throttled. The read_throttled_time stat can be useful to determine whether clients are waiting too long for an available slot to pull a revision. There's a direct tradeoff with memory and CPU usage for replicating clients and large amounts of concurrent revisions."
-
 	NumPullRepliTotalCaughtUpDesc = "The total number of pull replications which have caught up to the latest changes across all replications."
 
 	RevErrorCountDesc = "The total number of rev messages that were failed to be processed during replication."
