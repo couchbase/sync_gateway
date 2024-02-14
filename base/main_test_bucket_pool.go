@@ -259,11 +259,12 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSpec, teardown func(context.Context)) {
 	ctx := TestCtx(t)
 
-	bucketCluster := initV2Cluster(ctx, UnitTestUrl())
+	// each bucket opens its own cluster connection since Bucket.Close will close the underlying gocb.Cluster
+	bucketCluster, connstr := getGocbClusterForTest(ctx, UnitTestUrl())
 
 	bucketName := tbpBucketName(TestUseExistingBucketName())
 	bucketSpec := getTestBucketSpec(bucketName)
-	bucketFromSpec, err := GetGocbV2BucketFromCluster(ctx, bucketCluster, bucketSpec, waitForReadyBucketTimeout, false)
+	bucketFromSpec, err := GetGocbV2BucketFromCluster(ctx, bucketCluster, bucketSpec, connstr, waitForReadyBucketTimeout, false)
 	if err != nil {
 		tbp.Fatalf(ctx, "couldn't get existing collection from cluster: %v", err)
 	}

@@ -98,3 +98,40 @@ func TestGetGoCBConnStringWithDefaults(t *testing.T) {
 		})
 	}
 }
+
+func TestGetKvPoolSize(t *testing.T) {
+	testCases := []struct {
+		name          string
+		server        string
+		kvPoolSize    int
+		expectedError bool
+	}{
+		{
+			name:          "no kv_pool_size",
+			server:        "couchbase://localhost",
+			expectedError: true,
+		},
+		{
+			name:          "kv_pool_size=8",
+			server:        "couchbase://localhost?kv_pool_size=8",
+			kvPoolSize:    8,
+			expectedError: false,
+		},
+		{
+			name:          "multiple kv_pool_size",
+			server:        "couchbase://localhost?kv_pool_size=8&kv_pool_size=4",
+			expectedError: true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			kvPoolSize, err := GetKvPoolSize(testCase.server)
+			if testCase.expectedError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, testCase.kvPoolSize, *kvPoolSize)
+			}
+		})
+	}
+}

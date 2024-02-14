@@ -9,6 +9,7 @@
 package base
 
 import (
+	"fmt"
 	"net/url"
 	"strconv"
 
@@ -89,4 +90,29 @@ func GetGoCBConnStringWithDefaults(server string, defaults *GoCBConnStringParams
 		return "", err
 	}
 	return connSpec.String(), nil
+}
+
+// GetKvPoolSize returns the kv_pool_size from the connection string, if it exists. If it doesn't exist, return nil, or an error if the string is not parseable.
+func GetKvPoolSize(connstr string) (*int, error) {
+	connSpec, err := getGoCBConnSpec(connstr, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	values := url.Values(connSpec.Options)
+
+	kvPoolSizeArg := values[kvPoolSizeKey]
+
+	if len(kvPoolSizeArg) == 0 {
+		return nil, fmt.Errorf("Connection string not found")
+	} else if len(kvPoolSizeArg) > 1 {
+		return nil, fmt.Errorf("Multiple kv_pool_size values found in connection string %s", connstr)
+	}
+
+	kvPoolSize := kvPoolSizeArg[0]
+	kvPoolSizeInt, err := strconv.Atoi(kvPoolSize)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid kv_pool_size value %s in connection string %s, must be int", kvPoolSize, connstr)
+	}
+	return &kvPoolSizeInt, nil
 }

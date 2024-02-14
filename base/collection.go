@@ -87,7 +87,7 @@ func GetGoCBv2Bucket(ctx context.Context, spec BucketSpec) (*GocbV2Bucket, error
 		return nil, err
 	}
 
-	return GetGocbV2BucketFromCluster(ctx, cluster, spec, time.Second*30, true)
+	return GetGocbV2BucketFromCluster(ctx, cluster, spec, connString, time.Second*30, true)
 
 }
 
@@ -103,7 +103,8 @@ func getClusterVersion(cluster *gocb.Cluster) (int, int, error) {
 	return clusterCompatMajor, clusterCompatMinor, nil
 }
 
-func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec BucketSpec, waitUntilReady time.Duration, failFast bool) (*GocbV2Bucket, error) {
+// GetGocbV2BucketFromCluster returns a gocb.Bucket from an existing gocb.Cluster
+func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec BucketSpec, connstr string, waitUntilReady time.Duration, failFast bool) (*GocbV2Bucket, error) {
 
 	// Connect to bucket
 	bucket := cluster.Bucket(spec.BucketName)
@@ -166,7 +167,7 @@ func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec
 		nodeCount = len(mgmtEps)
 	}
 
-	numPools, err := spec.GetKvPoolSize()
+	numPools, err := GetKvPoolSize(connstr)
 	if err != nil {
 		WarnfCtx(ctx, "Error getting kv pool size from connection string: %v", err)
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})

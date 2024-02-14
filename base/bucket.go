@@ -247,33 +247,6 @@ func (b BucketSpec) GocbcoreAuthProvider() (gocbcore.AuthProvider, error) {
 	return GoCBCoreAuthConfig(username, password, b.Certpath, b.Keypath)
 }
 
-// GetKvPoolSize returns the kv_pool_size from the connection string, if it exists. If it doesn't exist, return nil, or an error if the string is not parseable.
-func (b BucketSpec) GetKvPoolSize() (*int, error) {
-	connSpec, err := getGoCBConnSpec(b.Server, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	values := url.Values(connSpec.Options)
-
-	kvPoolSizeArg := values[kvPoolSizeKey]
-
-	if len(kvPoolSizeArg) == 0 {
-		return IntPtr(DefaultGocbKvPoolSize), nil
-	} else if len(kvPoolSizeArg) > 1 {
-		return nil, fmt.Errorf("Multiple kv_pool_size values found in connection string %s", b.Server)
-	}
-
-	kvPoolSize := kvPoolSizeArg[0]
-	kvPoolSizeInt, err := strconv.Atoi(kvPoolSize)
-	if err != nil {
-		return nil, fmt.Errorf("Invalid kv_pool_size value %s in connection string %s, must be int", kvPoolSize, b.Server)
-	}
-	return &kvPoolSizeInt, nil
-}
-
-// getKvPoolSize returns the kv_pool_size from the connection string, if it exists, otherwise return the default value.
-
 func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 
 	// GetStats response is in the form map[serverURI]map[]
