@@ -180,3 +180,9 @@ DB-config-precondition-failed:
       example:
         error: Precondition Failed
         reason: Provided If-Match header does not match current config version
+GetAllUserChannels:
+  description: Properties associated with a user
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas.yaml#/AllUserChannels

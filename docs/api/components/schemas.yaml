@@ -2514,32 +2514,70 @@ CollectionNames:
           - Resyncing
 AllUserChannels:
   description: |-
-    All user channels split by how they were assigned to the user.
-
-    Split by keyspace. The Entries field shows the grant periods, each grant period contains the sequence the channel was assigned and
-    the sequence the channel was lost. If it was never lost, the end sequence will be 0.
-    Historic channels will be classified if they are admin or dynamic grants, otherwise they will be in role_history_grants with no information
-    on how the role was granted.
+    All user channels split by how they were assigned to the user and by keyspace.
   type: object
   properties:
     admin_grants:
       description: |-
         Channels assigned to the user through the admin API by adding them to admin_channels.
       type: object
+      additionalProperties:
+        x-additionalPropertiesName: channel
+        description: Channel name
+        type: string
+        additionalProperties:
+          x-additionalPropertiesName: grantHistory
+          type: grantPeriod
+          description: Start sequence to end sequence
     dynamic_grants:
       description: |-
         Channels assigned to the user through the sync function.
       type: object
+      additionalProperties:
+        x-additionalPropertiesName: channel
+        description: Channel name
+        type: string
+        additionalProperties:
+          x-additionalPropertiesName: grantHistory
+          type: grantPeriod
+          description: Start sequence to end sequence
+
     admin_role_grants:
       description: |-
         Channels assigned to the user through the admin API, by assigning a role to the user through admin_roles,
         and assigning the channels to that role.
       type: object
+      additionalProperties:
+        x-additionalPropertiesName: channel
+        description: Channel name
+        type: string
+        additionalProperties:
+          x-additionalPropertiesName: grantHistory
+          type: grantPeriod
+          description: Start sequence to end sequence
+
     dynamic_role_grants:
       description: |-
         Channels assigned to the user through roles assigned using the sync function.
       type: object
+      additionalProperties:
+        x-additionalPropertiesName: channel
+        description: Channel name
+        type: string
+        additionalProperties:
+          x-additionalPropertiesName: grantHistory
+          type: grantPeriod
+          description: Start sequence to end sequence
+
     role_history_grants:
       description: |-
         Channels that the user had access to through a role they had.
       type: object
+      additionalProperties:
+        x-additionalPropertiesName: channel
+        description: Channel name
+        type: string
+        additionalProperties:
+          x-additionalPropertiesName: grantHistory
+          type: grantPeriod
+          description: Start sequence to end sequence
