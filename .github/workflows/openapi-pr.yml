@@ -1,0 +1,43 @@
+# Copyright 2024-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included in
+# the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+# file, in accordance with the Business Source License, use of this software
+# will be governed by the Apache License, Version 2.0, included in the file
+# licenses/APL2.txt.
+
+name: openapi-pr
+
+on:
+  pull_request:
+    # Only run when we change an API spec
+    paths:
+      - 'docs/api/**'
+    branches:
+      - 'master'
+      - 'release/*'
+      - 'beryllium'
+
+jobs:
+  redocly_preview_links:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find Comment
+        uses: peter-evans/find-comment@v3
+        id: fc
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: Redocly previews
+      - name: Create or update comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## Redocly previews
+            - [Admin API](https://redocly.github.io/redoc/?url=https://raw.githubusercontent.com/couchbase/sync_gateway/${{ github.event.pull_request.head.sha }}/docs/api/admin.yaml)
+            - [Public API](https://redocly.github.io/redoc/?url=https://raw.githubusercontent.com/couchbase/sync_gateway/${{ github.event.pull_request.head.sha }}/docs/api/public.yaml)
+            - [Metric API](https://redocly.github.io/redoc/?url=https://raw.githubusercontent.com/couchbase/sync_gateway/${{ github.event.pull_request.head.sha }}/docs/api/metric.yaml)
+            - [Diagnostic API](https://redocly.github.io/redoc/?url=https://raw.githubusercontent.com/couchbase/sync_gateway/${{ github.event.pull_request.head.sha }}/docs/api/diagnostic.yaml)
+          edit-mode: replace
