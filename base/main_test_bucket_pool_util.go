@@ -38,10 +38,16 @@ func (tbp *TestBucketPool) Logf(ctx context.Context, format string, args ...inte
 
 // getTestBucketSpec returns a new BucketSpec for the given test bucket name.
 func getTestBucketSpec(testBucketName tbpBucketName) BucketSpec {
-	bucketSpec := tbpDefaultBucketSpec
-	bucketSpec.BucketName = string(testBucketName)
-	bucketSpec.TLSSkipVerify = TestTLSSkipVerify()
-	return bucketSpec
+	return BucketSpec{
+		Server: UnitTestUrl(),
+		Auth: TestAuthenticator{
+			Username: TestClusterUsername(),
+			Password: TestClusterPassword(),
+		},
+		UseXattrs:     TestUseXattrs(),
+		BucketName:    string(testBucketName),
+		TLSSkipVerify: TestTLSSkipVerify(),
+	}
 }
 
 // RequireNumTestBuckets skips the given test if there are not enough test buckets available to use.

@@ -34,7 +34,7 @@ import (
 // GetGoCBv2Bucket opens a connection to the Couchbase cluster and returns a *GocbV2Bucket for the specified BucketSpec.
 func GetGoCBv2Bucket(ctx context.Context, spec BucketSpec) (*GocbV2Bucket, error) {
 
-	connString, err := spec.GetGoCBConnString(nil)
+	connString, err := spec.GetGoCBConnString()
 	if err != nil {
 		WarnfCtx(ctx, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
@@ -87,7 +87,7 @@ func GetGoCBv2Bucket(ctx context.Context, spec BucketSpec) (*GocbV2Bucket, error
 		return nil, err
 	}
 
-	return GetGocbV2BucketFromCluster(ctx, cluster, spec, time.Second*30, true)
+	return GetGocbV2BucketFromCluster(ctx, cluster, spec, connString, time.Second*30, true)
 
 }
 
@@ -103,7 +103,8 @@ func getClusterVersion(cluster *gocb.Cluster) (int, int, error) {
 	return clusterCompatMajor, clusterCompatMinor, nil
 }
 
-func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec BucketSpec, waitUntilReady time.Duration, failFast bool) (*GocbV2Bucket, error) {
+// GetGocbV2BucketFromCluster returns a gocb.Bucket from an existing gocb.Cluster
+func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec BucketSpec, connstr string, waitUntilReady time.Duration, failFast bool) (*GocbV2Bucket, error) {
 
 	// Connect to bucket
 	bucket := cluster.Bucket(spec.BucketName)
@@ -165,11 +166,14 @@ func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec
 	if mgmtEpsErr != nil && len(mgmtEps) > 0 {
 		nodeCount = len(mgmtEps)
 	}
-	numPools := 1
-	if spec.KvPoolSize > 0 {
-		numPools = spec.KvPoolSize
+
+	numPools, err := getIntFromConnStr(connstr, kvPoolSizeKey)
+	if err != nil {
+		WarnfCtx(ctx, "Error getting kv pool size from connection string: %v", err)
+		_ = cluster.Close(&gocb.ClusterCloseOptions{})
+		return nil, err
 	}
-	gocbv2Bucket.kvOps = make(chan struct{}, MaxConcurrentSingleOps*nodeCount*numPools)
+	gocbv2Bucket.kvOps = make(chan struct{}, MaxConcurrentSingleOps*nodeCount*(*numPools))
 
 	return gocbv2Bucket, nil
 }
