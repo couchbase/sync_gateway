@@ -35,6 +35,15 @@ const (
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
 func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, contextID string, replicationStats *BlipSyncStats) *BlipSyncContext {
+	maxInFlightChangesBatches := DefaultMaxConcurrentChangesBatches
+	if db.Options.MaxConcurrentChangesBatches != nil {
+		maxInFlightChangesBatches = *db.Options.MaxConcurrentChangesBatches
+	}
+	maxInFlightRevs := DefaultMaxConcurrentRevs
+	if db.Options.MaxConcurrentRevs != nil {
+		maxInFlightRevs = *db.Options.MaxConcurrentRevs
+	}
+
 	bsc := &BlipSyncContext{
 		blipContext:             bc,
 		blipContextDb:           db,
@@ -44,6 +53,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		sgCanUseDeltas:          db.DeltaSyncEnabled(),
 		replicationStats:        replicationStats,
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
+		inFlightRevsThrottle:    make(chan struct{}, maxInFlightRevs),
 		collections:             &blipCollections{},
 	}
 	if bsc.replicationStats == nil {
@@ -108,6 +118,10 @@ type BlipSyncContext struct {
 	// before they've processed the revs for previous batches. Keeping this >1 allows the client to be fed a constant supply of rev messages,
 	// without making Sync Gateway buffer a bunch of stuff in memory too far in advance of the client being able to receive the revs.
 	inFlightChangesThrottle chan struct{}
+	// inFlightRevsThrottle is a small buffered channel to limit the amount of in-flight revs for this connection.
+	// Couchbase Lite limits this on the client side with changes batch size (but is usually hard-coded to 200)
+	// This is defensive measure to ensure a single client cannot use too much memory when replicating, and forces each changes batch to have a reduced amount of parallelism.
+	inFlightRevsThrottle chan struct{}
 
 	// fatalErrorCallback is called by the replicator code when the replicator using this blipSyncContext should be
 	// stopped

@@ -16,6 +16,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 )
 
 const (
@@ -56,6 +57,10 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 		},
 		Auth: AuthConfig{
 			BcryptCost: auth.DefaultBcryptCost,
+		},
+		Replicator: ReplicatorConfig{
+			MaxConcurrentChangesBatches: base.IntPtr(db.DefaultMaxConcurrentChangesBatches),
+			MaxConcurrentRevs:           base.IntPtr(db.DefaultMaxConcurrentRevs),
 		},
 		Unsupported: UnsupportedConfig{
 			StatsLogFrequency: base.NewConfigDuration(time.Minute),
@@ -138,9 +143,11 @@ type AuthConfig struct {
 }
 
 type ReplicatorConfig struct {
-	MaxHeartbeat              *base.ConfigDuration `json:"max_heartbeat,omitempty"    help:"Max heartbeat value for _changes request"`
-	BLIPCompression           *int                 `json:"blip_compression,omitempty" help:"BLIP data compression level (0-9)"`
-	MaxConcurrentReplications int                  `json:"max_concurrent_replications,omitempty" help:"Maximum number of replication connections to the node"`
+	MaxHeartbeat                *base.ConfigDuration `json:"max_heartbeat,omitempty"    help:"Max heartbeat value for _changes request"`
+	BLIPCompression             *int                 `json:"blip_compression,omitempty" help:"BLIP data compression level (0-9)"`
+	MaxConcurrentReplications   int                  `json:"max_concurrent_replications,omitempty"    help:"Maximum number of replication connections to the node"`
+	MaxConcurrentChangesBatches *int                 `json:"max_concurrent_changes_batches,omitempty" help:"Maximum number of changes batches to process concurrently per replication (1-5)"`
+	MaxConcurrentRevs           *int                 `json:"max_concurrent_revs,omitempty"            help:"Maximum number of revs to process concurrently per replication (5-200)"`
 }
 
 type UnsupportedConfig struct {
@@ -151,7 +158,7 @@ type UnsupportedConfig struct {
 	UserQueries          *bool                `json:"user_queries,omitempty"            help:"Feature flag for user N1QL/JS/GraphQL queries"`
 	UseXattrConfig       *bool                `json:"use_xattr_config,omitempty"        help:"Store database configurations in system xattrs"`
 	AllowDbConfigEnvVars *bool                `json:"allow_dbconfig_env_vars,omitempty" help:"Can be set to false to skip environment variable expansion in database configs"`
-	DiagnosticInterface  string               `json:"diagnostic_interface,omitempty" help:"Network interface to bind diagnostic API to"`
+	DiagnosticInterface  string               `json:"diagnostic_interface,omitempty"    help:"Network interface to bind diagnostic API to"`
 }
 
 type ServerlessConfig struct {
