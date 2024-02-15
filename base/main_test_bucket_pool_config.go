@@ -60,15 +60,6 @@ const (
 	tbpEnvBucketNumReplicas = "SG_TEST_BUCKET_NUM_REPLICAS"
 )
 
-var tbpDefaultBucketSpec = BucketSpec{
-	Server: UnitTestUrl(),
-	Auth: TestAuthenticator{
-		Username: TestClusterUsername(),
-		Password: TestClusterPassword(),
-	},
-	UseXattrs: TestUseXattrs(),
-}
-
 // TestsUseNamedCollections returns true if the tests use named collections.
 func TestsUseNamedCollections() bool {
 	ctx := context.Background()

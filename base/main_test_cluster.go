@@ -39,9 +39,9 @@ func newTestCluster(ctx context.Context, server string, logger clusterLogFunc) t
 
 // tbpClusterV2 implements the tbpCluster interface for a gocb v2 cluster
 type tbpClusterV2 struct {
-	logger clusterLogFunc
-	server string
-
+	logger  clusterLogFunc
+	server  string // server address to connect to cluster
+	connstr string // connection string used to connect to the cluster
 	// cluster can be used to perform cluster-level operations (but not bucket-level operations)
 	cluster *gocb.Cluster
 }
@@ -49,15 +49,16 @@ type tbpClusterV2 struct {
 var _ tbpCluster = &tbpClusterV2{}
 
 func newTestClusterV2(ctx context.Context, server string, logger clusterLogFunc) *tbpClusterV2 {
-	tbpCluster := &tbpClusterV2{}
-	tbpCluster.logger = logger
-	tbpCluster.cluster = initV2Cluster(ctx, server)
-	tbpCluster.server = server
+	tbpCluster := &tbpClusterV2{
+		logger: logger,
+		server: server,
+	}
+	tbpCluster.cluster, tbpCluster.connstr = getGocbClusterForTest(ctx, server)
 	return tbpCluster
 }
 
-// initV2Cluster makes cluster connection.  Callers must close.
-func initV2Cluster(ctx context.Context, server string) *gocb.Cluster {
+// getGocbClusterForTest makes cluster connection. Callers must close. Returns the cluster and the connection string used to connect.
+func getGocbClusterForTest(ctx context.Context, server string) (*gocb.Cluster, string) {
 
 	testClusterTimeout := 10 * time.Second
 	spec := BucketSpec{
@@ -65,8 +66,7 @@ func initV2Cluster(ctx context.Context, server string) *gocb.Cluster {
 		TLSSkipVerify:   true,
 		BucketOpTimeout: &testClusterTimeout,
 	}
-
-	connStr, err := spec.GetGoCBConnString(nil)
+	connStr, err := spec.GetGoCBConnString()
 	if err != nil {
 		FatalfCtx(ctx, "error getting connection string: %v", err)
 	}
@@ -98,7 +98,7 @@ func initV2Cluster(ctx context.Context, server string) *gocb.Cluster {
 	if err != nil {
 		FatalfCtx(ctx, "Cluster not ready after %ds: %v", int(clusterReadyTimeout.Seconds()), err)
 	}
-	return cluster
+	return cluster, connStr
 }
 
 // isServerEnterprise returns true if the connected returns true if the connected couchbase server
@@ -155,12 +155,11 @@ func (c *tbpClusterV2) removeBucket(name string) error {
 // openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
 func (c *tbpClusterV2) openTestBucket(ctx context.Context, testBucketName tbpBucketName, waitUntilReady time.Duration) (Bucket, error) {
 
-	bucketCluster := initV2Cluster(ctx, c.server)
+	bucketCluster, connstr := getGocbClusterForTest(ctx, c.server)
 
-	// bucketSpec := getTestBucketSpec(testBucketName, usingNamedCollections)
 	bucketSpec := getTestBucketSpec(testBucketName)
 
-	bucketFromSpec, err := GetGocbV2BucketFromCluster(ctx, bucketCluster, bucketSpec, waitUntilReady, false)
+	bucketFromSpec, err := GetGocbV2BucketFromCluster(ctx, bucketCluster, bucketSpec, connstr, waitUntilReady, false)
 	if err != nil {
 		return nil, err
 	}

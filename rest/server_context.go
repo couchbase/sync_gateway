@@ -455,9 +455,33 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(ctx context.Context, config 
 	return sc._getOrAddDatabaseFromConfig(ctx, config, options)
 }
 
-func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *StartupConfig) (spec base.BucketSpec, err error) {
+// GetBucketSpec returns a BucketSpec from a given DatabaseConfig and StartupConfig.
+func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *StartupConfig) (base.BucketSpec, error) {
 
-	spec = config.MakeBucketSpec()
+	var server string
+	if config.Server != nil {
+		server = *config.Server
+	} else {
+		server = serverConfig.Bootstrap.Server
+	}
+	if serverConfig.IsServerless() {
+		params := base.DefaultServerlessGoCBConnStringParams()
+		if config.Unsupported != nil {
+			if config.Unsupported.DCPReadBuffer != 0 {
+				params.DcpBufferSize = config.Unsupported.DCPReadBuffer
+			}
+			if config.Unsupported.KVBufferSize != 0 {
+				params.KvBufferSize = config.Unsupported.KVBufferSize
+			}
+		}
+		connStr, err := base.GetGoCBConnStringWithDefaults(server, params)
+		if err != nil {
+			return base.BucketSpec{}, err
+		}
+		server = connStr
+	}
+
+	spec := config.MakeBucketSpec(server)
 
 	if serverConfig.Bootstrap.ServerTLSSkipVerify != nil {
 		spec.TLSSkipVerify = *serverConfig.Bootstrap.ServerTLSSkipVerify
@@ -471,13 +495,6 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 
 	if config.ViewQueryTimeoutSecs != nil {
 		spec.ViewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
-	}
-
-	if config.Unsupported != nil && config.Unsupported.KVBufferSize != 0 {
-		spec.KvBufferSize = config.Unsupported.KVBufferSize
-	}
-	if config.Unsupported != nil && config.Unsupported.DCPReadBuffer != 0 {
-		spec.DcpBuffer = config.Unsupported.DCPReadBuffer
 	}
 
 	spec.UseXattrs = config.UseXattrs()
@@ -527,24 +544,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	if spec.Server == "" {
 		spec.Server = sc.Config.Bootstrap.Server
-	}
-	if sc.Config.IsServerless() {
-		params := &base.GoCBConnStringParams{
-			KVPoolSize:    base.DefaultGocbKvPoolSizeServerless,
-			KVBufferSize:  base.DefaultKvBufferSizeServerless,
-			DCPBufferSize: base.DefaultDCPBufferServerless,
-		}
-		if spec.KvBufferSize != 0 {
-			params.KVBufferSize = spec.KvBufferSize
-		}
-		if spec.DcpBuffer != 0 {
-			params.DCPBufferSize = spec.DcpBuffer
-		}
-		connStr, err := spec.GetGoCBConnString(params)
-		if err != nil {
-			return nil, err
-		}
-		spec.Server = connStr
 	}
 
 	if sc.databases_[dbName] != nil {
@@ -2051,12 +2050,6 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 	couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(ctx, sc.Config, base.CachedClusterConnections)
 	if err != nil {
 		return err
-	}
-	if sc.Config.IsServerless() {
-		err := couchbaseCluster.SetConnectionStringServerless()
-		if err != nil {
-			return err
-		}
 	}
 
 	sc.BootstrapContext.Connection = couchbaseCluster

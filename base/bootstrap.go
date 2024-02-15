@@ -12,16 +12,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"reflect"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
 	"dario.cat/mergo"
 	"github.com/couchbase/gocb/v2"
-	"github.com/couchbaselabs/gocbconnstr"
 )
 
 // BootstrapConnection is the interface that can be used to bootstrap Sync Gateway against a Couchbase Server cluster.
@@ -47,9 +44,6 @@ type BootstrapConnection interface {
 	// GetDocument retrieves the document with the specified key from the bucket's default collection.
 	// Returns exists=false if key is not found, returns error for any other error.
 	GetDocument(ctx context.Context, bucket, docID string, rv interface{}) (exists bool, err error)
-
-	// SetConnectionStringServerless sets the connection string to use serverless mode, needs to be called before any connection occurs.
-	SetConnectionStringServerless() error
 
 	// Returns the bootstrap connection's cluster connection as N1QLStore for the specified bucket/scope/collection.
 	// Does NOT establish a bucket connection, the bucketName/scopeName/collectionName is for query scoping only
@@ -208,34 +202,6 @@ func NewCouchbaseCluster(ctx context.Context, server, username, password,
 	}
 
 	return cbCluster, nil
-}
-
-func (cc *CouchbaseCluster) SetConnectionStringServerless() error {
-	connSpec, err := gocbconnstr.Parse(cc.server)
-	if err != nil {
-		return err
-	}
-	if connSpec.Options == nil {
-		connSpec.Options = map[string][]string{}
-	}
-
-	asValues := url.Values(connSpec.Options)
-
-	fromConnStr := asValues.Get("kv_pool_size")
-	if fromConnStr == "" {
-		asValues.Set("kv_pool_size", strconv.Itoa(DefaultGocbKvPoolSizeServerless))
-	}
-	fromConnStr = asValues.Get("kv_buffer_size")
-	if fromConnStr == "" {
-		asValues.Set("kv_buffer_size", strconv.Itoa(DefaultKvBufferSizeServerless))
-	}
-	fromConnStr = asValues.Get("dcp_buffer_size")
-	if fromConnStr == "" {
-		asValues.Set("dcp_buffer_size", strconv.Itoa(DefaultDCPBufferServerless))
-	}
-	connSpec.Options = asValues
-	cc.server = connSpec.String()
-	return nil
 }
 
 // connect attempts to open a gocb.Cluster connection. Callers will be responsible for closing the connection.

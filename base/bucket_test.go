@@ -34,9 +34,10 @@ func TestGetGoCBConnString(t *testing.T) {
 	queryTimeout := uint32(30)
 
 	tests := []struct {
-		name            string
-		bucketSpec      BucketSpec
-		expectedConnStr string
+		name               string
+		bucketSpec         BucketSpec
+		expectedConnStr    string
+		expectedDCPConnStr string
 	}{
 
 		{
@@ -44,7 +45,8 @@ func TestGetGoCBConnString(t *testing.T) {
 			bucketSpec: BucketSpec{
 				Server: "http://localhost:8091",
 			},
-			expectedConnStr: "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr:    "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedDCPConnStr: "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 		{
 			name: "v2 no CA cert path",
@@ -52,7 +54,8 @@ func TestGetGoCBConnString(t *testing.T) {
 				Server:               "http://localhost:8091?custom=true&kv_pool_size=3",
 				ViewQueryTimeoutSecs: &queryTimeout,
 			},
-			expectedConnStr: "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr:    "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedDCPConnStr: "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 		{
 			name: "v2 all values",
@@ -63,15 +66,19 @@ func TestGetGoCBConnString(t *testing.T) {
 				Keypath:              "/my/key/path",
 				CACertPath:           "./myCACertPath",
 			},
-			expectedConnStr: "http://localhost:8091?ca_cert_path=.%2FmyCACertPath&custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr:    "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedDCPConnStr: "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actualConnStr, err := test.bucketSpec.GetGoCBConnString(nil)
+			actualConnStr, err := test.bucketSpec.GetGoCBConnString()
 			assert.NoError(t, err, "Unexpected error creating connection string for bucket spec")
 			assert.Equal(t, test.expectedConnStr, actualConnStr)
+			dcpConnStr, err := test.bucketSpec.GetGoCBConnStringForDCP()
+			assert.NoError(t, err)
+			assert.Equal(t, test.expectedDCPConnStr, dcpConnStr)
 		})
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -268,13 +269,8 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	//   		https://github.com/couchbaselabs/cbgt/issues/1
 	//   		https://github.com/couchbaselabs/cbgt/issues/25
 	bindHttp := uuid
-	defaultValues := &GoCBConnStringParams{
-		KVPoolSize:    GoCBPoolSizeDCP,
-		KVBufferSize:  spec.KvBufferSize,
-		DCPBufferSize: spec.DcpBuffer,
-	}
 
-	serverURL, err := spec.GetGoCBConnString(defaultValues)
+	serverURL, err := spec.GetGoCBConnStringForDCP()
 	if err != nil {
 		return nil, err
 	}
@@ -296,8 +292,14 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 
 	// Since cbgt initializes a buffer per CBS node per partition in most cases (vbuckets in partitions can't be grouped by CBS node),
 	// setting the small buffer size used in cbgt 1.3.2.  (see CBG-3341 for potential optimization of this value)
-	options["kvConnectionBufferSize"] = "16384"
+	idealKvConnectionBufferSize := 16384
+	// This value will be overridden by the BucketSpec connection string.
+	options["kvConnectionBufferSize"] = strconv.Itoa(idealKvConnectionBufferSize)
 
+	connStrKvBufferSize, err := getIntFromConnStr(serverURL, kvBufferSizeKey)
+	if err == nil && connStrKvBufferSize != nil && *connStrKvBufferSize > idealKvConnectionBufferSize {
+		WarnfCtx(ctx, "DCP sharded import connection string includes %s=%d, which is more than the implicit %s=%d. This will result in increased memory usage.", kvBufferSizeKey, *connStrKvBufferSize, kvBufferSizeKey, idealKvConnectionBufferSize)
+	}
 	// Disable collections if unsupported
 	if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		options["disableCollectionsSupport"] = "true"

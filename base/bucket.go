@@ -26,7 +26,6 @@ import (
 	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/couchbaselabs/rosmar"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -128,9 +127,6 @@ type BucketSpec struct {
 	ViewQueryTimeoutSecs          *uint32        // the view query timeout in seconds (default: 75 seconds)
 	MaxConcurrentQueryOps         *int           // maximum number of concurrent query operations (default: DefaultMaxConcurrentQueryOps)
 	BucketOpTimeout               *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
-	KvPoolSize                    int            // gocb kv_pool_size - number of pipelines per node. Initialized on GetGoCBConnString
-	KvBufferSize                  int            // gocb kv buffer size for number of pipelines made. Inititialised on the gocb connection string
-	DcpBuffer                     int            // gocb dcp buffer size inititialised on the gocb connection string
 }
 
 const defaultNumRetries = 10
@@ -156,84 +152,34 @@ func (spec BucketSpec) UseClientCert() bool {
 	return true
 }
 
-type GoCBConnStringParams struct {
-	// The KV pool size, KV buffer size and DCP buffer size are passed down to gocbcore.
-	// Defaults to different values based on being in serverless or not.
-	KVPoolSize    int
-	KVBufferSize  int
-	DCPBufferSize int
-}
-
-// FillDefaults replaces any unset fields in this GoCBConnStringParams with their default values.
-func (p *GoCBConnStringParams) FillDefaults() {
-	if p.KVPoolSize == 0 {
-		p.KVPoolSize = DefaultGocbKvPoolSize
-	}
-	if p.KVBufferSize == 0 {
-		p.KVBufferSize = 0
-	}
-	if p.DCPBufferSize == 0 {
-		p.DCPBufferSize = 0
-	}
-}
-
 // GetGoCBConnString builds a gocb connection string based on BucketSpec.Server.
-func (spec *BucketSpec) GetGoCBConnString(params *GoCBConnStringParams) (string, error) {
-	if params == nil {
-		params = &GoCBConnStringParams{}
-	}
-	params.FillDefaults()
-	connSpec, err := gocbconnstr.Parse(spec.Server)
+func (spec *BucketSpec) GetGoCBConnString() (string, error) {
+	return spec.getGoCBConnString(nil)
+}
+
+// //GetGoCBConnStringforDCP builds a gocb connection string from BucketSpec.Server for DCP connections.
+func (spec *BucketSpec) GetGoCBConnStringForDCP() (string, error) {
+	return spec.getGoCBConnString(IntPtr(GoCBPoolSizeDCP))
+}
+
+// getGoCBConnString builds a gocb connection string based on BucketSpec.server values. This is used for bucket connections. KvPoolSize can be forced despite the values of the connection values.
+func (spec *BucketSpec) getGoCBConnString(forceKvPoolSize *int) (string, error) {
+
+	connSpec, err := getGoCBConnSpec(spec.Server, nil)
 	if err != nil {
 		return "", err
 	}
 
-	if connSpec.Options == nil {
-		connSpec.Options = map[string][]string{}
-	}
-
 	asValues := url.Values(connSpec.Options)
 
-	// Add kv_pool_size as used in both GoCB versions
-	poolSizeFromConnStr := asValues.Get("kv_pool_size")
-	if poolSizeFromConnStr == "" {
-		asValues.Set("kv_pool_size", strconv.Itoa(params.KVPoolSize))
-		spec.KvPoolSize = params.KVPoolSize
-	} else {
-		spec.KvPoolSize, _ = strconv.Atoi(poolSizeFromConnStr)
+	if forceKvPoolSize != nil {
+		asValues.Set(kvPoolSizeKey, strconv.Itoa(*forceKvPoolSize))
+	} else if asValues.Get(kvPoolSizeKey) == "" {
+		asValues.Set(kvPoolSizeKey, strconv.Itoa(DefaultGocbKvPoolSize))
 	}
-
-	kvBufferfromConnStr := asValues.Get("kv_buffer_size")
-	if kvBufferfromConnStr == "" && params.KVBufferSize != 0 {
-		asValues.Set("kv_buffer_size", strconv.Itoa(params.KVBufferSize))
-		spec.KvBufferSize = params.KVBufferSize
-	} else {
-		spec.KvBufferSize, _ = strconv.Atoi(kvBufferfromConnStr)
-	}
-
-	dcpBufferfromConnStr := asValues.Get("dcp_buffer_size")
-	if dcpBufferfromConnStr == "" && params.DCPBufferSize != 0 {
-		asValues.Set("dcp_buffer_size", strconv.Itoa(params.DCPBufferSize))
-		spec.DcpBuffer = params.DCPBufferSize
-	} else {
-		spec.DcpBuffer, _ = strconv.Atoi(dcpBufferfromConnStr)
-	}
-
-	addGoCBv2ConnValues(spec, &asValues)
 
 	connSpec.Options = asValues
 	return connSpec.String(), nil
-}
-
-// addGoCBv2ConnValues adds URL values for GoCBv2 based on the bucket spec and default SG values.
-func addGoCBv2ConnValues(spec *BucketSpec, connValues *url.Values) {
-	connValues.Set("max_perhost_idle_http_connections", strconv.Itoa(DefaultHttpMaxIdleConnsPerHost))
-	connValues.Set("max_idle_http_connections", DefaultHttpMaxIdleConns)
-	connValues.Set("idle_http_connection_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
-
-	if spec.CACertPath != "" {
-		connValues.Set("ca_cert_path", spec.CACertPath)
-	}
 }
 
 func (b BucketSpec) GetViewQueryTimeout() time.Duration {
