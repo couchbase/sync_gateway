@@ -456,7 +456,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(ctx context.Context, config 
 }
 
 // GetBucketSpec returns a BucketSpec from a given DatabaseConfig and StartupConfig.
-func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *StartupConfig) (*base.BucketSpec, error) {
+func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *StartupConfig) (base.BucketSpec, error) {
 
 	var server string
 	if config.Server != nil {
@@ -476,7 +476,7 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 		}
 		connStr, err := base.GetGoCBConnStringWithDefaults(server, params)
 		if err != nil {
-			return nil, err
+			return base.BucketSpec{}, err
 		}
 		server = connStr
 	}
@@ -506,7 +506,7 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 		operationTimeout := time.Millisecond * time.Duration(*config.BucketOpTimeoutMs)
 		spec.BucketOpTimeout = &operationTimeout
 	}
-	return &spec, nil
+	return spec, nil
 }
 
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
@@ -566,9 +566,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// the connectToBucketFn is used for testing seam
 	if options.connectToBucketFn != nil {
 		// the connectToBucketFn is used for testing seam
-		bucket, err = options.connectToBucketFn(ctx, *spec, options.failFast)
+		bucket, err = options.connectToBucketFn(ctx, spec, options.failFast)
 	} else {
-		bucket, err = db.ConnectToBucket(ctx, *spec, options.failFast)
+		bucket, err = db.ConnectToBucket(ctx, spec, options.failFast)
 	}
 	if err != nil {
 		return nil, err
@@ -859,7 +859,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if err != nil {
 		return nil, err
 	}
-	dbcontext.BucketSpec = *spec
+	dbcontext.BucketSpec = spec
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
 	dbcontext.RequireResync = collectionsRequiringResync
