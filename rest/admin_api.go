@@ -1348,9 +1348,15 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 		}
 	}
 
-	// NB: other read-only properties are ignored but no error is returned for backwards-compatibility
-	if newInfo.JWTIssuer != nil || len(newInfo.JWTRoles) > 0 || len(newInfo.JWTChannels) > 0 {
-		return base.HTTPErrorf(http.StatusBadRequest, "Can't change read-only properties")
+	// Check read only fields in request against existing read only fields on the user, if the request attempts to
+	// change them, return error.
+	var unchanged bool
+	user, _ := h.db.Authenticator(h.ctx()).GetUser(internalUserName(name))
+	if user != nil {
+		newInfo, unchanged = checkUserAPIReadOnlyFields(newInfo, user)
+		if !unchanged {
+			return base.HTTPErrorf(http.StatusBadRequest, "Can't change read-only properties")
+		}
 	}
 
 	internalName := internalUserName(*newInfo.Name)
@@ -1769,4 +1775,30 @@ func databaseLoadErrorAsHTTPError(err error) error {
 		return base.HTTPErrorf(http.StatusConflict, "couldn't load database: %s", err)
 	}
 	return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
+}
+
+// checkUserAPIReadOnlyFields will return true if read only user fields are unchanged, else false. If a read only field
+// is unchanged it will nil the field so the update to principle ignores it.
+func checkUserAPIReadOnlyFields(newInfo auth.PrincipalConfig, user auth.User) (auth.PrincipalConfig, bool) {
+	if newInfo.JWTIssuer != nil {
+		if *newInfo.JWTIssuer != user.JWTIssuer() {
+			return newInfo, false
+		}
+		newInfo.JWTIssuer = nil
+	}
+	if len(newInfo.JWTRoles) > 0 {
+		userJWTRoles := user.JWTRoles().AsSet()
+		if !newInfo.JWTRoles.Equals(userJWTRoles) {
+			return newInfo, false
+		}
+		newInfo.JWTRoles = nil
+	}
+	if len(newInfo.JWTChannels) > 0 {
+		userJWTChan := user.JWTChannels().AsSet()
+		if !newInfo.JWTChannels.Equals(userJWTChan) {
+			return newInfo, false
+		}
+		newInfo.JWTChannels = nil
+	}
+	return newInfo, true
 }
