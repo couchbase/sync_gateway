@@ -122,8 +122,11 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 
 		"auth.bcrypt_cost": {&config.Auth.BcryptCost, fs.Int("auth.bcrypt_cost", 0, "Cost to use for bcrypt password hashes")},
 
-		"replicator.max_heartbeat":    {&config.Replicator.MaxHeartbeat, fs.String("replicator.max_heartbeat", "", "Max heartbeat value for _changes request")},
-		"replicator.blip_compression": {&config.Replicator.BLIPCompression, fs.Int("replicator.blip_compression", 0, "BLIP data compression level (0-9)")},
+		"replicator.max_heartbeat":                  {&config.Replicator.MaxHeartbeat, fs.String("replicator.max_heartbeat", "", "Max heartbeat value for _changes request")},
+		"replicator.blip_compression":               {&config.Replicator.BLIPCompression, fs.Int("replicator.blip_compression", 0, "BLIP data compression level (0-9)")},
+		"replicator.max_concurrent_replications":    {&config.Replicator.MaxConcurrentReplications, fs.Int("replicator.max_concurrent_replications", 0, "Maximum number of replication connections to the node")},
+		"replicator.max_concurrent_changes_batches": {&config.Replicator.MaxConcurrentChangesBatches, fs.Int("replicator.max_concurrent_changes_batches", 0, "Maximum number of changes batches to process concurrently per replication")},
+		"replicator.max_concurrent_revs":            {&config.Replicator.MaxConcurrentRevs, fs.Int("replicator.max_concurrent_revs", 0, "Maximum number of revs to process concurrently per replication")},
 
 		"unsupported.stats_log_frequency":                  {&config.Unsupported.StatsLogFrequency, fs.String("unsupported.stats_log_frequency", "", "How often should stats be written to stats logs")},
 		"unsupported.use_stdlib_json":                      {&config.Unsupported.UseStdlibJSON, fs.Bool("unsupported.use_stdlib_json", false, "Bypass the jsoniter package and use Go's stdlib instead")},
