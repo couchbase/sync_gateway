@@ -2517,11 +2517,18 @@ AllUserChannels:
       additionalProperties:
         x-additionalPropertiesName: channel
         description: Channel name
-        type: string
-        additionalProperties:
-          x-additionalPropertiesName: grantHistory
-          type: string
-          description: Start sequence to end sequence
+        type: object
+        properties:
+          Entries:
+            type: array
+            description: Start sequence to end sequence
+          UpdatedAt:
+            type: integer
+            description: Unix timestamp of last update
+          admin_assigned:
+            type: boolean
+            description: Whether a channel was assigned through admin_channels or not
+
     dynamic_grants:
       description: |-
         Channels assigned to the user through the sync function.
@@ -2529,11 +2536,14 @@ AllUserChannels:
       additionalProperties:
         x-additionalPropertiesName: channel
         description: Channel name
-        type: string
-        additionalProperties:
-          x-additionalPropertiesName: grantHistory
-          type: string
-          description: Start sequence to end sequence
+        type: object
+        properties:
+          Entries:
+            type: array
+            description: Start sequence to end sequence
+          UpdatedAt:
+            type: integer
+            description: Unix timestamp of last update
 
     admin_role_grants:
       description: |-
@@ -2543,11 +2553,15 @@ AllUserChannels:
       additionalProperties:
         x-additionalPropertiesName: channel
         description: Channel name
-        type: string
-        additionalProperties:
-          x-additionalPropertiesName: grantHistory
-          type: string
-          description: Start sequence to end sequence
+        type: object
+        properties:
+          Entries:
+            type: array
+            description: Start sequence to end sequence
+          UpdatedAt:
+            type: integer
+            description: Unix timestamp of last update
+
 
     dynamic_role_grants:
       description: |-
@@ -2556,11 +2570,14 @@ AllUserChannels:
       additionalProperties:
         x-additionalPropertiesName: channel
         description: Channel name
-        type: string
-        additionalProperties:
-          x-additionalPropertiesName: grantHistory
-          type: string
-          description: Start sequence to end sequence
+        type: object
+        properties:
+          Entries:
+            type: array
+            description: Start sequence to end sequence
+          UpdatedAt:
+            type: integer
+            description: Unix timestamp of last update
 
     role_history_grants:
       description: |-
@@ -2569,8 +2586,11 @@ AllUserChannels:
       additionalProperties:
         x-additionalPropertiesName: channel
         description: Channel name
-        type: string
-        additionalProperties:
-          x-additionalPropertiesName: grantHistory
-          type: string
-          description: Start sequence to end sequence
+        type: object
+        properties:
+          Entries:
+            type: array
+            description: Start sequence to end sequence
+          UpdatedAt:
+            type: integer
+            description: Unix timestamp of last update
