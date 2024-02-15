@@ -1216,6 +1216,75 @@ func TestOpenIDConnectImplicitFlowReuseToken(t *testing.T) {
 	assert.Equal(t, int64(finalLastSeq+1), int64(postUpdateLastSeq))
 }
 
+// TestUserAPIReadOnlyFields:
+//   - Test regression behaviour found in CBG-3641
+//   - Create OIDC config and token to grant a user some channel and roles
+//   - Retrieve the user and use this output in PUT request again t the same user, assert no error
+//   - Fetch user again and assert that the user config is unchanged
+//   - Change the fetched config to omit one of the read only fields and use this as payload against a new PUT to the same user
+//   - Assert that the update doesn't error and user config is unchanged
+func TestUserAPIReadOnlyFields(t *testing.T) {
+
+	testProviders := auth.OIDCProviderMap{
+		"foo": mockProviderWith("foo", mockProviderUserPrefix{"foo"}, mockProviderChannelsClaim{"channels"}, mockProviderRolesClaim{"roles"}),
+	}
+	defaultProvider := "foo"
+
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/" + defaultProvider
+	refreshProviderConfig(testProviders, mockAuthServer.URL)
+
+	opts := auth.OIDCOptions{Providers: testProviders, DefaultProvider: &defaultProvider}
+	restTesterConfig := RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
+
+	// JWT claim based grants do not support named collections
+	restTester := NewRestTesterDefaultCollection(t, &restTesterConfig)
+	require.NoError(t, restTester.SetAdminParty(false))
+	defer restTester.Close()
+
+	createUser(t, restTester, "foo_noah")
+
+	token, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{"foo"}, "roles": []string{"fooRole"}}))
+	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
+	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
+
+	// use token
+	resp := restTester.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc1", `{"channels":"foo"}`, map[string]string{"Authorization": BearerToken + " " + token})
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// Get user to provide payload for a PUT request
+	resp = restTester.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/foo_noah", "")
+	RequireStatus(t, resp, http.StatusOK)
+	userOutput := resp.Body.String()
+
+	resp = restTester.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/foo_noah", userOutput)
+	RequireStatus(t, resp, http.StatusOK)
+
+	// Get user again and unmarshal output
+	resp = restTester.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/foo_noah", "")
+	RequireStatus(t, resp, http.StatusOK)
+	assert.Equal(t, userOutput, resp.Body.String())
+
+	var newInfo auth.PrincipalConfig
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &newInfo))
+
+	// omit one of the read only fields to ensure PUT request still works even without all read only fields specified
+	newInfo.JWTIssuer = nil
+	updatedRequest, err := base.JSONMarshal(&newInfo)
+	require.NoError(t, err)
+
+	resp = restTester.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/foo_noah", string(updatedRequest))
+	RequireStatus(t, resp, http.StatusOK)
+
+	// assert that the user out put remains unchanged
+	resp = restTester.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/foo_noah", "")
+	RequireStatus(t, resp, http.StatusOK)
+	assert.Equal(t, userOutput, resp.Body.String())
+}
+
 // checkGoodAuthResponse asserts expected session response values against the given response.
 func checkGoodAuthResponse(t *testing.T, rt *RestTester, response *http.Response, username string) {
 	var responseBodyExpected map[string]interface{}
