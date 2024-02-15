@@ -1350,8 +1350,9 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 
 	// Check read only fields in request against existing read only fields on the user, if the request attempts to
 	// change them, return error.
+	internalName := internalUserName(*newInfo.Name)
 	var unchanged bool
-	user, _ := h.db.Authenticator(h.ctx()).GetUser(internalUserName(name))
+	user, _ := h.db.Authenticator(h.ctx()).GetUser(internalName)
 	if user != nil {
 		newInfo, unchanged = checkUserAPIReadOnlyFields(newInfo, user)
 		if !unchanged {
@@ -1359,7 +1360,6 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 		}
 	}
 
-	internalName := internalUserName(*newInfo.Name)
 	if err = auth.ValidatePrincipalName(internalName); err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 	}
