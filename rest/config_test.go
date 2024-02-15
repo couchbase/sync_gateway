@@ -26,6 +26,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -2427,6 +2428,60 @@ func TestStartupConfigBcryptCostValidation(t *testing.T) {
 			if test.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), errContains)
+			} else if err != nil {
+				assert.NotContains(t, err.Error(), errContains)
+			}
+		})
+	}
+}
+
+func TestStartupConfigReplicationThrottleValidation(t *testing.T) {
+	errContains, err := regexp.Compile(`max_concurrent_revs: \d+ outside allowed range`)
+	require.NoErrorf(t, err, "regexp.Compile failed for test assertion")
+
+	testCases := []struct {
+		name         string
+		revsThrottle *int
+		expectError  bool
+	}{
+		{
+			name:         "valid-nil",
+			revsThrottle: nil,
+			expectError:  false,
+		},
+		{
+			name:         "invalid-low",
+			revsThrottle: base.IntPtr(4),
+			expectError:  true,
+		},
+		{
+			name:         "Valid-5",
+			revsThrottle: base.IntPtr(5),
+			expectError:  false,
+		},
+		{
+			name:         "Valid-20",
+			revsThrottle: base.IntPtr(20),
+			expectError:  false,
+		},
+		{
+			name:         "Valid-200",
+			revsThrottle: base.IntPtr(200),
+			expectError:  false,
+		},
+		{
+			name:         "invalid-high",
+			revsThrottle: base.IntPtr(201),
+			expectError:  true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			sc := StartupConfig{Replicator: ReplicatorConfig{MaxConcurrentRevs: test.revsThrottle}}
+			err := sc.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
+			if test.expectError {
+				require.Error(t, err)
+				assert.Regexp(t, errContains, err.Error())
 			} else if err != nil {
 				assert.NotContains(t, err.Error(), errContains)
 			}

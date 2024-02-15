@@ -71,12 +71,14 @@ func (bh *blipHandler) handleGetRev(rq *blip.Message) error {
 // Handles a Connected-Client "putRev" request.
 func (bh *blipHandler) handlePutRev(rq *blip.Message) error {
 	stats := processRevStats{
-		count:           bh.replicationStats.HandlePutRevCount,
-		errorCount:      bh.replicationStats.HandlePutRevErrorCount,
-		deltaRecvCount:  bh.replicationStats.HandlePutRevDeltaRecvCount,
-		bytes:           bh.replicationStats.HandlePutRevBytes,
-		processingTime:  bh.replicationStats.HandlePutRevProcessingTime,
-		docsPurgedCount: bh.replicationStats.HandlePutRevDocsPurgedCount,
+		count:            bh.replicationStats.HandlePutRevCount,
+		errorCount:       bh.replicationStats.HandlePutRevErrorCount,
+		deltaRecvCount:   bh.replicationStats.HandlePutRevDeltaRecvCount,
+		bytes:            bh.replicationStats.HandlePutRevBytes,
+		processingTime:   bh.replicationStats.HandlePutRevProcessingTime,
+		docsPurgedCount:  bh.replicationStats.HandlePutRevDocsPurgedCount,
+		throttledRevs:    bh.replicationStats.HandlePutRevThrottledCount,
+		throttledRevTime: bh.replicationStats.HandlePutRevThrottledTime,
 	}
 	return bh.processRev(rq, &stats)
 }

@@ -134,7 +134,6 @@ const (
 )
 
 // CBL Replication pull stats descriptions
-
 const (
 	AttachmentPullBytesDesc = "The total size of attachments pulled. This is the pre-compressed size."
 
@@ -204,6 +203,9 @@ const (
 
 	WriteProcessingTimeDesc = "Total time spent processing writes. Measures complete request-to-response time for a write. The write_processing_time stat can be useful when: (a). Determining the average time per write: average time per write = write_processing_time / num_doc_writes stat value " +
 		"(b). Assessing the benefit of adding additional Sync Gateway nodes, as it can point to Sync Gateway being a bottleneck (c). Troubleshooting slow push replication, in which case it ought to be considered in conjunction with sync_function_time"
+
+	WriteThrottledCountDesc = "The total number of times a revision was throttled during push replication from clients. The write_throttled_count stat can be useful to to determine an appropriate limit of concurrent revisions for each client. There's a direct tradeoff with memory and CPU usage for replicating clients and large amounts of concurrent revisions."
+	WriteThrottledTimeDesc  = "The total time (in nanoseconds) waiting for an available slot to handle a pushed revision after being throttled. The write_throttled_time stat can be useful to determine whether clients are waiting too long for an available slot to push a revision. There's a direct tradeoff with memory and CPU usage for replicating clients and large amounts of concurrent revisions."
 
 	DocPushErrorCountDesc = "The total number of documents that failed to push."
 )
