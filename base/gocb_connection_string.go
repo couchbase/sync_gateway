@@ -92,8 +92,8 @@ func GetGoCBConnStringWithDefaults(server string, defaults *GoCBConnStringParams
 	return connSpec.String(), nil
 }
 
-// GetKvPoolSize returns the kv_pool_size from the connection string, if it exists. If it doesn't exist, return nil, or an error if the string is not parseable.
-func GetKvPoolSize(connstr string) (*int, error) {
+// getIntFromConnStr returns a query parameter from a connection string. If it doesn't exist,  return nil and no error. If there's an error in parsing the connection string, return an error.
+func getIntFromConnStr(connstr, key string) (*int, error) {
 	connSpec, err := getGoCBConnSpec(connstr, nil)
 	if err != nil {
 		return nil, err
@@ -101,18 +101,17 @@ func GetKvPoolSize(connstr string) (*int, error) {
 
 	values := url.Values(connSpec.Options)
 
-	kvPoolSizeArg := values[kvPoolSizeKey]
+	arg := values[key]
 
-	if len(kvPoolSizeArg) == 0 {
-		return nil, fmt.Errorf("Connection string not found")
-	} else if len(kvPoolSizeArg) > 1 {
-		return nil, fmt.Errorf("Multiple kv_pool_size values found in connection string %s", connstr)
+	if len(arg) == 0 {
+		return nil, nil
+	} else if len(arg) > 1 {
+		return nil, fmt.Errorf("Multiple %s values found in connection string %s", key, connstr)
 	}
 
-	kvPoolSize := kvPoolSizeArg[0]
-	kvPoolSizeInt, err := strconv.Atoi(kvPoolSize)
+	i, err := strconv.Atoi(arg[0])
 	if err != nil {
-		return nil, fmt.Errorf("Invalid kv_pool_size value %s in connection string %s, must be int", kvPoolSize, connstr)
+		return nil, fmt.Errorf("Invalid %s value %s in connection string %s, must be int", key, arg[0], connstr)
 	}
-	return &kvPoolSizeInt, nil
+	return &i, nil
 }

@@ -167,7 +167,7 @@ func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec
 		nodeCount = len(mgmtEps)
 	}
 
-	numPools, err := GetKvPoolSize(connstr)
+	numPools, err := getIntFromConnStr(connstr, kvPoolSizeKey)
 	if err != nil {
 		WarnfCtx(ctx, "Error getting kv pool size from connection string: %v", err)
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})
