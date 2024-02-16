@@ -177,8 +177,8 @@ type DatabaseContextOptions struct {
 	ChangesRequestPlus            bool           // Sets the default value for request_plus, for non-continuous changes feeds
 	ConfigPrincipals              *ConfigPrincipals
 	LoggingConfig                 DbLogConfig // Per-database log configuration
-	MaxConcurrentChangesBatches   *int           // Maximum number of changes batches to process concurrently per replication
-	MaxConcurrentRevs             *int           // Maximum number of revs to process concurrently per replication
+	MaxConcurrentChangesBatches   *int        // Maximum number of changes batches to process concurrently per replication
+	MaxConcurrentRevs             *int        // Maximum number of revs to process concurrently per replication
 }
 
 // DbLogConfig can be used to customise the logging for logs associated with this database.
