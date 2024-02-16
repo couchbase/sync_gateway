@@ -698,7 +698,7 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	defer rt.Close()
 
 	// Create a DB configured with one scope
-	res := rt.SendAdminRequest(http.MethodPut, "/db/", string(mustMarshalJSON(t, map[string]any{
+	res := rt.SendAdminRequest(http.MethodPut, "/db/", string(base.MustJSONMarshal(t, map[string]any{
 		"bucket":                      tb.GetName(),
 		"num_index_replicas":          0,
 		"enable_shared_bucket_access": base.TestUseXattrs(),
@@ -714,7 +714,7 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	RequireStatus(t, res, http.StatusCreated)
 
 	// Try updating its scopes
-	res = rt.SendAdminRequest(http.MethodPut, "/db/_config", string(mustMarshalJSON(t, map[string]any{
+	res = rt.SendAdminRequest(http.MethodPut, "/db/_config", string(base.MustJSONMarshal(t, map[string]any{
 		"bucket":                      tb.GetName(),
 		"num_index_replicas":          0,
 		"enable_shared_bucket_access": base.TestUseXattrs(),

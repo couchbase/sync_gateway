@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWriteMultipartDocument(t *testing.T) {
@@ -170,7 +171,8 @@ func TestWriteJSONPart(t *testing.T) {
 	log.Printf("body: %v", body)
 	buffer := &bytes.Buffer{}
 	writer := multipart.NewWriter(buffer)
-	bytes, _ := base.JSONMarshalCanonical(body)
+	bytes, err := base.JSONMarshalCanonical(body)
+	require.NoError(t, err)
 	log.Printf("len(bytes): %v", len(bytes))
 	assert.NoError(t, writeJSONPart(writer, "application/json", body, true))
 	assert.NoError(t, writeJSONPart(writer, "application/json", body, false))

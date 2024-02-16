@@ -13,7 +13,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -26,12 +25,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func unjson(j string) Body {
+func unmarshalBody(t *testing.T, j string) Body {
 	var body Body
-	err := base.JSONUnmarshal([]byte(j), &body)
-	if err != nil {
-		panic(fmt.Sprintf("Invalid JSON: %v", err))
-	}
+	require.NoError(t, base.JSONUnmarshal([]byte(j), &body))
 	return body
 }
 
@@ -217,7 +213,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 	docBody := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	var body Body
 	require.NoError(t, base.JSONUnmarshal([]byte(docBody), &body))
-	_, _, err := collection.Put(ctx, "doc1", unjson(docBody))
+	_, _, err := collection.Put(ctx, "doc1", unmarshalBody(t, docBody))
 	require.Error(t, err)
 
 	// Attempt to retrieve the attachment doc
@@ -234,7 +230,7 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	// Test creating & updating a document:
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},
                                     "bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
-	_, _, err := collection.Put(ctx, "doc1", unjson(rev1input))
+	_, _, err := collection.Put(ctx, "doc1", unmarshalBody(t, rev1input))
 	require.NoError(t, err, "Couldn't create document")
 
 	initCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
@@ -304,7 +300,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 
 	// 1. Create a document with no attachment
 	rev1Json := `{"prop1":"value1"}`
-	rev1ID, _, err := collection.Put(ctx, "doc1", unjson(rev1Json))
+	rev1ID, _, err := collection.Put(ctx, "doc1", unmarshalBody(t, rev1Json))
 	assert.NoError(t, err, "Couldn't create document")
 
 	// 2. Create rev 2 with new attachment - done in callback
@@ -367,7 +363,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 
 	// 1. Create a document with no attachment
 	rev1Json := `{"prop1":"value1"}`
-	rev1ID, _, err := collection.Put(ctx, "doc1", unjson(rev1Json))
+	rev1ID, _, err := collection.Put(ctx, "doc1", unmarshalBody(t, rev1Json))
 	assert.NoError(t, err, "Couldn't create document")
 
 	// 2. Create rev 2 with no attachment

@@ -908,3 +908,10 @@ func FastRandBytes(t testing.TB, size int) []byte {
 	require.NoError(t, err)
 	return b
 }
+
+// MustJSONMarshal marshals the given value to JSON, and errors the test if it can not be turned into json.
+func MustJSONMarshal(t testing.TB, v interface{}) []byte {
+	b, err := JSONMarshal(v)
+	require.NoError(t, err)
+	return b
+}

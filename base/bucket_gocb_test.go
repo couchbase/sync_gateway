@@ -382,8 +382,7 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
 
-	valBytes, marshalErr := JSONMarshal(val)
-	assert.NoError(t, marshalErr, "Error marshalling document body")
+	valBytes := MustJSONMarshal(t, val)
 
 	xattrVal := make(map[string]interface{})
 	xattrVal["seq"] = float64(123)
@@ -549,15 +548,13 @@ func TestXattrWriteCasRaw(t *testing.T) {
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
-	valRaw, _ := JSONMarshal(val)
 
 	xattrVal := make(map[string]interface{})
 	xattrVal["seq"] = float64(123)
 	xattrVal["rev"] = "1-1234"
-	xattrValRaw, _ := JSONMarshal(xattrVal)
 
 	cas := uint64(0)
-	cas, err := dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, valRaw, xattrValRaw, nil)
+	cas, err := dataStore.WriteCasWithXattr(ctx, key, xattrName, 0, cas, MustJSONMarshal(t, val), MustJSONMarshal(t, xattrVal), nil)
 	require.NoError(t, err)
 
 	var retrievedValByte []byte
@@ -757,8 +754,8 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 			xattrMap["seq"] = float64(1)
 		}
 
-		updatedDoc, _ = JSONMarshal(docMap)
-		updatedXattr, _ = JSONMarshal(xattrMap)
+		updatedDoc = MustJSONMarshal(t, docMap)
+		updatedXattr = MustJSONMarshal(t, xattrMap)
 		return updatedDoc, updatedXattr, false, nil, updatedSpec, nil
 	}
 
@@ -833,8 +830,8 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 
 		docMap["userXattrVal"] = userXattrMap
 
-		updatedDoc, _ = JSONMarshal(docMap)
-		updatedXattr, _ = JSONMarshal(xattrMap)
+		updatedDoc = MustJSONMarshal(t, docMap)
+		updatedXattr = MustJSONMarshal(t, xattrMap)
 
 		return updatedDoc, updatedXattr, false, nil, updatedSpec, nil
 	}
@@ -1058,8 +1055,8 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 	updatedXattrVal := make(map[string]interface{})
 	updatedXattrVal["seq"] = 123
 	updatedXattrVal["rev"] = "2-1234"
-	xattrValBytes, err := JSONMarshal(updatedXattrVal)
-	require.NoError(t, err)
+
+	xattrValBytes := MustJSONMarshal(t, updatedXattrVal)
 
 	// Attempt to delete DocExistsXattrExists, DocExistsNoXattr, and XattrExistsNoDoc
 	// No errors should be returned when deleting these.
@@ -1930,8 +1927,7 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 
 	// Attempt to delete the document body (deleteBody = true); isDelete is true to mark this doc as a tombstone.
 
-	xattrValBytes, err := JSONMarshal(updatedXattrVal)
-	require.NoError(t, err)
+	xattrValBytes := MustJSONMarshal(t, updatedXattrVal)
 	_, errDelete := dataStore.WriteWithXattr(ctx, key, xattrKey, 0, cas, nil, xattrValBytes, true, true, syncMutateInOpts())
 	assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
 	assert.True(t, verifyDocDeletedXattrExists(ctx, dataStore, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
@@ -2025,15 +2021,14 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 
 	cas := uint64(0)
 	// Attempt to delete the document body (deleteBody = true); isDelete is true to mark this doc as a tombstone.
-	xattrValBytes, err := JSONMarshal(xattrVal)
-	require.NoError(t, err)
+	xattrValBytes := MustJSONMarshal(t, xattrVal)
 	_, errDelete := dataStore.WriteWithXattr(ctx, key, xattrKey, 0, cas, nil, xattrValBytes, true, false, syncMutateInOpts())
 	assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
 	assert.True(t, verifyDocDeletedXattrExists(ctx, dataStore, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
 
 	var docResult map[string]interface{}
 	var xattrResult map[string]interface{}
-	_, err = dataStore.GetWithXattr(ctx, key, xattrKey, "", &docResult, &xattrResult, nil)
+	_, err := dataStore.GetWithXattr(ctx, key, xattrKey, "", &docResult, &xattrResult, nil)
 	assert.NoError(t, err)
 	assert.Len(t, docResult, 0)
 	assert.Equal(t, "1-EmDC", xattrResult["rev"])
