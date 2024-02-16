@@ -748,21 +748,21 @@ func TestAuditDocumentRead(t *testing.T) {
 			method:          http.MethodGet,
 			path:            "/{{.keyspace}}/doc1",
 			docID:           "doc1",
-			docReadVersions: []string{docVersion.RevID},
+			docReadVersions: []string{docVersion.RevTreeID},
 		},
 		{
 			name:            "get doc with rev",
 			method:          http.MethodGet,
-			path:            "/{{.keyspace}}/doc1?rev=" + docVersion.RevID,
+			path:            "/{{.keyspace}}/doc1?rev=" + docVersion.RevTreeID,
 			docID:           "doc1",
-			docReadVersions: []string{docVersion.RevID},
+			docReadVersions: []string{docVersion.RevTreeID},
 		},
 		{
 			name:            "get doc with openrevs",
 			method:          http.MethodGet,
 			path:            "/{{.keyspace}}/doc1?open_revs=all",
 			docID:           "doc1",
-			docReadVersions: []string{docVersion.RevID},
+			docReadVersions: []string{docVersion.RevTreeID},
 		},
 		{
 			name:   "_bulk_get",
@@ -770,11 +770,11 @@ func TestAuditDocumentRead(t *testing.T) {
 			path:   "/{{.keyspace}}/_bulk_get",
 			requestBody: string(base.MustJSONMarshal(t, db.Body{
 				"docs": []db.Body{
-					{"id": "doc1", "rev": docVersion.RevID},
+					{"id": "doc1", "rev": docVersion.RevTreeID},
 				},
 			})),
 			docID:           "doc1",
-			docReadVersions: []string{docVersion.RevID},
+			docReadVersions: []string{docVersion.RevTreeID},
 		},
 		{
 			// this doesn't actually provide the document body, no audit events
@@ -782,7 +782,7 @@ func TestAuditDocumentRead(t *testing.T) {
 			method: http.MethodPost,
 			path:   "/{{.keyspace}}/_revs_diff",
 			requestBody: string(base.MustJSONMarshal(t, db.Body{
-				"doc1": []string{docVersion.RevID},
+				"doc1": []string{docVersion.RevTreeID},
 			})),
 			docID:           "doc1",
 			docReadVersions: nil,
@@ -800,14 +800,14 @@ func TestAuditDocumentRead(t *testing.T) {
 			method:          http.MethodGet,
 			path:            "/{{.keyspace}}/_all_docs?include_docs=true",
 			docID:           "doc1",
-			docReadVersions: []string{docVersion.RevID},
+			docReadVersions: []string{docVersion.RevTreeID},
 		},
 		{
 			name:                 "all_docs with include_docs=true&channels=true",
 			method:               http.MethodGet,
 			path:                 "/{{.keyspace}}/_all_docs?include_docs=true&channels=true",
 			docID:                "doc1",
-			docReadVersions:      []string{docVersion.RevID},
+			docReadVersions:      []string{docVersion.RevTreeID},
 			docMetadataReadCount: 1,
 		},
 		{
@@ -845,14 +845,14 @@ func TestAuditDocumentRead(t *testing.T) {
 			method:          http.MethodGet,
 			path:            "/{{.keyspace}}/_changes?since=0&include_docs=true",
 			docID:           "doc1",
-			docReadVersions: []string{docVersion.RevID},
+			docReadVersions: []string{docVersion.RevTreeID},
 		},
 		{
 			name:                 "raw",
 			method:               http.MethodGet,
 			path:                 "/{{.keyspace}}/_raw/doc1",
 			docID:                "doc1",
-			docReadVersions:      []string{docVersion.RevID},
+			docReadVersions:      []string{docVersion.RevTreeID},
 			docMetadataReadCount: 1,
 		},
 		{
@@ -879,7 +879,7 @@ func TestAuditDocumentRead(t *testing.T) {
 			method:          http.MethodGet,
 			path:            "/{{.keyspace}}/doc1?replicator2=true",
 			docID:           "doc1",
-			docReadVersions: []string{docVersion.RevID},
+			docReadVersions: []string{docVersion.RevTreeID},
 		},
 		)
 	}
@@ -890,7 +890,7 @@ func TestAuditDocumentRead(t *testing.T) {
 				RequireStatus(t, resp, http.StatusOK)
 			})
 			requireDocumentReadEvents(rt, output, testCase.docID, testCase.docReadVersions)
-			requireDocumentMetadataReadEvents(rt, output, testCase.docID, docVersion.RevID, testCase.docMetadataReadCount)
+			requireDocumentMetadataReadEvents(rt, output, testCase.docID, docVersion.RevTreeID, testCase.docMetadataReadCount)
 		})
 	}
 }
@@ -915,7 +915,7 @@ func TestAuditAttachmentEvents(t *testing.T) {
 				return rt.CreateTestDoc(docID)
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+docVersion.RevID, "content"), http.StatusCreated)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+docVersion.RevTreeID, "content"), http.StatusCreated)
 			},
 			attachmentCreateCount: 1,
 		},
@@ -925,7 +925,7 @@ func TestAuditAttachmentEvents(t *testing.T) {
 				return rt.CreateTestDoc(docID)
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, `{"_attachments":{"attachment1":{"data": "YQ=="}}}`), http.StatusCreated)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevTreeID, `{"_attachments":{"attachment1":{"data": "YQ=="}}}`), http.StatusCreated)
 			},
 			attachmentCreateCount: 1,
 		},
@@ -933,12 +933,12 @@ func TestAuditAttachmentEvents(t *testing.T) {
 			name: "get attachment with rev",
 			setupCode: func(t testing.TB, docID string) DocVersion {
 				initialDocVersion := rt.CreateTestDoc(docID)
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevID, "contentdoc2"), http.StatusCreated)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevTreeID, "contentdoc2"), http.StatusCreated)
 				docVersion, _ := rt.GetDoc(docID)
 				return docVersion
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"/attachment1?rev="+docVersion.RevID, ""), http.StatusOK)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"/attachment1?rev="+docVersion.RevTreeID, ""), http.StatusOK)
 			},
 			attachmentReadCount: 1,
 		},
@@ -946,14 +946,14 @@ func TestAuditAttachmentEvents(t *testing.T) {
 			name: "bulk_get attachment with rev",
 			setupCode: func(t testing.TB, docID string) DocVersion {
 				initialDocVersion := rt.CreateTestDoc(docID)
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevID, "contentdoc2"), http.StatusCreated)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevTreeID, "contentdoc2"), http.StatusCreated)
 				docVersion, _ := rt.GetDoc(docID)
 				return docVersion
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
 				body := string(base.MustJSONMarshal(t, db.Body{
 					"docs": []db.Body{
-						{"id": docID, "rev": docVersion.RevID},
+						{"id": docID, "rev": docVersion.RevTreeID},
 					},
 				}))
 				RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_get?attachments=true", body), http.StatusOK)
@@ -974,12 +974,12 @@ func TestAuditAttachmentEvents(t *testing.T) {
 			name: "update attachment",
 			setupCode: func(t testing.TB, docID string) DocVersion {
 				initialDocVersion := rt.CreateTestDoc(docID)
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevID, "contentdoc2"), http.StatusCreated)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevTreeID, "contentdoc2"), http.StatusCreated)
 				docVersion, _ := rt.GetDoc(docID)
 				return docVersion
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+docVersion.RevID, "content-update"), http.StatusCreated)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+docVersion.RevTreeID, "content-update"), http.StatusCreated)
 			},
 			attachmentUpdateCount: 1,
 		},
@@ -987,12 +987,12 @@ func TestAuditAttachmentEvents(t *testing.T) {
 			name: "update inline attachment",
 			setupCode: func(t testing.TB, docID string) DocVersion {
 				initialDocVersion := rt.CreateTestDoc(docID)
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevID, "contentdoc2"), http.StatusCreated)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevTreeID, "contentdoc2"), http.StatusCreated)
 				docVersion, _ := rt.GetDoc(docID)
 				return docVersion
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, `{"_attachments":{"attachment1":{"data": "YQ=="}}}`), http.StatusCreated)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevTreeID, `{"_attachments":{"attachment1":{"data": "YQ=="}}}`), http.StatusCreated)
 			},
 			attachmentUpdateCount: 1,
 		},
@@ -1000,12 +1000,12 @@ func TestAuditAttachmentEvents(t *testing.T) {
 			name: "delete attachment",
 			setupCode: func(t testing.TB, docID string) DocVersion {
 				initialDocVersion := rt.CreateTestDoc(docID)
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevID, "contentdoc2"), http.StatusCreated)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevTreeID, "contentdoc2"), http.StatusCreated)
 				docVersion, _ := rt.GetDoc(docID)
 				return docVersion
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-				RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/"+docID+"/attachment1?rev="+docVersion.RevID, ""), http.StatusOK)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/"+docID+"/attachment1?rev="+docVersion.RevTreeID, ""), http.StatusOK)
 			},
 			attachmentDeleteCount: 1,
 		},
@@ -1013,12 +1013,12 @@ func TestAuditAttachmentEvents(t *testing.T) {
 			name: "delete inline attachment",
 			setupCode: func(t testing.TB, docID string) DocVersion {
 				initialDocVersion := rt.CreateTestDoc(docID)
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevID, "contentdoc2"), http.StatusCreated)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevTreeID, "contentdoc2"), http.StatusCreated)
 				docVersion, _ := rt.GetDoc(docID)
 				return docVersion
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, `{"foo": "bar", "_attachments":{}}`), http.StatusCreated)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevTreeID, `{"foo": "bar", "_attachments":{}}`), http.StatusCreated)
 			},
 			attachmentDeleteCount: 1,
 		},
@@ -1033,7 +1033,7 @@ func TestAuditAttachmentEvents(t *testing.T) {
 			})
 			postAttachmentVersion, _ := rt.GetDoc(docID)
 
-			requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, postAttachmentVersion.RevID, attachmentName, testCase.attachmentDeleteCount)
+			requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, postAttachmentVersion.RevTreeID, attachmentName, testCase.attachmentDeleteCount)
 		})
 	}
 }
@@ -1069,7 +1069,7 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 				return rt.CreateTestDoc(docID)
 			},
 			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, `{"foo": "bar"}`), http.StatusCreated)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevTreeID, `{"foo": "bar"}`), http.StatusCreated)
 			},
 			documentUpdateCount: 1,
 		},
@@ -1108,8 +1108,8 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 				testCase.auditableCode(t, docID, docVersion)
 			})
 			postAttachmentVersion, _ := rt.GetDoc(docID)
-			requireDocumentEvents(rt, base.AuditIDDocumentCreate, output, docID, postAttachmentVersion.RevID, testCase.documentCreateCount)
-			requireDocumentEvents(rt, base.AuditIDDocumentUpdate, output, docID, postAttachmentVersion.RevID, testCase.documentUpdateCount)
+			requireDocumentEvents(rt, base.AuditIDDocumentCreate, output, docID, postAttachmentVersion.RevTreeID, testCase.documentCreateCount)
+			requireDocumentEvents(rt, base.AuditIDDocumentUpdate, output, docID, postAttachmentVersion.RevTreeID, testCase.documentUpdateCount)
 		})
 	}
 }
@@ -1462,6 +1462,7 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 
 func TestAuditBlipCRUD(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // attachments not yet replicated in V4 protocol
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 
 		rt := createAuditLoggingRestTester(t)
@@ -1508,10 +1509,10 @@ func TestAuditBlipCRUD(t *testing.T) {
 				})
 				postAttachmentVersion, _ := rt.GetDoc(docID)
 
-				requireAttachmentEvents(rt, base.AuditIDAttachmentCreate, output, docID, postAttachmentVersion.RevID, testCase.attachmentName, testCase.attachmentCreateCount)
-				requireAttachmentEvents(rt, base.AuditIDAttachmentRead, output, docID, postAttachmentVersion.RevID, testCase.attachmentName, testCase.attachmentReadCount)
-				requireAttachmentEvents(rt, base.AuditIDAttachmentUpdate, output, docID, postAttachmentVersion.RevID, testCase.attachmentName, testCase.attachmentUpdateCount)
-				requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, postAttachmentVersion.RevID, testCase.attachmentName, testCase.attachmentDeleteCount)
+				requireAttachmentEvents(rt, base.AuditIDAttachmentCreate, output, docID, postAttachmentVersion.RevTreeID, testCase.attachmentName, testCase.attachmentCreateCount)
+				requireAttachmentEvents(rt, base.AuditIDAttachmentRead, output, docID, postAttachmentVersion.RevTreeID, testCase.attachmentName, testCase.attachmentReadCount)
+				requireAttachmentEvents(rt, base.AuditIDAttachmentUpdate, output, docID, postAttachmentVersion.RevTreeID, testCase.attachmentName, testCase.attachmentUpdateCount)
+				requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, postAttachmentVersion.RevTreeID, testCase.attachmentName, testCase.attachmentDeleteCount)
 			})
 		}
 	})

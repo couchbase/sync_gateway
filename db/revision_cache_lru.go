@@ -524,7 +524,7 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 			// based off the current value load we need to populate the revid key with what has been fetched from the bucket (for use of populating the opposite lookup map)
 			value.revID = revid
 			if hlv != nil {
-				value.hlvHistory = hlv.toHistoryForHLV()
+				value.hlvHistory = hlv.ToHistoryForHLV()
 			}
 		} else {
 			revKey := IDAndRev{DocID: value.id, RevID: value.revID}
@@ -532,7 +532,7 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 			// based off the revision load we need to populate the hlv key with what has been fetched from the bucket (for use of populating the opposite lookup map)
 			if hlv != nil {
 				value.cv = *hlv.ExtractCurrentVersionFromHLV()
-				value.hlvHistory = hlv.toHistoryForHLV()
+				value.hlvHistory = hlv.ToHistoryForHLV()
 			}
 		}
 	}
@@ -597,7 +597,7 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 		}
 		if hlv != nil {
 			value.cv = *hlv.ExtractCurrentVersionFromHLV()
-			value.hlvHistory = hlv.toHistoryForHLV()
+			value.hlvHistory = hlv.ToHistoryForHLV()
 		}
 	}
 	value.lock.Unlock()
