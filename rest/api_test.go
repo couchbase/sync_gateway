@@ -211,9 +211,9 @@ func TestDocLifecycle(t *testing.T) {
 	defer rt.Close()
 
 	version := rt.CreateTestDoc("doc")
-	assert.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevID)
+	assert.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", version.RevTreeID)
 
-	response := rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc?rev="+version.RevID, "")
+	response := rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc?rev="+version.RevTreeID, "")
 	RequireStatus(t, response, 200)
 }
 

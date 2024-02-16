@@ -807,10 +807,10 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(4)
 
 	// Mark the first four PBS docs as removals
-	_ = rt.PutDoc("pbs-1", fmt.Sprintf(`{"_rev":%q}`, pbs1.RevID))
-	_ = rt.PutDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.RevID))
-	_ = rt.PutDoc("pbs-3", fmt.Sprintf(`{"_rev":%q}`, pbs3.RevID))
-	_ = rt.PutDoc("pbs-4", fmt.Sprintf(`{"_rev":%q}`, pbs4.RevID))
+	_ = rt.PutDoc("pbs-1", fmt.Sprintf(`{"_rev":%q}`, pbs1.RevTreeID))
+	_ = rt.PutDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.RevTreeID))
+	_ = rt.PutDoc("pbs-3", fmt.Sprintf(`{"_rev":%q}`, pbs3.RevTreeID))
+	_ = rt.PutDoc("pbs-4", fmt.Sprintf(`{"_rev":%q}`, pbs4.RevTreeID))
 
 	cacheWaiter.AddAndWait(4)
 
@@ -886,7 +886,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	cacheWaiter.AddAndWait(4)
 
 	// remove channels/tombstone a couple of docs to ensure they're not backfilled after a dynamic grant
-	_ = rt.PutDoc("hbo-2", fmt.Sprintf(`{"_rev":%q}`, hbo2.RevID))
+	_ = rt.PutDoc("hbo-2", fmt.Sprintf(`{"_rev":%q}`, hbo2.RevTreeID))
 	rt.DeleteDoc(pbs2ID, pbs2Version)
 	cacheWaiter.AddAndWait(2)
 

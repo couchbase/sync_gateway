@@ -50,13 +50,13 @@ func (rt *RestTester) PutNewEditsFalse(docID string, newVersion DocVersion, pare
 	require.NoError(rt.TB, marshalErr)
 
 	requestBody := body.ShallowCopy()
-	newRevGeneration, newRevDigest := db.ParseRevID(base.TestCtx(rt.TB), newVersion.RevID)
+	newRevGeneration, newRevDigest := db.ParseRevID(base.TestCtx(rt.TB), newVersion.RevTreeID)
 
 	revisions := make(map[string]interface{})
 	revisions["start"] = newRevGeneration
 	ids := []string{newRevDigest}
-	if parentVersion.RevID != "" {
-		_, parentDigest := db.ParseRevID(base.TestCtx(rt.TB), parentVersion.RevID)
+	if parentVersion.RevTreeID != "" {
+		_, parentDigest := db.ParseRevID(base.TestCtx(rt.TB), parentVersion.RevTreeID)
 		ids = append(ids, parentDigest)
 	}
 	revisions["ids"] = ids
