@@ -297,6 +297,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires push replication (CBG-3255)
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -374,6 +375,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 
 	const docID = "doc1"
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires push replication (CBG-3255)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &rtConfig)
@@ -539,6 +541,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires push replication (CBG-3255)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -588,6 +591,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires push replication (CBG-3255)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -610,7 +614,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 		docVersion, _ := client1.rt.GetDoc(docID)
 
 		// Store the document and attachment on the test client
-		err := btcRunner.StoreRevOnClient(client1.id, docID, docVersion.RevID, rawDoc)
+		err := btcRunner.StoreRevOnClient(client1.id, docID, docVersion.RevTreeID, rawDoc)
 
 		require.NoError(t, err)
 		btcRunner.AttachmentsLock(client1.id).Lock()
@@ -645,6 +649,7 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires push replication (CBG-3255)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -667,7 +672,7 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 		version, _ := client1.rt.GetDoc(docID)
 
 		// Store the document and attachment on the test client
-		err := btcRunner.StoreRevOnClient(client1.id, docID, version.RevID, rawDoc)
+		err := btcRunner.StoreRevOnClient(client1.id, docID, version.RevTreeID, rawDoc)
 		require.NoError(t, err)
 		btcRunner.AttachmentsLock(client1.id).Lock()
 		btcRunner.Attachments(client1.id)[digest] = attBody

@@ -43,25 +43,25 @@ func TestDocEtag(t *testing.T) {
 	version := DocVersionFromPutResponse(t, response)
 
 	// Validate Etag returned on doc creation
-	assert.Equal(t, strconv.Quote(version.RevID), response.Header().Get("Etag"))
+	assert.Equal(t, strconv.Quote(version.RevTreeID), response.Header().Get("Etag"))
 
 	response = rt.SendRequest("GET", "/{{.keyspace}}/doc", "")
 	RequireStatus(t, response, 200)
 
 	// Validate Etag returned when retrieving doc
-	assert.Equal(t, strconv.Quote(version.RevID), response.Header().Get("Etag"))
+	assert.Equal(t, strconv.Quote(version.RevTreeID), response.Header().Get("Etag"))
 
 	// Validate Etag returned when updating doc
-	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc?rev="+version.RevID, `{"prop":false}`)
+	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc?rev="+version.RevTreeID, `{"prop":false}`)
 	version = DocVersionFromPutResponse(t, response)
-	assert.Equal(t, strconv.Quote(version.RevID), response.Header().Get("Etag"))
+	assert.Equal(t, strconv.Quote(version.RevTreeID), response.Header().Get("Etag"))
 
 	// Test Attachments
 	attachmentBody := "this is the body of attachment"
 	attachmentContentType := "content/type"
 
 	// attach to existing document with correct rev (should succeed), manual request to change etag
-	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", "doc", "attach1", version.RevID)
+	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", "doc", "attach1", version.RevTreeID)
 	response = rt.SendAdminRequestWithHeaders(http.MethodPut, resource, attachmentBody, attachmentHeaders())
 	RequireStatus(t, response, http.StatusCreated)
 	var body db.Body
@@ -71,7 +71,7 @@ func TestDocEtag(t *testing.T) {
 	RequireDocVersionNotEqual(t, version, afterAttachmentVersion)
 
 	// validate Etag returned from adding an attachment
-	assert.Equal(t, strconv.Quote(afterAttachmentVersion.RevID), response.Header().Get("Etag"))
+	assert.Equal(t, strconv.Quote(afterAttachmentVersion.RevTreeID), response.Header().Get("Etag"))
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/{{.keyspace}}/doc/attach1", "")
@@ -115,7 +115,7 @@ func TestDocAttachment(t *testing.T) {
 	assert.Equal(t, attachmentContentType, response.Header().Get("Content-Type"))
 
 	// attempt to delete an attachment that is not on the document
-	response = rt.SendRequest("DELETE", "/{{.keyspace}}/doc/attach2?rev="+version.RevID, "")
+	response = rt.SendRequest("DELETE", "/{{.keyspace}}/doc/attach2?rev="+version.RevTreeID, "")
 	RequireStatus(t, response, 404)
 
 	// attempt to delete attachment from non existing doc
@@ -127,7 +127,7 @@ func TestDocAttachment(t *testing.T) {
 	RequireStatus(t, response, 409)
 
 	// delete the attachment calling the delete attachment endpoint
-	response = rt.SendRequest("DELETE", "/{{.keyspace}}/doc/attach1?rev="+version.RevID, "")
+	response = rt.SendRequest("DELETE", "/{{.keyspace}}/doc/attach1?rev="+version.RevTreeID, "")
 	RequireStatus(t, response, 200)
 
 	// attempt to access deleted attachment (should return error)
@@ -221,7 +221,7 @@ func TestDocAttachmentOnRemovedRev(t *testing.T) {
 	}
 
 	// attach to existing document with correct rev (should fail)
-	response := rt.SendUserRequestWithHeaders("PUT", "/{{.keyspace}}/doc/attach1?rev="+version.RevID, attachmentBody, reqHeaders, "user1", "letmein")
+	response := rt.SendUserRequestWithHeaders("PUT", "/{{.keyspace}}/doc/attach1?rev="+version.RevTreeID, attachmentBody, reqHeaders, "user1", "letmein")
 	RequireStatus(t, response, 404)
 }
 
@@ -429,7 +429,7 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 		"Accept": "application/json",
 	}
 
-	response := rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", afterAttachmentVersion.RevID, doc1Version.RevID), "", reqHeaders)
+	response := rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", afterAttachmentVersion.RevTreeID, doc1Version.RevTreeID), "", reqHeaders)
 	assert.Equal(t, 200, response.Code)
 	// validate attachment has data property
 	body := db.Body{}
@@ -440,7 +440,7 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 	data := attach1["data"]
 	assert.True(t, data != nil)
 
-	response = rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", afterAttachmentVersion.RevID, afterAttachmentVersion.RevID), "", reqHeaders)
+	response = rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", afterAttachmentVersion.RevTreeID, afterAttachmentVersion.RevTreeID), "", reqHeaders)
 	assert.Equal(t, 200, response.Code)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	log.Printf("response body revid1 = %s", body)
@@ -593,7 +593,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	version, _ := rt.GetDoc(doc1ID)
 
 	// Do a bulk_get to get the doc -- this was causing a panic prior to the fix for #2528
-	bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "%v", "rev": "%v"}, {"id": "%v", "rev": "%v"}]}`, doc1ID, version.RevID, doc2ID, doc2Version.RevID)
+	bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "%v", "rev": "%v"}, {"id": "%v", "rev": "%v"}]}`, doc1ID, version.RevTreeID, doc2ID, doc2Version.RevTreeID)
 	bulkGetResponse := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_get?revs=true&attachments=true&revs_limit=2", bulkGetDocs)
 	if bulkGetResponse.Code != 200 {
 		panic(fmt.Sprintf("Got unexpected response: %v", bulkGetResponse))
@@ -698,15 +698,15 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 
 	// Set attachment
 	attachmentBody := "aGVsbG8gd29ybGQ=" // hello.txt
-	response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+version.RevID, attachmentBody, reqHeaders)
+	response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+version.RevTreeID, attachmentBody, reqHeaders)
 	RequireStatus(t, response, http.StatusCreated)
-	docrevId2 := DocVersionFromPutResponse(t, response).RevID
+	docrevId2 := DocVersionFromPutResponse(t, response).RevTreeID
 
 	// Update Doc
 	rev3Input := `{"_attachments":{"attach1":{"content-type": "content/type", "digest":"sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 2, "stub": true}}, "_id": "doc1", "_rev": "` + docrevId2 + `", "prop":true}`
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", rev3Input)
 	RequireStatus(t, response, http.StatusCreated)
-	docrevId3 := DocVersionFromPutResponse(t, response).RevID
+	docrevId3 := DocVersionFromPutResponse(t, response).RevTreeID
 
 	// Get Existing Doc & Update rev
 	rev4Input := `{"_attachments":{"attach1":{"content-type": "content/type", "digest":"sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 2, "stub": true}}, "_id": "doc1", "_rev": "` + docrevId3 + `", "prop":true}`
@@ -796,7 +796,7 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", reqBodyRev2a)
 	RequireStatus(t, response, http.StatusCreated)
 	docVersion2a := DocVersionFromPutResponse(t, response)
-	assert.Equal(t, "2-twoa", docVersion2a.RevID)
+	assert.Equal(t, "2-twoa", docVersion2a.RevTreeID)
 
 	// Put attachment on doc1 rev 2
 	rev3Attachment := `aGVsbG8gd29ybGQ=` // hello.txt
@@ -815,8 +815,8 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	docVersion4a := rt.UpdateDoc("doc1", docVersion3a, rev4aBody)
 
 	// Ensure the two attachments are different
-	response1 := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevID+"\"]&rev="+docVersion4.RevID, "")
-	response2 := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?rev="+docVersion4a.RevID, "")
+	response1 := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevTreeID+"\"]&rev="+docVersion4.RevTreeID, "")
+	response2 := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?rev="+docVersion4a.RevTreeID, "")
 
 	var body1 db.Body
 	var body2 db.Body
@@ -865,14 +865,14 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 		`}`
 	_ = rt.UpdateDoc("doc1", docVersion5, rev6Body)
 
-	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevID+"\"]", "")
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevTreeID+"\"]", "")
 	log.Printf("Rev6 GET: %s", response.Body.Bytes())
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, attachmentsPresent := body["_attachments"]
 	assert.True(t, attachmentsPresent)
 
 	// Create conflicting rev 6 that doesn't have attachments
-	reqBodyRev6a := `{"_rev": "6-a", "_revisions": {"ids": ["a", "` + docVersion5.RevID + `"], "start": 6}}`
+	reqBodyRev6a := `{"_rev": "6-a", "_revisions": {"ids": ["a", "` + docVersion5.RevTreeID + `"], "start": 6}}`
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", reqBodyRev6a)
 	RequireStatus(t, response, http.StatusCreated)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -880,7 +880,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 	assert.Equal(t, "6-a", docRevId2a)
 
 	var rev6Response db.Body
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevID+"\"]", "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevTreeID+"\"]", "")
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rev6Response))
 	_, attachmentsPresent = rev6Response["_attachments"]
 	assert.False(t, attachmentsPresent)
@@ -891,7 +891,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 
 	// Retrieve current winning rev with attachments
 	var rev7Response db.Body
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevID+"\"]", "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+version.RevTreeID+"\"]", "")
 	log.Printf("Rev6 GET: %s", response.Body.Bytes())
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rev7Response))
 	_, attachmentsPresent = rev7Response["_attachments"]
@@ -2117,7 +2117,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 
 	var doc1 docResp
 	// Get losing rev and ensure attachment is still there and has not been deleted
-	resp := rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/doc?attachments=true&rev="+losingVersion3.RevID, "", map[string]string{"Accept": "application/json"})
+	resp := rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/doc?attachments=true&rev="+losingVersion3.RevTreeID, "", map[string]string{"Accept": "application/json"})
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = base.JSONUnmarshal(resp.BodyBytes(), &doc1)
@@ -2134,7 +2134,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 
 	var doc2 docResp
 	// Get winning rev and ensure attachment is indeed removed from this rev
-	resp = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/doc?attachments=true&rev="+finalVersion4.RevID, "", map[string]string{"Accept": "application/json"})
+	resp = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/doc?attachments=true&rev="+finalVersion4.RevTreeID, "", map[string]string{"Accept": "application/json"})
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = base.JSONUnmarshal(resp.BodyBytes(), &doc2)
@@ -2405,7 +2405,7 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 		// Push a revision with a bunch of history simulating doc updated on mobile device
 		// Note this references revpos 1 and therefore SGW has it - Shouldn't need proveAttachment
 		proveAttachmentBefore := btc.pushReplication.replicationStats.ProveAttachment.Value()
-		revid, err := btcRunner.PushRevWithHistory(btc.id, docID, initialVersion.RevID, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`), 25, 5)
+		revid, err := btcRunner.PushRevWithHistory(btc.id, docID, initialVersion.RevTreeID, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`), 25, 5)
 		assert.NoError(t, err)
 		proveAttachmentAfter := btc.pushReplication.replicationStats.ProveAttachment.Value()
 		assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
@@ -2451,7 +2451,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 		btcRunner.AttachmentsLock(btc.id).Unlock()
 
 		// Put doc with an erroneous revpos 1 but with a different digest, referring to the above attachment
-		_, err = btcRunner.PushRevWithHistory(btc.id, docID, version.RevID, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`), 1, 0)
+		_, err = btcRunner.PushRevWithHistory(btc.id, docID, version.RevTreeID, []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`), 1, 0)
 		require.NoError(t, err)
 
 		// Ensure message and attachment is pushed up
@@ -2757,7 +2757,7 @@ func (rt *RestTester) storeAttachment(docID string, version DocVersion, attName,
 
 // storeAttachmentWithHeaders adds an attachment to a document version and returns the new version using rev= syntax.
 func (rt *RestTester) storeAttachmentWithHeaders(docID string, version DocVersion, attName, attBody string, reqHeaders map[string]string) DocVersion {
-	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", docID, attName, version.RevID)
+	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", docID, attName, version.RevTreeID)
 	response := rt.SendAdminRequestWithHeaders(http.MethodPut, resource, attBody, reqHeaders)
 	RequireStatus(rt.TB, response, http.StatusCreated)
 	var body db.Body
@@ -2769,7 +2769,7 @@ func (rt *RestTester) storeAttachmentWithHeaders(docID string, version DocVersio
 // storeAttachmentWithIfMatch adds an attachment to a document version and returns the new version, using If-Match.
 func (rt *RestTester) storeAttachmentWithIfMatch(docID string, version DocVersion, attName, attBody string) DocVersion {
 	reqHeaders := attachmentHeaders()
-	reqHeaders["If-Match"] = `"` + version.RevID + `"`
+	reqHeaders["If-Match"] = `"` + version.RevTreeID + `"`
 	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s", docID, attName)
 	response := rt.SendRequestWithHeaders(http.MethodPut, resource, attBody, reqHeaders)
 	RequireStatus(rt.TB, response, http.StatusCreated)
