@@ -2144,7 +2144,7 @@ func TestRawTombstone(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ``)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
 	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
-	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+version.RevID+`"`)
+	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+version.RevTreeID+`"`)
 	assert.Contains(t, string(resp.BodyBytes()), `"foo":"bar"`)
 	assert.NotContains(t, string(resp.BodyBytes()), `"_deleted":true`)
 
@@ -2154,7 +2154,7 @@ func TestRawTombstone(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ``)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
 	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
-	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+deletedVersion.RevID+`"`)
+	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+deletedVersion.RevTreeID+`"`)
 	assert.NotContains(t, string(resp.BodyBytes()), `"foo":"bar"`)
 	assert.Contains(t, string(resp.BodyBytes()), `"_deleted":true`)
 }
@@ -3881,9 +3881,9 @@ func TestPutIDRevMatchBody(t *testing.T) {
 			docRev := test.rev
 			docBody := test.docBody
 			if test.docID == "" {
-				docID = "doc"                                                 // Used for the rev tests to branch off of
-				docBody = strings.ReplaceAll(docBody, "[REV]", version.RevID) // FIX for HLV?
-				docRev = strings.ReplaceAll(docRev, "[REV]", version.RevID)
+				docID = "doc"                                                     // Used for the rev tests to branch off of
+				docBody = strings.ReplaceAll(docBody, "[REV]", version.RevTreeID) // FIX for HLV?
+				docRev = strings.ReplaceAll(docRev, "[REV]", version.RevTreeID)
 			}
 
 			resp := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, docRev), docBody)
