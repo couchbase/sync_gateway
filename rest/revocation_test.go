@@ -1014,10 +1014,10 @@ func TestRevocationResumeAndLowSeqCheck(t *testing.T) {
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 2)
 	assert.Equal(t, doc1ID, changes.Results[0].ID)
-	assert.Equal(t, doc1Version.RevID, changes.Results[0].Changes[0]["rev"])
+	assert.Equal(t, doc1Version.RevTreeID, changes.Results[0].Changes[0]["rev"])
 	assert.True(t, changes.Results[0].Revoked)
 	assert.Equal(t, doc2ID, changes.Results[1].ID)
-	assert.Equal(t, doc2Version.RevID, changes.Results[1].Changes[0]["rev"])
+	assert.Equal(t, doc2Version.RevTreeID, changes.Results[1].Changes[0]["rev"])
 	assert.True(t, changes.Results[1].Revoked)
 
 	changes = revocationTester.getChanges("20:40", 1)
