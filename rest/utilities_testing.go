@@ -1637,11 +1637,7 @@ func GetRolePayload(t *testing.T, roleName, password string, collection *db.Data
 // add channels to principal depending if running with collections or not. then marshal the principal config
 func addChannelsToPrincipal(config auth.PrincipalConfig, collection *db.DatabaseCollection, chans []string) ([]byte, error) {
 	if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
-		if len(chans) == 0 {
-			config.ExplicitChannels = base.SetOf("[]")
-		} else {
-			config.ExplicitChannels = base.SetFromArray(chans)
-		}
+		config.ExplicitChannels = base.SetFromArray(chans)
 	} else {
 		config.SetExplicitChannels(collection.ScopeName, collection.Name, chans...)
 	}
