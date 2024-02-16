@@ -16,13 +16,13 @@ apis:
   metric:
     root: "./docs/api/metric.yaml"
 
-lint:
-  extends:
-    - minimal
-  rules:
-    # disable unnecessary/invalid warnings
-    operation-2xx-response: off # _blipsync 101 Upgrade ...
-    operation-summary: off      # Optional field
-    no-ambiguous-paths: off     # /{db}/{doc} != /_debug/expvar
-    no-identical-paths: off     # /{db} != /{targetdb}
-    no-path-trailing-slash: off # Some endpoints require a trailing slash
+extends:
+  - minimal
+rules:
+  # disable unnecessary/invalid warnings
+  operation-2xx-response: off # _blipsync 101 Upgrade ...
+  operation-summary: off      # Optional field
+  no-ambiguous-paths: off     # /{db}/{doc} != /_debug/expvar
+  no-identical-paths: off     # /{db} != /{targetdb}
+  no-path-trailing-slash: off # Some endpoints require a trailing slash
+  security-defined: off       # TODO: Denote public and authenticated API endpoints with https://redocly.com/docs/cli/rules/security-defined
