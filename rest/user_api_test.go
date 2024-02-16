@@ -1275,6 +1275,48 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	RequireStatus(t, putResponse, 404)
 }
 
+// TestPutUserUnsetAdminChannels ensures that a PUT on the /_user/... endpoint with `null` admin_channels can be used to unset channels.
+// Repros CBG-3610, a regression introduced in 3.1.0
+func TestPutUserUnsetAdminChannels(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	defaultCollection := rt.GetSingleTestDatabaseCollection().IsDefaultCollection()
+
+	principalExplicitChannels := `"admin_channels": ["foo", "bar"]`
+	if !defaultCollection {
+		principalExplicitChannels = `"collection_access": {"` + rt.GetDbCollections()[0].ScopeName + `": {"` + rt.GetDbCollections()[0].Name + `": {"admin_channels": ["foo", "bar"]}}}`
+	}
+
+	// Create a user with some admin channels
+	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", `{"password": "password1", `+principalExplicitChannels+`}`)
+	RequireStatus(t, response, http.StatusCreated)
+
+	nilExplicitChannels := `"admin_channels": null`
+	if !defaultCollection {
+		nilExplicitChannels = `"collection_access": {"` + rt.GetDbCollections()[0].ScopeName + `": {"` + rt.GetDbCollections()[0].Name + `": {"admin_channels": null}}}`
+	}
+
+	// Update the user to unset the admin channels
+	// Note: Password not a required field for updates (only creations)
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", `{`+nilExplicitChannels+`}`)
+	RequireStatus(t, response, http.StatusOK)
+
+	// Check that the user no longer has access to the channels - they should've been removed in the above update
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_user/demo", "")
+	RequireStatus(t, response, http.StatusOK)
+	var responseConfig auth.PrincipalConfig
+	err := json.Unmarshal(response.Body.Bytes(), &responseConfig)
+	require.NoError(t, err)
+
+	explicitChannels := responseConfig.ExplicitChannels
+	if !defaultCollection {
+		explicitChannels = responseConfig.CollectionAccess[rt.GetDbCollections()[0].ScopeName][rt.GetDbCollections()[0].Name].ExplicitChannels_
+	}
+
+	assert.Equal(t, base.Set(nil), explicitChannels)
+}
+
 func TestPutUserCollectionAccess(t *testing.T) {
 	base.RequireNumTestDataStores(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
