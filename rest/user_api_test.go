@@ -1283,23 +1283,15 @@ func TestPutUserUnsetAdminChannels(t *testing.T) {
 
 	defaultCollection := rt.GetSingleTestDatabaseCollection().IsDefaultCollection()
 
-	principalExplicitChannels := `"admin_channels": ["foo", "bar"]`
-	if !defaultCollection {
-		principalExplicitChannels = `"collection_access": {"` + rt.GetDbCollections()[0].ScopeName + `": {"` + rt.GetDbCollections()[0].Name + `": {"admin_channels": ["foo", "bar"]}}}`
-	}
-
-	// Create a user with some admin channels
-	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", `{"password": "password1", `+principalExplicitChannels+`}`)
+	// Create a user with some admin channels and a role
+	payload := GetUserPayload(t, "demo", "password1", "", rt.GetSingleTestDatabaseCollection(), []string{"foo", "bar"}, []string{"quux"})
+	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
 	RequireStatus(t, response, http.StatusCreated)
 
-	nilExplicitChannels := `"admin_channels": null`
-	if !defaultCollection {
-		nilExplicitChannels = `"collection_access": {"` + rt.GetDbCollections()[0].ScopeName + `": {"` + rt.GetDbCollections()[0].Name + `": {"admin_channels": null}}}`
-	}
-
-	// Update the user to unset the admin channels
 	// Note: Password not a required field for updates (only creations)
-	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", `{`+nilExplicitChannels+`}`)
+	// Update the user to unset the admin channels
+	payload = GetUserPayload(t, "demo", "", "", rt.GetSingleTestDatabaseCollection(), nil, nil)
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
 	RequireStatus(t, response, http.StatusOK)
 
 	// Check that the user no longer has access to the channels - they should've been removed in the above update
@@ -1310,11 +1302,13 @@ func TestPutUserUnsetAdminChannels(t *testing.T) {
 	require.NoError(t, err)
 
 	explicitChannels := responseConfig.ExplicitChannels
+	explicitRoles := responseConfig.ExplicitRoleNames
 	if !defaultCollection {
 		explicitChannels = responseConfig.CollectionAccess[rt.GetDbCollections()[0].ScopeName][rt.GetDbCollections()[0].Name].ExplicitChannels_
 	}
 
 	assert.Equal(t, base.Set(nil), explicitChannels)
+	assert.Equal(t, base.Set(nil), explicitRoles)
 }
 
 func TestPutUserCollectionAccess(t *testing.T) {
