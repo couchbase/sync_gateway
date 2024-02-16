@@ -294,6 +294,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires push replication (CBG-3255)
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -315,7 +316,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		// Wait for the documents to be replicated at SG
 		require.NoError(t, rt.WaitForVersion(docID, docVersion))
 
-		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, "")
+		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevTreeID, "")
 		assert.Equal(t, http.StatusOK, resp.Code)
 
 		// CBL updates the doc w/ two more revisions, 3-abc, 4-abc,
@@ -328,7 +329,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		// Wait for the document to be replicated at SG
 		require.NoError(t, rt.WaitForVersion(docID, docVersion))
 
-		resp = btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, "")
+		resp = btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevTreeID, "")
 		assert.Equal(t, http.StatusOK, resp.Code)
 
 		var respBody db.Body
@@ -365,6 +366,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 
 	const docID = "doc1"
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires push replication (CBG-3255)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &rtConfig)
@@ -388,12 +390,12 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		docVersion, err := btcRunner.PushRevWithHistory(btc.id, docID, &rev, []byte(bodyText), 2, 0)
 		require.NoError(t, err)
 		require.NotNil(t, docVersion)
-		assert.Equal(t, "4-abc", docVersion.RevID)
+		assert.Equal(t, "4-abc", docVersion.RevTreeID)
 
 		// Wait for the document to be replicated at SG
 		require.NoError(t, rt.WaitForVersion(docID, *docVersion))
 
-		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, "")
+		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevTreeID, "")
 		assert.Equal(t, http.StatusOK, resp.Code)
 
 		var respBody db.Body
@@ -531,6 +533,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires push replication (CBG-3255)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -585,6 +588,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires push replication (CBG-3255)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -644,6 +648,7 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires push replication (CBG-3255)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)

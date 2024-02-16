@@ -9,14 +9,19 @@
 package rest
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // TestBlipClientPushAndPullReplication sets up a bidi replication for a BlipTesterClient, writes documents on SG and the client and ensures they replicate.
 func TestBlipClientPushAndPullReplication(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
+
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{}},
 		GuestEnabled:   true,
@@ -37,20 +42,24 @@ func TestBlipClientPushAndPullReplication(t *testing.T) {
 		btcRunner.StartPush(client.id)
 
 		// create doc1 on SG
-		version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+		docBody := db.Body{"greetings": []map[string]interface{}{{"hello": "world!"}, {"hi": "alice"}}}
+		version := rt.PutDocDirectly(docID, docBody)
+
+		seq := rt.GetDocumentSequence(docID)
 
 		// wait for doc on client
 		data := btcRunner.WaitForVersion(client.id, docID, version)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// update doc1 on client
-		newRev, err := btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
+		_, err := btcRunner.AddRev(client.id, docID, &version, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 		assert.NoError(t, err)
 
 		// wait for update to arrive on SG
-		require.NoError(t, rt.WaitForVersion(docID, newRev))
+		_, err = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", seq), "", true)
+		require.NoError(t, err)
 
-		body := rt.GetDocVersion("doc1", newRev)
+		body := rt.GetDocBody(docID)
 		require.Equal(t, "bob", body["greetings"].([]interface{})[2].(map[string]interface{})["howdy"])
 	})
 }

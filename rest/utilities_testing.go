@@ -854,7 +854,7 @@ func (cr ChangesResults) RequireRevID(t testing.TB, revIDs []string) {
 
 // RequireChangeRevVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
 func RequireChangeRevVersion(t *testing.T, expected DocVersion, changeRev db.ChangeRev) {
-	RequireDocVersionEqual(t, expected, DocVersion{RevID: changeRev["rev"]})
+	RequireDocVersionEqual(t, expected, DocVersion{RevTreeID: changeRev["rev"]})
 }
 
 func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, changesURL, username string, useAdminPort bool) (worker base.RetryWorker) {
@@ -2435,16 +2435,16 @@ func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.Backgro
 
 // DocVersion represents a specific version of a document in an revID/HLV agnostic manner.
 type DocVersion struct {
-	RevID string
-	CV    db.Version
+	RevTreeID string
+	CV        db.Version
 }
 
 func (v *DocVersion) String() string {
-	return fmt.Sprintf("RevID: %s", v.RevID)
+	return fmt.Sprintf("RevTreeID: %s", v.RevTreeID)
 }
 
 func (v DocVersion) Equal(o DocVersion) bool {
-	if v.RevID != o.RevID {
+	if v.RevTreeID != o.RevTreeID {
 		return false
 	}
 	return true
@@ -2455,9 +2455,9 @@ func (v *DocVersion) RevIDGeneration() int {
 	if v == nil {
 		return 0
 	}
-	gen, err := strconv.ParseInt(strings.Split(v.RevID, "-")[0], 10, 64)
+	gen, err := strconv.ParseInt(strings.Split(v.RevTreeID, "-")[0], 10, 64)
 	if err != nil {
-		base.AssertfCtx(context.TODO(), "Error parsing generation from rev ID %q: %v", v.RevID, err)
+		base.AssertfCtx(context.TODO(), "Error parsing generation from rev ID %q: %v", v.RevTreeID, err)
 		return 0
 	}
 	return int(gen)
@@ -2468,12 +2468,12 @@ func (v *DocVersion) RevIDDigest() string {
 	if v == nil {
 		return ""
 	}
-	return strings.Split(v.RevID, "-")[1]
+	return strings.Split(v.RevTreeID, "-")[1]
 }
 
 // RequireDocVersionNotNil calls t.Fail if two document version is not specified.
 func RequireDocVersionNotNil(t *testing.T, version DocVersion) {
-	require.NotEqual(t, "", version.RevID)
+	require.NotEqual(t, "", version.RevTreeID)
 }
 
 // RequireDocVersionEqual calls t.Fail if two document versions are not equal.
@@ -2493,7 +2493,7 @@ func EmptyDocVersion() *DocVersion {
 
 // NewDocVersionFromFakeRev returns a new DocVersion from the given fake rev ID, intended for use when we explicit create conflicts.
 func NewDocVersionFromFakeRev(fakeRev string) DocVersion {
-	return DocVersion{RevID: fakeRev}
+	return DocVersion{RevTreeID: fakeRev}
 }
 
 // DocVersionFromPutResponse returns a DocRevisionID from the given response to PUT /{, or fails the given test if a rev ID was not found.
@@ -2505,7 +2505,7 @@ func DocVersionFromPutResponse(t testing.TB, response *TestResponse) DocVersion 
 	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r))
 	require.NotNil(t, r.RevID, "expecting non-nil rev ID from response: %s", string(response.BodyBytes()))
 	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
-	return DocVersion{RevID: *r.RevID}
+	return DocVersion{RevTreeID: *r.RevID}
 }
 
 func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {

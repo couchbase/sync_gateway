@@ -2381,7 +2381,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Attachments: doc.Attachments,
 			Expiry:      doc.Expiry,
 			Deleted:     doc.History[newRevID].Deleted,
-			hlvHistory:  doc.HLV.toHistoryForHLV(),
+			hlvHistory:  doc.HLV.ToHistoryForHLV(),
 			CV:          &Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version},
 		}
 
