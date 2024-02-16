@@ -1282,6 +1282,42 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	RequireStatus(t, putResponse, 404)
 }
 
+// TestPutUserUnsetAdminChannels ensures that a PUT on the /_user/... endpoint with `null` admin_channels can be used to unset channels.
+// Repros CBG-3610, a regression introduced in 3.1.0
+func TestPutUserUnsetAdminChannels(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	defaultCollection := rt.GetSingleTestDatabaseCollection().IsDefaultCollection()
+
+	// Create a user with some admin channels and a role
+	payload := GetUserPayload(t, "demo", "password1", "", rt.GetSingleTestDatabaseCollection(), []string{"foo", "bar"}, []string{"quux"})
+	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
+	RequireStatus(t, response, http.StatusCreated)
+
+	// Note: Password not a required field for updates (only creations)
+	// Update the user to unset the admin channels
+	payload = GetUserPayload(t, "demo", "", "", rt.GetSingleTestDatabaseCollection(), nil, nil)
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
+	RequireStatus(t, response, http.StatusOK)
+
+	// Check that the user no longer has access to the channels - they should've been removed in the above update
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_user/demo", "")
+	RequireStatus(t, response, http.StatusOK)
+	var responseConfig auth.PrincipalConfig
+	err := json.Unmarshal(response.Body.Bytes(), &responseConfig)
+	require.NoError(t, err)
+
+	explicitChannels := responseConfig.ExplicitChannels
+	explicitRoles := responseConfig.ExplicitRoleNames
+	if !defaultCollection {
+		explicitChannels = responseConfig.CollectionAccess[rt.GetDbCollections()[0].ScopeName][rt.GetDbCollections()[0].Name].ExplicitChannels_
+	}
+
+	assert.Equal(t, base.Set(nil), explicitChannels)
+	assert.Equal(t, base.Set(nil), explicitRoles)
+}
+
 func TestPutUserCollectionAccess(t *testing.T) {
 	base.RequireNumTestDataStores(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)

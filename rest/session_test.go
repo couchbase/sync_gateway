@@ -531,7 +531,9 @@ func TestSessionPasswordInvalidation(t *testing.T) {
 			RequireStatus(t, response, http.StatusOK)
 
 			altPassword := "someotherpassword"
-			response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, fmt.Sprintf(`{"password": "%s"}`, altPassword))
+			// TODO CBG-3790: Add POST (upsert) support on User API, and specify only password here.
+			// This test was relying on a bug (CBG-3610) which allowed only the password to be specified without wiping channels.
+			response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(t, username, altPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
 			RequireStatus(t, response, http.StatusOK)
 
 			// make sure session is invalid

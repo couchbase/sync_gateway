@@ -113,7 +113,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		if updatedExplicitChannels == nil {
 			updatedExplicitChannels = ch.TimedSet{}
 		}
-		if updates.ExplicitChannels != nil && !updatedExplicitChannels.Equals(updates.ExplicitChannels) {
+		if !updatedExplicitChannels.Equals(updates.ExplicitChannels) {
 			changed = true
 		}
 		collectionAccessChanged, err := dbc.RequiresCollectionAccessUpdate(ctx, princ, updates.CollectionAccess)
@@ -149,7 +149,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			if updatedExplicitRoles == nil {
 				updatedExplicitRoles = ch.TimedSet{}
 			}
-			if updates.ExplicitRoleNames != nil && !updatedExplicitRoles.Equals(updates.ExplicitRoleNames) {
+			if !updatedExplicitRoles.Equals(updates.ExplicitRoleNames) {
 				changed = true
 			}
 
@@ -190,7 +190,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		princ.SetSequence(nextSeq)
 
 		// Now update the Principal object from the properties in the request, first the channels:
-		if updates.ExplicitChannels != nil && updatedExplicitChannels.UpdateAtSequence(updates.ExplicitChannels, nextSeq) {
+		if updatedExplicitChannels.UpdateAtSequence(updates.ExplicitChannels, nextSeq) {
 			princ.SetExplicitChannels(updatedExplicitChannels, nextSeq)
 		}
 
@@ -199,7 +199,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		}
 
 		if isUser {
-			if updates.ExplicitRoleNames != nil && updatedExplicitRoles.UpdateAtSequence(updates.ExplicitRoleNames, nextSeq) {
+			if updatedExplicitRoles.UpdateAtSequence(updates.ExplicitRoleNames, nextSeq) {
 				user.SetExplicitRoles(updatedExplicitRoles, nextSeq)
 			}
 			var hasJWTUpdates bool
