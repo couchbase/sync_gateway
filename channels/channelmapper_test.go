@@ -23,9 +23,9 @@ func init() {
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
-func parse(jsonStr string) map[string]interface{} {
+func parse(t testing.TB, jsonStr string) map[string]interface{} {
 	var parsed map[string]interface{}
-	_ = base.JSONUnmarshal([]byte(jsonStr), &parsed)
+	require.NoError(t, base.JSONUnmarshal([]byte(jsonStr), &parsed))
 	return parsed
 }
 
@@ -54,7 +54,7 @@ func TestOttoValueToStringArray(t *testing.T) {
 func TestJavaScriptWorks(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {channel(doc.x.concat(doc.y));}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"x":["abc"],"y":["xyz"]}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"x":["abc"],"y":["xyz"]}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, BaseSetOf(t, "abc", "xyz"), res.Channels)
 }
@@ -63,7 +63,7 @@ func TestJavaScriptWorks(t *testing.T) {
 func TestSyncFunction(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {channel("foo", "bar"); channel("baz")}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": []}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": []}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, BaseSetOf(t, "foo", "bar", "baz"), res.Channels)
 }
@@ -72,7 +72,7 @@ func TestSyncFunction(t *testing.T) {
 func TestAccessFunction(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {access("foo", "bar"); access("foo", "baz")}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, AccessMap{"foo": BaseSetOf(t, "bar", "baz")}, res.Access)
 }
@@ -81,7 +81,7 @@ func TestAccessFunction(t *testing.T) {
 func TestSyncFunctionTakesArray(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {channel(["foo", "bar ok","baz"])}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": []}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": []}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, BaseSetOf(t, "foo", "bar ok", "baz"), res.Channels)
 }
@@ -90,7 +90,7 @@ func TestSyncFunctionTakesArray(t *testing.T) {
 func TestSyncFunctionRejectsInvalidChannels(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {channel(["foo", "bad,name","baz"])}`, 0)
-	_, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": []}`), `{}`, emptyMetaMap(), noUser)
+	_, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": []}`), `{}`, emptyMetaMap(), noUser)
 	assert.True(t, err != nil)
 }
 
@@ -98,7 +98,7 @@ func TestSyncFunctionRejectsInvalidChannels(t *testing.T) {
 func TestAccessFunctionRejectsInvalidChannels(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {access("foo", "bad,name");}`, 0)
-	_, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	_, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.True(t, err != nil)
 }
 
@@ -106,7 +106,7 @@ func TestAccessFunctionRejectsInvalidChannels(t *testing.T) {
 func TestAccessFunctionTakesArrayOfUsers(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {access(["foo","bar","baz"], "ginger")}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, AccessMap{"bar": BaseSetOf(t, "ginger"), "baz": BaseSetOf(t, "ginger"), "foo": BaseSetOf(t, "ginger")}, res.Access)
 }
@@ -115,7 +115,7 @@ func TestAccessFunctionTakesArrayOfUsers(t *testing.T) {
 func TestAccessFunctionTakesArrayOfChannels(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {access("lee", ["ginger", "earl_grey", "green"])}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, AccessMap{"lee": BaseSetOf(t, "ginger", "earl_grey", "green")}, res.Access)
 }
@@ -123,7 +123,7 @@ func TestAccessFunctionTakesArrayOfChannels(t *testing.T) {
 func TestAccessFunctionTakesArrayOfChannelsAndUsers(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {access(["lee", "nancy"], ["ginger", "earl_grey", "green"])}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, BaseSetOf(t, "ginger", "earl_grey", "green"), res.Access["lee"])
 	assert.Equal(t, BaseSetOf(t, "ginger", "earl_grey", "green"), res.Access["nancy"])
@@ -132,7 +132,7 @@ func TestAccessFunctionTakesArrayOfChannelsAndUsers(t *testing.T) {
 func TestAccessFunctionTakesEmptyArrayUser(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {access([], ["ginger", "earl grey", "green"])}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, AccessMap{}, res.Access)
 }
@@ -140,7 +140,7 @@ func TestAccessFunctionTakesEmptyArrayUser(t *testing.T) {
 func TestAccessFunctionTakesEmptyArrayChannels(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {access("lee", [])}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, AccessMap{}, res.Access)
 }
@@ -148,7 +148,7 @@ func TestAccessFunctionTakesEmptyArrayChannels(t *testing.T) {
 func TestAccessFunctionTakesNullUser(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {access(null, ["ginger", "earl grey", "green"])}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, AccessMap{}, res.Access)
 }
@@ -156,7 +156,7 @@ func TestAccessFunctionTakesNullUser(t *testing.T) {
 func TestAccessFunctionTakesNullChannels(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {access("lee", null)}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, AccessMap{}, res.Access)
 }
@@ -164,7 +164,7 @@ func TestAccessFunctionTakesNullChannels(t *testing.T) {
 func TestAccessFunctionTakesNonChannelsInArray(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {access("lee", ["ginger", null, 5])}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, AccessMap{"lee": BaseSetOf(t, "ginger")}, res.Access)
 }
@@ -172,7 +172,7 @@ func TestAccessFunctionTakesNonChannelsInArray(t *testing.T) {
 func TestAccessFunctionTakesUndefinedUser(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {var x = {}; access(x.nothing, ["ginger", "earl grey", "green"])}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, AccessMap{}, res.Access)
 }
@@ -182,7 +182,7 @@ func TestAccessFunctionTakesUndefinedUser(t *testing.T) {
 func TestRoleFunction(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {role(["foo","bar","baz"], "role:froods")}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, AccessMap{"bar": BaseSetOf(t, "froods"), "baz": BaseSetOf(t, "froods"), "foo": BaseSetOf(t, "froods")}, res.Roles)
 }
@@ -191,7 +191,7 @@ func TestRoleFunction(t *testing.T) {
 func TestInputParse(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {channel(doc.channel);}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"channel": "foo"}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channel": "foo"}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, BaseSetOf(t, "foo"), res.Channels)
 }
@@ -216,11 +216,11 @@ func TestDefaultChannelMapper(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
-			res, err := test.mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
+			res, err := test.mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
 			assert.NoError(t, err, "MapToChannelsAndAccess failed")
 			assert.Equal(t, BaseSetOf(t, "foo", "bar", "baz"), res.Channels)
 
-			res, err = test.mapper.MapToChannelsAndAccess(ctx, parse(`{"x": "y"}`), `{}`, emptyMetaMap(), noUser)
+			res, err = test.mapper.MapToChannelsAndAccess(ctx, parse(t, `{"x": "y"}`), `{}`, emptyMetaMap(), noUser)
 			assert.NoError(t, err, "MapToChannelsAndAccess failed")
 			assert.Equal(t, base.Set{}, res.Channels)
 		})
@@ -231,7 +231,7 @@ func TestDefaultChannelMapper(t *testing.T) {
 func TestEmptyChannelMapper(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, base.Set{}, res.Channels)
 }
@@ -242,7 +242,7 @@ func TestChannelMapperUnderscoreLib(t *testing.T) {
 	defer underscore.Disable()
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {channel(_.first(doc.channels));}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, BaseSetOf(t, "foo"), res.Channels)
 }
@@ -251,7 +251,7 @@ func TestChannelMapperUnderscoreLib(t *testing.T) {
 func TestChannelMapperReject(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {reject(403, "bad");}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, base.HTTPErrorf(403, "bad"), res.Rejection)
 }
@@ -260,7 +260,7 @@ func TestChannelMapperReject(t *testing.T) {
 func TestChannelMapperThrow(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {throw({forbidden:"bad"});}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, base.HTTPErrorf(403, "bad"), res.Rejection)
 }
@@ -269,7 +269,7 @@ func TestChannelMapperThrow(t *testing.T) {
 func TestChannelMapperException(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {(nil)[5];}`, 0)
-	_, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
+	_, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
 	assert.True(t, err != nil)
 }
 
@@ -277,7 +277,7 @@ func TestChannelMapperException(t *testing.T) {
 func TestPublicChannelMapper(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {channel(doc.channels);}`, 0)
-	output, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
+	output, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, BaseSetOf(t, "foo", "bar", "baz"), output.Channels)
 }
@@ -289,16 +289,16 @@ func TestCheckUser(t *testing.T) {
 			requireUser(doc.owner);
 		}`, 0)
 	var sally = map[string]interface{}{"name": "sally", "channels": []string{}}
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"owner": "sally"}`), `{}`, emptyMetaMap(), sally)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owner": "sally"}`), `{}`, emptyMetaMap(), sally)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, nil, res.Rejection)
 
 	var linus = map[string]interface{}{"name": "linus", "channels": []string{}}
-	res, err = mapper.MapToChannelsAndAccess(ctx, parse(`{"owner": "sally"}`), `{}`, emptyMetaMap(), linus)
+	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owner": "sally"}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, base.HTTPErrorf(403, base.SyncFnErrorWrongUser), res.Rejection)
 
-	res, err = mapper.MapToChannelsAndAccess(ctx, parse(`{"owner": "sally"}`), `{}`, emptyMetaMap(), nil)
+	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owner": "sally"}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, nil, res.Rejection)
 }
@@ -310,16 +310,16 @@ func TestCheckUserArray(t *testing.T) {
 			requireUser(doc.owners);
 		}`, 0)
 	var sally = map[string]interface{}{"name": "sally", "channels": []string{}}
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"owners": ["sally", "joe"]}`), `{}`, emptyMetaMap(), sally)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owners": ["sally", "joe"]}`), `{}`, emptyMetaMap(), sally)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, nil, res.Rejection)
 
 	var linus = map[string]interface{}{"name": "linus", "channels": []string{}}
-	res, err = mapper.MapToChannelsAndAccess(ctx, parse(`{"owners": ["sally", "joe"]}`), `{}`, emptyMetaMap(), linus)
+	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owners": ["sally", "joe"]}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, base.HTTPErrorf(403, base.SyncFnErrorWrongUser), res.Rejection)
 
-	res, err = mapper.MapToChannelsAndAccess(ctx, parse(`{"owners": ["sally"]}`), `{}`, emptyMetaMap(), nil)
+	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owners": ["sally"]}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, nil, res.Rejection)
 }
@@ -331,16 +331,16 @@ func TestCheckRole(t *testing.T) {
 			requireRole(doc.role);
 		}`, 0)
 	var sally = map[string]interface{}{"name": "sally", "roles": map[string]int{"girl": 1, "5yo": 1}}
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"role": "girl"}`), `{}`, emptyMetaMap(), sally)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"role": "girl"}`), `{}`, emptyMetaMap(), sally)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, nil, res.Rejection)
 
 	var linus = map[string]interface{}{"name": "linus", "roles": []string{"boy", "musician"}}
-	res, err = mapper.MapToChannelsAndAccess(ctx, parse(`{"role": "girl"}`), `{}`, emptyMetaMap(), linus)
+	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"role": "girl"}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, base.HTTPErrorf(403, base.SyncFnErrorMissingRole), res.Rejection)
 
-	res, err = mapper.MapToChannelsAndAccess(ctx, parse(`{"role": "girl"}`), `{}`, emptyMetaMap(), nil)
+	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"role": "girl"}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, nil, res.Rejection)
 }
@@ -352,16 +352,16 @@ func TestCheckRoleArray(t *testing.T) {
 			requireRole(doc.roles);
 		}`, 0)
 	var sally = map[string]interface{}{"name": "sally", "roles": map[string]int{"girl": 1, "5yo": 1}}
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"roles": ["kid","girl"]}`), `{}`, emptyMetaMap(), sally)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"roles": ["kid","girl"]}`), `{}`, emptyMetaMap(), sally)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, nil, res.Rejection)
 
 	var linus = map[string]interface{}{"name": "linus", "roles": map[string]int{"boy": 1, "musician": 1}}
-	res, err = mapper.MapToChannelsAndAccess(ctx, parse(`{"roles": ["girl"]}`), `{}`, emptyMetaMap(), linus)
+	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"roles": ["girl"]}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, base.HTTPErrorf(403, base.SyncFnErrorMissingRole), res.Rejection)
 
-	res, err = mapper.MapToChannelsAndAccess(ctx, parse(`{"roles": ["girl"]}`), `{}`, emptyMetaMap(), nil)
+	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"roles": ["girl"]}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, nil, res.Rejection)
 }
@@ -373,16 +373,16 @@ func TestCheckAccess(t *testing.T) {
 		requireAccess(doc.channel)
 	}`, 0)
 	var sally = map[string]interface{}{"name": "sally", "roles": []string{"girl", "5yo"}, "channels": []string{"party", "school"}}
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"channel": "party"}`), `{}`, emptyMetaMap(), sally)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channel": "party"}`), `{}`, emptyMetaMap(), sally)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, nil, res.Rejection)
 
 	var linus = map[string]interface{}{"name": "linus", "roles": []string{"boy", "musician"}, "channels": []string{"party", "school"}}
-	res, err = mapper.MapToChannelsAndAccess(ctx, parse(`{"channel": "work"}`), `{}`, emptyMetaMap(), linus)
+	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channel": "work"}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, base.HTTPErrorf(403, base.SyncFnErrorMissingChannelAccess), res.Rejection)
 
-	res, err = mapper.MapToChannelsAndAccess(ctx, parse(`{"channel": "magic"}`), `{}`, emptyMetaMap(), nil)
+	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channel": "magic"}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, nil, res.Rejection)
 }
@@ -394,16 +394,16 @@ func TestCheckAccessArray(t *testing.T) {
 		requireAccess(doc.channels)
 	}`, 0)
 	var sally = map[string]interface{}{"name": "sally", "roles": []string{"girl", "5yo"}, "channels": []string{"party", "school"}}
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": ["swim","party"]}`), `{}`, emptyMetaMap(), sally)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["swim","party"]}`), `{}`, emptyMetaMap(), sally)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, nil, res.Rejection)
 
 	var linus = map[string]interface{}{"name": "linus", "roles": []string{"boy", "musician"}, "channels": []string{"party", "school"}}
-	res, err = mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": ["work"]}`), `{}`, emptyMetaMap(), linus)
+	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["work"]}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, base.HTTPErrorf(403, base.SyncFnErrorMissingChannelAccess), res.Rejection)
 
-	res, err = mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": ["magic"]}`), `{}`, emptyMetaMap(), nil)
+	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["magic"]}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, nil, res.Rejection)
 }
@@ -412,13 +412,13 @@ func TestCheckAccessArray(t *testing.T) {
 func TestSetFunction(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {channel(doc.channels);}`, 0)
-	output, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
+	output, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	require.Equal(t, BaseSetOf(t, "foo", "baz", "bar"), output.Channels)
 	changed, err := mapper.SetFunction(`function(doc) {channel("all");}`)
 	assert.True(t, changed, "SetFunction failed")
 	assert.NoError(t, err, "SetFunction failed")
-	output, err = mapper.MapToChannelsAndAccess(ctx, parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
+	output, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, BaseSetOf(t, "all"), output.Channels)
 }
@@ -427,45 +427,45 @@ func TestSetFunction(t *testing.T) {
 func TestExpiryFunction(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {expiry(doc.expiry);}`, 0)
-	res1, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"expiry":100}`), `{}`, emptyMetaMap(), noUser)
+	res1, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"expiry":100}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error")
 	assert.Equal(t, uint32(100), *res1.Expiry)
 
-	res2, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"expiry":"500"}`), `{}`, emptyMetaMap(), noUser)
+	res2, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"expiry":"500"}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error")
 	assert.Equal(t, uint32(500), *res2.Expiry)
 
-	res_stringDate, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"expiry":"2105-01-01T00:00:00.000+00:00"}`), `{}`, emptyMetaMap(), noUser)
+	res_stringDate, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"expiry":"2105-01-01T00:00:00.000+00:00"}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error")
 	assert.Equal(t, uint32(4260211200), *res_stringDate.Expiry)
 
 	// Validate invalid expiry values log warning and don't set expiry
-	res3, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"expiry":"abc"}`), `{}`, emptyMetaMap(), noUser)
+	res3, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"expiry":"abc"}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry:abc")
 	assert.True(t, res3.Expiry == nil)
 
 	// Invalid: non-numeric
-	res4, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"expiry":["100", "200"]}`), `{}`, emptyMetaMap(), noUser)
+	res4, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"expiry":["100", "200"]}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry as array")
 	assert.True(t, res4.Expiry == nil)
 
 	// Invalid: negative value
-	res5, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"expiry":-100}`), `{}`, emptyMetaMap(), noUser)
+	res5, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"expiry":-100}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry as negative value")
 	assert.True(t, res5.Expiry == nil)
 
 	// Invalid - larger than uint32
-	res6, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"expiry":123456789012345}`), `{}`, emptyMetaMap(), noUser)
+	res6, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"expiry":123456789012345}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry > unit32")
 	assert.True(t, res6.Expiry == nil)
 
 	// Invalid - non-unix date
-	resInvalidDate, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"expiry":"1805-01-01T00:00:00.000+00:00"}`), `{}`, emptyMetaMap(), noUser)
+	resInvalidDate, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"expiry":"1805-01-01T00:00:00.000+00:00"}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry:1805-01-01T00:00:00.000+00:00")
 	assert.True(t, resInvalidDate.Expiry == nil)
 
 	// No expiry specified
-	res7, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"value":5}`), `{}`, emptyMetaMap(), noUser)
+	res7, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"value":5}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry not specified")
 	assert.True(t, res7.Expiry == nil)
 }
@@ -473,53 +473,53 @@ func TestExpiryFunction(t *testing.T) {
 func TestExpiryFunctionConstantValue(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {expiry(100);}`, 0)
-	res1, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res1, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error")
 	assert.Equal(t, uint32(100), *res1.Expiry)
 
 	mapper = NewChannelMapper(ctx, `function(doc) {expiry("500");}`, 0)
-	res2, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res2, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error")
 	assert.Equal(t, uint32(500), *res2.Expiry)
 
 	mapper = NewChannelMapper(ctx, `function(doc) {expiry("2105-01-01T00:00:00.000+00:00");}`, 0)
-	res_stringDate, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res_stringDate, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error")
 	assert.Equal(t, uint32(4260211200), *res_stringDate.Expiry)
 
 	// Validate invalid expiry values log warning and don't set expiry
 	mapper = NewChannelMapper(ctx, `function(doc) {expiry("abc");}`, 0)
-	res3, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res3, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry:abc")
 	assert.True(t, res3.Expiry == nil)
 
 	// Invalid: non-numeric
 	mapper = NewChannelMapper(ctx, `function(doc) {expiry(["100", "200"]);}`, 0)
-	res4, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res4, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry as array")
 	assert.True(t, res4.Expiry == nil)
 
 	// Invalid: negative value
 	mapper = NewChannelMapper(ctx, `function(doc) {expiry(-100);}`, 0)
-	res5, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res5, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry as negative value")
 	assert.True(t, res5.Expiry == nil)
 
 	// Invalid - larger than uint32
 	mapper = NewChannelMapper(ctx, `function(doc) {expiry(123456789012345);}`, 0)
-	res6, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res6, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry as > unit32")
 	assert.True(t, res6.Expiry == nil)
 
 	// Invalid - non-unix date
 	mapper = NewChannelMapper(ctx, `function(doc) {expiry("1805-01-01T00:00:00.000+00:00");}`, 0)
-	resInvalidDate, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	resInvalidDate, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry:1805-01-01T00:00:00.000+00:00")
 	assert.True(t, resInvalidDate.Expiry == nil)
 
 	// No expiry specified
 	mapper = NewChannelMapper(ctx, `function(doc) {expiry();}`, 0)
-	res7, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, emptyMetaMap(), noUser)
+	res7, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry not specified")
 	assert.True(t, res7.Expiry == nil)
 }
@@ -528,36 +528,36 @@ func TestExpiryFunctionConstantValue(t *testing.T) {
 func TestExpiryFunctionMultipleInvocation(t *testing.T) {
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {expiry(doc.expiry); expiry(doc.secondExpiry)}`, 0)
-	res1, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"expiry":100}`), `{}`, emptyMetaMap(), noUser)
+	res1, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"expiry":100}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, uint32(100), *res1.Expiry)
 
-	res2, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"expiry":"500"}`), `{}`, emptyMetaMap(), noUser)
+	res2, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"expiry":"500"}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
 	assert.Equal(t, uint32(500), *res2.Expiry)
 
 	// Validate invalid expiry values log warning and don't set expiry
-	res3, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"expiry":"abc"}`), `{}`, emptyMetaMap(), noUser)
+	res3, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"expiry":"abc"}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess filed for expiry:abc")
 	assert.True(t, res3.Expiry == nil)
 
 	// Invalid: non-numeric
-	res4, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"expiry":["100", "200"]}`), `{}`, emptyMetaMap(), noUser)
+	res4, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"expiry":["100", "200"]}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess filed for expiry as array")
 	assert.True(t, res4.Expiry == nil)
 
 	// Invalid: negative value
-	res5, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"expiry":-100}`), `{}`, emptyMetaMap(), noUser)
+	res5, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"expiry":-100}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess filed for expiry as array")
 	assert.True(t, res5.Expiry == nil)
 
 	// Invalid - larger than uint32
-	res6, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"expiry":123456789012345}`), `{}`, emptyMetaMap(), noUser)
+	res6, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"expiry":123456789012345}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess filed for expiry as array")
 	assert.True(t, res6.Expiry == nil)
 
 	// No expiry specified
-	res7, err := mapper.MapToChannelsAndAccess(ctx, parse(`{"value":5}`), `{}`, emptyMetaMap(), noUser)
+	res7, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"value":5}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess filed for expiry as array")
 	assert.True(t, res7.Expiry == nil)
 }
@@ -576,7 +576,7 @@ func TestMetaMap(t *testing.T) {
 		},
 	}
 
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, metaMap, noUser)
+	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, metaMap, noUser)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, res.Channels.ToArray(), channels)
 }
@@ -592,7 +592,7 @@ func TestNilMetaMap(t *testing.T) {
 		},
 	}
 
-	_, err := mapper.MapToChannelsAndAccess(ctx, parse(`{}`), `{}`, metaMap, noUser)
+	_, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, metaMap, noUser)
 	require.Error(t, err)
 	assert.True(t, err.Error() == "TypeError: Cannot access member 'val' of undefined")
 }
@@ -632,7 +632,7 @@ func TestCollectionSyncFunction(t *testing.T) {
 			ctx := base.TestCtx(t)
 			collectionName := "barcollection"
 			mapper := NewChannelMapper(ctx, GetDefaultSyncFunction("fooscope", collectionName), 0)
-			res, err := mapper.MapToChannelsAndAccess(ctx, parse(test.docBody), `{}`, emptyMetaMap(), noUser)
+			res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, test.docBody), `{}`, emptyMetaMap(), noUser)
 			require.NoError(t, err)
 			require.Equal(t, BaseSetOf(t, collectionName), res.Channels)
 		})

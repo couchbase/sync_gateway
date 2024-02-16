@@ -152,8 +152,8 @@ func TestSerializeUser(t *testing.T) {
 	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
 	user, _ := auth.NewUser("me", "letmein", ch.BaseSetOf(t, "me", "public"))
 	require.NoError(t, user.SetEmail("foo@example.com"))
-	encoded, _ := base.JSONMarshal(user)
-	assert.True(t, encoded != nil)
+	encoded := base.MustJSONMarshal(t, user)
+	require.NotNil(t, encoded)
 	log.Printf("Marshaled User as: %s", encoded)
 
 	resu := &userImpl{auth: auth}
@@ -174,8 +174,8 @@ func TestSerializeRole(t *testing.T) {
 	dataStore := bucket.GetSingleDataStore()
 	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
 	role, _ := auth.NewRole("froods", ch.BaseSetOf(t, "hoopy", "public"))
-	encoded, _ := base.JSONMarshal(role)
-	assert.True(t, encoded != nil)
+	encoded := base.MustJSONMarshal(t, role)
+	require.NotNil(t, encoded)
 	log.Printf("Marshaled Role as: %s", encoded)
 	elor := &roleImpl{}
 	err := base.JSONUnmarshal(encoded, elor)

@@ -124,7 +124,7 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	//  |
 	// 2-a
 	log.Printf("Create rev 2-a with a large body")
-	rev2a_body := unjson(`{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
+	rev2a_body := unmarshalBody(t, `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
 	rev2a_body["key1"] = prop_1000_bytes
 	rev2a_body["version"] = "2a"
 	doc, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", rev2a_body, []string{"2-a", "1-a"}, false)
@@ -150,7 +150,7 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	//   /  \
 	// 2-a  2-b
 	log.Printf("Create rev 2-b with a large body")
-	rev2b_body := unjson(`{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
+	rev2b_body := unmarshalBody(t, `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
 	rev2b_body["key1"] = prop_1000_bytes
 	rev2b_body["version"] = "2b"
 	doc, newRev, err = collection.PutExistingRevWithBody(ctx, "doc1", rev2b_body, []string{"2-b", "1-a"}, false)
@@ -276,7 +276,7 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 	//   /  \
 	// 2-a  2-b
 	log.Printf("Create rev 2-b with a large body")
-	// rev2b_body := unjson(`{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
+	// rev2b_body := unmarshalBody(`{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
 	rev2b_body := Body{}
 	rev2b_body["key1"] = prop_1000_bytes
 	rev2b_body["version"] = "2b"
@@ -1197,18 +1197,18 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 
 	// Create the very first revision of the document with attachment; let's call this as rev 1-a
 	payload := `{"sku":"6213100","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
-	_, rev, err := collection.PutExistingRevWithBody(ctx, "camera", unjson(payload), []string{"1-a"}, false)
+	_, rev, err := collection.PutExistingRevWithBody(ctx, "camera", unmarshalBody(t, payload), []string{"1-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	ancestor := rev // Ancestor revision
 
 	// Create the second revision of the document with attachment reference;
 	payload = `{"sku":"6213101","_attachments":{"camera.txt":{"stub":true,"revpos":1}}}`
-	_, rev, err = collection.PutExistingRevWithBody(ctx, "camera", unjson(payload), []string{"2-a", "1-a"}, false)
+	_, rev, err = collection.PutExistingRevWithBody(ctx, "camera", unmarshalBody(t, payload), []string{"2-a", "1-a"}, false)
 	parent := rev // Immediate ancestor or parent revision
 	assert.NoError(t, err, "Couldn't create document")
 
 	payload = `{"sku":"6213102","_attachments":{"camera.txt":{"stub":true,"revpos":1}}}`
-	doc, _, err := collection.PutExistingRevWithBody(ctx, "camera", unjson(payload), []string{"3-a", "2-a"}, false)
+	doc, _, err := collection.PutExistingRevWithBody(ctx, "camera", unmarshalBody(t, payload), []string{"3-a", "2-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 
 	// Get available attachments by immediate ancestor revision or parent revision
@@ -1235,11 +1235,11 @@ func TestGet1xRevAndChannels(t *testing.T) {
 
 	docId := "dd6d2dcc679d12b9430a9787bab45b33"
 	payload := `{"sku":"6213100","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
-	doc1, rev1, err := collection.PutExistingRevWithBody(ctx, docId, unjson(payload), []string{"1-a"}, false)
+	doc1, rev1, err := collection.PutExistingRevWithBody(ctx, docId, unmarshalBody(t, payload), []string{"1-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 
 	payload = `{"sku":"6213101","_attachments":{"lens.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
-	doc2, rev2, err := collection.PutExistingRevWithBody(ctx, docId, unjson(payload), []string{"2-a", "1-a"}, false)
+	doc2, rev2, err := collection.PutExistingRevWithBody(ctx, docId, unmarshalBody(t, payload), []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 
 	// Get the 1x revision from document with list revision enabled
@@ -1298,7 +1298,7 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	// Create the first revision of the document
 	docId := "356779a9a1696714480f57fa3fb66d4c"
 	payload := `{"city":"Los Angeles"}`
-	doc, rev1, err := collection.PutExistingRevWithBody(ctx, docId, unjson(payload), []string{"1-a"}, false)
+	doc, rev1, err := collection.PutExistingRevWithBody(ctx, docId, unmarshalBody(t, payload), []string{"1-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	assert.NotEmpty(t, doc, "Document shouldn't be empty")
 	assert.Equal(t, "1-a", rev1, "Provided input revision ID should be returned")
@@ -1321,7 +1321,7 @@ func TestGet1xRevFromDoc(t *testing.T) {
 
 	// Create the second revision of the document
 	payload = `{"city":"Hollywood"}`
-	doc, rev2, err := collection.PutExistingRevWithBody(ctx, docId, unjson(payload), []string{"2-a", "1-a"}, false)
+	doc, rev2, err := collection.PutExistingRevWithBody(ctx, docId, unmarshalBody(t, payload), []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	assert.NotEmpty(t, doc, "Document shouldn't be empty")
 	assert.Equal(t, "2-a", rev2, "Provided input revision ID should be returned")
