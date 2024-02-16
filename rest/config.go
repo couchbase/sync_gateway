@@ -1318,6 +1318,23 @@ func (sc *StartupConfig) Validate(ctx context.Context, isEnterpriseEdition bool)
 		}
 	}
 
+	const (
+		minConcurrentChangesBatches = 1
+		maxConcurrentChangesBatches = 5
+		minConcurrentRevs           = 5
+		maxConcurrentRevs           = 200
+	)
+	if val := sc.Replicator.MaxConcurrentChangesBatches; val != nil {
+		if *val < minConcurrentChangesBatches || *val > maxConcurrentChangesBatches {
+			multiError = multiError.Append(fmt.Errorf("max_concurrent_changes_batches: %d outside allowed range: %d-%d", *val, minConcurrentChangesBatches, maxConcurrentChangesBatches))
+		}
+	}
+	if val := sc.Replicator.MaxConcurrentRevs; val != nil {
+		if *val < minConcurrentRevs || *val > maxConcurrentRevs {
+			multiError = multiError.Append(fmt.Errorf("max_concurrent_revs: %d outside allowed range: %d-%d", *val, minConcurrentRevs, maxConcurrentRevs))
+		}
+	}
+
 	return multiError.ErrorOrNil()
 }
 

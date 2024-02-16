@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 )
 
 const (
@@ -57,6 +58,10 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 		},
 		Auth: AuthConfig{
 			BcryptCost: auth.DefaultBcryptCost,
+		},
+		Replicator: ReplicatorConfig{
+			MaxConcurrentChangesBatches: base.IntPtr(db.DefaultMaxConcurrentChangesBatches),
+			MaxConcurrentRevs:           base.IntPtr(db.DefaultMaxConcurrentRevs),
 		},
 		Unsupported: UnsupportedConfig{
 			StatsLogFrequency: base.NewConfigDuration(time.Minute),
@@ -137,8 +142,10 @@ type AuthConfig struct {
 }
 
 type ReplicatorConfig struct {
-	MaxHeartbeat    *base.ConfigDuration `json:"max_heartbeat,omitempty"    help:"Max heartbeat value for _changes request"`
-	BLIPCompression *int                 `json:"blip_compression,omitempty" help:"BLIP data compression level (0-9)"`
+	MaxHeartbeat                *base.ConfigDuration `json:"max_heartbeat,omitempty"    help:"Max heartbeat value for _changes request"`
+	BLIPCompression             *int                 `json:"blip_compression,omitempty" help:"BLIP data compression level (0-9)"`
+	MaxConcurrentChangesBatches *int                 `json:"max_concurrent_changes_batches,omitempty" help:"Maximum number of changes batches to process concurrently per replication (1-5)"`
+	MaxConcurrentRevs           *int                 `json:"max_concurrent_revs,omitempty"            help:"Maximum number of revs to process concurrently per replication (5-200)"`
 }
 
 type UnsupportedConfig struct {
