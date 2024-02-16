@@ -2519,12 +2519,6 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 	}
 }
 
-func mustMarshalJSON(t testing.TB, val interface{}) []byte {
-	result, err := base.JSONMarshal(val)
-	require.NoError(t, err)
-	return result
-}
-
 // Checks that we correctly handle the removal of an OIDC provider while it's in use
 func TestOpenIDConnectProviderRemoval(t *testing.T) {
 
@@ -2584,7 +2578,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	providers["INVALID"] = mockProviderWith("INVALID")
 	providers["INVALID"].Issuer = "INVALID"
 
-	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config?disable_oidc_validation=true", string(mustMarshalJSON(t, &dbConfig))), http.StatusCreated)
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config?disable_oidc_validation=true", string(base.MustJSONMarshal(t, &dbConfig))), http.StatusCreated)
 
 	// Check that the user is still present, but with no OIDC info
 	res = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/"+subject, "")

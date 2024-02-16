@@ -50,7 +50,7 @@ func TestCallValidateFunction(t *testing.T) {
 	// filter function which returns a bool value while calling CallValidateFunction.
 	channels := base.SetFromArray([]string{"Netflix"})
 	docId, body, oldBodyJSON := "doc1", Body{BodyId: "doc1", "key1": "value1"}, ""
-	bodyBytes, _ := base.JSONMarshal(body)
+	bodyBytes := base.MustJSONMarshal(t, body)
 	event := &DocumentChangeEvent{DocID: docId, DocBytes: bodyBytes, OldDoc: oldBodyJSON, Channels: channels}
 
 	ctx := base.TestCtx(t)
