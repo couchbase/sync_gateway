@@ -2832,7 +2832,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 			rt1.WaitForReplicationStatus("repl1", db.ReplicationStateStopped)
 
-			resp = rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevID, test.localConflictingRevBody)
+			resp = rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevTreeID, test.localConflictingRevBody)
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			changesResults, err = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
@@ -2841,7 +2841,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			assert.Equal(t, docID, changesResults.Results[0].ID)
 			lastSeq = changesResults.Last_Seq.(string)
 
-			resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevID, test.remoteConflictingRevBody)
+			resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevTreeID, test.remoteConflictingRevBody)
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			resp = rt1.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/repl1?action=start", "")
@@ -5905,7 +5905,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 	createVersion := func(generation int, parentRevID string, body db.Body) rest.DocVersion {
 		rev, err := db.CreateRevID(generation, parentRevID, body)
 		require.NoError(t, err, "Error creating revision")
-		return rest.DocVersion{RevID: rev}
+		return rest.DocVersion{RevTreeID: rev}
 	}
 	docExpiry := time.Now().Local().Add(time.Hour * time.Duration(4)).Format(time.RFC3339)
 
@@ -6346,7 +6346,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				assert.NoError(t, err)
 
 				// Create another rev and then delete doc on local - ie tree is longer
-				version := localActiveRT.UpdateDoc(doc2ID, rest.DocVersion{RevID: "3-abc"}, `{"foo":"bar"}`)
+				version := localActiveRT.UpdateDoc(doc2ID, rest.DocVersion{RevTreeID: "3-abc"}, `{"foo":"bar"}`)
 				localActiveRT.DeleteDoc(doc2ID, version)
 
 				// Validate local is CBS tombstone, expect not found error
@@ -6372,7 +6372,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				assert.NoError(t, err)
 
 				// Create another rev and then delete doc on remotePassiveRT (passive) - ie, tree is longer
-				version := remotePassiveRT.UpdateDoc(doc2ID, rest.DocVersion{RevID: "3-abc"}, `{"foo":"bar"}`)
+				version := remotePassiveRT.UpdateDoc(doc2ID, rest.DocVersion{RevTreeID: "3-abc"}, `{"foo":"bar"}`)
 				remotePassiveRT.DeleteDoc(doc2ID, version)
 
 				// Validate local is CBS tombstone, expect not found error
@@ -7325,7 +7325,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 	// Replicate tombstone to passive
 	err = passiveRT.WaitForCondition(func() bool {
-		rawResponse := passiveRT.SendAdminRequest("GET", "/{{.keyspace}}/test?rev="+deletedVersion.RevID, "")
+		rawResponse := passiveRT.SendAdminRequest("GET", "/{{.keyspace}}/test?rev="+deletedVersion.RevTreeID, "")
 		return rawResponse.Code == 404
 	})
 	require.NoError(t, err)
@@ -7489,7 +7489,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	require.NoError(t, activeRT.WaitForVersion(docID, version3))
 
 	activeRT.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
-	err := activeRT.GetSingleDataStore().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(version2.RevID), version2.RevID))
+	err := activeRT.GetSingleDataStore().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(version2.RevTreeID), version2.RevTreeID))
 	require.NoError(t, err)
 	// Set-up replicator //
 	passiveDBURL, err := url.Parse(srv.URL + "/db")

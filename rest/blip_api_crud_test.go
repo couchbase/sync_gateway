@@ -651,21 +651,21 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 	// Write existing docs to server directly (not via blip)
 	rt := bt.restTester
 	resp := rt.PutDoc("conflictingInsert", `{"version":1}`)
-	conflictingInsertRev := resp.RevID
+	conflictingInsertRev := resp.RevTreeID
 
 	resp = rt.PutDoc("matchingInsert", `{"version":1}`)
-	matchingInsertRev := resp.RevID
+	matchingInsertRev := resp.RevTreeID
 
 	resp = rt.PutDoc("conflictingUpdate", `{"version":1}`)
-	conflictingUpdateRev1 := resp.RevID
-	conflictingUpdateRev2 := rt.UpdateDocRev("conflictingUpdate", resp.RevID, `{"version":2}`)
+	conflictingUpdateRev1 := resp.RevTreeID
+	conflictingUpdateRev2 := rt.UpdateDocRev("conflictingUpdate", resp.RevTreeID, `{"version":2}`)
 
 	resp = rt.PutDoc("matchingUpdate", `{"version":1}`)
-	matchingUpdateRev1 := resp.RevID
-	matchingUpdateRev2 := rt.UpdateDocRev("matchingUpdate", resp.RevID, `{"version":2}`)
+	matchingUpdateRev1 := resp.RevTreeID
+	matchingUpdateRev2 := rt.UpdateDocRev("matchingUpdate", resp.RevTreeID, `{"version":2}`)
 
 	resp = rt.PutDoc("newUpdate", `{"version":1}`)
-	newUpdateRev1 := resp.RevID
+	newUpdateRev1 := resp.RevTreeID
 
 	type proposeChangesCase struct {
 		key           string
@@ -1909,7 +1909,7 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 
 		// create doc version of the above doc write
 		version1 := DocVersion{
-			RevID: bucketDoc.CurrentRev,
+			RevTreeID: bucketDoc.CurrentRev,
 			CV: db.Version{
 				SourceID: hlvHelper.Source,
 				Value:    string(base.Uint64CASToLittleEndianHex(cas)),
@@ -2445,6 +2445,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires push replication (CBG-3255)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		// Setup

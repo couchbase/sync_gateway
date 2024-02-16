@@ -54,12 +54,12 @@ func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
 		RevID *string `json:"_rev"`
 	}
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &r))
-	return DocVersion{RevID: *r.RevID}, body
+	return DocVersion{RevTreeID: *r.RevID}, body
 }
 
 // GetDocVersion returns the doc body and version for the given docID and version. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocVersion(docID string, version DocVersion) db.Body {
-	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?rev="+version.RevID, "")
+	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?rev="+version.RevTreeID, "")
 	RequireStatus(rt.TB, rawResponse, http.StatusOK)
 	var body db.Body
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
@@ -82,13 +82,13 @@ func (rt *RestTester) PutDoc(docID string, body string) DocVersion {
 
 // UpdateDocRev updates a document at a specific revision and returns the new version. Deprecated for UpdateDoc.
 func (rt *RestTester) UpdateDocRev(docID, revID string, body string) string {
-	version := rt.UpdateDoc(docID, DocVersion{RevID: revID}, body)
-	return version.RevID
+	version := rt.UpdateDoc(docID, DocVersion{RevTreeID: revID}, body)
+	return version.RevTreeID
 }
 
 // UpdateDoc updates a document at a specific version and returns the new version.
 func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) DocVersion {
-	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, version.RevID)
+	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, version.RevTreeID)
 	rawResponse := rt.SendAdminRequest(http.MethodPut, resource, body)
 	RequireStatus(rt.TB, rawResponse, http.StatusCreated)
 	return DocVersionFromPutResponse(rt.TB, rawResponse)
@@ -102,14 +102,14 @@ func (rt *RestTester) DeleteDoc(docID string, docVersion DocVersion) {
 // DeleteDocReturnVersion deletes a document at a specific version. The test will fail if the revision does not exist.
 func (rt *RestTester) DeleteDocReturnVersion(docID string, docVersion DocVersion) DocVersion {
 	resp := rt.SendAdminRequest(http.MethodDelete,
-		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, docVersion.RevID), "")
+		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, docVersion.RevTreeID), "")
 	RequireStatus(rt.TB, resp, http.StatusOK)
 	return DocVersionFromPutResponse(rt.TB, resp)
 }
 
 // DeleteDocRev removes a document at a specific revision. Deprecated for DeleteDoc.
 func (rt *RestTester) DeleteDocRev(docID, revID string) {
-	rt.DeleteDoc(docID, DocVersion{RevID: revID})
+	rt.DeleteDoc(docID, DocVersion{RevTreeID: revID})
 }
 
 func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
@@ -122,7 +122,7 @@ func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 
 // WaitForVersion retries a GET for a given document version until it returns 200 or 201 for a given document and revision. If version is not found, the test will fail.
 func (rt *RestTester) WaitForVersion(docID string, version DocVersion) error {
-	require.NotEqual(rt.TB, "", version.RevID)
+	require.NotEqual(rt.TB, "", version.RevTreeID)
 	return rt.WaitForCondition(func() bool {
 		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 		if rawResponse.Code != 200 && rawResponse.Code != 201 {
@@ -130,13 +130,13 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) error {
 		}
 		var body db.Body
 		require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
-		return body.ExtractRev() == version.RevID
+		return body.ExtractRev() == version.RevTreeID
 	})
 }
 
 // WaitForRev retries a GET until it returns 200 or 201. If revision is not found, the test will fail. This function is deprecated for RestTester.WaitForVersion
 func (rt *RestTester) WaitForRev(docID, revID string) error {
-	return rt.WaitForVersion(docID, DocVersion{RevID: revID})
+	return rt.WaitForVersion(docID, DocVersion{RevTreeID: revID})
 }
 
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
@@ -416,23 +416,23 @@ func (rt *RestTester) PutDocDirectly(docID string, body db.Body) DocVersion {
 	collection := rt.GetSingleTestDatabaseCollectionWithUser()
 	rev, doc, err := collection.Put(rt.Context(), docID, body)
 	require.NoError(rt.TB, err)
-	return DocVersion{RevID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
+	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }
 
 func (rt *RestTester) UpdateDocDirectly(docID string, version DocVersion, body db.Body) DocVersion {
 	collection := rt.GetSingleTestDatabaseCollectionWithUser()
 	body[db.BodyId] = docID
-	body[db.BodyRev] = version.RevID
+	body[db.BodyRev] = version.RevTreeID
 	rev, doc, err := collection.Put(rt.Context(), docID, body)
 	require.NoError(rt.TB, err)
-	return DocVersion{RevID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
+	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }
 
 func (rt *RestTester) DeleteDocDirectly(docID string, version DocVersion) DocVersion {
 	collection := rt.GetSingleTestDatabaseCollectionWithUser()
-	rev, doc, err := collection.DeleteDoc(rt.Context(), docID, version.RevID)
+	rev, doc, err := collection.DeleteDoc(rt.Context(), docID, version.RevTreeID)
 	require.NoError(rt.TB, err)
-	return DocVersion{RevID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
+	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }
 
 func (rt *RestTester) PutDocDirectlyInCollection(collection *db.DatabaseCollection, docID string, body db.Body) DocVersion {
@@ -441,5 +441,5 @@ func (rt *RestTester) PutDocDirectlyInCollection(collection *db.DatabaseCollecti
 	}
 	rev, doc, err := dbUser.Put(rt.Context(), docID, body)
 	require.NoError(rt.TB, err)
-	return DocVersion{RevID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
+	return DocVersion{RevTreeID: rev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }

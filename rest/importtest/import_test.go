@@ -141,7 +141,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	// 1. Create revision with history
 	docID := t.Name()
 	version := rt.PutDoc(docID, `{"val":-1}`)
-	revID := version.RevID
+	revID := version.RevTreeID
 	collection := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	ctx := rt.Context()
@@ -150,7 +150,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
 		purgeErr := collection.PurgeOldRevisionJSON(ctx, docID, revID)
 		require.NoError(t, purgeErr)
-		revID = version.RevID
+		revID = version.RevTreeID
 	}
 
 	// 2. Modify doc via SDK

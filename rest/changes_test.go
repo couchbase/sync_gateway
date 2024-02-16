@@ -238,7 +238,7 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 
 	// push winning branch
 	wg.Add(2)
-	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"buzz","_revisions":{"start":3,"ids":["buzz","bar","`+version1.RevID+`"]}}`)
+	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"buzz","_revisions":{"start":3,"ids":["buzz","bar","`+version1.RevTreeID+`"]}}`)
 	RequireStatus(t, res, http.StatusCreated)
 	winningVersion := DocVersionFromPutResponse(t, res)
 
@@ -261,7 +261,7 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 
 	// push a separate winning branch
 	wg.Add(2)
-	res = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"quux","_revisions":{"start":4,"ids":["quux", "buzz","bar","`+version1.RevID+`"]}}`)
+	res = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"quux","_revisions":{"start":4,"ids":["quux", "buzz","bar","`+version1.RevTreeID+`"]}}`)
 	RequireStatus(t, res, http.StatusCreated)
 	newWinningVersion := DocVersionFromPutResponse(t, res)
 

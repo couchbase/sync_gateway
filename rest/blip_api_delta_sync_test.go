@@ -42,6 +42,8 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	const docID = "pushAttachmentDoc"
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires push replication (CBG-3255)
+
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
@@ -382,7 +384,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		defer client.Close()
 
 		// reject deltas built ontop of rev 1
-		client.rejectDeltasForSrcRev = docVersion1.RevID
+		client.rejectDeltasForSrcRev = docVersion1.RevTreeID
 
 		client.ClientDeltas = true
 		err := btcRunner.StartPull(client.id)
@@ -402,7 +404,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		assert.True(t, ok)
 
 		// Check the request was initially sent with the correct deltaSrc property
-		assert.Equal(t, docVersion1.RevID, msg.Properties[db.RevMessageDeltaSrc])
+		assert.Equal(t, docVersion1.RevTreeID, msg.Properties[db.RevMessageDeltaSrc])
 		// Check the request body was the actual delta
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)

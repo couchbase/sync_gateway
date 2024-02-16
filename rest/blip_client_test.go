@@ -65,18 +65,13 @@ type BlipTesterClient struct {
 }
 
 type BlipTesterCollectionClient struct {
-	parent *BlipTesterClient
-
-	collection    string
-	collectionIdx int
-
-	docs map[string]map[string]*BodyMessagePair // Client's local store of documents - Map of docID
-	// to rev ID to bytes
-	attachments           map[string][]byte // Client's local store of attachments - Map of digest to bytes
-	lastReplicatedRev     map[string]string // Latest known rev pulled or pushed
-	docsLock              sync.RWMutex      // lock for docs map
-	attachmentsLock       sync.RWMutex      // lock for attachments map
-	lastReplicatedRevLock sync.RWMutex      // lock for lastReplicatedRev map
+	parent          *BlipTesterClient
+	collection      string
+	collectionIdx   int
+	docs            map[string]*BlipTesterDoc // Client's local store of documents, indexed by DocID
+	attachments     map[string][]byte         // Client's local store of attachments - Map of digest to bytes
+	docsLock        sync.RWMutex              // lock for docs map
+	attachmentsLock sync.RWMutex              // lock for attachments map
 }
 
 // BlipTestClientRunner is for running the blip tester client and its associated methods in test framework
@@ -87,9 +82,97 @@ type BlipTestClientRunner struct {
 	SkipSubtest                 map[string]bool // map of sub tests on the blip tester runner to skip
 }
 
-type BodyMessagePair struct {
-	body    []byte
-	message *blip.Message
+type BlipTesterDoc struct {
+	revMode           blipTesterRevMode
+	body              []byte
+	revMessageHistory map[string]*blip.Message // History of rev messages received for this document, indexed by revID
+	revHistory        []string                 // ordered history of revTreeIDs (newest first), populated when mode = revtree
+	HLV               db.HybridLogicalVector   // HLV, populated when mode = HLV
+}
+
+const (
+	revModeRevTree blipTesterRevMode = iota
+	revModeHLV
+)
+
+type blipTesterRevMode uint32
+
+func (doc *BlipTesterDoc) isRevKnown(revID string) bool {
+	if doc.revMode == revModeHLV {
+		version := VersionFromRevID(revID)
+		return doc.HLV.IsVersionKnown(version)
+	} else {
+		for _, revTreeID := range doc.revHistory {
+			if revTreeID == revID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (doc *BlipTesterDoc) makeRevHistoryForChangesResponse() []string {
+	if doc.revMode == revModeHLV {
+		// For HLV, a changes response only needs to send cv, since rev message will always send full HLV
+		return []string{doc.HLV.GetCurrentVersionString()}
+	} else {
+		var revList []string
+		if len(doc.revHistory) < 20 {
+			revList = doc.revHistory
+		} else {
+			revList = doc.revHistory[0:19]
+		}
+		return revList
+	}
+}
+
+func (doc *BlipTesterDoc) getCurrentRevID() string {
+	if doc.revMode == revModeHLV {
+		return doc.HLV.GetCurrentVersionString()
+	} else {
+		if len(doc.revHistory) == 0 {
+			return ""
+		}
+		return doc.revHistory[0]
+	}
+}
+
+func (doc *BlipTesterDoc) addRevision(revID string, body []byte, message *blip.Message) {
+	doc.revMessageHistory[revID] = message
+	doc.body = body
+	if doc.revMode == revModeHLV {
+		_ = doc.HLV.AddVersion(VersionFromRevID(revID))
+		doc.body = body
+	} else {
+		// prepend revID to revHistory
+		doc.revHistory = append(doc.revHistory, "")
+		copy(doc.revHistory[1:], doc.revHistory)
+		doc.revHistory[0] = revID
+	}
+}
+
+func (btcr *BlipTesterCollectionClient) NewBlipTesterDoc(revID string, body []byte, message *blip.Message) *BlipTesterDoc {
+	doc := &BlipTesterDoc{
+		body:              body,
+		revMessageHistory: map[string]*blip.Message{revID: message},
+	}
+	if btcr.UseHLV() {
+		doc.revMode = revModeHLV
+		doc.HLV = db.NewHybridLogicalVector()
+		_ = doc.HLV.AddVersion(VersionFromRevID(revID))
+	} else {
+		doc.revMode = revModeRevTree
+		doc.revHistory = []string{revID}
+	}
+	return doc
+}
+
+func VersionFromRevID(revID string) db.Version {
+	version, err := db.ParseVersion(revID)
+	if err != nil {
+		panic(err)
+	}
+	return version
 }
 
 // BlipTesterReplicator is a BlipTester which stores a map of messages keyed by Serial Number
@@ -158,7 +241,6 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 	btr.bt.blipContext.HandlerForProfile[db.MessageChanges] = func(msg *blip.Message) {
 		btr.storeMessage(msg)
-
 		btcr := btc.getCollectionClientFromMessage(msg)
 
 		// Exit early when there's nothing to do
@@ -198,33 +280,16 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 				// Build up a list of revisions known to the client for each change
 				// The first element of each revision list must be the parent revision of the change
-				if revs, haveDoc := btcr.docs[docID]; haveDoc {
-					revList := make([]string, 0, len(revs))
-
-					// Insert the highest ancestor rev generation at the start of the revList
-					latest, ok := btcr.getLastReplicatedRev(docID)
-					if ok {
-						revList = append(revList, latest)
+				if doc, haveDoc := btcr.docs[docID]; haveDoc {
+					if deletedInt&2 == 2 {
+						continue
 					}
 
-					for knownRevID := range revs {
-						if deletedInt&2 == 2 {
-							continue
-						}
-
-						if revID == knownRevID {
-							knownRevs[i] = nil // Send back null to signal we don't need this change
-							continue outer
-						} else if latest == knownRevID {
-							// We inserted this rev as the first element above, so skip it here
-							continue
-						}
-
-						// TODO: Limit known revs to 20 to copy CBL behaviour
-						revList = append(revList, knownRevID)
+					if doc.isRevKnown(revID) {
+						knownRevs[i] = nil
+						continue outer
 					}
-
-					knownRevs[i] = revList
+					knownRevs[i] = doc.makeRevHistoryForChangesResponse()
 				} else {
 					knownRevs[i] = []interface{}{} // sending empty array means we've not seen the doc before, but still want it
 				}
@@ -268,14 +333,12 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		if msg.Properties[db.RevMessageDeleted] == "1" {
 			btcr.docsLock.Lock()
 			defer btcr.docsLock.Unlock()
-			if _, ok := btcr.docs[docID]; ok {
-				bodyMessagePair := &BodyMessagePair{body: body, message: msg}
-				btcr.docs[docID][revID] = bodyMessagePair
+
+			if doc, ok := btcr.docs[docID]; ok {
+				doc.addRevision(revID, body, msg)
 			} else {
-				bodyMessagePair := &BodyMessagePair{body: body, message: msg}
-				btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
+				btcr.docs[docID] = btcr.NewBlipTesterDoc(revID, body, msg)
 			}
-			btcr.updateLastReplicatedRev(docID, revID)
 
 			if !msg.NoReply() {
 				response := msg.Response()
@@ -307,7 +370,12 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 			var old db.Body
 			btcr.docsLock.RLock()
-			oldBytes := btcr.docs[docID][deltaSrc].body
+			// deltaSrc must be the current rev
+			doc := btcr.docs[docID]
+			if doc.getCurrentRevID() != deltaSrc {
+				panic("current rev doesn't match deltaSrc")
+			}
+			oldBytes := doc.body
 			btcr.docsLock.RUnlock()
 			if err := old.Unmarshal(oldBytes); err != nil {
 				panic(err)
@@ -454,14 +522,11 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		btcr.docsLock.Lock()
 		defer btcr.docsLock.Unlock()
 
-		if _, ok := btcr.docs[docID]; ok {
-			bodyMessagePair := &BodyMessagePair{body: body, message: msg}
-			btcr.docs[docID][revID] = bodyMessagePair
+		if doc, ok := btcr.docs[docID]; ok {
+			doc.addRevision(revID, body, msg)
 		} else {
-			bodyMessagePair := &BodyMessagePair{body: body, message: msg}
-			btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
+			btcr.docs[docID] = btcr.NewBlipTesterDoc(revID, body, msg)
 		}
-		btcr.updateLastReplicatedRev(docID, revID)
 
 		if !msg.NoReply() {
 			response := msg.Response()
@@ -500,6 +565,10 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	}
 }
 
+func (btcc *BlipTesterCollectionClient) UseHLV() bool {
+	return btcc.parent.UseHLV()
+}
+
 // saveAttachment takes a content-type, and base64 encoded data and stores the attachment on the client
 func (btc *BlipTesterCollectionClient) saveAttachment(_, base64data string) (dataLength int, digest string, err error) {
 	btc.attachmentsLock.Lock()
@@ -534,32 +603,6 @@ func (btc *BlipTesterCollectionClient) getAttachment(digest string) (attachment 
 	return attachment, nil
 }
 
-func (btc *BlipTesterCollectionClient) updateLastReplicatedRev(docID, revID string) {
-	btc.lastReplicatedRevLock.Lock()
-	defer btc.lastReplicatedRevLock.Unlock()
-
-	currentRevID, ok := btc.lastReplicatedRev[docID]
-	if !ok {
-		btc.lastReplicatedRev[docID] = revID
-		return
-	}
-
-	ctx := base.TestCtx(btc.parent.rt.TB)
-	currentGen, _ := db.ParseRevID(ctx, currentRevID)
-	incomingGen, _ := db.ParseRevID(ctx, revID)
-	if incomingGen > currentGen {
-		btc.lastReplicatedRev[docID] = revID
-	}
-}
-
-func (btc *BlipTesterCollectionClient) getLastReplicatedRev(docID string) (revID string, ok bool) {
-	btc.lastReplicatedRevLock.RLock()
-	defer btc.lastReplicatedRevLock.RUnlock()
-
-	revID, ok = btc.lastReplicatedRev[docID]
-	return revID, ok
-}
-
 func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, skipCollectionsInitialization bool) (*BlipTesterReplicator, error) {
 	bt, err := NewBlipTesterFromSpecWithRT(tb, &BlipTesterSpec{
 		connectingPassword:            "test",
@@ -586,9 +629,9 @@ func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, s
 
 // getCollectionsForBLIP returns collections configured by a single database instance on a restTester. If only default collection exists, it will skip returning it to test "legacy" blip mode.
 func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
-	db := rt.GetDatabase()
+	dbc := rt.GetDatabase()
 	var collections []string
-	for _, collection := range db.CollectionByID {
+	for _, collection := range dbc.CollectionByID {
 		if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
 			continue
 		}
@@ -677,10 +720,9 @@ func (btc *BlipTesterClient) createBlipTesterReplications() error {
 		}
 	} else {
 		btc.nonCollectionAwareClient = &BlipTesterCollectionClient{
-			docs:              make(map[string]map[string]*BodyMessagePair),
-			attachments:       make(map[string][]byte),
-			lastReplicatedRev: make(map[string]string),
-			parent:            btc,
+			docs:        make(map[string]*BlipTesterDoc),
+			attachments: make(map[string][]byte),
+			parent:      btc,
 		}
 	}
 
@@ -692,10 +734,9 @@ func (btc *BlipTesterClient) createBlipTesterReplications() error {
 
 func (btc *BlipTesterClient) initCollectionReplication(collection string, collectionIdx int) error {
 	btcReplicator := &BlipTesterCollectionClient{
-		docs:              make(map[string]map[string]*BodyMessagePair),
-		attachments:       make(map[string][]byte),
-		lastReplicatedRev: make(map[string]string),
-		parent:            btc,
+		docs:        make(map[string]*BlipTesterDoc),
+		attachments: make(map[string][]byte),
+		parent:      btc,
 	}
 
 	btcReplicator.collection = collection
@@ -812,12 +853,8 @@ func (btc *BlipTesterCollectionClient) UnsubPushChanges() (response []byte, err 
 // Close will empty the stored docs and close the underlying replications.
 func (btc *BlipTesterCollectionClient) Close() {
 	btc.docsLock.Lock()
-	btc.docs = make(map[string]map[string]*BodyMessagePair, 0)
+	btc.docs = make(map[string]*BlipTesterDoc, 0)
 	btc.docsLock.Unlock()
-
-	btc.lastReplicatedRevLock.Lock()
-	btc.lastReplicatedRev = make(map[string]string, 0)
-	btc.lastReplicatedRevLock.Unlock()
 
 	btc.attachmentsLock.Lock()
 	btc.attachments = make(map[string][]byte, 0)
@@ -836,20 +873,66 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
 // PushRev creates a revision on the client, and immediately sends a changes request for it.
 // The rev ID is always: "N-abc", where N is rev generation for predictability.
 func (btc *BlipTesterCollectionClient) PushRev(docID string, parentVersion DocVersion, body []byte) (DocVersion, error) {
-	revid, err := btc.PushRevWithHistory(docID, parentVersion.RevID, body, 1, 0)
-	return DocVersion{RevID: revid}, err
+	revid, err := btc.PushRevWithHistory(docID, parentVersion.RevTreeID, body, 1, 0)
+	if err != nil {
+		return DocVersion{}, err
+	}
+	docVersion := btc.GetDocVersion(docID)
+	require.Equal(btc.parent.rt.TB, docVersion.RevTreeID, revid)
+	return docVersion, nil
+}
+
+// GetDocVersion fetches revid and cv directly from the bucket.  Used to support REST-based verification in btc tests
+// even while REST only supports revTreeId
+func (btc *BlipTesterCollectionClient) GetDocVersion(docID string) DocVersion {
+
+	collection := btc.parent.rt.GetSingleTestDatabaseCollection()
+	ctx := base.DatabaseLogCtx(base.TestCtx(btc.parent.rt.TB), btc.parent.rt.GetDatabase().Name, nil)
+	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalSync)
+	require.NoError(btc.parent.rt.TB, err)
+	if doc.HLV == nil {
+		return DocVersion{RevTreeID: doc.CurrentRev}
+	}
+	return DocVersion{RevTreeID: doc.CurrentRev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}
 }
 
 // PushRevWithHistory creates a revision on the client with history, and immediately sends a changes request for it.
 func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev string, body []byte, revCount, prunedRevCount int) (revID string, err error) {
 	ctx := base.DatabaseLogCtx(base.TestCtx(btc.parent.rt.TB), btc.parent.rt.GetDatabase().Name, nil)
-	parentRevGen, _ := db.ParseRevID(ctx, parentRev)
-	revGen := parentRevGen + revCount + prunedRevCount
 
+	revGen := 0
+	newRevID := ""
 	var revisionHistory []string
-	for i := revGen - 1; i > parentRevGen; i-- {
-		rev := fmt.Sprintf("%d-%s", i, "abc")
-		revisionHistory = append(revisionHistory, rev)
+	if btc.UseHLV() {
+		// When using version vectors:
+		//  - source is "abc"
+		//  - version value is simple counter
+		//  - revisionHistory is just previous cv (parentRev) for changes response
+		startValue := uint64(0)
+		if parentRev != "" {
+			parentVersion, _ := db.ParseDecodedVersion(parentRev)
+			startValue = parentVersion.Value
+			revisionHistory = append(revisionHistory, parentRev)
+		}
+		newVersion := db.DecodedVersion{SourceID: "abc", Value: startValue + uint64(revCount) + 1}
+		newRevID = newVersion.String()
+
+	} else {
+		// When using revtrees:
+		//  - all revIDs are of the form [generation]-abc
+		//  - [revCount] history entries are generated between the parent and the new rev
+		parentRevGen, _ := db.ParseRevID(ctx, parentRev)
+		revGen = parentRevGen + revCount + prunedRevCount
+
+		for i := revGen - 1; i > parentRevGen; i-- {
+			rev := fmt.Sprintf("%d-%s", i, "abc")
+			revisionHistory = append(revisionHistory, rev)
+		}
+		if parentRev != "" {
+
+			revisionHistory = append(revisionHistory, parentRev)
+		}
+		newRevID = fmt.Sprintf("%d-%s", revGen, "abc")
 	}
 
 	// Inline attachment processing
@@ -859,19 +942,16 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 	}
 
 	var parentDocBody []byte
-	newRevID := fmt.Sprintf("%d-%s", revGen, "abc")
 	btc.docsLock.Lock()
 	if parentRev != "" {
-		revisionHistory = append(revisionHistory, parentRev)
-		if _, ok := btc.docs[docID]; ok {
-			// create new rev if doc and parent rev already exists
-			if parentDoc, okParent := btc.docs[docID][parentRev]; okParent {
-				parentDocBody = parentDoc.body
-				bodyMessagePair := &BodyMessagePair{body: body}
-				btc.docs[docID][newRevID] = bodyMessagePair
+		if doc, ok := btc.docs[docID]; ok {
+			// create new rev if doc exists and parent rev is current rev
+			if doc.getCurrentRevID() == parentRev {
+				parentDocBody = doc.body
+				doc.addRevision(newRevID, body, nil)
 			} else {
 				btc.docsLock.Unlock()
-				return "", fmt.Errorf("docID: %v with parent rev: %v was not found on the client", docID, parentRev)
+				return "", fmt.Errorf("docID: %v with current rev: %v was not found on the client", docID, parentRev)
 			}
 		} else {
 			btc.docsLock.Unlock()
@@ -880,8 +960,7 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 	} else {
 		// create new doc + rev
 		if _, ok := btc.docs[docID]; !ok {
-			bodyMessagePair := &BodyMessagePair{body: body}
-			btc.docs[docID] = map[string]*BodyMessagePair{newRevID: bodyMessagePair}
+			btc.docs[docID] = btc.NewBlipTesterDoc(newRevID, body, nil)
 		}
 	}
 	btc.docsLock.Unlock()
@@ -958,7 +1037,6 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 		return "", fmt.Errorf("error %s %s from revResponse: %s", revResponse.Properties["Error-Domain"], revResponse.Properties["Error-Code"], rspBody)
 	}
 
-	btc.updateLastReplicatedRev(docID, newRevID)
 	return newRevID, nil
 }
 
@@ -969,8 +1047,9 @@ func (btc *BlipTesterCollectionClient) StoreRevOnClient(docID, revID string, bod
 	if err != nil {
 		return err
 	}
-	bodyMessagePair := &BodyMessagePair{body: newBody}
-	btc.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
+	btc.docsLock.Lock()
+	defer btc.docsLock.Unlock()
+	btc.docs[docID] = btc.NewBlipTesterDoc(revID, newBody, nil)
 	return nil
 }
 
@@ -1026,22 +1105,27 @@ func (btc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byte
 	return inputBody, nil
 }
 
-// GetVersion returns the data stored in the Client under the given docID and version
-func (btc *BlipTesterCollectionClient) GetVersion(docID string, docVersion DocVersion) (data []byte, found bool) {
+// GetCurrentRevID gets the current revID for the specified docID
+func (btc *BlipTesterCollectionClient) GetCurrentRevID(docID string) (revID string, data []byte, found bool) {
 	btc.docsLock.RLock()
 	defer btc.docsLock.RUnlock()
 
-	if rev, ok := btc.docs[docID]; ok {
-		if data, ok := rev[docVersion.RevID]; ok && data != nil {
-			return data.body, true
-		}
-		// lookup by cv if not found using revid
-		if data, ok := rev[docVersion.CV.String()]; ok && data != nil {
-			return data.body, true
-		}
+	if doc, ok := btc.docs[docID]; ok {
+		return doc.getCurrentRevID(), doc.body, true
 	}
 
-	return nil, false
+	return "", nil, false
+}
+
+func (btc *BlipTesterClient) UseHLV() bool {
+	for _, protocol := range btc.SupportedBLIPProtocols {
+		subProtocol, err := db.ParseSubprotocolString(protocol)
+		require.NoError(btc.rt.TB, err)
+		if subProtocol >= db.CBMobileReplicationV4 {
+			return true
+		}
+	}
+	return false
 }
 
 func (btc *BlipTesterClient) AssertOnBlipHistory(t *testing.T, msg *blip.Message, docVersion DocVersion) {
@@ -1052,12 +1136,32 @@ func (btc *BlipTesterClient) AssertOnBlipHistory(t *testing.T, msg *blip.Message
 			assert.Equal(t, docVersion.CV.String(), msg.Properties[db.RevMessageHistory])
 		}
 	} else {
-		assert.Equal(t, docVersion.RevID, msg.Properties[db.RevMessageHistory])
+		assert.Equal(t, docVersion.RevTreeID, msg.Properties[db.RevMessageHistory])
 	}
 }
 
-// WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found.
+// GetVersion returns the document body when the provided version matches the document's current revision
+func (btc *BlipTesterCollectionClient) GetVersion(docID string, docVersion DocVersion) (data []byte, found bool) {
+	btc.docsLock.RLock()
+	defer btc.docsLock.RUnlock()
+
+	if doc, ok := btc.docs[docID]; ok {
+		if doc.revMode == revModeHLV {
+			if doc.getCurrentRevID() == docVersion.CV.String() {
+				return doc.body, true
+			}
+		} else {
+			if doc.getCurrentRevID() == docVersion.RevTreeID {
+				return doc.body, true
+			}
+		}
+	}
+	return nil, false
+}
+
+// WaitForVersion blocks until the given document version is the current version of the document stored by the client, and returns the data when found.
 func (btc *BlipTesterCollectionClient) WaitForVersion(docID string, docVersion DocVersion) (data []byte, found bool) {
+
 	if data, found := btc.GetVersion(docID, docVersion); found {
 		return data, found
 	}
@@ -1076,15 +1180,13 @@ func (btc *BlipTesterCollectionClient) WaitForVersion(docID string, docVersion D
 	}
 }
 
-// GetDoc returns a rev stored in the Client under the given docID.  (if multiple revs are present, rev body returned is non-deterministic)
+// GetDoc returns the current body stored in the Client for the given docID.
 func (btc *BlipTesterCollectionClient) GetDoc(docID string) (data []byte, found bool) {
 	btc.docsLock.RLock()
 	defer btc.docsLock.RUnlock()
 
-	if rev, ok := btc.docs[docID]; ok {
-		for _, data := range rev {
-			return data.body, true
-		}
+	if doc, ok := btc.docs[docID]; ok {
+		return doc.body, true
 	}
 
 	return nil, false
@@ -1161,35 +1263,36 @@ func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
 	btr.messages[msg.SerialNumber()] = msg
 }
 
-func (btc *BlipTesterCollectionClient) WaitForBlipRevMessage(docID string, docVersion DocVersion) (msg *blip.Message, found bool) {
+func (btc *BlipTesterCollectionClient) WaitForBlipRevMessage(docID string, version DocVersion) (msg *blip.Message, found bool) {
+	var revID string
+	if btc.UseHLV() {
+		revID = version.CV.String()
+	} else {
+		revID = version.RevTreeID
+	}
+
 	ticker := time.NewTicker(50 * time.Millisecond)
 	timeout := time.After(10 * time.Second)
 	for {
 		select {
 		case <-timeout:
-			btc.parent.rt.TB.Fatalf("BlipTesterClient timed out waiting for BLIP message docID: %v, revID: %v", docID, docVersion.RevID)
+			btc.parent.rt.TB.Fatalf("BlipTesterClient timed out waiting for BLIP message docID: %v, revID: %v", docID, revID)
 			return nil, false
 		case <-ticker.C:
-			if data, found := btc.GetBlipRevMessage(docID, docVersion); found {
+			if data, found := btc.GetBlipRevMessage(docID, revID); found {
 				return data, found
 			}
 		}
 	}
 }
 
-func (btc *BlipTesterCollectionClient) GetBlipRevMessage(docID string, version DocVersion) (msg *blip.Message, found bool) {
+func (btc *BlipTesterCollectionClient) GetBlipRevMessage(docID string, revID string) (msg *blip.Message, found bool) {
 	btc.docsLock.RLock()
 	defer btc.docsLock.RUnlock()
 
-	if rev, ok := btc.docs[docID]; ok {
-		if pair, found := rev[version.RevID]; found {
-			found = pair.message != nil
-			return pair.message, found
-		}
-		// lookup by cv if not found using revid
-		if pair, found := rev[version.CV.String()]; found {
-			found = pair.message != nil
-			return pair.message, found
+	if doc, ok := btc.docs[docID]; ok {
+		if message, found := doc.revMessageHistory[revID]; found {
+			return message, found
 		}
 	}
 
@@ -1209,8 +1312,8 @@ func (btcRunner *BlipTestClientRunner) WaitForDoc(clientID uint32, docID string)
 	return btcRunner.SingleCollection(clientID).WaitForDoc(docID)
 }
 
-func (btcRunner *BlipTestClientRunner) WaitForBlipRevMessage(clientID uint32, docID string, docVersion DocVersion) (*blip.Message, bool) {
-	return btcRunner.SingleCollection(clientID).WaitForBlipRevMessage(docID, docVersion)
+func (btcRunner *BlipTestClientRunner) WaitForBlipRevMessage(clientID uint32, docID string, version DocVersion) (*blip.Message, bool) {
+	return btcRunner.SingleCollection(clientID).WaitForBlipRevMessage(docID, version)
 }
 
 func (btcRunner *BlipTestClientRunner) StartOneshotPull(clientID uint32) error {
@@ -1237,8 +1340,8 @@ func (btcRunner *BlipTestClientRunner) StartFilteredPullSince(clientID uint32, c
 	return btcRunner.SingleCollection(clientID).StartPullSince(continuous, since, activeOnly, channels, "")
 }
 
-func (btcRunner *BlipTestClientRunner) GetVersion(clientID uint32, docID string, docVersion DocVersion) ([]byte, bool) {
-	return btcRunner.SingleCollection(clientID).GetVersion(docID, docVersion)
+func (btcRunner *BlipTestClientRunner) GetVersion(clientID uint32, docID string, version DocVersion) ([]byte, bool) {
+	return btcRunner.SingleCollection(clientID).GetVersion(docID, version)
 }
 
 func (btcRunner *BlipTestClientRunner) saveAttachment(clientID uint32, contentType string, attachmentData string) (int, string, error) {
