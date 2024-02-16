@@ -142,12 +142,9 @@ func (doc *BlipTesterDoc) addRevision(revID string, body []byte, message *blip.M
 	doc.body = body
 	if doc.revMode == revModeHLV {
 		_ = doc.HLV.AddVersion(VersionFromRevID(revID))
-		doc.body = body
 	} else {
 		// prepend revID to revHistory
-		doc.revHistory = append(doc.revHistory, "")
-		copy(doc.revHistory[1:], doc.revHistory)
-		doc.revHistory[0] = revID
+		doc.revHistory = append([]string{revID}, doc.revHistory...)
 	}
 }
 
