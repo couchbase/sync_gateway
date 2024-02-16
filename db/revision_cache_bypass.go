@@ -52,7 +52,7 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 	}
 	if hlv != nil {
 		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
-		docRev.hlvHistory = hlv.toHistoryForHLV()
+		docRev.hlvHistory = hlv.ToHistoryForHLV()
 	}
 
 	rc.bypassStat.Add(1)
@@ -80,7 +80,7 @@ func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *
 	}
 	if hlv != nil {
 		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
-		docRev.hlvHistory = hlv.toHistoryForHLV()
+		docRev.hlvHistory = hlv.ToHistoryForHLV()
 	}
 
 	rc.bypassStat.Add(1)
@@ -111,7 +111,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, incl
 	}
 	if hlv != nil {
 		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
-		docRev.hlvHistory = hlv.toHistoryForHLV()
+		docRev.hlvHistory = hlv.ToHistoryForHLV()
 	}
 
 	rc.bypassStat.Add(1)
