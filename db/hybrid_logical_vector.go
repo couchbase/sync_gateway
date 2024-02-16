@@ -70,13 +70,23 @@ func CreateVersion(source, version string) Version {
 	}
 }
 
-func CreateVersionFromString(versionString string) (version Version, err error) {
+func ParseVersion(versionString string) (version Version, err error) {
 	timestampString, sourceBase64, found := strings.Cut(versionString, "@")
 	if !found {
 		return version, fmt.Errorf("Malformed version string %s, delimiter not found", versionString)
 	}
 	version.SourceID = sourceBase64
 	version.Value = timestampString
+	return version, nil
+}
+
+func ParseDecodedVersion(versionString string) (version DecodedVersion, err error) {
+	timestampString, sourceBase64, found := strings.Cut(versionString, "@")
+	if !found {
+		return version, fmt.Errorf("Malformed version string %s, delimiter not found", versionString)
+	}
+	version.SourceID = sourceBase64
+	version.Value = base.HexCasToUint64(timestampString)
 	return version, nil
 }
 
@@ -178,7 +188,7 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 		if currPVVersionCAS < hlvVersionCAS {
 			hlv.PreviousVersions[hlv.SourceID] = hlv.Version
 		} else {
-			return fmt.Errorf("local hlv has current source in previous versiosn with version greater than current version. Current CAS: %s, PV CAS %s", hlv.Version, currPVVersion)
+			return fmt.Errorf("local hlv has current source in previous version with version greater than current version. Current CAS: %s, PV CAS %s", hlv.Version, currPVVersion)
 		}
 	} else {
 		// source doesn't exist in PV so add
@@ -375,8 +385,16 @@ func (hlv *HybridLogicalVector) setPreviousVersion(source string, version string
 	hlv.PreviousVersions[source] = version
 }
 
+func (hlv *HybridLogicalVector) IsVersionKnown(otherVersion Version) bool {
+	value, found := hlv.GetVersion(otherVersion.SourceID)
+	if !found {
+		return false
+	}
+	return value >= base.HexCasToUint64(otherVersion.Value)
+}
+
 // toHistoryForHLV formats blip History property for V4 replication and above
-func (hlv *HybridLogicalVector) toHistoryForHLV() string {
+func (hlv *HybridLogicalVector) ToHistoryForHLV() string {
 	// take pv and mv from hlv if defined and add to history
 	var s strings.Builder
 	// Merge versions must be defined first if they exist
