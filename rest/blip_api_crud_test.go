@@ -651,21 +651,21 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 	// Write existing docs to server directly (not via blip)
 	rt := bt.restTester
 	resp := rt.PutDoc("conflictingInsert", `{"version":1}`)
-	conflictingInsertRev := resp.RevID
+	conflictingInsertRev := resp.RevTreeID
 
 	resp = rt.PutDoc("matchingInsert", `{"version":1}`)
-	matchingInsertRev := resp.RevID
+	matchingInsertRev := resp.RevTreeID
 
 	resp = rt.PutDoc("conflictingUpdate", `{"version":1}`)
-	conflictingUpdateRev1 := resp.RevID
-	conflictingUpdateRev2 := rt.UpdateDocRev("conflictingUpdate", resp.RevID, `{"version":2}`)
+	conflictingUpdateRev1 := resp.RevTreeID
+	conflictingUpdateRev2 := rt.UpdateDocRev("conflictingUpdate", resp.RevTreeID, `{"version":2}`)
 
 	resp = rt.PutDoc("matchingUpdate", `{"version":1}`)
-	matchingUpdateRev1 := resp.RevID
-	matchingUpdateRev2 := rt.UpdateDocRev("matchingUpdate", resp.RevID, `{"version":2}`)
+	matchingUpdateRev1 := resp.RevTreeID
+	matchingUpdateRev2 := rt.UpdateDocRev("matchingUpdate", resp.RevTreeID, `{"version":2}`)
 
 	resp = rt.PutDoc("newUpdate", `{"version":1}`)
-	newUpdateRev1 := resp.RevID
+	newUpdateRev1 := resp.RevTreeID
 
 	type proposeChangesCase struct {
 		key           string
@@ -1929,11 +1929,11 @@ func TestSendReplacementRevision(t *testing.T) {
 
 				// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 				changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
-					if changeEntryDocID == docID && changeEntryRevID == version1.RevID {
+					if changeEntryDocID == docID && changeEntryRevID == version1.RevTreeID {
 						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
-						err := collection.PurgeOldRevisionJSON(ctx, docID, version1.RevID)
+						err := collection.PurgeOldRevisionJSON(ctx, docID, version1.RevTreeID)
 						require.NoError(t, err)
 						rt.GetDatabase().FlushRevisionCacheForTest()
 					}
@@ -1961,15 +1961,15 @@ func TestSendReplacementRevision(t *testing.T) {
 					_ = btcRunner.SingleCollection(btc.id).WaitForVersion(docID, version2)
 
 					// rev message with a replacedRev property referring to the originally requested rev
-					msg2, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version2)
+					msg2, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version2.RevTreeID)
 					require.True(t, ok)
 					assert.Equal(t, db.MessageRev, msg2.Profile())
-					assert.Equal(t, version2.RevID, msg2.Properties[db.RevMessageRev])
-					assert.Equal(t, version1.RevID, msg2.Properties[db.RevMessageReplacedRev])
+					assert.Equal(t, version2.RevTreeID, msg2.Properties[db.RevMessageRev])
+					assert.Equal(t, version1.RevTreeID, msg2.Properties[db.RevMessageReplacedRev])
 
 					// the blip test framework records a message entry for the originally requested rev as well, but it should point to the message sent for rev 2
 					// this is an artifact of the test framework to make assertions for tests not explicitly testing replacement revs easier
-					msg1, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version1)
+					msg1, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version1.RevTreeID)
 					require.True(t, ok)
 					assert.Equal(t, msg1, msg2)
 
@@ -1981,11 +1981,11 @@ func TestSendReplacementRevision(t *testing.T) {
 					assert.Nil(t, data)
 
 					// no message for rev 2
-					_, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version2)
+					_, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version2.RevTreeID)
 					require.False(t, ok)
 
 					// norev message for the requested rev
-					msg, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version1)
+					msg, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version1.RevTreeID)
 					require.True(t, ok)
 					assert.Equal(t, db.MessageNoRev, msg.Profile())
 
@@ -2078,7 +2078,7 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 
 		// create doc version of the above doc write
 		version1 := DocVersion{
-			RevID: bucketDoc.CurrentRev,
+			RevTreeID: bucketDoc.CurrentRev,
 			CV: db.Version{
 				SourceID: hlvHelper.Source,
 				Value:    string(base.Uint64CASToLittleEndianHex(cas)),
@@ -2595,6 +2595,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires push replication (CBG-3255)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		// Setup
@@ -3204,7 +3205,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				btcRunner.WaitForDoc(btc2.id, markerDoc)
 
 				// Validate that the latest client message for the requested doc/rev was a norev
-				msg, ok := btcRunner.SingleCollection(btc2.id).GetBlipRevMessage(docID, revID)
+				msg, ok := btcRunner.SingleCollection(btc2.id).GetBlipRevMessage(docID, revID.RevTreeID)
 				require.True(t, ok)
 				require.Equal(t, db.MessageNoRev, msg.Profile())
 

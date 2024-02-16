@@ -229,7 +229,7 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 
 	// push winning branch
 	wg.Add(2)
-	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"buzz","_revisions":{"start":3,"ids":["buzz","bar","`+version1.RevID+`"]}}`)
+	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"buzz","_revisions":{"start":3,"ids":["buzz","bar","`+version1.RevTreeID+`"]}}`)
 	RequireStatus(t, res, http.StatusCreated)
 	winningVersion := DocVersionFromPutResponse(t, res)
 
@@ -252,7 +252,7 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 
 	// push a separate winning branch
 	wg.Add(2)
-	res = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"quux","_revisions":{"start":4,"ids":["quux", "buzz","bar","`+version1.RevID+`"]}}`)
+	res = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"quux","_revisions":{"start":4,"ids":["quux", "buzz","bar","`+version1.RevTreeID+`"]}}`)
 	RequireStatus(t, res, http.StatusCreated)
 	newWinningVersion := DocVersionFromPutResponse(t, res)
 
@@ -333,7 +333,7 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 	changes.RequireDocIDs(t, []string{"doc1", "doc"})
-	changes.RequireRevID(t, []string{docVrs.RevID, doc1Vrs.RevID})
+	changes.RequireRevID(t, []string{docVrs.RevTreeID, doc1Vrs.RevTreeID})
 }
 
 // TestJumpInSequencesAtAllocatorRangeInPending:
@@ -404,7 +404,7 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 	changes.RequireDocIDs(t, []string{"doc1", "doc"})
-	changes.RequireRevID(t, []string{docVrs.RevID, doc1Vrs.RevID})
+	changes.RequireRevID(t, []string{docVrs.RevTreeID, doc1Vrs.RevTreeID})
 }
 
 func TestCVPopulationOnChangesViaAPI(t *testing.T) {
