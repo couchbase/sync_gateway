@@ -71,7 +71,7 @@ func addActiveRT(t *testing.T, dbName string, testBucket *base.TestBucket) (acti
 
 // requireDocumentVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
 func requireDocumentVersion(t testing.TB, expected rest.DocVersion, doc *db.Document) {
-	rest.RequireDocVersionEqual(t, expected, rest.DocVersion{RevID: doc.SyncData.CurrentRev})
+	rest.RequireDocVersionEqual(t, expected, rest.DocVersion{RevTreeID: doc.SyncData.CurrentRev})
 }
 
 // requireRevID asserts that the specified document version is written to the
