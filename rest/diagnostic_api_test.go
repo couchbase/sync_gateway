@@ -24,6 +24,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type putResponse struct {
+	OK  bool   `json:"ok"`
+	Rev string `json:"rev"`
+}
+
 func TestGetAllChannelsByUser(t *testing.T) {
 	if base.TestsUseNamedCollections() {
 		t.Skip("Test requires Couchbase Server")
@@ -142,9 +147,9 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	keyspace1 := scopeName + "." + collection1Name
 	keyspace2 := scopeName + "." + collection2Name
 
-	collectionPayload := fmt.Sprintf(`,"%s": {
-					"admin_channels":["a"]
-				}`, collection2Name)
+	collectionPayload := `,"%s": {
+					"admin_channels":[%s]
+				}`
 
 	// create sessions before users
 	const alice = "alice"
@@ -164,10 +169,9 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	// Put user alice and assert admin assigned channels are returned by the get all_channels endpoint
 	response := rt.SendAdminRequest(http.MethodPut,
 		"/"+dbName+"/_user/"+alice, fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`,
-			scopeName, collection1Name, collectionPayload))
+			scopeName, collection1Name, fmt.Sprintf(collectionPayload, collection2Name, `"a"`)))
 	RequireStatus(t, response, http.StatusCreated)
 
-	//RequireStatus(t, response, http.StatusCreated)
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+alice+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
@@ -234,14 +238,15 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/doc2",
 		`{"role":"role:role1", "user":"bob"}`)
 	RequireStatus(t, response, http.StatusCreated)
-	var putResp struct {
-		OK  bool   `json:"ok"`
-		Rev string `json:"rev"`
-	}
+
+	var putResp putResponse
 	err = json.Unmarshal(response.BodyBytes(), &putResp)
 	require.NoError(t, err)
 
-	revID := putResp.Rev
+	response = rt.SendAdminRequest(http.MethodPut,
+		"/"+dbName+"/_user/"+alice, fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`,
+			scopeName, collection1Name, fmt.Sprintf(collectionPayload, collection2Name, `"a", "chan2coll2"`)))
+	RequireStatus(t, response, http.StatusOK)
 
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+bob+"/_all_channels", ``)
@@ -252,6 +257,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 
 	assert.Equal(t, channelMap.DynamicRoleGrants["role1"][keyspace2]["role1Chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 5, EndSeq: 0}})
 
+	revID := putResp.Rev
 	response = rt.SendAdminRequest(http.MethodDelete,
 		fmt.Sprintf("/{{.keyspace2}}/doc2?rev=%s", revID), "")
 	RequireStatus(t, response, http.StatusOK)
@@ -262,6 +268,114 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, maps.Keys(channelMap.RoleHistoryGrants["role1"][keyspace2]), []string{"role1Chan", "!"})
-	assert.Equal(t, channelMap.RoleHistoryGrants["role1"][keyspace2]["role1Chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 5, EndSeq: 6}})
+	assert.Equal(t, channelMap.RoleHistoryGrants["role1"][keyspace2]["role1Chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 5, EndSeq: 7}})
 
+	//RequireStatus(t, response, http.StatusCreated)
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/"+dbName+"/_user/"+alice+"/_all_channels", ``)
+	RequireStatus(t, response, http.StatusOK)
+
+	err = json.Unmarshal(response.BodyBytes(), &channelMap)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[keyspace2]), []string{"a", "chan2coll2"})
+}
+
+func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
+	SyncFn := `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.user, doc.role);}`
+	base.TestRequiresCollections(t)
+
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 1)
+	defer rt.Close()
+
+	const dbName = "db"
+
+	// implicit default scope/collection
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = nil
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	expectedKeyspaces := []string{
+		dbName,
+	}
+	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
+
+	newCollection := base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: t.Name()}
+	require.NoError(t, rt.TestBucket.CreateDataStore(base.TestCtx(t), newCollection))
+	defer func() {
+		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
+	}()
+
+	resp = rt.UpsertDbConfig(dbName, DbConfig{Scopes: ScopesConfig{
+		base.DefaultScope: {Collections: CollectionsConfig{
+			base.DefaultCollection:         {SyncFn: &SyncFn},
+			newCollection.CollectionName(): {SyncFn: &SyncFn},
+		}},
+	}})
+	RequireStatus(t, resp, http.StatusCreated)
+
+	const alice = "alice"
+	userPayload := `{
+		%s
+		"admin_channels":[%s],
+		"collection_access": {
+			"%s": {
+				"%s": {
+					"admin_channels":["A", "B", "C"]
+				}
+
+			}
+		}
+	}`
+	// Put user alice and assert admin assigned channels are returned by the get all_channels endpoint
+	response := rt.SendAdminRequest(http.MethodPut,
+		"/"+dbName+"/_user/"+alice, fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`,
+			`"foo", "bar"`, "_default", newCollection.Collection))
+	RequireStatus(t, response, http.StatusCreated)
+
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/"+dbName+"/_user/"+alice+"/_all_channels", ``)
+	RequireStatus(t, response, http.StatusOK)
+
+	var channelMap getAllChannelsResponse
+	err := json.Unmarshal(response.BodyBytes(), &channelMap)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[newCollection.String()]), []string{"A", "B", "C"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants["_default._default"]), []string{"foo", "bar"})
+
+	// Assign new channel to user alice and assert all_channels includes it
+	newKeyspace := dbName + "." + newCollection.String()
+	response = rt.SendAdminRequest(http.MethodPut,
+		fmt.Sprintf("/%s/%s", newKeyspace, "doc1"),
+		`{"accessChannel":"dynChannel", "accessUser":["alice"]}`)
+	RequireStatus(t, response, http.StatusCreated)
+	var putResp putResponse
+	err = json.Unmarshal(response.BodyBytes(), &putResp)
+	require.NoError(t, err)
+
+	revID := putResp.Rev
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/"+dbName+"/_user/"+alice+"/_all_channels", ``)
+	RequireStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &channelMap)
+
+	require.NoError(t, err)
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants[newCollection.String()]), []string{"!", "dynChannel"})
+
+	response = rt.SendAdminRequest(http.MethodDelete,
+		fmt.Sprintf("/%s/%s?rev=%s", newKeyspace, "doc1", revID), "")
+	RequireStatus(t, response, http.StatusOK)
+	response = rt.SendAdminRequest(http.MethodPut,
+		"/"+dbName+"/_user/"+alice, fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`,
+			"", "_default", newCollection.Collection))
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/"+dbName+"/_user/"+alice+"/_all_channels", ``)
+	RequireStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &channelMap)
+
+	require.NoError(t, err)
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants[newCollection.String()]), []string{"!", "dynChannel"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants["_default._default"]), []string{"bar", "foo"})
 }

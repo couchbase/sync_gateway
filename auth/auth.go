@@ -314,9 +314,7 @@ func (auth *Authenticator) CalculateHistory(princName string, invalSeq uint64, i
 		}
 
 		// Add grant to history
-		if adminAssigned {
-			currentHistoryForGrant.AdminAssigned = adminAssigned
-		} // If adminAssigned is set to false, leave it
+		currentHistoryForGrant.AdminAssigned = adminAssigned
 		currentHistoryForGrant.UpdatedAt = time.Now().Unix()
 		currentHistoryForGrant.Entries = append(currentHistoryForGrant.Entries, GrantHistorySequencePair{
 			StartSeq: previousInfo.Sequence,

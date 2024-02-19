@@ -2555,7 +2555,7 @@ AllUserChannels:
     admin_role_grants:
       description: |-
         Channels assigned to the user through the admin API, by assigning a role to the user through admin_roles,
-        and assigning the channels to that role.
+        and assigning the channels to that role. Does not include historic roles.
       type: object
       additionalProperties:
         x-additionalPropertiesName: channel
@@ -2572,7 +2572,7 @@ AllUserChannels:
 
     dynamic_role_grants:
       description: |-
-        Channels assigned to the user through roles assigned using the sync function.
+        Channels assigned to the user through roles assigned using the sync function. Does not include historic roles.
       type: object
       additionalProperties:
         x-additionalPropertiesName: channel
@@ -2588,7 +2588,7 @@ AllUserChannels:
 
     role_history_grants:
       description: |-
-        Channels that the user had access to through a role they had.
+        Channels that the user had access to through a role they no longer have. Includes both admin and dynamic roles.
       type: object
       additionalProperties:
         x-additionalPropertiesName: channel

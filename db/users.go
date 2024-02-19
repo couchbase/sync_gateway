@@ -229,8 +229,6 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 
 // UpdateCollectionExplicitChannels identifies whether a config update requires an update to the principal's collectionAccess.
 func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context, princ auth.Principal, updates map[string]map[string]*auth.CollectionAccessConfig, seq uint64) {
-	authenticator := dbc.Authenticator(ctx)
-
 	for scopeName, scope := range updates {
 		if scope == nil {
 			// TODO: do we need the ability to delete a whole scope at once?  Probably not necessary
@@ -253,12 +251,9 @@ func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context
 					expChannels := princ.CollectionExplicitChannels(scopeName, collectionName).Copy()
 					changed := updatedExplicitChannels.UpdateAtSequence(updatedCollectionAccess.ExplicitChannels_, seq)
 					if changed {
+						authenticator := dbc.Authenticator(ctx)
 						princ.SetCollectionExplicitChannels(scopeName, collectionName, updatedExplicitChannels, seq)
 						history := authenticator.CalculateHistory(princ.Name(), princ.GetChannelInvalSeq(), expChannels, updatedExplicitChannels, princ.ChannelHistory(), true)
-						//for channel, hist := range history {
-						//	hist.AdminAssigned = true
-						//	history[channel] = hist
-						//}
 						princ.SetChannelHistory(history)
 					}
 				}
