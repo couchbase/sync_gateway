@@ -1218,7 +1218,6 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 func startBootstrapServerWithoutConfigPolling(t *testing.T) (*ServerContext, func()) {
 	config := BootstrapStartupConfigForTest(t)
 	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
-	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
+	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Hour * 24)
 	return StartServerWithConfig(t, &config)
-
 }
