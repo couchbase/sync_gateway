@@ -362,12 +362,15 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 	require.NoError(t, err)
 	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants[newCollection.String()]), []string{"!", "dynChannel"})
 
+	// remove dynchannel from collection_access channels and assert it shows up in dynamic grants
 	response = rt.SendAdminRequest(http.MethodDelete,
 		fmt.Sprintf("/%s/%s?rev=%s", newKeyspace, "doc1", revID), "")
 	RequireStatus(t, response, http.StatusOK)
+
+	// Overwrite admin_channels and remove foo and bar channels
 	response = rt.SendAdminRequest(http.MethodPut,
 		"/"+dbName+"/_user/"+alice, fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`,
-			"", "_default", newCollection.Collection))
+			`"channel"`, "_default", newCollection.Collection))
 	RequireStatus(t, response, http.StatusOK)
 
 	response = rt.SendDiagnosticRequest(http.MethodGet,
@@ -377,5 +380,5 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants[newCollection.String()]), []string{"!", "dynChannel"})
-	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants["_default._default"]), []string{"bar", "foo"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.DefaultScopeCollectionChannelHistory), []string{"bar", "foo"})
 }
