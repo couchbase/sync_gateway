@@ -461,6 +461,83 @@ func TestPersistentConfigWithCollectionConflicts(t *testing.T) {
 	RequireStatus(t, rt.CreateDatabase("default2", defaultCollectionDbConfig), http.StatusCreated)
 }
 
+// TestPersistentConfigRegistryRollbackAfterDbConfigRollback simulates a vbucket rollback for the dbconfig,
+// leaving the registry version ahead of the config.
+func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
+	base.TestRequiresCollections(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyConfig)
+
+	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
+	defer closeFn()
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	oneCollectionScopesConfig := GetCollectionsConfig(t, tb, 1)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(oneCollectionScopesConfig)
+
+	bucketName := tb.GetName()
+	scopeName := dataStoreNames[0].ScopeName()
+	groupID := sc.Config.Bootstrap.ConfigGroupID
+	bc := sc.BootstrapContext
+
+	// reduce retry timeout for testing
+	bc.configRetryTimeout = 1 * time.Second
+
+	// set up ScopesConfigs used by tests
+	collection1Name := dataStoreNames[0].CollectionName()
+	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+
+	const dbName = "c1_db1"
+	collection1db1Config := getTestDatabaseConfig(bucketName, dbName, collection1ScopesConfig, "2-a")
+	collection1db1Config.RevsLimit = base.Uint32Ptr(1000)
+	cas, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
+	require.NoError(t, err)
+	configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(configs))
+
+	db, err := sc.GetDatabase(ctx, dbName)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1000), int64(db.RevsLimit))
+
+	// simulate a rollback (not exactly - CAS increments, but lowering the config version is enough)
+	docID := PersistentConfigKey(ctx, groupID, dbName)
+	updatedConfig := *collection1db1Config
+	updatedConfig.Version = "1-a"
+	updatedConfig.RevsLimit = base.Uint32Ptr(500)
+	_, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, cas, &updatedConfig)
+	require.NoError(t, err)
+
+	// we've not polled for config updates yet
+	db, err = sc.GetDatabase(ctx, dbName)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1000), int64(db.RevsLimit))
+
+	_, err = sc.fetchAndLoadConfigs(ctx, false)
+	require.NoError(t, err)
+
+	db, err = sc.GetDatabase(ctx, dbName)
+	require.NoError(t, err)
+	assert.Equal(t, int64(500), int64(db.RevsLimit))
+
+	// at this point the config and registry are re-aligned, but let's just write another config update to make sure it's in an updatable state
+	_, err = bc.UpdateConfig(ctx, bucketName, groupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		bucketDbConfig.Version = "3-c"
+		bucketDbConfig.RevsLimit = base.Uint32Ptr(1234)
+		return bucketDbConfig, nil
+	})
+	require.NoError(t, err)
+
+	_, err = sc.fetchAndLoadConfigs(ctx, false)
+	require.NoError(t, err)
+
+	db, err = sc.GetDatabase(ctx, dbName)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1234), int64(db.RevsLimit))
+}
+
 // TestPersistentConfigRegistryRollbackAfterCreateFailure simulates node failure during an insertConfig operation, leaving
 // the registry updated but not the config file.  Verifies rollback and registry cleanup in the following cases:
 //  1. GetDatabaseConfigs (triggers rollback)

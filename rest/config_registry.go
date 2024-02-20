@@ -195,7 +195,7 @@ func (r *GatewayRegistry) upsertDatabaseConfig(ctx context.Context, configGroupI
 }
 
 // rollbackDatabaseConfig reverts the registry entry to the previous version, and removes the previous version
-func (r *GatewayRegistry) rollbackDatabaseConfig(ctx context.Context, configGroupID string, dbName string) (err error) {
+func (r *GatewayRegistry) rollbackDatabaseConfig(ctx context.Context, configGroupID string, dbName string, config *DatabaseConfig) (err error) {
 
 	configGroup, ok := r.ConfigGroups[configGroupID]
 	if !ok {
@@ -207,7 +207,12 @@ func (r *GatewayRegistry) rollbackDatabaseConfig(ctx context.Context, configGrou
 	}
 
 	if registryDatabase.PreviousVersion == nil {
-		return fmt.Errorf("Rollback requested but registry did not include previous version for db %s", base.MD(dbName))
+		base.InfofCtx(ctx, base.KeyConfig, "Rollback requested but registry did not include previous version for db %s - using config doc as previous version", base.UD(dbName))
+		setRegistryDatabaseFromConfig(registryDatabase, config)
+		if conflicts := r.getCollectionConflicts(ctx, dbName, config.Scopes); len(conflicts) > 0 {
+			return base.HTTPErrorf(http.StatusConflict, "Cannot rollback config for database %s - collections are in use by another database: %v", base.UD(dbName), conflicts)
+		}
+		return nil
 	}
 
 	registryDatabase.Version = registryDatabase.PreviousVersion.Version
@@ -342,11 +347,16 @@ func (r *GatewayRegistry) hasMetadataIDConflict(dbName string, metadataID string
 // registryDatabaseFromConfig creates a RegistryDatabase based on the specified config
 func registryDatabaseFromConfig(config *DatabaseConfig) *RegistryDatabase {
 	rdb := &RegistryDatabase{}
+	setRegistryDatabaseFromConfig(rdb, config)
+	return rdb
+}
+
+func setRegistryDatabaseFromConfig(rdb *RegistryDatabase, config *DatabaseConfig) {
 	rdb.Version = config.Version
 	rdb.MetadataID = config.MetadataID
 	if len(config.Scopes) == 0 {
 		rdb.Scopes = defaultOnlyRegistryScopes
-		return rdb
+		return
 	}
 
 	rdb.Scopes = make(map[string]RegistryScope)
@@ -354,12 +364,11 @@ func registryDatabaseFromConfig(config *DatabaseConfig) *RegistryDatabase {
 		registryScope := RegistryScope{
 			Collections: make([]string, 0),
 		}
-		for collectionName, _ := range scope.Collections {
+		for collectionName := range scope.Collections {
 			registryScope.Collections = append(registryScope.Collections, collectionName)
 		}
 		rdb.Scopes[scopeName] = registryScope
 	}
-	return rdb
 }
 
 // NewRegistryConfigGroup initializes an empty RegistryConfigGroup
