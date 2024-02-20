@@ -65,13 +65,16 @@ keyspace:
   schema:
     type: string
   examples:
-    Default scope and collection:
+    default:
+      summary: Default scope and collection
       value: db1
       description: Default scope and collection
-    Named collection within the default scope:
+    namedInDefault:
+      summary: Named collection within the default scope
       value: db1.collection1
       description: Named collection within the default scope
-    Fully-qualified scope and collection:
+    fullyQualified:
+      summary: Fully-qualified scope and collection
       value: db1.scope1.collection1
       description: Fully-qualified scope and collection
   description: |-
