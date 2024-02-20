@@ -1208,7 +1208,7 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		leakyBucketConfig: &base.LeakyBucketConfig{
 			UpdateCallback: func(_ string) {
-				time.Sleep(time.Millisecond * 5) // slow down Walrus - it's too quick to be throttled
+				time.Sleep(time.Millisecond * 5) // slow down rosmar - it's too quick to be throttled
 			},
 		},
 		maxConcurrentRevs: base.IntPtr(maxConcurrentRevs),
