@@ -1205,7 +1205,14 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 		maxConcurrentRevs    = 10
 		concurrentSendRevNum = 50
 	)
-	rt := NewRestTester(t, &RestTesterConfig{maxConcurrentRevs: base.IntPtr(maxConcurrentRevs)})
+	rt := NewRestTester(t, &RestTesterConfig{
+		leakyBucketConfig: &base.LeakyBucketConfig{
+			UpdateCallback: func(_ string) {
+				time.Sleep(time.Millisecond * 5) // slow down rosmar - it's too quick to be throttled
+			},
+		},
+		maxConcurrentRevs: base.IntPtr(maxConcurrentRevs),
+	})
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
