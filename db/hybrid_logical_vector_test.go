@@ -9,7 +9,6 @@
 package db
 
 import (
-	"context"
 	"encoding/base64"
 	"reflect"
 	"strconv"
@@ -364,27 +363,6 @@ func TestHLVMapToCBLString(t *testing.T) {
 			}
 		})
 	}
-}
-
-// insertWithHLV inserts a new document into the bucket with a populated HLV (matching a write from
-// a different HLV-aware peer)
-func (h *HLVAgent) insertWithHLV(ctx context.Context, key string) (casOut uint64) {
-	hlv := &HybridLogicalVector{}
-	err := hlv.AddVersion(CreateVersion(h.Source, hlvExpandMacroCASValue))
-	require.NoError(h.t, err)
-	hlv.CurrentVersionCAS = hlvExpandMacroCASValue
-
-	syncData := &SyncData{HLV: hlv}
-	syncDataBytes, err := base.JSONMarshal(syncData)
-	require.NoError(h.t, err)
-
-	mutateInOpts := &sgbucket.MutateInOptions{
-		MacroExpansion: hlv.computeMacroExpansions(),
-	}
-
-	cas, err := h.datastore.WriteCasWithXattr(ctx, key, h.xattrName, 0, 0, defaultHelperBody, syncDataBytes, mutateInOpts)
-	require.NoError(h.t, err)
-	return cas
 }
 
 // TestInvalidHLVOverChangesMessage:

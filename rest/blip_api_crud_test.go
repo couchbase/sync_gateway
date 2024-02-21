@@ -1720,9 +1720,6 @@ func TestPutRevV4(t *testing.T) {
 	assert.Equal(t, db.EncodeValue(doc.Cas), doc.HLV.CurrentVersionCAS)
 	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
 
-	doc, _, err = collection.GetDocWithXattr(base.TestCtx(t), "foo", db.DocUnmarshalNoHistory)
-	require.NoError(t, err)
-
 	// 3. Update the document again with a non-conflicting revision from a different source (previous cv moved to pv)
 	updatedHistory := "1@def, 2@abc, 4@efg"
 	sent, _, resp, err = bt.SendRev("foo", db.EncodeTestVersion("1@jkl"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(updatedHistory)})
@@ -1759,7 +1756,7 @@ func TestPutRevV4(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, "409", resp.Properties["Error-Code"])
 
-	// 6. Test sending rev with merge versions included in history (for new key)
+	// 6. Test sending rev with merge versions included in history (note new key)
 	mvHistory := "3@def, 3@abc; 1@def, 2@abc"
 	sent, _, resp, err = bt.SendRev("boo", db.EncodeTestVersion("3@efg"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(mvHistory)})
 	assert.True(t, sent)

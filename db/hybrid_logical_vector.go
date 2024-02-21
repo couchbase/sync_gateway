@@ -180,7 +180,7 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 	}
 	// if new entry has the same source we simple just update the version
 	if newVersion.SourceID == hlv.SourceID {
-		if newVersionCAS < hlvVersionCAS {
+		if newVersion.Value != hlvExpandMacroCASValue && newVersionCAS < hlvVersionCAS {
 			return fmt.Errorf("attempting to add new version vector entry with a CAS that is less than the current version CAS value for the same source. Current cas: %s new cas %s", hlv.Version, newVersion.Value)
 		}
 		hlv.Version = newVersion.Value

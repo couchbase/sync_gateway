@@ -70,7 +70,7 @@ func EncodeTestVersion(versionString string) (encodedString string) {
 	}
 	hexTimestamp, err := EncodeValueStr(timestampString)
 	if err != nil {
-		panic(fmt.Sprintf("unable to encode timestampString", timestampString))
+		panic(fmt.Sprintf("unable to encode timestampString %v", timestampString))
 	}
 	base64Source := EncodeSource(source)
 	return hexTimestamp + "@" + base64Source
