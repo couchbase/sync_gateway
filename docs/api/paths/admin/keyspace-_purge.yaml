@@ -41,11 +41,13 @@ post:
               enum:
                 - '*'
         examples:
-          Example:
+          single:
+            summary: 'Single document'
             value:
               doc_id:
                 - '*'
-          Multiple purges example:
+          multiple:
+            summary: 'Multiple documents'
             value:
               doc_id_1:
                 - '*'
@@ -70,12 +72,14 @@ post:
             required:
               - purged
           examples:
-            Example:
+            single:
+              summary: 'Single document'
               value:
                 purged:
                   doc_id:
                     - '*'
-            Multiple purges example:
+            multiple:
+              summary: 'Multiple documents'
               value:
                 purged:
                   doc_id_1:

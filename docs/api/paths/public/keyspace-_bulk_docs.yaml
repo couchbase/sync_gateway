@@ -84,7 +84,8 @@ post:
                   rev: 6-b3e8dcf825b71ccee112f3572ec4323c
                 - id: BobSettings
                   rev: 2-5145e1086bb8d1d71a531e9f6b543c58
-            Partial success:
+            PartialSuccess:
+              summary: "Partial success"
               value:
                 - error: conflict
                   id: FooBar
