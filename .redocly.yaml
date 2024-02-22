@@ -11,10 +11,22 @@
 apis:
   admin:
     root: "./docs/api/admin.yaml"
+    decorators:
+      remove-x-internal: on
+  admin-internal:
+    root: "./docs/api/admin.yaml"
   public:
+    root: "./docs/api/public.yaml"
+    decorators:
+      remove-x-internal: on
+  public-internal:
     root: "./docs/api/public.yaml"
   metric:
     root: "./docs/api/metric.yaml"
+    decorators:
+      remove-x-internal: on
+  metric-internal:
+    root: "./docs/api/public.yaml"
 
 extends:
   - minimal
