@@ -560,9 +560,9 @@ func (b *bootstrapContext) rollbackRegistry(ctx context.Context, bucketName, gro
 		base.InfofCtx(ctx, base.KeyConfig, "Rolling back config registry to align with db config version %s for db: %s, bucket:%s configGroup:%s", config.Version, base.MD(dbName), base.MD(bucketName), base.MD(groupID))
 		registryErr := registry.rollbackDatabaseConfig(ctx, groupID, dbName, config)
 		if registryErr != nil {
-			// There shouldn't be a case where rollback introduces a collection conflict - it
-			// shouldn't be possible to add a conflicting collection to the registry while a previous
-			// config persistence is in-flight
+			// There is one case where the registry rollback can introduce a collection conflict.
+			// If there's no PreviousVersion present (i.e. we're handling a db config doc rollback, not a registry update)
+			// then it's possible for the db config to contain a collection that is now present on another database in the registry.
 			return fmt.Errorf("Unable to roll back registry to match existing config for database %s(%s): %w", base.MD(dbName), base.MD(groupID), registryErr)
 		}
 	}

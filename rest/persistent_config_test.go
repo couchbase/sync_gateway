@@ -538,6 +538,77 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 	assert.Equal(t, int64(1234), int64(db.RevsLimit))
 }
 
+// TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback simulates a vbucket rollback for the dbconfig,
+// leaving the registry version ahead of the config - but also with a collection conflict occurring in the subsequent rollback.
+func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback(t *testing.T) {
+	base.TestRequiresCollections(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyConfig)
+
+	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
+	defer closeFn()
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
+
+	bucketName := tb.GetName()
+	scopeName := dataStoreNames[0].ScopeName()
+	groupID := sc.Config.Bootstrap.ConfigGroupID
+	bc := sc.BootstrapContext
+
+	// reduce retry timeout for testing
+	bc.configRetryTimeout = 1 * time.Second
+
+	// set up ScopesConfigs used by tests
+	collection1Name := dataStoreNames[0].CollectionName()
+	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+	collection2Name := dataStoreNames[1].CollectionName()
+	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
+
+	const dbName1 = "c1_db1"
+	collection1db1Config := getTestDatabaseConfig(bucketName, dbName1, collection1ScopesConfig, "2-a")
+	cas1, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
+	require.NoError(t, err)
+
+	const dbName2 = "c1_db2"
+	collection1db2Config := getTestDatabaseConfig(bucketName, dbName2, collection2ScopesConfig, "2-a")
+	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db2Config)
+	require.NoError(t, err)
+
+	configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(configs))
+
+	// simulate a rollback (not exactly - CAS increments, but lowering the config version is enough)
+	// this time we'll "roll back" to a version of dbconfig that contains a collection now in use by db2
+	docID := PersistentConfigKey(ctx, groupID, dbName1)
+	updatedConfig := *collection1db1Config
+	updatedConfig.Version = "1-a"
+	updatedConfig.Scopes = ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}, collection2Name: {}}}}
+	_, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, cas1, &updatedConfig)
+	require.NoError(t, err)
+
+	// should expect db1 to fail because collection2 is shared by two databases during rollback handling
+	// 2024-02-20T12:43:34.781Z [DBG] Config+: t:TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback Unable to fetch configs for group "default" from bucket "sg_int_rosmar_dbebb851aa6902995e06cb775a509ab1": Unable to roll back registry to match existing config for database c1_db1(default): 409 Cannot rollback config for database c1_db1 - collections are in use by another database: map[sg_test_0.sg_test_1:c1_db2]
+	count, err := sc.fetchAndLoadConfigs(ctx, false)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, count) // db2 is still valid
+
+	// at this point the config and registry are still not aligned, let's write a correcting update to make sure it's in a repairable state
+	_, err = bc.UpdateConfig(ctx, bucketName, groupID, dbName1, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		bucketDbConfig.Version = "3-c"
+		bucketDbConfig.Scopes = ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+		return bucketDbConfig, nil
+	})
+	require.NoError(t, err)
+
+	// FIXME: Can't repair?
+	//        "Unable to roll back registry to match existing config for database c1_db1(default): 409 Cannot rollback config for database c1_db1 - collections are in use by another database: map[sg_test_0.sg_test_1:c1_db2]"
+}
+
 // TestPersistentConfigRegistryRollbackAfterCreateFailure simulates node failure during an insertConfig operation, leaving
 // the registry updated but not the config file.  Verifies rollback and registry cleanup in the following cases:
 //  1. GetDatabaseConfigs (triggers rollback)
