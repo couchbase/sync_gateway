@@ -1,9 +1,10 @@
 package rest
 
 import (
+	"log"
+
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/db"
-	"log"
 )
 
 // HTTP handler for a GET of a document

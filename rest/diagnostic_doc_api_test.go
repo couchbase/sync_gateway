@@ -2,10 +2,10 @@ package rest
 
 import (
 	"encoding/json"
-	"github.com/stretchr/testify/assert"
-	"log"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetAlldocChannels(t *testing.T) {
@@ -17,11 +17,11 @@ func TestGetAlldocChannels(t *testing.T) {
 	updatedVersion = rt.UpdateDoc("doc", updatedVersion, `{"channel":["CHAN1"]}`)
 	updatedVersion = rt.UpdateDoc("doc", updatedVersion, `{"channel":["CHAN1", "CHAN2"]}`)
 	updatedVersion = rt.UpdateDoc("doc", updatedVersion, `{"channel":["CHAN3"]}`)
-	updatedVersion = rt.UpdateDoc("doc", updatedVersion, `{"channel":["CHAN1"]}`)
+	_ = rt.UpdateDoc("doc", updatedVersion, `{"channel":["CHAN1"]}`)
 
 	response := rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/doc/_all_channels", "")
 	RequireStatus(t, response, http.StatusOK)
-	log.Printf(response.BodyString())
+
 	var channelMap map[string][]string
 	err := json.Unmarshal(response.BodyBytes(), &channelMap)
 	assert.NoError(t, err)
