@@ -1,0 +1,37 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/user-name
+get:
+  summary: Get all channels for a user
+  description: |-
+    Retrieve all doc channels and the sequence spans showing when the doc was added to a channel and when it was removed.
+    Required Sync Gateway RBAC roles:
+    * Sync Gateway Application Read Only
+  responses:
+    '200':
+      description: Document found successfully
+      content:
+        application/json:
+          schema:
+            properties:
+              channel_set:
+                description: The channels the document has been in.
+                type: array
+                items: 
+                  sequences: 
+                  description: The sequence number that document was added to the channel.
+                  type: string
+                  example: "28-48"
+
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Database Security
+  operationId: get_db-_user-name-_all_channels
