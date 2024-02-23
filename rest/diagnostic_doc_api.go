@@ -11,8 +11,6 @@ licenses/APL2.txt.
 package rest
 
 import (
-	"log"
-
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/db"
 )
@@ -32,14 +30,13 @@ func (h *handler) handleGetDocChannels() error {
 
 	for _, chanSetInfo := range doc.SyncData.ChannelSet {
 		resp[chanSetInfo.Name] = append(resp[chanSetInfo.Name], auth.GrantHistorySequencePair{StartSeq: chanSetInfo.Start, EndSeq: chanSetInfo.End})
-		for _, hist := range doc.SyncData.ChannelSetHistory {
-			if hist.Name == chanSetInfo.Name {
-				resp[chanSetInfo.Name] = append(resp[chanSetInfo.Name], auth.GrantHistorySequencePair{StartSeq: hist.Start, EndSeq: hist.End})
-				continue
-			}
+	}
+	for _, hist := range doc.SyncData.ChannelSetHistory {
+		if _, ok := resp[hist.Name]; ok {
+			resp[hist.Name] = append(resp[hist.Name], auth.GrantHistorySequencePair{StartSeq: hist.Start, EndSeq: hist.End})
+			continue
 		}
 	}
-	log.Print(resp)
 
 	h.writeJSON(resp)
 	return nil
