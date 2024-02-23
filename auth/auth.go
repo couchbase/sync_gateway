@@ -245,7 +245,7 @@ func (auth *Authenticator) inheritedCollectionChannels(user User, scope, collect
 	channels := user.CollectionChannels(scope, collection)
 	for _, role := range roles {
 		roleSince := user.RoleNames()[role.Name()]
-		channels.AddAtSequence(role.CollectionChannels(scope, collection), roleSince.Sequence)
+		channels.AddAtSequence(role.CollectionChannels(scope, collection), roleSince.VbSequence.Sequence)
 	}
 	return channels, nil
 }
@@ -357,7 +357,7 @@ func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, col
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
 
-	channelHistory := auth.CalculateHistory(princ.Name(), ca.GetChannelInvalSeq(), ca.InvalidatedChannels(), channels, ca.ChannelHistory(), false)
+	channelHistory := auth.CalculateHistory(princ.Name(), ca.GetChannelInvalSeq(), ca.InvalidatedChannels(), channels, ca.ChannelHistory())
 
 	if len(channelHistory) != 0 {
 		ca.SetChannelHistory(channelHistory)
@@ -371,7 +371,7 @@ func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, col
 }
 
 // Calculates history for either roles or channels
-func (auth *Authenticator) CalculateHistory(princName string, invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimedSetHistory, adminAssigned bool) TimedSetHistory {
+func (auth *Authenticator) CalculateHistory(princName string, invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimedSetHistory) TimedSetHistory {
 	// Initialize history if currently empty
 	if currentHistory == nil {
 		currentHistory = map[string]GrantHistory{}
@@ -395,10 +395,10 @@ func (auth *Authenticator) CalculateHistory(princName string, invalSeq uint64, i
 		}
 
 		// Add grant to history
-		currentHistoryForGrant.AdminAssigned = adminAssigned
+		currentHistoryForGrant.Source = previousInfo.Source
 		currentHistoryForGrant.UpdatedAt = time.Now().Unix()
 		currentHistoryForGrant.Entries = append(currentHistoryForGrant.Entries, GrantHistorySequencePair{
-			StartSeq: previousInfo.Sequence,
+			StartSeq: previousInfo.VbSequence.Sequence,
 			EndSeq:   invalSeq,
 		})
 		currentHistory[previousName] = currentHistoryForGrant
@@ -459,7 +459,7 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		roles.Add(jwt)
 	}
 
-	roleHistory := auth.CalculateHistory(user.Name(), user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory(), false)
+	roleHistory := auth.CalculateHistory(user.Name(), user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory())
 
 	if len(roleHistory) != 0 {
 		user.SetRoleHistory(roleHistory)
@@ -760,7 +760,7 @@ func (auth *Authenticator) DeleteRole(role Role, purge bool, deleteSeq uint64) e
 		p.setDeleted(true)
 		p.SetSequence(deleteSeq)
 
-		channelHistory := auth.CalculateHistory(p.Name(), deleteSeq, p.Channels(), nil, p.ChannelHistory(), false)
+		channelHistory := auth.CalculateHistory(p.Name(), deleteSeq, p.Channels(), nil, p.ChannelHistory())
 		if len(channelHistory) != 0 {
 			p.SetChannelHistory(channelHistory)
 		}

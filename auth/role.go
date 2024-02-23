@@ -52,9 +52,9 @@ func (timedSet TimedSetHistory) PruneHistory(partitionWindow time.Duration) []st
 }
 
 type GrantHistory struct {
-	AdminAssigned bool                       `json:"admin_assigned,omitempty"` // Grant type
-	UpdatedAt     int64                      `json:"updated_at"`               // Timestamp at which history was last updated, allows for pruning
-	Entries       []GrantHistorySequencePair `json:"entries"`                  // Entry for a specific grant period
+	Source    int                        `json:"source,omitempty"`     // Grant type
+	UpdatedAt int64                      `json:"updated_at,omitempty"` // Timestamp at which history was last updated, allows for pruning
+	Entries   []GrantHistorySequencePair `json:"entries"`              // Entry for a specific grant period
 }
 
 // Struct is for ease of internal use
@@ -369,11 +369,11 @@ func (role *roleImpl) canSeeChannel(channel string) bool {
 
 // Returns the sequence number since which the Role has been able to access the channel, else zero.
 func (role *roleImpl) canSeeChannelSince(channel string) uint64 {
-	seq := role.Channels()[channel]
-	if seq.Sequence == 0 {
-		seq = role.Channels()[ch.UserStarChannel]
+	chanEntry := role.Channels()[channel]
+	if chanEntry.VbSequence.Sequence == 0 {
+		chanEntry.VbSequence = role.Channels()[ch.UserStarChannel].VbSequence
 	}
-	return seq.Sequence
+	return chanEntry.VbSequence.Sequence
 }
 
 func (role *roleImpl) authorizeAllChannels(channels base.Set) error {

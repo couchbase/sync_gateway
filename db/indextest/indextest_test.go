@@ -276,7 +276,8 @@ func TestAllPrincipalIDs(t *testing.T) {
 
 			user1, err := authenticator.NewUser(username, "letmein", nil)
 			require.NoError(t, err)
-			user1.SetExplicitRoles(channels.TimedSet{rolename1: channels.NewVbSimpleSequence(1), rolename2: channels.NewVbSimpleSequence(1)}, 1)
+			user1.SetExplicitRoles(channels.TimedSet{rolename1: channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)},
+				rolename2: channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)}}, 1)
 			require.NoError(t, authenticator.Save(user1))
 
 			role1, err := authenticator.NewRole(rolename1, nil)

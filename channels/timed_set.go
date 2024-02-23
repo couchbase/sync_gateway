@@ -10,12 +10,23 @@ package channels
 
 import (
 	"fmt"
+	"github.com/couchbase/sync_gateway/base"
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/couchbase/sync_gateway/base"
 )
+
+const (
+	AdminGrant = iota
+	DynamicGrant
+	JWTGrant
+)
+
+var RunStateString = []string{
+	AdminGrant:   "Admin",
+	DynamicGrant: "Dynamic",
+	JWTGrant:     "JWT",
+}
 
 // Vb and Sequence struct that's compatible with sequence-only (global sequence) mode
 type VbSequence struct {
@@ -68,13 +79,20 @@ func (vbs VbSequence) Equals(other VbSequence) bool {
 
 // A mutable mapping from channel names to sequence numbers (interpreted as the sequence when
 // the channel was added.)
-type TimedSet map[string]VbSequence
+type TimedSet map[string]TimedSetEntry
+
+type TimedSetEntry struct {
+	VbSequence VbSequence `json:"VbSequence"`
+	Source     int        `json:"source:omitempty"`
+}
+
+// Role{role1: { adminAssigned:bool, Channels{Chan1: {adminAssigned: bool}}}
 
 // Creates a new TimedSet from a Set plus a sequence
 func AtSequence(set base.Set, sequence uint64) TimedSet {
 	result := make(TimedSet, len(set))
 	for name := range set {
-		result[name] = NewVbSimpleSequence(sequence)
+		result[name] = TimedSetEntry{VbSequence: NewVbSimpleSequence(sequence)}
 	}
 	return result
 }
@@ -111,7 +129,7 @@ func (set TimedSet) AllKeys() []string {
 func (set TimedSet) Copy() TimedSet {
 	result := make(TimedSet, len(set))
 	for name, sequence := range set {
-		result[name] = sequence.Copy()
+		result[name] = TimedSetEntry{Source: sequence.Source, VbSequence: sequence.VbSequence.Copy()}
 	}
 	return result
 }
@@ -123,7 +141,7 @@ func (set TimedSet) Contains(ch string) bool {
 }
 
 // Updates membership to match the given Set. Newly added members will have the given sequence.
-func (set TimedSet) UpdateAtSequence(other base.Set, sequence uint64) bool {
+func (set TimedSet) UpdateAtSequence(other base.Set, sequence uint64, source int) bool {
 	changed := false
 	for name := range set {
 		if !other.Contains(name) {
@@ -133,7 +151,7 @@ func (set TimedSet) UpdateAtSequence(other base.Set, sequence uint64) bool {
 	}
 	for name := range other {
 		if !set.Contains(name) {
-			set[name] = NewVbSimpleSequence(sequence)
+			set[name] = TimedSetEntry{VbSequence: NewVbSimpleSequence(sequence), Source: source}
 			changed = true
 		}
 	}
@@ -158,8 +176,8 @@ func (set TimedSet) Equals(other base.Set) bool {
 
 func (set TimedSet) AddChannel(channelName string, atSequence uint64) bool {
 	if atSequence > 0 {
-		if oldSequence := set[channelName]; oldSequence.Sequence == 0 || atSequence < oldSequence.Sequence {
-			set[channelName] = NewVbSimpleSequence(atSequence)
+		if oldEntry := set[channelName]; oldEntry.VbSequence.Sequence == 0 || atSequence < oldEntry.VbSequence.Sequence {
+			set[channelName] = TimedSetEntry{VbSequence: NewVbSimpleSequence(atSequence)}
 			return true
 		}
 	}
@@ -174,16 +192,16 @@ func (set TimedSet) Add(other TimedSet) bool {
 // Merges the other set into the receiver at a given sequence. */
 func (set TimedSet) AddAtSequence(other TimedSet, atSequence uint64) bool {
 	changed := false
-	for ch, vbSeq := range other {
+	for ch, entry := range other {
 		// If vbucket is present, do a straight replace
-		if vbSeq.VbNo != nil {
-			set[ch] = vbSeq
+		if entry.VbSequence.VbNo != nil {
+			set[ch] = entry
 			changed = true
 		} else {
-			if vbSeq.Sequence < atSequence {
-				vbSeq.Sequence = atSequence
+			if entry.VbSequence.Sequence < atSequence {
+				entry.VbSequence.Sequence = atSequence
 			}
-			if set.AddChannel(ch, vbSeq.Sequence) {
+			if set.AddChannel(ch, entry.VbSequence.Sequence) {
 				changed = true
 			}
 		}
@@ -195,7 +213,7 @@ func (set TimedSet) AddAtSequence(other TimedSet, atSequence uint64) bool {
 func (set TimedSet) AddAtVbSequence(other TimedSet, atVbSequence VbSequence) bool {
 	changed := false
 	for ch, _ := range other {
-		set[ch] = atVbSequence
+		set[ch] = TimedSetEntry{VbSequence: atVbSequence}
 		changed = true
 	}
 	return changed
@@ -256,7 +274,7 @@ func (set TimedSet) CompareKeys(other TimedSet) ChangedKeys {
 // In the latter case all the sequences will be 0.
 func (setPtr *TimedSet) UnmarshalJSON(data []byte) error {
 
-	var normalForm map[string]VbSequence
+	var normalForm map[string]TimedSetEntry
 	if err := base.JSONUnmarshal(data, &normalForm); err != nil {
 		var sequenceOnlyForm map[string]uint64
 		if err := base.JSONUnmarshal(data, &sequenceOnlyForm); err != nil {
@@ -281,8 +299,8 @@ func (set TimedSet) MarshalJSON() ([]byte, error) {
 
 	// If no vbuckets are defined, marshal as SequenceOnlySet for backwards compatibility.  Otherwise marshal with vbuckets
 	hasVbucket := false
-	for _, vbSeq := range set {
-		if vbSeq.VbNo != nil {
+	for _, timedSetEntry := range set {
+		if timedSetEntry.VbSequence.VbNo != nil {
 			hasVbucket = true
 			break
 		}
@@ -291,7 +309,7 @@ func (set TimedSet) MarshalJSON() ([]byte, error) {
 		// Normal form - unmarshal as map[string]VbSequence.  Need to convert back to simple map[string]VbSequence to avoid
 		// having json.Marshal just call back into this function.
 		// Marshals entries as "ABC":{"vb":5,"seq":1} or "CBS":{"seq":1}, depending on whether VbSequence.VbNo is nil
-		var plainMap map[string]VbSequence
+		var plainMap map[string]TimedSetEntry
 		plainMap = set
 		return base.JSONMarshal(plainMap)
 	} else {
@@ -305,8 +323,8 @@ func (set TimedSet) SequenceOnlySet() map[string]uint64 {
 	var sequenceOnlySet map[string]uint64
 	if set != nil {
 		sequenceOnlySet = make(map[string]uint64)
-		for ch, vbSeq := range set {
-			sequenceOnlySet[ch] = vbSeq.Sequence
+		for ch, timedSetEntry := range set {
+			sequenceOnlySet[ch] = timedSetEntry.VbSequence.Sequence
 		}
 	}
 	return sequenceOnlySet
@@ -317,7 +335,7 @@ func TimedSetFromSequenceOnlySet(sequenceOnlySet map[string]uint64) TimedSet {
 	if sequenceOnlySet != nil {
 		timedSet = make(TimedSet)
 		for ch, sequence := range sequenceOnlySet {
-			timedSet[ch] = NewVbSimpleSequence(sequence)
+			timedSet[ch] = TimedSetEntry{VbSequence: NewVbSimpleSequence(sequence)}
 		}
 	}
 	return timedSet
@@ -335,12 +353,12 @@ func TimedSetFromSequenceOnlySet(sequenceOnlySet map[string]uint64) TimedSet {
 // This string can later be turned back into a TimedSet by calling TimedSetFromString().
 func (set TimedSet) String() string {
 	var items []string
-	for channel, vbSeq := range set {
-		if vbSeq.Sequence > 0 {
-			if vbSeq.VbNo != nil {
-				items = append(items, fmt.Sprintf("%s:%d.%d", channel, *vbSeq.VbNo, vbSeq.Sequence))
+	for channel, entry := range set {
+		if entry.VbSequence.Sequence > 0 {
+			if entry.VbSequence.VbNo != nil {
+				items = append(items, fmt.Sprintf("%s:%d.%d", channel, *entry.VbSequence.VbNo, entry.VbSequence.Sequence))
 			} else {
-				items = append(items, fmt.Sprintf("%s:%d", channel, vbSeq.Sequence))
+				items = append(items, fmt.Sprintf("%s:%d", channel, entry.VbSequence.Sequence))
 			}
 		}
 	}
@@ -381,14 +399,14 @@ func TimedSetFromString(encoded string) TimedSet {
 				if err != nil {
 					return nil
 				}
-				set[channel] = NewVbSequence(uint16(vbNo), vbSeq)
+				set[channel] = TimedSetEntry{VbSequence: NewVbSequence(uint16(vbNo), vbSeq)}
 			} else {
 				// Simple sequence handling
 				seqNo, err := strconv.ParseUint(components[1], 10, 64)
 				if err != nil || seqNo == 0 {
 					return nil
 				}
-				set[channel] = NewVbSimpleSequence(seqNo)
+				set[channel] = TimedSetEntry{VbSequence: NewVbSimpleSequence(seqNo)}
 			}
 		}
 	}

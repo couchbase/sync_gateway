@@ -54,7 +54,7 @@ func (user *userImpl) InheritedCollectionChannels(scope, collection string) ch.T
 	channels := user.CollectionChannels(scope, collection).Copy()
 	for _, role := range user.GetRoles() {
 		roleSince := user.RoleNames()[role.Name()]
-		channels.AddAtSequence(role.CollectionChannels(scope, collection), roleSince.Sequence)
+		channels.AddAtSequence(role.CollectionChannels(scope, collection), roleSince.VbSequence.Sequence)
 	}
 
 	// Warning threshold is per-collection, as we lazily load per-collection channel information
