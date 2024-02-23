@@ -29,8 +29,8 @@ func TestInitRole(t *testing.T) {
 	assert.NoError(t, role.initRole("Music", channels.BaseSetOf(t, "Spotify", "Youtube"), nil))
 	assert.Equal(t, "Music", role.Name_)
 	assert.Equal(t, channels.TimedSet{
-		"Spotify": channels.NewVbSimpleSequence(0x1),
-		"Youtube": channels.NewVbSimpleSequence(0x1)}, role.ExplicitChannels_)
+		"Spotify": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x1)},
+		"Youtube": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x1)}}, role.ExplicitChannels_)
 
 	// Check initializing role with illegal role name.
 	role = &roleImpl{}

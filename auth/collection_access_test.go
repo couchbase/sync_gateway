@@ -194,7 +194,7 @@ func TestSerializeUserWithCollections(t *testing.T) {
 	require.True(t, ok)
 	ch, exists := collectionAccess.ExplicitChannels_["x"]
 	require.True(t, exists)
-	assert.True(t, ch.Sequence == 1)
+	assert.True(t, ch.VbSequence.Sequence == 1)
 
 	// Remove all channels for scope and collection
 	user.SetCollectionExplicitChannels(scope, collection, nil, 2)

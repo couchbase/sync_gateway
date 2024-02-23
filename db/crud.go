@@ -2507,6 +2507,10 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(ctx context.Context,
 		channelSet.Add(accessRow.Value)
 	}
 
+	for _, chanEntry := range channelSet {
+		chanEntry.Source = channels.DynamicGrant
+	}
+
 	closeErr := results.Close()
 	if closeErr != nil {
 		return nil, closeErr

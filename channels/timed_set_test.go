@@ -57,7 +57,8 @@ func TestTimedSetUnmarshal(t *testing.T) {
 
 	err = base.JSONUnmarshal([]byte(`{"channels":{"a":17,"b":17}}`), &str)
 	assert.NoError(t, err, "Unmarshal sequence only")
-	assert.Equal(t, TimedSet{"a": NewVbSimpleSequence(17), "b": NewVbSimpleSequence(17)}, str.Channels)
+	assert.Equal(t, TimedSet{"a": TimedSetEntry{VbSequence: NewVbSimpleSequence(17)},
+		"b": TimedSetEntry{VbSequence: NewVbSimpleSequence(17)}}, str.Channels)
 
 	// Now try unmarshaling the alternative array form:
 	err = base.JSONUnmarshal([]byte(`{"channels":[]}`), &str)
@@ -66,24 +67,29 @@ func TestTimedSetUnmarshal(t *testing.T) {
 
 	err = base.JSONUnmarshal([]byte(`{"channels":["a","b"]}`), &str)
 	assert.NoError(t, err, "Unmarshal populated array")
-	assert.Equal(t, TimedSet{"a": NewVbSimpleSequence(0), "b": NewVbSimpleSequence(0)}, str.Channels)
+	assert.Equal(t, TimedSet{"a": TimedSetEntry{VbSequence: NewVbSimpleSequence(0)},
+		"b": TimedSetEntry{VbSequence: NewVbSimpleSequence(0)}}, str.Channels)
 
 	err = base.JSONUnmarshal([]byte(`{"channels":{"a":{"seq":17, "vb":21},"b":{"seq":23, "vb":25}}}`), &str)
 	assert.NoError(t, err, "Unmarshal sequence and vbucket only")
-	assert.Equal(t, fmt.Sprintf("%s", TimedSet{"a": NewVbSequence(21, 17), "b": NewVbSequence(25, 23)}), fmt.Sprintf("%s", str.Channels))
+	assert.Equal(t, fmt.Sprintf("%s", TimedSet{"a": TimedSetEntry{VbSequence: NewVbSequence(21, 17)},
+		"b": TimedSetEntry{VbSequence: NewVbSequence(25, 23)}}), fmt.Sprintf("%s", str.Channels))
 }
 
 func TestEncodeSequenceID(t *testing.T) {
-	set := TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(23), "BBC": NewVbSimpleSequence(1)}
+	set := TimedSet{"ABC": TimedSetEntry{VbSequence: NewVbSimpleSequence(17)},
+		"CBS": TimedSetEntry{VbSequence: NewVbSimpleSequence(23)},
+		"BBC": TimedSetEntry{VbSequence: NewVbSimpleSequence(1)}}
 	encoded := set.String()
 	assert.Equal(t, "ABC:17,BBC:1,CBS:23", encoded)
 	decoded := TimedSetFromString(encoded)
 	assert.Equal(t, set, decoded)
 
-	assert.Equal(t, "ABC:17", TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(0)}.String())
+	assert.Equal(t, "ABC:17", TimedSet{"ABC": TimedSetEntry{VbSequence: NewVbSimpleSequence(17)},
+		"CBS": TimedSetEntry{VbSequence: NewVbSimpleSequence(0)}}.String())
 
 	assert.Equal(t, TimedSet{}, TimedSetFromString(""))
-	assert.Equal(t, TimedSet{"ABC": NewVbSimpleSequence(17)}, TimedSetFromString("ABC:17"))
+	assert.Equal(t, TimedSet{"ABC": TimedSetEntry{VbSequence: NewVbSimpleSequence(17)}}, TimedSetFromString("ABC:17"))
 
 	assert.Equal(t, TimedSet(nil), TimedSetFromString(":17"))
 	assert.Equal(t, TimedSet(nil), TimedSetFromString("ABC:"))
@@ -96,14 +102,18 @@ func TestEncodeSequenceID(t *testing.T) {
 }
 
 func TestEqualsWithEqualSet(t *testing.T) {
-	set1 := TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(23), "BBC": NewVbSimpleSequence(1)}
+	set1 := TimedSet{"ABC": TimedSetEntry{VbSequence: NewVbSimpleSequence(17)},
+		"CBS": TimedSetEntry{VbSequence: NewVbSimpleSequence(23)},
+		"BBC": TimedSetEntry{VbSequence: NewVbSimpleSequence(1)}}
 	set2 := base.SetFromArray([]string{"ABC", "CBS", "BBC"})
 	assert.True(t, set1.Equals(set2))
 
 }
 
 func TestEqualsWithUnequalSet(t *testing.T) {
-	set1 := TimedSet{"ABC": NewVbSimpleSequence(17), "CBS": NewVbSimpleSequence(23), "BBC": NewVbSimpleSequence(1)}
+	set1 := TimedSet{"ABC": TimedSetEntry{VbSequence: NewVbSimpleSequence(17)},
+		"CBS": TimedSetEntry{VbSequence: NewVbSimpleSequence(23)},
+		"BBC": TimedSetEntry{VbSequence: NewVbSimpleSequence(1)}}
 	set2 := base.SetFromArray([]string{"ABC", "BBC"})
 	assert.True(t, !set1.Equals(set2))
 	set3 := base.SetFromArray([]string{"ABC", "BBC", "CBS", "FOO"})

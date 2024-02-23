@@ -730,7 +730,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			// with access to both channels would see two versions on the feed.
 
 			deferredBackfill = false
-			for chanName, vbSeqAddedAt := range channelsSince {
+			for chanName, chanEntry := range channelsSince {
 				chanOpts := options
 
 				chanID := channels.NewID(chanName, collectionID)
@@ -772,7 +772,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 					}
 				}
 
-				seqAddedAt := vbSeqAddedAt.Sequence
+				seqAddedAt := chanEntry.VbSequence.Sequence
 
 				// Check whether requires backfill based on changedChannels in this _changes feed
 				isNewChannel := false

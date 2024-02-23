@@ -162,7 +162,7 @@ func addUserAlice(t *testing.T, db *db.Database) auth.User {
 
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("wonderland", "lookingglass", "city-London", "user-alice"))
 	require.NoError(t, err)
-	user.SetExplicitRoles(channels.TimedSet{"hero": channels.NewVbSimpleSequence(1)}, 1)
+	user.SetExplicitRoles(channels.TimedSet{"hero": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)}}, 1)
 	require.NoError(t, authenticator.Save(user), "Save")
 
 	// Have to call GetUser to get a user object that's properly configured:

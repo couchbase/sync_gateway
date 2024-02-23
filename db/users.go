@@ -190,7 +190,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		princ.SetSequence(nextSeq)
 
 		// Now update the Principal object from the properties in the request, first the channels:
-		if updates.ExplicitChannels != nil && updatedExplicitChannels.UpdateAtSequence(updates.ExplicitChannels, nextSeq) {
+		if updates.ExplicitChannels != nil && updatedExplicitChannels.UpdateAtSequence(updates.ExplicitChannels, nextSeq, ch.AdminGrant) {
 			princ.SetExplicitChannels(updatedExplicitChannels, nextSeq)
 		}
 		if collectionAccessChanged {
@@ -198,15 +198,15 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		}
 
 		if isUser {
-			if updates.ExplicitRoleNames != nil && updatedExplicitRoles.UpdateAtSequence(updates.ExplicitRoleNames, nextSeq) {
+			if updates.ExplicitRoleNames != nil && updatedExplicitRoles.UpdateAtSequence(updates.ExplicitRoleNames, nextSeq, ch.AdminGrant) {
 				user.SetExplicitRoles(updatedExplicitRoles, nextSeq)
 			}
 			var hasJWTUpdates bool
-			if updates.JWTRoles != nil && updatedJWTRoles.UpdateAtSequence(updates.JWTRoles, nextSeq) {
+			if updates.JWTRoles != nil && updatedJWTRoles.UpdateAtSequence(updates.JWTRoles, nextSeq, ch.JWTGrant) {
 				user.SetJWTRoles(updatedJWTRoles, nextSeq)
 				hasJWTUpdates = true
 			}
-			if updates.JWTChannels != nil && updatedJWTChannels.UpdateAtSequence(updates.JWTChannels, nextSeq) {
+			if updates.JWTChannels != nil && updatedJWTChannels.UpdateAtSequence(updates.JWTChannels, nextSeq, ch.JWTGrant) {
 				user.SetJWTChannels(updatedJWTChannels, nextSeq)
 				hasJWTUpdates = true
 			}
@@ -249,11 +249,11 @@ func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context
 						updatedExplicitChannels = ch.TimedSet{}
 					}
 					expChannels := princ.CollectionExplicitChannels(scopeName, collectionName).Copy()
-					changed := updatedExplicitChannels.UpdateAtSequence(updatedCollectionAccess.ExplicitChannels_, seq)
+					changed := updatedExplicitChannels.UpdateAtSequence(updatedCollectionAccess.ExplicitChannels_, seq, ch.AdminGrant)
 					if changed {
 						authenticator := dbc.Authenticator(ctx)
 						princ.SetCollectionExplicitChannels(scopeName, collectionName, updatedExplicitChannels, seq)
-						history := authenticator.CalculateHistory(princ.Name(), princ.GetChannelInvalSeq(), expChannels, updatedExplicitChannels, princ.ChannelHistory(), true)
+						history := authenticator.CalculateHistory(princ.Name(), princ.GetChannelInvalSeq(), expChannels, updatedExplicitChannels, princ.ChannelHistory())
 						princ.SetChannelHistory(history)
 					}
 				}

@@ -31,7 +31,7 @@ type putResponse struct {
 
 func TestGetAllChannelsByUser(t *testing.T) {
 	if base.TestsUseNamedCollections() {
-		t.Skip("Test requires Couchbase Server")
+		t.Skip("This test only works with default collection")
 	}
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -60,10 +60,10 @@ func TestGetAllChannelsByUser(t *testing.T) {
 		"/"+dbName+"/_user/"+alice+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
 
-	var channelMap []string
+	var channelMap getAllChannelsResponse
 	err := json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, channelMap, []string{"A", "B", "C", "!"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants["_default._default"]), []string{"A", "B", "C"})
 
 	// Assert non existent user returns 404
 	response = rt.SendDiagnosticRequest(http.MethodGet,
@@ -82,7 +82,8 @@ func TestGetAllChannelsByUser(t *testing.T) {
 
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, channelMap, []string{"!"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants["_default._default"]), []string{"!"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants["_default._default"]), []string{})
 
 	// Assign new channel to user bob and assert all_channels includes it
 	response = rt.SendAdminRequest(http.MethodPut,
@@ -95,14 +96,14 @@ func TestGetAllChannelsByUser(t *testing.T) {
 	RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, channelMap, []string{"!", "NewChannel"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants["_default._default"]), []string{"!", "NewChannel"})
 
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+alice+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, channelMap, []string{"A", "B", "C", "!", "NewChannel"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants["_default._default"]), []string{"!", "NewChannel"})
 
 	response = rt.SendAdminRequest("PUT", "/db/_role/role1", `{"admin_channels":["chan"]}`)
 	RequireStatus(t, response, http.StatusCreated)
@@ -118,7 +119,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 	RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, channelMap, []string{"!", "NewChannel", "chan"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants["_default._default"]), []string{"!", "NewChannel", "chan"})
 
 }
 
@@ -340,7 +341,7 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 	var channelMap getAllChannelsResponse
 	err := json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[newCollection.String()]), []string{"A", "B", "C"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[newCollection.String()]), []string{"A", "B", "C", "!"})
 	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants["_default._default"]), []string{"foo", "bar"})
 
 	// Assign new channel to user alice and assert all_channels includes it
@@ -379,6 +380,7 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 
 	require.NoError(t, err)
+	t.Log(response.BodyString())
 	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants[newCollection.String()]), []string{"!", "dynChannel"})
 	assert.ElementsMatch(t, maps.Keys(channelMap.DefaultScopeCollectionChannelHistory), []string{"bar", "foo"})
 }

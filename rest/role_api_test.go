@@ -199,7 +199,7 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 	// Create a user with an explicit role grant for role1
 	user, err := authenticator.NewUser("user1", "letmein", nil)
 	require.NoError(t, err)
-	user.SetExplicitRoles(channels.TimedSet{"role1": channels.NewVbSimpleSequence(1)}, 1)
+	user.SetExplicitRoles(channels.TimedSet{"role1": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)}}, 1)
 	err = authenticator.Save(user)
 	assert.NoError(t, err)
 
@@ -344,23 +344,23 @@ func TestRoleAccessChanges(t *testing.T) {
 	alice, _ := a.GetUser("alice")
 	assert.Equal(t,
 		channels.TimedSet{
-			"!":     channels.NewVbSimpleSequence(1),
-			"alpha": channels.NewVbSimpleSequence(alice.Sequence()),
-			"gamma": channels.NewVbSimpleSequence(roleGrantSequence),
+			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)},
+			"alpha": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(alice.Sequence())},
+			"gamma": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(roleGrantSequence)},
 		}, alice.InheritedCollectionChannels(s, c))
 
 	assert.Equal(t,
 		channels.TimedSet{
-			"bogus":   channels.NewVbSimpleSequence(roleGrantSequence),
-			"hipster": channels.NewVbSimpleSequence(roleGrantSequence),
+			"bogus":   channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(roleGrantSequence)},
+			"hipster": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(roleGrantSequence)},
 		}, alice.RoleNames())
 
 	zegpold, _ := a.GetUser("zegpold")
 	assert.Equal(t,
 
 		channels.TimedSet{
-			"!":    channels.NewVbSimpleSequence(1),
-			"beta": channels.NewVbSimpleSequence(zegpold.Sequence()),
+			"!":    channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)},
+			"beta": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(zegpold.Sequence())},
 		}, zegpold.InheritedCollectionChannels(s, c))
 
 	assert.Equal(t, channels.TimedSet{}, zegpold.RoleNames())
@@ -400,16 +400,16 @@ func TestRoleAccessChanges(t *testing.T) {
 	alice, _ = a.GetUser("alice")
 	assert.Equal(t,
 		channels.TimedSet{
-			"!":     channels.NewVbSimpleSequence(0x1),
-			"alpha": channels.NewVbSimpleSequence(alice.Sequence()),
+			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x1)},
+			"alpha": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(alice.Sequence())},
 		}, alice.InheritedCollectionChannels(s, c))
 
 	zegpold, _ = a.GetUser("zegpold")
 	assert.Equal(t,
 		channels.TimedSet{
-			"!":     channels.NewVbSimpleSequence(0x1),
-			"beta":  channels.NewVbSimpleSequence(zegpold.Sequence()),
-			"gamma": channels.NewVbSimpleSequence(updatedRoleGrantSequence),
+			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x1)},
+			"beta":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(zegpold.Sequence())},
+			"gamma": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(updatedRoleGrantSequence)},
 		}, zegpold.InheritedCollectionChannels(s, c))
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:

@@ -414,7 +414,7 @@ func (user *userImpl) CollectionChannelGrantedPeriods(scope, collection, chanNam
 			continue
 		}
 		resultPairs = append(resultPairs, GrantHistorySequencePair{
-			StartSeq: chanInfo.Sequence,
+			StartSeq: chanInfo.VbSequence.Sequence,
 			EndSeq:   math.MaxUint64,
 		})
 	}
@@ -438,7 +438,7 @@ func (user *userImpl) CollectionChannelGrantedPeriods(scope, collection, chanNam
 		roleChannelHistory, ok := currentRole.CollectionChannelHistory(scope, collection)[chanName]
 		if ok {
 			for _, roleChannelHistoryEntry := range roleChannelHistory.Entries {
-				roleGrantedAt := user.RolesSince_[currentRole.Name()].Sequence
+				roleGrantedAt := user.RolesSince_[currentRole.Name()].VbSequence.Sequence
 				compareAndAddPair(roleChannelHistoryEntry.StartSeq, roleGrantedAt, roleChannelHistoryEntry.EndSeq, math.MaxUint64)
 			}
 		}
@@ -447,7 +447,7 @@ func (user *userImpl) CollectionChannelGrantedPeriods(scope, collection, chanNam
 		if currentRole.CollectionChannels(scope, collection).Contains(chanName) {
 			for _, channelInfo := range currentRole.CollectionChannels(scope, collection) {
 				resultPairs = append(resultPairs, GrantHistorySequencePair{
-					StartSeq: channelInfo.Sequence,
+					StartSeq: channelInfo.VbSequence.Sequence,
 					EndSeq:   math.MaxUint64,
 				})
 			}
@@ -483,7 +483,7 @@ func (user *userImpl) CollectionChannelGrantedPeriods(scope, collection, chanNam
 		if role.CollectionChannels(scope, collection).Contains(chanName) {
 			for _, activeChannel := range role.CollectionChannels(scope, collection) {
 				for _, roleHistoryEntry := range historyEntry.Entries {
-					compareAndAddPair(activeChannel.Sequence, roleHistoryEntry.StartSeq, math.MaxUint64, roleHistoryEntry.EndSeq)
+					compareAndAddPair(activeChannel.VbSequence.Sequence, roleHistoryEntry.StartSeq, math.MaxUint64, roleHistoryEntry.EndSeq)
 				}
 			}
 		}
@@ -613,8 +613,8 @@ func (user *userImpl) authorizeAnyChannel(channels base.Set) error {
 func (user *userImpl) inheritedChannels() ch.TimedSet {
 	channels := user.Channels().Copy()
 	for _, role := range user.GetRoles() {
-		roleSince := user.RoleNames()[role.Name()]
-		channels.AddAtSequence(role.Channels(), roleSince.Sequence)
+		roleChanEntry := user.RoleNames()[role.Name()]
+		channels.AddAtSequence(role.Channels(), roleChanEntry.VbSequence.Sequence)
 	}
 
 	user.warnChanThresholdOnce.Do(func() {

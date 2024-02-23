@@ -271,8 +271,8 @@ func TestCanSeeChannelSince(t *testing.T) {
 	assert.Equal(t, nil, auth.Save(role))
 
 	user.(*userImpl).setRolesSince(channels.TimedSet{
-		"music": channels.NewVbSimpleSequence(1),
-		"video": channels.NewVbSimpleSequence(1)})
+		"music": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)},
+		"video": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)}})
 
 	for channel := range freeChannels {
 		assert.Equal(t, uint64(1), user.canSeeChannelSince(channel))
@@ -301,12 +301,12 @@ func TestGetAddedChannels(t *testing.T) {
 	require.NoError(t, user.SetEmail("alice@couchbase.com"))
 
 	user.(*userImpl).setRolesSince(channels.TimedSet{
-		"music": channels.NewVbSimpleSequence(0x5),
-		"video": channels.NewVbSimpleSequence(0x6)})
+		"music": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x5)},
+		"video": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x6)}})
 
 	addedChannels := user.(*userImpl).GetAddedChannels(channels.TimedSet{
-		"ESPN": channels.NewVbSimpleSequence(0x5),
-		"HBO":  channels.NewVbSimpleSequence(0x6)})
+		"ESPN": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x5)},
+		"HBO":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x6)}})
 
 	expectedChannels := channels.BaseSetOf(t, "!", "AMC", "FX", "Hulu", "Netflix", "Spotify", "Youtube")
 	log.Printf("Added Channels: %v", addedChannels)

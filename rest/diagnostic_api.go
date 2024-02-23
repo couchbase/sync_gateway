@@ -11,6 +11,7 @@ package rest
 import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/gorilla/mux"
 )
 
@@ -38,11 +39,20 @@ func (h *handler) handleGetAllChannels() error {
 	resp.DynamicGrants = make(map[string]map[string]auth.GrantHistory, len(user.Channels())-len(user.ExplicitChannels()))
 
 	if h.db.OnlyDefaultCollection() {
-		for channel, seq := range user.Channels() {
-			if user.ExplicitChannels().Contains(channel) {
-				resp.AdminGrants["_default"][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
+		resp.AdminGrants["_default._default"] = make(map[string]auth.GrantHistory)
+		resp.DynamicGrants["_default._default"] = make(map[string]auth.GrantHistory)
+		for channel, chanEntry := range user.Channels() {
+			if chanEntry.Source == channels.AdminGrant {
+				resp.AdminGrants["_default._default"][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
 			} else {
-				resp.AdminGrants["_default"][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
+				resp.DynamicGrants["_default._default"][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
+			}
+		}
+		for channel, chanHistory := range user.ChannelHistory() {
+			if chanHistory.Source == channels.AdminGrant {
+				resp.AdminGrants["_default._default"][channel] = chanHistory
+			} else {
+				resp.DynamicGrants["_default._default"][channel] = chanHistory
 			}
 		}
 		resp.DefaultScopeCollectionChannelHistory = make(map[string]auth.GrantHistory)
@@ -59,7 +69,7 @@ func (h *handler) handleGetAllChannels() error {
 	resp.AdminRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory, len(user.ExplicitRoles()))
 	resp.RoleHistoryGrants = make(map[string]map[string]map[string]auth.GrantHistory, len(user.RoleNames())-len(user.ExplicitRoles()))
 
-	for roleName, seq := range user.RoleNames() {
+	for roleName, chanEntry := range user.RoleNames() {
 		role, err := h.db.Authenticator(h.ctx()).GetRole(roleName)
 		if err != nil {
 			return err
@@ -80,17 +90,17 @@ func (h *handler) handleGetAllChannels() error {
 				// loop over current role channels
 				for channel, _ := range collectionAccess.Channels() {
 					if _, ok := user.ExplicitRoles()[roleName]; ok {
-						resp.AdminRoleGrants[roleName][keyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
+						resp.AdminRoleGrants[roleName][keyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
 					} else {
-						resp.DynamicRoleGrants[roleName][keyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
+						resp.DynamicRoleGrants[roleName][keyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
 					}
 				}
 				// loop over previous role channels
 				for channel, chanHistory := range collectionAccess.ChannelHistory() {
-					if seq.Sequence > chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq {
-						chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = seq.Sequence
+					if chanEntry.VbSequence.Sequence > chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq {
+						chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = chanEntry.VbSequence.Sequence
 					}
-					if _, ok := user.ExplicitRoles()[roleName]; ok {
+					if chanEntry.Source == channels.AdminGrant {
 						resp.AdminRoleGrants[roleName][keyspace][channel] = chanHistory
 					} else {
 						resp.DynamicRoleGrants[roleName][keyspace][channel] = chanHistory
@@ -138,24 +148,24 @@ func (h *handler) handleGetAllChannels() error {
 			resp.AdminGrants[keyspace] = make(map[string]auth.GrantHistory)
 			resp.DynamicGrants[keyspace] = make(map[string]auth.GrantHistory)
 			// current channels
-			for channel, seq := range CAConfig.Channels() {
+			for channel, chanEntry := range CAConfig.Channels() {
 				var history auth.GrantHistory
 				// If channel is in history, copy grant history
 				if _, ok := CAConfig.ChannelHistory_[channel]; ok {
 					history = CAConfig.ChannelHistory_[channel]
 					// Else, assign sequence channel was granted as startSeq on new grant history
 				} else {
-					history = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
+					history = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
 				}
 
-				if CAConfig.ExplicitChannels_.Contains(channel) {
+				if chanEntry.Source == channels.AdminGrant {
 					resp.AdminGrants[keyspace][channel] = history
 				} else {
 					resp.DynamicGrants[keyspace][channel] = history
 				}
 			}
 			for channel, chanHistory := range CAConfig.ChannelHistory() {
-				if chanHistory.AdminAssigned {
+				if chanHistory.Source == channels.AdminGrant {
 					resp.AdminGrants[keyspace][channel] = CAConfig.ChannelHistory_[channel]
 				} else {
 					resp.DynamicGrants[keyspace][channel] = CAConfig.ChannelHistory_[channel]
@@ -168,11 +178,11 @@ func (h *handler) handleGetAllChannels() error {
 	if len(user.Channels().AllKeys()) != 1 {
 		resp.AdminGrants["_default._default"] = make(map[string]auth.GrantHistory)
 		resp.DynamicGrants["_default._default"] = make(map[string]auth.GrantHistory)
-		for channel, seq := range user.Channels() {
+		for channel, chanEntry := range user.Channels() {
 			if user.ExplicitChannels().Contains(channel) {
-				resp.AdminGrants["_default._default"][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
+				resp.AdminGrants["_default._default"][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
 			} else {
-				resp.DynamicGrants["_default._default"][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: seq.Sequence}}}
+				resp.DynamicGrants["_default._default"][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
 			}
 		}
 		resp.DefaultScopeCollectionChannelHistory = make(map[string]auth.GrantHistory)

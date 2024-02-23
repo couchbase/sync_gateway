@@ -1527,7 +1527,8 @@ func TestAccessFunctionDb(t *testing.T) {
 
 	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	require.NoError(t, err)
-	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)}, 1)
+	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)},
+		"tumblr": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)}}, 1)
 	assert.NoError(t, authenticator.Save(user), "Save")
 
 	body := Body{"users": []string{"naomi"}, "userChannels": []string{"Hulu"}}
@@ -2620,7 +2621,8 @@ func TestGetRoleIDs(t *testing.T) {
 
 	user1, err := authenticator.NewUser(username, "letmein", nil)
 	require.NoError(t, err)
-	user1.SetExplicitRoles(channels.TimedSet{rolename1: channels.NewVbSimpleSequence(1), rolename2: channels.NewVbSimpleSequence(1)}, 1)
+	user1.SetExplicitRoles(channels.TimedSet{rolename1: channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)},
+		rolename2: channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)}}, 1)
 	require.NoError(t, authenticator.Save(user1))
 
 	role1, err := authenticator.NewRole(rolename1, nil)

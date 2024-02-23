@@ -170,11 +170,11 @@ func (role *roleImpl) canSeeCollectionChannelSince(scope, collection, channel st
 	}
 
 	if cc, ok := role.getCollectionAccess(scope, collection); ok {
-		seq := cc.Channels()[channel]
-		if seq.Sequence == 0 {
-			seq = cc.Channels()[ch.UserStarChannel]
+		timedSetEntry := cc.Channels()[channel]
+		if timedSetEntry.VbSequence.Sequence == 0 {
+			timedSetEntry = cc.Channels()[ch.UserStarChannel]
 		}
-		return seq.Sequence
+		return timedSetEntry.VbSequence.Sequence
 	}
 	return 0
 }

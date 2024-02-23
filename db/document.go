@@ -140,7 +140,7 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 
 	// Populate and redact user access
 	for k, v := range sd.Access {
-		accessTimerSet := map[string]channels.VbSequence{}
+		accessTimerSet := map[string]channels.TimedSetEntry{}
 		for channelName, vbStats := range v {
 			accessTimerSet[base.Sha1HashString(channelName, salt)] = vbStats
 		}
@@ -149,9 +149,9 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 
 	// Populate and redact user role access
 	for k, v := range sd.RoleAccess {
-		accessTimerSet := map[string]channels.VbSequence{}
-		for channelName, vbStats := range v {
-			accessTimerSet[base.Sha1HashString(channelName, salt)] = vbStats
+		accessTimerSet := map[string]channels.TimedSetEntry{}
+		for channelName, chanEntry := range v {
+			accessTimerSet[base.Sha1HashString(channelName, salt)] = chanEntry
 		}
 		redactedSyncData.RoleAccess[base.Sha1HashString(k, salt)] = accessTimerSet
 	}
@@ -1028,7 +1028,7 @@ func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBy
 func (accessMap *UserAccessMap) updateAccess(ctx context.Context, doc *Document, newAccess channels.AccessMap) (changedUsers []string) {
 	// Update users already appearing in doc.Access:
 	for name, access := range *accessMap {
-		if access.UpdateAtSequence(newAccess[name], doc.Sequence) {
+		if access.UpdateAtSequence(newAccess[name], doc.Sequence, channels.DynamicGrant) {
 			if len(access) == 0 {
 				delete(*accessMap, name)
 			}
