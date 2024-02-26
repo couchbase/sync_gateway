@@ -12,10 +12,10 @@ package rest
 
 import (
 	"encoding/json"
-	"github.com/couchbase/sync_gateway/db"
-	"log"
 	"net/http"
 	"testing"
+
+	"github.com/couchbase/sync_gateway/db"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -52,7 +52,7 @@ func TestGetAlldocChannels(t *testing.T) {
 
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	assert.NoError(t, err)
-	log.Print(response.BodyString())
+
 	// If the channel is still in channel_set, then the total will be 5 entries in history and 1 in channel_set
 	assert.Equal(t, len(channelMap["CHAN3"]), db.DocumentHistoryMaxEntriesPerChannel+1)
 
