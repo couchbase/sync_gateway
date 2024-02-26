@@ -1153,7 +1153,7 @@ func (btc *BlipTesterClient) AssertDeltaSrcProperty(t *testing.T, msg *blip.Mess
 	if subProtocol >= db.CBMobileReplicationV4 {
 		assert.Equal(t, docVersion.CV.String(), msg.Properties[db.RevMessageDeltaSrc])
 	} else {
-		assert.Equal(t, docVersion.RevID, msg.Properties[db.RevMessageDeltaSrc])
+		assert.Equal(t, docVersion.RevTreeID, msg.Properties[db.RevMessageDeltaSrc])
 	}
 }
 

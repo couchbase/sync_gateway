@@ -412,7 +412,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	var fromRevision DocumentRevision
 	var fromRevVrs Version
 	if versionVectorEnabled {
-		fromRevVrs, err = CreateVersionFromString(fromRev)
+		fromRevVrs, err = ParseVersion(fromRev)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -463,7 +463,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
 		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)
-		cv, err := CreateVersionFromString(toRev)
+		cv, err := ParseVersion(toRev)
 		if err != nil {
 			return nil, nil, err
 		}
