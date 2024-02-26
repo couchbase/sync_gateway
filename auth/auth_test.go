@@ -517,7 +517,9 @@ func TestRebuildUserRoles(t *testing.T) {
 	computer := mockComputer{roles: ch.AtSequence(base.SetOf("role1", "role2"), 3)}
 	auth := NewTestAuthenticator(t, dataStore, &computer, DefaultAuthenticatorOptions(base.TestCtx(t)))
 	user, _ := auth.NewUser("testUser", "letmein", nil)
-	user.SetExplicitRoles(ch.TimedSet{"role3": ch.NewVbSimpleSequence(1), "role1": ch.NewVbSimpleSequence(1)}, 1)
+	user.SetExplicitRoles(ch.TimedSet{
+		"role3": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1)},
+		"role1": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1)}}, 1)
 	err := auth.Save(user)
 	assert.Equal(t, nil, err)
 
@@ -552,15 +554,29 @@ func TestRoleInheritance(t *testing.T) {
 	assert.Equal(t, nil, auth.Save(role))
 
 	user, _ := auth.NewUser("arthur", "password", ch.BaseSetOf(t, "britain"))
-	user.(*userImpl).setRolesSince(ch.TimedSet{"square": ch.NewVbSimpleSequence(0x3), "nonexistent": ch.NewVbSimpleSequence(0x42), "frood": ch.NewVbSimpleSequence(0x4)})
-	assert.Equal(t, ch.TimedSet{"square": ch.NewVbSimpleSequence(0x3), "nonexistent": ch.NewVbSimpleSequence(0x42), "frood": ch.NewVbSimpleSequence(0x4)}, user.RoleNames())
+	user.(*userImpl).setRolesSince(ch.TimedSet{
+		"square":      ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x3)},
+		"nonexistent": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x42)},
+		"frood":       ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x4)}})
+	assert.Equal(t, ch.TimedSet{
+		"square":      ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x3)},
+		"nonexistent": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x42)},
+		"frood":       ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x4)}}, user.RoleNames())
 	require.NoError(t, auth.Save(user))
 
 	user2, err := auth.GetUser("arthur")
 	assert.Equal(t, nil, err)
 	log.Printf("Channels = %s", user2.Channels())
 	assert.Equal(t, ch.AtSequence(ch.BaseSetOf(t, "!", "britain"), 1), user2.Channels())
-	assert.Equal(t, ch.TimedSet{"!": ch.NewVbSimpleSequence(0x1), "britain": ch.NewVbSimpleSequence(0x1), "dull": ch.NewVbSimpleSequence(0x3), "duller": ch.NewVbSimpleSequence(0x3), "dullest": ch.NewVbSimpleSequence(0x3), "hoopy": ch.NewVbSimpleSequence(0x4), "hoopier": ch.NewVbSimpleSequence(0x4), "hoopiest": ch.NewVbSimpleSequence(0x4)}, user2.inheritedChannels())
+	assert.Equal(t, ch.TimedSet{
+		"!":        ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x1)},
+		"britain":  ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x1)},
+		"dull":     ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x3)},
+		"duller":   ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x3)},
+		"dullest":  ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x3)},
+		"hoopy":    ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x4)},
+		"hoopier":  ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x4)},
+		"hoopiest": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x4)}}, user2.inheritedChannels())
 
 	assert.True(t, user2.canSeeChannel("britain"))
 	assert.True(t, user2.canSeeChannel("duller"))
@@ -649,7 +665,9 @@ func TestCASUpdatePrincipal(t *testing.T) {
 
 	user, err := auth.NewUser(username, password, ch.BaseSetOf(t, "123", "456"))
 	require.NoError(t, err)
-	user.SetExplicitRoles(ch.TimedSet{"role1": ch.NewVbSimpleSequence(1), "role2": ch.NewVbSimpleSequence(1)}, 1)
+	user.SetExplicitRoles(ch.TimedSet{
+		"role1": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1)},
+		"role2": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1)}}, 1)
 	require.NoError(t, auth.Save(user))
 	user, err = auth.GetUser(username)
 	require.NoError(t, err)
@@ -669,7 +687,7 @@ func TestCASUpdatePrincipal(t *testing.T) {
 			concurrentUser, err := auth.GetUser(username)
 			assert.NoError(t, err)
 			log.Printf("setting explicit channels to %v", updateCount)
-			concurrentUser.SetExplicitChannels(ch.TimedSet{"ch1": ch.NewVbSimpleSequence(updateCount)}, updateCount)
+			concurrentUser.SetExplicitChannels(ch.TimedSet{"ch1": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(updateCount)}}, updateCount)
 			updateErr := auth.Save(concurrentUser)
 			assert.NoError(t, updateErr)
 
@@ -713,7 +731,9 @@ func TestConcurrentUserWrites(t *testing.T) {
 	require.Error(t, auth.SetBcryptCost(5))
 
 	user, _ := auth.NewUser(username, password, ch.BaseSetOf(t, "123", "456"))
-	user.SetExplicitRoles(ch.TimedSet{"role1": ch.NewVbSimpleSequence(1), "role2": ch.NewVbSimpleSequence(1)}, 1)
+	user.SetExplicitRoles(ch.TimedSet{
+		"role1": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1)},
+		"role2": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1)}}, 1)
 	createErr := auth.Save(user)
 	if createErr != nil {
 		t.Errorf("Error creating user: %v", createErr)
@@ -1260,7 +1280,7 @@ func TestGetPrincipal(t *testing.T) {
 	user, err := auth.NewUser(username, password, ch.BaseSetOf(
 		t, channelCreate, channelRead, channelUpdate, channelDelete))
 	require.NoError(t, err)
-	user.(*userImpl).setRolesSince(ch.TimedSet{roleUser: ch.NewVbSimpleSequence(0x3)})
+	user.(*userImpl).setRolesSince(ch.TimedSet{roleUser: ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x3)}})
 	require.NoError(t, auth.Save(user))
 
 	// Get the principal of user and verify the details
