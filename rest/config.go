@@ -1134,8 +1134,8 @@ func (config *DbConfig) redactInPlace(ctx context.Context) error {
 	return nil
 }
 
-// DecodeAndSanitiseConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
-func DecodeAndSanitiseConfig(ctx context.Context, r io.Reader, config interface{}, disallowUnknownFields bool) (err error) {
+// DecodeAndSanitiseStartupConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
+func DecodeAndSanitiseStartupConfig(ctx context.Context, r io.Reader, config interface{}, disallowUnknownFields bool) (err error) {
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return err
