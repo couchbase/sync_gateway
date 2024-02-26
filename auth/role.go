@@ -86,7 +86,12 @@ func (pair *GrantHistorySequencePair) UnmarshalJSON(data []byte) error {
 
 	splitPair := strings.Split(stringPair, "-")
 	if len(splitPair) != 2 {
-		return fmt.Errorf("unexpected sequence pair length")
+		// try again with compacted sequence pair format
+		splitPair = strings.Split(stringPair, "~")
+		if len(splitPair) != 2 {
+			return fmt.Errorf("unexpected sequence pair length")
+		}
+		pair.Compacted = true
 	}
 
 	pair.StartSeq, err = strconv.ParseUint(splitPair[0], 10, 64)
