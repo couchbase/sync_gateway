@@ -64,7 +64,7 @@ type GrantHistorySequencePair struct {
 	Compacted bool
 }
 
-// MarshalJSON will handle conversion from having a seq / endSeq struct to the bucket format of "seq-endSeq"
+// MarshalJSON will handle conversion from having a seq / endSeq struct to the bucket format of "seq-endSeq" and "seq~endSeq" if the pair was compacted 
 func (pair *GrantHistorySequencePair) MarshalJSON() ([]byte, error) {
 	var stringPair string
 	if pair.Compacted {
