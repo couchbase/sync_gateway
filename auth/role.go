@@ -59,13 +59,19 @@ type GrantHistory struct {
 // Struct is for ease of internal use
 // Bucket store has each entry as a string "seq-endSeq"
 type GrantHistorySequencePair struct {
-	StartSeq uint64 // Sequence at which a grant was performed to give access to a role / channel. Only populated once endSeq is available.
-	EndSeq   uint64 // Sequence when access to a role / channel was revoked.
+	StartSeq  uint64 // Sequence at which a grant was performed to give access to a role / channel. Only populated once endSeq is available.
+	EndSeq    uint64 // Sequence when access to a role / channel was revoked.
+	Compacted bool
 }
 
 // MarshalJSON will handle conversion from having a seq / endSeq struct to the bucket format of "seq-endSeq"
 func (pair *GrantHistorySequencePair) MarshalJSON() ([]byte, error) {
-	stringPair := fmt.Sprintf("%d-%d", pair.StartSeq, pair.EndSeq)
+	var stringPair string
+	if pair.Compacted {
+		stringPair = fmt.Sprintf("%d~%d", pair.StartSeq, pair.EndSeq)
+	} else {
+		stringPair = fmt.Sprintf("%d-%d", pair.StartSeq, pair.EndSeq)
+	}
 	return base.JSONMarshal(stringPair)
 }
 
