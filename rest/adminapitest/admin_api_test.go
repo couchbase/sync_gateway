@@ -4015,3 +4015,61 @@ func TestDatabaseCreationErrorCode(t *testing.T) {
 		rest.RequireStatus(t, resp, http.StatusPreconditionFailed)
 	}
 }
+
+// TestDatabaseCreationWithEnvVariable:
+//   - Create rest tester that enables admin auth and disallows db config env vars
+//   - Create CBS user to authenticate with over admin port to force auth scope callback call
+//   - Create db with sync function that calls env variable
+//   - Assert that db is created
+func TestDatabaseCreationWithEnvVariable(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	tb := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer tb.Close(ctx)
+
+	// disable AllowDbConfigEnvVars to avoid attempting to expand variables + enable admin auth
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true, MutateStartupConfig: func(config *rest.StartupConfig) {
+		config.Unsupported.AllowDbConfigEnvVars = base.BoolPtr(false)
+	},
+		AdminInterfaceAuthentication: true,
+	})
+	defer rt.Close()
+
+	// create a role to authenticate with in admin endpoint
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+	rest.MakeUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName, "password", []string{fmt.Sprintf("%s[%s]", rest.MobileSyncGatewayRole.RoleName, tb.GetName())})
+	defer rest.DeleteUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName)
+
+	dataStore1, err := tb.GetNamedDataStore(0)
+	require.NoError(t, err)
+	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
+	require.True(t, ok)
+	syncFunction := `function (doc) { console.log(\"${environment}\"); return true }`
+
+	// create db config with sync function that has env variable in it
+	bucketConfig := fmt.Sprintf(
+		`{"bucket": "%s",
+		  "scopes": {
+			"%s": {
+				"collections": {
+					"%s": {
+        					"sync": "%s"
+					}
+				}
+			}
+		  },
+		  "num_index_replicas": 0,
+		  "enable_shared_bucket_access": true,
+		  "use_views": false}`,
+		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(),
+		syncFunction,
+	)
+
+	// create db with config and assert it is successful
+	resp := rt.SendAdminRequestWithAuth("PUT", "/db/", bucketConfig, rest.MobileSyncGatewayRole.RoleName, "password")
+	rest.RequireStatus(t, resp, http.StatusCreated)
+}

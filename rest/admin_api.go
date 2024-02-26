@@ -169,8 +169,8 @@ func (h *handler) handleCreateDB() error {
 func getAuthScopeHandleCreateDB(ctx context.Context, h *handler) (bucketName string, err error) {
 
 	// grab a copy of the request body and restore body buffer for later handlers
-	bodyJSON, err := h.readBody()
-	if err != nil {
+	bodyJSON, readErr := h.readBody()
+	if readErr != nil {
 		return "", base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
 	}
 	// mark the body as already read to avoid double-counting bytes for stats once it gets read again
@@ -181,7 +181,14 @@ func getAuthScopeHandleCreateDB(ctx context.Context, h *handler) (bucketName str
 		Bucket string `json:"bucket"`
 	}
 	reader := bytes.NewReader(bodyJSON)
-	err = DecodeAndSanitiseConfig(ctx, reader, &dbConfigBody, false)
+
+	// read and decode json to pull bucket name from the config
+	b, err := io.ReadAll(reader)
+	if err != nil {
+		return "", err
+	}
+	d := base.JSONDecoder(bytes.NewBuffer(b))
+	err = d.Decode(&dbConfigBody)
 	if err != nil {
 		return "", err
 	}
