@@ -32,10 +32,8 @@ func (h *handler) handleGetDocChannels() error {
 		resp[chanSetInfo.Name] = append(resp[chanSetInfo.Name], auth.GrantHistorySequencePair{StartSeq: chanSetInfo.Start, EndSeq: chanSetInfo.End})
 	}
 	for _, hist := range doc.SyncData.ChannelSetHistory {
-		if _, ok := resp[hist.Name]; ok {
-			resp[hist.Name] = append(resp[hist.Name], auth.GrantHistorySequencePair{StartSeq: hist.Start, EndSeq: hist.End})
-			continue
-		}
+		resp[hist.Name] = append(resp[hist.Name], auth.GrantHistorySequencePair{StartSeq: hist.Start, EndSeq: hist.End})
+		continue
 	}
 
 	h.writeJSON(resp)

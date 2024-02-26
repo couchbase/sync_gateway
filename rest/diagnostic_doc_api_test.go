@@ -12,6 +12,8 @@ package rest
 
 import (
 	"encoding/json"
+	"github.com/couchbase/sync_gateway/db"
+	"log"
 	"net/http"
 	"testing"
 
@@ -27,7 +29,7 @@ func TestGetAlldocChannels(t *testing.T) {
 	updatedVersion = rt.UpdateDoc("doc", updatedVersion, `{"channel":["CHAN1"]}`)
 	updatedVersion = rt.UpdateDoc("doc", updatedVersion, `{"channel":["CHAN1", "CHAN2"]}`)
 	updatedVersion = rt.UpdateDoc("doc", updatedVersion, `{"channel":["CHAN3"]}`)
-	_ = rt.UpdateDoc("doc", updatedVersion, `{"channel":["CHAN1"]}`)
+	updatedVersion = rt.UpdateDoc("doc", updatedVersion, `{"channel":["CHAN1"]}`)
 
 	response := rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/doc/_all_channels", "")
 	RequireStatus(t, response, http.StatusOK)
@@ -38,5 +40,20 @@ func TestGetAlldocChannels(t *testing.T) {
 	assert.ElementsMatch(t, channelMap["CHAN1"], []string{"6-0", "1-2", "3-5"})
 	assert.ElementsMatch(t, channelMap["CHAN2"], []string{"4-5", "2-3"})
 	assert.ElementsMatch(t, channelMap["CHAN3"], []string{"5-6"})
+
+	for i := 1; i <= 10; i++ {
+		updatedVersion = rt.UpdateDoc("doc", updatedVersion, `{}`)
+		updatedVersion = rt.UpdateDoc("doc", updatedVersion, `{"channel":["CHAN3"]}`)
+	}
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc", "")
+	RequireStatus(t, response, http.StatusOK)
+	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/doc/_all_channels", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	err = json.Unmarshal(response.BodyBytes(), &channelMap)
+	assert.NoError(t, err)
+	log.Print(response.BodyString())
+	// If the channel is still in channel_set, then the total will be 5 entries in history and 1 in channel_set
+	assert.Equal(t, len(channelMap["CHAN3"]), db.DocumentHistoryMaxEntriesPerChannel+1)
 
 }

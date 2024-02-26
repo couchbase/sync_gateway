@@ -6,10 +6,10 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 parameters:
-  - $ref: ../../components/parameters.yaml#/db
-  - $ref: ../../components/parameters.yaml#/user-name
+  - $ref: ../../components/parameters.yaml#/keyspace
+  - $ref: ../../components/parameters.yaml#/docid
 get:
-  summary: Get all channels for a user
+  summary: Get channel history for a document
   description: |-
     Retrieve all doc channels and the sequence spans showing when the doc was added to a channel and when it was removed.
     Required Sync Gateway RBAC roles:
@@ -20,18 +20,18 @@ get:
       content:
         application/json:
           schema:
-            properties:
-              channel_set:
-                description: The channels the document has been in.
-                type: array
-                items:
-                  sequences:
-                  description: The sequence number that document was added to the channel.
-                  type: string
-                  example: "28-48"
+            additionalProperties:
+              x-additionalPropertiesName: channel
+              description: The channels the document has been in.
+              type: array
+              items:
+                sequences:
+                description: The sequence number that document was added to the channel.
+                type: string
+                example: "28-48"
 
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Database Security
-  operationId: get_db-_user-name-_all_channels
+    - Document
+  operationId: get_keyspace-docid-_all_channels
