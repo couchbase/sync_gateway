@@ -59,13 +59,19 @@ type GrantHistory struct {
 // Struct is for ease of internal use
 // Bucket store has each entry as a string "seq-endSeq"
 type GrantHistorySequencePair struct {
-	StartSeq uint64 // Sequence at which a grant was performed to give access to a role / channel. Only populated once endSeq is available.
-	EndSeq   uint64 // Sequence when access to a role / channel was revoked.
+	StartSeq  uint64 // Sequence at which a grant was performed to give access to a role / channel. Only populated once endSeq is available.
+	EndSeq    uint64 // Sequence when access to a role / channel was revoked.
+	Compacted bool
 }
 
-// MarshalJSON will handle conversion from having a seq / endSeq struct to the bucket format of "seq-endSeq"
+// MarshalJSON will handle conversion from having a seq / endSeq struct to the bucket format of "seq-endSeq" and "seq~endSeq" if the pair was compacted
 func (pair *GrantHistorySequencePair) MarshalJSON() ([]byte, error) {
-	stringPair := fmt.Sprintf("%d-%d", pair.StartSeq, pair.EndSeq)
+	var stringPair string
+	if pair.Compacted {
+		stringPair = fmt.Sprintf("%d~%d", pair.StartSeq, pair.EndSeq)
+	} else {
+		stringPair = fmt.Sprintf("%d-%d", pair.StartSeq, pair.EndSeq)
+	}
 	return base.JSONMarshal(stringPair)
 }
 
@@ -80,7 +86,12 @@ func (pair *GrantHistorySequencePair) UnmarshalJSON(data []byte) error {
 
 	splitPair := strings.Split(stringPair, "-")
 	if len(splitPair) != 2 {
-		return fmt.Errorf("unexpected sequence pair length")
+		// try again with compacted sequence pair format
+		splitPair = strings.Split(stringPair, "~")
+		if len(splitPair) != 2 {
+			return fmt.Errorf("unexpected sequence pair length")
+		}
+		pair.Compacted = true
 	}
 
 	pair.StartSeq, err = strconv.ParseUint(splitPair[0], 10, 64)
