@@ -57,9 +57,10 @@ type UserAccessMap map[string]channels.TimedSet
 type AttachmentsMeta map[string]interface{} // AttachmentsMeta metadata as included in sync metadata
 
 type ChannelSetEntry struct {
-	Name  string `json:"name"`
-	Start uint64 `json:"start"`
-	End   uint64 `json:"end,omitempty"`
+	Name      string `json:"name"`
+	Start     uint64 `json:"start"`
+	End       uint64 `json:"end,omitempty"`
+	Compacted bool   `json:"compacted,omitempty"`
 }
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
@@ -930,6 +931,7 @@ func (doc *Document) addToChannelSetHistory(channelName string, historyEntry Cha
 
 	if entryCount >= DocumentHistoryMaxEntriesPerChannel {
 		doc.ChannelSetHistory[secondOldestEntryIdx].Start = oldestEntryStartSeq
+		doc.ChannelSetHistory[secondOldestEntryIdx].Compacted = true
 		doc.ChannelSetHistory = append(doc.ChannelSetHistory[:oldestEntryIdx], doc.ChannelSetHistory[oldestEntryIdx+1:]...)
 	}
 

@@ -368,7 +368,11 @@ func CreateMetricRouter(sc *ServerContext) *mux.Router {
 
 func createDiagnosticRouter(sc *ServerContext) *mux.Router {
 	r := CreatePingRouter(sc)
-
+	dbr := r.PathPrefix("/{db:" + dbRegex + "}/").Subrouter()
+	dbr.StrictSlash(true)
+	keyspace := r.PathPrefix("/{keyspace:" + dbRegex + "}/").Subrouter()
+	keyspace.StrictSlash(true)
+	keyspace.Handle("/{docid:"+docRegex+"}/_all_channels", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetDocChannels)).Methods("GET")
 	return r
 }
 
