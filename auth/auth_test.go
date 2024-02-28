@@ -527,7 +527,7 @@ func TestRebuildUserRoles(t *testing.T) {
 	user1, err := auth.GetUser("testUser")
 	assert.Equal(t, nil, err)
 	expected := ch.AtSequence(base.SetOf("role1", "role3"), 1)
-	expected.AddChannel("role2", 3)
+	expected.AddChannel("role2", 3, "")
 	assert.Equal(t, expected, user1.RoleNames())
 
 	// Invalidate the roles, triggers rebuild
@@ -537,7 +537,7 @@ func TestRebuildUserRoles(t *testing.T) {
 	user2, err := auth.GetUser("testUser")
 	assert.Equal(t, nil, err)
 	expected = ch.AtSequence(base.SetOf("role1", "role3"), 1)
-	expected.AddChannel("role2", 3)
+	expected.AddChannel("role2", 3, "")
 	assert.Equal(t, expected, user2.RoleNames())
 }
 
@@ -1482,7 +1482,7 @@ func (m mockComputerV2) addRoleChannels(t *testing.T, auth *Authenticator, roleN
 		m.roleChannels[roleName] = ch.TimedSet{}
 	}
 
-	m.roleChannels[roleName].Add(ch.AtSequence(ch.BaseSetOf(t, channelName), invalSeq))
+	m.roleChannels[roleName].Add(ch.AtSequence(ch.BaseSetOf(t, channelName), invalSeq), "")
 	err := auth.InvalidateDefaultChannels(roleName, false, invalSeq)
 	assert.NoError(t, err)
 }
@@ -1498,7 +1498,7 @@ func (m mockComputerV2) addRole(t *testing.T, auth *Authenticator, userName, rol
 		m.roles[userName] = ch.TimedSet{}
 	}
 
-	m.roles[userName].Add(ch.AtSequence(ch.BaseSetOf(t, roleName), invalSeq))
+	m.roles[userName].Add(ch.AtSequence(ch.BaseSetOf(t, roleName), invalSeq), "")
 	err := auth.InvalidateRoles(userName, invalSeq)
 	assert.NoError(t, err)
 }
