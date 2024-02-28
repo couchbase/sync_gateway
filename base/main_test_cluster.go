@@ -11,6 +11,7 @@ package base
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -229,8 +230,32 @@ func (c *tbpClusterV2) mobileXDCRCompatible() (bool, error) {
 		return false, err
 	}
 
-	if strings.Contains(metadata[0].Version, "7.6.1") {
+	// take server version
+	vrs := metadata[0].Version[:5]
+
+	ok, err := serverSupportsMobileXDCR(vrs)
+	if err != nil {
+		return false, err
+	}
+	if ok {
 		return true, nil
 	}
 	return false, nil
+}
+
+func serverSupportsMobileXDCR(vrs string) (bool, error) {
+	strList := strings.Split(vrs, ".")
+	major, err := strconv.Atoi(strList[0])
+	if err != nil {
+		return false, err
+	}
+	minor, err := strconv.Atoi(strList[1])
+	if err != nil {
+		return false, err
+	}
+	patch, err := strconv.Atoi(strList[2])
+	if err != nil {
+		return false, err
+	}
+	return major >= 7 && minor >= 6 && patch >= 1, nil
 }
