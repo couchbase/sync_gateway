@@ -248,13 +248,10 @@ func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context
 					if updatedExplicitChannels == nil {
 						updatedExplicitChannels = ch.TimedSet{}
 					}
-					expChannels := princ.CollectionExplicitChannels(scopeName, collectionName).Copy()
 					changed := updatedExplicitChannels.UpdateAtSequence(updatedCollectionAccess.ExplicitChannels_, seq, ch.AdminGrant)
+					base.InfofCtx(ctx, base.KeyAccess, "chan admin entries after(%s): %s", updatedExplicitChannels)
 					if changed {
-						authenticator := dbc.Authenticator(ctx)
 						princ.SetCollectionExplicitChannels(scopeName, collectionName, updatedExplicitChannels, seq)
-						history := authenticator.CalculateHistory(princ.Name(), princ.GetChannelInvalSeq(), expChannels, updatedExplicitChannels, princ.ChannelHistory())
-						princ.SetChannelHistory(history)
 					}
 				}
 			}

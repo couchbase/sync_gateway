@@ -17,16 +17,10 @@ import (
 )
 
 const (
-	AdminGrant = iota
-	DynamicGrant
-	JWTGrant
+	AdminGrant   string = "Admin"
+	DynamicGrant string = "Dynamic"
+	JWTGrant     string = "JWT"
 )
-
-var RunStateString = []string{
-	AdminGrant:   "Admin",
-	DynamicGrant: "Dynamic",
-	JWTGrant:     "JWT",
-}
 
 // Vb and Sequence struct that's compatible with sequence-only (global sequence) mode
 type VbSequence struct {
@@ -83,7 +77,7 @@ type TimedSet map[string]TimedSetEntry
 
 type TimedSetEntry struct {
 	VbSequence VbSequence `json:"VbSequence"`
-	Source     int        `json:"source:omitempty"`
+	Source     string     `json:"source:omitempty"`
 }
 
 // Role{role1: { adminAssigned:bool, Channels{Chan1: {adminAssigned: bool}}}
@@ -141,7 +135,7 @@ func (set TimedSet) Contains(ch string) bool {
 }
 
 // Updates membership to match the given Set. Newly added members will have the given sequence.
-func (set TimedSet) UpdateAtSequence(other base.Set, sequence uint64, source int) bool {
+func (set TimedSet) UpdateAtSequence(other base.Set, sequence uint64, source string) bool {
 	changed := false
 	for name := range set {
 		if !other.Contains(name) {
@@ -174,10 +168,10 @@ func (set TimedSet) Equals(other base.Set) bool {
 	return true
 }
 
-func (set TimedSet) AddChannel(channelName string, atSequence uint64) bool {
+func (set TimedSet) AddChannel(channelName string, atSequence uint64, source string) bool {
 	if atSequence > 0 {
 		if oldEntry := set[channelName]; oldEntry.VbSequence.Sequence == 0 || atSequence < oldEntry.VbSequence.Sequence {
-			set[channelName] = TimedSetEntry{VbSequence: NewVbSimpleSequence(atSequence)}
+			set[channelName] = TimedSetEntry{VbSequence: NewVbSimpleSequence(atSequence), Source: source}
 			return true
 		}
 	}
@@ -185,12 +179,12 @@ func (set TimedSet) AddChannel(channelName string, atSequence uint64) bool {
 }
 
 // Merges the other set into the receiver. In case of collisions the earliest sequence wins.
-func (set TimedSet) Add(other TimedSet) bool {
-	return set.AddAtSequence(other, 0)
+func (set TimedSet) Add(other TimedSet, source string) bool {
+	return set.AddAtSequence(other, 0, source)
 }
 
 // Merges the other set into the receiver at a given sequence. */
-func (set TimedSet) AddAtSequence(other TimedSet, atSequence uint64) bool {
+func (set TimedSet) AddAtSequence(other TimedSet, atSequence uint64, source string) bool {
 	changed := false
 	for ch, entry := range other {
 		// If vbucket is present, do a straight replace
@@ -201,7 +195,8 @@ func (set TimedSet) AddAtSequence(other TimedSet, atSequence uint64) bool {
 			if entry.VbSequence.Sequence < atSequence {
 				entry.VbSequence.Sequence = atSequence
 			}
-			if set.AddChannel(ch, entry.VbSequence.Sequence) {
+			if set.AddChannel(ch, entry.VbSequence.Sequence, source) {
+				entry.Source = source
 				changed = true
 			}
 		}
@@ -356,9 +351,9 @@ func (set TimedSet) String() string {
 	for channel, entry := range set {
 		if entry.VbSequence.Sequence > 0 {
 			if entry.VbSequence.VbNo != nil {
-				items = append(items, fmt.Sprintf("%s:%d.%d", channel, *entry.VbSequence.VbNo, entry.VbSequence.Sequence))
+				items = append(items, fmt.Sprintf("%s:%d.%d.%s", channel, *entry.VbSequence.VbNo, entry.VbSequence.Sequence, entry.Source))
 			} else {
-				items = append(items, fmt.Sprintf("%s:%d", channel, entry.VbSequence.Sequence))
+				items = append(items, fmt.Sprintf("%s:%d.%s", channel, entry.VbSequence.Sequence, entry.Source))
 			}
 		}
 	}

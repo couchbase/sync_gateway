@@ -2504,11 +2504,7 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(ctx context.Context,
 	var accessRow QueryAccessRow
 	channelSet := channels.TimedSet{}
 	for results.Next(ctx, &accessRow) {
-		channelSet.Add(accessRow.Value)
-	}
-
-	for _, chanEntry := range channelSet {
-		chanEntry.Source = channels.DynamicGrant
+		channelSet.Add(accessRow.Value, channels.DynamicGrant)
 	}
 
 	closeErr := results.Close()
@@ -2530,7 +2526,7 @@ func (context *DatabaseContext) ComputeRolesForUser(ctx context.Context, user au
 		if err != nil {
 			return nil, err
 		}
-		roles.Add(collectionRoles)
+		roles.Add(collectionRoles, channels.DynamicGrant)
 	}
 	return roles, nil
 }
@@ -2546,7 +2542,7 @@ func (c *DatabaseCollection) ComputeRolesForUser(ctx context.Context, user auth.
 	roleChannelSet := channels.TimedSet{}
 	var roleAccessRow QueryAccessRow
 	for results.Next(ctx, &roleAccessRow) {
-		roleChannelSet.Add(roleAccessRow.Value)
+		roleChannelSet.Add(roleAccessRow.Value, channels.DynamicGrant)
 	}
 	closeErr := results.Close()
 	if closeErr != nil {

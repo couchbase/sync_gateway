@@ -1242,7 +1242,7 @@ func TestJWTRolesChannels(t *testing.T) {
 				user.SetJWTRoles(ch.AtSequence(updates.JWTRoles, user.Sequence()), user.Sequence())
 				user.SetJWTLastUpdated(time.Now())
 
-				require.NoError(t, auth.rebuildRoles(user))
+				require.NoError(t, auth.RebuildRoles(user))
 				_, rebuildErr := auth.rebuildChannels(user)
 				require.NoError(t, rebuildErr)
 

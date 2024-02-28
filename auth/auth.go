@@ -190,7 +190,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		}
 		if user, ok := princ.(User); ok {
 			if user.RoleNames() == nil {
-				if err := auth.rebuildRoles(user); err != nil {
+				if err := auth.RebuildRoles(user); err != nil {
 					base.WarnfCtx(auth.LogCtx, "RebuildRoles returned error: %v", err)
 					return nil, nil, false, err
 				}
@@ -234,7 +234,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) (changed bool, err e
 		for collection, _ := range collections {
 			// If collection channels are nil, they have been invalidated and must be rebuilt
 			if princ.CollectionChannels(scope, collection) == nil {
-				err := auth.rebuildCollectionChannels(princ, scope, collection)
+				err := auth.RebuildCollectionChannels(princ, scope, collection)
 				if err != nil {
 					return changed, err
 				}
@@ -245,7 +245,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) (changed bool, err e
 	return changed, nil
 }
 
-func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, collection string) error {
+func (auth *Authenticator) RebuildCollectionChannels(princ Principal, scope, collection string) error {
 
 	// For the default collection, rebuild the top-level channels properties on the principal.  Otherwise rebuild the appropriate entry
 	// in the principal CollectionAccess map.
@@ -256,7 +256,9 @@ func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, col
 		ca = princ.getOrCreateCollectionAccess(scope, collection)
 	}
 
-	channels := ca.ExplicitChannels().Copy()
+	var channels ch.TimedSet
+	channels = make(map[string]ch.TimedSetEntry)
+	channels.Add(ca.ExplicitChannels(), ch.AdminGrant)
 
 	if auth.channelComputer != nil {
 		viewChannels, err := auth.channelComputer.ComputeChannelsForPrincipal(auth.LogCtx, princ, scope, collection)
@@ -264,18 +266,18 @@ func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, col
 			base.WarnfCtx(auth.LogCtx, "channelComputer.ComputeChannelsForPrincipal returned error for %v: %v", base.UD(princ), err)
 			return err
 		}
-		channels.Add(viewChannels)
+
+		channels.Add(viewChannels, ch.DynamicGrant)
 	}
 
 	if userCollectionAccess, ok := ca.(UserCollectionAccess); ok {
 		if jwt := userCollectionAccess.JWTChannels(); jwt != nil {
-			channels.Add(jwt)
+			channels.Add(jwt, ch.JWTGrant)
 		}
 	}
 
 	// always grant access to the public document channel
-	channels.AddChannel(ch.DocumentStarChannel, 1)
-
+	channels.AddChannel(ch.DocumentStarChannel, 1, ch.DynamicGrant)
 	channelHistory := auth.CalculateHistory(princ.Name(), ca.GetChannelInvalSeq(), ca.InvalidatedChannels(), channels, ca.ChannelHistory())
 
 	if len(channelHistory) != 0 {
@@ -356,7 +358,7 @@ func CalculateMaxHistoryEntriesPerGrant(channelCount int) int {
 	return maxEntries
 }
 
-func (auth *Authenticator) rebuildRoles(user User) error {
+func (auth *Authenticator) RebuildRoles(user User) error {
 	var roles ch.TimedSet
 	if auth.channelComputer != nil {
 		var err error
@@ -365,17 +367,18 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 			base.WarnfCtx(auth.LogCtx, "channelComputer.ComputeRolesForUser failed on user %s: %v", base.UD(user.Name()), err)
 			return err
 		}
+		roles.Add(roles, ch.DynamicGrant)
 	}
 	if roles == nil {
 		roles = ch.TimedSet{} // it mustn't be nil; nil means it's unknown
 	}
 
 	if explicit := user.ExplicitRoles(); explicit != nil {
-		roles.Add(explicit)
+		roles.Add(explicit, ch.AdminGrant)
 	}
 
 	if jwt := user.JWTRoles(); jwt != nil {
-		roles.Add(jwt)
+		roles.Add(jwt, ch.JWTGrant)
 	}
 
 	roleHistory := auth.CalculateHistory(user.Name(), user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory())

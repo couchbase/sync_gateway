@@ -100,7 +100,7 @@ func (auth *Authenticator) NewUser(username string, password string, channels ba
 		return nil, err
 	}
 
-	if err := auth.rebuildRoles(user); err != nil {
+	if err := auth.RebuildRoles(user); err != nil {
 		return nil, err
 	}
 
@@ -129,7 +129,7 @@ func (auth *Authenticator) NewUserNoChannels(username string, password string) (
 		return nil, err
 	}
 
-	if err := auth.rebuildRoles(user); err != nil {
+	if err := auth.RebuildRoles(user); err != nil {
 		return nil, err
 	}
 
@@ -614,7 +614,7 @@ func (user *userImpl) inheritedChannels() ch.TimedSet {
 	channels := user.Channels().Copy()
 	for _, role := range user.GetRoles() {
 		roleChanEntry := user.RoleNames()[role.Name()]
-		channels.AddAtSequence(role.Channels(), roleChanEntry.VbSequence.Sequence)
+		channels.AddAtSequence(role.Channels(), roleChanEntry.VbSequence.Sequence, roleChanEntry.Source)
 	}
 
 	user.warnChanThresholdOnce.Do(func() {
@@ -652,7 +652,7 @@ func (user *userImpl) FilterToAvailableCollectionChannels(scope, collection stri
 		if channelName == ch.AllChannelWildcard {
 			return user.InheritedCollectionChannels(scope, collection).Copy(), nil
 		}
-		added := filtered.AddChannel(channelName, user.canSeeCollectionChannelSince(scope, collection, channelName))
+		added := filtered.AddChannel(channelName, user.canSeeCollectionChannelSince(scope, collection, channelName), "")
 		if !added {
 			removed = append(removed, channelName)
 		}
