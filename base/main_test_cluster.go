@@ -26,6 +26,7 @@ type tbpCluster interface {
 	supportsCollections() (bool, error)
 	supportsMobileRBAC() (bool, error)
 	isServerEnterprise() (bool, error)
+	mobileXDCRCompatible() (bool, error)
 	close(context.Context) error
 }
 
@@ -164,6 +165,15 @@ func (c *tbpClusterV2) openTestBucket(ctx context.Context, testBucketName tbpBuc
 		return nil, err
 	}
 
+	// if bucket is on server version > 7.6.1, we always set the mobile XDCR bucket setting. So add this to bucket object
+	ok, err := c.mobileXDCRCompatible()
+	if err != nil {
+		return bucketFromSpec, err
+	}
+	if ok {
+		bucketFromSpec.supportsHLV = true
+	}
+
 	return bucketFromSpec, nil
 }
 
@@ -202,4 +212,25 @@ func (c *tbpClusterV2) supportsMobileRBAC() (bool, error) {
 		return false, err
 	}
 	return major >= 7 && minor >= 1, nil
+}
+
+// mobileXDCRCompatible checks if a cluster is mobile XDCR compatible, a cluster must be enterprise edition AND > 7.6.1
+func (c *tbpClusterV2) mobileXDCRCompatible() (bool, error) {
+	enterprise, err := c.isServerEnterprise()
+	if err != nil {
+		return false, err
+	}
+	if !enterprise {
+		return false, nil
+	}
+
+	metadata, err := c.cluster.Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
+	if err != nil {
+		return false, err
+	}
+
+	if strings.Contains(metadata[0].Version, "7.6.1") {
+		return true, nil
+	}
+	return false, nil
 }

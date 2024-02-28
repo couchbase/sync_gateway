@@ -175,6 +175,12 @@ func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec
 	}
 	gocbv2Bucket.kvOps = make(chan struct{}, MaxConcurrentSingleOps*nodeCount*(*numPools))
 
+	// Query to see if mobile XDCR bucket setting is set and store on bucket object
+	err = gocbv2Bucket.queryHLVBucketSetting(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	return gocbv2Bucket, nil
 }
 
@@ -185,6 +191,7 @@ type GocbV2Bucket struct {
 	queryOps                                             chan struct{} // Manages max concurrent query ops
 	kvOps                                                chan struct{} // Manages max concurrent kv ops
 	clusterCompatMajorVersion, clusterCompatMinorVersion uint64        // E.g: 6 and 0 for 6.0.3
+	supportsHLV                                          bool          // Flag to indicate with bucket supports mobile XDCR
 }
 
 var (
@@ -246,9 +253,33 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 		return isMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 0)
 	case sgbucket.BucketStoreFeatureSystemCollections:
 		return isMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 6)
+	case sgbucket.BucketStoreFeatureMobileXDCR:
+		return b.supportsHLV
 	default:
 		return false
 	}
+}
+
+// queryHLVBucketSetting sends request to server to check for enableCrossClusterVersioning bucket setting
+func (b *GocbV2Bucket) queryHLVBucketSetting(ctx context.Context) error {
+	url := fmt.Sprintf("/pools/default/buckets/%s", b.GetName())
+	output, statusCode, err := mgmtRequest(ctx, b, http.MethodGet, url, nil)
+	if err != nil || statusCode != http.StatusOK {
+		return fmt.Errorf("error executing query for mobile XDCR bucket setting, status code: %d error: %v", statusCode, err)
+	}
+
+	type bucket struct {
+		SupportsHLV *bool `json:"enableCrossClusterVersioning,omitempty"`
+	}
+	var bucketSettings bucket
+	err = JSONUnmarshal(output, &bucketSettings)
+	if err != nil {
+		return err
+	}
+	if bucketSettings.SupportsHLV != nil {
+		b.supportsHLV = *bucketSettings.SupportsHLV
+	}
+	return nil
 }
 
 func (b *GocbV2Bucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {

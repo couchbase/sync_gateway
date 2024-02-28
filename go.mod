@@ -9,8 +9,8 @@ require (
 	github.com/couchbase/cbgt v1.3.9
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20231212195435-3490e96d30e3
-	github.com/couchbase/gocb/v2 v2.7.1
-	github.com/couchbase/gocbcore/v10 v10.3.1
+	github.com/couchbase/gocb/v2 v2.7.2
+	github.com/couchbase/gocbcore/v10 v10.3.2
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20240206113827-752ae6de6855
@@ -50,8 +50,8 @@ require (
 	github.com/couchbase/blance v0.1.5 // indirect
 	github.com/couchbase/cbauth v0.1.11 // indirect
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
-	github.com/couchbase/gocbcoreps v0.1.1 // indirect
-	github.com/couchbase/goprotostellar v1.0.1 // indirect
+	github.com/couchbase/gocbcoreps v0.1.2 // indirect
+	github.com/couchbase/goprotostellar v1.0.2 // indirect
 	github.com/couchbase/tools-common/cloud v1.0.0 // indirect
 	github.com/couchbase/tools-common/fs v1.0.0 // indirect
 	github.com/couchbase/tools-common/testing v1.0.0 // indirect
@@ -89,8 +89,8 @@ require (
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240205150955-31a09d347014 // indirect
-	google.golang.org/grpc v1.61.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240213162025-012b6fc9bca9 // indirect
+	google.golang.org/grpc v1.61.1 // indirect
 	google.golang.org/protobuf v1.32.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect

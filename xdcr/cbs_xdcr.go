@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"strings"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	dto "github.com/prometheus/client_model/go"
 )
@@ -27,11 +28,17 @@ const (
 	totalDocsWrittenStat      = "xdcr_docs_written_total"
 )
 
+const (
+	MobileOff    = "Off"
+	MobileActive = "Active"
+)
+
 // CouchbaseServerXDCR implements a XDCR setup cluster on Couchbase Server.
 type CouchbaseServerXDCR struct {
 	fromBucket    *base.GocbV2Bucket
 	toBucket      *base.GocbV2Bucket
 	replicationID string
+	MobileSetting string
 }
 
 // mgmtRequest makes a request to the Couchbase Server management API in the format for xdcr.
@@ -116,7 +123,10 @@ func createCluster(ctx context.Context, bucket *base.GocbV2Bucket) error {
 }
 
 // NewCouchbaseServerXDCR creates an instance of XDCR backed by Couchbase Server. This is not started until Start is called.
-func NewCouchbaseServerXDCR(ctx context.Context, fromBucket *base.GocbV2Bucket, toBucket *base.GocbV2Bucket) (*CouchbaseServerXDCR, error) {
+func NewCouchbaseServerXDCR(ctx context.Context, fromBucket *base.GocbV2Bucket, toBucket *base.GocbV2Bucket, mobileSetting string) (*CouchbaseServerXDCR, error) {
+	if mobileSetting == "" {
+		return nil, fmt.Errorf("must specify mobile setting in new XDCR clsuter")
+	}
 	isPresent, err := isClusterPresent(ctx, fromBucket)
 	if err != nil {
 		return nil, err
@@ -133,8 +143,9 @@ func NewCouchbaseServerXDCR(ctx context.Context, fromBucket *base.GocbV2Bucket, 
 		return nil, err
 	}
 	return &CouchbaseServerXDCR{
-		fromBucket: fromBucket,
-		toBucket:   toBucket,
+		fromBucket:    fromBucket,
+		toBucket:      toBucket,
+		MobileSetting: mobileSetting,
 	}, nil
 }
 
@@ -147,8 +158,13 @@ func (x *CouchbaseServerXDCR) Start(ctx context.Context) error {
 	body.Add("toBucket", x.toBucket.GetName())
 	body.Add("toCluster", xdcrClusterName)
 	body.Add("replicationType", "continuous")
-	// filters all sync docs, except binary docs (attachments)
-	body.Add("filterExpression", fmt.Sprintf("NOT REGEXP_CONTAINS(META().id, \"^%s\") OR REGEXP_CONTAINS(META().id, \"^%s\")", base.SyncDocPrefix, base.Att2Prefix))
+	// if mobile setting is active, set the setting on thw replication
+	if x.MobileSetting != MobileOff {
+		body.Add("mobile", x.MobileSetting)
+	} else {
+		// filters all sync docs, except binary docs (attachments)
+		body.Add("filterExpression", fmt.Sprintf("NOT REGEXP_CONTAINS(META().id, \"^%s\") OR REGEXP_CONTAINS(META().id, \"^%s\")", base.SyncDocPrefix, base.Att2Prefix))
+	}
 	url := "/controller/createReplication"
 	output, statusCode, err := mgmtRequest(ctx, x.fromBucket, method, url, strings.NewReader(body.Encode()))
 	if err != nil {
@@ -229,4 +245,8 @@ outer:
 		}
 	}
 	return 0, fmt.Errorf("Could not find relevant value for metrics %v", metrics)
+}
+
+func BucketSupportsMobileXDCR(bucket base.Bucket) bool {
+	return bucket.IsSupported(sgbucket.BucketStoreFeatureMobileXDCR)
 }

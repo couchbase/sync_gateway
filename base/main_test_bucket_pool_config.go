@@ -81,6 +81,25 @@ func TestsRequireMobileRBAC(t *testing.T) {
 	}
 }
 
+// canUseMobileXDCR checks if cluster supports mobile XDCR
+func (tbp *TestBucketPool) canUseMobileXDCR(ctx context.Context) (bool, error) {
+	var clusterSupport bool
+	if tbp.cluster != nil {
+		var err error
+		clusterSupport, err = tbp.cluster.mobileXDCRCompatible()
+		if err != nil {
+			return false, err
+		}
+	}
+
+	if clusterSupport {
+		return true, nil
+	}
+	tbp.Logf(ctx, "cluster does not support mobile XDCR")
+
+	return false, nil
+}
+
 // canUseNamedCollections returns true if the cluster supports named collections, and they are also requested
 func (tbp *TestBucketPool) canUseNamedCollections(ctx context.Context) (bool, error) {
 	// walrus supports collections, but we need to query the server's version for capability check

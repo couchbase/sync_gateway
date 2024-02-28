@@ -13,6 +13,9 @@ package base
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -61,6 +64,9 @@ type TestBucketPool struct {
 	// skipCollections may be true for older Couchbase Server versions that do not support collections.
 	skipCollections   bool
 	useExistingBucket bool
+
+	// skipMobileXDCR may be true for older versions of Couchbase Server that don't support mobile XDCR enhancements
+	skipMobileXDCR bool
 
 	// when useDefaultScope is set, named collections are created in the default scope
 	useDefaultScope bool
@@ -124,6 +130,12 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		tbp.Fatalf(ctx, "%s", err)
 	}
 	tbp.skipCollections = !useCollections
+
+	useMobileXDCR, err := tbp.canUseMobileXDCR(ctx)
+	if err != nil {
+		tbp.Fatalf(ctx, "%s", err)
+	}
+	tbp.skipMobileXDCR = !useMobileXDCR
 
 	tbp.verbose.Set(tbpVerbose())
 
@@ -433,6 +445,44 @@ func (tbp *TestBucketPool) emptyPreparedStatements(ctx context.Context, b Bucket
 	}
 }
 
+// setXDCRBucketSetting sets the bucket setting "enableCrossClusterVersioning" for mobile XDCR
+func (tbp *TestBucketPool) setXDCRBucketSetting(ctx context.Context, bucket Bucket) {
+	if tbp.skipMobileXDCR {
+		tbp.Logf(ctx, "skipping mobile XDCR bucket setting")
+	}
+
+	store, ok := AsCouchbaseBucketStore(bucket)
+	if !ok {
+		tbp.Fatalf(ctx, "unable to get server management endpoints. Underlying bucket type was not GoCBBucket")
+	}
+
+	posts := url.Values{}
+	posts.Add("enableCrossClusterVersioning", "true")
+
+	url := fmt.Sprintf("/pools/default/buckets/%s", store.GetName())
+	_, statusCode, err := mgmtRequest(ctx, store, http.MethodPost, url, strings.NewReader(posts.Encode()))
+	if err != nil {
+		tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed, error: %v", err)
+	}
+	if statusCode != http.StatusOK {
+		tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed with status code, %d", statusCode)
+	}
+}
+
+// mgmtRequest sends REST API request to server
+func mgmtRequest(ctx context.Context, bucket CouchbaseBucketStore, method, url string, body io.Reader) ([]byte, int, error) {
+	resp, err := bucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", body)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	output, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, 0, fmt.Errorf("Could not read body from %s", url)
+	}
+	return output, resp.StatusCode, nil
+}
+
 // createCollections will create a set of test collections on the bucket, if enabled...
 func (tbp *TestBucketPool) createCollections(ctx context.Context, bucket Bucket) {
 	// If we're able to use collections, the test bucket pool will also create N collections per bucket - rather than just getting the default collection ready.
@@ -495,6 +545,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, buck
 			if err != nil {
 				tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
 			}
+
 			openBucketsLock.Lock()
 			openBuckets[bucketName] = bucket
 			openBucketsLock.Unlock()
@@ -502,6 +553,8 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, buck
 			tbp.createCollections(ctx, bucket)
 
 			tbp.emptyPreparedStatements(ctx, bucket)
+
+			tbp.setXDCRBucketSetting(ctx, bucket)
 
 			wg.Done()
 		}(testBucketName)
