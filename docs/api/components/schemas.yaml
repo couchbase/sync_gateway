@@ -2525,10 +2525,9 @@ AllUserChannels:
           UpdatedAt:
             type: integer
             description: Unix timestamp of last update
-          admin_assigned:
-            type: boolean
-            description: Whether a channel was assigned through admin_channels or not
-
+          source:
+            type: string
+            description: Either JWT, Admin or Dynamic.
     dynamic_grants:
       description: |-
         Channels assigned to the user through the sync function.
@@ -2544,7 +2543,9 @@ AllUserChannels:
           UpdatedAt:
             type: integer
             description: Unix timestamp of last update
-
+          source:
+            type: string
+            description: Either JWT, Admin or Dynamic.
     jwt_grants:
       description: |-
         Channels assigned to the user through JWT.
@@ -2560,7 +2561,9 @@ AllUserChannels:
           UpdatedAt:
             type: integer
             description: Unix timestamp of last update
-
+          source:
+            type: string
+            description: Either JWT, Admin or Dynamic.
     admin_role_grants:
       description: |-
         Channels assigned to the user through the admin API, by assigning a role to the user through admin_roles,
@@ -2577,8 +2580,9 @@ AllUserChannels:
           UpdatedAt:
             type: integer
             description: Unix timestamp of last update
-
-
+          source:
+            type: string
+            description: Either JWT, Admin or Dynamic.
     dynamic_role_grants:
       description: |-
         Channels assigned to the user through roles assigned using the sync function. Does not include historic roles.
@@ -2594,5 +2598,6 @@ AllUserChannels:
           UpdatedAt:
             type: integer
             description: Unix timestamp of last update
-
-
+          source:
+            type: string
+            description: Either JWT, Admin or Dynamic.

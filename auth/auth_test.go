@@ -402,7 +402,12 @@ func TestRebuildUserChannels(t *testing.T) {
 
 	user2, err := auth.GetUser("testUser")
 	assert.NoError(t, err)
-	assert.Equal(t, ch.AtSequence(ch.BaseSetOf(t, "explicit1", "derived1", "derived2", "!"), 1), user2.Channels())
+	expected := ch.TimedSet{
+		"!":         ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x1), Source: ch.DynamicGrant},
+		"explicit1": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x1), Source: ch.AdminGrant},
+		"derived1":  ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x1), Source: ch.DynamicGrant},
+		"derived2":  ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x1), Source: ch.DynamicGrant}}
+	assert.Equal(t, expected, user2.Channels())
 }
 
 func TestRebuildUserChannelsMultiCollection(t *testing.T) {
@@ -430,8 +435,15 @@ func TestRebuildUserChannelsMultiCollection(t *testing.T) {
 
 	user2, err := auth.GetUser("testUser")
 	assert.NoError(t, err)
-	assert.Equal(t, ch.AtSequence(ch.BaseSetOf(t, "explicit1", "derived1", "derived2", "!"), 1), user2.Channels())
-	assert.Equal(t, ch.AtSequence(ch.BaseSetOf(t, "explicit2", "derived3", "derived4", "!"), 1), user2.CollectionChannels("scope1", "collection1"))
+
+	assert.Equal(t, ch.TimedSet{"explicit1": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.AdminGrant},
+		"derived1": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.DynamicGrant},
+		"derived2": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.DynamicGrant},
+		"!":        ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.DynamicGrant}}, user2.Channels())
+	assert.Equal(t, ch.TimedSet{"explicit2": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.AdminGrant},
+		"derived3": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.DynamicGrant},
+		"derived4": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.DynamicGrant},
+		"!":        ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.DynamicGrant}}, user2.CollectionChannels("scope1", "collection1"))
 }
 
 func TestRebuildUserChannelsNamedCollection(t *testing.T) {
@@ -454,11 +466,15 @@ func TestRebuildUserChannelsNamedCollection(t *testing.T) {
 
 	err = auth.InvalidateChannels("testUser", true, "scope1", "collection1", 2)
 	assert.NoError(t, err)
-
+	expected := ch.TimedSet{
+		"derived4":  ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.DynamicGrant},
+		"derived3":  ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.DynamicGrant},
+		"!":         ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.DynamicGrant},
+		"explicit2": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.AdminGrant}}
 	user2, err := auth.GetUser("testUser")
 	assert.NoError(t, err)
 	assert.Equal(t, ch.TimedSet(nil), user2.Channels())
-	assert.Equal(t, ch.AtSequence(ch.BaseSetOf(t, "explicit2", "derived3", "derived4", "!"), 1), user2.CollectionChannels("scope1", "collection1"))
+	assert.Equal(t, expected, user2.CollectionChannels("scope1", "collection1"))
 }
 
 // Test cases
@@ -485,7 +501,12 @@ func TestRebuildRoleChannels(t *testing.T) {
 
 	role2, err := auth.GetRole("testRole")
 	assert.Equal(t, nil, err)
-	assert.Equal(t, ch.AtSequence(ch.BaseSetOf(t, "explicit1", "derived1", "derived2", "!"), 1), role2.Channels())
+	expected := ch.TimedSet{
+		"derived1":  ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.DynamicGrant},
+		"derived2":  ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.DynamicGrant},
+		"!":         ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.DynamicGrant},
+		"explicit1": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.AdminGrant}}
+	assert.Equal(t, expected, role2.Channels())
 }
 
 func TestRebuildChannelsError(t *testing.T) {
@@ -526,8 +547,10 @@ func TestRebuildUserRoles(t *testing.T) {
 	// Retrieve the user, triggers initial build of roles
 	user1, err := auth.GetUser("testUser")
 	assert.Equal(t, nil, err)
-	expected := ch.AtSequence(base.SetOf("role1", "role3"), 1)
-	expected.AddChannel("role2", 3, ch.AdminGrant)
+	expected := ch.TimedSet{
+		"role3": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.AdminGrant},
+		"role1": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.AdminGrant}}
+	expected.AddChannel("role2", 3, "")
 	assert.Equal(t, expected, user1.RoleNames())
 
 	// Invalidate the roles, triggers rebuild
@@ -536,8 +559,11 @@ func TestRebuildUserRoles(t *testing.T) {
 
 	user2, err := auth.GetUser("testUser")
 	assert.Equal(t, nil, err)
-	expected = ch.AtSequence(base.SetOf("role1", "role3"), 1)
-	expected.AddChannel("role2", 3, ch.AdminGrant)
+	expected = ch.TimedSet{
+		"role3": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.AdminGrant},
+		"role1": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(1), Source: ch.AdminGrant}}
+
+	expected.AddChannel("role2", 3, "")
 	assert.Equal(t, expected, user2.RoleNames())
 }
 
@@ -567,10 +593,12 @@ func TestRoleInheritance(t *testing.T) {
 	user2, err := auth.GetUser("arthur")
 	assert.Equal(t, nil, err)
 	log.Printf("Channels = %s", user2.Channels())
-	assert.Equal(t, ch.AtSequence(ch.BaseSetOf(t, "!", "britain"), 1), user2.Channels())
 	assert.Equal(t, ch.TimedSet{
-		"!":        ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x1)},
-		"britain":  ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x1)},
+		"!":       ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x1), Source: ch.DynamicGrant},
+		"britain": ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x1), Source: ch.AdminGrant}}, user2.Channels())
+	assert.Equal(t, ch.TimedSet{
+		"!":        ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x1), Source: ch.DynamicGrant},
+		"britain":  ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x1), Source: ch.AdminGrant},
 		"dull":     ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x3)},
 		"duller":   ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x3)},
 		"dullest":  ch.TimedSetEntry{VbSequence: ch.NewVbSimpleSequence(0x3)},

@@ -303,7 +303,7 @@ func TestUserAPI(t *testing.T) {
 	assert.Equal(t, "snej", user.Name())
 	assert.Equal(t, "jens@couchbase.com", user.Email())
 	assert.Equal(t, channels.TimedSet{"bar": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x1), Source: channels.AdminGrant},
-		"foo": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x1)}}, user.CollectionExplicitChannels(s, c))
+		"foo": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x1), Source: channels.AdminGrant}}, user.CollectionExplicitChannels(s, c))
 	assert.True(t, user.Authenticate("letmein"))
 
 	// Change the password and verify it:
