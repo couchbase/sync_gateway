@@ -255,7 +255,7 @@ type ChannelCacheConfig struct {
 	MaxWaitPending       *uint32 `json:"max_wait_pending,omitempty"`           // Max wait for pending sequence before skipping
 	MaxNumPending        *int    `json:"max_num_pending,omitempty"`            // Max number of pending sequences before skipping
 	MaxWaitSkipped       *uint32 `json:"max_wait_skipped,omitempty"`           // Max wait for skipped sequence before abandoning
-	EnableStarChannel    *bool   `json:"enable_star_channel,omitempty"`        // Enable star channel
+	EnableStarChannel    *bool   `json:"enable_star_channel,omitempty"`        // Deprecated: Enable star channel
 	MaxLength            *int    `json:"max_length,omitempty"`                 // Maximum number of entries maintained in cache per channel
 	MinLength            *int    `json:"min_length,omitempty"`                 // Minimum number of entries maintained in cache per channel
 	ExpirySeconds        *int    `json:"expiry_seconds,omitempty"`             // Time (seconds) to keep entries in cache beyond the minimum retained
