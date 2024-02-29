@@ -446,9 +446,8 @@ func (tbp *TestBucketPool) emptyPreparedStatements(ctx context.Context, b Bucket
 
 // setXDCRBucketSetting sets the bucket setting "enableCrossClusterVersioning" for mobile XDCR
 func (tbp *TestBucketPool) setXDCRBucketSetting(ctx context.Context, bucket Bucket) {
-	if tbp.skipMobileXDCR {
-		tbp.Logf(ctx, "skipping mobile XDCR bucket setting")
-	}
+
+	tbp.Logf(ctx, "Setting crossClusterVersioningEnabled=true")
 
 	store, ok := AsCouchbaseBucketStore(bucket)
 	if !ok {
@@ -539,7 +538,11 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, buck
 
 			tbp.emptyPreparedStatements(ctx, bucket)
 
-			tbp.setXDCRBucketSetting(ctx, bucket)
+			if tbp.skipMobileXDCR {
+				tbp.Logf(ctx, "Not setting crossClusterVersioningEnabled")
+			} else {
+				tbp.setXDCRBucketSetting(ctx, bucket)
+			}
 
 			wg.Done()
 		}(testBucketName)

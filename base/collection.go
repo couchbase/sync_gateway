@@ -500,6 +500,8 @@ func (b *GocbV2Bucket) BucketName() string {
 	return b.GetName()
 }
 
+// MgmtRequest makes a request to the http couchbase management api. The uri is the non host part of the URL, such as /pools/default/buckets.
+// This function will read the entire contents of the response and return the output bytes, the status code, and an error.
 func (b *GocbV2Bucket) MgmtRequest(ctx context.Context, method, uri, contentType string, body io.Reader) ([]byte, int, error) {
 	if contentType == "" && body != nil {
 		return nil, 0, errors.New("Content-type must be specified for non-null body.")

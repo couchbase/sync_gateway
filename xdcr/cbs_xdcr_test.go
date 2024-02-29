@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Test to be removed pending CBG-3809
 func TestCBSXDCR(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is testing Couchbase Server XDCR")
