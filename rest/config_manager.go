@@ -354,7 +354,7 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 		reloadRequired := false
 		for dbName, registryDb := range configGroup.Databases {
 			// Ignore databases with deleted version - represents an in-progress delete
-			if registryDb.Version == deletedDatabaseVersion {
+			if registryDb.IsDeleted() {
 				continue
 			}
 			dbConfig, err := b.getDatabaseConfig(ctx, bucketName, groupID, dbName, registryDb.Version, registry)
@@ -406,9 +406,9 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 
 		config.cfgCas = cas
 
-		if version == invalidDatabaseVersion {
+		if version == invalidDatabaseConflictingCollectionsVersion {
 			// special case - return the invalid config to use in updates (repairs). Configs with this version will not be loaded by SG.
-			config.Version = invalidDatabaseVersion
+			config.Version = invalidDatabaseConflictingCollectionsVersion
 			return false, nil, config
 		}
 
@@ -684,7 +684,7 @@ func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketNam
 			}
 			return registry, nil, err
 		} else {
-			if registryDb.Version != "" && registryDb.Version != deletedDatabaseVersion {
+			if registryDb.Version != "" && !registryDb.IsDeleted() {
 				// Database exists in registry, go fetch the config
 				config, err = b.getDatabaseConfig(ctx, bucketName, groupID, dbName, registryDb.Version, registry)
 				if err == base.ErrConfigRegistryReloadRequired {

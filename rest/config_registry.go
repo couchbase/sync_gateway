@@ -54,8 +54,8 @@ const GatewayRegistryVersion = "1.0"
 const (
 	// deletedDatabaseVersion represents an entry for an in-progress delete
 	deletedDatabaseVersion = "0-0"
-	// invalidDatabaseVersion represents an entry for a rollback-induced invalid state
-	invalidDatabaseVersion = "0-1"
+	// invalidDatabaseConflictingCollectionsVersion represents an entry for a rollback-induced invalid state
+	invalidDatabaseConflictingCollectionsVersion = "0-1"
 )
 
 // RegistryConfigGroup stores the set of databases for a given config group
@@ -77,6 +77,21 @@ type RegistryDatabase struct {
 type RegistryDatabaseVersion struct {
 	Scopes  RegistryScopes `json:"scopes,omitempty"`  // Scopes and collections for this version
 	Version string         `json:"version,omitempty"` // Database Version
+}
+
+// IsDeleted returns true if the database is in a deleted state
+func (r *RegistryDatabase) IsDeleted() bool {
+	return r.Version == deletedDatabaseVersion
+}
+
+// IsInvalid returns true if the database is in an invalid state
+func (r *RegistryDatabase) IsInvalid() bool {
+	return isRegistryDbConfigVersionInvalid(r.Version)
+}
+
+// isRegistryDbConfigVersionInvalid returns true if the version is in an invalid state
+func isRegistryDbConfigVersionInvalid(version string) bool {
+	return version == invalidDatabaseConflictingCollectionsVersion
 }
 
 type RegistryScopes map[string]RegistryScope
@@ -217,7 +232,7 @@ func (r *GatewayRegistry) rollbackDatabaseConfig(ctx context.Context, configGrou
 		setRegistryDatabaseFromConfig(registryDatabase, config)
 		if conflicts := r.getCollectionConflicts(ctx, dbName, config.Scopes); len(conflicts) > 0 {
 			base.WarnfCtx(ctx, "db %s config rollback would cause collection conflicts (%v) - marking database as invalid to allow for manual repair", base.UD(dbName), base.UD(conflicts))
-			registryDatabase.Version = invalidDatabaseVersion
+			registryDatabase.Version = invalidDatabaseConflictingCollectionsVersion
 		}
 		return nil
 	}

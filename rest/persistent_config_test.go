@@ -601,6 +601,11 @@ func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback
 	require.NoError(t, err)
 	sc.RequireInvalidDatabaseConfigNames(t, []string{dbName1})
 
+	// try to read database config to allow manual inspection before a repair
+	configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(configs))
+
 	// at this point the config and registry are still not aligned, let's write a correcting update to make sure it's in a repairable state
 	_, err = bc.UpdateConfig(ctx, bucketName, groupID, dbName1, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 		bucketDbConfig.Version = "3-c"
@@ -608,9 +613,6 @@ func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback
 		return bucketDbConfig, nil
 	})
 	require.NoError(t, err)
-
-	// FIXME: Can't repair?
-	//        "Unable to roll back registry to match existing config for database c1_db1(default): 409 Cannot rollback config for database c1_db1 - collections are in use by another database: map[sg_test_0.sg_test_1:c1_db2]"
 }
 
 // TestPersistentConfigRegistryRollbackAfterCreateFailure simulates node failure during an insertConfig operation, leaving
