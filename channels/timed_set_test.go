@@ -77,15 +77,15 @@ func TestTimedSetUnmarshal(t *testing.T) {
 }
 
 func TestEncodeSequenceID(t *testing.T) {
-	set := TimedSet{"ABC": TimedSetEntry{VbSequence: NewVbSimpleSequence(17)},
-		"CBS": TimedSetEntry{VbSequence: NewVbSimpleSequence(23)},
+	set := TimedSet{"ABC": TimedSetEntry{VbSequence: NewVbSimpleSequence(17), Source: AdminGrant},
+		"CBS": TimedSetEntry{VbSequence: NewVbSimpleSequence(23), Source: DynamicGrant},
 		"BBC": TimedSetEntry{VbSequence: NewVbSimpleSequence(1)}}
 	encoded := set.String()
-	assert.Equal(t, "ABC:17,BBC:1,CBS:23", encoded)
+	assert.Equal(t, "ABC:17_Admin,BBC:1_,CBS:23_Dynamic", encoded)
 	decoded := TimedSetFromString(encoded)
 	assert.Equal(t, set, decoded)
 
-	assert.Equal(t, "ABC:17", TimedSet{"ABC": TimedSetEntry{VbSequence: NewVbSimpleSequence(17)},
+	assert.Equal(t, "ABC:17_", TimedSet{"ABC": TimedSetEntry{VbSequence: NewVbSimpleSequence(17)},
 		"CBS": TimedSetEntry{VbSequence: NewVbSimpleSequence(0)}}.String())
 
 	assert.Equal(t, TimedSet{}, TimedSetFromString(""))

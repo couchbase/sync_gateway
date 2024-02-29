@@ -344,23 +344,23 @@ func TestRoleAccessChanges(t *testing.T) {
 	alice, _ := a.GetUser("alice")
 	assert.Equal(t,
 		channels.TimedSet{
-			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)},
-			"alpha": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(alice.Sequence())},
-			"gamma": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(roleGrantSequence)},
+			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1), Source: channels.DynamicGrant},
+			"alpha": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(alice.Sequence()), Source: channels.AdminGrant},
+			"gamma": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(roleGrantSequence), Source: channels.DynamicGrant},
 		}, alice.InheritedCollectionChannels(s, c))
 
 	assert.Equal(t,
 		channels.TimedSet{
-			"bogus":   channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(roleGrantSequence)},
-			"hipster": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(roleGrantSequence)},
+			"bogus":   channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(roleGrantSequence), Source: channels.DynamicGrant},
+			"hipster": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(roleGrantSequence), Source: channels.DynamicGrant},
 		}, alice.RoleNames())
 
 	zegpold, _ := a.GetUser("zegpold")
 	assert.Equal(t,
 
 		channels.TimedSet{
-			"!":    channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)},
-			"beta": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(zegpold.Sequence())},
+			"!":    channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1), Source: channels.DynamicGrant},
+			"beta": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(zegpold.Sequence()), Source: channels.AdminGrant},
 		}, zegpold.InheritedCollectionChannels(s, c))
 
 	assert.Equal(t, channels.TimedSet{}, zegpold.RoleNames())
@@ -400,16 +400,16 @@ func TestRoleAccessChanges(t *testing.T) {
 	alice, _ = a.GetUser("alice")
 	assert.Equal(t,
 		channels.TimedSet{
-			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x1)},
-			"alpha": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(alice.Sequence())},
+			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x1), Source: channels.DynamicGrant},
+			"alpha": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(alice.Sequence()), Source: channels.AdminGrant},
 		}, alice.InheritedCollectionChannels(s, c))
 
 	zegpold, _ = a.GetUser("zegpold")
 	assert.Equal(t,
 		channels.TimedSet{
-			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x1)},
-			"beta":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(zegpold.Sequence())},
-			"gamma": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(updatedRoleGrantSequence)},
+			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(0x1), Source: channels.DynamicGrant},
+			"beta":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(zegpold.Sequence()), Source: channels.AdminGrant},
+			"gamma": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(updatedRoleGrantSequence), Source: channels.DynamicGrant},
 		}, zegpold.InheritedCollectionChannels(s, c))
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
