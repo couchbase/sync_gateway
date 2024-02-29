@@ -249,7 +249,6 @@ func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context
 						updatedExplicitChannels = ch.TimedSet{}
 					}
 					changed := updatedExplicitChannels.UpdateAtSequence(updatedCollectionAccess.ExplicitChannels_, seq, ch.AdminGrant)
-					base.InfofCtx(ctx, base.KeyAccess, "chan admin entries after(%s): %s", updatedExplicitChannels)
 					if changed {
 						princ.SetCollectionExplicitChannels(scopeName, collectionName, updatedExplicitChannels, seq)
 					}
