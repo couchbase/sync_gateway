@@ -76,8 +76,8 @@ func (vbs VbSequence) Equals(other VbSequence) bool {
 type TimedSet map[string]TimedSetEntry
 
 type TimedSetEntry struct {
-	VbSequence VbSequence `json:"VbSequence"`
-	Source     string     `json:"source:omitempty"`
+	VbSequence
+	Source string `json:"source:omitempty"`
 }
 
 // Role{role1: { adminAssigned:bool, Channels{Chan1: {adminAssigned: bool}}}
@@ -294,13 +294,17 @@ func (set TimedSet) MarshalJSON() ([]byte, error) {
 
 	// If no vbuckets are defined, marshal as SequenceOnlySet for backwards compatibility.  Otherwise marshal with vbuckets
 	hasVbucket := false
+	hasSource := false
 	for _, timedSetEntry := range set {
+		if timedSetEntry.Source != "" {
+			hasSource = true
+		}
 		if timedSetEntry.VbSequence.VbNo != nil {
 			hasVbucket = true
 			break
 		}
 	}
-	if hasVbucket {
+	if hasVbucket || hasSource {
 		// Normal form - unmarshal as map[string]VbSequence.  Need to convert back to simple map[string]VbSequence to avoid
 		// having json.Marshal just call back into this function.
 		// Marshals entries as "ABC":{"vb":5,"seq":1} or "CBS":{"seq":1}, depending on whether VbSequence.VbNo is nil

@@ -116,7 +116,6 @@ func TestGetAllChannelsByUser(t *testing.T) {
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+bob+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
-	t.Log(response.BodyString())
 
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
@@ -383,7 +382,7 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 
 	require.NoError(t, err)
-	t.Log(response.BodyString())
+
 	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants[newCollection.String()]), []string{"!", "dynChannel"})
-	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants["_default._default"]), []string{"foo", "bar"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants["_default._default"]), []string{"foo", "bar", "channel"})
 }
