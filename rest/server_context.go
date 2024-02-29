@@ -1062,6 +1062,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 			// set EnableStarChannelLog directly here (instead of via NewDatabaseContext), so that it's set when we create the channels view in ConnectToBucket
 			if config.CacheConfig.ChannelCacheConfig.EnableStarChannel != nil {
 				db.EnableStarChannelLog = *config.CacheConfig.ChannelCacheConfig.EnableStarChannel
+				base.WarnfCtx(ctx, `Deprecation notice: enable_star_channel config option is due to be removed, in future star channel will always be enabled`)
 			}
 			if config.CacheConfig.ChannelCacheConfig.MaxLength != nil {
 				cacheOptions.ChannelCacheMaxLength = *config.CacheConfig.ChannelCacheConfig.MaxLength
