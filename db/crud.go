@@ -1145,6 +1145,17 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 
 }
 
+func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, doc *Document, remoteDoc *Document, docHistory []string, resolver *ConflictResolver) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
+	mutableBody, metaMap, newRevID, err := db.prepareSyncFn(doc, doc)
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyCRUD, "Failed to prepare to run sync function: %v", err)
+		return nil, "", nil, nil, nil, ErrForbidden
+	}
+
+	syncExpiry, oldBody, channelSet, access, roles, err := db.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
+	return syncExpiry, oldBody, channelSet, access, roles, err
+}
+
 // resolveConflict runs the conflictResolverFunction with doc and newDoc.  doc and newDoc's bodies and revision trees
 // may be changed based on the outcome of conflict resolution - see resolveDocLocalWins, resolveDocRemoteWins and
 // resolveDocMerge for specifics on what is changed under each scenario.

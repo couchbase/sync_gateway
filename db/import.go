@@ -236,7 +236,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		}
 
 		// If there's a filter function defined, evaluate to determine whether we should import this doc
-		importFilter := db.importFilter()
+		importFilter := db.ImportFilter()
 		if importFilter != nil {
 			var shouldImport bool
 			var err error

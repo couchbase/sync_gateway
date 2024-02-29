@@ -39,3 +39,48 @@ func (h *handler) handleGetDocChannels() error {
 	h.writeJSON(resp)
 	return nil
 }
+
+// HTTP handler for a GET of a document
+func (h *handler) handleSyncFnDryRun() error {
+	docid := h.PathVar("docid")
+
+	doc, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
+	if err != nil {
+		return err
+	}
+	if doc == nil {
+		return kNotFoundError
+	}
+	resp := make(map[string][]auth.GrantHistorySequencePair, len(doc.Channels))
+	//mutableBody, metaMap, newRevID, err := h.collection.SyncFnDryrun(doc, newDoc)
+	//if err != nil {
+	//	base.InfofCtx(ctx, base.KeyCRUD, "Failed to prepare to run sync function: %v", err)
+	//	return nil, nil, false, nil, ErrForbidden
+	//}
+
+	h.writeJSON(resp)
+	return nil
+}
+
+// HTTP handler for a GET of a document
+func (h *handler) handleImportFilterDryRun() error {
+	docid := h.PathVar("docid")
+
+	doc, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
+	if err != nil {
+		return err
+	}
+	importFilter := h.collection.ImportFilter()
+
+	shouldImport, err := importFilter.EvaluateFunction(h.ctx(), doc.Body(h.ctx()))
+
+	resp := struct {
+		ShouldImport bool  `json:"shouldImport"`
+		Error        error `json:"error"`
+	}{
+		shouldImport,
+		err,
+	}
+	h.writeJSON(resp)
+	return nil
+}
