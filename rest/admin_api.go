@@ -180,24 +180,13 @@ func getAuthScopeHandleCreateDB(ctx context.Context, h *handler) (bucketName str
 	var dbConfigBody struct {
 		Bucket string `json:"bucket"`
 	}
-	reader := bytes.NewReader(bodyJSON)
 
-	// read and decode json to pull bucket name from the config
-	b, err := io.ReadAll(reader)
+	bodyJSON, err = sanitiseConfig(ctx, bodyJSON, h.server.Config.Unsupported.AllowDbConfigEnvVars)
 	if err != nil {
 		return "", err
 	}
 
-	// Expand environment variables if needed
-	if base.BoolDefault(h.server.Config.Unsupported.AllowDbConfigEnvVars, true) {
-		b, err = expandEnv(h.ctx(), b)
-		if err != nil {
-			return "", err
-		}
-	}
-	b = base.ConvertBackQuotedStrings(b)
-
-	d := base.JSONDecoder(bytes.NewBuffer(b))
+	d := base.JSONDecoder(bytes.NewBuffer(bodyJSON))
 	err = d.Decode(&dbConfigBody)
 	if err != nil {
 		return "", err
