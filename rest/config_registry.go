@@ -51,6 +51,8 @@ type GatewayRegistry struct {
 
 const GatewayRegistryVersion = "1.0"
 
+// A set of special sentinel values to store as database versions.
+// NOTE: Update addInvalidDatabase and isRegistryDbConfigVersionInvalid if you add more.
 const (
 	// deletedDatabaseVersion represents an entry for an in-progress delete
 	deletedDatabaseVersion = "0-0"

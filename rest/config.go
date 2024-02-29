@@ -323,9 +323,12 @@ func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname 
 		base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Add(1)
 		logMessage += " Mismatched buckets (config bucket: %q, actual bucket: %q)"
 		logArgs = append(logArgs, base.MD(d.dbNames[dbname].configBucketName), base.MD(d.dbNames[dbname].persistedBucketName))
-	} else if isRegistryDbConfigVersionInvalid(cnf.Version) {
+	} else if cnf.Version == invalidDatabaseConflictingCollectionsVersion {
 		base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseCollectionCollisions.Add(1)
 		logMessage += " Conflicting collections detected"
+	} else {
+		// Nothing is expected to hit this case, but we might add more invalid sentinel values and forget to update this code.
+		logMessage += "Invalid config with no known cause."
 	}
 
 	// if we get here we already have the db logged as an invalid config, so now we need to work out iof we should log for it now
