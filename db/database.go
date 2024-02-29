@@ -1465,7 +1465,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 					_, addErr := collection.dataStore.Add(tombstonesRow.Id, 0, purgeBody)
 					if addErr != nil {
 						addErrorCount++
-						base.InfofCtx(ctx, base.KeyAll, "problem compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
+						base.InfofCtx(ctx, base.KeyAll, "Couldn't compact key %s (add): %v", base.UD(tombstonesRow.Id), addErr)
 						continue
 					}
 
@@ -1475,11 +1475,11 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 
 					if delErr := collection.dataStore.Delete(tombstonesRow.Id); delErr != nil {
 						deleteErrorCount++
-						base.InfofCtx(ctx, base.KeyAll, "problem compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
+						base.InfofCtx(ctx, base.KeyAll, "Couldn't compact key %s (delete): %v", base.UD(tombstonesRow.Id), delErr)
 					}
 				} else {
 					purgeErrorCount++
-					base.InfofCtx(ctx, base.KeyAll, "problem compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
+					base.InfofCtx(ctx, base.KeyAll, "Couldn't compact key %s (purge): %v", base.UD(tombstonesRow.Id), purgeErr)
 				}
 			}
 
@@ -1507,7 +1507,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	base.InfofCtx(ctx, base.KeyAll, "Finished compaction of purged tombstones for %s... Total Tombstones Compacted: %d", base.MD(db.Name), purgedDocCount)
 
 	if purgeErrorCount > 0 || deleteErrorCount > 0 || addErrorCount > 0 {
-		base.WarnfCtx(ctx, "compaction finished with %d add key errors, %d delete key errors and %d purge key errors", addErrorCount, deleteErrorCount, purgeErrorCount)
+		base.WarnfCtx(ctx, "Compaction finished with %d errors (add: %d, delete: %d, purge: %d)", addErrorCount+deleteErrorCount+purgeErrorCount, addErrorCount, deleteErrorCount, purgeErrorCount)
 	}
 
 	return purgedDocCount, nil
