@@ -1506,7 +1506,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	}
 	base.InfofCtx(ctx, base.KeyAll, "Finished compaction of purged tombstones for %s... Total Tombstones Compacted: %d", base.MD(db.Name), purgedDocCount)
 
-	if purgedDocCount > 0 || deleteErrorCount > 0 || addErrorCount > 0 {
+	if purgeErrorCount > 0 || deleteErrorCount > 0 || addErrorCount > 0 {
 		base.ErrorfCtx(ctx, "compaction finished with %d add key errors, %d delete key errors and %d purge key errors", addErrorCount, deleteErrorCount, purgeErrorCount)
 	}
 
