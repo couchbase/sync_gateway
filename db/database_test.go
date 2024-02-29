@@ -1549,7 +1549,7 @@ func TestAccessFunctionDb(t *testing.T) {
 	expected := channels.AtSequence(channels.BaseSetOf(t, "Hulu", "Netflix", "!"), 1)
 	assert.Equal(t, expected, user.CollectionChannels(collection.ScopeName, collection.Name))
 
-	expected.AddChannel("CrunchyRoll", 2)
+	expected.AddChannel("CrunchyRoll", 2, "")
 	assert.Equal(t, expected, user.InheritedCollectionChannels(collection.ScopeName, collection.Name))
 }
 

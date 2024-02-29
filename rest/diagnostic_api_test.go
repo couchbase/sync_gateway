@@ -159,7 +159,6 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	const bob = "bob"
 	userPayload := `{
 		%s
-		"admin_channels":["foo", "bar"],
 		"collection_access": {
 			"%s": {
 				"%s": {
@@ -239,7 +238,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 
 	// Assign new channel to user bob through role1 and assert all_channels includes it
 	response = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/doc2",
-		`{"role":"role:role1", "user":"bob"}`)
+		`{"role":"role:role1", "user":"bob", "accessUser":"alice", "accessChannel":["aliceDynamic"]}`)
 	RequireStatus(t, response, http.StatusCreated)
 	var putResp putResponse
 	err = json.Unmarshal(response.BodyBytes(), &putResp)
@@ -272,7 +271,6 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicRoleGrants["role1"][keyspace2]), []string{"role1Chan", "!"})
 	assert.Equal(t, channelMap.DynamicRoleGrants["role1"][keyspace2]["role1Chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 5, EndSeq: 7}})
 
-	//RequireStatus(t, response, http.StatusCreated)
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+alice+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
@@ -280,6 +278,24 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[keyspace2]), []string{"a", "chan2coll2"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants[keyspace2]), []string{"!", "aliceDynamic"})
+
+	//Remove channels a and chan2coll2 and assert theyre still in DynamicGrants
+	response = rt.SendAdminRequest(http.MethodPut,
+		"/"+dbName+"/_user/"+alice, fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`,
+			scopeName, collection1Name, fmt.Sprintf(collectionPayload, collection2Name, ``)))
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/"+dbName+"/_user/"+alice+"/_all_channels", ``)
+	RequireStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &channelMap)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[keyspace2]), []string{"a", "chan2coll2"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants[keyspace2]), []string{"!", "aliceDynamic"})
+	assert.Equal(t, channelMap.AdminGrants[keyspace2]["a"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 1, EndSeq: 8}})
+	assert.Equal(t, channelMap.DynamicGrants[keyspace2]["aliceDynamic"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 5, EndSeq: 6}})
+
 }
 
 func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
@@ -343,7 +359,6 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 	err := json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[newCollection.String()]), []string{"A", "B", "C"})
-	t.Log(response.BodyString())
 	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants["_default._default"]), []string{"foo", "bar"})
 
 	// Assign new channel to user alice and assert all_channels includes it

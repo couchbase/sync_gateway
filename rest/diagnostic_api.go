@@ -40,6 +40,9 @@ func (h *handler) handleGetAllChannels() error {
 	resp.AdminRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory, len(user.ExplicitRoles()))
 	authenticator := h.db.Authenticator(h.ctx())
 	userPrinc, err := authenticator.GetPrincipal(user.Name(), true)
+	if err != nil {
+		return err
+	}
 
 	if h.db.OnlyDefaultCollection() {
 		defaultKeyspace := "_default._default"
@@ -49,7 +52,7 @@ func (h *handler) handleGetAllChannels() error {
 		if err != nil {
 			return err
 		}
-		for channel, chanEntry := range userPrinc.Channels() {
+		for channel, chanEntry := range user.Channels() {
 			if chanEntry.Source == channels.AdminGrant {
 				resp.AdminGrants[defaultKeyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
 			} else if chanEntry.Source == channels.DynamicGrant {
@@ -58,7 +61,7 @@ func (h *handler) handleGetAllChannels() error {
 				resp.JWTGrants[defaultKeyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
 			}
 		}
-		for channel, chanHistory := range userPrinc.ChannelHistory() {
+		for channel, chanHistory := range user.ChannelHistory() {
 			if chanHistory.Source == channels.AdminGrant {
 				resp.AdminGrants[defaultKeyspace][channel] = chanHistory
 			} else if chanHistory.Source == channels.DynamicGrant {
@@ -111,14 +114,13 @@ func (h *handler) handleGetAllChannels() error {
 	}
 	for roleName, roleEntry := range user.RoleNames() {
 		role, err := h.db.Authenticator(h.ctx()).GetRole(roleName)
-		rolePrinc, err := authenticator.GetPrincipal(roleName, false)
 		if err != nil {
 			return err
 		}
 		if role == nil {
 			continue
 		}
-		collAccessAll := rolePrinc.GetCollectionsAccess()
+		collAccessAll := role.GetCollectionsAccess()
 		resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
 		resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
 
@@ -197,7 +199,7 @@ func (h *handler) handleGetAllChannels() error {
 	}
 
 	// Loop over current and past channels
-	for scope, collectionConfig := range userPrinc.GetCollectionsAccess() {
+	for scope, collectionConfig := range user.GetCollectionsAccess() {
 		for collectionName, CAConfig := range collectionConfig {
 			keyspace := scope + "." + collectionName
 			resp.AdminGrants[keyspace] = make(map[string]auth.GrantHistory)
@@ -234,12 +236,14 @@ func (h *handler) handleGetAllChannels() error {
 	}
 
 	// Single named collection + default collection handling, if all_channels includes more than one channel ("!"), its using the default collection.
-	if len(user.Channels().AllKeys()) != 1 {
+	if len(user.ExplicitChannels().AllKeys()) != 0 {
 		err = authenticator.RebuildCollectionChannels(userPrinc, "_default", "_default")
-
+		if err != nil {
+			return err
+		}
 		resp.AdminGrants["_default._default"] = make(map[string]auth.GrantHistory)
 		resp.DynamicGrants["_default._default"] = make(map[string]auth.GrantHistory)
-		for channel, chanEntry := range userPrinc.Channels() {
+		for channel, chanEntry := range user.Channels() {
 			if chanEntry.Source == channels.AdminGrant {
 				resp.AdminGrants["_default._default"][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
 			} else if chanEntry.Source == channels.DynamicGrant {
@@ -248,7 +252,7 @@ func (h *handler) handleGetAllChannels() error {
 				resp.JWTGrants["_default._default"][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
 			}
 		}
-		for channel, chanHistory := range userPrinc.ChannelHistory() {
+		for channel, chanHistory := range user.ChannelHistory() {
 			if chanHistory.Source == channels.AdminGrant {
 				resp.AdminGrants["_default._default"][channel] = chanHistory
 			} else if chanHistory.Source == channels.DynamicGrant {
