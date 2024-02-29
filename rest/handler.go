@@ -1441,9 +1441,8 @@ func (h *handler) writeError(err error) {
 		status, message := base.ErrorAsHTTPStatus(err)
 		h.writeStatus(status, message)
 		if status >= 500 {
-			// Log additional context when the handler has a database reference
-			if h.db != nil {
-				base.ErrorfCtx(h.ctx(), "%s: %v", h.formatSerialNumber(), err)
+			if status == http.StatusServiceUnavailable {
+				base.InfofCtx(h.ctx(), base.KeyHTTP, "%s: %v", h.formatSerialNumber(), err)
 			} else {
 				base.ErrorfCtx(h.ctx(), "%s: %v", h.formatSerialNumber(), err)
 			}
