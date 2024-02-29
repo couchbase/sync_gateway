@@ -2552,6 +2552,22 @@ AllUserChannels:
             type: integer
             description: Unix timestamp of last update
 
+    jwt_grants:
+      description: |-
+        Channels assigned to the user through JWT.
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: channel
+        description: Channel name
+        type: object
+        properties:
+          Entries:
+            type: array
+            description: Start sequence to end sequence
+          UpdatedAt:
+            type: integer
+            description: Unix timestamp of last update
+
     admin_role_grants:
       description: |-
         Channels assigned to the user through the admin API, by assigning a role to the user through admin_roles,
@@ -2586,18 +2602,4 @@ AllUserChannels:
             type: integer
             description: Unix timestamp of last update
 
-    role_history_grants:
-      description: |-
-        Channels that the user had access to through a role they no longer have. Includes both admin and dynamic roles.
-      type: object
-      additionalProperties:
-        x-additionalPropertiesName: channel
-        description: Channel name
-        type: object
-        properties:
-          Entries:
-            type: array
-            description: Start sequence to end sequence
-          UpdatedAt:
-            type: integer
-            description: Unix timestamp of last update
+
