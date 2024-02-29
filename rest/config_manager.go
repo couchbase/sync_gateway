@@ -405,6 +405,13 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 		}
 
 		config.cfgCas = cas
+
+		if version == invalidDatabaseVersion {
+			// special case - return the invalid config to use in updates (repairs). Configs with this version will not be loaded by SG.
+			config.Version = invalidDatabaseVersion
+			return false, nil, config
+		}
+
 		// If version matches, success!
 		if config.Version == version {
 			return false, nil, config

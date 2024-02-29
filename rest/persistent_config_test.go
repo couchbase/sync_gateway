@@ -591,11 +591,15 @@ func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback
 	_, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, cas1, &updatedConfig)
 	require.NoError(t, err)
 
-	// should expect db1 to fail because collection2 is shared by two databases during rollback handling
-	// 2024-02-20T12:43:34.781Z [DBG] Config+: t:TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback Unable to fetch configs for group "default" from bucket "sg_int_rosmar_dbebb851aa6902995e06cb775a509ab1": Unable to roll back registry to match existing config for database c1_db1(default): 409 Cannot rollback config for database c1_db1 - collections are in use by another database: map[sg_test_0.sg_test_1:c1_db2]
+	// should expect db1 to fail because collection2 is shared by two databases during rollback handling, db2 should (re)load
 	count, err := sc.fetchAndLoadConfigs(ctx, false)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, count) // db2 is still valid
+	_, err = sc.GetActiveDatabase(dbName1)
+	require.Error(t, err)
+	_, err = sc.GetActiveDatabase(dbName2)
+	require.NoError(t, err)
+	sc.RequireInvalidDatabaseConfigNames(t, []string{dbName1})
 
 	// at this point the config and registry are still not aligned, let's write a correcting update to make sure it's in a repairable state
 	_, err = bc.UpdateConfig(ctx, bucketName, groupID, dbName1, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {

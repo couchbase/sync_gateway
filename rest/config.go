@@ -1746,20 +1746,20 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			continue
 		}
 		for _, cnf := range configs {
-
-			// inherit properties the bootstrap config
-			cnf.CACertPath = sc.Config.Bootstrap.CACertPath
-
-			// We need to check for corruption in the database config (CC. CBG-3292). If the fetched config doesn't match the
-			// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
-			// in memory representation on the server context.
-			if bucket != cnf.GetBucketName() {
+			// Handle invalid database registry entries. Either:
+			// - CBG-3292: Bucket in config doesn't match the actual bucket
+			// - CBG-3742: Registry entry marked invalid (due to rollback causing collection conflict)
+			if cnf.Version == invalidDatabaseVersion || bucket != cnf.GetBucketName() {
 				sc.handleInvalidDatabaseConfig(ctx, bucket, *cnf)
 				continue
 			}
+
 			bucketCopy := bucket
 			// no corruption detected carry on as usual
 			cnf.Bucket = &bucketCopy
+
+			// inherit properties the bootstrap config
+			cnf.CACertPath = sc.Config.Bootstrap.CACertPath
 
 			// stamp per-database credentials if set
 			if dbCredentials, ok := sc.Config.DatabaseCredentials[cnf.Name]; ok && dbCredentials != nil {

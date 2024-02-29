@@ -51,7 +51,12 @@ type GatewayRegistry struct {
 
 const GatewayRegistryVersion = "1.0"
 
-const deletedDatabaseVersion = "0-0"
+const (
+	// deletedDatabaseVersion represents an entry for an in-progress delete
+	deletedDatabaseVersion = "0-0"
+	// invalidDatabaseVersion represents an entry for a rollback-induced invalid state
+	invalidDatabaseVersion = "0-1"
+)
 
 // RegistryConfigGroup stores the set of databases for a given config group
 type RegistryConfigGroup struct {
@@ -60,18 +65,18 @@ type RegistryConfigGroup struct {
 
 // RegistryDatabase stores the version and set of RegistryScopes for a database
 type RegistryDatabase struct {
-	RegistryDatabaseVersion        // current version
-	MetadataID              string `json:"metadata_id"`    // Metadata ID
-	UUID                    string `json:"uuid,omitempty"` // Database UUID
+	RegistryDatabaseVersion // current version
 	// PreviousVersion stores the previous database version while an update is in progress, in case update of the config
 	// fails and rollback is required.  Required to avoid cross-database collection conflicts during rollback.
 	PreviousVersion *RegistryDatabaseVersion `json:"previous_version,omitempty"`
+	MetadataID      string                   `json:"metadata_id"`    // Metadata ID
+	UUID            string                   `json:"uuid,omitempty"` // Database UUID
 }
 
 // DatabaseVersion stores the version and collection set for a database.  Used for storing current or previous version.
 type RegistryDatabaseVersion struct {
-	Version string         `json:"version,omitempty"` // Database Version
 	Scopes  RegistryScopes `json:"scopes,omitempty"`  // Scopes and collections for this version
+	Version string         `json:"version,omitempty"` // Database Version
 }
 
 type RegistryScopes map[string]RegistryScope
@@ -211,10 +216,8 @@ func (r *GatewayRegistry) rollbackDatabaseConfig(ctx context.Context, configGrou
 		base.InfofCtx(ctx, base.KeyConfig, "Rollback requested but registry did not include previous version for db %s - using config doc as previous version", base.UD(dbName))
 		setRegistryDatabaseFromConfig(registryDatabase, config)
 		if conflicts := r.getCollectionConflicts(ctx, dbName, config.Scopes); len(conflicts) > 0 {
-			base.WarnfCtx(ctx, "db %s config rollback would cause collection conflicts (%v) - removing all collections from database to allow for manual repair", base.UD(dbName), base.UD(conflicts))
-			for _, scope := range registryDatabase.Scopes {
-				scope.Collections = make([]string, 0)
-			}
+			base.WarnfCtx(ctx, "db %s config rollback would cause collection conflicts (%v) - marking database as invalid to allow for manual repair", base.UD(dbName), base.UD(conflicts))
+			registryDatabase.Version = invalidDatabaseVersion
 		}
 		return nil
 	}
