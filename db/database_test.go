@@ -1546,10 +1546,12 @@ func TestAccessFunctionDb(t *testing.T) {
 
 	user, err = authenticator.GetUser("naomi")
 	assert.NoError(t, err, "GetUser")
-	expected := channels.AtSequence(channels.BaseSetOf(t, "Hulu", "Netflix", "!"), 1)
+	expected := channels.TimedSet{"Hulu": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1), Source: channels.DynamicGrant},
+		"Netflix": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1), Source: channels.AdminGrant},
+		"!":       channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1), Source: channels.DynamicGrant}}
 	assert.Equal(t, expected, user.CollectionChannels(collection.ScopeName, collection.Name))
 
-	expected.AddChannel("CrunchyRoll", 2, "")
+	expected.AddChannel("CrunchyRoll", 2, channels.AdminGrant)
 	assert.Equal(t, expected, user.InheritedCollectionChannels(collection.ScopeName, collection.Name))
 }
 
