@@ -9,6 +9,7 @@
 package xdcr
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -32,8 +33,11 @@ func TestCBSXDCR(t *testing.T) {
 	toBucket, err := base.AsGocbV2Bucket(bucket2)
 	require.NoError(t, err)
 
-	xdcr, err := NewCouchbaseServerXDCR(ctx, fromBucket, toBucket, MobileOff)
+	xdcr, err := NewCouchbaseServerXDCR(ctx, fromBucket, toBucket, serverMobileOff)
 	require.NoError(t, err)
+	// set filter for sync docs as mobile xdcr is not on
+	xdcr.filter = fmt.Sprintf("NOT REGEXP_CONTAINS(META().id, \"^%s\") OR REGEXP_CONTAINS(META().id, \"^%s\")", base.SyncDocPrefix, base.Att2Prefix)
+
 	err = xdcr.Start(ctx)
 	require.NoError(t, err)
 	defer func() {
@@ -82,7 +86,7 @@ func TestCBSXDCR(t *testing.T) {
 //   - Assert that the version vector is written on destination bucket for each replicated doc
 func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is testing Couchbase Server XDCR")
+		t.Skip("This test is testing Couchbase Server XDCR, enable in CBG-3703")
 	}
 	ctx := base.TestCtx(t)
 	bucket1 := base.GetTestBucket(t)
@@ -100,7 +104,7 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 		t.Skip("test requires mobile XDCR")
 	}
 
-	xdcr, err := NewCouchbaseServerXDCR(ctx, fromBucket, toBucket, MobileActive)
+	xdcr, err := NewCouchbaseServerXDCR(ctx, fromBucket, toBucket, serverMobileOn)
 	require.NoError(t, err)
 	err = xdcr.Start(ctx)
 	require.NoError(t, err)

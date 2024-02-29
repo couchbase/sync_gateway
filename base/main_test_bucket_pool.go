@@ -13,7 +13,6 @@ package base
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -131,7 +130,7 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 	}
 	tbp.skipCollections = !useCollections
 
-	useMobileXDCR, err := tbp.canUseMobileXDCR(ctx)
+	useMobileXDCR, err := tbp.cluster.mobileXDCRCompatible(ctx)
 	if err != nil {
 		tbp.Fatalf(ctx, "%s", err)
 	}
@@ -460,27 +459,13 @@ func (tbp *TestBucketPool) setXDCRBucketSetting(ctx context.Context, bucket Buck
 	posts.Add("enableCrossClusterVersioning", "true")
 
 	url := fmt.Sprintf("/pools/default/buckets/%s", store.GetName())
-	_, statusCode, err := mgmtRequest(ctx, store, http.MethodPost, url, strings.NewReader(posts.Encode()))
+	output, statusCode, err := store.MgmtRequest(ctx, http.MethodPost, url, "application/x-www-form-urlencoded", strings.NewReader(posts.Encode()))
 	if err != nil {
-		tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed, error: %v", err)
+		tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed, status code: %d error: %v output: %s", statusCode, err, string(output))
 	}
 	if statusCode != http.StatusOK {
 		tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed with status code, %d", statusCode)
 	}
-}
-
-// mgmtRequest sends REST API request to server
-func mgmtRequest(ctx context.Context, bucket CouchbaseBucketStore, method, url string, body io.Reader) ([]byte, int, error) {
-	resp, err := bucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", body)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	output, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, 0, fmt.Errorf("Could not read body from %s", url)
-	}
-	return output, resp.StatusCode, nil
 }
 
 // createCollections will create a set of test collections on the bucket, if enabled...

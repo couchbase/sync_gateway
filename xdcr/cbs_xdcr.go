@@ -11,7 +11,6 @@ package xdcr
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -28,10 +27,19 @@ const (
 	totalDocsWrittenStat      = "xdcr_docs_written_total"
 )
 
+type serverMobileSetting uint8
+
+const (
+	serverMobileOff = iota
+	serverMobileOn
+)
+
 const (
 	MobileOff    = "Off"
 	MobileActive = "Active"
 )
+
+var MobileCompatibilityStrings = [...]string{MobileOff, MobileActive}
 
 // CouchbaseServerXDCR implements a XDCR setup cluster on Couchbase Server.
 type CouchbaseServerXDCR struct {
@@ -39,27 +47,14 @@ type CouchbaseServerXDCR struct {
 	toBucket      *base.GocbV2Bucket
 	replicationID string
 	MobileSetting string
-}
-
-// mgmtRequest makes a request to the Couchbase Server management API in the format for xdcr.
-func mgmtRequest(ctx context.Context, bucket *base.GocbV2Bucket, method, url string, body io.Reader) ([]byte, int, error) {
-	resp, err := bucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", body)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	output, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, 0, fmt.Errorf("Could not read body from %s", url)
-	}
-	return output, resp.StatusCode, nil
+	filter        string
 }
 
 // isClusterPresent returns true if the XDCR cluster is present, false if it is not present, and an error if it could not be determined.
 func isClusterPresent(ctx context.Context, bucket *base.GocbV2Bucket) (bool, error) {
 	method := http.MethodGet
 	url := cbsRemoteClustersEndpoint
-	output, statusCode, err := mgmtRequest(ctx, bucket, http.MethodGet, url, nil)
+	output, statusCode, err := bucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", nil)
 	if err != nil {
 		return false, err
 	}
@@ -86,7 +81,7 @@ func isClusterPresent(ctx context.Context, bucket *base.GocbV2Bucket) (bool, err
 func deleteCluster(ctx context.Context, bucket *base.GocbV2Bucket) error {
 	method := http.MethodDelete
 	url := "/pools/default/remoteClusters/" + xdcrClusterName
-	output, statusCode, err := mgmtRequest(ctx, bucket, method, url, nil)
+	output, statusCode, err := bucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", nil)
 	if err != nil {
 		return err
 	}
@@ -112,7 +107,8 @@ func createCluster(ctx context.Context, bucket *base.GocbV2Bucket) error {
 	body.Add("password", base.TestClusterPassword())
 	body.Add("secure", "full")
 	url := cbsRemoteClustersEndpoint
-	output, statusCode, err := mgmtRequest(ctx, bucket, method, url, strings.NewReader(body.Encode()))
+
+	output, statusCode, err := bucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", strings.NewReader(body.Encode()))
 	if err != nil {
 		return err
 	}
@@ -123,10 +119,7 @@ func createCluster(ctx context.Context, bucket *base.GocbV2Bucket) error {
 }
 
 // NewCouchbaseServerXDCR creates an instance of XDCR backed by Couchbase Server. This is not started until Start is called.
-func NewCouchbaseServerXDCR(ctx context.Context, fromBucket *base.GocbV2Bucket, toBucket *base.GocbV2Bucket, mobileSetting string) (*CouchbaseServerXDCR, error) {
-	if mobileSetting == "" {
-		return nil, fmt.Errorf("must specify mobile setting in new XDCR clsuter")
-	}
+func NewCouchbaseServerXDCR(ctx context.Context, fromBucket *base.GocbV2Bucket, toBucket *base.GocbV2Bucket, mobileSetting serverMobileSetting) (*CouchbaseServerXDCR, error) {
 	isPresent, err := isClusterPresent(ctx, fromBucket)
 	if err != nil {
 		return nil, err
@@ -145,7 +138,7 @@ func NewCouchbaseServerXDCR(ctx context.Context, fromBucket *base.GocbV2Bucket, 
 	return &CouchbaseServerXDCR{
 		fromBucket:    fromBucket,
 		toBucket:      toBucket,
-		MobileSetting: mobileSetting,
+		MobileSetting: MobileCompatibilityStrings[mobileSetting],
 	}, nil
 }
 
@@ -158,15 +151,14 @@ func (x *CouchbaseServerXDCR) Start(ctx context.Context) error {
 	body.Add("toBucket", x.toBucket.GetName())
 	body.Add("toCluster", xdcrClusterName)
 	body.Add("replicationType", "continuous")
-	// if mobile setting is active, set the setting on thw replication
-	if x.MobileSetting != MobileOff {
-		body.Add("mobile", x.MobileSetting)
-	} else {
-		// filters all sync docs, except binary docs (attachments)
-		body.Add("filterExpression", fmt.Sprintf("NOT REGEXP_CONTAINS(META().id, \"^%s\") OR REGEXP_CONTAINS(META().id, \"^%s\")", base.SyncDocPrefix, base.Att2Prefix))
+	// set the mobile flag on the replication
+	body.Add("mobile", x.MobileSetting)
+	// add filter is needed
+	if x.filter != "" {
+		body.Add("filterExpression", x.filter)
 	}
 	url := "/controller/createReplication"
-	output, statusCode, err := mgmtRequest(ctx, x.fromBucket, method, url, strings.NewReader(body.Encode()))
+	output, statusCode, err := x.fromBucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", strings.NewReader(body.Encode()))
 	if err != nil {
 		return err
 	}
@@ -192,7 +184,7 @@ func (x *CouchbaseServerXDCR) Start(ctx context.Context) error {
 func (x *CouchbaseServerXDCR) Stop(ctx context.Context) error {
 	method := http.MethodDelete
 	url := "/controller/cancelXDCR/" + url.PathEscape(x.replicationID)
-	output, statusCode, err := mgmtRequest(ctx, x.fromBucket, method, url, nil)
+	output, statusCode, err := x.fromBucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", nil)
 	if err != nil {
 		return err
 	}

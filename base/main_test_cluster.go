@@ -11,7 +11,6 @@ package base
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -27,8 +26,16 @@ type tbpCluster interface {
 	supportsCollections() (bool, error)
 	supportsMobileRBAC() (bool, error)
 	isServerEnterprise() (bool, error)
-	mobileXDCRCompatible() (bool, error)
+	mobileXDCRCompatible(ctx context.Context) (bool, error)
 	close(context.Context) error
+}
+
+// firstServerVersionToSupportMobileXDCR this is the first server version to support Mobile XDCR feature
+var firstServerVersionToSupportMobileXDCR = &ComparableBuildVersion{
+	epoch: 0,
+	major: 7,
+	minor: 6,
+	patch: 1,
 }
 
 type clusterLogFunc func(ctx context.Context, format string, args ...interface{})
@@ -41,9 +48,10 @@ func newTestCluster(ctx context.Context, server string, logger clusterLogFunc) t
 
 // tbpClusterV2 implements the tbpCluster interface for a gocb v2 cluster
 type tbpClusterV2 struct {
-	logger  clusterLogFunc
-	server  string // server address to connect to cluster
-	connstr string // connection string used to connect to the cluster
+	logger      clusterLogFunc
+	server      string // server address to connect to cluster
+	connstr     string // connection string used to connect to the cluster
+	supportsHLV bool   // Flag to indicate cluster supports Mobile XDCR
 	// cluster can be used to perform cluster-level operations (but not bucket-level operations)
 	cluster *gocb.Cluster
 }
@@ -166,12 +174,8 @@ func (c *tbpClusterV2) openTestBucket(ctx context.Context, testBucketName tbpBuc
 		return nil, err
 	}
 
-	// if bucket is on server version > 7.6.1, we always set the mobile XDCR bucket setting. So add this to bucket object
-	ok, err := c.mobileXDCRCompatible()
-	if err != nil {
-		return bucketFromSpec, err
-	}
-	if ok {
+	// add whether bucket is mobile XDCR ready to bucket object
+	if c.supportsHLV {
 		bucketFromSpec.supportsHLV = true
 	}
 
@@ -216,7 +220,7 @@ func (c *tbpClusterV2) supportsMobileRBAC() (bool, error) {
 }
 
 // mobileXDCRCompatible checks if a cluster is mobile XDCR compatible, a cluster must be enterprise edition AND > 7.6.1
-func (c *tbpClusterV2) mobileXDCRCompatible() (bool, error) {
+func (c *tbpClusterV2) mobileXDCRCompatible(ctx context.Context) (bool, error) {
 	enterprise, err := c.isServerEnterprise()
 	if err != nil {
 		return false, err
@@ -230,32 +234,21 @@ func (c *tbpClusterV2) mobileXDCRCompatible() (bool, error) {
 		return false, err
 	}
 
-	// take server version
+	// take server version, server version will be the first 5 character of version string
+	// in the form of x.x.x
 	vrs := metadata[0].Version[:5]
 
-	ok, err := serverSupportsMobileXDCR(vrs)
+	// convert the above string into a comparable string
+	version, err := NewComparableBuildVersionFromString(vrs)
 	if err != nil {
 		return false, err
 	}
-	if ok {
+
+	if !version.Less(firstServerVersionToSupportMobileXDCR) {
+		c.supportsHLV = true
 		return true, nil
 	}
-	return false, nil
-}
+	c.logger(ctx, "cluster does not support mobile XDCR")
 
-func serverSupportsMobileXDCR(vrs string) (bool, error) {
-	strList := strings.Split(vrs, ".")
-	major, err := strconv.Atoi(strList[0])
-	if err != nil {
-		return false, err
-	}
-	minor, err := strconv.Atoi(strList[1])
-	if err != nil {
-		return false, err
-	}
-	patch, err := strconv.Atoi(strList[2])
-	if err != nil {
-		return false, err
-	}
-	return major >= 7 && minor >= 6 && patch >= 1, nil
+	return false, nil
 }
