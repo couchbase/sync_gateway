@@ -2767,7 +2767,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	assert.Equal(t, db.BackgroundProcessStateCompleted, tombstoneCompactionStatus.State)
 	assert.Empty(t, tombstoneCompactionStatus.LastErrorMessage)
 	assert.Equal(t, 0, int(tombstoneCompactionStatus.DocsPurged))
-	firstStartTimeStat := rt.GetDatabase().DbStats.Database().CompactionAttachmentStartTime.Value()
+	firstStartTimeStat := rt.GetDatabase().DbStats.Database().CompactionTombstoneStartTime.Value()
 	assert.NotEqual(t, 0, firstStartTimeStat)
 
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
@@ -2783,7 +2783,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 		return tombstoneCompactionStatus.State == db.BackgroundProcessStateCompleted
 	})
 	assert.NoError(t, err)
-	assert.True(t, rt.GetDatabase().DbStats.Database().CompactionAttachmentStartTime.Value() > firstStartTimeStat)
+	assert.True(t, rt.GetDatabase().DbStats.Database().CompactionTombstoneStartTime.Value() > firstStartTimeStat)
 
 	resp = rt.SendAdminRequest("GET", "/{{.db}}/_compact", "")
 	RequireStatus(t, resp, http.StatusOK)
