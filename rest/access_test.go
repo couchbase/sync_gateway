@@ -861,10 +861,10 @@ func TestChannelAccessChanges(t *testing.T) {
 		t,
 
 		channels.TimedSet{
-			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1))},
-			"zero":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1))},
-			"alpha": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1))},
-			"delta": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(deltaGrantDocSeq)},
+			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.DynamicGrant},
+			"zero":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.AdminGrant},
+			"alpha": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.DynamicGrant},
+			"delta": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(deltaGrantDocSeq), Source: channels.DynamicGrant},
 		}, alice.CollectionChannels(s, c))
 
 	zegpold, _ = a.GetUser("zegpold")
@@ -872,9 +872,9 @@ func TestChannelAccessChanges(t *testing.T) {
 		t,
 
 		channels.TimedSet{
-			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1))},
-			"zero":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1))},
-			"gamma": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(gammaGrantDocSeq)},
+			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.DynamicGrant},
+			"zero":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.AdminGrant},
+			"gamma": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(gammaGrantDocSeq), Source: channels.DynamicGrant},
 		}, zegpold.CollectionChannels(s, c))
 
 	// Update a document to revoke access to alice and grant it to zegpold:
@@ -891,9 +891,9 @@ func TestChannelAccessChanges(t *testing.T) {
 		t,
 
 		channels.TimedSet{
-			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1))},
-			"zero":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1))},
-			"delta": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(deltaGrantDocSeq)},
+			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.DynamicGrant},
+			"zero":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.AdminGrant},
+			"delta": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(deltaGrantDocSeq), Source: channels.DynamicGrant},
 		}, alice.CollectionChannels(s, c))
 
 	zegpold, _ = a.GetUser("zegpold")
@@ -901,10 +901,10 @@ func TestChannelAccessChanges(t *testing.T) {
 		t,
 
 		channels.TimedSet{
-			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1))},
-			"zero":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1))},
-			"alpha": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(alphaGrantDocSeq)},
-			"gamma": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(gammaGrantDocSeq)},
+			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.DynamicGrant},
+			"zero":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.AdminGrant},
+			"alpha": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(alphaGrantDocSeq), Source: channels.DynamicGrant},
+			"gamma": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(gammaGrantDocSeq), Source: channels.DynamicGrant},
 		}, zegpold.CollectionChannels(s, c))
 
 	rt.MustWaitForDoc("alpha", t)

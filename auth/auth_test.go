@@ -527,7 +527,7 @@ func TestRebuildUserRoles(t *testing.T) {
 	user1, err := auth.GetUser("testUser")
 	assert.Equal(t, nil, err)
 	expected := ch.AtSequence(base.SetOf("role1", "role3"), 1)
-	expected.AddChannel("role2", 3, "")
+	expected.AddChannel("role2", 3, ch.AdminGrant)
 	assert.Equal(t, expected, user1.RoleNames())
 
 	// Invalidate the roles, triggers rebuild
@@ -537,7 +537,7 @@ func TestRebuildUserRoles(t *testing.T) {
 	user2, err := auth.GetUser("testUser")
 	assert.Equal(t, nil, err)
 	expected = ch.AtSequence(base.SetOf("role1", "role3"), 1)
-	expected.AddChannel("role2", 3, "")
+	expected.AddChannel("role2", 3, ch.AdminGrant)
 	assert.Equal(t, expected, user2.RoleNames())
 }
 

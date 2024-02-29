@@ -1527,8 +1527,8 @@ func TestAccessFunctionDb(t *testing.T) {
 
 	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	require.NoError(t, err)
-	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)},
-		"tumblr": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)}}, 1)
+	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1), Source: channels.AdminGrant},
+		"tumblr": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1), Source: channels.AdminGrant}}, 1)
 	assert.NoError(t, authenticator.Save(user), "Save")
 
 	body := Body{"users": []string{"naomi"}, "userChannels": []string{"Hulu"}}

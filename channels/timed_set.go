@@ -356,9 +356,9 @@ func (set TimedSet) String() string {
 	for channel, entry := range set {
 		if entry.VbSequence.Sequence > 0 {
 			if entry.VbSequence.VbNo != nil {
-				items = append(items, fmt.Sprintf("%s:%d.%d.%s", channel, *entry.VbSequence.VbNo, entry.VbSequence.Sequence, entry.Source))
+				items = append(items, fmt.Sprintf("%s:%d.%d_%s", channel, *entry.VbSequence.VbNo, entry.VbSequence.Sequence, entry.Source))
 			} else {
-				items = append(items, fmt.Sprintf("%s:%d.%s", channel, entry.VbSequence.Sequence, entry.Source))
+				items = append(items, fmt.Sprintf("%s:%d_%s", channel, entry.VbSequence.Sequence, entry.Source))
 			}
 		}
 	}
@@ -385,6 +385,19 @@ func TimedSetFromString(encoded string) TimedSet {
 				return nil
 			}
 			// VB sequence handling
+			source := ""
+			if strings.Contains(components[1], "_") {
+				seqComponents := strings.Split(components[1], "_")
+				switch seqComponents[1] {
+				case AdminGrant:
+					source = AdminGrant
+				case DynamicGrant:
+					source = DynamicGrant
+				case JWTGrant:
+					source = JWTGrant
+				}
+				components[1] = seqComponents[0]
+			}
 			if strings.Contains(components[1], ".") {
 				seqComponents := strings.Split(components[1], ".")
 				if len(seqComponents) != 2 {
@@ -399,14 +412,14 @@ func TimedSetFromString(encoded string) TimedSet {
 				if err != nil {
 					return nil
 				}
-				set[channel] = TimedSetEntry{VbSequence: NewVbSequence(uint16(vbNo), vbSeq)}
+				set[channel] = TimedSetEntry{VbSequence: NewVbSequence(uint16(vbNo), vbSeq), Source: source}
 			} else {
 				// Simple sequence handling
 				seqNo, err := strconv.ParseUint(components[1], 10, 64)
 				if err != nil || seqNo == 0 {
 					return nil
 				}
-				set[channel] = TimedSetEntry{VbSequence: NewVbSimpleSequence(seqNo)}
+				set[channel] = TimedSetEntry{VbSequence: NewVbSimpleSequence(seqNo), Source: source}
 			}
 		}
 	}
