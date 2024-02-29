@@ -286,6 +286,12 @@ func (auth *Authenticator) RebuildCollectionChannels(princ Principal, scope, col
 
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Recomputed channels for %q (%s.%s): %s", base.UD(princ.Name()), base.MD(scope), base.MD(collection), base.UD(channels))
 	ca.SetChannelInvalSeq(0)
+	for channel, chanentry := range channels {
+		if chanentry.Source == "" {
+			base.InfofCtx(auth.LogCtx, base.KeyAccess, fmt.Sprintf("NO SOURCE FOR chan name: %s", channel))
+			return nil
+		}
+	}
 	ca.setChannels(channels)
 
 	return nil
@@ -313,6 +319,9 @@ func (auth *Authenticator) CalculateHistory(princName string, invalSeq uint64, i
 		currentHistoryForGrant, ok := currentHistory[previousName]
 		if !ok {
 			currentHistoryForGrant = GrantHistory{}
+		}
+		if previousInfo.Source == "" {
+			base.DebugfCtx(auth.LogCtx, base.KeyCRUD, fmt.Sprintf("NO PREVIOUS CHANNEL SOURCE chan %s", previousName))
 		}
 
 		// Add grant to history
