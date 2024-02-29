@@ -1410,6 +1410,9 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	purgeOlderThan := startTime.Add(-purgeInterval)
 
 	purgedDocCount := 0
+	purgeErrorCount := 0
+	addErrorCount := 0
+	deleteErrorCount := 0
 
 	defer callback(&purgedDocCount)
 
@@ -1456,7 +1459,8 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 					// If key no longer exists, need to add and remove to trigger removal from view
 					_, addErr := collection.dataStore.Add(tombstonesRow.Id, 0, purgeBody)
 					if addErr != nil {
-						base.WarnfCtx(ctx, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
+						addErrorCount++
+						base.InfofCtx(ctx, base.KeyAll, "Couldn't compact key %s (add): %v", base.UD(tombstonesRow.Id), addErr)
 						continue
 					}
 
@@ -1465,10 +1469,12 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 					purgedDocs = append(purgedDocs, tombstonesRow.Id)
 
 					if delErr := collection.dataStore.Delete(tombstonesRow.Id); delErr != nil {
-						base.ErrorfCtx(ctx, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
+						deleteErrorCount++
+						base.InfofCtx(ctx, base.KeyAll, "Couldn't compact key %s (delete): %v", base.UD(tombstonesRow.Id), delErr)
 					}
 				} else {
-					base.WarnfCtx(ctx, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
+					purgeErrorCount++
+					base.InfofCtx(ctx, base.KeyAll, "Couldn't compact key %s (purge): %v", base.UD(tombstonesRow.Id), purgeErr)
 				}
 			}
 
@@ -1494,6 +1500,10 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 		}
 	}
 	base.InfofCtx(ctx, base.KeyAll, "Finished compaction of purged tombstones for %s... Total Tombstones Compacted: %d", base.MD(db.Name), purgedDocCount)
+
+	if purgeErrorCount > 0 || deleteErrorCount > 0 || addErrorCount > 0 {
+		base.WarnfCtx(ctx, "Compaction finished with %d errors (add: %d, delete: %d, purge: %d)", addErrorCount+deleteErrorCount+purgeErrorCount, addErrorCount, deleteErrorCount, purgeErrorCount)
+	}
 
 	return purgedDocCount, nil
 }
