@@ -10,10 +10,11 @@ package channels
 
 import (
 	"fmt"
-	"github.com/couchbase/sync_gateway/base"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 const (
