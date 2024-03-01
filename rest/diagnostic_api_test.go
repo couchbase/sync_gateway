@@ -230,10 +230,13 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 				"%s": {
 					"%s": {
 						"admin_channels":["role1Chan"]
+					},
+					"%s": {
+						"admin_channels":[]
 					}
 				}
 			}
-		}`, scopeName, collection2Name))
+		}`, scopeName, collection2Name, collection1Name))
 	RequireStatus(t, response, http.StatusCreated)
 
 	// Assign new channel to user bob through role1 and assert all_channels includes it
@@ -261,15 +264,21 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodDelete,
 		fmt.Sprintf("/{{.keyspace2}}/doc2?rev=%s", revID), "")
 	RequireStatus(t, response, http.StatusOK)
-
+	// and wait for a few to be done before we proceed with updating database config underneath replication
+	_, err = rt.WaitForChanges(1, "/{{.keyspace2}}/_changes", "", true)
+	require.NoError(t, err)
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+bob+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
-
+	t.Log(channelMap)
 	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicRoleGrants["role1"][keyspace2]), []string{"role1Chan", "!"})
 	assert.Equal(t, channelMap.DynamicRoleGrants["role1"][keyspace2]["role1Chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 5, EndSeq: 7}})
+	response = rt.SendAdminRequest(http.MethodGet,
+		"/"+dbName+"/_role/role1", ``)
+	RequireStatus(t, response, http.StatusOK)
+	t.Log(response.BodyString())
 
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+alice+"/_all_channels", ``)

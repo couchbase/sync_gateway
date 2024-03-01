@@ -163,12 +163,12 @@ func (h *handler) handleGetAllChannels() error {
 			continue
 		}
 		collAccessAll := role.GetCollectionsAccess()
+		resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
+		resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
 
 		for scopeName, collections := range collAccessAll {
 			for collectionName, collectionAccess := range collections {
 				keyspace := scopeName + "." + collectionName
-				resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-				resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
 				resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
 				resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
 				// loop over current role channels
@@ -179,7 +179,7 @@ func (h *handler) handleGetAllChannels() error {
 					}
 					if roleHist.Source == channels.AdminGrant {
 						resp.AdminRoleGrants[roleName][keyspace][channel] = roleChanHistory
-					} else {
+					} else if roleHist.Source == channels.DynamicGrant {
 						resp.DynamicRoleGrants[roleName][keyspace][channel] = roleChanHistory
 					}
 				}
@@ -190,7 +190,7 @@ func (h *handler) handleGetAllChannels() error {
 					}
 					if roleHist.Source == channels.AdminGrant {
 						resp.AdminRoleGrants[roleName][keyspace][channel] = chanHistory
-					} else {
+					} else if roleHist.Source == channels.DynamicGrant {
 						resp.DynamicRoleGrants[roleName][keyspace][channel] = chanHistory
 					}
 				}
