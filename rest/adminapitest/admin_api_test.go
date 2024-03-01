@@ -4031,10 +4031,14 @@ func TestDatabaseCreationWithEnvVariable(t *testing.T) {
 	defer tb.Close(ctx)
 
 	// disable AllowDbConfigEnvVars to avoid attempting to expand variables + enable admin auth
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true, MutateStartupConfig: func(config *rest.StartupConfig) {
-		config.Unsupported.AllowDbConfigEnvVars = base.BoolPtr(false)
-	},
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *rest.StartupConfig) {
+			config.Unsupported.AllowDbConfigEnvVars = base.BoolPtr(false)
+		},
 		AdminInterfaceAuthentication: true,
+		SyncFn:                       `function (doc) { console.log("${environment}"); return true }`,
+		CustomTestBucket:             tb,
 	})
 	defer rt.Close()
 
@@ -4044,33 +4048,12 @@ func TestDatabaseCreationWithEnvVariable(t *testing.T) {
 	rest.MakeUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName, "password", []string{fmt.Sprintf("%s[%s]", rest.MobileSyncGatewayRole.RoleName, tb.GetName())})
 	defer rest.DeleteUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName)
 
-	dataStore1, err := tb.GetNamedDataStore(0)
+	cfg := rt.NewDbConfig()
+	input, err := base.JSONMarshal(&cfg)
 	require.NoError(t, err)
-	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
-	require.True(t, ok)
-	syncFunction := `function (doc) { console.log(\"${environment}\"); return true }`
-
-	// create db config with sync function that has env variable in it
-	bucketConfig := fmt.Sprintf(
-		`{"bucket": `+"`"+"%s"+"`"+`,
-		  "scopes": {
-			"%s": {
-				"collections": {
-					"%s": {
-        					"sync": "%s"
-					}
-				}
-			}
-		  },
-		  "num_index_replicas": 0,
-		  "enable_shared_bucket_access": true,
-		  "use_views": false}`,
-		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(),
-		syncFunction,
-	)
 
 	// create db with config and assert it is successful
-	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/db/", bucketConfig, rest.MobileSyncGatewayRole.RoleName, "password")
+	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/db/", string(input), rest.MobileSyncGatewayRole.RoleName, "password")
 	rest.RequireStatus(t, resp, http.StatusCreated)
 }
 
@@ -4084,10 +4067,14 @@ func TestDatabaseCreationWithEnvVariableWithBackticks(t *testing.T) {
 	defer tb.Close(ctx)
 
 	// disable AllowDbConfigEnvVars to avoid attempting to expand variables + enable admin auth
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true, MutateStartupConfig: func(config *rest.StartupConfig) {
-		config.Unsupported.AllowDbConfigEnvVars = base.BoolPtr(false)
-	},
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *rest.StartupConfig) {
+			config.Unsupported.AllowDbConfigEnvVars = base.BoolPtr(false)
+		},
 		AdminInterfaceAuthentication: true,
+		SyncFn:                       `function (doc) { console.log("${environment}"); return true }`,
+		CustomTestBucket:             tb,
 	})
 	defer rt.Close()
 
@@ -4097,30 +4084,14 @@ func TestDatabaseCreationWithEnvVariableWithBackticks(t *testing.T) {
 	rest.MakeUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName, "password", []string{fmt.Sprintf("%s[%s]", rest.MobileSyncGatewayRole.RoleName, tb.GetName())})
 	defer rest.DeleteUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName)
 
-	dataStore1, err := tb.GetNamedDataStore(0)
+	cfg := rt.NewDbConfig()
+	input, err := base.JSONMarshal(&cfg)
 	require.NoError(t, err)
-	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
-	require.True(t, ok)
-	syncFunction := `function (doc) { console.log(\"${environment}\"); return true }`
 
-	bucketConfig := fmt.Sprintf(
-		`{"bucket": "%s",
-		  "scopes": {
-			"%s": {
-				"collections": {
-					"%s": {
-        					"sync": "%s"
-					}
-				}
-			}
-		  },
-		  "num_index_replicas": 0,
-		  "enable_shared_bucket_access": true,
-		  "use_views": false}`,
-		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(),
-		syncFunction,
-	)
+	// change config to include backticks
+	cfg.Bucket = base.StringPtr(fmt.Sprintf("`"+"%s"+"`", tb.GetName()))
+
 	// create db with config and assert it is successful
-	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/backticks/", bucketConfig, rest.MobileSyncGatewayRole.RoleName, "password")
+	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/backticks/", string(input), rest.MobileSyncGatewayRole.RoleName, "password")
 	rest.RequireStatus(t, resp, http.StatusCreated)
 }
