@@ -236,7 +236,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		}
 
 		// If there's a filter function defined, evaluate to determine whether we should import this doc
-		importFilter := db.ImportFilter()
+		importFilter := db.importFilter()
 		if importFilter != nil {
 			var shouldImport bool
 			var err error
@@ -515,4 +515,12 @@ func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body) (
 		base.WarnfCtx(ctx, "Import filter function returned non-boolean result %v Type: %T", result, result)
 		return false, errors.New("Import filter function returned non-boolean value.")
 	}
+}
+func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, doc Body) (bool, error) {
+
+	importFilter := db.importFilter()
+
+	shouldImport, err := importFilter.EvaluateFunction(ctx, doc)
+
+	return shouldImport, err
 }

@@ -166,7 +166,7 @@ func (c *DatabaseCollection) ForceAPIForbiddenErrors() bool {
 }
 
 // ImportFilter returns the sync function.
-func (c *DatabaseCollection) ImportFilter() *ImportFilterFunction {
+func (c *DatabaseCollection) importFilter() *ImportFilterFunction {
 	return c.importFilterFunction
 }
 

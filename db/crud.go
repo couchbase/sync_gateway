@@ -1145,7 +1145,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 
 }
 
-func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, doc *Document, remoteDoc *Document, docHistory []string, resolver *ConflictResolver) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
+func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, doc *Document) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
 	mutableBody, metaMap, newRevID, err := db.prepareSyncFn(doc, doc)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyCRUD, "Failed to prepare to run sync function: %v", err)

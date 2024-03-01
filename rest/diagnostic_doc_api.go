@@ -12,6 +12,8 @@ package rest
 
 import (
 	"github.com/couchbase/sync_gateway/auth"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 )
 
@@ -51,12 +53,23 @@ func (h *handler) handleSyncFnDryRun() error {
 	if doc == nil {
 		return kNotFoundError
 	}
-	resp := make(map[string][]auth.GrantHistorySequencePair, len(doc.Channels))
-	//mutableBody, metaMap, newRevID, err := h.collection.SyncFnDryrun(doc, newDoc)
-	//if err != nil {
-	//	base.InfofCtx(ctx, base.KeyCRUD, "Failed to prepare to run sync function: %v", err)
-	//	return nil, nil, false, nil, ErrForbidden
-	//}
+	_, _, channelSet, access, roles, err := h.collection.SyncFnDryrun(h.ctx(), doc)
+
+	resp := struct {
+		Channels  base.Set           `json:"Channels"`
+		Access    channels.AccessMap `json:"Access"`
+		Roles     channels.AccessMap `json:"Roles"`
+		Exception error              `json:"Exception"`
+	}{
+		channelSet,
+		access,
+		roles,
+		err,
+	}
+	if err != nil {
+		base.InfofCtx(h.ctx(), base.KeyCRUD, "Failed to prepare to run sync function: %v", err)
+		return db.ErrForbidden
+	}
 
 	h.writeJSON(resp)
 	return nil
@@ -70,16 +83,13 @@ func (h *handler) handleImportFilterDryRun() error {
 	if err != nil {
 		return err
 	}
-	importFilter := h.collection.ImportFilter()
-
-	shouldImport, err := importFilter.EvaluateFunction(h.ctx(), doc.Body(h.ctx()))
-
+	shouldImport, err := h.collection.ImportFilterDryRun(h.ctx(), doc.Body(h.ctx()))
 	resp := struct {
-		ShouldImport bool  `json:"shouldImport"`
-		Error        error `json:"error"`
+		ShouldImport bool   `json:"shouldImport"`
+		Error        string `json:"error"`
 	}{
 		shouldImport,
-		err,
+		err.Error(),
 	}
 	h.writeJSON(resp)
 	return nil
