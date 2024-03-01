@@ -601,18 +601,25 @@ func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback
 	require.NoError(t, err)
 	sc.RequireInvalidDatabaseConfigNames(t, []string{dbName1})
 
-	// try to read database config to allow manual inspection before a repair
-	configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
-	require.NoError(t, err)
-	require.Equal(t, 2, len(configs))
+	// invalid databases not accessible, but also don't expect this do do anything like an on-demand load
+	resp := BootstrapAdminRequest(t, sc, http.MethodGet, fmt.Sprintf("/%s/_config", dbName1), "")
+	resp.RequireStatus(http.StatusNotFound)
 
-	// at this point the config and registry are still not aligned, let's write a correcting update to make sure it's in a repairable state
-	_, err = bc.UpdateConfig(ctx, bucketName, groupID, dbName1, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		bucketDbConfig.Version = "3-c"
-		bucketDbConfig.Scopes = ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
-		return bucketDbConfig, nil
-	})
+	// should be able to put as a new database with a repaired config
+	updatedConfig.Scopes = ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+	dbConfig := base.MustJSONMarshal(t, updatedConfig.DbConfig)
+	resp = BootstrapAdminRequest(t, sc, http.MethodPut, fmt.Sprintf("/%s/", dbName1), string(dbConfig))
+	resp.RequireStatus(http.StatusCreated)
+
+	// database config and registry should now be aligned and we should have no invalid databses stored
+	count, err = sc.fetchAndLoadConfigs(ctx, false)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, count) // both databases valid butq already loaded
+	_, err = sc.GetActiveDatabase(dbName1)
 	require.NoError(t, err)
+	_, err = sc.GetActiveDatabase(dbName2)
+	require.NoError(t, err)
+	sc.RequireInvalidDatabaseConfigNames(t, []string{})
 }
 
 // TestPersistentConfigRegistryRollbackAfterCreateFailure simulates node failure during an insertConfig operation, leaving

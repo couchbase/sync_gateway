@@ -63,8 +63,17 @@ type boostrapResponse struct {
 	StatusCode int
 }
 
+func (r *boostrapResponse) AssertStatus(status int) {
+	assert.Equal(r.t, status, r.StatusCode, "unexpected status code - body: %s", r.Body)
+}
+
 func (r *boostrapResponse) RequireStatus(status int) {
 	require.Equal(r.t, status, r.StatusCode, "unexpected status code - body: %s", r.Body)
+}
+
+func (r *boostrapResponse) AssertResponse(status int, body string) {
+	assert.Equal(r.t, status, r.StatusCode, "unexpected status code - body: %s", r.Body)
+	assert.Equal(r.t, body, r.Body, "unexpected body")
 }
 
 func (r *boostrapResponse) RequireResponse(status int, body string) {
