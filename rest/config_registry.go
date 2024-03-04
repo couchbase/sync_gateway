@@ -230,10 +230,10 @@ func (r *GatewayRegistry) rollbackDatabaseConfig(ctx context.Context, configGrou
 
 	// handle dbconfig doc rollback without PreviousVersion
 	if registryDatabase.PreviousVersion == nil {
-		base.InfofCtx(ctx, base.KeyConfig, "Rollback requested but registry did not include previous version for db %s - using config doc as previous version", base.UD(dbName))
+		base.InfofCtx(ctx, base.KeyConfig, "Rollback requested but registry did not include previous version for db %s - using config doc as previous version", base.MD(dbName))
 		setRegistryDatabaseFromConfig(registryDatabase, config)
 		if conflicts := r.getCollectionConflicts(ctx, dbName, config.Scopes); len(conflicts) > 0 {
-			base.WarnfCtx(ctx, "db %s config rollback would cause collection conflicts (%v) - marking database as invalid to allow for manual repair", base.UD(dbName), base.UD(conflicts))
+			base.WarnfCtx(ctx, "db %s config rollback would cause collection conflicts (%v) - marking database as invalid to allow for manual repair", base.MD(dbName), base.MD(conflicts))
 			registryDatabase.Version = invalidDatabaseConflictingCollectionsVersion
 		}
 		return nil
