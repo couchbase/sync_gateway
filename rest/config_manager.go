@@ -143,7 +143,6 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 	var previousVersion string
 	attempts := 0
 
-outer:
 	for attempts < configUpdateMaxRetryAttempts {
 		attempts++
 		base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig starting (attempt %d/%d)", attempts, configUpdateMaxRetryAttempts)
@@ -189,6 +188,7 @@ outer:
 		// Persist registry
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr == nil {
+			base.DebugfCtx(ctx, base.KeyConfig, "UpdateConfig persisted updated registry successfully")
 			break
 		}
 		// retry on cas mismatch, otherwise return error
@@ -196,13 +196,16 @@ outer:
 			base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig encountered error while persisting updated registry: %v", writeErr)
 			return 0, writeErr
 		}
-		base.DebugfCtx(ctx, base.KeyConfig, "UpdateConfig persisted updated registry successfully")
+		base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig encountered cas mismatch error while persisting updated registry: %v", writeErr)
 
 		// Check for context cancel before retrying
 		select {
 		case <-ctx.Done():
-			break outer
+			return 0, fmt.Errorf("Exiting UpdateConfig - context cancelled, last error: %v", writeErr)
 		default:
+		}
+		if attempts == configUpdateMaxRetryAttempts {
+			return 0, fmt.Errorf("UpdateConfig failed to persist updated registry after %d attempts: %v", configUpdateMaxRetryAttempts, writeErr)
 		}
 	}
 
