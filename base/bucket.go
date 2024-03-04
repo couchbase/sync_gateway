@@ -68,7 +68,7 @@ type CouchbaseBucketStore interface {
 	GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error)
 
 	// MgmtRequest uses the CouchbaseBucketStore's http client to make an http request against a management endpoint.
-	MgmtRequest(ctx context.Context, method, uri, contentType string, body io.Reader) (*http.Response, error)
+	MgmtRequest(ctx context.Context, method, uri, contentType string, body io.Reader) ([]byte, int, error)
 }
 
 func AsCouchbaseBucketStore(b Bucket) (CouchbaseBucketStore, bool) {
@@ -398,14 +398,7 @@ func getMaxTTL(ctx context.Context, store CouchbaseBucketStore) (int, error) {
 	}
 
 	uri := fmt.Sprintf("/pools/default/buckets/%s", store.GetSpec().BucketName)
-	resp, err := store.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
-	if err != nil {
-		return -1, err
-	}
-
-	defer func() { _ = resp.Body.Close() }()
-
-	respBytes, err := io.ReadAll(resp.Body)
+	respBytes, _, err := store.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
 	if err != nil {
 		return -1, err
 	}
@@ -419,14 +412,7 @@ func getMaxTTL(ctx context.Context, store CouchbaseBucketStore) (int, error) {
 
 // Get the Server UUID of the bucket, this is also known as the Cluster UUID
 func GetServerUUID(ctx context.Context, store CouchbaseBucketStore) (uuid string, err error) {
-	resp, err := store.MgmtRequest(ctx, http.MethodGet, "/pools", "application/json", nil)
-	if err != nil {
-		return "", err
-	}
-
-	defer func() { _ = resp.Body.Close() }()
-
-	respBytes, err := io.ReadAll(resp.Body)
+	respBytes, _, err := store.MgmtRequest(ctx, http.MethodGet, "/pools", "application/json", nil)
 	if err != nil {
 		return "", err
 	}
@@ -474,22 +460,15 @@ func retrievePurgeInterval(ctx context.Context, bucket CouchbaseBucketStore, uri
 		PurgeInterval float64 `json:"purgeInterval,omitempty"`
 	}
 
-	resp, err := bucket.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
+	respBytes, statusCode, err := bucket.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
 	if err != nil {
 		return 0, err
 	}
 
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode == http.StatusForbidden {
+	if statusCode == http.StatusForbidden {
 		WarnfCtx(ctx, "403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
-	} else if resp.StatusCode != http.StatusOK {
-		return 0, errors.New(resp.Status)
-	}
-
-	respBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, err
+	} else if statusCode != http.StatusOK {
+		return 0, errors.New(fmt.Sprintf("failed with status code, %d, statusCode", statusCode))
 	}
 
 	if err := JSONUnmarshal(respBytes, &purgeResponse); err != nil {
