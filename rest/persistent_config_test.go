@@ -542,6 +542,7 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 // leaving the registry version ahead of the config - but also with a collection conflict occurring in the subsequent rollback.
 func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback(t *testing.T) {
 	base.TestRequiresCollections(t)
+	base.RequireNumTestDataStores(t, 3)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyConfig)
 
 	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
@@ -614,7 +615,7 @@ func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback
 	// database config and registry should now be aligned and we should have no invalid databses stored
 	count, err = sc.fetchAndLoadConfigs(ctx, false)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, count) // both databases valid butq already loaded
+	assert.Equal(t, 0, count) // both databases valid but already loaded
 	_, err = sc.GetActiveDatabase(dbName1)
 	require.NoError(t, err)
 	_, err = sc.GetActiveDatabase(dbName2)
