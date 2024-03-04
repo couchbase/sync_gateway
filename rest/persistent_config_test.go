@@ -483,7 +483,7 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 	bc := sc.BootstrapContext
 
 	// reduce retry timeout for testing
-	bc.configRetryTimeout = 1 * time.Second
+	bc.configRetryTimeout = 1 * time.Millisecond
 
 	// set up ScopesConfigs used by tests
 	collection1Name := dataStoreNames[0].CollectionName()
@@ -560,7 +560,7 @@ func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback
 	bc := sc.BootstrapContext
 
 	// reduce retry timeout for testing
-	bc.configRetryTimeout = 1 * time.Second
+	bc.configRetryTimeout = 1 * time.Millisecond
 
 	// set up ScopesConfigs used by tests
 	collection1Name := dataStoreNames[0].CollectionName()
@@ -650,7 +650,7 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 	bc := sc.BootstrapContext
 
 	// reduce retry timeout for testing
-	bc.configRetryTimeout = 1 * time.Second
+	bc.configRetryTimeout = 1 * time.Millisecond
 
 	// SimulateCreateFailure updates the registry with a new config, but doesn't create the associated config file
 	simulateCreateFailure := func(t *testing.T, config *DatabaseConfig) {
@@ -781,7 +781,7 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 
 	bc := sc.BootstrapContext
 	// reduce retry timeout for testing
-	bc.configRetryTimeout = 1 * time.Second
+	bc.configRetryTimeout = 1 * time.Millisecond
 
 	// Create database with collection 1
 	collection1db1Config := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "1-a")
@@ -912,7 +912,7 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 	bc := sc.BootstrapContext
 
 	// reduce retry timeout for testing
-	bc.configRetryTimeout = 1 * time.Second
+	bc.configRetryTimeout = 1 * time.Millisecond
 
 	// Create database with collection 1
 	collection1db1Config := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "1-a")
@@ -999,7 +999,7 @@ func TestPersistentConfigSlowCreateFailure(t *testing.T) {
 	bc := sc.BootstrapContext
 
 	// reduce retry timeout for testing
-	bc.configRetryTimeout = 1 * time.Second
+	bc.configRetryTimeout = 1 * time.Millisecond
 
 	// simulateSlowCreate updates the registry with a new config, but doesn't create the associated config file
 	simulateSlowCreate := func(t *testing.T, config *DatabaseConfig) {
