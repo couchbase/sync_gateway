@@ -496,7 +496,7 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 	require.NoError(t, err)
 	configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(configs))
+	require.Len(t, configs, 1)
 
 	db, err := sc.GetDatabase(ctx, dbName)
 	require.NoError(t, err)
@@ -580,7 +580,7 @@ func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback
 
 	configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
 	require.NoError(t, err)
-	require.Equal(t, 2, len(configs))
+	require.Len(t, configs, 2)
 
 	// simulate a rollback (not exactly - CAS increments, but lowering the config version is enough)
 	// this time we'll "roll back" to a version of dbconfig that contains a collection now in use by db2
