@@ -45,13 +45,21 @@ func waitForStatGreaterThan(t *testing.T, getStatFunc func() int64, expected int
 }
 
 func TestBlipStatsBasic(t *testing.T) {
-	bt, err := NewBlipTester(t)
+	RequireBucketSpecificCredentials(t)
+
+	rt := NewRestTesterPersistentConfigServerless(t)
+	defer rt.Close()
+
+	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
+		connectingUsername: "test",
+		connectingPassword: "password",
+	}, rt)
 	require.NoError(t, err)
 	defer bt.Close()
 
 	// make sure requests have not incremented stats.
 	/// Note: there is a blip call in NewBlipTester to initialize collections
-	dbStats := bt.restTester.GetDatabase().DbStats.Database()
+	dbStats := bt.restTester.GetDatabase().DbStats.Serverless()
 	require.Equal(t, int64(0), dbStats.ReplicationBytesReceived.Value())
 	require.Equal(t, int64(0), dbStats.ReplicationBytesSent.Value())
 
@@ -70,7 +78,15 @@ func TestBlipStatsBasic(t *testing.T) {
 }
 
 func TestBlipStatsFastReport(t *testing.T) {
-	bt, err := NewBlipTester(t)
+	RequireBucketSpecificCredentials(t)
+
+	rt := NewRestTesterPersistentConfigServerless(t)
+	defer rt.Close()
+
+	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
+		connectingUsername: "test",
+		connectingPassword: "password",
+	}, rt)
 	require.NoError(t, err)
 	defer bt.Close()
 	sendRequest := func() {
@@ -82,7 +98,7 @@ func TestBlipStatsFastReport(t *testing.T) {
 		require.Equal(t, "404", errorCode)
 	}
 
-	dbStats := bt.restTester.GetDatabase().DbStats.Database()
+	dbStats := bt.restTester.GetDatabase().DbStats.Serverless()
 	require.Equal(t, int64(0), dbStats.ReplicationBytesReceived.Value())
 	require.Equal(t, int64(0), dbStats.ReplicationBytesSent.Value())
 
@@ -106,13 +122,13 @@ func TestBlipStatsFastReport(t *testing.T) {
 func TestBlipStatsISGRComputePush(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeySync)
-	activeRT, passiveRT, remoteURL, teardown := SetupSGRPeers(t)
+	activeRT, passiveRT, remoteURL, teardown := SetupSGRPeersServerless(t)
 	defer teardown()
 	const repName = "replication1"
 	var resp *TestResponse
 
-	activeSyncStartStat := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
-	passiveSyncStartStat := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+	activeSyncStartStat := activeRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value()
+	passiveSyncStartStat := passiveRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value()
 
 	for i := 0; i < 100; i++ {
 		resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"source": "activeRT"}`)
@@ -125,8 +141,8 @@ func TestBlipStatsISGRComputePush(t *testing.T) {
 	_, err := passiveRT.WaitForChanges(100, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 
-	activeSyncStat := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
-	passiveSyncStat := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+	activeSyncStat := activeRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value()
+	passiveSyncStat := passiveRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value()
 	require.Greater(t, activeSyncStat, activeSyncStartStat)
 	require.Greater(t, passiveSyncStat, passiveSyncStartStat)
 
@@ -140,13 +156,13 @@ func TestBlipStatsISGRComputePush(t *testing.T) {
 func TestBlipStatsISGRComputePull(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync)
-	activeRT, passiveRT, remoteURL, teardown := SetupSGRPeers(t)
+	activeRT, passiveRT, remoteURL, teardown := SetupSGRPeersServerless(t)
 	defer teardown()
 	const repName = "replication1"
 	var resp *TestResponse
 
-	activeSyncStat := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
-	passiveSyncStat := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+	activeSyncStat := activeRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value()
+	passiveSyncStat := passiveRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value()
 
 	for i := 0; i < 50; i++ {
 		resp = passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"source": "activeRT"}`)
@@ -159,8 +175,8 @@ func TestBlipStatsISGRComputePull(t *testing.T) {
 	_, err := activeRT.WaitForChanges(50, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 
-	require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), activeSyncStat)
-	require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), passiveSyncStat)
+	require.Greater(t, activeRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value(), activeSyncStat)
+	require.Greater(t, passiveRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value(), passiveSyncStat)
 
 }
 
@@ -188,7 +204,7 @@ func TestBlipStatAttachmentComputeISGR(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			activeRT, passiveRT, remoteURL, teardown := SetupSGRPeers(t)
+			activeRT, passiveRT, remoteURL, teardown := SetupSGRPeersServerless(t)
 			defer teardown()
 			const repName = "replication1"
 			var resp *TestResponse
@@ -198,8 +214,8 @@ func TestBlipStatAttachmentComputeISGR(t *testing.T) {
 				resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", bodyText)
 				RequireStatus(t, resp, http.StatusCreated)
 				// grab stats values before replication takes place
-				syncComputeStartActive := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
-				syncComputeStartPassive := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+				syncComputeStartActive := activeRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value()
+				syncComputeStartPassive := passiveRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value()
 
 				// create replication
 				activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
@@ -210,15 +226,15 @@ func TestBlipStatAttachmentComputeISGR(t *testing.T) {
 				require.NoError(t, err)
 
 				// assert the stats increment/do not increment as expected
-				require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartActive)
-				require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartPassive)
+				require.Greater(t, activeRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value(), syncComputeStartActive)
+				require.Greater(t, passiveRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value(), syncComputeStartPassive)
 			} else {
 				bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
 				resp = passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", bodyText)
 				RequireStatus(t, resp, http.StatusCreated)
 				// grab stats values before replication takes place
-				syncComputeStartActive := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
-				syncComputeStartPassive := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+				syncComputeStartActive := activeRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value()
+				syncComputeStartPassive := passiveRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value()
 
 				// create replication
 				activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
@@ -229,8 +245,8 @@ func TestBlipStatAttachmentComputeISGR(t *testing.T) {
 				require.NoError(t, err)
 
 				// assert the stats increment/do not increment as expected
-				require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartActive)
-				require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncComputeStartPassive)
+				require.Greater(t, activeRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value(), syncComputeStartActive)
+				require.Greater(t, passiveRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value(), syncComputeStartPassive)
 			}
 
 		})
@@ -249,7 +265,7 @@ func TestBlipStatAttachmentComputeISGR(t *testing.T) {
 func TestComputeStatAfterContextTeardown(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync)
-	activeRT, passiveRT, remoteURL, teardown := SetupSGRPeers(t)
+	activeRT, passiveRT, remoteURL, teardown := SetupSGRPeersServerless(t)
 	defer teardown()
 	const repName = "replication1"
 
@@ -264,8 +280,8 @@ func TestComputeStatAfterContextTeardown(t *testing.T) {
 	// wait for replication teardown
 	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateStopped)
 
-	syncProcessComputeActive := activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
-	syncProcessComputePassive := passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+	syncProcessComputeActive := activeRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value()
+	syncProcessComputePassive := passiveRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value()
 
 	// assert that sync compute stats are greater than 0
 	require.Greater(t, syncProcessComputeActive, int64(0))
@@ -283,7 +299,7 @@ func TestComputeStatAfterContextTeardown(t *testing.T) {
 	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateStopped)
 
 	// assert that the stats have increased from what they were before showing stats don't start from 0 again after replication teardown
-	require.Greater(t, passiveRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncProcessComputePassive)
-	require.Greater(t, activeRT.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncProcessComputeActive)
+	require.Greater(t, passiveRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value(), syncProcessComputePassive)
+	require.Greater(t, activeRT.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value(), syncProcessComputeActive)
 
 }

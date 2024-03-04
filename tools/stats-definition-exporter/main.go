@@ -105,7 +105,7 @@ func registerStats() (*base.GlobalStat, *base.DbStats, error) {
 		return nil, nil, fmt.Errorf("could not create sg stats: %w", err)
 	}
 
-	dbStats, err := sgStats.NewDBStats("", true, true, false, []string{""}, []string{""})
+	dbStats, err := sgStats.NewDBStats("", true, true, false, true, []string{""}, []string{""})
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not create db stats: %w", err)
 	}

@@ -30,7 +30,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1.NoCloseClone(),
-		serverless:       true,
+		Serverless:       true,
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
@@ -87,7 +87,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	//assert.Equal(t, 0, count)
 }
 
-// Tests behaviour of CBG-2258 to force per bucket credentials to be used when setting up db in serverless mode
+// Tests behaviour of CBG-2258 to force per bucket credentials to be used when setting up db in Serverless mode
 func TestServerlessDBSetupForceCreds(t *testing.T) {
 	RequireBucketSpecificCredentials(t)
 
@@ -121,7 +121,7 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1.NoCloseClone(), serverless: true, PersistentConfig: true})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1.NoCloseClone(), Serverless: true, PersistentConfig: true})
 			defer rt.Close()
 
 			if test.perBucketCreds != nil {
@@ -139,14 +139,14 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 }
 
 // Tests behaviour of CBG-2258 to make sure fetch databases only uses buckets listed on StartupConfig.BucketCredentials
-// when running in serverless mode
+// when running in Serverless mode
 func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 	RequireBucketSpecificCredentials(t)
 
 	ctx := base.TestCtx(t)
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close(ctx)
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1.NoCloseClone(), PersistentConfig: true, serverless: true,
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1.NoCloseClone(), PersistentConfig: true, Serverless: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
 		},
@@ -185,12 +185,12 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 		kvConnCount          int
 	}{
 		{
-			name:                 "serverless connection",
+			name:                 "Serverless connection",
 			expectedConnstrQuery: "?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			kvConnCount:          1,
 		},
 		{
-			name:                 "serverless connection with kv pool specified",
+			name:                 "Serverless connection with kv pool specified",
 			specKvConn:           "?idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			expectedConnstrQuery: "?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			kvConnCount:          3,
@@ -209,7 +209,7 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 				tb.BucketSpec.Server = bucketServer + "?kv_pool_size=3"
 			}
 
-			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, Serverless: true})
 			defer rt.Close()
 			sc := rt.ServerContext()
 			require.True(t, sc.Config.IsServerless())
@@ -239,7 +239,7 @@ func TestServerlessUnsupportedOptions(t *testing.T) {
 			dcpBuffer:       3000,
 		},
 		{
-			name:            "default serverless",
+			name:            "default Serverless",
 			expectedConnStr: "?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 	}
@@ -251,7 +251,7 @@ func TestServerlessUnsupportedOptions(t *testing.T) {
 			bucketServer := tb.BucketSpec.Server
 			test.expectedConnStr = bucketServer + test.expectedConnStr
 
-			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, Serverless: true})
 			defer rt.Close()
 			sc := rt.ServerContext()
 			require.True(t, sc.Config.IsServerless())
@@ -279,12 +279,12 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, Serverless: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
 
-	// suspendable should default to true when in serverless
+	// suspendable should default to true when in Serverless
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
 		"bucket": "%s",
 		"use_views": %t,
@@ -354,7 +354,7 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
-		serverless:       true,
+		Serverless:       true,
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
@@ -541,19 +541,19 @@ func TestSuspendingFlags(t *testing.T) {
 			expectCanSuspend: false,
 		},
 		{
-			name:             "Non-serverless with suspendable db",
+			name:             "Non-Serverless with suspendable db",
 			serverlessMode:   false,
 			dbSuspendable:    base.BoolPtr(true),
 			expectCanSuspend: true,
 		},
 		{
-			name:             "Non-serverless with unsuspendable db",
+			name:             "Non-Serverless with unsuspendable db",
 			serverlessMode:   false,
 			dbSuspendable:    base.BoolPtr(false),
 			expectCanSuspend: false,
 		},
 		{
-			name:             "Non-serverless with db default suspendable option",
+			name:             "Non-Serverless with db default suspendable option",
 			serverlessMode:   false,
 			dbSuspendable:    nil,
 			expectCanSuspend: false,
@@ -566,7 +566,7 @@ func TestSuspendingFlags(t *testing.T) {
 			defer tb.Close(ctx)
 
 			rt := NewRestTester(t,
-				&RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: test.serverlessMode})
+				&RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, Serverless: test.serverlessMode})
 			defer rt.Close()
 
 			sc := rt.ServerContext()
@@ -608,7 +608,7 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, Serverless: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -644,7 +644,7 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, Serverless: true, AdminInterfaceAuthentication: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -695,18 +695,18 @@ func TestImportPartitionsServerless(t *testing.T) {
 		serverless         bool
 	}{
 		{
-			name:               "serverless partitions",
+			name:               "Serverless partitions",
 			expectedPartitions: base.Uint16Ptr(6),
 			serverless:         true,
 		},
 		{
-			name:               "serverless partitions with import_partition specified",
+			name:               "Serverless partitions with import_partition specified",
 			importPartition:    base.Uint16Ptr(8),
 			expectedPartitions: base.Uint16Ptr(8),
 			serverless:         true,
 		},
 		{
-			name:               "non serverless partitions",
+			name:               "non Serverless partitions",
 			expectedPartitions: base.Uint16Ptr(16),
 			serverless:         false,
 		},
@@ -723,12 +723,12 @@ func TestImportPartitionsServerless(t *testing.T) {
 			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
-			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: test.serverless})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, Serverless: test.serverless})
 			defer rt.Close()
 			sc := rt.ServerContext()
 
 			var dbconf *DbConfig
-			if test.name == "serverless partitions with import_partition specified" {
+			if test.name == "Serverless partitions with import_partition specified" {
 				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0, "import_partitions": 8}`,
 					tb.GetName(), base.TestsDisableGSI()))
 				RequireStatus(t, resp, http.StatusCreated)
@@ -740,4 +740,14 @@ func TestImportPartitionsServerless(t *testing.T) {
 			assert.Equal(t, expectedPartitions, dbconf.ImportPartitions)
 		})
 	}
+}
+
+// TestServerlessStatsNoInit:
+//   - Asserts that Serverless stats are not initialised when not in serverless mode
+func TestServerlessStatsNoInit(t *testing.T) {
+	RequireBucketSpecificCredentials(t)
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	require.Nil(t, rt.GetDatabase().DbStats.Serverless())
 }

@@ -1781,6 +1781,9 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 	var shouldUpdate bool
 	var updatedExpiry *uint32
 	defer func() {
+		if !db.dbCtx.IsServerless() {
+			return
+		}
 		functionTime := time.Since(startTime).Milliseconds()
 		var bytes int
 		if updatedDoc != nil {
@@ -1789,7 +1792,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			return
 		}
 		stat := CalculateComputeStat(int64(bytes), functionTime)
-		db.dbStats().DatabaseStats.ImportProcessCompute.Add(stat)
+		db.dbStats().ServerlessStats.ImportProcessCompute.Add(stat)
 	}()
 	if db.UseXattrs() {
 		writeUpdateFunc := func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (
@@ -2023,7 +2026,7 @@ func initDatabaseStats(ctx context.Context, dbName string, autoImport bool, opti
 		}
 	}
 
-	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames, collections)
+	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, options.Serverless, queryNames, collections)
 }
 
 func (context *DatabaseContext) AllowConflicts() bool {
@@ -2374,15 +2377,17 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	}
 
-	// create a background task to keep track of the number of active replication connections the database has each second
-	bgtSyncTime, err := NewBackgroundTask(ctx, "TotalSyncTimeStat", func(ctx context.Context) error {
-		db.UpdateTotalSyncTimeStat()
-		return nil
-	}, 1*time.Second, db.terminator)
-	if err != nil {
-		return err
+	if db.IsServerless() {
+		// create a background task to keep track of the number of active replication connections the database has each second
+		bgtSyncTime, err := NewBackgroundTask(ctx, "TotalSyncTimeStat", func(ctx context.Context) error {
+			db.UpdateTotalSyncTimeStat()
+			return nil
+		}, 1*time.Second, db.terminator)
+		if err != nil {
+			return err
+		}
+		db.backgroundTasks = append(db.backgroundTasks, bgtSyncTime)
 	}
-	db.backgroundTasks = append(db.backgroundTasks, bgtSyncTime)
 
 	if err := base.RequireNoBucketTTL(ctx, db.Bucket); err != nil {
 		return err
