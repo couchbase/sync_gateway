@@ -1208,7 +1208,7 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 	var replicationsResponse map[string]db.ReplicationConfig
 	err = json.Unmarshal(response.BodyBytes(), &replicationsResponse)
 	require.NoError(t, err, "Error un-marshalling replication response")
-	assert.Equal(t, 2, len(replicationsResponse), "Replication count mismatch")
+	assert.Lenf(t, replicationsResponse, 2, "Replication count mismatch")
 
 	replication1, ok := replicationsResponse[replication1Config.ID]
 	assert.True(t, ok, "Error getting replication")
@@ -1223,7 +1223,7 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusOK)
 	var allStatusResponse []*db.ReplicationStatus
 	require.NoError(t, json.Unmarshal(response.BodyBytes(), &allStatusResponse))
-	require.Equal(t, 2, len(allStatusResponse), "Replication count mismatch")
+	require.Lenf(t, allStatusResponse, 2, "Replication count mismatch")
 
 	// Sort replications by replication ID before assertion
 	sort.Slice(allStatusResponse, func(i, j int) bool {
@@ -1458,7 +1458,7 @@ func TestGetStatusWithReplication(t *testing.T) {
 	err := json.Unmarshal(response.BodyBytes(), &status)
 	require.NoError(t, err, "Error un-marshalling replication response")
 	database := status.Databases["db"]
-	require.Equal(t, 2, len(database.ReplicationStatus), "Replication count mismatch")
+	require.Lenf(t, database.ReplicationStatus, 2, "Replication count mismatch")
 
 	// Sort replications by replication ID before asserting replication status
 	sort.Slice(database.ReplicationStatus, func(i, j int) bool {
@@ -1469,8 +1469,8 @@ func TestGetStatusWithReplication(t *testing.T) {
 	assert.Equal(t, "unassigned", database.ReplicationStatus[0].Status)
 	assert.Equal(t, "unassigned", database.ReplicationStatus[1].Status)
 
-	assert.Equal(t, 2, len(database.SGRCluster.Replications), "Replication count mismatch")
-	assert.Equal(t, 0, len(database.SGRCluster.Nodes), "Replication node count mismatch")
+	assert.Lenf(t, database.SGRCluster.Replications, 2, "Replication count mismatch")
+	assert.Lenf(t, database.SGRCluster.Nodes, 0, "Replication node count mismatch")
 	assertReplication := func(expected db.ReplicationConfig, actual *db.ReplicationCfg) {
 		assert.Equal(t, expected.ID, actual.ID)
 		assert.Equal(t, expected.Remote, actual.Remote)
