@@ -315,7 +315,11 @@ func (cc *CouchbaseCluster) InsertMetadataDocument(ctx context.Context, location
 	}
 	defer teardown()
 
-	return cc.configPersistence.insertConfig(b.DefaultCollection(), key, value)
+	cas, err := cc.configPersistence.insertConfig(b.DefaultCollection(), key, value)
+	if err != nil {
+		return 0, RedactErrorf("InsertMetadataDocument failed for %s: %v", MD(key), err)
+	}
+	return cas, err
 }
 
 // WriteMetadataDocument writes a metadata document, and fails on CAS mismatch
@@ -324,7 +328,7 @@ func (cc *CouchbaseCluster) WriteMetadataDocument(ctx context.Context, location,
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 	if cas == 0 {
-		return 0, RedactErrorf("CAS for %q in bucket %q must be non-zero to call WriteMetadataDocument, to add a new document use InsertMetadataDocument", UD(docID), MD(location))
+		return 0, RedactErrorf("CAS for %q in bucket %q must be non-zero to call WriteMetadataDocument, to add a new document use InsertMetadataDocument", MD(docID), MD(location))
 	}
 
 	b, teardown, err := cc.getBucket(ctx, location)
@@ -339,6 +343,9 @@ func (cc *CouchbaseCluster) WriteMetadataDocument(ctx context.Context, location,
 	}
 
 	casOut, err := cc.configPersistence.replaceRawConfig(b.DefaultCollection(), docID, rawDocument, gocb.Cas(cas))
+	if err != nil {
+		return 0, RedactErrorf("WriteMetadataDocument failed for %s: %v", MD(docID), err)
+	}
 	return uint64(casOut), err
 }
 
@@ -355,6 +362,9 @@ func (cc *CouchbaseCluster) TouchMetadataDocument(ctx context.Context, location,
 	defer teardown()
 
 	casOut, err := cc.configPersistence.touchConfigRollback(b.DefaultCollection(), docID, property, value, gocb.Cas(cas))
+	if err != nil {
+		return 0, RedactErrorf("TouchMetadataDocument failed for %s: %v", MD(docID), err)
+	}
 	return uint64(casOut), err
 
 }
@@ -370,8 +380,11 @@ func (cc *CouchbaseCluster) DeleteMetadataDocument(ctx context.Context, location
 	}
 	defer teardown()
 
-	_, removeErr := cc.configPersistence.removeRawConfig(b.DefaultCollection(), key, gocb.Cas(cas))
-	return removeErr
+	_, err = cc.configPersistence.removeRawConfig(b.DefaultCollection(), key, gocb.Cas(cas))
+	if err != nil {
+		return fmt.Errorf("DeleteMetadataDocument failed for %s: %v", MD(key), err)
+	}
+	return err
 }
 
 // UpdateMetadataDocument retries on CAS mismatch
@@ -391,11 +404,11 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(ctx context.Context, location
 	for {
 		bucketValue, cas, err := cc.configPersistence.loadRawConfig(ctx, collection, docID)
 		if err != nil {
-			return 0, err
+			return 0, RedactErrorf("UpdateMetadataDocument: loadRawConfig failed for %s: %w", MD(docID), err)
 		}
 		newConfig, err := updateCallback(bucketValue, uint64(cas))
 		if err != nil {
-			return 0, err
+			return 0, RedactErrorf("UpdateMetadataDocument: callback failed for %s: %w", MD(docID), err)
 		}
 
 		// handle delete when updateCallback returns nil
@@ -406,7 +419,7 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(ctx context.Context, location
 				if errors.Is(err, gocb.ErrCasMismatch) {
 					continue
 				}
-				return 0, err
+				return 0, RedactErrorf("UpdateMetadataDocument: removeRawConfig failed for %s: %w", MD(docID), err)
 			}
 			return uint64(removeCasOut), nil
 		}
@@ -417,7 +430,7 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(ctx context.Context, location
 				// retry on cas failure
 				continue
 			}
-			return 0, err
+			return 0, RedactErrorf("UpdateMetadataDocument: replaceRawConfig failed for %s: %w", MD(docID), err)
 		}
 
 		return uint64(replaceCfgCasOut), nil
