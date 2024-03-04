@@ -69,7 +69,6 @@ func TestRoot(t *testing.T) {
 }
 
 func TestPublicRESTStatCount(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 

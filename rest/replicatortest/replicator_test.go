@@ -2510,7 +2510,6 @@ func TestTotalSyncTimeStat(t *testing.T) {
 //   - assert on the TotalSyncTime stat being incremented
 //   - put doc to end changes feed connection
 func TestChangesEndpointTotalSyncTime(t *testing.T) {
-	rest.RequireBucketSpecificCredentials(t)
 	rt := rest.NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 

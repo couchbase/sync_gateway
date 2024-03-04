@@ -45,7 +45,6 @@ func waitForStatGreaterThan(t *testing.T, getStatFunc func() int64, expected int
 }
 
 func TestBlipStatsBasic(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 
 	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
@@ -78,7 +77,6 @@ func TestBlipStatsBasic(t *testing.T) {
 }
 
 func TestBlipStatsFastReport(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 
 	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()

@@ -715,7 +715,6 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 //   - add doc with attachment
 //   - wait for doc to replicate and assert on attachment stat
 func TestAttachmentComputeStat(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	const docID = "doc1"

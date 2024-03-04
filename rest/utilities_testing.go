@@ -122,6 +122,7 @@ func NewRestTesterPersistentConfig(tb testing.TB) *RestTester {
 }
 
 func NewRestTesterPersistentConfigServerless(tb *testing.T) *RestTester {
+	RequireBucketSpecificCredentials(tb)
 	config := &RestTesterConfig{
 		PersistentConfig: true,
 		Serverless:       true,

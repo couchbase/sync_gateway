@@ -70,7 +70,6 @@ func getResponseWriter(t *testing.T, stat *base.SgwIntStat, name string, updateI
 }
 
 func TestCountableResponseWriterRestTester(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 

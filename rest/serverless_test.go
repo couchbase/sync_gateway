@@ -87,7 +87,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	//assert.Equal(t, 0, count)
 }
 
-// Tests behaviour of CBG-2258 to force per bucket credentials to be used when setting up db in Serverless mode
+// Tests behaviour of CBG-2258 to force per bucket credentials to be used when setting up db in serverless mode
 func TestServerlessDBSetupForceCreds(t *testing.T) {
 	RequireBucketSpecificCredentials(t)
 
@@ -139,7 +139,7 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 }
 
 // Tests behaviour of CBG-2258 to make sure fetch databases only uses buckets listed on StartupConfig.BucketCredentials
-// when running in Serverless mode
+// when running in serverless mode
 func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 	RequireBucketSpecificCredentials(t)
 
@@ -185,12 +185,12 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 		kvConnCount          int
 	}{
 		{
-			name:                 "Serverless connection",
+			name:                 "serverless connection",
 			expectedConnstrQuery: "?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			kvConnCount:          1,
 		},
 		{
-			name:                 "Serverless connection with kv pool specified",
+			name:                 "serverless connection with kv pool specified",
 			specKvConn:           "?idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			expectedConnstrQuery: "?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			kvConnCount:          3,
@@ -239,7 +239,7 @@ func TestServerlessUnsupportedOptions(t *testing.T) {
 			dcpBuffer:       3000,
 		},
 		{
-			name:            "default Serverless",
+			name:            "default serverless",
 			expectedConnStr: "?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 	}
@@ -284,7 +284,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 
 	sc := rt.ServerContext()
 
-	// suspendable should default to true when in Serverless
+	// suspendable should default to true when in serverless
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
 		"bucket": "%s",
 		"use_views": %t,
@@ -529,19 +529,19 @@ func TestSuspendingFlags(t *testing.T) {
 		expectCanSuspend bool
 	}{
 		{
-			name:             "Serverless defaults suspendable flag on db to true",
+			name:             "serverless defaults suspendable flag on db to true",
 			serverlessMode:   true,
 			dbSuspendable:    nil,
 			expectCanSuspend: true,
 		},
 		{
-			name:             "Serverless with suspendable db disallowed",
+			name:             "serverless with suspendable db disallowed",
 			serverlessMode:   true,
 			dbSuspendable:    base.BoolPtr(false),
 			expectCanSuspend: false,
 		},
 		{
-			name:             "Non-Serverless with suspendable db",
+			name:             "Non-serverless with suspendable db",
 			serverlessMode:   false,
 			dbSuspendable:    base.BoolPtr(true),
 			expectCanSuspend: true,
@@ -695,18 +695,18 @@ func TestImportPartitionsServerless(t *testing.T) {
 		serverless         bool
 	}{
 		{
-			name:               "Serverless partitions",
+			name:               "serverless partitions",
 			expectedPartitions: base.Uint16Ptr(6),
 			serverless:         true,
 		},
 		{
-			name:               "Serverless partitions with import_partition specified",
+			name:               "serverless partitions with import_partition specified",
 			importPartition:    base.Uint16Ptr(8),
 			expectedPartitions: base.Uint16Ptr(8),
 			serverless:         true,
 		},
 		{
-			name:               "non Serverless partitions",
+			name:               "non serverless partitions",
 			expectedPartitions: base.Uint16Ptr(16),
 			serverless:         false,
 		},
@@ -728,7 +728,7 @@ func TestImportPartitionsServerless(t *testing.T) {
 			sc := rt.ServerContext()
 
 			var dbconf *DbConfig
-			if test.name == "Serverless partitions with import_partition specified" {
+			if test.name == "serverless partitions with import_partition specified" {
 				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0, "import_partitions": 8}`,
 					tb.GetName(), base.TestsDisableGSI()))
 				RequireStatus(t, resp, http.StatusCreated)

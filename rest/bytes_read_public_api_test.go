@@ -23,7 +23,6 @@ import (
 )
 
 func TestBytesReadDocOperations(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
@@ -99,7 +98,6 @@ func TestBytesReadDocOperations(t *testing.T) {
 }
 
 func TestBytesReadChanges(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
@@ -123,7 +121,6 @@ func TestBytesReadChanges(t *testing.T) {
 }
 
 func TestBytesReadPutAttachment(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
@@ -170,7 +167,6 @@ func TestBytesReadPutAttachment(t *testing.T) {
 }
 
 func TestBytesReadRevDiff(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
@@ -213,7 +209,6 @@ func TestBytesReadRevDiff(t *testing.T) {
 }
 
 func TestBytesReadAllDocs(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
@@ -254,7 +249,6 @@ func TestBytesReadAllDocs(t *testing.T) {
 }
 
 func TestBytesReadBulkDocs(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
@@ -282,7 +276,6 @@ func TestBytesReadBulkDocs(t *testing.T) {
 }
 
 func TestBytesReadBulkGet(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
@@ -318,7 +311,6 @@ func TestBytesReadBulkGet(t *testing.T) {
 }
 
 func TestBytesReadLocalDocPut(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
@@ -346,22 +338,15 @@ func TestBytesReadLocalDocPut(t *testing.T) {
 }
 
 func TestBytesReadPOSTSession(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
-	rt := NewRestTester(t, &RestTesterConfig{
-		Serverless:       true,
-		PersistentConfig: true,
-	})
+	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
-
-	resp := rt.CreateDatabase("db", rt.NewDbConfig())
-	RequireStatus(t, resp, http.StatusCreated)
 
 	rt.CreateUser("alice", []string{"ABC"})
 
 	// create session
 	input := `{"name":"alice","password":"letmein"}`
 	inputBytes := []byte(input)
-	resp = rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", input, "alice")
+	resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", input, "alice")
 	RequireStatus(t, resp, http.StatusOK)
 
 	// assert the stat is increased by the correct amount
@@ -380,18 +365,11 @@ func TestBytesReadPOSTSession(t *testing.T) {
 }
 
 func TestBytesReadAuthFailed(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
-	rt := NewRestTester(t, &RestTesterConfig{
-		Serverless:       true,
-		PersistentConfig: true,
-	})
+	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
-	resp := rt.CreateDatabase("db", rt.NewDbConfig())
-	RequireStatus(t, resp, http.StatusCreated)
-
 	// create a user with different password to the default one
-	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", GetUserPayload(t, "alice", "pass", "", rt.GetSingleTestDatabaseCollection(), []string{"ABC"}, nil))
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", GetUserPayload(t, "alice", "pass", "", rt.GetSingleTestDatabaseCollection(), []string{"ABC"}, nil))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// make a request that will fail on auth
@@ -411,14 +389,12 @@ func TestBytesReadGzipRequest(t *testing.T) {
 	RequireBucketSpecificCredentials(t)
 	// Need default collection as request below doesn't work with {{.keyspace}}
 	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
-		GuestEnabled:     true,
 		Serverless:       true,
 		PersistentConfig: true,
 	})
 	defer rt.Close()
 
-	resp := rt.CreateDatabase("db", rt.NewDbConfig())
-	RequireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 	rt.CreateUser("alice", []string{"ABC"})
 	input := `{"channel":["ABC"]}`
@@ -437,7 +413,7 @@ func TestBytesReadGzipRequest(t *testing.T) {
 	require.NoError(t, err)
 	rq.SetBasicAuth("alice", RestTesterDefaultUserPassword)
 	rq.Header.Set("Content-Encoding", "gzip")
-	resp = rt.Send(rq)
+	resp := rt.Send(rq)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	base.RequireWaitForStat(t, func() int64 {
@@ -487,7 +463,6 @@ func TestPutDBBytesRead(t *testing.T) {
 }
 
 func TestOfflineDBBytesRead(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 

@@ -1959,7 +1959,6 @@ func (d *DbStats) InitCollectionStats(scopeAndCollectionNames ...string) error {
 }
 
 func (db *DbStats) initServerlessStats() error {
-	// call new int stsat etc for each stat in here
 	var err error
 	resUtil := &ServerlessStats{}
 	labelKeys := []string{DatabaseLabelKey}
@@ -2004,7 +2003,6 @@ func (db *DbStats) initServerlessStats() error {
 
 	db.ServerlessStats = resUtil
 	return nil
-	// unregister function needed for each
 }
 
 func (db *DbStats) unregisterServerlessStats() {
