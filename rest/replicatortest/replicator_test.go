@@ -2521,11 +2521,11 @@ func TestChangesEndpointTotalSyncTime(t *testing.T) {
 	require.Equal(t, int64(0), startValue)
 
 	// Put several documents in channel PBS
-	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs1", `{"value":1, "channel":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs1", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs2", `{"value":2, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs2", `{"value":2, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3", `{"value":3, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3", `{"value":3, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
 	changesJSON := `{"style":"all_docs",
@@ -2559,7 +2559,7 @@ func TestChangesEndpointTotalSyncTime(t *testing.T) {
 	require.Greater(t, syncTimeStat, startValue)
 
 	// put doc to end changes feed
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/abc1", `{"value":3, "channel":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/abc1", `{"value":3, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
 	wg.Wait()
 

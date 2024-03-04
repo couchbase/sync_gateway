@@ -1756,18 +1756,18 @@ func TestImportComputeStatOnDemandWrite(t *testing.T) {
 
 	importFilter := `function (doc) { return doc.type == "mobile"}`
 	rtConfig := rest.RestTesterConfig{
-		SyncFn: channels.DocChannelsSyncFunction,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			AutoImport:   false,
-			ImportFilter: &importFilter,
-		}},
+		SyncFn:           channels.DocChannelsSyncFunction,
 		Serverless:       true,
 		PersistentConfig: true,
 	}
 	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig)
 	defer rt.Close()
 
-	rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	// change config to add import filter and turn auto import off then create db with that config
+	cfg := rt.NewDbConfig()
+	cfg.AutoImport = false
+	cfg.ImportFilter = &importFilter
+	rest.RequireStatus(t, rt.CreateDatabase("db", cfg), http.StatusCreated)
 
 	dataStore := rt.GetSingleDataStore()
 
