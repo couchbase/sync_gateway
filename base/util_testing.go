@@ -255,6 +255,14 @@ func TestX509LocalServer() (bool, string) {
 	return val, username
 }
 
+// TestSupportsMobileXDCR returns true to mobile XDCR bucket setting has been set to true for test bucket, false otherwise
+func TestSupportsMobileXDCR() bool {
+	if GTestBucketPool.skipMobileXDCR {
+		return false
+	}
+	return true
+}
+
 // Should tests try to drop GSI indexes before flushing buckets?
 // See SG #3422
 func TestsShouldDropIndexes() bool {

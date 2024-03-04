@@ -175,6 +175,12 @@ func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec
 	}
 	gocbv2Bucket.kvOps = make(chan struct{}, MaxConcurrentSingleOps*nodeCount*(*numPools))
 
+	// Query to see if mobile XDCR bucket setting is set and store on bucket object
+	err = gocbv2Bucket.queryHLVBucketSetting(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	return gocbv2Bucket, nil
 }
 
@@ -185,6 +191,7 @@ type GocbV2Bucket struct {
 	queryOps                                             chan struct{} // Manages max concurrent query ops
 	kvOps                                                chan struct{} // Manages max concurrent kv ops
 	clusterCompatMajorVersion, clusterCompatMinorVersion uint64        // E.g: 6 and 0 for 6.0.3
+	supportsHLV                                          bool          // Flag to indicate with bucket supports mobile XDCR
 }
 
 var (
@@ -246,9 +253,34 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 		return isMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 0)
 	case sgbucket.BucketStoreFeatureSystemCollections:
 		return isMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 6)
+	case sgbucket.BucketStoreFeatureMobileXDCR:
+		return b.supportsHLV
 	default:
 		return false
 	}
+}
+
+// queryHLVBucketSetting sends request to server to check for enableCrossClusterVersioning bucket setting
+func (b *GocbV2Bucket) queryHLVBucketSetting(ctx context.Context) error {
+	url := fmt.Sprintf("/pools/default/buckets/%s", b.GetName())
+	output, statusCode, err := b.MgmtRequest(ctx, http.MethodGet, url, "application/x-www-form-urlencoded", nil)
+	if err != nil || statusCode != http.StatusOK {
+		return fmt.Errorf("error executing query for mobile XDCR bucket setting, status code: %d error: %v output: %s", statusCode, err, string(output))
+	}
+
+	type bucket struct {
+		SupportsHLV *bool `json:"enableCrossClusterVersioning,omitempty"`
+	}
+	var bucketSettings bucket
+	err = JSONUnmarshal(output, &bucketSettings)
+	if err != nil {
+		return err
+	}
+	// In Server < 7.6.1 this field will not be present, but if it is not configured on the bucket, it will return false
+	if bucketSettings.SupportsHLV != nil {
+		b.supportsHLV = *bucketSettings.SupportsHLV
+	}
+	return nil
 }
 
 func (b *GocbV2Bucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
@@ -468,19 +500,21 @@ func (b *GocbV2Bucket) BucketName() string {
 	return b.GetName()
 }
 
-func (b *GocbV2Bucket) MgmtRequest(ctx context.Context, method, uri, contentType string, body io.Reader) (*http.Response, error) {
+// MgmtRequest makes a request to the http couchbase management api. The uri is the non host part of the URL, such as /pools/default/buckets.
+// This function will read the entire contents of the response and return the output bytes, the status code, and an error.
+func (b *GocbV2Bucket) MgmtRequest(ctx context.Context, method, uri, contentType string, body io.Reader) ([]byte, int, error) {
 	if contentType == "" && body != nil {
-		return nil, errors.New("Content-type must be specified for non-null body.")
+		return nil, 0, errors.New("Content-type must be specified for non-null body.")
 	}
 
 	mgmtEp, err := GoCBBucketMgmtEndpoint(b)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	req, err := http.NewRequest(method, mgmtEp+uri, body)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	if contentType != "" {
@@ -491,7 +525,18 @@ func (b *GocbV2Bucket) MgmtRequest(ctx context.Context, method, uri, contentType
 		username, password, _ := b.Spec.Auth.GetCredentials()
 		req.SetBasicAuth(username, password)
 	}
-	return b.HttpClient(ctx).Do(req)
+	response, err := b.HttpClient(ctx).Do(req)
+	if err != nil {
+		return nil, response.StatusCode, err
+	}
+	defer func() { _ = response.Body.Close() }()
+
+	respBytes, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return respBytes, response.StatusCode, nil
 }
 
 // This prevents Sync Gateway from overflowing gocb's pipeline
@@ -646,24 +691,19 @@ func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.Dat
 // ServerMetrics returns all the metrics for couchbase server.
 func (b *GocbV2Bucket) ServerMetrics(ctx context.Context) (map[string]*dto.MetricFamily, error) {
 	url := "/metrics/"
-	resp, err := b.MgmtRequest(ctx, http.MethodGet, url, "application/x-www-form-urlencoded", nil)
+	resp, statusCode, err := b.MgmtRequest(ctx, http.MethodGet, url, "application/x-www-form-urlencoded", nil)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
 
-	output, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("Could not read body from %s", url)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Could not get metrics from %s. %s %s -> (%d) %s", b.GetName(), http.MethodGet, url, resp.StatusCode, output)
+	if statusCode != http.StatusOK {
+		return nil, fmt.Errorf("Could not get metrics from %s. %s %s -> (%d) %s", b.GetName(), http.MethodGet, url, statusCode, string(resp))
 	}
 
 	// filter duplicates from couchbase server or TextToMetricFamilies will fail MB-43772
 	lines := map[string]struct{}{}
 	filteredOutput := []string{}
-	for _, line := range strings.Split(string(output), "\n") {
+	for _, line := range strings.Split(string(resp), "\n") {
 		_, ok := lines[line]
 		if ok {
 			continue
