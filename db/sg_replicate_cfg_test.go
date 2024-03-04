@@ -61,28 +61,28 @@ func TestReplicateManagerReplications(t *testing.T) {
 
 	replications, err := manager.GetReplications()
 	require.NoError(t, err)
-	assert.Equal(t, 2, len(replications))
+	assert.Len(t, replications, 2)
 
 	// Remove replication
 	err = manager.DeleteReplication(replication1_id)
 	require.NoError(t, err)
 	replications, err = manager.GetReplications()
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(replications))
+	assert.Len(t, replications, 1)
 
 	// Remove non-existent replication
 	err = manager.DeleteReplication(replication1_id)
 	require.Error(t, base.ErrNotFound, err)
 	replications, err = manager.GetReplications()
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(replications))
+	assert.Len(t, replications, 1)
 
 	// Remove last replication
 	err = manager.DeleteReplication(replication2_id)
 	require.NoError(t, err)
 	replications, err = manager.GetReplications()
 	require.NoError(t, err)
-	assert.Equal(t, 0, len(replications))
+	assert.Len(t, replications, 0)
 }
 
 // Test node operations on SGReplicateManager
@@ -104,14 +104,14 @@ func TestReplicateManagerNodes(t *testing.T) {
 
 	nodes, err := manager.getNodes()
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(nodes))
+	assert.Len(t, nodes, 1)
 
 	err = manager.registerNodeForHost("node2", "host2")
 	require.NoError(t, err)
 
 	nodes, err = manager.getNodes()
 	require.NoError(t, err)
-	assert.Equal(t, 2, len(nodes))
+	assert.Len(t, nodes, 2)
 
 	// re-adding an existing node is a no-op
 	err = manager.registerNodeForHost("node1", "host1")
@@ -119,7 +119,7 @@ func TestReplicateManagerNodes(t *testing.T) {
 
 	nodes, err = manager.getNodes()
 	require.NoError(t, err)
-	assert.Equal(t, 2, len(nodes))
+	assert.Len(t, nodes, 2)
 
 	// Remove node
 	err = manager.RemoveNode("node1")
@@ -127,7 +127,7 @@ func TestReplicateManagerNodes(t *testing.T) {
 
 	nodes, err = manager.getNodes()
 	require.NoError(t, err)
-	require.Equal(t, 1, len(nodes))
+	require.Len(t, nodes, 1)
 	node2, ok := nodes["node2"]
 	require.True(t, ok)
 	require.Equal(t, node2.UUID, "node2")
@@ -138,7 +138,7 @@ func TestReplicateManagerNodes(t *testing.T) {
 
 	replications, err := manager.GetReplications()
 	require.NoError(t, err)
-	assert.Equal(t, 0, len(replications))
+	assert.Len(t, replications, 0)
 }
 
 // Test concurrent node operations on SGReplicateManager
@@ -169,7 +169,7 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 	nodeWg.Wait()
 	nodes, err := manager.getNodes()
 	require.NoError(t, err)
-	require.Equal(t, 20, len(nodes))
+	require.Len(t, nodes, 20)
 
 	for i := 0; i < 20; i++ {
 		nodeWg.Add(1)
@@ -183,7 +183,7 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 	nodeWg.Wait()
 	nodes, err = manager.getNodes()
 	require.NoError(t, err)
-	require.Equal(t, 0, len(nodes))
+	require.Len(t, nodes, 0)
 }
 
 // Test concurrent replication operations on SGReplicateManager
@@ -214,7 +214,7 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 	replicationWg.Wait()
 	replications, err := manager.GetReplications()
 	require.NoError(t, err)
-	require.Equal(t, 20, len(replications))
+	require.Len(t, replications, 20)
 
 	for i := 0; i < 20; i++ {
 		replicationWg.Add(1)
@@ -228,7 +228,7 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 	replicationWg.Wait()
 	replications, err = manager.GetReplications()
 	require.NoError(t, err)
-	require.Equal(t, 0, len(replications))
+	require.Len(t, replications, 0)
 }
 
 func testReplicationCfg(id, assignedNode string) *ReplicationCfg {

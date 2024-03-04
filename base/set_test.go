@@ -31,20 +31,20 @@ func TestSetFromArray(t *testing.T) {
 
 func TestSet(t *testing.T) {
 	set := SetFromArray(nil)
-	assert.Equal(t, 0, len(set))
+	assert.Len(t, set, 0)
 	assert.Equal(t, []string{}, set.ToArray())
 
 	set = SetFromArray([]string{})
-	assert.Equal(t, 0, len(set))
+	assert.Len(t, set, 0)
 
 	set = SetFromArray([]string{"foo"})
-	assert.Equal(t, 1, len(set))
+	assert.Len(t, set, 1)
 	assert.True(t, set.Contains("foo"))
 	assert.False(t, set.Contains("bar"))
 
 	values := []string{"bar", "foo", "zog"}
 	set = SetFromArray(values)
-	assert.Equal(t, 3, len(set))
+	assert.Len(t, set, 3)
 	asArray := set.ToArray()
 	sort.Strings(asArray)
 	assert.Equal(t, values, asArray)

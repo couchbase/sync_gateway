@@ -290,7 +290,7 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	response := rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/", fmt.Sprintf(collectionsDbConfig, testBucket.GetName(), string(scopesConfigJSON)))
 	rest.RequireStatus(t, response, http.StatusCreated)
 
-	require.Equal(t, 1, len(rt.GetDbCollections()))
+	require.Len(t, rt.GetDbCollections(), 1)
 	require.Equal(t, strings.ReplaceAll(dataStore1.GetName(), testBucket.GetName(), dbName), rt.GetSingleKeyspace())
 
 	// Wait for auto-import to work
@@ -318,7 +318,7 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", fmt.Sprintf(collectionsDbConfig, testBucket.GetName(), string(twoScopesConfigJSON)))
 	rest.RequireStatus(t, response, http.StatusCreated)
 
-	require.Equal(t, 2, len(rt.GetDbCollections()))
+	require.Len(t, rt.GetDbCollections(), 2)
 
 	// Wait for auto-import to work
 	_, err = rt.WaitForChanges(docCount, "/{{.keyspace2}}/_changes", "", true)
@@ -381,7 +381,7 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 	response := rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/", fmt.Sprintf(collectionsDbConfig, testBucket.GetName(), string(twoScopesConfigJSON)))
 	rest.RequireStatus(t, response, http.StatusCreated)
 
-	require.Equal(t, 2, len(rt.GetDbCollections()))
+	require.Len(t, rt.GetDbCollections(), 2)
 
 	// Wait for auto-import to work
 	_, err = rt.WaitForChanges(docCount, "/{{.keyspace1}}/_changes", "", true)

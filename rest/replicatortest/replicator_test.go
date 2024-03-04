@@ -86,7 +86,7 @@ func TestReplicationAPI(t *testing.T) {
 	log.Printf("response: %s", response.BodyBytes())
 	err = json.Unmarshal(response.BodyBytes(), &replicationsResponse)
 	require.NoError(t, err)
-	assert.Equal(t, 2, len(replicationsResponse))
+	assert.Len(t, replicationsResponse, 2)
 	_, ok := replicationsResponse["replication1"]
 	assert.True(t, ok)
 	_, ok = replicationsResponse["replication2"]
@@ -1508,7 +1508,7 @@ func TestGetStatusWithReplication(t *testing.T) {
 	status = rest.Status{}
 	err = json.Unmarshal(response.BodyBytes(), &status)
 	require.NoError(t, err, "Error un-marshalling replication response")
-	require.Equal(t, 0, len(status.Databases["db"].ReplicationStatus))
+	require.Len(t, status.Databases["db"].ReplicationStatus, 0)
 }
 
 func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {

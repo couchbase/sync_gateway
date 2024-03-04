@@ -86,13 +86,13 @@ func TestView(t *testing.T) {
 	viewParams[ViewQueryParamStale] = false
 	result, viewErr := viewStore.View(ctx, ddocName, viewName, viewParams)
 	require.NoError(t, viewErr)
-	assert.Equal(t, 3, len(result.Rows))
+	assert.Len(t, result.Rows, 3)
 
 	// Limit
 	viewParams[ViewQueryParamLimit] = 1
 	result, viewErr = viewStore.View(ctx, ddocName, viewName, viewParams)
 	require.NoError(t, viewErr)
-	require.Equal(t, 1, len(result.Rows))
+	require.Len(t, result.Rows, 1)
 	assert.Equal(t, "Circle", result.Rows[0].Key)
 
 	// Startkey, Endkey
@@ -101,7 +101,7 @@ func TestView(t *testing.T) {
 	viewParams[ViewQueryParamEndKey] = "Northern"
 	result, viewErr = viewStore.View(ctx, ddocName, viewName, viewParams)
 	require.NoError(t, viewErr)
-	require.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	assert.Equal(t, "District", result.Rows[0].Key)
 	assert.Equal(t, "Northern", result.Rows[1].Key)
 
@@ -109,7 +109,7 @@ func TestView(t *testing.T) {
 	viewParams[ViewQueryParamInclusiveEnd] = false
 	result, viewErr = viewStore.View(ctx, ddocName, viewName, viewParams)
 	require.NoError(t, viewErr)
-	assert.Equal(t, 1, len(result.Rows))
+	assert.Len(t, result.Rows, 1)
 	assert.Equal(t, "District", result.Rows[0].Key)
 
 	// Descending
@@ -117,7 +117,7 @@ func TestView(t *testing.T) {
 	viewParams[ViewQueryParamDescending] = true
 	result, viewErr = viewStore.View(ctx, ddocName, viewName, viewParams)
 	require.NoError(t, viewErr)
-	require.Equal(t, 3, len(result.Rows))
+	require.Len(t, result.Rows, 3)
 	assert.Equal(t, "Northern", result.Rows[0].Key)
 
 	// ...and skip (CBS only)
@@ -125,7 +125,7 @@ func TestView(t *testing.T) {
 		viewParams[ViewQueryParamSkip] = 1
 		result, viewErr = viewStore.View(ctx, ddocName, viewName, viewParams)
 		require.NoError(t, viewErr)
-		require.Equal(t, 2, len(result.Rows))
+		require.Len(t, result.Rows, 2)
 		assert.Equal(t, "District", result.Rows[0].Key)
 	}
 
@@ -134,19 +134,19 @@ func TestView(t *testing.T) {
 	viewParams[ViewQueryParamKey] = "District"
 	result, viewErr = viewStore.View(ctx, ddocName, viewName, viewParams)
 	require.NoError(t, viewErr)
-	require.Equal(t, 1, len(result.Rows))
+	require.Len(t, result.Rows, 1)
 	assert.Equal(t, "District", result.Rows[0].Key)
 
 	viewParams[ViewQueryParamKey] = "Central"
 	result, viewErr = viewStore.View(ctx, ddocName, viewName, viewParams)
 	require.NoError(t, viewErr)
-	require.Equal(t, 0, len(result.Rows))
+	require.Len(t, result.Rows, 0)
 
 	delete(viewParams, ViewQueryParamKey)
 	viewParams[ViewQueryParamKeys] = []interface{}{"Central", "Circle"}
 	result, viewErr = viewStore.View(ctx, ddocName, viewName, viewParams)
 	require.NoError(t, viewErr)
-	require.Equal(t, 1, len(result.Rows))
+	require.Len(t, result.Rows, 1)
 	assert.Equal(t, "Circle", result.Rows[0].Key)
 
 	// ViewCustom

@@ -247,7 +247,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			// Verify single index exists, and matches expected naming
 			_, indexDefsMap, err := context.Manager.GetIndexDefs(true)
 			require.NoError(t, err)
-			assert.Equal(t, 1, len(indexDefsMap))
+			assert.Len(t, indexDefsMap, 1)
 			indexDef, ok := indexDefsMap[tc.expectedIndexName]
 			assert.True(t, ok, "Expected index name"+tc.expectedIndexName+"not found")
 
@@ -319,7 +319,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	// Verify single index created
 	_, indexDefsMap, err := context.Manager.GetIndexDefs(true)
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(indexDefsMap))
+	assert.Len(t, indexDefsMap, 1)
 
 	// Attempt to recreate index
 	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, spec, "", nil, 16)
@@ -328,7 +328,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	// Verify single index defined (acts as upsert to existing)
 	_, indexDefsMap, err = context.Manager.GetIndexDefs(true)
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(indexDefsMap))
+	assert.Len(t, indexDefsMap, 1)
 	_, ok := indexDefsMap[legacyIndexName]
 	assert.True(t, ok)
 }
@@ -397,7 +397,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	// Verify single index created
 	_, indexDefsMap, err := context.Manager.GetIndexDefs(true)
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(indexDefsMap))
+	assert.Len(t, indexDefsMap, 1)
 
 	// Attempt to recreate index
 	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, spec, "", nil, 16)
@@ -406,7 +406,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	// Verify single index defined (acts as upsert to existing)
 	_, indexDefsMap, err = context.Manager.GetIndexDefs(true)
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(indexDefsMap))
+	assert.Len(t, indexDefsMap, 1)
 	_, ok := indexDefsMap[legacyIndexName]
 	assert.False(t, ok)
 	_, ok = indexDefsMap[GenerateIndexName(unsafeTestDBName)]
