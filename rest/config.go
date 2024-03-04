@@ -324,7 +324,7 @@ func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname 
 		logMessage += " Mismatched buckets (config bucket: %q, actual bucket: %q)"
 		logArgs = append(logArgs, base.MD(d.dbNames[dbname].configBucketName), base.MD(d.dbNames[dbname].persistedBucketName))
 	} else if cnf.Version == invalidDatabaseConflictingCollectionsVersion {
-		base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseCollectionCollisions.Add(1)
+		base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseRollbackCollectionCollisions.Add(1)
 		logMessage += " Conflicting collections detected"
 	} else {
 		// Nothing is expected to hit this case, but we might add more invalid sentinel values and forget to update this code.
