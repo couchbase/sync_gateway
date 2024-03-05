@@ -155,6 +155,10 @@ func (g *GlobalStat) initConfigStats() error {
 	if err != nil {
 		return err
 	}
+	configStat.DatabaseRollbackCollectionCollisions, err = NewIntStat(ConfigSubsystem, "database_config_collection_conflicts", nil, nil, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	g.ConfigStat = configStat
 	return nil
 }
@@ -319,6 +323,8 @@ type ResourceUtilization struct {
 type ConfigStat struct {
 	// The number of times the bucket specified in a database config doesn't match the bucket it's found in.
 	DatabaseBucketMismatches *SgwIntStat `json:"database_config_bucket_mismatches"`
+	// The number of times the config was rolled back to an invalid state (conflicting collections)
+	DatabaseRollbackCollectionCollisions *SgwIntStat `json:"database_config_rollback_collection_collisions"`
 }
 
 type DbStats struct {

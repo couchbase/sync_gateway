@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -70,8 +71,17 @@ type bootstrapAdminResponse struct {
 	t          *testing.T
 }
 
+func (r *bootstrapAdminResponse) AssertStatus(status int) {
+	assert.Equal(r.t, status, r.StatusCode, "unexpected status code - body: %s", r.Body)
+}
+
 func (r *bootstrapAdminResponse) RequireStatus(status int) {
 	require.Equal(r.t, status, r.StatusCode, "unexpected status code - body: %s", r.Body)
+}
+
+func (r *bootstrapAdminResponse) AssertResponse(status int, body string) {
+	assert.Equal(r.t, status, r.StatusCode, "unexpected status code - body: %s", r.Body)
+	assert.Equal(r.t, body, r.Body, "unexpected body")
 }
 
 func (r *bootstrapAdminResponse) RequireResponse(status int, body string) {
@@ -124,4 +134,48 @@ func doBootstrapAdminRequest(t *testing.T, method, host, path, body string, head
 		Body:       string(rBody),
 		Header:     resp.Header,
 	}
+}
+
+// StartBootstrapServer starts a server with a default bootstrap config, and returns a function to close the server. This differs from RestTester in that this is running a real server listening on random port. Prefer use of RestTester for more ergnomic APIs.
+func StartBootstrapServer(t *testing.T) (*ServerContext, func()) {
+	return StartBootstrapServerWithGroupID(t, nil)
+}
+
+// StartBootstrapServerWithGroupID starts a server with a bootstrap config, and returns a function to close the server. This differs from RestTester in that this is running a real server listening on random port. Prefer use of random groupID if appropriate. Prefer use of RestTester for more ergonomic APIs.
+func StartBootstrapServerWithGroupID(t *testing.T, groupID *string) (*ServerContext, func()) {
+	config := BootstrapStartupConfigForTest(t)
+	if groupID != nil {
+		config.Bootstrap.ConfigGroupID = *groupID
+	}
+	return StartServerWithConfig(t, &config)
+
+}
+
+// StartServerWithConfig starts a server from given config, and returns a function to close the server. Prefer use of RestTester for more ergonomic APIs.
+func StartServerWithConfig(t *testing.T, config *StartupConfig) (*ServerContext, func()) {
+	ctx := base.TestCtx(t)
+	sc, err := SetupServerContext(ctx, config, true)
+	require.NoError(t, err)
+
+	serverErr := make(chan error)
+
+	closeFn := func() {
+		sc.Close(ctx)
+		assert.NoError(t, <-serverErr)
+	}
+
+	started := false
+	defer func() {
+		if !started {
+			closeFn()
+		}
+
+	}()
+	go func() {
+		serverErr <- StartServer(ctx, config, sc)
+	}()
+
+	require.NoError(t, sc.WaitForRESTAPIs(ctx))
+	started = true
+	return sc, closeFn
 }

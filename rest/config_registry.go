@@ -51,7 +51,14 @@ type GatewayRegistry struct {
 
 const GatewayRegistryVersion = "1.0"
 
-const deletedDatabaseVersion = "0-0"
+// A set of special sentinel values to store as database versions.
+// NOTE: Update addInvalidDatabase and isRegistryDbConfigVersionInvalid if you add more.
+const (
+	// deletedDatabaseVersion represents an entry for an in-progress delete
+	deletedDatabaseVersion = "0-0"
+	// invalidDatabaseConflictingCollectionsVersion represents an entry for a rollback-induced invalid state
+	invalidDatabaseConflictingCollectionsVersion = "0-1"
+)
 
 // RegistryConfigGroup stores the set of databases for a given config group
 type RegistryConfigGroup struct {
@@ -60,18 +67,33 @@ type RegistryConfigGroup struct {
 
 // RegistryDatabase stores the version and set of RegistryScopes for a database
 type RegistryDatabase struct {
-	RegistryDatabaseVersion        // current version
-	MetadataID              string `json:"metadata_id"`    // Metadata ID
-	UUID                    string `json:"uuid,omitempty"` // Database UUID
+	RegistryDatabaseVersion // current version
 	// PreviousVersion stores the previous database version while an update is in progress, in case update of the config
 	// fails and rollback is required.  Required to avoid cross-database collection conflicts during rollback.
 	PreviousVersion *RegistryDatabaseVersion `json:"previous_version,omitempty"`
+	MetadataID      string                   `json:"metadata_id"`    // Metadata ID
+	UUID            string                   `json:"uuid,omitempty"` // Database UUID
 }
 
 // DatabaseVersion stores the version and collection set for a database.  Used for storing current or previous version.
 type RegistryDatabaseVersion struct {
-	Version string         `json:"version,omitempty"` // Database Version
 	Scopes  RegistryScopes `json:"scopes,omitempty"`  // Scopes and collections for this version
+	Version string         `json:"version,omitempty"` // Database Version
+}
+
+// IsDeleted returns true if the database is in a deleted state
+func (r *RegistryDatabase) IsDeleted() bool {
+	return r.Version == deletedDatabaseVersion
+}
+
+// IsInvalid returns true if the database is in an invalid state
+func (r *RegistryDatabase) IsInvalid() bool {
+	return isRegistryDbConfigVersionInvalid(r.Version)
+}
+
+// isRegistryDbConfigVersionInvalid returns true if the version is in an invalid state
+func isRegistryDbConfigVersionInvalid(version string) bool {
+	return version == invalidDatabaseConflictingCollectionsVersion
 }
 
 type RegistryScopes map[string]RegistryScope
@@ -203,7 +225,7 @@ func (r *GatewayRegistry) upsertDatabaseConfig(ctx context.Context, configGroupI
 }
 
 // rollbackDatabaseConfig reverts the registry entry to the previous version, and removes the previous version
-func (r *GatewayRegistry) rollbackDatabaseConfig(ctx context.Context, configGroupID string, dbName string) (err error) {
+func (r *GatewayRegistry) rollbackDatabaseConfig(ctx context.Context, configGroupID string, dbName string, config *DatabaseConfig) (err error) {
 
 	configGroup, ok := r.ConfigGroups[configGroupID]
 	if !ok {
@@ -214,8 +236,16 @@ func (r *GatewayRegistry) rollbackDatabaseConfig(ctx context.Context, configGrou
 		return base.ErrNotFound
 	}
 
+	// handle dbconfig doc rollback without PreviousVersion
 	if registryDatabase.PreviousVersion == nil {
-		return fmt.Errorf("Rollback requested but registry did not include previous version for db %s", base.MD(dbName))
+		base.InfofCtx(ctx, base.KeyConfig, "Rollback requested but registry did not include previous version for db %s - using config doc as previous version", base.MD(dbName))
+		newRegistryDatabase := registryDatabaseFromConfig(config)
+		configGroup.Databases[dbName] = newRegistryDatabase
+		if conflicts := r.getCollectionConflicts(ctx, dbName, config.Scopes); len(conflicts) > 0 {
+			base.WarnfCtx(ctx, "db %s config rollback would cause collection conflicts (%v) - marking database as invalid to allow for manual repair", base.MD(dbName), base.MD(conflicts))
+			newRegistryDatabase.Version = invalidDatabaseConflictingCollectionsVersion
+		}
+		return nil
 	}
 
 	registryDatabase.Version = registryDatabase.PreviousVersion.Version
@@ -362,7 +392,7 @@ func registryDatabaseFromConfig(config *DatabaseConfig) *RegistryDatabase {
 		registryScope := RegistryScope{
 			Collections: make([]string, 0),
 		}
-		for collectionName, _ := range scope.Collections {
+		for collectionName := range scope.Collections {
 			registryScope.Collections = append(registryScope.Collections, collectionName)
 		}
 		rdb.Scopes[scopeName] = registryScope
