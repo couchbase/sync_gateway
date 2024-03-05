@@ -545,82 +545,132 @@ func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback
 	base.RequireNumTestDataStores(t, 3)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyConfig)
 
-	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
-	defer closeFn()
+	tests := []struct {
+		name                  string
+		multiDatabaseRollback bool
+	}{
+		{"single database rollback",
+			false,
+		},
+		{"multi database rollback",
+			true,
+		},
+	}
 
-	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 
-	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
-	dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
+			defer closeFn()
 
-	bucketName := tb.GetName()
-	scopeName := dataStoreNames[0].ScopeName()
-	groupID := sc.Config.Bootstrap.ConfigGroupID
-	bc := sc.BootstrapContext
+			ctx := base.TestCtx(t)
+			tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
 
-	// reduce retry timeout for testing
-	bc.configRetryTimeout = 1 * time.Millisecond
+			threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
+			dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
 
-	// set up ScopesConfigs used by tests
-	collection1Name := dataStoreNames[0].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
-	collection2Name := dataStoreNames[1].CollectionName()
-	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
+			bucketName := tb.GetName()
+			scopeName := dataStoreNames[0].ScopeName()
+			groupID := sc.Config.Bootstrap.ConfigGroupID
+			bc := sc.BootstrapContext
 
-	const dbName1 = "c1_db1"
-	collection1db1Config := getTestDatabaseConfig(bucketName, dbName1, collection1ScopesConfig, "2-a")
-	cas1, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
-	require.NoError(t, err)
+			// reduce retry timeout for testing
+			bc.configRetryTimeout = 1 * time.Millisecond
 
-	const dbName2 = "c1_db2"
-	collection1db2Config := getTestDatabaseConfig(bucketName, dbName2, collection2ScopesConfig, "2-a")
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db2Config)
-	require.NoError(t, err)
+			// set up ScopesConfigs used by tests
+			collection1Name := dataStoreNames[0].CollectionName()
+			collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+			collection2Name := dataStoreNames[1].CollectionName()
+			collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
+			collection3Name := dataStoreNames[2].CollectionName()
+			collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection3Name: {}}}}
 
-	configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
-	require.NoError(t, err)
-	require.Len(t, configs, 2)
+			const dbName1 = "c1_db1"
+			collection1db1Config := getTestDatabaseConfig(bucketName, dbName1, collection1ScopesConfig, "2-a")
+			_, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
+			require.NoError(t, err)
 
-	// simulate a rollback (not exactly - CAS increments, but lowering the config version is enough)
-	// this time we'll "roll back" to a version of dbconfig that contains a collection now in use by db2
-	docID := PersistentConfigKey(ctx, groupID, dbName1)
-	updatedConfig := *collection1db1Config
-	updatedConfig.Version = "1-a"
-	updatedConfig.Scopes = ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}, collection2Name: {}}}}
-	_, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, cas1, &updatedConfig)
-	require.NoError(t, err)
+			const dbName2 = "c1_db2"
+			collection1db2Config := getTestDatabaseConfig(bucketName, dbName2, collection2ScopesConfig, "2-a")
+			db2CAS, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db2Config)
+			require.NoError(t, err)
 
-	// should expect db1 to fail because collection2 is shared by two databases during rollback handling, db2 should (re)load
-	count, err := sc.fetchAndLoadConfigs(ctx, false)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, count) // db2 is still valid
-	_, err = sc.GetActiveDatabase(dbName1)
-	require.Error(t, err)
-	_, err = sc.GetActiveDatabase(dbName2)
-	require.NoError(t, err)
-	sc.RequireInvalidDatabaseConfigNames(t, []string{dbName1})
+			const dbName3 = "c1_db3"
+			collection1db3Config := getTestDatabaseConfig(bucketName, dbName3, collection3ScopesConfig, "2-a")
+			db3CAS, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db3Config)
+			require.NoError(t, err)
 
-	// invalid databases not accessible, but also don't expect this do do anything like an on-demand load
-	resp := BootstrapAdminRequest(t, sc, http.MethodGet, fmt.Sprintf("/%s/_config", dbName1), "")
-	resp.RequireStatus(http.StatusNotFound)
+			configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
+			require.NoError(t, err)
+			require.Len(t, configs, 3)
 
-	// should be able to put as a new database with a repaired config
-	updatedConfig.Scopes = ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
-	dbConfig := base.MustJSONMarshal(t, updatedConfig.DbConfig)
-	resp = BootstrapAdminRequest(t, sc, http.MethodPut, fmt.Sprintf("/%s/", dbName1), string(dbConfig))
-	resp.RequireStatus(http.StatusCreated)
+			// simulate a rollback (not exactly - CAS increments, but lowering the config version is enough)
+			// this time we'll "roll back" to a version of dbconfig that contains a collection now in use by db1
+			docID := PersistentConfigKey(ctx, groupID, dbName2)
+			updatedDb2Config := *collection1db2Config
+			updatedDb2Config.Version = "1-a"
+			updatedDb2Config.Scopes = ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}, collection2Name: {}}}}
+			db2CAS, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, db2CAS, &updatedDb2Config)
+			require.NoError(t, err)
 
-	// database config and registry should now be aligned and we should have no invalid databses stored
-	count, err = sc.fetchAndLoadConfigs(ctx, false)
-	assert.NoError(t, err)
-	assert.Equal(t, 0, count) // both databases valid but already loaded
-	_, err = sc.GetActiveDatabase(dbName1)
-	require.NoError(t, err)
-	_, err = sc.GetActiveDatabase(dbName2)
-	require.NoError(t, err)
-	sc.RequireInvalidDatabaseConfigNames(t, []string{})
+			// also roll back db3 to the same collection as db1 if multiDatabaseRollback
+			if test.multiDatabaseRollback {
+				docID = PersistentConfigKey(ctx, groupID, dbName3)
+				updatedDb3Config := *collection1db3Config
+				updatedDb3Config.Version = "1-a"
+				updatedDb3Config.Scopes = ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}, collection3Name: {}}}}
+				db3CAS, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, db3CAS, &updatedDb3Config)
+				require.NoError(t, err)
+			}
+
+			// should expect db2 (and db3) to fail because collection2 is shared by two databases during rollback handling, db1 should (re)load
+			count, err := sc.fetchAndLoadConfigs(ctx, false)
+			assert.NoError(t, err)
+			_, err = sc.GetActiveDatabase(dbName1)
+			require.NoError(t, err)
+			_, err = sc.GetActiveDatabase(dbName2)
+			require.Error(t, err)
+
+			if test.multiDatabaseRollback {
+				assert.Equal(t, 1, count) // db1 is still valid
+				_, err = sc.GetActiveDatabase(dbName3)
+				require.Error(t, err)
+				sc.RequireInvalidDatabaseConfigNames(t, []string{dbName2, dbName3})
+			} else {
+				assert.Equal(t, 2, count) // db1 and db3 still valid
+				_, err = sc.GetActiveDatabase(dbName3)
+				require.NoError(t, err)
+				sc.RequireInvalidDatabaseConfigNames(t, []string{dbName2})
+			}
+
+			// invalid databases not accessible, but also don't expect this to do anything like an on-demand load
+			resp := BootstrapAdminRequest(t, sc, http.MethodGet, fmt.Sprintf("/%s/_config", dbName2), "")
+			resp.RequireStatus(http.StatusNotFound)
+
+			// should be able to put as a new database with a repaired config
+			updatedDb2Config.Scopes = ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
+			db2Config := base.MustJSONMarshal(t, updatedDb2Config.DbConfig)
+			resp = BootstrapAdminRequest(t, sc, http.MethodPut, fmt.Sprintf("/%s/", dbName2), string(db2Config))
+			resp.RequireStatus(http.StatusCreated)
+
+			// database config and registry should now be aligned
+			count, err = sc.fetchAndLoadConfigs(ctx, false)
+			assert.NoError(t, err)
+			assert.Equal(t, 0, count) // both databases valid but already loaded
+			_, err = sc.GetActiveDatabase(dbName1)
+			require.NoError(t, err)
+			_, err = sc.GetActiveDatabase(dbName2)
+			require.NoError(t, err)
+			if test.multiDatabaseRollback {
+				// db3 still invalid
+				sc.RequireInvalidDatabaseConfigNames(t, []string{dbName3})
+			} else {
+				// and no remaining invalid databases
+				sc.RequireInvalidDatabaseConfigNames(t, []string{})
+			}
+		})
+	}
 }
 
 // TestPersistentConfigRegistryRollbackAfterCreateFailure simulates node failure during an insertConfig operation, leaving
