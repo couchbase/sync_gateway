@@ -1437,7 +1437,7 @@ func TestEventConfigValidationInvalid(t *testing.T) {
 
 	buf := bytes.NewBufferString(dbConfigJSON)
 	var dbConfig DbConfig
-	err := DecodeAndSanitiseConfig(base.TestCtx(t), buf, &dbConfig, true)
+	err := DecodeAndSanitiseStartupConfig(base.TestCtx(t), buf, &dbConfig, true)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "document_scribbled_on")
 }

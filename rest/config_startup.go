@@ -217,7 +217,7 @@ func LoadStartupConfigFromPath(ctx context.Context, path string) (*StartupConfig
 	defer func() { _ = rc.Close() }()
 
 	var sc StartupConfig
-	err = DecodeAndSanitiseConfig(ctx, rc, &sc, true)
+	err = DecodeAndSanitiseStartupConfig(ctx, rc, &sc, true)
 	return &sc, err
 }
 
