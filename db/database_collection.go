@@ -165,7 +165,7 @@ func (c *DatabaseCollection) ForceAPIForbiddenErrors() bool {
 	return c.dbCtx.Options.UnsupportedOptions != nil && c.dbCtx.Options.UnsupportedOptions.ForceAPIForbiddenErrors
 }
 
-// ImportFilter returns the sync function.
+// ImportFilter returns the import filter.
 func (c *DatabaseCollection) importFilter() *ImportFilterFunction {
 	return c.importFilterFunction
 }
