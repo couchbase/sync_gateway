@@ -9,6 +9,8 @@
 import json
 import unittest
 
+import pytest
+
 import password_remover
 
 class TestStripPasswordsFromUrl(unittest.TestCase):
@@ -123,7 +125,7 @@ class TestRemovePasswords(unittest.TestCase):
           }
         }
         """
-        with_passwords_removed = password_remover.remove_passwords(unparseable_json_with_passwords, log_json_parsing_exceptions=False)
+        with_passwords_removed = password_remover.remove_passwords(unparseable_json_with_passwords)
         assert "foobar" not in with_passwords_removed
 
 
@@ -311,5 +313,36 @@ class TestLowerKeys(unittest.TestCase):
         json_text_expected = json.dumps(json_dict_expected, sort_keys=True)
         assert json_text_expected == json_text_actual
 
-
-
+@pytest.mark.parametrize("input_str, expected", [
+       (
+			b'{"foo": "bar"}',
+			'{"foo": "bar"}',
+		),
+		(
+			b'{\"foo\": `bar`}',
+			'{"foo": "bar"}',
+		),
+		(
+			b'{\"foo\": `bar\nbaz\nboo`}',
+			r'{"foo": "bar\nbaz\nboo"}',
+		),
+		(
+			b'{\"foo\": `bar\n\"baz\n\tboo`}',
+			r'{"foo": "bar\n\"baz\n\tboo"}',
+		),
+		(
+			b'{\"foo\": `bar\n`, \"baz\": `howdy`}',
+			r'{"foo": "bar\n", "baz": "howdy"}',
+		),
+		(
+			b'{\"foo\": `bar\r\n`, \"baz\": `\r\nhowdy`}',
+			r'{"foo": "bar\n", "baz": "\nhowdy"}',
+		),
+		(
+			b'{\"foo\": `bar\\baz`, \"something\": `else\\is\\here`}',
+			r'{"foo": "bar\\baz", "something": "else\\is\\here"}',
+		),
+        ])
+def test_convert_to_valid_json(input_str, expected):
+    assert password_remover.convert_to_valid_json(input_str) == expected
+    password_remover.get_parsed_json(input_str)

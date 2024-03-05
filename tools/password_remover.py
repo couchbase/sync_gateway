@@ -13,45 +13,39 @@ Redacts sensitive data in config files
 
 """
 
-
+import enum
 import json
 import traceback
+import re
 from urllib.parse import urlparse
 
+from typing import Union
 
-def is_valid_json(invalid_json):
+def get_parsed_json(json_text: str) -> dict:
     """
-    Is the given string valid JSON?
+    Turns json_text into a valid JSON object by replacing backquotes with single quotes, and returns it as a dictionary.
     """
-    got_exception = True
-    try:
-        json.loads(invalid_json)
-        got_exception = False
-    except Exception as e:
-        pass
+    valid_json = convert_to_valid_json(json_text)
 
-    return got_exception is False
+    # Lower case keys so that "databases" works as a
+    # key even if the JSON has "Databases" as a key.
+    return lower_keys_dict(valid_json)
 
 
-def tag_userdata_in_server_config(json_text, log_json_parsing_exceptions=True):
+def tag_userdata_in_server_config(json_text):
     """
     Content postprocessor that tags user data in a config ready for post-process redaction
     """
     try:
-        valid_json = convert_to_valid_json(json_text)
-
-        # Lower case keys so that "databases" works as a
-        # key even if the JSON has "Databases" as a key.
-        parsed_json = lower_keys_dict(valid_json)
+        parsed_json = get_parsed_json(json_text)
 
         tag_userdata_in_server_json(parsed_json)
         formatted_json_string = json.dumps(parsed_json, indent=4)
         return formatted_json_string
 
     except Exception as e:
-        if log_json_parsing_exceptions:
-            print("Exception trying to tag config user data in {0}.  Exception: {1}".format(json_text, e))
-            traceback.print_exc()
+        print("Exception trying to tag config user data in {0}.  Exception: {1}".format(json_text, e))
+        traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to tag config user data.  See logs for details"}'
 
 
@@ -67,7 +61,7 @@ def tag_userdata_in_server_json(config):
                 tag_userdata_in_db_json(dbs[db])
 
 
-def tag_userdata_in_db_config(json_text, log_json_parsing_exceptions=True):
+def tag_userdata_in_db_config(json_text):
     """
     Content postprocessor that tags user data in a db config ready for post-process redaction
     """
@@ -83,9 +77,8 @@ def tag_userdata_in_db_config(json_text, log_json_parsing_exceptions=True):
         return formatted_json_string
 
     except Exception as e:
-        if log_json_parsing_exceptions:
-            print("Exception trying to tag db config user data in {0}.  Exception: {1}".format(json_text, e))
-            traceback.print_exc()
+        print("Exception trying to tag db config user data in {0}.  Exception: {1}".format(json_text, e))
+        traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to tag db config user data.  See logs for details"}'
 
 
@@ -157,16 +150,13 @@ def remove_passwords_from_config(config_fragment):
             remove_passwords_from_config(item)
 
 
-def remove_passwords(json_text, log_json_parsing_exceptions=True):
+def remove_passwords(json_text):
     """
     Content postprocessor that strips out all of the sensitive passwords
     """
     try:
-        valid_json = convert_to_valid_json(json_text)
+        parsed_json = get_parsed_json(json_text)
 
-        # Lower case keys so that "databases" works as a
-        # key even if the JSON has "Databases" as a key.
-        parsed_json = lower_keys_dict(valid_json)
         remove_passwords_from_config(parsed_json)
 
         # Append a trailing \n here to ensure there's adequate separation in sync_gateway.log
@@ -174,9 +164,8 @@ def remove_passwords(json_text, log_json_parsing_exceptions=True):
         return formatted_json_string
 
     except Exception as e:
-        if log_json_parsing_exceptions:
-            print("Exception trying to remove passwords from {0}.  Exception: {1}".format(json_text, e))
-            traceback.print_exc()
+        print("Exception trying to remove passwords from {0}.  Exception: {1}".format(json_text, e))
+        traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to remove passwords.  See logs for details"}'
 
 
@@ -235,91 +224,41 @@ def strip_password_from_url(url_string):
     return new_url
 
 
-def escape_json_value(raw_value):
+def replace_backticks_with_double_quotes(match):
     """
-    Escape all invalid json characters like " to produce a valid json value
+    Escape all invalid json characters in sync gateway config files that occur between backticks to produce a valid json value. This matches ConvertBackticksToDoubleQuotes in go code.
 
-    Before:
+    Before::
 
-    function(doc, oldDoc) {            if (doc.type == "reject_me") {
+        function(doc, oldDoc) { if (doc.type == "reject_me") {
 
-    After:
+    After::
 
-    function(doc, oldDoc) {            if (doc.type == \"reject_me\") {
+        function(doc, oldDoc) { if (doc.type == \"reject_me\") {
 
     """
-    escaped = raw_value
-    escaped = escaped.replace('\\', "\\\\")  # Escape any backslashes
-    escaped = escaped.replace('"', '\\"')    # Escape double quotes
-    escaped = escaped.replace("'", "\\'")    # Escape single quotes
 
-    # TODO: other stuff should be escaped like \n \t and other control characters
-    # See http://stackoverflow.com/questions/983451/where-can-i-find-a-list-of-escape-characters-required-for-my-json-ajax-return-ty
+    replacements = [
+            ("\\", "\\\\"), # replace literal slash with two slashes
+            ("\r\n", "\\n"),
+            ("\r", ""),
+            ("\n", "\\n"),
+            ("\t", "\\t"),
+            (r'"', r'\"')
+    ]
+    expr = match.group(0)
+    for search, replace in replacements:
+        expr = expr.replace(search, replace)
 
-    return escaped
+    # Replace the backquotes with double-quotes
+    expr = '"' + expr[1:]
+    expr = expr[:-1] + '"'
+    return expr
 
-
-def convert_to_valid_json(invalid_json):
-
-    STATE_OUTSIDE_BACKTICK = "STATE_OUTSIDE_BACKTICK"
-    STATE_INSIDE_BACKTICK = "STATE_INSIDE_BACKTICK"
-    state = STATE_OUTSIDE_BACKTICK
-    output = []
-    sync_function_buffer = []
-
-    try:
-        invalid_json = invalid_json.decode('utf-8')
-    except (UnicodeDecodeError, AttributeError):
-        pass
-
-    # Strip newlines
-    invalid_json = invalid_json.replace('\n', '')
-
-    # Strip tabs
-    invalid_json = invalid_json.replace('\t', '')
-
-    # read string char by char
-    for json_char in invalid_json:
-
-        # if non-backtick character:
-        if json_char != '`':
-
-            # if in OUTSIDE_BACKTICK state
-            if state == STATE_OUTSIDE_BACKTICK:
-                # append char to output
-                output.append(json_char)
-
-            # if in INSIDE_BACKTICK state
-            elif state == STATE_INSIDE_BACKTICK:
-                # append to sync_function_buffer
-                sync_function_buffer.append(json_char)
-
-        # if backtick character
-        elif json_char == '`':
-
-            # if in OUTSIDE_BACKTICK state
-            if state == STATE_OUTSIDE_BACKTICK:
-                # transition to INSIDE_BACKTICK state
-                state = STATE_INSIDE_BACKTICK
-
-            # if in INSIDE_BACKTICK state
-            elif state == STATE_INSIDE_BACKTICK:
-                # run sync_function_buffer through escape_json_value()
-                sync_function_buffer_str = "".join(sync_function_buffer)
-                sync_function_buffer_str = escape_json_value(sync_function_buffer_str)
-
-                # append to output
-                output.append('"')  # append a double quote
-                output.append(sync_function_buffer_str)
-                output.append('"')  # append a double quote
-
-                # empty the sync_function_buffer
-                sync_function_buffer = []
-
-                # transition to OUTSIDE_BACKTICK state
-                state = STATE_OUTSIDE_BACKTICK
-
-    output_str = "".join(output)
-    return output_str
-
-
+def convert_to_valid_json(invalid_json: Union[bytes,str]) -> str:
+    """
+    Converts json text from a sync gateway config file to valid json by replacing backticks with double quotes and escaping invalid json characters inside the backquotes.
+    """
+    if isinstance(invalid_json, bytes):
+        invalid_json = invalid_json.decode('utf-8', errors="backslashreplace")
+    return re.sub(r"`(.*?)[^\\\\]`", replace_backticks_with_double_quotes, invalid_json, flags=re.MULTILINE|re.DOTALL)
