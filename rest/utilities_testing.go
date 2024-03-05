@@ -2609,7 +2609,7 @@ func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, expecte
 	for name := range sc.invalidDatabaseConfigTracking.dbNames {
 		dbNames = append(dbNames, name)
 	}
-	require.EqualValues(t, expectedDbNames, dbNames)
+	require.ElementsMatch(t, expectedDbNames, dbNames)
 }
 
 // ForceDbConfigsReload forces the reload db config from bucket process (like the ConfigUpdate background process)

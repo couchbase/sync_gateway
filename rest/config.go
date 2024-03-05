@@ -293,6 +293,7 @@ type invalidConfigInfo struct {
 	logged              bool
 	configBucketName    string
 	persistedBucketName string
+	collectionConflicts bool
 }
 
 type invalidDatabaseConfigs struct {
@@ -303,27 +304,42 @@ type invalidDatabaseConfigs struct {
 // addInvalidDatabase adds a db to invalid dbconfig map if it doesn't exist in there yet and will log for it at warning level
 // if the db already exists there we will calculate if we need to log again according to the config update interval
 func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname string, cnf DatabaseConfig, bucket string) {
-	configInfo := invalidConfigInfo{
-		configBucketName:    *cnf.Bucket,
-		persistedBucketName: bucket,
-	}
 	d.m.Lock()
 	defer d.m.Unlock()
 	if d.dbNames[dbname] == nil {
 		// db hasn't been tracked as invalid config yet so add it
-		d.dbNames[dbname] = &configInfo
+		d.dbNames[dbname] = &invalidConfigInfo{
+			configBucketName:    *cnf.Bucket,
+			persistedBucketName: bucket,
+			collectionConflicts: cnf.Version == invalidDatabaseConflictingCollectionsVersion,
+		}
 	}
-	logMessage := fmt.Sprintf("Mismatch in database config for database %q bucket name: %q and backend bucket: %q You must update database config immediately", base.MD(dbname), base.MD(d.dbNames[dbname].configBucketName), base.MD(d.dbNames[dbname].persistedBucketName))
+
+	logMessage := "Must repair invalid database config for %q for it to be usable!"
+	logArgs := []interface{}{base.MD(dbname)}
+
+	// build log message
+	if isBucketMismatch := *cnf.Bucket != bucket; isBucketMismatch {
+		base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Add(1)
+		logMessage += " Mismatched buckets (config bucket: %q, actual bucket: %q)"
+		logArgs = append(logArgs, base.MD(d.dbNames[dbname].configBucketName), base.MD(d.dbNames[dbname].persistedBucketName))
+	} else if cnf.Version == invalidDatabaseConflictingCollectionsVersion {
+		base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseRollbackCollectionCollisions.Add(1)
+		logMessage += " Conflicting collections detected"
+	} else {
+		// Nothing is expected to hit this case, but we might add more invalid sentinel values and forget to update this code.
+		logMessage += " Database was marked invalid. See logs for details."
+	}
+
 	// if we get here we already have the db logged as an invalid config, so now we need to work out iof we should log for it now
 	if !d.dbNames[dbname].logged {
 		// we need to log at warning if we haven't already logged for this particular corrupt db config
-		base.WarnfCtx(ctx, logMessage)
+		base.WarnfCtx(ctx, logMessage, logArgs...)
 		d.dbNames[dbname].logged = true
 	} else {
 		// already logged this entry at warning so need to log at info now
-		base.InfofCtx(ctx, base.KeyConfig, logMessage)
+		base.InfofCtx(ctx, base.KeyConfig, logMessage, logArgs...)
 	}
-	base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Add(1)
 }
 
 func (d *invalidDatabaseConfigs) exists(dbname string) (*invalidConfigInfo, bool) {
@@ -1762,20 +1778,20 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			continue
 		}
 		for _, cnf := range configs {
-
-			// inherit properties the bootstrap config
-			cnf.CACertPath = sc.Config.Bootstrap.CACertPath
-
-			// We need to check for corruption in the database config (CC. CBG-3292). If the fetched config doesn't match the
-			// bucket name we got the config from we need to maker this db context as corrupt. Then remove the context and
-			// in memory representation on the server context.
-			if bucket != cnf.GetBucketName() {
+			// Handle invalid database registry entries. Either:
+			// - CBG-3292: Bucket in config doesn't match the actual bucket
+			// - CBG-3742: Registry entry marked invalid (due to rollback causing collection conflict)
+			if isRegistryDbConfigVersionInvalid(cnf.Version) || bucket != cnf.GetBucketName() {
 				sc.handleInvalidDatabaseConfig(ctx, bucket, *cnf)
 				continue
 			}
+
 			bucketCopy := bucket
 			// no corruption detected carry on as usual
 			cnf.Bucket = &bucketCopy
+
+			// inherit properties the bootstrap config
+			cnf.CACertPath = sc.Config.Bootstrap.CACertPath
 
 			// stamp per-database credentials if set
 			if dbCredentials, ok := sc.Config.DatabaseCredentials[cnf.Name]; ok && dbCredentials != nil {
