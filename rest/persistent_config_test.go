@@ -611,7 +611,7 @@ func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback
 			updatedDb2Config := *collection1db2Config
 			updatedDb2Config.Version = "1-a"
 			updatedDb2Config.Scopes = ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}, collection2Name: {}}}}
-			db2CAS, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, db2CAS, &updatedDb2Config)
+			_, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, db2CAS, &updatedDb2Config)
 			require.NoError(t, err)
 
 			// also roll back db3 to the same collection as db1 if multiDatabaseRollback
@@ -620,7 +620,7 @@ func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback
 				updatedDb3Config := *collection1db3Config
 				updatedDb3Config.Version = "1-a"
 				updatedDb3Config.Scopes = ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}, collection3Name: {}}}}
-				db3CAS, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, db3CAS, &updatedDb3Config)
+				_, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, db3CAS, &updatedDb3Config)
 				require.NoError(t, err)
 			}
 
