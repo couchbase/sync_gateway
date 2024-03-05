@@ -13,6 +13,11 @@ get:
   description: |-
     Run a document body through the sync function and return document sync data.
     * Sync Gateway Application Read Only
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../../components/schemas.yaml#/Document
   responses:
     '200':
       description: Document Processed by sync function successfully
@@ -42,7 +47,7 @@ get:
                     additionalProperties:
                       x-additionalPropertiesName: channel
                       type: string
-                        
+
               exception:
                 description: Errors thrown by the sync function.
                 type: string

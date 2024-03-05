@@ -13,6 +13,11 @@ get:
   description: |-
     Run a document body through the import filter and return whether its imported or not, and any error messages.
     * Sync Gateway Application Read Only
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../../components/schemas.yaml#/Document
   responses:
     '200':
       description: Document Processed by import filter successfully
