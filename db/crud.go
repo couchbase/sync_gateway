@@ -1145,14 +1145,23 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 
 }
 
-func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, doc *Document) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
+func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Body, docID string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
+	doc := &Document{
+		ID:    docID,
+		_body: body,
+	}
+	// Make sure the user has permission to modify the document before confirming doc existence
 	mutableBody, metaMap, newRevID, err := db.prepareSyncFn(doc, doc)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyCRUD, "Failed to prepare to run sync function: %v", err)
-		return nil, "", nil, nil, nil, ErrForbidden
+		return nil, "", nil, nil, nil, err
 	}
 
 	syncExpiry, oldBody, channelSet, access, roles, err := db.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyCRUD, "Sync fn error: %v", err)
+		return nil, "", nil, nil, nil, err
+	}
 	return syncExpiry, oldBody, channelSet, access, roles, err
 }
 
