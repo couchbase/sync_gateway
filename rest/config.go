@@ -1134,19 +1134,18 @@ func (config *DbConfig) redactInPlace(ctx context.Context) error {
 	return nil
 }
 
-// DecodeAndSanitiseConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
-func DecodeAndSanitiseConfig(ctx context.Context, r io.Reader, config interface{}, disallowUnknownFields bool) (err error) {
+// DecodeAndSanitiseStartupConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
+func DecodeAndSanitiseStartupConfig(ctx context.Context, r io.Reader, config interface{}, disallowUnknownFields bool) (err error) {
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
 
 	// Expand environment variables.
-	b, err = expandEnv(ctx, b)
+	b, err = sanitiseConfig(ctx, b, base.BoolPtr(true))
 	if err != nil {
 		return err
 	}
-	b = base.ConvertBackQuotedStrings(b)
 
 	d := base.JSONDecoder(bytes.NewBuffer(b))
 	if disallowUnknownFields {
@@ -1154,6 +1153,23 @@ func DecodeAndSanitiseConfig(ctx context.Context, r io.Reader, config interface{
 	}
 	err = d.Decode(config)
 	return base.WrapJSONUnknownFieldErr(err)
+}
+
+// sanitiseConfig will expand environment variables if needed and will convert any back quotes in the config
+func sanitiseConfig(ctx context.Context, configBytes []byte, allowEnvVars *bool) ([]byte, error) {
+	var err error
+	// Expand environment variables if needed
+	if base.BoolDefault(allowEnvVars, true) {
+		configBytes, err = expandEnv(ctx, configBytes)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// Convert the back quotes into double-quotes, escapes literal
+	// backslashes, newlines or double-quotes with backslashes.
+	configBytes = base.ConvertBackQuotedStrings(configBytes)
+
+	return configBytes, nil
 }
 
 // expandEnv replaces $var or ${var} in config according to the values of the
