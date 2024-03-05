@@ -12,6 +12,9 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"net/http"
 	"testing"
 
@@ -56,4 +59,62 @@ func TestGetAlldocChannels(t *testing.T) {
 	// If the channel is still in channel_set, then the total will be 5 entries in history and 1 in channel_set
 	assert.Equal(t, len(channelMap["CHAN3"]), db.DocumentHistoryMaxEntriesPerChannel+1)
 
+}
+
+func TestGetDocDryRuns(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+	ImportFilter := `"function(doc) { if (doc.user.num) { return true; } else { return false; } }"`
+	SyncFn := `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);role(doc.accessUser, doc.role); }"`
+	resp := rt.SendAdminRequest("PUT", "/db/", fmt.Sprintf(
+		`{ "num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s, "import_filter":%s}`,
+		base.TestUseXattrs(), SyncFn, ImportFilter))
+	RequireStatus(t, resp, http.StatusCreated)
+	response := rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/sync/doc", "{\n  \"accessChannel\": [\n    \"dynamicChan5412\"\n  ],\n  \"accessUser\": \"user\",\n  \"channel\": [\n    \"dynamicChan222\"\n  ],\n  \"user\":{\"num\":0}\n}")
+	RequireStatus(t, response, http.StatusOK)
+
+	var respMap SyncFnDryRun
+	err := json.Unmarshal(response.BodyBytes(), &respMap)
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, respMap.Exception, nil)
+	assert.Equal(t, respMap.Roles, channels.AccessMap{})
+	assert.Equal(t, respMap.Access, channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")})
+	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/sync/doc", "{\"role\": [\"role:role1\"], \"accessUser\": \"user\" }")
+	RequireStatus(t, response, http.StatusOK)
+
+	err = json.Unmarshal(response.BodyBytes(), &respMap)
+	assert.NoError(t, err)
+	assert.Equal(t, respMap.Roles, channels.AccessMap{"user": channels.BaseSetOf(t, "role1")})
+	newSyncFn := `"function(doc) {if (doc.user.num >= \"100\") {channel(doc.channel);} else {throw({forbidden: \"user num too low\"});}}"`
+	resp = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
+		`{"num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s, "import_filter":%s}`,
+		base.TestUseXattrs(), newSyncFn, ImportFilter))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/sync/doc", `{"user":{"num":23}}`)
+	RequireStatus(t, response, http.StatusOK)
+
+	err = json.Unmarshal(response.BodyBytes(), &respMap)
+	assert.NoError(t, err)
+	assert.Equal(t, respMap.Exception, "403 user num too low")
+	assert.ElementsMatch(t, respMap.Channels, []string{})
+
+	// Import filter import=true and no error
+	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/import_filter/doc", `{"accessUser": "user"}`)
+	RequireStatus(t, response, http.StatusOK)
+
+	var respMap2 ImportFilterDryRun
+	err = json.Unmarshal(response.BodyBytes(), &respMap2)
+	assert.NoError(t, err)
+	assert.Equal(t, respMap2.Error, "TypeError: Cannot access member 'num' of undefined")
+	assert.False(t, respMap2.ShouldImport)
+
+	// Import filter import=true and no error
+	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/import_filter/doc", `{"user":{"num":23}}`)
+	RequireStatus(t, response, http.StatusOK)
+
+	err = json.Unmarshal(response.BodyBytes(), &respMap2)
+	assert.NoError(t, err)
+	assert.Equal(t, respMap2.Error, "")
+	assert.True(t, respMap2.ShouldImport)
 }

@@ -17,6 +17,18 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
+type SyncFnDryRun struct {
+	Channels  base.Set           `json:"Channels"`
+	Access    channels.AccessMap `json:"Access"`
+	Roles     channels.AccessMap `json:"Roles"`
+	Exception string             `json:"Exception"`
+}
+
+type ImportFilterDryRun struct {
+	ShouldImport bool   `json:"shouldImport"`
+	Error        string `json:"error"`
+}
+
 // HTTP handler for a GET of a document
 func (h *handler) handleGetDocChannels() error {
 	docid := h.PathVar("docid")
@@ -45,30 +57,18 @@ func (h *handler) handleGetDocChannels() error {
 // HTTP handler for a GET of a document
 func (h *handler) handleSyncFnDryRun() error {
 	docid := h.PathVar("docid")
+	body, err := h.readDocument()
 
-	doc, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
+	_, _, channelSet, access, roles, err := h.collection.SyncFnDryrun(h.ctx(), body, docid)
+	errorMsg := ""
 	if err != nil {
-		return err
+		errorMsg = err.Error()
 	}
-	if doc == nil {
-		return kNotFoundError
-	}
-	_, _, channelSet, access, roles, err := h.collection.SyncFnDryrun(h.ctx(), doc)
-
-	resp := struct {
-		Channels  base.Set           `json:"Channels"`
-		Access    channels.AccessMap `json:"Access"`
-		Roles     channels.AccessMap `json:"Roles"`
-		Exception error              `json:"Exception"`
-	}{
+	resp := SyncFnDryRun{
 		channelSet,
 		access,
 		roles,
-		err,
-	}
-	if err != nil {
-		base.InfofCtx(h.ctx(), base.KeyCRUD, "Failed to prepare to run sync function: %v", err)
-		return db.ErrForbidden
+		errorMsg,
 	}
 
 	h.writeJSON(resp)
@@ -77,19 +77,15 @@ func (h *handler) handleSyncFnDryRun() error {
 
 // HTTP handler for a GET of a document
 func (h *handler) handleImportFilterDryRun() error {
-	docid := h.PathVar("docid")
-
-	doc, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
+	body, err := h.readDocument()
+	shouldImport, err := h.collection.ImportFilterDryRun(h.ctx(), body)
+	errorMsg := ""
 	if err != nil {
-		return err
+		errorMsg = err.Error()
 	}
-	shouldImport, err := h.collection.ImportFilterDryRun(h.ctx(), doc.Body(h.ctx()))
-	resp := struct {
-		ShouldImport bool   `json:"shouldImport"`
-		Error        string `json:"error"`
-	}{
+	resp := ImportFilterDryRun{
 		shouldImport,
-		err.Error(),
+		errorMsg,
 	}
 	h.writeJSON(resp)
 	return nil
