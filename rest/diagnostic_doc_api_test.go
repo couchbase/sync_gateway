@@ -99,7 +99,7 @@ func TestGetDocDryRuns(t *testing.T) {
 	assert.Equal(t, respMap.Exception, "403 user num too low")
 	assert.ElementsMatch(t, respMap.Channels, []string{})
 
-	// Import filter import=true and no error
+	// Import filter import=false and type error
 	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/import_filter/doc", `{"accessUser": "user"}`)
 	RequireStatus(t, response, http.StatusOK)
 
