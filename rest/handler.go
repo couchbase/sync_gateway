@@ -1035,17 +1035,10 @@ func (h *handler) readSanitizeJSON(val interface{}) error {
 		return err
 	}
 
-	// Expand environment variables.
-	if base.BoolDefault(h.server.Config.Unsupported.AllowDbConfigEnvVars, true) {
-		content, err = expandEnv(h.ctx(), content)
-		if err != nil {
-			return err
-		}
+	content, err = sanitiseConfig(h.ctx(), content, h.server.Config.Unsupported.AllowDbConfigEnvVars)
+	if err != nil {
+		return err
 	}
-
-	// Convert the back quotes into double-quotes, escapes literal
-	// backslashes, newlines or double-quotes with backslashes.
-	content = base.ConvertBackQuotedStrings(content)
 
 	// Decode the body bytes into target structure.
 	decoder := base.JSONDecoder(bytes.NewReader(content))

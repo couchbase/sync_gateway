@@ -182,9 +182,9 @@ func (h *handler) handleCreateDB() error {
 func getAuthScopeHandleCreateDB(ctx context.Context, h *handler) (bucketName string, err error) {
 
 	// grab a copy of the request body and restore body buffer for later handlers
-	bodyJSON, err := h.readBody()
-	if err != nil {
-		return "", base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", err)
+	bodyJSON, readErr := h.readBody()
+	if readErr != nil {
+		return "", base.HTTPErrorf(http.StatusInternalServerError, "Unable to read body: %v", readErr)
 	}
 	// mark the body as already read to avoid double-counting bytes for stats once it gets read again
 	h.requestBody = io.NopCloser(bytes.NewReader(bodyJSON))
@@ -192,8 +192,14 @@ func getAuthScopeHandleCreateDB(ctx context.Context, h *handler) (bucketName str
 	var dbConfigBody struct {
 		Bucket string `json:"bucket"`
 	}
-	reader := bytes.NewReader(bodyJSON)
-	err = DecodeAndSanitiseConfig(ctx, reader, &dbConfigBody, false)
+
+	bodyJSON, err = sanitiseConfig(ctx, bodyJSON, h.server.Config.Unsupported.AllowDbConfigEnvVars)
+	if err != nil {
+		return "", err
+	}
+
+	d := base.JSONDecoder(bytes.NewBuffer(bodyJSON))
+	err = d.Decode(&dbConfigBody)
 	if err != nil {
 		return "", err
 	}
