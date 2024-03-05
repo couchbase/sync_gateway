@@ -328,7 +328,7 @@ func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname 
 		logMessage += " Conflicting collections detected"
 	} else {
 		// Nothing is expected to hit this case, but we might add more invalid sentinel values and forget to update this code.
-		logMessage += " Invalid config with no known cause."
+		logMessage += " Database was marked invalid. See logs for details."
 	}
 
 	// if we get here we already have the db logged as an invalid config, so now we need to work out iof we should log for it now
