@@ -32,6 +32,10 @@ paths:
     $ref: ./paths/common/_ping.yaml
   '/{keyspace}/{docid}/_all_channels':
     $ref: './paths/diagnostic/keyspace-docid-_all_channels.yaml'
+  '/{keyspace}/sync/{docid}':
+    $ref: './paths/diagnostic/keyspace-sync-docid.yaml'
+  '/{keyspace}/import_filter/{docid}':
+    $ref: './paths/diagnostic/keyspace-import_filter-docid.yaml'
 externalDocs:
   description: Sync Gateway Quickstart | Couchbase Docs
   url: 'https://docs.couchbase.com/sync-gateway/current/index.html'

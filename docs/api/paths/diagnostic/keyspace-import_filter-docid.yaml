@@ -1,0 +1,36 @@
+# Copyright 2024-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - $ref: ../../components/parameters.yaml#/keyspace
+  - $ref: ../../components/parameters.yaml#/docid
+get:
+  summary: Run a doc body through the Import filter and return results.
+  description: |-
+    Run a document body through the import filter and return whether its imported or not, and any error messages.
+    * Sync Gateway Application Read Only
+  responses:
+    '200':
+      description: Document Processed by import filter successfully
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              shouldImport: 
+                description: Whether this document would be imported after being processed by the import filter.
+                type: boolean
+              error:
+                description: Errors thrown by the Import filter.
+                type: string
+
+
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Document
+  operationId: get_keyspace-import_filter-docid
