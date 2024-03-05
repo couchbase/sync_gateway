@@ -231,10 +231,11 @@ func (r *GatewayRegistry) rollbackDatabaseConfig(ctx context.Context, configGrou
 	// handle dbconfig doc rollback without PreviousVersion
 	if registryDatabase.PreviousVersion == nil {
 		base.InfofCtx(ctx, base.KeyConfig, "Rollback requested but registry did not include previous version for db %s - using config doc as previous version", base.MD(dbName))
-		setRegistryDatabaseFromConfig(registryDatabase, config)
+		newRegistryDatabase := registryDatabaseFromConfig(config)
+		configGroup.Databases[dbName] = newRegistryDatabase
 		if conflicts := r.getCollectionConflicts(ctx, dbName, config.Scopes); len(conflicts) > 0 {
 			base.WarnfCtx(ctx, "db %s config rollback would cause collection conflicts (%v) - marking database as invalid to allow for manual repair", base.MD(dbName), base.MD(conflicts))
-			registryDatabase.Version = invalidDatabaseConflictingCollectionsVersion
+			newRegistryDatabase.Version = invalidDatabaseConflictingCollectionsVersion
 		}
 		return nil
 	}
@@ -371,16 +372,11 @@ func (r *GatewayRegistry) hasMetadataIDConflict(dbName string, metadataID string
 // registryDatabaseFromConfig creates a RegistryDatabase based on the specified config
 func registryDatabaseFromConfig(config *DatabaseConfig) *RegistryDatabase {
 	rdb := &RegistryDatabase{}
-	setRegistryDatabaseFromConfig(rdb, config)
-	return rdb
-}
-
-func setRegistryDatabaseFromConfig(rdb *RegistryDatabase, config *DatabaseConfig) {
 	rdb.Version = config.Version
 	rdb.MetadataID = config.MetadataID
 	if len(config.Scopes) == 0 {
 		rdb.Scopes = defaultOnlyRegistryScopes
-		return
+		return rdb
 	}
 
 	rdb.Scopes = make(map[string]RegistryScope)
@@ -393,6 +389,7 @@ func setRegistryDatabaseFromConfig(rdb *RegistryDatabase, config *DatabaseConfig
 		}
 		rdb.Scopes[scopeName] = registryScope
 	}
+	return rdb
 }
 
 // NewRegistryConfigGroup initializes an empty RegistryConfigGroup
