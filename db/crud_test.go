@@ -1767,7 +1767,15 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(syncData.HLV.PreviousVersions, pv))
 	assert.Equal(t, "3-60b024c44c283b369116c2c2570e8088", syncData.CurrentRev)
 
-	// TODO: Test the case where server version dominates incoming
+	// Attempt to push the same client update, validate server rejects as an already known version and cancels the update.
+	// This case doesn't return error, verify that SyncData hasn't been changed.
+	_, _, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil)
+	require.NoError(t, err)
+	syncData2, err := collection.GetDocSyncData(ctx, "doc1")
+	require.NoError(t, err)
+	require.Equal(t, syncData.TimeSaved, syncData2.TimeSaved)
+	require.Equal(t, syncData.CurrentRev, syncData2.CurrentRev)
+
 }
 
 // TestPutExistingCurrentVersionWithConflict:

@@ -1131,7 +1131,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				return nil, nil, false, nil, addNewerVersionsErr
 			}
 		} else {
-			if (*doc.HLV).isDominating(newDocHLV) {
+			if doc.HLV.isDominating(newDocHLV) {
 				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add", base.UD(newDoc.ID))
 				return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
 			}
@@ -2209,6 +2209,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		}
 	}
 
+	// ErrUpdateCancel is returned when the incoming revision is already known
 	if err == base.ErrUpdateCancel {
 		return nil, "", nil
 	} else if err != nil {

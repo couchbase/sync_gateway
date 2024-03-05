@@ -953,7 +953,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	docID, found := revMessage.ID()
 	rev, rfound := revMessage.Rev()
 	if !found || !rfound {
-		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or rrevIDev")
+		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or rev")
 	}
 
 	if bh.readOnly {
@@ -1016,6 +1016,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 		incomingHLV, err = extractHLVFromBlipMessage(versionVectorStr)
 		if err != nil {
+			base.InfofCtx(bh.loggingCtx, base.KeySync, "Error parsing hlv while processing rev for doc %v.  HLV:%v Error: %v", base.UD(docID), versionVectorStr, err)
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "error extracting hlv from blip message")
 		}
 		newDoc.HLV = &incomingHLV
@@ -1043,8 +1044,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
 			cv := Version{}
 			cv.SourceID, cv.Value = incomingHLV.GetCurrentVersion()
-			// swap for GetCV once merged (CBG-3212)
-			deltaSrcRev, err = bh.collection.revisionCache.GetWithCV(bh.loggingCtx, docID, &cv, RevCacheOmitBody, RevCacheOmitDelta)
+			deltaSrcRev, err = bh.collection.GetCV(bh.loggingCtx, docID, &cv, RevCacheOmitBody)
 		} else {
 			deltaSrcRev, err = bh.collection.GetRev(bh.loggingCtx, docID, deltaSrcRevID, false, nil)
 		}

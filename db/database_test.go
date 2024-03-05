@@ -433,23 +433,6 @@ func TestCheckProposedVersion(t *testing.T) {
 		assert.Equal(t, ProposedRev_OK_IsNew, status)
 	})
 
-	/*
-		t.Run("conflict - previous version source matches cv", func(t *testing.T) {
-
-			newVersion := Version{"other", 100}.String()
-			prevVersion := Version{cvSource, cvValue - 100}.String()
-			assert.NoError(t, base.DeepCopyInefficient(&hlv, doc.HLV))
-			err = hlv.AddVersion(Version{"cluster2", hlv.CurrentVersionCAS + 1})
-			require.NoError(t, err)
-			err = hlv.AddVersion(Version{"cluster2", hlv.CurrentVersionCAS + 4})
-			require.NoError(t, err)
-			// TODO: Get full BLIP formatted HLV
-			hlvString := hlv.GetCurrentVersionString()
-			status, _ := collection.CheckProposedVersion(ctx, "doc1", hlvString)
-			assert.Equal(t, ProposedRev_Conflict, status)
-		})
-	*/
-
 }
 
 func incrementStringCas(cas string, delta int) (casOut string) {
