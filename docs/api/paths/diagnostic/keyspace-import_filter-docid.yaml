@@ -26,7 +26,7 @@ get:
           schema:
             type: object
             properties:
-              shouldImport: 
+              shouldImport:
                 description: Whether this document would be imported after being processed by the import filter.
                 type: boolean
               error:
