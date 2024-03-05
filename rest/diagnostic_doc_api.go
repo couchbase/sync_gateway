@@ -58,7 +58,9 @@ func (h *handler) handleGetDocChannels() error {
 func (h *handler) handleSyncFnDryRun() error {
 	docid := h.PathVar("docid")
 	body, err := h.readDocument()
-
+	if err != nil {
+		return err
+	}
 	_, _, channelSet, access, roles, err := h.collection.SyncFnDryrun(h.ctx(), body, docid)
 	errorMsg := ""
 	if err != nil {
@@ -78,6 +80,9 @@ func (h *handler) handleSyncFnDryRun() error {
 // HTTP handler for a GET of a document
 func (h *handler) handleImportFilterDryRun() error {
 	body, err := h.readDocument()
+	if err != nil {
+		return err
+	}
 	shouldImport, err := h.collection.ImportFilterDryRun(h.ctx(), body)
 	errorMsg := ""
 	if err != nil {

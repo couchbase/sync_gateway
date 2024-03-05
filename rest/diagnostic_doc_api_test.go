@@ -13,10 +13,11 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"net/http"
 	"testing"
+
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 
 	"github.com/couchbase/sync_gateway/db"
 
@@ -70,7 +71,7 @@ func TestGetDocDryRuns(t *testing.T) {
 		`{ "num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s, "import_filter":%s}`,
 		base.TestUseXattrs(), SyncFn, ImportFilter))
 	RequireStatus(t, resp, http.StatusCreated)
-	response := rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/sync/doc", "{\n  \"accessChannel\": [\n    \"dynamicChan5412\"\n  ],\n  \"accessUser\": \"user\",\n  \"channel\": [\n    \"dynamicChan222\"\n  ],\n  \"user\":{\"num\":0}\n}")
+	response := rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/sync/doc", "{\"accessChannel\": [\"dynamicChan5412\"],\"accessUser\": \"user\",\"channel\": [\"dynamicChan222\"],\"user\":{\"num\":0}}")
 	RequireStatus(t, response, http.StatusOK)
 
 	var respMap SyncFnDryRun
@@ -79,7 +80,7 @@ func TestGetDocDryRuns(t *testing.T) {
 	assert.ElementsMatch(t, respMap.Exception, nil)
 	assert.Equal(t, respMap.Roles, channels.AccessMap{})
 	assert.Equal(t, respMap.Access, channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")})
-	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/sync/doc", "{\"role\": [\"role:role1\"], \"accessUser\": \"user\" }")
+	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/sync/doc", "{\"role\": [\"role:role1\"], \"accessUser\": \"user\"}")
 	RequireStatus(t, response, http.StatusOK)
 
 	err = json.Unmarshal(response.BodyBytes(), &respMap)
