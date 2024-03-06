@@ -16,7 +16,7 @@ pipeline {
     }
 
     tools {
-        go '1.21.7'
+        go '1.21.8'
     }
 
     stages {
