@@ -65,15 +65,15 @@ func TestGetAlldocChannels(t *testing.T) {
 func TestGetDocDryRuns(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
+	bucket := rt.Bucket().GetName()
 	ImportFilter := `"function(doc) { if (doc.user.num) { return true; } else { return false; } }"`
 	SyncFn := `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);role(doc.accessUser, doc.role); }"`
 	resp := rt.SendAdminRequest("PUT", "/db/", fmt.Sprintf(
-		`{ "num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s, "import_filter":%s}`,
-		base.TestUseXattrs(), SyncFn, ImportFilter))
+		`{"bucket":"%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s, "import_filter":%s}`,
+		bucket, base.TestUseXattrs(), SyncFn, ImportFilter))
 	RequireStatus(t, resp, http.StatusCreated)
 	response := rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/sync/doc", "{\"accessChannel\": [\"dynamicChan5412\"],\"accessUser\": \"user\",\"channel\": [\"dynamicChan222\"],\"user\":{\"num\":0}}")
 	RequireStatus(t, response, http.StatusOK)
-
 	var respMap SyncFnDryRun
 	err := json.Unmarshal(response.BodyBytes(), &respMap)
 	assert.NoError(t, err)
@@ -87,9 +87,9 @@ func TestGetDocDryRuns(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, respMap.Roles, channels.AccessMap{"user": channels.BaseSetOf(t, "role1")})
 	newSyncFn := `"function(doc) {if (doc.user.num >= \"100\") {channel(doc.channel);} else {throw({forbidden: \"user num too low\"});}}"`
-	resp = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
-		`{"num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s, "import_filter":%s}`,
-		base.TestUseXattrs(), newSyncFn, ImportFilter))
+	resp = rt.SendAdminRequest("POST", "/db/_config", fmt.Sprintf(
+		`{"bucket":"%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s, "import_filter":%s}`,
+		bucket, base.TestUseXattrs(), newSyncFn, ImportFilter))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/sync/doc", `{"user":{"num":23}}`)
