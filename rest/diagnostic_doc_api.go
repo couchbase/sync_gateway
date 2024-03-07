@@ -22,6 +22,7 @@ type SyncFnDryRun struct {
 	Access    channels.AccessMap `json:"Access"`
 	Roles     channels.AccessMap `json:"Roles"`
 	Exception string             `json:"Exception"`
+	Expiry    uint32             `json:"Expiry"`
 }
 
 type ImportFilterDryRun struct {
@@ -29,9 +30,9 @@ type ImportFilterDryRun struct {
 	Error        string `json:"error"`
 }
 
-// HTTP handler for a GET of a document
+// HTTP handler for a GET of a document's channels and their sequence spans
 func (h *handler) handleGetDocChannels() error {
-	docid := h.PathVar("docid")
+	docid := h.getQuery("docid")
 
 	doc, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
 	if err != nil {
@@ -54,23 +55,29 @@ func (h *handler) handleGetDocChannels() error {
 	return nil
 }
 
-// HTTP handler for a GET of a document
+// HTTP handler for running a document through the sync function and returning the results
 func (h *handler) handleSyncFnDryRun() error {
-	docid := h.PathVar("docid")
+	docid := h.getQuery("docid")
+
 	body, err := h.readDocument()
 	if err != nil {
 		return err
 	}
-	_, _, channelSet, access, roles, err := h.collection.SyncFnDryrun(h.ctx(), body, docid)
+	expiryPtr, channelSet, access, roles, err := h.collection.SyncFnDryrun(h.ctx(), body, docid)
 	errorMsg := ""
 	if err != nil {
 		errorMsg = err.Error()
+	}
+	expiry := uint32(0)
+	if expiryPtr != nil {
+		expiry = *expiryPtr
 	}
 	resp := SyncFnDryRun{
 		channelSet,
 		access,
 		roles,
 		errorMsg,
+		uint32(expiry),
 	}
 
 	h.writeJSON(resp)

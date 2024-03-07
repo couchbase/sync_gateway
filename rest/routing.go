@@ -373,8 +373,8 @@ func createDiagnosticRouter(sc *ServerContext) *mux.Router {
 	keyspace := r.PathPrefix("/{keyspace:" + dbRegex + "}/").Subrouter()
 	keyspace.StrictSlash(true)
 	keyspace.Handle("/{docid:"+docRegex+"}/_all_channels", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetDocChannels)).Methods("GET")
-	keyspace.Handle("/sync/{docid:"+docRegex+"}", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleSyncFnDryRun)).Methods("GET")
-	keyspace.Handle("/import_filter/{docid:"+docRegex+"}", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleImportFilterDryRun)).Methods("GET")
+	keyspace.Handle("/_sync", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleSyncFnDryRun)).Methods("GET")
+	keyspace.Handle("/_import_filter", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleImportFilterDryRun)).Methods("GET")
 
 	return r
 }
