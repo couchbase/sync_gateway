@@ -41,6 +41,7 @@ const (
 	KeyConfig
 	KeyCRUD
 	KeyDCP
+	KeyDiagnostic
 	KeyEvents
 	KeyGoCB
 	KeyHTTP
@@ -74,6 +75,7 @@ var (
 		KeyConfig:         "Config",
 		KeyCRUD:           "CRUD",
 		KeyDCP:            "DCP",
+		KeyDiagnostic:     "Diagnostic",
 		KeyEvents:         "Events",
 		KeyGoCB:           "gocb",
 		KeyHTTP:           "HTTP",

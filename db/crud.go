@@ -1145,24 +1145,77 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 
 }
 
-func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Body, docID string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
+func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Body, docID string) (*uint32, base.Set, channels.AccessMap, channels.AccessMap, error) {
 	doc := &Document{
 		ID:    docID,
 		_body: body,
 	}
-	// Make sure the user has permission to modify the document before confirming doc existence
-	mutableBody, metaMap, newRevID, err := db.prepareSyncFn(doc, doc)
+	oldDoc := doc
+	if docInBucket, err := db.GetDocument(ctx, docID, DocUnmarshalNone); err == nil {
+		oldDoc = docInBucket
+	}
+	delete(body, BodyId)
+
+	// Get the revision ID to match, and the new generation number:
+	matchRev, _ := body[BodyRev].(string)
+	generation, _ := ParseRevID(ctx, matchRev)
+	if generation < 0 {
+		return nil, nil, nil, nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
+	}
+	generation++
+	delete(body, BodyRev)
+
+	// Create newDoc which will be used to pass around Body
+	newDoc := &Document{
+		ID: docID,
+	}
+	// Pull out attachments
+	newDoc.DocAttachments = GetBodyAttachments(body)
+	delete(body, BodyAttachments)
+
+	delete(body, BodyRevisions)
+
+	err := validateAPIDocUpdate(body)
 	if err != nil {
-		base.InfofCtx(ctx, base.KeyCRUD, "Failed to prepare to run sync function: %v", err)
-		return nil, "", nil, nil, nil, err
+		return nil, nil, nil, nil, err
+	}
+	bodyWithoutInternalProps, wasStripped := stripInternalProperties(body)
+	canonicalBytesForRevID, err := base.JSONMarshalCanonical(bodyWithoutInternalProps)
+	if err != nil {
+		return nil, nil, nil, nil, err
 	}
 
-	syncExpiry, oldBody, channelSet, access, roles, err := db.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
-	if err != nil {
-		base.InfofCtx(ctx, base.KeyCRUD, "Sync fn error: %v", err)
-		return nil, "", nil, nil, nil, err
+	// We needed to keep _deleted around in the body until we generated a rev ID, but now we can ditch it.
+	_, isDeleted := body[BodyDeleted]
+	if isDeleted {
+		delete(body, BodyDeleted)
 	}
-	return syncExpiry, oldBody, channelSet, access, roles, err
+
+	// and now we can finally update the newDoc body to be without any special properties
+	newDoc.UpdateBody(body)
+
+	// If no special properties were stripped and document wasn't deleted, the canonical bytes represent the current
+	// body.  In this scenario, store canonical bytes as newDoc._rawBody
+	if !wasStripped && !isDeleted {
+		newDoc._rawBody = canonicalBytesForRevID
+	}
+
+	base.InfofCtx(ctx, base.KeyDiagnostic, "olddoc body %s", oldDoc._body)
+	newRev := CreateRevIDWithBytes(generation+1, matchRev, canonicalBytesForRevID)
+	newDoc.RevID = newRev
+	mutableBody, metaMap, newRevID, err := db.prepareSyncFn(oldDoc, newDoc)
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyDiagnostic, "Failed to prepare to run sync function: %v", err)
+		return nil, nil, nil, nil, err
+	}
+	base.InfofCtx(ctx, base.KeyDiagnostic, "mutablebody body %s", mutableBody)
+
+	syncExpiry, _, channelSet, access, roles, err := db.runSyncFn(ctx, oldDoc, mutableBody, metaMap, newRevID)
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyDiagnostic, "Sync fn error: %v", err)
+		return nil, nil, nil, nil, err
+	}
+	return syncExpiry, channelSet, access, roles, err
 }
 
 // resolveConflict runs the conflictResolverFunction with doc and newDoc.  doc and newDoc's bodies and revision trees
@@ -1531,6 +1584,9 @@ func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Docum
 // the sync function.
 func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
 	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, newRevId)
+	base.InfofCtx(ctx, base.KeyDiagnostic, "body  %s", body)
+	base.InfofCtx(ctx, base.KeyDiagnostic, "doc  %s", doc._body)
+
 	if err != nil {
 		return nil, ``, nil, nil, nil, err
 	}
@@ -2313,6 +2369,7 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 		return
 	}
 	oldJson = string(oldJsonBytes)
+	base.DebugfCtx(ctx, base.KeyCRUD, "oldJsonBytes %s", string(oldJsonBytes))
 
 	if col.ChannelMapper != nil {
 		// Call the ChannelMapper:
