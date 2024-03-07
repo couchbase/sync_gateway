@@ -229,11 +229,11 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 	// Step 3. After config is successfully updated, finalize the update by removing the previous version from the registry
 	err = registry.removePreviousVersion(groupID, dbName, previousVersion)
 	if err != nil {
-		return 0, fmt.Errorf("Error removing previous version of config group: %s, database: %s from registry after successful update: %w", base.MD(groupID), base.MD(dbName), err)
+		return 0, base.RedactErrorf("Error removing previous version of config group: %s, database: %s from registry after successful update: %w", base.MD(groupID), base.MD(dbName), err)
 	}
 	writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 	if writeErr != nil {
-		return 0, fmt.Errorf("Error persisting removal of previous version of config group: %s, database: %s from registry after successful update: %w", base.MD(groupID), base.MD(dbName), writeErr)
+		return 0, base.RedactErrorf("Error persisting removal of previous version of config group: %s, database: %s from registry after successful update: %w", base.MD(groupID), base.MD(dbName), writeErr)
 	}
 
 	return casOut, nil
@@ -308,7 +308,7 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 	} else {
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr != nil {
-			return fmt.Errorf("Error persisting removal of previous version of config group: %s, database: %s from registry after successful delete: %w", base.MD(groupID), base.MD(dbName), writeErr)
+			return base.RedactErrorf("Error persisting removal of previous version of config group: %s, database: %s from registry after successful delete: %w", base.MD(groupID), base.MD(dbName), writeErr)
 		}
 	}
 
@@ -350,7 +350,7 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 		var legacyDbName string
 		cas, legacyErr := b.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, ""), &legacyConfig)
 		if legacyErr != nil && !base.IsDocNotFoundError(legacyErr) {
-			return nil, fmt.Errorf("Error checking for legacy config for %s, %s: %w", base.MD(bucketName), base.MD(groupID), legacyErr)
+			return nil, base.RedactErrorf("Error checking for legacy config for %s, %s: %w", base.MD(bucketName), base.MD(groupID), legacyErr)
 		}
 		if legacyErr == nil {
 			legacyConfig.cfgCas = cas
@@ -566,7 +566,7 @@ func (b *bootstrapContext) rollbackRegistry(ctx context.Context, bucketName, gro
 		found := registry.removeDatabase(groupID, dbName)
 		if !found {
 			// The registry hasn't been reloaded since we tried to find this config, failing to find it now is unexpected
-			return fmt.Errorf("Attempted to remove database %s (%s) from registry, was not found", base.MD(dbName), base.MD(groupID))
+			return base.RedactErrorf("Attempted to remove database %s (%s) from registry, was not found", base.MD(dbName), base.MD(groupID))
 		}
 	} else {
 		// Mark the database config being rolled back first to update CAS, to ensure a slow writer doesn't succeed while we're rolling back.
@@ -584,7 +584,7 @@ func (b *bootstrapContext) rollbackRegistry(ctx context.Context, bucketName, gro
 			// There is one case where the registry rollback can introduce a collection conflict.
 			// If there's no PreviousVersion present (i.e. we're handling a db config doc rollback, not a registry update)
 			// then it's possible for the db config to contain a collection that is now present on another database in the registry.
-			return fmt.Errorf("Unable to roll back registry to match existing config for database %s(%s): %w", base.MD(dbName), base.MD(groupID), registryErr)
+			return base.RedactErrorf("Unable to roll back registry to match existing config for database %s(%s): %w", base.MD(dbName), base.MD(groupID), registryErr)
 		}
 	}
 
