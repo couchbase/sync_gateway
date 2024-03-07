@@ -2541,7 +2541,7 @@ func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, expecte
 	for name := range sc.invalidDatabaseConfigTracking.dbNames {
 		dbNames = append(dbNames, name)
 	}
-	require.EqualValues(t, expectedDbNames, dbNames)
+	require.ElementsMatch(t, expectedDbNames, dbNames)
 }
 
 // Calls DropAllIndexes to remove all indexes, then restores the primary index for TestBucketPool readier requirements

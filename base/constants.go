@@ -217,7 +217,7 @@ func UnitTestUrlIsWalrus() bool {
 
 func TestsRequireBootstrapConnection(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
-		t.Skipf("Tests requiring a bootstrap connection are not supporting using rosmar yet - CBG-3271")
+		t.Skipf("Tests requiring a bootstrap connection are not supporting using walrus - rosmar support added in CBG-3271 (3.2+ only)")
 	}
 }
 

@@ -354,7 +354,7 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 		reloadRequired := false
 		for dbName, registryDb := range configGroup.Databases {
 			// Ignore databases with deleted version - represents an in-progress delete
-			if registryDb.Version == deletedDatabaseVersion {
+			if registryDb.IsDeleted() {
 				continue
 			}
 			dbConfig, err := b.getDatabaseConfig(ctx, bucketName, groupID, dbName, registryDb.Version, registry)
@@ -405,6 +405,13 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 		}
 
 		config.cfgCas = cas
+
+		if version == invalidDatabaseConflictingCollectionsVersion {
+			// special case - return the invalid config to use in updates (repairs). Configs with this version will not be loaded by SG.
+			config.Version = invalidDatabaseConflictingCollectionsVersion
+			return false, nil, config
+		}
+
 		// If version matches, success!
 		if config.Version == version {
 			return false, nil, config
@@ -417,10 +424,10 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 			// If the config has a newer version than requested, return the config but alert caller that they have
 			// requested a stale version.
 			return false, base.ErrConfigVersionMismatch, config
-		} else {
-			base.InfofCtx(ctx, base.KeyConfig, "getConfigVersionWithRetry for key %s found version mismatch, retrying.  Requested: %s, Found: %s", metadataKey, version, config.Version)
-			return true, base.ErrConfigRegistryRollback, config
 		}
+
+		base.InfofCtx(ctx, base.KeyConfig, "getConfigVersionWithRetry for key %s found version mismatch, retrying.  Requested: %s, Found: %s", metadataKey, version, config.Version)
+		return true, base.ErrConfigRegistryRollback, config
 	}
 
 	// Kick off the retry loop
@@ -558,11 +565,11 @@ func (b *bootstrapContext) rollbackRegistry(ctx context.Context, bucketName, gro
 
 		// non-nil config indicates database version in registry should be updated to match config
 		base.InfofCtx(ctx, base.KeyConfig, "Rolling back config registry to align with db config version %s for db: %s, bucket:%s configGroup:%s", config.Version, base.MD(dbName), base.MD(bucketName), base.MD(groupID))
-		registryErr := registry.rollbackDatabaseConfig(ctx, groupID, dbName)
+		registryErr := registry.rollbackDatabaseConfig(ctx, groupID, dbName, config)
 		if registryErr != nil {
-			// There shouldn't be a case where rollback introduces a collection conflict - it
-			// shouldn't be possible to add a conflicting collection to the registry while a previous
-			// config persistence is in-flight
+			// There is one case where the registry rollback can introduce a collection conflict.
+			// If there's no PreviousVersion present (i.e. we're handling a db config doc rollback, not a registry update)
+			// then it's possible for the db config to contain a collection that is now present on another database in the registry.
 			return fmt.Errorf("Unable to roll back registry to match existing config for database %s(%s): %w", base.MD(dbName), base.MD(groupID), registryErr)
 		}
 	}
@@ -677,7 +684,7 @@ func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketNam
 			}
 			return registry, nil, err
 		} else {
-			if registryDb.Version != "" && registryDb.Version != deletedDatabaseVersion {
+			if registryDb.Version != "" && !registryDb.IsDeleted() {
 				// Database exists in registry, go fetch the config
 				config, err = b.getDatabaseConfig(ctx, bucketName, groupID, dbName, registryDb.Version, registry)
 				if err == base.ErrConfigRegistryReloadRequired {
