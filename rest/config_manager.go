@@ -67,7 +67,11 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 	dbName := config.Name
 	ctx = b.addDatabaseLogContext(ctx, &config.DbConfig)
 
-	for attempt := 1; attempt < configUpdateMaxRetryAttempts; attempt++ {
+	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
+		if attempt == configUpdateMaxRetryAttempts {
+			return 0, fmt.Errorf("InsertConfig failed to persist registry after %d attempts", configUpdateMaxRetryAttempts)
+		}
+
 		base.InfofCtx(ctx, base.KeyConfig, "InsertConfig into bucket %s starting (attempt %d/%d)", bucketName, attempt, configUpdateMaxRetryAttempts)
 
 		// Step 1. Fetch registry and databases - enforces registry/config synchronization
@@ -116,15 +120,13 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 			return 0, writeErr
 		}
 
+		base.InfofCtx(ctx, base.KeyConfig, "InsertConfig encountered cas mismatch error while persisting registry: %v", writeErr)
+
 		// Check for context cancel before retrying
 		select {
 		case <-ctx.Done():
 			return 0, fmt.Errorf("Exiting InsertConfig - context cancelled")
 		default:
-		}
-
-		if attempt == configUpdateMaxRetryAttempts {
-			return 0, fmt.Errorf("InsertConfig failed to persist registry after %d attempts: %w", configUpdateMaxRetryAttempts, writeErr)
 		}
 	}
 
@@ -149,7 +151,11 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 	var registry *GatewayRegistry
 	var previousVersion string
 
-	for attempt := 1; attempt < configUpdateMaxRetryAttempts; attempt++ {
+	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
+		if attempt == configUpdateMaxRetryAttempts {
+			return 0, fmt.Errorf("UpdateConfig failed to persist updated registry after %d attempts:", configUpdateMaxRetryAttempts)
+		}
+
 		base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig starting (attempt %d/%d)", attempt, configUpdateMaxRetryAttempts)
 		// Step 1. Fetch registry and databases - enforces registry/config synchronization
 		var existingConfig *DatabaseConfig
@@ -211,10 +217,6 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 			return 0, fmt.Errorf("Exiting UpdateConfig - context cancelled, last error: %w", writeErr)
 		default:
 		}
-
-		if attempt == configUpdateMaxRetryAttempts {
-			return 0, fmt.Errorf("UpdateConfig failed to persist updated registry after %d attempts: %w", configUpdateMaxRetryAttempts, writeErr)
-		}
 	}
 
 	// Step 2. Update the config document
@@ -248,7 +250,11 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 	var existingCas uint64
 	var registry *GatewayRegistry
 
-	for attempt := 1; attempt < configUpdateMaxRetryAttempts; attempt++ {
+	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
+		if attempt == configUpdateMaxRetryAttempts {
+			return fmt.Errorf("DeleteConfig failed to write updated registry after %d attempts", configUpdateMaxRetryAttempts)
+		}
+
 		base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig starting (attempt %d/%d)", attempt, configUpdateMaxRetryAttempts)
 		var existingConfig *DatabaseConfig
 		// Step 1. Fetch registry and databases - enforces registry/config synchronization
@@ -282,15 +288,13 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 			return writeErr
 		}
 
+		base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig encountered cas mismatch error while persisting updated registry: %v", writeErr)
+
 		// Check for context cancel before retrying
 		select {
 		case <-ctx.Done():
 			break
 		default:
-		}
-
-		if attempt == configUpdateMaxRetryAttempts {
-			return fmt.Errorf("DeleteConfig failed to write updated registry after %d attempts: %w", configUpdateMaxRetryAttempts, writeErr)
 		}
 	}
 
@@ -338,7 +342,7 @@ func (b *bootstrapContext) WaitForConflictingUpdates(ctx context.Context, bucket
 func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, groupID string) ([]*DatabaseConfig, error) {
 
 	var attempt int
-	for attempt = 1; attempt < configFetchMaxRetryAttempts; attempt++ {
+	for attempt = 1; attempt <= configFetchMaxRetryAttempts; attempt++ {
 		base.InfofCtx(ctx, base.KeyConfig, "GetDatabaseConfigs starting (attempt %d/%d)", attempt, configFetchMaxRetryAttempts)
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
@@ -392,6 +396,7 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 			return dbConfigs, nil
 		}
 	}
+
 	base.WarnfCtx(ctx, "Unable to successfully retrieve GetDatabaseConfigs for groupID: %s after %d attempts", base.MD(groupID), attempt)
 	return nil, base.ErrConfigRegistryReloadRequired
 }
