@@ -143,7 +143,7 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	require.Equal(t, 3, len(allDocsResult.Rows))
+	require.Len(t, allDocsResult.Rows, 3)
 	require.Equal(t, "doc1", allDocsResult.Rows[0].ID)
 	require.Equal(t, []string{"books"}, allDocsResult.Rows[0].Value.Channels)
 	require.Equal(t, "doc3", allDocsResult.Rows[1].ID)
@@ -160,7 +160,7 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	require.Equal(t, 3, len(changes.Results))
+	require.Len(t, changes.Results, 3)
 	since := changes.Results[0].Seq
 	require.Equal(t, "doc1", changes.Results[0].ID)
 	require.Equal(t, uint64(1), since.Seq)
@@ -170,7 +170,7 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	assert.Equal(t, 1, len(changes.Results))
+	assert.Len(t, changes.Results, 1)
 	since = changes.Results[0].Seq
 	assert.Equal(t, "doc1", changes.Results[0].ID)
 	assert.Equal(t, uint64(1), since.Seq)
@@ -180,7 +180,7 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(changes.Results))
+	assert.Len(t, changes.Results, 2)
 	since = changes.Results[0].Seq
 	assert.Equal(t, "doc3", changes.Results[0].ID)
 	assert.Equal(t, uint64(3), since.Seq)
@@ -190,7 +190,7 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, len(changes.Results))
+	assert.Len(t, changes.Results, 0)
 
 	//
 	// Part 2 - Tests for user with * channel access
@@ -217,7 +217,7 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	assert.Equal(t, 6, len(allDocsResult.Rows))
+	assert.Len(t, allDocsResult.Rows, 6)
 	assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"books"}, allDocsResult.Rows[0].Value.Channels)
 
@@ -226,7 +226,7 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	assert.Equal(t, 6, len(changes.Results))
+	assert.Len(t, changes.Results, 6)
 	since = changes.Results[0].Seq
 	assert.Equal(t, "doc1", changes.Results[0].ID)
 	assert.Equal(t, uint64(1), since.Seq)
@@ -236,7 +236,7 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(changes.Results))
+	assert.Len(t, changes.Results, 2)
 	since = changes.Results[0].Seq
 	assert.Equal(t, "doc3", changes.Results[0].ID)
 	assert.Equal(t, uint64(3), since.Seq)
@@ -263,7 +263,7 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(allDocsResult.Rows))
+	assert.Len(t, allDocsResult.Rows, 2)
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 
 	// GET /db/_changes
@@ -271,7 +271,7 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(changes.Results))
+	assert.Len(t, changes.Results, 2)
 	since = changes.Results[0].Seq
 	assert.Equal(t, "doc3", changes.Results[0].ID)
 	assert.Equal(t, uint64(3), since.Seq)
@@ -281,7 +281,7 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(changes.Results))
+	assert.Len(t, changes.Results, 2)
 	since = changes.Results[0].Seq
 	assert.Equal(t, "doc3", changes.Results[0].ID)
 	assert.Equal(t, uint64(3), since.Seq)
@@ -569,7 +569,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 	var docs []interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	assert.Equal(t, 2, len(docs))
+	assert.Len(t, docs, 2)
 	assert.Equal(t, map[string]interface{}{"rev": "1-afbcffa8a4641a0f4dd94d3fc9593e74", "id": "bulk1"}, docs[0])
 
 	assert.Equal(t, map[string]interface{}{"rev": "1-4d79588b9fe9c38faae61f0c1b9471c0", "id": "bulk2"}, docs[1])
@@ -640,7 +640,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	require.NoError(t, err)
-	require.Equal(t, 3, len(allDocsResult.Rows))
+	require.Len(t, allDocsResult.Rows, 3)
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 	assert.Equal(t, "doc4", allDocsResult.Rows[1].ID)
@@ -656,7 +656,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(allDocsResult.Rows))
+	require.Len(t, allDocsResult.Rows, 1)
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
@@ -668,7 +668,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(allDocsResult.Rows))
+	require.Len(t, allDocsResult.Rows, 1)
 	assert.Equal(t, "doc5", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
@@ -680,7 +680,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(allDocsResult.Rows))
+	require.Len(t, allDocsResult.Rows, 1)
 	assert.Equal(t, "doc5", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
@@ -692,7 +692,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(allDocsResult.Rows))
+	require.Len(t, allDocsResult.Rows, 1)
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
@@ -704,7 +704,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(allDocsResult.Rows))
+	require.Len(t, allDocsResult.Rows, 1)
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
@@ -716,7 +716,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	require.NoError(t, err)
-	require.Equal(t, 3, len(allDocsResult.Rows))
+	require.Len(t, allDocsResult.Rows, 3)
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 	assert.Equal(t, "doc4", allDocsResult.Rows[1].ID)
 	assert.Equal(t, "doc5", allDocsResult.Rows[2].ID)
@@ -730,7 +730,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	require.NoError(t, err)
-	require.Equal(t, 4, len(allDocsResult.Rows))
+	require.Len(t, allDocsResult.Rows, 4)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].Key)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].ID)
 	assert.Equal(t, "1-e0351a57554e023a77544d33dd21e56c", allDocsResult.Rows[0].Value.Rev)
@@ -753,7 +753,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	require.NoError(t, err)
-	require.Equal(t, 4, len(allDocsResult.Rows))
+	require.Len(t, allDocsResult.Rows, 4)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].Key)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
@@ -773,7 +773,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(allDocsResult.Rows))
+	require.Len(t, allDocsResult.Rows, 1)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].Key)
 	assert.Equal(t, "doc4", allDocsResult.Rows[0].ID)
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
@@ -786,7 +786,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	require.NoError(t, err)
-	require.Equal(t, 5, len(allDocsResult.Rows))
+	require.Len(t, allDocsResult.Rows, 5)
 	assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
 	assert.Equal(t, "doc2", allDocsResult.Rows[1].ID)
 }

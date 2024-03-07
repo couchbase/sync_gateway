@@ -206,7 +206,7 @@ func TestSerializeUserWithCollections(t *testing.T) {
 	require.NoError(t, err)
 	collectionAccess, ok = resu.getCollectionAccess(scope, collection)
 	assert.True(t, ok)
-	assert.Equal(t, 0, len(collectionAccess.ExplicitChannels_))
+	assert.Len(t, collectionAccess.ExplicitChannels_, 0)
 	assert.Equal(t, uint64(2), user.getCollectionChannelInvalSeq(scope, collection))
 }
 

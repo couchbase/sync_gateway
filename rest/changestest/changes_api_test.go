@@ -218,7 +218,7 @@ func TestChangesFeedOnInheritedChannelsFromRoles(t *testing.T) {
 	// Start changes feed as the user filtered to channel A, expect 6 changes (5 docs + user doc)
 	changes, err := rt.WaitForChanges(6, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A", "alice", false)
 	require.NoError(t, err)
-	assert.Equal(t, 6, len(changes.Results))
+	assert.Len(t, changes.Results, 6)
 }
 
 // TestChangesFeedOnInheritedChannelsFromRolesDefaultCollection:
@@ -251,7 +251,7 @@ func TestChangesFeedOnInheritedChannelsFromRolesDefaultCollection(t *testing.T) 
 	// Start changes feed as the user filtered to channel A, expect 6 changes (5 docs + user doc)
 	changes, err := rt.WaitForChanges(6, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A", "alice", false)
 	require.NoError(t, err)
-	assert.Equal(t, 6, len(changes.Results))
+	assert.Len(t, changes.Results, 6)
 }
 
 func TestPostChanges(t *testing.T) {
@@ -841,7 +841,7 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	// Issue a second changes request, expect to see last 2 documents.
 	moreChanges, err := rt.WaitForChanges(0, fmt.Sprintf("/{{.keyspace}}/_changes?limit=3&since=%s", lastSeq), "bernard", false)
 	assert.NoError(t, err)
-	require.Equal(t, 2, len(moreChanges.Results))
+	require.Len(t, moreChanges.Results, 2)
 	assert.Equal(t, "abc-2", moreChanges.Results[0].ID)
 	assert.Equal(t, "abc-3", moreChanges.Results[1].ID)
 }
@@ -1095,7 +1095,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-	require.Equal(t, 4, len(changes.Results))
+	require.Len(t, changes.Results, 4)
 	since := changes.Results[0].Seq
 	assert.Equal(t, uint64(1), since.Seq)
 	assert.Equal(t, "2::6", changes.Last_Seq.String())
@@ -2936,7 +2936,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, username)
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Equal(t, 50, len(changes.Results))
+	require.Len(t, changes.Results, 50)
 
 	// Verify results ordering
 	for i := 0; i < 50; i++ {
@@ -2951,7 +2951,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, username)
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Equal(t, 25, len(changes.Results))
+	require.Len(t, changes.Results, 25)
 
 	// Verify results ordering
 	for i := 0; i < 25; i++ {

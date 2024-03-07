@@ -164,7 +164,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	var rawResponse rest.RawResponse
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rawResponse))
 	log.Printf("raw response: %s", response.Body.Bytes())
-	assert.Equal(t, 1, len(rawResponse.Sync.Channels))
+	assert.Len(t, rawResponse.Sync.Channels, 1)
 	_, ok := rawResponse.Sync.Channels["oldDocNil"]
 	assert.True(t, ok)
 }
@@ -878,8 +878,8 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 	assert.Equal(t, 200, rawResponse.Code)
 	var doc treeDoc
 	assert.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc))
-	assert.Equal(t, 3, len(doc.Meta.RevTree.BodyKeyMap))
-	assert.Equal(t, 0, len(doc.Meta.RevTree.BodyMap))
+	assert.Len(t, doc.Meta.RevTree.BodyKeyMap, 3)
+	assert.Len(t, doc.Meta.RevTree.BodyMap, 0)
 
 }
 
@@ -1016,8 +1016,8 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 	assert.Equal(t, 200, rawResponse.Code)
 	var doc treeDoc
 	assert.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc))
-	assert.Equal(t, 1, len(doc.Meta.RevTree.BodyKeyMap))
-	assert.Equal(t, 2, len(doc.Meta.RevTree.BodyMap))
+	assert.Len(t, doc.Meta.RevTree.BodyKeyMap, 1)
+	assert.Len(t, doc.Meta.RevTree.BodyMap, 2)
 }
 
 // Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is imported via DCP feed

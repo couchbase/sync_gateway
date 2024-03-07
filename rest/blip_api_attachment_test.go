@@ -521,7 +521,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	// attachment assertions
 	attachments, err := retrievedDoc.GetAttachments()
 	assert.True(t, err == nil)
-	assert.Equal(t, 1, len(attachments))
+	assert.Len(t, attachments, 1)
 	retrievedAttachment := attachments[input.attachmentName]
 	require.NotNil(t, retrievedAttachment)
 	assert.Equal(t, input.attachmentBody, string(retrievedAttachment.Data))

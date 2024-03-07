@@ -890,7 +890,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 	var retrievedXattr map[string]interface{}
 	_, err = dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
 	require.NoError(t, err)
-	assert.Equal(t, 0, len(retrievedVal))
+	assert.Len(t, retrievedVal, 0)
 	assert.Equal(t, float64(123), retrievedXattr["seq"])
 
 }
@@ -929,7 +929,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	var retrievedXattr map[string]interface{}
 	getCas, err := dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
 	require.NoError(t, err)
-	assert.Equal(t, 0, len(retrievedVal))
+	assert.Len(t, retrievedVal, 0)
 	assert.Equal(t, float64(1), retrievedXattr["seq"])
 	log.Printf("Post-delete xattr (1): %s", retrievedXattr)
 	log.Printf("Post-delete cas (1): %x", getCas)
@@ -947,7 +947,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	getCas2, err := dataStore.GetWithXattr(ctx, key, xattrName, "", &postDeleteVal, &postDeleteXattr, nil)
 	assert.NoError(t, err, "Error getting document post-delete")
 	assert.Equal(t, float64(2), postDeleteXattr["seq"])
-	assert.Equal(t, 0, len(postDeleteVal))
+	assert.Len(t, postDeleteVal, 0)
 	log.Printf("Post-delete xattr (2): %s", postDeleteXattr)
 	log.Printf("Post-delete cas (2): %x", getCas2)
 
@@ -984,7 +984,7 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 	var retrievedXattr map[string]interface{}
 	mutateCas, err := dataStore.GetWithXattr(ctx, key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
 	require.NoError(t, err)
-	assert.Equal(t, 0, len(retrievedVal))
+	assert.Len(t, retrievedVal, 0)
 	assert.Equal(t, float64(123), retrievedXattr["seq"])
 	log.Printf("value: %v, xattr: %v", retrievedVal, retrievedXattr)
 	log.Printf("MutateInEx cas: %v", mutateCas)
