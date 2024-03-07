@@ -580,7 +580,7 @@ def make_event_log_task_sg_info():
                        "SourceName='SyncGateway' and "
                        "TimeGenerated>'%(limit)s'"
                        "\" "
-                       "get TimeGenerated,LogFile,SourceName,EventType,Message,InsertionStrings "
+                       "get TimeGenerated,LogFile,SourceName,EventType,InsertionStrings "
                        "/FORMAT:list" % locals())
 
 
