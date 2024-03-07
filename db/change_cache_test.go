@@ -132,7 +132,7 @@ func TestLateSequenceHandling(t *testing.T) {
 	// Empty late sequence cache should return empty set
 	startSequence := cache.RegisterLateSequenceClient()
 	entries, lastSeq, err := cache.GetLateSequencesSince(startSequence)
-	assert.Equal(t, 0, len(entries))
+	assert.Len(t, entries, 0)
 	assert.Equal(t, uint64(0), lastSeq)
 	assert.True(t, err == nil)
 
@@ -142,7 +142,7 @@ func TestLateSequenceHandling(t *testing.T) {
 	// Retrieve since 0
 	entries, lastSeq, err = cache.GetLateSequencesSince(0)
 	log.Println("entries:", entries)
-	assert.Equal(t, 2, len(entries))
+	assert.Len(t, entries, 2)
 	assert.Equal(t, uint64(8), lastSeq)
 	assert.Equal(t, uint64(1), cache.lateLogs[2].getListenerCount())
 	assert.True(t, err == nil)
@@ -150,7 +150,7 @@ func TestLateSequenceHandling(t *testing.T) {
 	// Add Sequences.  Will trigger purge on old sequences without listeners
 	cache.AddLateSequence(testLogEntry(2, "foo3", "1-a"))
 	cache.AddLateSequence(testLogEntry(7, "foo4", "1-a"))
-	assert.Equal(t, 3, len(cache.lateLogs))
+	assert.Len(t, cache.lateLogs, 3)
 	assert.Equal(t, uint64(8), cache.lateLogs[0].logEntry.Sequence)
 	assert.Equal(t, uint64(2), cache.lateLogs[1].logEntry.Sequence)
 	assert.Equal(t, uint64(7), cache.lateLogs[2].logEntry.Sequence)
@@ -159,7 +159,7 @@ func TestLateSequenceHandling(t *testing.T) {
 	// Retrieve since previous
 	entries, lastSeq, err = cache.GetLateSequencesSince(lastSeq)
 	log.Println("entries:", entries)
-	assert.Equal(t, 2, len(entries))
+	assert.Len(t, entries, 2)
 	assert.Equal(t, uint64(7), lastSeq)
 	assert.Equal(t, uint64(0), cache.lateLogs[0].getListenerCount())
 	assert.Equal(t, uint64(1), cache.lateLogs[2].getListenerCount())
@@ -171,7 +171,7 @@ func TestLateSequenceHandling(t *testing.T) {
 	cache.AddLateSequence(testLogEntry(11, "foo6", "1-a"))
 	log.Println("cache.lateLogs:", cache.lateLogs)
 	cache.purgeLateLogEntries()
-	assert.Equal(t, 3, len(cache.lateLogs))
+	assert.Len(t, cache.lateLogs, 3)
 	assert.Equal(t, uint64(7), cache.lateLogs[0].logEntry.Sequence)
 	assert.Equal(t, uint64(15), cache.lateLogs[1].logEntry.Sequence)
 	assert.Equal(t, uint64(11), cache.lateLogs[2].logEntry.Sequence)
@@ -181,7 +181,7 @@ func TestLateSequenceHandling(t *testing.T) {
 	// Release the listener, and purge again
 	cache.ReleaseLateSequenceClient(uint64(7))
 	cache.purgeLateLogEntries()
-	assert.Equal(t, 1, len(cache.lateLogs))
+	assert.Len(t, cache.lateLogs, 1)
 	assert.True(t, err == nil)
 
 }
@@ -204,7 +204,7 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	// Add Listener before late entries arrive
 	startSequence := cache.RegisterLateSequenceClient()
 	entries, lastSeq1, err := cache.GetLateSequencesSince(startSequence)
-	assert.Equal(t, 0, len(entries))
+	assert.Len(t, entries, 0)
 	assert.Equal(t, uint64(0), lastSeq1)
 	assert.True(t, err == nil)
 
@@ -626,7 +626,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	collection.user, _ = authenticator.GetUser("naomi")
 	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
 	assert.NoError(t, err, "Couldn't GetChanges")
-	assert.Equal(t, 4, len(changes))
+	assert.Len(t, changes, 4)
 
 	collectionID := collection.GetCollectionID()
 
@@ -664,7 +664,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	// will be the late arriver (3) along with 5, 6)
 	changes, err = collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(t, lastSeq))
 	require.NoError(t, err)
-	assert.Equal(t, 3, len(changes))
+	assert.Len(t, changes, 3)
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 3, LowSeq: 3},
 		ID:           "doc-3",
@@ -771,7 +771,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 		log.Printf("Received %d unexpected docs", len(expectedDocs))
 	}
 
-	assert.Equal(t, 0, len(expectedDocs))
+	assert.Len(t, expectedDocs, 0)
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed
@@ -1162,7 +1162,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 
 	// Validate the initial sequences arrive as expected
 	assert.True(t, err == nil)
-	assert.Equal(t, 4, len(changes))
+	assert.Len(t, changes, 4)
 	assert.Equal(t, &ChangeEntry{
 		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
 		ID:      "doc-1",
@@ -1176,7 +1176,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 
 	err = appendFromFeed(&changes, feed, 2, base.DefaultWaitForSequence)
 	assert.True(t, err == nil)
-	assert.Equal(t, 6, len(changes))
+	assert.Len(t, changes, 6)
 	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4}))
 
 	WriteDirect(t, db, []string{"ABC"}, 7)
@@ -1270,7 +1270,7 @@ func TestChannelRace(t *testing.T) {
 	// Wait for processing of two channels (100 ms each)
 	time.Sleep(250 * time.Millisecond)
 	// Validate the initial sequences arrive as expected
-	assert.Equal(t, 3, len(changes))
+	assert.Len(t, changes, 3)
 
 	// Send update to trigger the start of the next changes iteration
 	WriteDirect(t, db, []string{"Even"}, 4)
@@ -1288,7 +1288,7 @@ func TestChannelRace(t *testing.T) {
 	WriteDirect(t, db, []string{"Even"}, 8)
 	WriteDirect(t, db, []string{"Odd"}, 9)
 	time.Sleep(750 * time.Millisecond)
-	assert.Equal(t, 9, len(changes))
+	assert.Len(t, changes, 9)
 	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}))
 	changesString := ""
 	for _, change := range changes {
@@ -1370,7 +1370,7 @@ func TestChannelCacheSize(t *testing.T) {
 	collection.user, _ = authenticator.GetUser("naomi")
 	changes, err := collection.GetChanges(ctx, base.SetOf("ABC"), getChangesOptionsWithZeroSeq(t))
 	assert.NoError(t, err, "Couldn't GetChanges")
-	assert.Equal(t, 750, len(changes))
+	assert.Len(t, changes, 750)
 
 	// Validate that cache stores the expected number of values
 	collectionID := collection.GetCollectionID()
@@ -1378,7 +1378,7 @@ func TestChannelCacheSize(t *testing.T) {
 	abcCache, err := db.changeCache.getChannelCache().getSingleChannelCache(ctx, channels.NewID("ABC", collectionID))
 	require.NoError(t, err)
 
-	assert.Equal(t, 600, len(abcCache.(*singleChannelCacheImpl).logs))
+	assert.Len(t, abcCache.(*singleChannelCacheImpl).logs, 600)
 }
 
 func shortWaitCache() CacheOptions {

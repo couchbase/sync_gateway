@@ -726,7 +726,7 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 	simulateCreateFailure(t, collection1db1Config)
 	configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
 	require.NoError(t, err)
-	require.Equal(t, 0, len(configs))
+	require.Len(t, configs, 0)
 
 	// Case 2. InsertConfig with conflicting name should trigger registry rollback and then successful creation
 	simulateCreateFailure(t, collection1db1Config)
@@ -752,7 +752,7 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 
 	configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(configs))
+	require.Len(t, configs, 1)
 
 	// Reattempt insert, should now succeed
 	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection3db2Config)
@@ -774,7 +774,7 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 	// GetDatabaseConfigs should rollback and remove the failed c2_db2
 	configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
 	require.NoError(t, err)
-	require.Equal(t, 2, len(configs))
+	require.Len(t, configs, 2)
 
 	// Update should now succeed
 	_, err = bc.UpdateConfig(ctx, bucketName, groupID, "c1_db1", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
@@ -854,7 +854,7 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 	simulateUpdateFailure(t, collection2db1Config)
 	configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(configs))
+	require.Len(t, configs, 1)
 	require.Equal(t, "1-a", configs[0].Version)
 
 	// Retrieve registry to ensure the previous version has been removed
@@ -891,7 +891,7 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 
 	configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(configs))
+	require.Len(t, configs, 1)
 
 	// Reattempt insert, should now succeed
 	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db2Config)
@@ -907,7 +907,7 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 
 	configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
 	require.NoError(t, err)
-	require.Equal(t, 2, len(configs))
+	require.Len(t, configs, 2)
 
 	// Reattempt insert, should still be in conflict post-rollback
 	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection2db3Config)
@@ -915,7 +915,7 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 
 	configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
 	require.NoError(t, err)
-	require.Equal(t, 2, len(configs))
+	require.Len(t, configs, 2)
 
 	// Case 5. Attempt to delete db after update failure for that db
 	simulateUpdateFailure(t, collection3db1Config)
@@ -983,7 +983,7 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 	simulateDeleteFailure(t, collection1db1Config)
 	configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
 	require.NoError(t, err)
-	require.Equal(t, 0, len(configs))
+	require.Len(t, configs, 0)
 
 	// Case 2. Attempt to recreate the config with a matching version generation and digest. Should resolve in-flight delete
 	// and then successfully
@@ -1075,7 +1075,7 @@ func TestPersistentConfigSlowCreateFailure(t *testing.T) {
 	simulateSlowCreate(t, collection1db1Config)
 	configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
 	require.NoError(t, err)
-	require.Equal(t, 0, len(configs))
+	require.Len(t, configs, 0)
 
 	err = completeSlowCreate(collection1db1Config)
 	require.NoError(t, err)
@@ -1294,7 +1294,7 @@ func TestLegacyDuplicate(t *testing.T) {
 	// Fetch the registry, verify newDefaultDb still exists and defaultDb30 has not been migrated due to collection conflict
 	configs, err := sc.BootstrapContext.GetDatabaseConfigs(ctx, tb.GetName(), groupID)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(configs))
+	require.Len(t, configs, 1)
 	dbConfig := configs[0]
 	assert.Equal(t, "3.1", dbConfig.Version)
 }

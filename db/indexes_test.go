@@ -201,7 +201,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	// Validate that removeObsoleteIndexes is a no-op for the default case
 	removedIndexes, removeErr := removeObsoleteIndexes(ctx, n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
-	assert.Equal(t, 0, len(removedIndexes))
+	assert.Len(t, removedIndexes, 0)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
 
 	// Hack sgIndexes to simulate new version of indexes
@@ -218,7 +218,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	// Validate that removeObsoleteIndexes now triggers removal of one index
 	removedIndexes, removeErr = removeObsoleteIndexes(ctx, n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
-	assert.Equal(t, 1, len(removedIndexes))
+	assert.Len(t, removedIndexes, 1)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
 
 }
@@ -248,7 +248,7 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 	for _, preview := range []bool{true, false} {
 		removedIndexes, removeErr := db.RemoveObsoleteIndexes(base.TestCtx(t), preview)
 		require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
-		require.Equal(t, 0, len(removedIndexes))
+		require.Len(t, removedIndexes, 0)
 	}
 	useXattrs := false
 	options := InitializeIndexOptions{

@@ -232,7 +232,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
-	assert.Equal(t, 1, len(changes))
+	assert.Len(t, changes, 1)
 	collectionID := collection.GetCollectionID()
 	require.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 1},
@@ -278,7 +278,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
-	assert.Equal(t, 1, len(changes))
+	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 2},
 		ID:           "alpha",
@@ -320,7 +320,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	printChanges(changes)
 
 	collectionID := collection.GetCollectionID()
-	assert.Equal(t, 1, len(changes))
+	assert.Len(t, changes, 1)
 	require.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 1},
 		ID:           "alpha",
@@ -362,7 +362,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
-	assert.Equal(t, 1, len(changes))
+	assert.Len(t, changes, 1)
 	require.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 3},
 		ID:           "alpha",
@@ -410,7 +410,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	// Get changes with active_only=true
 	activeChanges, err := collection.GetChanges(ctx, base.SetOf("*"), changesOptions)
 	require.NoError(t, err, "Error getting changes with active_only true")
-	require.Equal(t, 5, len(activeChanges))
+	require.Len(t, activeChanges, 5)
 
 	// Ensure the test is triggering a query, and not serving from DCP-generated cache
 	postChangesQueryCount := db.DbStats.Cache().ViewQueries.Value()
@@ -420,7 +420,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	changesOptions.ActiveOnly = false
 	allChanges, err := collection.GetChanges(ctx, base.SetOf("*"), changesOptions)
 	require.NoError(t, err, "Error getting changes with active_only true")
-	require.Equal(t, 10, len(allChanges))
+	require.Len(t, allChanges, 10)
 
 	postChangesQueryCount = db.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, initQueryCount+2, postChangesQueryCount)
@@ -429,7 +429,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	changesOptions.ActiveOnly = false
 	allChanges, err = collection.GetChanges(ctx, base.SetOf("*"), changesOptions)
 	require.NoError(t, err, "Error getting changes with active_only true")
-	require.Equal(t, 10, len(allChanges))
+	require.Len(t, allChanges, 10)
 
 	postChangesQueryCount = db.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, initQueryCount+2, postChangesQueryCount)

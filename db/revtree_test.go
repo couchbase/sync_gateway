@@ -351,14 +351,14 @@ func TestPruneRevisions(t *testing.T) {
 	assert.Equal(t, 0, pruned)
 	pruned, _ = tempmap.pruneRevisions(ctx, 2, "")
 	assert.Equal(t, 1, pruned)
-	assert.Equal(t, 4, len(tempmap))
+	assert.Len(t, tempmap, 4)
 	assert.Equal(t, (*RevInfo)(nil), tempmap["1-one"])
 	assert.Equal(t, "", tempmap["2-two"].Parent)
 
 	// Make sure leaves are never pruned:
 	pruned, _ = tempmap.pruneRevisions(ctx, 1, "")
 	assert.Equal(t, 2, pruned)
-	assert.Equal(t, 2, len(tempmap))
+	assert.Len(t, tempmap, 2)
 	assert.True(t, tempmap["3-three"] != nil)
 	assert.Equal(t, "", tempmap["3-three"].Parent)
 	assert.True(t, tempmap["4-vier"] != nil)
@@ -460,7 +460,7 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 
 	// the "non-winning high-gen tombstoned" branch should still be around, but pruned to maxDepth
 	tombstonedLeaves := revTree.GetTombstonedLeaves()
-	assert.Equal(t, 1, len(tombstonedLeaves))
+	assert.Len(t, tombstonedLeaves, 1)
 	tombstonedLeaf := tombstonedLeaves[0]
 
 	tombstonedBranch, err := revTree.getHistory(tombstonedLeaf)

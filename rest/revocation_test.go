@@ -898,7 +898,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 
 	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", false)
 	require.NoError(t, err)
-	assert.Equal(t, 2, len(changes.Results))
+	assert.Len(t, changes.Results, 2)
 
 	assert.Equal(t, "doc", changes.Results[1].ID)
 	assert.False(t, changes.Results[0].Revoked)
@@ -908,7 +908,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 
 	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&revocations=true", 2), "user", false)
 	require.NoError(t, err)
-	require.Equal(t, 2, len(changes.Results))
+	require.Len(t, changes.Results, 2)
 
 	assert.Equal(t, "doc", changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
@@ -932,7 +932,7 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 
 	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", false)
 	require.NoError(t, err)
-	assert.Equal(t, 2, len(changes.Results))
+	assert.Len(t, changes.Results, 2)
 
 	assert.Equal(t, "doc", changes.Results[1].ID)
 	assert.False(t, changes.Results[1].Revoked)
@@ -942,7 +942,7 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 
 	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&revocations=true", 3), "user", false)
 	require.NoError(t, err)
-	require.Equal(t, 2, len(changes.Results))
+	require.Len(t, changes.Results, 2)
 
 	assert.Equal(t, "doc", changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)

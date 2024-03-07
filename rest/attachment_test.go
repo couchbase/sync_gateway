@@ -360,7 +360,7 @@ func TestManualAttachment(t *testing.T) {
 	if !ok {
 		t.Errorf("Attachments must be map")
 	} else {
-		assert.Equal(t, 2, len(bodyAttachments))
+		assert.Len(t, bodyAttachments, 2)
 	}
 	// make sure original document property has remained
 	prop, ok := body["prop"]

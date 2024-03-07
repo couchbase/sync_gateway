@@ -63,7 +63,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
 		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.NoError(t, err)
-		assert.Equal(t, 3, len(changes.Results))
+		assert.Len(t, changes.Results, 3)
 	}()
 
 	// Wait for changes to get into wait mode
@@ -148,7 +148,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 		sinceLastJSON := fmt.Sprintf(changesJSON, lastSeq)
 		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", sinceLastJSON, "bernard")
 		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-		assert.Equal(t, 1, len(changes.Results))
+		assert.Len(t, changes.Results, 1)
 	}()
 
 	// Wait to see if the longpoll will terminate on wait before a document shows up on the channel
