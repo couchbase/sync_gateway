@@ -67,11 +67,8 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 	dbName := config.Name
 	ctx = b.addDatabaseLogContext(ctx, &config.DbConfig)
 
+	registryUpdated := false
 	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
-		if attempt == configUpdateMaxRetryAttempts {
-			return 0, fmt.Errorf("InsertConfig failed to persist registry after %d attempts", configUpdateMaxRetryAttempts)
-		}
-
 		base.InfofCtx(ctx, base.KeyConfig, "InsertConfig into bucket %s starting (attempt %d/%d)", bucketName, attempt, configUpdateMaxRetryAttempts)
 
 		// Step 1. Fetch registry and databases - enforces registry/config synchronization
@@ -111,6 +108,7 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "Registry updated successfully")
+			registryUpdated = true
 			break
 		}
 
@@ -129,7 +127,9 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 		default:
 		}
 	}
-
+	if !registryUpdated {
+		return 0, fmt.Errorf("InsertConfig failed to persist registry after %d attempts", configUpdateMaxRetryAttempts)
+	}
 	// Step 3. Write the database config
 	cas, configErr := b.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, dbName), config)
 	if configErr != nil {
@@ -151,11 +151,8 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 	var registry *GatewayRegistry
 	var previousVersion string
 
+	registryUpdated := false
 	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
-		if attempt == configUpdateMaxRetryAttempts {
-			return 0, fmt.Errorf("UpdateConfig failed to persist updated registry after %d attempts:", configUpdateMaxRetryAttempts)
-		}
-
 		base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig starting (attempt %d/%d)", attempt, configUpdateMaxRetryAttempts)
 		// Step 1. Fetch registry and databases - enforces registry/config synchronization
 		var existingConfig *DatabaseConfig
@@ -200,6 +197,7 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "UpdateConfig persisted updated registry successfully")
+			registryUpdated = true
 			break
 		}
 
@@ -217,6 +215,9 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 			return 0, fmt.Errorf("Exiting UpdateConfig - context cancelled, last error: %w", writeErr)
 		default:
 		}
+	}
+	if !registryUpdated {
+		return 0, fmt.Errorf("UpdateConfig failed to persist updated registry after %d attempts:", configUpdateMaxRetryAttempts)
 	}
 
 	// Step 2. Update the config document
@@ -250,11 +251,8 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 	var existingCas uint64
 	var registry *GatewayRegistry
 
+	registryUpdated := false
 	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
-		if attempt == configUpdateMaxRetryAttempts {
-			return fmt.Errorf("DeleteConfig failed to write updated registry after %d attempts", configUpdateMaxRetryAttempts)
-		}
-
 		base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig starting (attempt %d/%d)", attempt, configUpdateMaxRetryAttempts)
 		var existingConfig *DatabaseConfig
 		// Step 1. Fetch registry and databases - enforces registry/config synchronization
@@ -279,6 +277,7 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "DeleteConfig persisted updated registry successfully")
+			registryUpdated = true
 			break
 		}
 
@@ -296,6 +295,9 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 			break
 		default:
 		}
+	}
+	if !registryUpdated {
+		return fmt.Errorf("DeleteConfig failed to persist updated registry after %d attempts:", configUpdateMaxRetryAttempts)
 	}
 
 	err = b.Connection.DeleteMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, dbName), existingCas)
