@@ -292,7 +292,7 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 		// Check for context cancel before retrying
 		select {
 		case <-ctx.Done():
-			break
+			return fmt.Errorf("Exiting DeleteConfig - context cancelled, last error: %w", writeErr)
 		default:
 		}
 	}
