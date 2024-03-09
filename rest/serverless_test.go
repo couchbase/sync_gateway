@@ -330,7 +330,9 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 
 	// Update config in bucket to see if unsuspending check for updates
 	cas, err := sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		return sc.dbConfigs["db"].ToDatabaseConfig(), nil
+		config := sc.dbConfigs["db"].ToDatabaseConfig()
+		config.cfgCas = bucketDbConfig.cfgCas
+		return config, nil
 	})
 	require.NoError(t, err)
 	assert.NotEqual(t, cas, sc.dbConfigs["db"].cfgCas)
@@ -511,7 +513,9 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	assert.NoError(t, sc.suspendDatabase(t, rt.Context(), "db"))
 	// Update database config
 	newCas, err := sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		return sc.dbConfigs["db"].ToDatabaseConfig(), nil
+		config := sc.dbConfigs["db"].ToDatabaseConfig()
+		config.cfgCas = bucketDbConfig.cfgCas
+		return config, nil
 	})
 	// Confirm dbConfig cas did not update yet in SG, or get unsuspended
 	assert.NotEqual(t, sc.dbConfigs["db"].cfgCas, newCas)
