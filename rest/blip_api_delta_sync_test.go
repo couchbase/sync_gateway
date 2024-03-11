@@ -24,7 +24,7 @@ import (
 
 // TestBlipDeltaSyncPushAttachment tests updating a doc that has an attachment with a delta that doesn't modify the attachment.
 func TestBlipDeltaSyncPushAttachment(t *testing.T) {
-	t.Skip("delta sync not implemented for Version Vectors replication push") // delta sync not implemented for Version Vectors replication 'push'
+	t.Skip("attachments not yet implemented for HLV replication CBG-3797") // delta sync not implemented for Version Vectors replication attachment handling
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	if !base.IsEnterpriseEdition() {
@@ -99,7 +99,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 // 5. Update doc in the test client by adding another attachment
 // 6. Have that update pushed using delta sync via the continuous replication started in step 2
 func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
-	t.Skip("delta sync not implemented for Version Vectors replication push") // delta sync not implemented for Version Vectors replication
+	t.Skip("attachments not yet implemented for HLV replication CBG-3797") // delta sync not implemented for Version Vectors replication attachment handling
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	if !base.IsEnterpriseEdition() {
@@ -457,7 +457,6 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // requires delta sync - CBG-3736
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -856,7 +855,6 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 // TestBlipDeltaSyncPush tests that a simple push replication handles deltas in EE,
 // and checks that full body replication is still supported in CE.
 func TestBlipDeltaSyncPush(t *testing.T) {
-	t.Skip("delta sync not implemented for Version Vectors replication push") // delta sync not implemented for Version Vectors replication 'push'
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	sgUseDeltas := base.IsEnterpriseEdition()
@@ -870,6 +868,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for backwards compatibility
 	const docID = "doc1"
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t,
@@ -886,7 +885,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.NoError(t, err)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+		version := rt.PutDocDirectly(docID, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`))
 
 		data, ok := btcRunner.WaitForVersion(client.id, docID, version)
 		assert.True(t, ok)
@@ -901,7 +900,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 
 		if base.IsEnterpriseEdition() {
 			// Check the request was sent with the correct deltaSrc property
-			assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[db.RevMessageDeltaSrc])
+			client.AssertDeltaSrcProperty(t, msg, version)
 			// Check the request body was the actual delta
 			msgBody, err := msg.Body()
 			assert.NoError(t, err)
@@ -930,7 +929,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, map[string]interface{}{"howdy": "bob"}, greetings[2])
 
 		// tombstone doc1 (gets rev 3-f3be6c85e0362153005dae6f08fc68bb)
-		deletedVersion := rt.DeleteDocReturnVersion(docID, newRev)
+		deletedVersion := rt.DeleteDocDirectly(docID, newRev)
 
 		data, ok = btcRunner.WaitForVersion(client.id, docID, deletedVersion)
 		assert.True(t, ok)
@@ -978,7 +977,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		GuestEnabled: true,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication 'push'
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // delta sync not implemented for backwards compatibility
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -996,7 +995,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		assert.NoError(t, err)
 
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-		version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+		version := rt.PutDocDirectly(docID, JsonToMap(t, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`))
 
 		data, ok := btcRunner.WaitForVersion(client.id, docID, version)
 		assert.True(t, ok)
