@@ -423,6 +423,7 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 	if bodyBytes, attachments, err = backingStore.getCurrentVersion(ctx, doc); err != nil {
 		// TODO: pending CBG-3213 support of channel removal for CV
 		// we need implementation of IsChannelRemoval for CV here.
+		base.ErrorfCtx(ctx, "pending CBG-3213 support of channel removal for CV: %v", err)
 	}
 
 	if err = doc.HasCurrentVersion(ctx, cv); err != nil {
