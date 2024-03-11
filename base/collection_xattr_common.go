@@ -23,15 +23,15 @@ const (
 )
 
 // CAS-safe write of a document and it's associated named xattr
-func WriteCasWithXattrs(ctx context.Context, store *Collection, k string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v []byte, xattrs map[string][]byte) (casOut uint64, err error) {
+func (c *Collection) WriteWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, v []byte, xattrs map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 
 	worker := func() (shouldRetry bool, err error, value uint64) {
 		fmt.Printf("cas=%+v v=%+v v=%T\n", cas, v, v)
 		// cas=0 specifies an insert
 		if cas == 0 {
-			casOut, err = store.insertBodyAndXattrs(ctx, k, exp, v, xattrs, opts)
+			casOut, err = c.insertBodyAndXattrs(ctx, k, exp, v, xattrs, opts)
 			if err != nil {
-				shouldRetry = store.isRecoverableWriteError(err)
+				shouldRetry = c.isRecoverableWriteError(err)
 				return shouldRetry, err, uint64(0)
 			}
 			return false, nil, casOut
@@ -41,17 +41,17 @@ func WriteCasWithXattrs(ctx context.Context, store *Collection, k string, exp ui
 		if v != nil {
 			fmt.Println("updateBodyAndXattrs")
 			// Have value and xattr value - update both
-			casOut, err = store.updateBodyAndXattrs(ctx, k, exp, cas, opts, v, xattrs)
+			casOut, err = c.updateBodyAndXattrs(ctx, k, exp, cas, opts, v, xattrs)
 			if err != nil {
-				shouldRetry = store.isRecoverableWriteError(err)
+				shouldRetry = c.isRecoverableWriteError(err)
 				return shouldRetry, err, uint64(0)
 			}
 		} else {
 			fmt.Println("updateXattrs")
 			// Update xattr only
-			casOut, err = store.updateXattrs(ctx, k, exp, cas, xattrs, opts)
+			casOut, err = c.updateXattrs(ctx, k, exp, cas, xattrs, opts)
 			if err != nil {
-				shouldRetry = store.isRecoverableWriteError(err)
+				shouldRetry = c.isRecoverableWriteError(err)
 				return shouldRetry, err, uint64(0)
 			}
 		}
@@ -85,7 +85,7 @@ func WriteWithXattr(ctx context.Context, store *Collection, k string, xattrKey s
 */
 
 // CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
-func UpdateTombstoneXattr(ctx context.Context, store *Collection, k string, exp uint32, cas uint64, xattrs map[string][]byte, deleteBody bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+func (c *Collection) WriteTombstoneWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, xattrs map[string][]byte, deleteBody bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 
 	requiresBodyRemoval := false
 	worker := func() (shouldRetry bool, err error, value uint64) {
@@ -95,30 +95,30 @@ func UpdateTombstoneXattr(ctx context.Context, store *Collection, k string, exp 
 
 		// If deleteBody == true, remove the body and update xattr
 		if deleteBody {
-			casOut, tombstoneErr = store.updateXattrsDeleteBody(ctx, k, exp, cas, xattrs, opts)
+			casOut, tombstoneErr = c.updateXattrsDeleteBody(ctx, k, exp, cas, xattrs, opts)
 		} else {
 			if cas == 0 {
 				// if cas == 0, create a new server tombstone with xattr
-				casOut, tombstoneErr = store.createTombstone(ctx, k, exp, cas, xattrs, opts)
+				casOut, tombstoneErr = c.createTombstone(ctx, k, exp, cas, xattrs, opts)
 				// If one-step tombstone creation is not supported, set flag for document body removal
-				requiresBodyRemoval = !store.IsSupported(sgbucket.BucketStoreFeatureCreateDeletedWithXattr)
+				requiresBodyRemoval = !c.IsSupported(sgbucket.BucketStoreFeatureCreateDeletedWithXattr)
 			} else {
 				// If cas is non-zero, this is an already existing tombstone.  Update xattr only
-				casOut, tombstoneErr = store.updateXattrs(ctx, k, exp, cas, xattrs, opts)
+				casOut, tombstoneErr = c.UpdateXattrs(ctx, k, exp, cas, xattrs, opts)
 			}
 		}
 
 		if tombstoneErr != nil {
-			shouldRetry = store.isRecoverableWriteError(tombstoneErr)
+			shouldRetry = c.isRecoverableWriteError(tombstoneErr)
 			return shouldRetry, tombstoneErr, uint64(0)
 		}
 		return false, nil, casOut
 	}
 
 	// Kick off retry loop
-	err, cas = RetryLoopCas(ctx, "UpdateTombstoneXattr", worker, DefaultRetrySleeper())
+	err, cas = RetryLoopCas(ctx, "UpdateTombstoneXattrs", worker, DefaultRetrySleeper())
 	if err != nil {
-		err = pkgerrors.Wrapf(err, "Error during UpdateTombstoneXattr with key %v", UD(k).Redact())
+		err = pkgerrors.Wrapf(err, "Error during UpdateTombstoneXattrs with key %v", UD(k).Redact())
 		return cas, err
 	}
 
@@ -133,7 +133,7 @@ func UpdateTombstoneXattr(ctx context.Context, store *Collection, k string, exp 
 			for key := range xattrs {
 				xattrKeys = append(xattrKeys, key)
 			}
-			casOut, removeErr := store.DeleteBody(ctx, k, xattrKeys, exp, cas, opts)
+			casOut, removeErr := c.DeleteBody(ctx, k, xattrKeys, exp, cas, opts)
 			if removeErr != nil {
 				// If there is a cas mismatch the body has since been updated and so we don't need to bother removing
 				// body in this operation
@@ -141,7 +141,7 @@ func UpdateTombstoneXattr(ctx context.Context, store *Collection, k string, exp 
 					return false, nil, cas
 				}
 
-				shouldRetry = store.isRecoverableWriteError(removeErr)
+				shouldRetry = c.isRecoverableWriteError(removeErr)
 				return shouldRetry, removeErr, uint64(0)
 			}
 			return false, nil, casOut
@@ -165,7 +165,7 @@ func UpdateTombstoneXattr(ctx context.Context, store *Collection, k string, exp 
 // If previous document is provided, will use it on 1st iteration instead of retrieving from bucket.
 // A zero CAS in `previous` is interpreted as no document existing; this can be used to short-
 // circuit the initial Get when the document is unlikely to already exist.
-func WriteUpdateWithXattrs(ctx context.Context, store *Collection, k string, xattrKeys []string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrsFunc) (casOut uint64, err error) {
+func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrKeys []string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrsFunc) (casOut uint64, err error) {
 
 	var value []byte
 	var xattrs map[string][]byte
@@ -186,7 +186,7 @@ func WriteUpdateWithXattrs(ctx context.Context, store *Collection, k string, xat
 		} else {
 			// If no existing value has been provided, or on a retry,
 			// retrieve the current value from the bucket
-			xattrs, cas, err = store.subdocGetBodyAndXattrs(ctx, k, xattrKeys, &value)
+			value, xattrs, cas, err = c.subdocGetBodyAndXattrs(ctx, k, xattrKeys, true)
 
 			if err != nil {
 				if pkgerrors.Cause(err) != ErrNotFound {
@@ -224,9 +224,9 @@ func WriteUpdateWithXattrs(ctx context.Context, store *Collection, k string, xat
 		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
 		deleteBody := value != nil
 		if updatedDoc.IsTombstone {
-			_, writeErr = UpdateTombstoneXattr(ctx, store, k, exp, cas, updatedDoc.Xattrs, deleteBody, opts)
+			_, writeErr = c.WriteTombstoneWithXattrs(ctx, k, exp, cas, updatedDoc.Xattrs, deleteBody, opts)
 		} else {
-			_, writeErr = WriteCasWithXattrs(ctx, store, k, exp, cas, opts, updatedDoc.Doc, updatedDoc.Xattrs)
+			_, writeErr = c.WriteWithXattrs(ctx, k, exp, cas, updatedDoc.Doc, updatedDoc.Xattrs, opts)
 		}
 
 		if writeErr == nil {
@@ -340,11 +340,11 @@ func WriteUpdateWithXattr(ctx context.Context, store *Collection, k string, xatt
 }
 */
 
-// SetXattr performs a subdoc set on the supplied xattrKey. Implements a retry for recoverable failures.
-func SetXattr(ctx context.Context, store *Collection, k string, xattrKey string, xv []byte) (casOut uint64, err error) {
+// SetXattrs performs a subdoc set on the supplied xattrs. Implements a retry for recoverable failures.
+func SetXattrs(ctx context.Context, store *Collection, k string, xvs map[string][]byte) (casOut uint64, err error) {
 
 	worker := func() (shouldRetry bool, err error, value uint64) {
-		casOut, writeErr := store.SubdocSetXattr(k, xattrKey, xv)
+		casOut, writeErr := store.SubdocSetXattrs(k, xvs)
 		if writeErr == nil {
 			return false, nil, casOut
 		}
@@ -497,15 +497,14 @@ func deleteWithXattrInternal(ctx context.Context, store *Collection, k string, x
 func deleteDocXattrOnly(ctx context.Context, store *Collection, k string, xattrKeys []string, callback deleteWithXattrRaceInjection) error {
 
 	//  Do get w/ xattr in order to get cas
-	var retrievedVal map[string]interface{}
-	_, getCas, err := store.GetWithXattrs(ctx, k, xattrKeys, &retrievedVal)
+	rawBody, _, getCas, err := store.GetWithXattrs(ctx, k, xattrKeys)
 	if err != nil {
 		return err
 	}
 
 	// If the doc body is non-empty at this point, then give up because it seems that a doc update has been
 	// interleaved with the purge.  Return error to the caller and cancel the purge.
-	if len(retrievedVal) != 0 {
+	if rawBody != nil {
 		return fmt.Errorf("DeleteWithXattr was unable to delete the doc. Another update " +
 			"was received which resurrected the doc by adding a new revision, in which case this delete operation is " +
 			"considered as cancelled.")

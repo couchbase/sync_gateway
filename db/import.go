@@ -395,10 +395,12 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	}
 	var casOut uint64
 	var writeErr error
-	if !doc.hasFlag(channels.Deleted) {
-		casOut, writeErr = db.dataStore.WriteWithXattrs(ctx, docid, existingDoc.Expiry, existingDoc.Cas, value, xattrs, opts)
+	if doc.hasFlag(channels.Deleted) {
+		// Migration of tombstone.  Delete body, update xattrs
+		casOut, writeErr = db.dataStore.WriteTombstoneWithXattrs(ctx, docid, existingDoc.Expiry, existingDoc.Cas, xattrs, true, opts)
 	} else {
-		casOut, writeErr = db.dataStore.WriteTombstoneWithXattrs(ctx, docid, existingDoc.Expiry, existingDoc.Cas, xattrs, opts)
+		// Non-tombstone - update doc and xattrs
+		casOut, writeErr = db.dataStore.WriteWithXattrs(ctx, docid, existingDoc.Expiry, existingDoc.Cas, value, xattrs, opts)
 	}
 	if writeErr == nil {
 		doc.Cas = casOut

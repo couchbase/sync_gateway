@@ -96,13 +96,13 @@ func (lds *LeakyDataStore) GetRaw(k string) (v []byte, cas uint64, err error) {
 	}
 	return lds.dataStore.GetRaw(k)
 }
-func (lds *LeakyDataStore) GetWithXattrs(ctx context.Context, k string, xattrKeys []string, rv interface{}) (xattrs map[string][]byte, cas uint64, err error) {
+func (lds *LeakyDataStore) GetWithXattrs(ctx context.Context, k string, xattrKeys []string) (body []byte, xattrs map[string][]byte, cas uint64, err error) {
 	if lds.config.GetWithXattrCallback != nil {
 		if err := lds.config.GetWithXattrCallback(k); err != nil {
-			return nil, 0, err
+			return nil, nil, 0, err
 		}
 	}
-	return lds.dataStore.GetWithXattrs(ctx, k, xattrKeys, rv)
+	return lds.dataStore.GetWithXattrs(ctx, k, xattrKeys)
 }
 
 func (lds *LeakyDataStore) GetAndTouchRaw(k string, exp uint32) (v []byte, cas uint64, err error) {
@@ -344,13 +344,8 @@ func (lds *LeakyDataStore) UpdateXattrs(ctx context.Context, k string, exp uint3
 	return lds.dataStore.UpdateXattrs(ctx, k, exp, cas, xv, opts)
 }
 
-func (lds *LeakyDataStore) InsertTombstoneWithXattrs(ctx context.Context, k string, exp uint32, xv map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
-	return lds.dataStore.InsertTombstoneWithXattrs(ctx, k, exp, xv, opts)
-
-}
-
-func (lds *LeakyDataStore) WriteTombstoneWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
-	return lds.dataStore.WriteTombstoneWithXattrs(ctx, k, exp, cas, xv, opts)
+func (lds *LeakyDataStore) WriteTombstoneWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, deleteBody bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+	return lds.dataStore.WriteTombstoneWithXattrs(ctx, k, exp, cas, xv, deleteBody, opts)
 
 }
 

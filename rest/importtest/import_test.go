@@ -1492,9 +1492,8 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 
 	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
 		docID := "TestImportDecimalScale" + strconv.Itoa(i)
-		var docBody []byte
 		var syncData db.SyncData
-		xattrs, _, err := dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName}, &docBody)
+		docBody, xattrs, _, err := dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName})
 		require.NoError(t, err)
 		require.Contains(t, xattrs, base.SyncXattrName)
 		require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
@@ -1559,9 +1558,8 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 	ctx := base.TestCtx(t)
 	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
 		docID := "TestImportDecimalPlacesScientificNotation" + strconv.Itoa(i)
-		var docBody []byte
 		var syncData db.SyncData
-		xattrs, _, err := dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName}, &docBody)
+		docBody, xattrs, _, err := dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName})
 		require.NoError(t, err)
 		require.Contains(t, xattrs, base.SyncXattrName)
 		require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))

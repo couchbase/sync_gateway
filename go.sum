@@ -67,6 +67,8 @@ github.com/couchbase/tools-common/utils v1.0.0 h1:6mWXqWWj7aM0Kp2LWpSKEu9pLAYm7i
 github.com/couchbase/tools-common/utils v1.0.0/go.mod h1:i6cN5Z5hB9vQRLxe2j1v6Nu8bv+pKl9BFXjbQUHSah8=
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338 h1:xMeDnMiapTiq8n8J83Mo2tPjQNIU7GssSsbQsP1CLOY=
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338/go.mod h1:0f+dmhfcTKK+4quAe6rwqQUVVWtHX/eztNB8cmBUniQ=
+github.com/couchbaselabs/go-fleecedelta v0.0.0-20231219142340-b718c3d1aa79 h1:jdisDg/jzTpgwVDv1qCjwt2mX9bnWMtBRYLhurw1NCU=
+github.com/couchbaselabs/go-fleecedelta v0.0.0-20231219142340-b718c3d1aa79/go.mod h1:0f+dmhfcTKK+4quAe6rwqQUVVWtHX/eztNB8cmBUniQ=
 github.com/couchbaselabs/gocaves/client v0.0.0-20230307083111-cc3960c624b1/go.mod h1:AVekAZwIY2stsJOMWLAS/0uA/+qdp7pjO8EHnl61QkY=
 github.com/couchbaselabs/gocaves/client v0.0.0-20230404095311-05e3ba4f0259 h1:2TXy68EGEzIMHOx9UvczR5ApVecwCfQZ0LjkmwMI6g4=
 github.com/couchbaselabs/gocaves/client v0.0.0-20230404095311-05e3ba4f0259/go.mod h1:AVekAZwIY2stsJOMWLAS/0uA/+qdp7pjO8EHnl61QkY=

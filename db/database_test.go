@@ -2449,7 +2449,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	var xattrs map[string][]byte
 	// Ensure document has been added
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		xattrs, _, err = collection.dataStore.GetWithXattrs(ctx, "doc", []string{base.SyncXattrName}, nil)
+		_, xattrs, _, err = collection.dataStore.GetWithXattrs(ctx, "doc", []string{base.SyncXattrName})
 		assert.NoError(c, err)
 	}, time.Second*5, time.Millisecond*100)
 

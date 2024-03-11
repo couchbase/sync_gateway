@@ -47,8 +47,11 @@ var (
 	ErrPathNotFound          = sgbucket.ErrPathNotFound
 	ErrPathExists            = sgbucket.ErrPathExists
 
-	// ErrXattrNotFound is returned if a requested xattr is not present on a DCP event
+	// ErrXattrNotFound is returned if all requested xattrs are not present
 	ErrXattrNotFound = &sgError{"Xattr Not Found"}
+
+	// ErrXattrPartialFound is returned if only a subset of requested xattrs are found
+	ErrXattrPartialFound = &sgError{"Some Requested Xattrs Not Found"}
 
 	// ErrXattrInvalidLen is returned if the xattr is corrupt.
 	ErrXattrInvalidLen = &sgError{"Xattr stream length"}

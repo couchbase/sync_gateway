@@ -1504,7 +1504,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 	cas, err := data.Get("accessDoc", nil)
 	require.NoError(t, err)
 
-	cas, err = data.UpdateXattrs(ctx, "accessDoc", 0, cas, map[string][]byte{xattrKey: []byte(`{"userChannels" : {"user": "a"}}`)}, nil)
+	_, err = data.UpdateXattrs(ctx, "accessDoc", 0, cas, map[string][]byte{xattrKey: []byte(`{"userChannels" : {"user": "a"}}`)}, nil)
 	require.NoError(t, err)
 
 	_ = rt.PutDoc("doc", `{"channels": "a"}`)

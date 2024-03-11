@@ -35,8 +35,7 @@ type treeMeta struct {
 func getRevTreeList(ctx context.Context, dataStore sgbucket.DataStore, key string, useXattrs bool) (revTreeList, error) {
 	switch useXattrs {
 	case true:
-		var rawDoc []byte
-		xattrs, _, getErr := dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName}, &rawDoc)
+		_, xattrs, _, getErr := dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
 		rawXattr, ok := xattrs[base.SyncXattrName]
 		if !ok {
 			return revTreeList{}, base.ErrXattrNotFound
@@ -1629,7 +1628,7 @@ func TestPutStampClusterUUID(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 32, len(doc.ClusterUUID))
 
-	xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName}, &body)
+	_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
 	require.NoError(t, err)
 	require.Contains(t, xattrs, base.SyncXattrName)
 	var xattr map[string]string

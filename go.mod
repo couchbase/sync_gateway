@@ -2,6 +2,11 @@ module github.com/couchbase/sync_gateway
 
 go 1.21
 
+replace (
+	github.com/couchbase/sg-bucket => /Users/adam.fraser/dev/sg-bucket
+	github.com/couchbaselabs/rosmar => /Users/adam.fraser/dev/rosmar
+)
+
 require (
 	dario.cat/mergo v1.0.0
 	github.com/bhoriuchi/graphql-go-tools v1.0.3
@@ -14,7 +19,7 @@ require (
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20240226165457-c1c63d7907f5
-	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
+	github.com/couchbaselabs/go-fleecedelta v0.0.0-20231219142340-b718c3d1aa79
 	github.com/couchbaselabs/gocbconnstr v1.0.5
 	github.com/couchbaselabs/rosmar v0.0.0-20240306195735-e272f4f819fc
 	github.com/elastic/gosigar v0.14.2

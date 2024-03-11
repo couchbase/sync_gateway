@@ -116,7 +116,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 func (c *DatabaseCollection) GetDocWithXattr(ctx context.Context, key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
-	rawBucketDoc.Xattrs, rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName, c.userXattrKey()}, &rawBucketDoc.Body)
+	rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName, c.userXattrKey()})
 	if getErr != nil {
 		return nil, nil, getErr
 	}
@@ -142,8 +142,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 	if c.UseXattrs() {
 		// Retrieve doc and xattr from bucket, unmarshal only xattr.
 		// Triggers on-demand import when document xattr doesn't match cas.
-		var rawDoc []byte
-		xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName, c.userXattrKey()}, &rawDoc)
+		rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName, c.userXattrKey()})
 		if getErr != nil {
 			return emptySyncData, getErr
 		}

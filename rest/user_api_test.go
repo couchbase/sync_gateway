@@ -1149,6 +1149,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			dataStore := rt.GetSingleDataStore()
 
 			cas, err := dataStore.Get(docKey, nil)
+			require.NoError(t, err)
 			ctx := rt.Context()
 			// Add xattr
 			_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
