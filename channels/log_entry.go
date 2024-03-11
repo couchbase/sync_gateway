@@ -109,7 +109,7 @@ func (channelMap ChannelMap) KeySet() []string {
 type RevAndVersion struct {
 	RevTreeID      string `json:"rev,omitempty"`
 	CurrentSource  string `json:"src,omitempty"`
-	CurrentVersion string `json:"vrs,omitempty"` // String representation of version
+	CurrentVersion string `json:"ver,omitempty"` // String representation of version
 }
 
 // RevAndVersionJSON aliases RevAndVersion to support conditional unmarshalling from either string (revTreeID) or
