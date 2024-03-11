@@ -86,7 +86,7 @@ func (h *handler) handleSyncFnDryRun() error {
 	return nil
 }
 
-// HTTP handler for a GET of a document
+// HTTP handler for running a document through the import filter and returning the results
 func (h *handler) handleImportFilterDryRun() error {
 	body, err := h.readDocument()
 	if err != nil {
