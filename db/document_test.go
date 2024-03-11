@@ -261,7 +261,7 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	ctx := base.TestCtx(t)
 
 	doc_meta := []byte(doc_meta_with_vv)
-	doc, err := unmarshalDocumentWithXattr(ctx, "doc_1k", nil, doc_meta, nil, 1, DocUnmarshalVV)
+	doc, err := unmarshalDocumentWithXattr(ctx, "doc_1k", nil, doc_meta, nil, 1, DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
 	strCAS := string(base.Uint64CASToLittleEndianHex(123456))
