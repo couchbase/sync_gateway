@@ -58,8 +58,10 @@ func (h *handler) handleGetDocChannels() error {
 // HTTP handler for running a document through the sync function and returning the results
 func (h *handler) handleSyncFnDryRun() error {
 	docid := h.getQuery("docid")
+	revID := h.getQuery("rev")
 
 	body, err := h.readDocument()
+	body[db.BodyRev] = revID
 	if err != nil {
 		return err
 	}
