@@ -1729,10 +1729,11 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	body = Body{"key1": "value2"}
 	newDoc := createTestDocument(key, "", body, false, 0)
 
-	// construct a HLV that simulates a doc update happening on a client
-	// this means moving the current source version pair to PV and adding new sourceID and version pair to CV
+	// Simulate a conflicting doc update happening from a client that
+	// has only replicated the initial version of the document
 	pv := make(map[string]string)
-	pv[bucketUUID] = originalDocVersion
+	pv[syncData.HLV.SourceID] = originalDocVersion
+
 	// create a version larger than the allocated version above
 	incomingVersion := string(base.Uint64CASToLittleEndianHex(docUpdateVersionInt + 10))
 	incomingHLV := HybridLogicalVector{
@@ -1741,14 +1742,18 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 		PreviousVersions: pv,
 	}
 
-	// grab the raw doc from the bucket to pass into the PutExistingCurrentVersion function for the above simulation of
-	// doc update arriving over replicator
-	_, rawDoc, err := collection.GetDocumentWithRaw(ctx, key, DocUnmarshalSync)
-	require.NoError(t, err)
+	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil)
+	assertHTTPError(t, err, 409)
+	require.Nil(t, doc)
+	require.Nil(t, cv)
 
-	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, rawDoc)
+	// Update the client's HLV to include the latest SGW version.
+	incomingHLV.PreviousVersions[syncData.HLV.SourceID] = docUpdateVersion
+	// TODO: because currentRev isn't being updated, storeOldBodyInRevTreeAndUpdateCurrent isn't
+	//  updating the document body.   Need to review whether it makes sense to keep using
+	// storeOldBodyInRevTreeAndUpdateCurrent, or if this needs a larger overhaul to support VV
+	doc, cv, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil)
 	require.NoError(t, err)
-	// assert on returned CV
 	assert.Equal(t, "test", cv.SourceID)
 	assert.Equal(t, incomingVersion, cv.Value)
 	assert.Equal(t, []byte(`{"key1":"value2"}`), doc._rawBody)
@@ -1766,6 +1771,16 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	pv[bucketUUID] = docUpdateVersion
 	assert.True(t, reflect.DeepEqual(syncData.HLV.PreviousVersions, pv))
 	assert.Equal(t, "3-60b024c44c283b369116c2c2570e8088", syncData.CurrentRev)
+
+	// Attempt to push the same client update, validate server rejects as an already known version and cancels the update.
+	// This case doesn't return error, verify that SyncData hasn't been changed.
+	_, _, _, err = collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil)
+	require.NoError(t, err)
+	syncData2, err := collection.GetDocSyncData(ctx, "doc1")
+	require.NoError(t, err)
+	require.Equal(t, syncData.TimeSaved, syncData2.TimeSaved)
+	require.Equal(t, syncData.CurrentRev, syncData2.CurrentRev)
+
 }
 
 // TestPutExistingCurrentVersionWithConflict:
@@ -1804,16 +1819,11 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 		Version:  string(base.Uint64CASToLittleEndianHex(1234)),
 	}
 
-	// grab the raw doc from the bucket to pass into the PutExistingCurrentVersion function
-	_, rawDoc, err := collection.GetDocumentWithRaw(ctx, key, DocUnmarshalSync)
-	require.NoError(t, err)
-
-	// assert that a conflict is correctly identified and the resulting doc and cv are nil
-	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, rawDoc)
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "Document revision conflict")
-	assert.Nil(t, cv)
-	assert.Nil(t, doc)
+	// assert that a conflict is correctly identified and the doc and cv are nil
+	doc, cv, _, err := collection.PutExistingCurrentVersion(ctx, newDoc, incomingHLV, nil)
+	assertHTTPError(t, err, 409)
+	require.Nil(t, doc)
+	require.Nil(t, cv)
 
 	// assert persisted doc hlv hasn't been updated
 	syncData, err = collection.GetDocSyncData(ctx, "doc1")
