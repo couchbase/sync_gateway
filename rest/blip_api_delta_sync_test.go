@@ -23,10 +23,8 @@ import (
 )
 
 // TestBlipDeltaSyncPushAttachment tests updating a doc that has an attachment with a delta that doesn't modify the attachment.
-
 func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
 	}
@@ -42,7 +40,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	const docID = "pushAttachmentDoc"
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires push replication (CBG-3255)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication (CBG-3736)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -113,7 +111,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication (CBG-3736)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
@@ -184,7 +182,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		GuestEnabled: true,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication (CBG-3736)
 	const doc1ID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -282,7 +280,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	const docID = "doc1"
 	var deltaSentCount int64
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication (CBG-3736)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t,
 			rtConfig)
@@ -358,7 +356,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		GuestEnabled: true,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication (CBG-3736)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t,
 			&rtConfig)
@@ -428,7 +426,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // v2 protocol test
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // requires delta sync - CBG-3736
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -493,7 +491,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication"
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication (CBG-3736)
 
 	var deltaCacheHitsStart int64
 	var deltaCacheMissesStart int64
@@ -589,7 +587,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication (CBG-3736)
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -732,7 +730,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	}
 	const docID = "doc1"
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication (CBG-3736)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t,
@@ -817,7 +815,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		GuestEnabled: true,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication (CBG-3736)
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -924,7 +922,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		GuestEnabled: true,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // delta sync not implemented for Version Vectors replication (CBG-3736)
 	const docID = "doc1"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
