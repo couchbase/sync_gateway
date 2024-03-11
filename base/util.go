@@ -1033,6 +1033,17 @@ func Uint64CASToLittleEndianHex(cas uint64) []byte {
 	return encodedArray
 }
 
+// Converts a string decimal representation ("100") to little endian hex string ("0x64")
+func StringDecimalToLittleEndianHex(value string) (string, error) {
+	intValue, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return "", err
+	}
+	hexValue := Uint64CASToLittleEndianHex(intValue)
+	return string(hexValue), nil
+
+}
+
 func Crc32cHash(input []byte) uint32 {
 	// crc32.MakeTable already ensures singleton table creation, so shouldn't need to cache.
 	table := crc32.MakeTable(crc32.Castagnoli)
