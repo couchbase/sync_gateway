@@ -79,7 +79,7 @@ func (h *handler) handleSyncFnDryRun() error {
 		access,
 		roles,
 		errorMsg,
-		uint32(expiry),
+		expiry,
 	}
 
 	h.writeJSON(resp)
