@@ -93,10 +93,7 @@ func TestGetDocDryRuns(t *testing.T) {
 		bucket, base.TestUseXattrs(), newSyncFn, ImportFilter))
 	RequireStatus(t, resp, http.StatusCreated)
 
-	//resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"user":{"num":123, "name":"user1"}, "channel":"channel1"}`)
-	//RequireStatus(t, resp, http.StatusCreated)
 	version := rt.PutDoc("doc", `{"user":{"num":123, "name":"user1"}, "channel":"channel1"}`)
-	updatedVersion := rt.UpdateDoc("doc", version, `{"user":{"num":123, "name":"user1"}, "channel":"channel1"}`)
 
 	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_sync", `{"user":{"num":23}}`)
 	RequireStatus(t, response, http.StatusOK)
@@ -105,7 +102,7 @@ func TestGetDocDryRuns(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, respMap.Exception, "403 user num too low")
 
-	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?docid=doc&rev=%s", updatedVersion.RevID), `{"user":{"num":120, "name":"user2"}, "channel":"channel2"}`)
+	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?docid=doc&rev=%s", version.RevID), `{"user":{"num":120, "name":"user2"}, "channel":"channel2"}`)
 	RequireStatus(t, response, http.StatusOK)
 
 	err = json.Unmarshal(response.BodyBytes(), &respMap)
