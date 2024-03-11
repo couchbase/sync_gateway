@@ -1004,6 +1004,10 @@ func HexCasToUint64(cas string) uint64 {
 	return binary.LittleEndian.Uint64(casBytes[0:8])
 }
 
+func CasToString(cas uint64) string {
+	return string(Uint64CASToLittleEndianHex(cas))
+}
+
 func Uint64CASToLittleEndianHex(cas uint64) []byte {
 	littleEndian := make([]byte, 8)
 	binary.LittleEndian.PutUint64(littleEndian, cas)
@@ -1012,6 +1016,17 @@ func Uint64CASToLittleEndianHex(cas uint64) []byte {
 	encodedArray[0] = '0'
 	encodedArray[1] = 'x'
 	return encodedArray
+}
+
+// Converts a string decimal representation ("100") to little endian hex string ("0x64")
+func StringDecimalToLittleEndianHex(value string) (string, error) {
+	intValue, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return "", err
+	}
+	hexValue := Uint64CASToLittleEndianHex(intValue)
+	return string(hexValue), nil
+
 }
 
 func Crc32cHash(input []byte) uint32 {

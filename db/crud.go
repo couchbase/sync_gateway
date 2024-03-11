@@ -1073,7 +1073,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	return newRevID, doc, err
 }
 
-func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, docHLV HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *Version, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, newDoc *Document, newDocHLV HybridLogicalVector, existingDoc *sgbucket.BucketDocument) (doc *Document, cv *Version, newRevID string, err error) {
 	var matchRev string
 	if existingDoc != nil {
 		doc, unmarshalErr := unmarshalDocumentWithXattr(ctx, newDoc.ID, existingDoc.Body, existingDoc.Xattrs[base.SyncXattrName], existingDoc.Xattrs[db.userXattrKey()], existingDoc.Cas, DocUnmarshalRev)
@@ -1112,20 +1112,28 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			}
 		}
 
+		// set up revTreeID for backward compatibility
+		previousRevTreeID := doc.CurrentRev
+		prevGeneration, _ := ParseRevID(ctx, previousRevTreeID)
+		newGeneration := prevGeneration + 1
+
 		// Conflict check here
 		// if doc has no HLV defined this is a new doc we haven't seen before, skip conflict check
 		if doc.HLV == nil {
-			doc.HLV = &HybridLogicalVector{}
-			addNewerVersionsErr := doc.HLV.AddNewerVersions(docHLV)
+			newHLV := NewHybridLogicalVector()
+			doc.HLV = &newHLV
+			addNewerVersionsErr := doc.HLV.AddNewerVersions(newDocHLV)
 			if addNewerVersionsErr != nil {
 				return nil, nil, false, nil, addNewerVersionsErr
 			}
 		} else {
-			incomingDecodedHLV := docHLV.ToDecodedHybridLogicalVector()
-			localDecodedHLV := doc.HLV.ToDecodedHybridLogicalVector()
-			if !incomingDecodedHLV.IsInConflict(localDecodedHLV) {
+			if doc.HLV.isDominating(newDocHLV) {
+				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add", base.UD(newDoc.ID))
+				return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
+			}
+			if newDocHLV.isDominating(*doc.HLV) {
 				// update hlv for all newer incoming source version pairs
-				addNewerVersionsErr := doc.HLV.AddNewerVersions(docHLV)
+				addNewerVersionsErr := doc.HLV.AddNewerVersions(newDocHLV)
 				if addNewerVersionsErr != nil {
 					return nil, nil, false, nil, addNewerVersionsErr
 				}
@@ -1135,9 +1143,13 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 			}
 		}
+		// populate merge versions
+		if newDocHLV.MergeVersions != nil {
+			doc.HLV.MergeVersions = newDocHLV.MergeVersions
+		}
 
 		// Process the attachments, replacing bodies with digests.
-		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.DocAttachments, generation, matchRev, nil)
+		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.DocAttachments, newGeneration, previousRevTreeID, nil)
 		if err != nil {
 			return nil, nil, false, nil, err
 		}
@@ -1148,9 +1160,9 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		if err != nil {
 			return nil, nil, false, nil, err
 		}
-		newRev := CreateRevIDWithBytes(generation, matchRev, encoding)
+		newRev := CreateRevIDWithBytes(newGeneration, previousRevTreeID, encoding)
 
-		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: newDoc.Deleted}); err != nil {
+		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: previousRevTreeID, Deleted: newDoc.Deleted}); err != nil {
 			base.InfofCtx(ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(newDoc.ID), err)
 			return nil, nil, false, nil, base.ErrRevTreeAddRevFailure
 		}
@@ -2292,6 +2304,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		}
 	}
 
+	// ErrUpdateCancel is returned when the incoming revision is already known
 	if err == base.ErrUpdateCancel {
 		return nil, "", nil
 	} else if err != nil {
@@ -2900,6 +2913,54 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 	} else {
 		// Parent revision mismatch, so this is a conflict:
 		return ProposedRev_Conflict, doc.CurrentRev
+	}
+}
+
+// CheckProposedVersion - given DocID and a version in string form, check whether it can be added without conflict.
+func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, docid, proposedVersionStr string, previousVersionStr string) (status ProposedRevStatus, currentVersion string) {
+
+	proposedVersion, err := ParseVersion(proposedVersionStr)
+	if err != nil {
+		base.WarnfCtx(ctx, "Couldn't parse proposed version for doc %q / %q: %v", base.UD(docid), proposedVersionStr, err)
+		return ProposedRev_Error, ""
+	}
+
+	var previousVersion Version
+	if previousVersionStr != "" {
+		var err error
+		previousVersion, err = ParseVersion(previousVersionStr)
+		if err != nil {
+			base.WarnfCtx(ctx, "Couldn't parse previous version for doc %q / %q: %v", base.UD(docid), previousVersionStr, err)
+			return ProposedRev_Error, ""
+		}
+	}
+
+	localDocCV := Version{}
+	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalNoHistory)
+	if doc.HLV != nil {
+		localDocCV.SourceID, localDocCV.Value = doc.HLV.GetCurrentVersion()
+	}
+	if err != nil {
+		if !base.IsDocNotFoundError(err) && err != base.ErrXattrNotFound {
+			base.WarnfCtx(ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
+			return ProposedRev_Error, ""
+		}
+		// New document not found on server
+		return ProposedRev_OK_IsNew, ""
+	} else if localDocCV == previousVersion {
+		// Non-conflicting update, client's previous version is server's CV
+		return ProposedRev_OK, ""
+	} else if doc.HLV.DominatesSource(proposedVersion) {
+		// SGW already has this version
+		return ProposedRev_Exists, ""
+	} else if localDocCV.SourceID == proposedVersion.SourceID && localDocCV.Value < proposedVersion.Value {
+		// previousVersion didn't match, but proposed version and server CV have matching source, and proposed version is newer
+		return ProposedRev_OK, ""
+	} else {
+		// Conflict, return the current cv.  This may be a false positive conflict if the client has replicated
+		// the server cv via a different peer.  Client is responsible for performing this check based on the
+		// returned localDocCV
+		return ProposedRev_Conflict, localDocCV.String()
 	}
 }
 
