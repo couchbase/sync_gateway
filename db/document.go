@@ -37,11 +37,10 @@ type DocumentUnmarshalLevel uint8
 const (
 	DocUnmarshalAll       = DocumentUnmarshalLevel(iota) // Unmarshals sync metadata and body
 	DocUnmarshalSync                                     // Unmarshals all sync metadata
-	DocUnmarshalNoHistory                                // Unmarshals sync metadata excluding history
-	DocUnmarshalHistory                                  // Unmarshals history + rev + CAS only
+	DocUnmarshalNoHistory                                // Unmarshals sync metadata excluding revtree history
+	DocUnmarshalHistory                                  // Unmarshals revtree history + rev + CAS only
 	DocUnmarshalRev                                      // Unmarshals rev + CAS only
 	DocUnmarshalCAS                                      // Unmarshals CAS (for import check) only
-	DocUnmarshalVV                                       // Unmarshals Version Vector only
 	DocUnmarshalNone                                     // No unmarshalling (skips import/upgrade check)
 )
 
@@ -1190,14 +1189,6 @@ func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata 
 		doc.SyncData = SyncData{
 			Cas: casOnlyMeta.Cas,
 		}
-		doc._rawBody = data
-	case DocUnmarshalVV:
-		tmpData := SyncData{}
-		unmarshalErr := base.JSONUnmarshal(xdata, &tmpData)
-		if unmarshalErr != nil {
-			return base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalVV).  Error: %w", base.UD(doc.ID), unmarshalErr)
-		}
-		doc.SyncData.HLV = tmpData.HLV
 		doc._rawBody = data
 	}
 

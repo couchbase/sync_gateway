@@ -12,7 +12,8 @@ package db
 
 import (
 	"context"
-	"encoding/base64"
+	"fmt"
+	"strings"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -34,7 +35,7 @@ func NewHLVAgent(t *testing.T, datastore base.DataStore, source string, xattrNam
 	return &HLVAgent{
 		t:         t,
 		datastore: datastore,
-		Source:    base64.StdEncoding.EncodeToString([]byte(source)), // all writes by the HLVHelper are done as this source
+		Source:    EncodeSource(source), // all writes by the HLVHelper are done as this source
 		xattrName: xattrName,
 	}
 }
@@ -58,4 +59,96 @@ func (h *HLVAgent) InsertWithHLV(ctx context.Context, key string) (casOut uint64
 	cas, err := h.datastore.WriteCasWithXattr(ctx, key, h.xattrName, 0, 0, defaultHelperBody, syncDataBytes, mutateInOpts)
 	require.NoError(h.t, err)
 	return cas
+}
+
+// EncodeTestVersion converts a simplified string version of the form 1@abc to a hex-encoded version and base64 encoded
+// source, like 0x0100000000000000@YWJj.  Allows use of simplified versions in tests for readability, ease of use.
+func EncodeTestVersion(versionString string) (encodedString string) {
+	timestampString, source, found := strings.Cut(versionString, "@")
+	if !found {
+		return versionString
+	}
+	hexTimestamp, err := EncodeValueStr(timestampString)
+	if err != nil {
+		panic(fmt.Sprintf("unable to encode timestampString %v", timestampString))
+	}
+	base64Source := EncodeSource(source)
+	return hexTimestamp + "@" + base64Source
+}
+
+// encodeTestHistory converts a simplified version history of the form "1@abc,2@def;3@ghi" to use hex-encoded versions and
+// base64 encoded sources
+func EncodeTestHistory(historyString string) (encodedString string) {
+	// possible versionSets are pv;mv
+	// possible versionSets are pv;mv
+	versionSets := strings.Split(historyString, ";")
+	if len(versionSets) == 0 {
+		return ""
+	}
+	for index, versionSet := range versionSets {
+		// versionSet delimiter
+		if index > 0 {
+			encodedString += ";"
+		}
+		versions := strings.Split(versionSet, ",")
+		for index, version := range versions {
+			// version delimiter
+			if index > 0 {
+				encodedString += ","
+			}
+			encodedString += EncodeTestVersion(version)
+		}
+	}
+	return encodedString
+}
+
+// ParseTestHistory takes a string test history in the form 1@abc,2@def;3@ghi,4@jkl and formats this
+// as pv and mv maps keyed by encoded source, with encoded values
+func ParseTestHistory(t *testing.T, historyString string) (pv map[string]string, mv map[string]string) {
+	versionSets := strings.Split(historyString, ";")
+
+	pv = make(map[string]string)
+	mv = make(map[string]string)
+
+	var pvString, mvString string
+	switch len(versionSets) {
+	case 1:
+		pvString = versionSets[0]
+	case 2:
+		mvString = versionSets[0]
+		pvString = versionSets[1]
+	default:
+		return pv, mv
+	}
+
+	// pv
+	for _, versionStr := range strings.Split(pvString, ",") {
+		version, err := ParseVersion(versionStr)
+		require.NoError(t, err)
+		encodedValue, err := EncodeValueStr(version.Value)
+		require.NoError(t, err)
+		pv[EncodeSource(version.SourceID)] = encodedValue
+	}
+
+	// mv
+	if mvString != "" {
+		for _, versionStr := range strings.Split(mvString, ",") {
+			version, err := ParseVersion(versionStr)
+			require.NoError(t, err)
+			encodedValue, err := EncodeValueStr(version.Value)
+			require.NoError(t, err)
+			mv[EncodeSource(version.SourceID)] = encodedValue
+		}
+	}
+	return pv, mv
+}
+
+// Requires that the CV for the provided HLV matches the expected CV (sent in simplified test format)
+func RequireCVEqual(t *testing.T, hlv *HybridLogicalVector, expectedCV string) {
+	testVersion, err := ParseVersion(expectedCV)
+	require.NoError(t, err)
+	require.Equal(t, EncodeSource(testVersion.SourceID), hlv.SourceID)
+	encodedValue, err := EncodeValueStr(testVersion.Value)
+	require.NoError(t, err)
+	require.Equal(t, encodedValue, hlv.Version)
 }

@@ -22,7 +22,7 @@ const hlvExpandMacroCASValue = "expand"
 
 // HybridLogicalVectorInterface is an interface to contain methods that will operate on both a decoded HLV and encoded HLV
 type HybridLogicalVectorInterface interface {
-	GetVersion(sourceID string) (uint64, bool)
+	GetValue(sourceID string) (uint64, bool)
 }
 
 var _ HybridLogicalVectorInterface = &HybridLogicalVector{}
@@ -145,14 +145,24 @@ func (hlv *HybridLogicalVector) GetCurrentVersionString() string {
 	return version.String()
 }
 
-// IsInConflict tests to see if in memory HLV is conflicting with another HLV
-func (hlv *DecodedHybridLogicalVector) IsInConflict(otherVector DecodedHybridLogicalVector) bool {
-	// test if either HLV(A) or HLV(B) are dominating over each other. If so they are not in conflict
-	if hlv.isDominating(otherVector) || otherVector.isDominating(*hlv) {
+// IsVersionInConflict tests to see if a given version would be in conflict with the in memory HLV.
+func (hlv *HybridLogicalVector) IsVersionInConflict(version Version) bool {
+	v1 := Version{hlv.SourceID, hlv.Version}
+	if v1.isVersionDominating(version) || version.isVersionDominating(v1) {
 		return false
 	}
-	// if the version vectors aren't dominating over one another then conflict is present
 	return true
+}
+
+// IsVersionKnown checks to see whether the HLV already contains a Version for the provided
+// source with a matching or newer value
+func (hlv *HybridLogicalVector) DominatesSource(version Version) bool {
+	existingValueForSource, found := hlv.GetValue(version.SourceID)
+	if !found {
+		return false
+	}
+	return existingValueForSource >= base.HexCasToUint64(version.Value)
+
 }
 
 // AddVersion adds newVersion to the in memory representation of the HLV.
@@ -161,9 +171,6 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 	hlvVersionCAS := base.HexCasToUint64(hlv.Version)
 	if newVersion.Value != hlvExpandMacroCASValue {
 		newVersionCAS = base.HexCasToUint64(newVersion.Value)
-		if newVersionCAS < hlvVersionCAS {
-			return fmt.Errorf("attempting to add new version vector entry with a CAS that is less than the current version CAS value. Current cas: %s new cas %s", hlv.Version, newVersion.Value)
-		}
 	}
 	// check if this is the first time we're adding a source - version pair
 	if hlv.SourceID == "" {
@@ -173,6 +180,9 @@ func (hlv *HybridLogicalVector) AddVersion(newVersion Version) error {
 	}
 	// if new entry has the same source we simple just update the version
 	if newVersion.SourceID == hlv.SourceID {
+		if newVersion.Value != hlvExpandMacroCASValue && newVersionCAS < hlvVersionCAS {
+			return fmt.Errorf("attempting to add new version vector entry with a CAS that is less than the current version CAS value for the same source. Current cas: %s new cas %s", hlv.Version, newVersion.Value)
+		}
 		hlv.Version = newVersion.Value
 		return nil
 	}
@@ -210,19 +220,22 @@ func (hlv *HybridLogicalVector) Remove(source string) error {
 	return nil
 }
 
-// isDominating tests if in memory HLV is dominating over another
-func (hlv *DecodedHybridLogicalVector) isDominating(otherVector DecodedHybridLogicalVector) bool {
-	// Dominating Criteria:
-	// HLV A dominates HLV B if source(A) == source(B) and version(A) > version(B)
-	// If there is an entry in pv(B) for A's current source and version(A) > B's version for that pv entry then A is dominating
-	// if there is an entry in mv(B) for A's current source and version(A) > B's version for that pv entry then A is dominating
+// isDominating tests if in memory HLV is dominating over another.
+// If HLV A dominates CV of HLV B, it can be assumed to dominate the entire HLV, since
+// CV dominates PV for a given HLV.  Given this, it's sufficient to check whether HLV A
+// has a version for HLV B's current source that's greater than or equal to HLV B's current version.
+func (hlv *HybridLogicalVector) isDominating(otherVector HybridLogicalVector) bool {
+	return hlv.DominatesSource(Version{otherVector.SourceID, otherVector.Version})
+}
 
-	// Grab the latest CAS version for HLV(A)'s sourceID in HLV(B), if HLV(A) version CAS is > HLV(B)'s then it is dominating
-	// If 0 CAS is returned then the sourceID does not exist on HLV(B)
-	if latestCAS, found := otherVector.GetVersion(hlv.SourceID); found && hlv.Version > latestCAS {
+// isVersionDominating tests if v2 is dominating v1
+func (v1 *Version) isVersionDominating(v2 Version) bool {
+	if v1.SourceID != v2.SourceID {
+		return false
+	}
+	if v1.Value > v2.Value {
 		return true
 	}
-	// HLV A is not dominating over HLV B
 	return false
 }
 
@@ -274,9 +287,9 @@ func (hlv *DecodedHybridLogicalVector) equalPreviousVectors(otherVector DecodedH
 	return true
 }
 
-// GetVersion returns the latest CAS value in the HLV for a given sourceID along with boolean value to
+// GetValue returns the latest CAS value in the HLV for a given sourceID along with boolean value to
 // indicate if sourceID is found in the HLV, if the sourceID is not present in the HLV it will return 0 CAS value and false
-func (hlv *DecodedHybridLogicalVector) GetVersion(sourceID string) (uint64, bool) {
+func (hlv *DecodedHybridLogicalVector) GetValue(sourceID string) (uint64, bool) {
 	if sourceID == "" {
 		return 0, false
 	}
@@ -298,7 +311,7 @@ func (hlv *DecodedHybridLogicalVector) GetVersion(sourceID string) (uint64, bool
 }
 
 // GetVersion returns the latest decoded CAS value in the HLV for a given sourceID
-func (hlv *HybridLogicalVector) GetVersion(sourceID string) (uint64, bool) {
+func (hlv *HybridLogicalVector) GetValue(sourceID string) (uint64, bool) {
 	if sourceID == "" {
 		return 0, false
 	}
@@ -386,7 +399,7 @@ func (hlv *HybridLogicalVector) setPreviousVersion(source string, version string
 }
 
 func (hlv *HybridLogicalVector) IsVersionKnown(otherVersion Version) bool {
-	value, found := hlv.GetVersion(otherVersion.SourceID)
+	value, found := hlv.GetValue(otherVersion.SourceID)
 	if !found {
 		return false
 	}
@@ -467,4 +480,109 @@ func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, 
 		currentSpec = append(currentSpec, spec)
 	}
 	return currentSpec
+
+}
+
+// extractHLVFromBlipMessage extracts the full HLV a string in the format seen over Blip
+// blip string may be the following formats
+//  1. cv only:    		cv
+//  2. cv and pv:  		cv;pv
+//  3. cv, pv, and mv: 	cv;mv;pv
+//
+// TODO: CBG-3662 - Optimise once we've settled on and tested the format with CBL
+func extractHLVFromBlipMessage(versionVectorStr string) (HybridLogicalVector, error) {
+	hlv := HybridLogicalVector{}
+
+	vectorFields := strings.Split(versionVectorStr, ";")
+	vectorLength := len(vectorFields)
+	if (vectorLength == 1 && vectorFields[0] == "") || vectorLength > 3 {
+		return HybridLogicalVector{}, fmt.Errorf("invalid hlv in changes message received")
+	}
+
+	// add current version (should always be present)
+	cvStr := vectorFields[0]
+	version := strings.Split(cvStr, "@")
+	if len(version) < 2 {
+		return HybridLogicalVector{}, fmt.Errorf("invalid version in changes message received")
+	}
+
+	err := hlv.AddVersion(Version{SourceID: version[1], Value: version[0]})
+	if err != nil {
+		return HybridLogicalVector{}, err
+	}
+
+	switch vectorLength {
+	case 1:
+		// cv only
+		return hlv, nil
+	case 2:
+		// only cv and pv present
+		sourceVersionListPV, err := parseVectorValues(vectorFields[1])
+		if err != nil {
+			return HybridLogicalVector{}, err
+		}
+		hlv.PreviousVersions = make(map[string]string)
+		for _, v := range sourceVersionListPV {
+			hlv.PreviousVersions[v.SourceID] = v.Value
+		}
+		return hlv, nil
+	case 3:
+		// cv, mv and pv present
+		sourceVersionListPV, err := parseVectorValues(vectorFields[2])
+		hlv.PreviousVersions = make(map[string]string)
+		if err != nil {
+			return HybridLogicalVector{}, err
+		}
+		for _, pv := range sourceVersionListPV {
+			hlv.PreviousVersions[pv.SourceID] = pv.Value
+		}
+
+		sourceVersionListMV, err := parseVectorValues(vectorFields[1])
+		hlv.MergeVersions = make(map[string]string)
+		if err != nil {
+			return HybridLogicalVector{}, err
+		}
+		for _, mv := range sourceVersionListMV {
+			hlv.MergeVersions[mv.SourceID] = mv.Value
+		}
+		return hlv, nil
+	default:
+		return HybridLogicalVector{}, fmt.Errorf("invalid hlv in changes message received")
+	}
+}
+
+// parseVectorValues takes an HLV section (cv, pv or mv) in string form and splits into
+// source and version pairs
+func parseVectorValues(vectorStr string) (versions []Version, err error) {
+	versionsStr := strings.Split(vectorStr, ",")
+	versions = make([]Version, 0, len(versionsStr))
+
+	for _, v := range versionsStr {
+		// remove any leading whitespace form the string value
+		// TODO: Can avoid by restricting spec
+		if len(v) > 0 && v[0] == ' ' {
+			v = v[1:]
+		}
+		version, err := ParseVersion(v)
+		if err != nil {
+			return nil, err
+		}
+		versions = append(versions, version)
+	}
+
+	return versions, nil
+}
+
+// Helper functions for version source and value encoding
+func EncodeSource(source string) string {
+	return base64.StdEncoding.EncodeToString([]byte(source))
+}
+
+func EncodeValue(value uint64) string {
+	return base.CasToString(value)
+}
+
+// EncodeValueStr converts a simplified number ("1") to a hex-encoded string
+func EncodeValueStr(value string) (string, error) {
+	return base.StringDecimalToLittleEndianHex(strings.TrimSpace(value))
 }
