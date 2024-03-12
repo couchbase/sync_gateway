@@ -86,8 +86,7 @@ func TestGetDocDryRuns(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &respMap)
 	assert.NoError(t, err)
 	assert.Equal(t, respMap.Roles, channels.AccessMap{"user": channels.BaseSetOf(t, "role1")})
-	newSyncFn := `"function(doc, oldDoc) {console.log('oldDoc property: '+JSON.stringify(oldDoc));if (doc.user.num >= \"100\") {channel(doc.channel);} else {throw({forbidden: \"user num too low\"});}
-	if (oldDoc){ if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name, doc.channel);}}}"`
+	newSyncFn := `"function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name, doc.channel);}}}"`
 	resp = rt.SendAdminRequest("POST", "/db/_config", fmt.Sprintf(
 		`{"bucket":"%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s, "import_filter":%s}`,
 		bucket, base.TestUseXattrs(), newSyncFn, ImportFilter))
