@@ -24,7 +24,7 @@ import (
 
 // TestBlipDeltaSyncPushAttachment tests updating a doc that has an attachment with a delta that doesn't modify the attachment.
 func TestBlipDeltaSyncPushAttachment(t *testing.T) {
-	t.Skip("attachments not yet implemented for HLV replication CBG-3797") // delta sync not implemented for Version Vectors replication attachment handling
+	//t.Skip("attachments not yet implemented for HLV replication CBG-3797") // delta sync not implemented for Version Vectors replication attachment handling
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	if !base.IsEnterpriseEdition() {
