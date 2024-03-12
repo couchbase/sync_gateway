@@ -115,7 +115,7 @@ type HybridLogicalVector struct {
 	CurrentVersionCAS string            `json:"cvCas,omitempty"`     // current version cas (or cvCAS) stores the current CAS in little endian hex format at the time of replication
 	ImportCAS         string            `json:"importCAS,omitempty"` // Set when an import modifies the document CAS but preserves the HLV (import of a version replicated by XDCR)
 	SourceID          string            `json:"src"`                 // source bucket uuid in (base64 encoded format) of where this entry originated from
-	Version           string            `json:"vrs"`                 // current cas in little endian hex format of the current version on the version vector
+	Version           string            `json:"ver"`                 // current cas in little endian hex format of the current version on the version vector
 	MergeVersions     map[string]string `json:"mv,omitempty"`        // map of merge versions for fast efficient lookup
 	PreviousVersions  map[string]string `json:"pv,omitempty"`        // map of previous versions for fast efficient lookup
 }
