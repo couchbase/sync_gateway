@@ -237,7 +237,7 @@ const doc_meta_with_vv = `{
 	"_vv":{
    		"cvCas":"0x40e2010000000000",
    		"src":"cb06dc003846116d9b66d2ab23887a96",
-   		"vrs":"0x40e2010000000000",
+   		"ver":"0x40e2010000000000",
    		"mv":{
       		"s_LhRPsa7CpjEvP5zeXTXEBA":"c0ff05d7ac059a16",
       		"s_NqiIe0LekFPLeX4JvTO6Iw":"1c008cd6ac059a16"
