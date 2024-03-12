@@ -32,7 +32,7 @@ type ImportFilterDryRun struct {
 
 // HTTP handler for a GET of a document's channels and their sequence spans
 func (h *handler) handleGetDocChannels() error {
-	docid := h.getQuery("docid")
+	docid := h.PathVar("docid")
 
 	doc, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
 	if err != nil {
