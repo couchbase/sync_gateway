@@ -2967,8 +2967,8 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 const (
 	xattrMacroCas               = "cas"          // SyncData.Cas
 	xattrMacroValueCrc32c       = "value_crc32c" // SyncData.Crc32c
-	xattrMacroCurrentRevVersion = "rev.vrs"      // SyncDataJSON.RevAndVersion.CurrentVersion
-	versionVectorVrsMacro       = "_vv.vrs"      // PersistedHybridLogicalVector.Version
+	xattrMacroCurrentRevVersion = "rev.ver"      // SyncDataJSON.RevAndVersion.CurrentVersion
+	versionVectorVrsMacro       = "_vv.ver"      // PersistedHybridLogicalVector.Version
 	versionVectorCVCASMacro     = "_vv.cvCas"    // PersistedHybridLogicalVector.CurrentVersionCAS
 )
 
