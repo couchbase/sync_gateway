@@ -2696,7 +2696,6 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires HLV revpos handling (CBG-3797) for _attachments subtest
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		// Setup
