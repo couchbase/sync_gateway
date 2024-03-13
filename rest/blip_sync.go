@@ -24,10 +24,14 @@ import (
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
-	needRelease, err := h.server.incrementConcurrentReplications(h.rqCtx)
-	if err != nil {
-		h.db.DbStats.Database().NumReplicationsRejectedLimit.Add(1)
-		return err
+	var needRelease bool
+	var err error
+	if h.db.IsServerless() {
+		needRelease, err = h.server.incrementConcurrentReplications(h.rqCtx)
+		if err != nil {
+			h.db.DbStats.Serverless().NumReplicationsRejectedLimit.Add(1)
+			return err
+		}
 	}
 	// if we haven't incremented the active replicator due to MaxConcurrentReplications being 0, we don't need to decrement it
 	if needRelease {

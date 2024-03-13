@@ -250,7 +250,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	if h.server.Config.API.CompressResponses == nil || *h.server.Config.API.CompressResponses {
 		var stat *base.SgwIntStat
 		if h.shouldUpdateBytesTransferredStats() {
-			stat = h.db.DbStats.Database().PublicRestBytesWritten
+			stat = h.db.DbStats.Serverless().PublicRestBytesWritten
 		}
 		if encoded := NewEncodedResponseWriter(h.response, h.rq, stat, defaultBytesStatsReportingInterval); encoded != nil {
 			h.response = encoded
@@ -409,11 +409,13 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	if h.privs != adminPrivs {
 		var err error
 		if err = h.checkAuth(dbContext); err != nil {
-			// if auth fails we still need to record bytes read over the rest api for the stat, to do this we need to call GetBodyBytesCount to read
-			// the body to populate the bytes count on the CountedRequestReader struct
-			bytesCount := h.requestBody.GetBodyBytesCount()
-			if bytesCount > 0 {
-				dbContext.DbStats.DatabaseStats.PublicRestBytesRead.Add(bytesCount)
+			if dbContext.IsServerless() {
+				// if auth fails we still need to record bytes read over the rest api for the stat, to do this we need to call GetBodyBytesCount to read
+				// the body to populate the bytes count on the CountedRequestReader struct
+				bytesCount := h.requestBody.GetBodyBytesCount()
+				if bytesCount > 0 {
+					dbContext.DbStats.ServerlessStats.PublicRestBytesRead.Add(bytesCount)
+				}
 			}
 			return err
 		}
@@ -624,6 +626,9 @@ func (h *handler) shouldUpdateBytesTransferredStats() bool {
 	if h.db == nil {
 		return false
 	}
+	if !h.db.IsServerless() {
+		return false
+	}
 	if h.privs != publicPrivs && h.privs != regularPrivs {
 		return false
 	}
@@ -639,7 +644,7 @@ func (h *handler) updateResponseWriter() {
 		return
 	}
 	h.response = NewCountedResponseWriter(h.response,
-		h.db.DbStats.Database().PublicRestBytesWritten,
+		h.db.DbStats.Serverless().PublicRestBytesWritten,
 		defaultBytesStatsReportingInterval)
 }
 
@@ -678,13 +683,16 @@ func (h *handler) logRESTCount() {
 	if h.db == nil {
 		return
 	}
+	if !h.db.IsServerless() {
+		return
+	}
 	if h.privs != publicPrivs && h.privs != regularPrivs {
 		return
 	}
 	if h.isBlipSync() {
 		return
 	}
-	h.db.DbStats.DatabaseStats.NumPublicRestRequests.Add(1)
+	h.db.DbStats.ServerlessStats.NumPublicRestRequests.Add(1)
 }
 
 // reportDbStats will report the public rest request specific stats back to the database
@@ -698,7 +706,7 @@ func (h *handler) reportDbStats() {
 	bytesReadStat = h.requestBody.GetBodyBytesCount()
 	// as this is int64 lets protect against a situation where a negative is returned from GetBodyBytesCount() function and thus decrementing the stat
 	if bytesReadStat > 0 {
-		h.db.DbStats.DatabaseStats.PublicRestBytesRead.Add(bytesReadStat)
+		h.db.DbStats.Serverless().PublicRestBytesRead.Add(bytesReadStat)
 	}
 }
 

@@ -68,7 +68,7 @@ type RestTesterConfig struct {
 	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
 	PersistentConfig                bool
 	GroupID                         *string
-	serverless                      bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
+	Serverless                      bool // Runs SG in Serverless mode. Must be used in conjunction with persistent config
 	collectionConfig                collectionConfiguration
 	numCollections                  int
 	syncGatewayVersion              *base.ComparableBuildVersion // alternate version of Sync Gateway to use on startup
@@ -115,6 +115,18 @@ func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 func NewRestTesterPersistentConfig(tb testing.TB) *RestTester {
 	config := &RestTesterConfig{
 		PersistentConfig: true,
+	}
+	rt := newRestTester(tb, config, useSingleCollection, 1)
+	RequireStatus(tb, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	return rt
+}
+
+// NewRestTesterPersistentConfigServerless is a convenience function to set up RestTester in persistent config with serverless mode.
+func NewRestTesterPersistentConfigServerless(tb *testing.T) *RestTester {
+	RequireBucketSpecificCredentials(tb)
+	config := &RestTesterConfig{
+		PersistentConfig: true,
+		Serverless:       true,
 	}
 	rt := newRestTester(tb, config, useSingleCollection, 1)
 	RequireStatus(tb, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
@@ -226,10 +238,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
-	sc.Unsupported.Serverless.Enabled = &rt.serverless
+	sc.Unsupported.Serverless.Enabled = &rt.Serverless
 	sc.Unsupported.AllowDbConfigEnvVars = rt.RestTesterConfig.allowDbConfigEnvVars
 	sc.Replicator.MaxConcurrentRevs = rt.RestTesterConfig.maxConcurrentRevs
-	if rt.serverless {
+	if rt.Serverless {
 		if !rt.PersistentConfig {
 			rt.TB.Fatalf("Persistent config must be used when running in serverless mode")
 		}

@@ -31,6 +31,7 @@ type importListener struct {
 	collections      map[uint32]DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
 	dbStats          *base.DatabaseStats                   // Database stats group
 	importStats      *base.SharedBucketImportStats         // import stats group
+	serverlessStats  *base.ServerlessStats                 // Serverless stats group
 	metadataKeys     *base.MetadataKeys
 	cbgtContext      *base.CbgtContext // Handle to cbgt manager,cfg
 	checkpointPrefix string            // DCP checkpoint key prefix
@@ -51,6 +52,9 @@ func NewImportListener(ctx context.Context, checkpointPrefix string, dbContext *
 		loggingCtx:       ctx,
 		metadataKeys:     dbContext.MetadataKeys,
 		terminator:       make(chan bool),
+	}
+	if dbContext.IsServerless() {
+		importListener.serverlessStats = dbContext.DbStats.Serverless()
 	}
 
 	return importListener
@@ -175,10 +179,12 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 		if !importAttempt {
 			return
 		}
-		functionTime := time.Since(startTime).Milliseconds()
-		bytes := len(event.Value)
-		stat := CalculateComputeStat(int64(bytes), functionTime)
-		il.dbStats.ImportProcessCompute.Add(stat)
+		if il.serverlessStats != nil {
+			functionTime := time.Since(startTime).Milliseconds()
+			bytes := len(event.Value)
+			stat := CalculateComputeStat(int64(bytes), functionTime)
+			il.serverlessStats.ImportProcessCompute.Add(stat)
+		}
 	}()
 
 	syncData, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.userXattrKey(), false)
