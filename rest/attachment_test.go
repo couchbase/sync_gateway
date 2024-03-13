@@ -2259,7 +2259,6 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // attachments not yet replicated in V4 protocol (CBG-3797)
 	const (
 		doc1ID = "doc1"
 		doc2ID = "doc2"
@@ -2324,7 +2323,6 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 	}
 	const doc1ID = "doc1"
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // attachments not yet replicated in V4 protocol (CBG-3797)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -2373,7 +2371,6 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // attachments not yet replicated in V4 protocol (CBG-3797)
 	const docID = "doc"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -2388,6 +2385,7 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 
 		// Write an initial rev with attachment data
 		initialVersion := btc.rt.PutDoc(docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
+		btc.rt.WaitForPendingChanges()
 
 		// Replicate data to client and ensure doc arrives
 		btc.rt.WaitForPendingChanges()
@@ -2432,7 +2430,6 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // attachments not yet replicated in V4 protocol (CBG-3797)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -2443,7 +2440,9 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 		defer btc.Close()
 		// Create rev 1 with the hello.txt attachment
 		const docID = "doc"
+
 		version := btc.rt.PutDoc(docID, `{"val": "val", "_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}}`)
+		btc.rt.WaitForPendingChanges()
 
 		// Pull rev and attachment down to client
 		btc.rt.WaitForPendingChanges()
@@ -2611,7 +2610,6 @@ func TestCBLRevposHandling(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // attachments not yet replicated in V4 protocol (CBG-3797)
 	const (
 		doc1ID = "doc1"
 		doc2ID = "doc2"
@@ -2627,6 +2625,7 @@ func TestCBLRevposHandling(t *testing.T) {
 
 		doc1Version := btc.rt.PutDoc(doc1ID, `{}`)
 		doc2Version := btc.rt.PutDoc(doc2ID, `{}`)
+		btc.rt.WaitForPendingChanges()
 
 		btc.rt.WaitForPendingChanges()
 		btcRunner.StartOneshotPull(btc.id)

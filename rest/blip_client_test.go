@@ -1534,12 +1534,20 @@ func (btc *BlipTesterCollectionClient) requireRevID(expected DocVersion, revID s
 
 // GetDocVersion fetches revid and cv directly from the bucket.  Used to support REST-based verification in btc tests
 // even while REST only supports revTreeId
-func (btc *BlipTesterCollectionClient) GetDocVersion(docID string) DocVersion {
+// TODO: This doesn't support multi-collection testing, btc.GetDocVersion uses
+//
+//	GetSingleTestDatabaseCollection()
+func (btcc *BlipTesterCollectionClient) GetDocVersion(docID string) DocVersion {
+	return btcc.parent.GetDocVersion(docID)
+}
 
-	collection, ctx := btc.parent.rt.GetSingleTestDatabaseCollection()
+// GetDocVersion fetches revid and cv directly from the bucket.  Used to support REST-based verification in btc tests
+// even while REST only supports revTreeId
+func (btc *BlipTesterClient) GetDocVersion(docID string) DocVersion {
+	collection, ctx := btc.rt.GetSingleTestDatabaseCollection()
 	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalSync)
-	require.NoError(btc.parent.rt.TB(), err)
-	if !btc.UseHLV() {
+	require.NoError(btc.rt.TB(), err)
+	if !btc.UseHLV() || doc.HLV == nil {
 		return DocVersion{RevTreeID: doc.CurrentRev}
 	}
 	return DocVersion{RevTreeID: doc.CurrentRev, CV: db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}}

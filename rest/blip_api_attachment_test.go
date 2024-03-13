@@ -293,8 +293,8 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires HLV revpos handling (CBG-3797)
 	const docID = "doc1"
+	ctx := base.TestCtx(t)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &rtConfig)
@@ -315,8 +315,11 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		// Wait for the documents to be replicated at SG
 		require.NoError(t, rt.WaitForVersion(docID, docVersion))
 
-		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevTreeID, "")
-		assert.Equal(t, http.StatusOK, resp.Code)
+		collection, _ := rt.GetSingleTestDatabaseCollection()
+		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalNoHistory)
+		require.NoError(t, err)
+
+		attachmentRevPos, _ := db.ParseRevID(ctx, doc.CurrentRev)
 
 		// CBL updates the doc w/ two more revisions, 3-abc, 4-abc,
 		// sent to SG as 4-abc, history:[4-abc,3-abc,2-abc], the attachment has revpos=2
@@ -328,26 +331,23 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		// Wait for the document to be replicated at SG
 		require.NoError(t, rt.WaitForVersion(docID, docVersion))
 
-		resp = btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevTreeID, "")
-		assert.Equal(t, http.StatusOK, resp.Code)
+		doc, err = collection.GetDocument(ctx, docID, db.DocUnmarshalNoHistory)
+		require.NoError(t, err)
 
-		var respBody db.Body
-		assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
-
-		assert.Equal(t, docID, respBody[db.BodyId])
-		assert.Equal(t, "4-abc", respBody[db.BodyRev])
-		greetings := respBody["greetings"].([]interface{})
+		btc.RequireRev(t, expectedRev, doc)
+		body := doc.Body(ctx)
+		greetings := body["greetings"].([]interface{})
 		assert.Len(t, greetings, 1)
 		assert.Equal(t, map[string]interface{}{"hi": "dave"}, greetings[0])
 
-		attachments, ok := respBody[db.BodyAttachments].(map[string]interface{})
-		require.True(t, ok)
-		assert.Len(t, attachments, 1)
-		hello, ok := attachments["hello.txt"].(map[string]interface{})
+		assert.Len(t, doc.Attachments, 1)
+		hello, ok := doc.Attachments["hello.txt"].(map[string]interface{})
 		require.True(t, ok)
 		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
 		assert.Equal(t, float64(11), hello["length"])
-		assert.Equal(t, float64(2), hello["revpos"])
+
+		// revpos should mach the generation of the original revision
+		assert.Equal(t, float64(attachmentRevPos), hello["revpos"])
 		assert.True(t, hello["stub"].(bool))
 
 		// Check the number of sendProveAttachment/sendGetAttachment calls.
@@ -365,7 +365,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 
 	const docID = "doc1"
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires HLV revpos handling (CBG-3797)
+	ctx := base.TestCtx(t)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &rtConfig)
@@ -394,26 +394,28 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		// Wait for the document to be replicated at SG
 		require.NoError(t, rt.WaitForVersion(docID, *docVersion))
 
-		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevTreeID, "")
-		assert.Equal(t, http.StatusOK, resp.Code)
+		collection := rt.GetSingleTestDatabaseCollection()
+		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalNoHistory)
+		require.NoError(t, err)
 
-		var respBody db.Body
-		assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
+		btc.RequireRev(t, expectedRev, doc)
 
-		assert.Equal(t, docID, respBody[db.BodyId])
-		assert.Equal(t, "4-abc", respBody[db.BodyRev])
-		greetings := respBody["greetings"].([]interface{})
+		body := doc.Body(ctx)
+		greetings := body["greetings"].([]interface{})
 		assert.Len(t, greetings, 1)
 		assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[0])
 
-		attachments, ok := respBody[db.BodyAttachments].(map[string]interface{})
-		require.True(t, ok)
-		assert.Len(t, attachments, 1)
-		hello, ok := attachments["hello.txt"].(map[string]interface{})
+		assert.Len(t, doc.Attachments, 1)
+		hello, ok := doc.Attachments["hello.txt"].(map[string]interface{})
 		require.True(t, ok)
 		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
 		assert.Equal(t, float64(11), hello["length"])
-		assert.Equal(t, float64(4), hello["revpos"])
+
+		// revpos should match the generation of the current revision, since it's new to SGW with that revision.
+		// The actual revTreeID will differ when running this test as HLV client (multiple updates to HLV on client
+		// don't result in multiple revTree revisions)
+		expectedRevPos, _ := db.ParseRevID(ctx, doc.CurrentRev)
+		assert.Equal(t, float64(expectedRevPos), hello["revpos"])
 		assert.True(t, hello["stub"].(bool))
 
 		// Check the number of sendProveAttachment/sendGetAttachment calls.
@@ -533,7 +535,6 @@ func TestBlipAttachNameChange(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires HLV revpos handling (CBG-3797)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -588,7 +589,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires HLV revpos handling (CBG-3797)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires legacy attachment upgrade to HLV (CBG-3806)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -608,7 +609,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 		CreateDocWithLegacyAttachment(t, client1.rt, docID, rawDoc, attKey, attBody)
 
 		// Get the document and grab the revID.
-		docVersion, _ := client1.rt.GetDoc(docID)
+		docVersion := client1.GetDocVersion(docID)
 
 		// Store the document and attachment on the test client
 		err := btcRunner.StoreRevOnClient(client1.id, docID, &docVersion, rawDoc)
@@ -648,7 +649,7 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires HLV revpos handling (CBG-3797)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // Requires legacy attachment upgrade to HLV (CBG-3806)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
