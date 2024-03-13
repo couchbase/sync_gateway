@@ -52,15 +52,6 @@ func (h *handler) handleGetAllChannels() error {
 		if err != nil {
 			return err
 		}
-		for channel, chanEntry := range user.Channels() {
-			if chanEntry.Source == channels.AdminGrant {
-				resp.AdminGrants[defaultKeyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
-			} else if chanEntry.Source == channels.DynamicGrant {
-				resp.DynamicGrants[defaultKeyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
-			} else if chanEntry.Source == channels.JWTGrant {
-				resp.JWTGrants[defaultKeyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
-			}
-		}
 		for channel, chanHistory := range user.ChannelHistory() {
 			if chanHistory.Source == channels.AdminGrant {
 				resp.AdminGrants[defaultKeyspace][channel] = chanHistory
@@ -68,6 +59,21 @@ func (h *handler) handleGetAllChannels() error {
 				resp.DynamicGrants[defaultKeyspace][channel] = chanHistory
 			} else if chanHistory.Source == channels.JWTGrant {
 				resp.JWTGrants[defaultKeyspace][channel] = chanHistory
+			}
+		}
+		for channel, chanEntry := range user.Channels() {
+			grantInfo := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
+			if chanHistory, ok := user.ChannelHistory()[channel]; ok {
+				for _, entry := range chanHistory.Entries {
+					grantInfo.Entries = append(grantInfo.Entries, entry)
+				}
+			}
+			if chanEntry.Source == channels.AdminGrant {
+				resp.AdminGrants[defaultKeyspace][channel] = grantInfo
+			} else if chanEntry.Source == channels.DynamicGrant {
+				resp.DynamicGrants[defaultKeyspace][channel] = grantInfo
+			} else if chanEntry.Source == channels.JWTGrant {
+				resp.JWTGrants[defaultKeyspace][channel] = grantInfo
 			}
 		}
 		for roleName, roleEntry := range user.RoleNames() {
@@ -132,10 +138,11 @@ func (h *handler) handleGetAllChannels() error {
 
 				// loop over current role channels
 				for channel, chanEntry := range collectionAccess.Channels() {
+					grantInfo := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}, Source: chanEntry.Source}
 					if roleEntry.Source == channels.AdminGrant {
-						resp.AdminRoleGrants[roleName][keyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}, Source: chanEntry.Source}
+						resp.AdminRoleGrants[roleName][keyspace][channel] = grantInfo
 					} else {
-						resp.DynamicRoleGrants[roleName][keyspace][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}, Source: chanEntry.Source}
+						resp.DynamicRoleGrants[roleName][keyspace][channel] = grantInfo
 					}
 				}
 				// loop over previous role channels
@@ -205,24 +212,6 @@ func (h *handler) handleGetAllChannels() error {
 			resp.AdminGrants[keyspace] = make(map[string]auth.GrantHistory)
 			resp.DynamicGrants[keyspace] = make(map[string]auth.GrantHistory)
 			// current channels
-			for channel, chanEntry := range CAConfig.Channels() {
-				var history auth.GrantHistory
-				// If channel is in history, copy grant history
-				if _, ok := CAConfig.ChannelHistory_[channel]; ok {
-					history = CAConfig.ChannelHistory_[channel]
-					// Else, assign sequence channel was granted as startSeq on new grant history
-				} else {
-					history = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
-				}
-
-				if chanEntry.Source == channels.AdminGrant {
-					resp.AdminGrants[keyspace][channel] = history
-				} else if chanEntry.Source == channels.DynamicGrant {
-					resp.DynamicGrants[keyspace][channel] = history
-				} else if chanEntry.Source == channels.JWTGrant {
-					resp.JWTGrants[keyspace][channel] = history
-				}
-			}
 			for channel, chanHistory := range CAConfig.ChannelHistory() {
 				if chanHistory.Source == channels.AdminGrant {
 					resp.AdminGrants[keyspace][channel] = CAConfig.ChannelHistory_[channel]
@@ -230,6 +219,22 @@ func (h *handler) handleGetAllChannels() error {
 					resp.DynamicGrants[keyspace][channel] = CAConfig.ChannelHistory_[channel]
 				} else if chanHistory.Source == channels.JWTGrant {
 					resp.JWTGrants[keyspace][channel] = CAConfig.ChannelHistory_[channel]
+				}
+			}
+			for channel, chanEntry := range CAConfig.Channels() {
+				history := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
+				// If channel is in history, copy grant history
+				if _, ok := CAConfig.ChannelHistory_[channel]; ok {
+					for _, entry := range CAConfig.ChannelHistory_[channel].Entries {
+						history.Entries = append(history.Entries, entry)
+					}
+				}
+				if chanEntry.Source == channels.AdminGrant {
+					resp.AdminGrants[keyspace][channel] = history
+				} else if chanEntry.Source == channels.DynamicGrant {
+					resp.DynamicGrants[keyspace][channel] = history
+				} else if chanEntry.Source == channels.JWTGrant {
+					resp.JWTGrants[keyspace][channel] = history
 				}
 			}
 		}
@@ -243,15 +248,6 @@ func (h *handler) handleGetAllChannels() error {
 		}
 		resp.AdminGrants["_default._default"] = make(map[string]auth.GrantHistory)
 		resp.DynamicGrants["_default._default"] = make(map[string]auth.GrantHistory)
-		for channel, chanEntry := range user.Channels() {
-			if chanEntry.Source == channels.AdminGrant {
-				resp.AdminGrants["_default._default"][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
-			} else if chanEntry.Source == channels.DynamicGrant {
-				resp.DynamicGrants["_default._default"][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
-			} else if chanEntry.Source == channels.JWTGrant {
-				resp.JWTGrants["_default._default"][channel] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
-			}
-		}
 		for channel, chanHistory := range user.ChannelHistory() {
 			if chanHistory.Source == channels.AdminGrant {
 				resp.AdminGrants["_default._default"][channel] = chanHistory
@@ -259,6 +255,21 @@ func (h *handler) handleGetAllChannels() error {
 				resp.DynamicGrants["_default._default"][channel] = chanHistory
 			} else if chanHistory.Source == channels.JWTGrant {
 				resp.JWTGrants["_default._default"][channel] = chanHistory
+			}
+		}
+		for channel, chanEntry := range user.Channels() {
+			grantInfo := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
+			if chanHistory, ok := user.ChannelHistory()[channel]; ok {
+				for _, entry := range chanHistory.Entries {
+					grantInfo.Entries = append(grantInfo.Entries, entry)
+				}
+			}
+			if chanEntry.Source == channels.AdminGrant {
+				resp.AdminGrants["_default._default"][channel] = grantInfo
+			} else if chanEntry.Source == channels.DynamicGrant {
+				resp.DynamicGrants["_default._default"][channel] = grantInfo
+			} else if chanEntry.Source == channels.JWTGrant {
+				resp.JWTGrants["_default._default"][channel] = grantInfo
 			}
 		}
 	}
