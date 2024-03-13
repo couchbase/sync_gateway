@@ -2,11 +2,6 @@ module github.com/couchbase/sync_gateway
 
 go 1.21
 
-replace (
-	github.com/couchbase/sg-bucket => /Users/adam.fraser/dev/sg-bucket
-	github.com/couchbaselabs/rosmar => /Users/adam.fraser/dev/rosmar
-)
-
 require (
 	dario.cat/mergo v1.0.0
 	github.com/bhoriuchi/graphql-go-tools v1.0.3
