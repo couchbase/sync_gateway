@@ -70,9 +70,7 @@ func getResponseWriter(t *testing.T, stat *base.SgwIntStat, name string, updateI
 }
 
 func TestCountableResponseWriterRestTester(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled: true,
-	})
+	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
 	const alice = "alice"
@@ -81,7 +79,7 @@ func TestCountableResponseWriterRestTester(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/", "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	stats := rt.GetDatabase().DbStats.Database()
+	stats := rt.GetDatabase().DbStats.Serverless()
 	require.Equal(t, int64(0), stats.PublicRestBytesWritten.Value())
 
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", alice)
@@ -89,7 +87,7 @@ func TestCountableResponseWriterRestTester(t *testing.T) {
 	require.Greater(t, stats.PublicRestBytesWritten.Value(), int64(0))
 	stats.PublicRestBytesWritten.Set(0)
 
-	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", "")
+	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", alice)
 	RequireStatus(t, resp, http.StatusOK)
 	require.Greater(t, stats.PublicRestBytesWritten.Value(), int64(0))
 }

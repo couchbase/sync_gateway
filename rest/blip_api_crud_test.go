@@ -2484,7 +2484,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 
 	remoteURL, _ := url.Parse(remoteURLString)
 
-	stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, nil, nil)
+	stats, err := base.SyncGatewayStats.NewDBStats("test", &base.DbStatsOptions{})
 	require.NoError(t, err)
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)

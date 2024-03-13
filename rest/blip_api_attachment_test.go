@@ -707,36 +707,38 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 //   - wait for doc to replicate and assert on attachment stat
 func TestAttachmentComputeStat(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-	rtConfig := RestTesterConfig{
-		GuestEnabled: true,
-	}
-	rt := NewRestTester(t, &rtConfig)
-	defer rt.Close()
 
-	opts := &BlipTesterClientOpts{}
-	opts.SupportedBLIPProtocols = []string{db.BlipCBMobileReplicationV2}
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt, opts)
-	require.NoError(t, err)
-	defer btc.Close()
-	syncProcessCompute := btc.rt.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
-
-	err = btc.StartPull()
-	assert.NoError(t, err)
 	const docID = "doc1"
+	btcRunner := NewBlipTesterClientRunner(t)
 
-	// Create doc revision with attachment on SG.
-	bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, bodyText)
-	assert.Equal(t, http.StatusCreated, response.Code)
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTesterPersistentConfigServerless(t)
+		defer rt.Close()
 
-	// Wait for the document to be replicated to client.
-	revId := RespRevID(t, response)
-	data, ok := btc.WaitForRev(docID, revId)
-	assert.True(t, ok)
-	bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-	require.JSONEq(t, bodyTextExpected, string(data))
+		opts := &BlipTesterClientOpts{
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username:               "test",
+			Channels:               []string{"*"},
+		}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
 
-	// assert the attachment read compute stat is incremented
-	require.Greater(t, btc.rt.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncProcessCompute)
+		syncProcessCompute := btc.rt.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value()
 
+		err := btcRunner.StartPull(btc.id)
+		assert.NoError(t, err)
+
+		// Create doc revision with attachment on SG.
+		bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
+		version := btc.rt.PutDoc(docID, bodyText)
+
+		// Wait for the document to be replicated to client.
+		data, ok := btcRunner.WaitForVersion(btc.id, docID, version)
+		assert.True(t, ok)
+		bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
+		require.JSONEq(t, bodyTextExpected, string(data))
+
+		// assert the attachment read compute stat is incremented
+		require.Greater(t, btc.rt.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value(), syncProcessCompute)
+	})
 }

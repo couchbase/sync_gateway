@@ -38,6 +38,8 @@ func (db *DatabaseContext) UpdateCalculatedStats(ctx context.Context) {
 
 // UpdateTotalSyncTimeStat updates the TotalSyncTime to the current value + NumReplicationsActive each time this is called
 func (db *DatabaseContext) UpdateTotalSyncTimeStat() {
-	currentActiveReplications := db.DbStats.DatabaseStats.NumReplicationsActive.Value()
-	db.DbStats.DatabaseStats.TotalSyncTime.Add(currentActiveReplications)
+	if db.IsServerless() {
+		currentActiveReplications := db.DbStats.DatabaseStats.NumReplicationsActive.Value()
+		db.DbStats.ServerlessStats.TotalSyncTime.Add(currentActiveReplications)
+	}
 }

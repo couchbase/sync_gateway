@@ -1699,15 +1699,21 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 
 func TestImportComputeStatOnDemandGet(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
+	rest.RequireBucketSpecificCredentials(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
 		}},
+		Serverless:       true,
+		PersistentConfig: true,
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
+
+	rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
 	dataStore := rt.GetSingleDataStore()
 
 	key := t.Name()
@@ -1716,7 +1722,7 @@ func TestImportComputeStatOnDemandGet(t *testing.T) {
 	docBody["channels"] = "ABC"
 
 	// assert the stat starts at 0 for a new database
-	computeStat := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	computeStat := rt.GetDatabase().DbStats.ServerlessStats.ImportProcessCompute.Value()
 	require.Equal(t, int64(0), computeStat)
 
 	// add doc to bucket
@@ -1728,7 +1734,7 @@ func TestImportComputeStatOnDemandGet(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusOK)
 
 	// assert the process compute stat has incremented
-	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	computeStat1 := rt.GetDatabase().DbStats.ServerlessStats.ImportProcessCompute.Value()
 	require.Greater(t, computeStat1, int64(0))
 
 	// update doc in bucket
@@ -1742,24 +1748,30 @@ func TestImportComputeStatOnDemandGet(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+key, "")
 	rest.RequireStatus(t, response, http.StatusOK)
 	// assert the process compute stat has incremented again after another import
-	computeStat2 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	computeStat2 := rt.GetDatabase().DbStats.ServerlessStats.ImportProcessCompute.Value()
 	require.Greater(t, computeStat2, computeStat1)
 
 }
 
 func TestImportComputeStatOnDemandWrite(t *testing.T) {
+	rest.RequireBucketSpecificCredentials(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	importFilter := `function (doc) { return doc.type == "mobile"}`
 	rtConfig := rest.RestTesterConfig{
-		SyncFn: channels.DocChannelsSyncFunction,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			AutoImport:   false,
-			ImportFilter: &importFilter,
-		}},
+		SyncFn:           channels.DocChannelsSyncFunction,
+		Serverless:       true,
+		PersistentConfig: true,
 	}
 	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig)
 	defer rt.Close()
+
+	// change config to add import filter and turn auto import off then create db with that config
+	cfg := rt.NewDbConfig()
+	cfg.AutoImport = false
+	cfg.ImportFilter = &importFilter
+	rest.RequireStatus(t, rt.CreateDatabase("db", cfg), http.StatusCreated)
+
 	dataStore := rt.GetSingleDataStore()
 
 	key := t.Name()
@@ -1768,7 +1780,7 @@ func TestImportComputeStatOnDemandWrite(t *testing.T) {
 	docBody["channels"] = "ABC"
 
 	// assert the stat starts at 0 for a new database
-	computeStat := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	computeStat := rt.GetDatabase().DbStats.ServerlessStats.ImportProcessCompute.Value()
 	require.Equal(t, int64(0), computeStat)
 
 	// add doc to bucket
@@ -1781,7 +1793,7 @@ func TestImportComputeStatOnDemandWrite(t *testing.T) {
 	assertDocProperty(t, response, "reason", "Not imported")
 
 	// assert stat still no incremented as import filter rejects the doc
-	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	computeStat1 := rt.GetDatabase().DbStats.ServerlessStats.ImportProcessCompute.Value()
 	require.Equal(t, int64(0), computeStat1)
 
 	// rewrite through SG - should treat as new insert
@@ -1791,11 +1803,12 @@ func TestImportComputeStatOnDemandWrite(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusCreated)
 
 	// assert stat increases as function OnDemandImportForWrite will have been executed
-	computeStat2 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	computeStat2 := rt.GetDatabase().DbStats.ServerlessStats.ImportProcessCompute.Value()
 	require.Greater(t, computeStat2, computeStat1)
 }
 
 func TestAutoImportComputeStat(t *testing.T) {
+	rest.RequireBucketSpecificCredentials(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -1803,9 +1816,14 @@ func TestAutoImportComputeStat(t *testing.T) {
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: true,
 		}},
+		Serverless:       true,
+		PersistentConfig: true,
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
+
+	rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
 	dataStore := rt.GetSingleDataStore()
 
 	key := t.Name()
@@ -1814,7 +1832,7 @@ func TestAutoImportComputeStat(t *testing.T) {
 	docBody["channels"] = "ABC"
 
 	// assert the stat starts at 0 for a new database
-	computeStat := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	computeStat := rt.GetDatabase().DbStats.ServerlessStats.ImportProcessCompute.Value()
 	require.Equal(t, int64(0), computeStat)
 
 	// add doc to bucket
@@ -1828,7 +1846,7 @@ func TestAutoImportComputeStat(t *testing.T) {
 	require.True(t, ok)
 
 	// assert the stat increments for the auto import of the above doc
-	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	computeStat1 := rt.GetDatabase().DbStats.ServerlessStats.ImportProcessCompute.Value()
 	require.Greater(t, computeStat1, int64(0))
 }
 
@@ -1836,6 +1854,7 @@ func TestQueryResyncImportComputeStat(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
+	rest.RequireBucketSpecificCredentials(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
@@ -1845,9 +1864,14 @@ func TestQueryResyncImportComputeStat(t *testing.T) {
 				UseQueryBasedResyncManager: true,
 			},
 		}},
+		Serverless:       true,
+		PersistentConfig: true,
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
+
+	rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
 	const numDocs = 100
 	var resp *rest.TestResponse
 
@@ -1856,7 +1880,7 @@ func TestQueryResyncImportComputeStat(t *testing.T) {
 		rest.RequireStatus(t, resp, http.StatusCreated)
 	}
 
-	computeStat := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	computeStat := rt.GetDatabase().DbStats.ServerlessStats.ImportProcessCompute.Value()
 	require.Equal(t, int64(0), computeStat)
 
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
@@ -1867,7 +1891,7 @@ func TestQueryResyncImportComputeStat(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
 
-	computeStat1 := rt.GetDatabase().DbStats.DatabaseStats.ImportProcessCompute.Value()
+	computeStat1 := rt.GetDatabase().DbStats.ServerlessStats.ImportProcessCompute.Value()
 	require.Greater(t, computeStat1, computeStat)
 
 }

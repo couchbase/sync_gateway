@@ -69,41 +69,47 @@ func TestRoot(t *testing.T) {
 }
 
 func TestPublicRESTStatCount(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	RequireBucketSpecificCredentials(t)
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		Serverless:       true,
+		SyncFn:           channels.DocChannelsSyncFunction,
+	})
 	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 	// create a user to authenticate as for public api calls and assert the stat hasn't incremented as a result
 	rt.CreateUser("greg", []string{"ABC"})
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.NumPublicRestRequests.Value()
 	}, 0)
 
 	// use public api to put a doc through SGW then assert the stat has increased by 1
 	resp := rt.SendUserRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"foo":"bar", "channels":["ABC"]}`, "greg")
 	RequireStatus(t, resp, http.StatusCreated)
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.NumPublicRestRequests.Value()
 	}, 1)
 
 	// send admin request assert that the public rest count doesn't increase
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusOK)
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.NumPublicRestRequests.Value()
 	}, 1)
 
 	// send another public request to assert the stat increases by 1
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc1", "", "greg")
 	RequireStatus(t, resp, http.StatusOK)
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.NumPublicRestRequests.Value()
 	}, 2)
 
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/_blipsync", "", "greg")
 	RequireStatus(t, resp, http.StatusUpgradeRequired)
 
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.NumPublicRestRequests.Value()
 	}, 2)
 
 	srv := httptest.NewServer(rt.TestMetricsHandler())
@@ -116,7 +122,7 @@ func TestPublicRESTStatCount(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	// assert the stat doesn't increment
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.NumPublicRestRequests.Value()
 	}, 2)
 
 	// test public endpoint but one that doesn't access a db
@@ -124,7 +130,7 @@ func TestPublicRESTStatCount(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 	// assert the stat doesn't increment
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.NumPublicRestRequests.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.NumPublicRestRequests.Value()
 	}, 2)
 }
 

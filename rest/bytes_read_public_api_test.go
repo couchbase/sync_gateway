@@ -24,13 +24,19 @@ import (
 )
 
 func TestBytesReadDocOperations(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	RequireBucketSpecificCredentials(t)
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		Serverless:       true,
+		SyncFn:           channels.DocChannelsSyncFunction,
+	})
 	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 	// create a user to authenticate as for public api calls and assert the stat hasn't incremented as a result
 	rt.CreateUser("greg", []string{"ABC"})
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, 0)
 
 	// use public api to put a doc through SGW then assert the stat has increased
@@ -40,28 +46,28 @@ func TestBytesReadDocOperations(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 	// send admin request assert that the public rest count doesn't increase
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusOK)
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 	// send user request that has empty body, assert the stat doesn't increase
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc1", "", "greg")
 	RequireStatus(t, resp, http.StatusOK)
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 	// assert blipsync connection doesn't increment stat
 	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/_blipsync", "", "greg")
 	RequireStatus(t, resp, http.StatusUpgradeRequired)
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 	srv := httptest.NewServer(rt.TestMetricsHandler())
@@ -74,7 +80,7 @@ func TestBytesReadDocOperations(t *testing.T) {
 	require.NoError(t, response.Body.Close())
 
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 	// test public endpoint but one that doesn't access a db and assert that doesn't increment stat
@@ -82,7 +88,7 @@ func TestBytesReadDocOperations(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 	// assert the stat doesn't increment
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 	// send another public request (this time POST) to check stat increments, but check it increments by correct bytes value
@@ -94,18 +100,18 @@ func TestBytesReadDocOperations(t *testing.T) {
 
 	cumulativeBytes := len(inputBytes) + len(inputBytes2)
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(cumulativeBytes))
 }
 
 func TestBytesReadChanges(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
 	// create a user and assert this doesn't increase the bytes read stat
 	rt.CreateUser("alice", nil)
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, 0)
 
 	// take the bytes of the body we will pass into request and perform changes POST request
@@ -116,14 +122,20 @@ func TestBytesReadChanges(t *testing.T) {
 
 	// assert the stat has increased by the number of bytes passed into request
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(byteArrayChangesBody)))
 
 }
 
 func TestBytesReadPutAttachment(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	RequireBucketSpecificCredentials(t)
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		Serverless:       true,
+		SyncFn:           channels.DocChannelsSyncFunction,
+	})
 	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 	// create user
 	rt.CreateUser("alice", []string{"ABC"})
@@ -152,7 +164,7 @@ func TestBytesReadPutAttachment(t *testing.T) {
 
 	// assert the stat has increased by the attachment endpoint input
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(byteArrayAttachmentBody)))
 
 	// test incorrect user still increments count
@@ -162,13 +174,13 @@ func TestBytesReadPutAttachment(t *testing.T) {
 	newStatNum := len(byteArrayAttachmentBody) * 2
 
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(newStatNum))
 
 }
 
 func TestBytesReadRevDiff(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
 	rt.CreateUser("alice", nil)
@@ -195,7 +207,7 @@ func TestBytesReadRevDiff(t *testing.T) {
 
 	// assert the stat has increased by the bytes above
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 	newStat := len(inputBytes) * 2
@@ -204,13 +216,13 @@ func TestBytesReadRevDiff(t *testing.T) {
 	RequireStatus(t, resp, http.StatusUnauthorized)
 
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(newStat))
 
 }
 
 func TestBytesReadAllDocs(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
 	rt.CreateUser("alice", []string{"ABC"})
@@ -235,7 +247,7 @@ func TestBytesReadAllDocs(t *testing.T) {
 
 	// assert the stat has increased by the bytes length
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 	newStat := len(inputBytes) * 2
@@ -244,13 +256,13 @@ func TestBytesReadAllDocs(t *testing.T) {
 	RequireStatus(t, resp, http.StatusUnauthorized)
 
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(newStat))
 
 }
 
 func TestBytesReadBulkDocs(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
 	rt.CreateUser("alice", []string{"ABC"})
@@ -262,7 +274,7 @@ func TestBytesReadBulkDocs(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 	newStat := len(inputBytes) * 2
@@ -271,13 +283,13 @@ func TestBytesReadBulkDocs(t *testing.T) {
 	RequireStatus(t, resp, http.StatusUnauthorized)
 
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(newStat))
 
 }
 
 func TestBytesReadBulkGet(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
 	rt.CreateUser("alice", []string{"ABC"})
@@ -297,7 +309,7 @@ func TestBytesReadBulkGet(t *testing.T) {
 
 	// assert the stat has increased by the length of byte array
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 	newStat := len(inputBytes) * 2
@@ -306,13 +318,13 @@ func TestBytesReadBulkGet(t *testing.T) {
 	RequireStatus(t, resp, http.StatusUnauthorized)
 
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(newStat))
 
 }
 
 func TestBytesReadLocalDocPut(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
 	rt.CreateUser("alice", []string{"ABC"})
@@ -325,7 +337,7 @@ func TestBytesReadLocalDocPut(t *testing.T) {
 
 	// assert the stat is increased by the correct amount
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 	newStat := len(inputBytes) * 2
@@ -334,12 +346,12 @@ func TestBytesReadLocalDocPut(t *testing.T) {
 	RequireStatus(t, resp, http.StatusUnauthorized)
 
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(newStat))
 }
 
 func TestBytesReadPOSTSession(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
 	rt.CreateUser("alice", []string{"ABC"})
@@ -352,7 +364,7 @@ func TestBytesReadPOSTSession(t *testing.T) {
 
 	// assert the stat is increased by the correct amount
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 	newStat := len(inputBytes) * 2
@@ -361,12 +373,12 @@ func TestBytesReadPOSTSession(t *testing.T) {
 	RequireStatus(t, resp, http.StatusUnauthorized)
 
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(newStat))
 }
 
 func TestBytesReadAuthFailed(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
 	// create a user with different password to the default one
@@ -381,17 +393,21 @@ func TestBytesReadAuthFailed(t *testing.T) {
 
 	// assert the stat has still increased by the bytes of the body passed into request
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 }
 
 func TestBytesReadGzipRequest(t *testing.T) {
+	RequireBucketSpecificCredentials(t)
 	// Need default collection as request below doesn't work with {{.keyspace}}
 	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
-		GuestEnabled: true,
+		Serverless:       true,
+		PersistentConfig: true,
 	})
 	defer rt.Close()
+
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 	rt.CreateUser("alice", []string{"ABC"})
 	input := `{"channel":["ABC"]}`
@@ -408,13 +424,13 @@ func TestBytesReadGzipRequest(t *testing.T) {
 	// {{.keyspace}} isn't supported so use default collection
 	rq, err := http.NewRequest("PUT", "/db/doc", &buf)
 	require.NoError(t, err)
+	rq.SetBasicAuth("alice", RestTesterDefaultUserPassword)
 	rq.Header.Set("Content-Encoding", "gzip")
 	resp := rt.Send(rq)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	base.RequireWaitForStat(t, func() int64 {
-		fmt.Println(rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value())
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 }
@@ -427,7 +443,12 @@ func TestPutDBBytesRead(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), AdminInterfaceAuthentication: true})
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket:             tb.NoCloseClone(),
+		AdminInterfaceAuthentication: true,
+		Serverless:                   true,
+		PersistentConfig:             true,
+	})
 	defer rt.Close()
 	SGWorBFArole := MobileSyncGatewayRole.RoleName
 
@@ -438,24 +459,24 @@ func TestPutDBBytesRead(t *testing.T) {
 	defer DeleteUser(t, httpClient, eps[0], "MobileSyncGatewayUser")
 
 	input := fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t,"username": "%s", "password":"%s"}`,
-		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), base.TestClusterUsername(), base.TestClusterPassword(),
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 	)
-
-	db := rt.GetDatabase() // get database before we add a new one
 
 	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/db1/", input, "MobileSyncGatewayUser", "password")
 	RequireStatus(t, resp, http.StatusCreated)
 
+	db := rt.GetDatabase()
+
 	// assert the stat hasn't increased (admin request doesn't effect count)
 	base.RequireWaitForStat(t, func() int64 {
-		return db.DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return db.DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, 0)
 
 }
 
 func TestOfflineDBBytesRead(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterPersistentConfigServerless(t)
 	defer rt.Close()
 
 	rt.CreateUser("alice", []string{"ABC"})
@@ -467,7 +488,7 @@ func TestOfflineDBBytesRead(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, 0)
 
 	// try adding body to get request
@@ -477,7 +498,7 @@ func TestOfflineDBBytesRead(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.DatabaseStats.PublicRestBytesRead.Value()
+		return rt.GetDatabase().DbStats.ServerlessStats.PublicRestBytesRead.Value()
 	}, int64(len(inputBytes)))
 
 }

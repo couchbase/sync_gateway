@@ -150,7 +150,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	base.LongRunningTest(t)
 
 	docsToCreate := 1000
-	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
+	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true, nil)
 	defer db.Close(ctx)
 
 	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
@@ -208,7 +208,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 
 	t.Run("Resync without updating sync function", func(t *testing.T) {
 		docsToCreate := 100
-		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
+		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false, nil)
 		defer db.Close(ctx)
 
 		resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
@@ -241,7 +241,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 
 	t.Run("Resync with updated sync function", func(t *testing.T) {
 		docsToCreate := 100
-		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
+		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true, nil)
 		defer db.Close(ctx)
 
 		resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
@@ -285,7 +285,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	base.LongRunningTest(t)
 
 	docsToCreate := 1000
-	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
+	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false, nil)
 	defer db.Close(ctx)
 
 	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
@@ -341,7 +341,8 @@ func TestResyncImportComputeStat(t *testing.T) {
 		t.Skip("Test requires Couchbase Server for DCP")
 	}
 	const docsToCreate = 100
-	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
+	dbOptions := DatabaseContextOptions{Serverless: true}
+	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false, &dbOptions)
 	defer db.Close(ctx)
 
 	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
@@ -354,7 +355,7 @@ func TestResyncImportComputeStat(t *testing.T) {
 		"collections":         ResyncCollections{},
 	}
 
-	computeStat := db.DbStats.DatabaseStats.ImportProcessCompute.Value()
+	computeStat := db.DbStats.ServerlessStats.ImportProcessCompute.Value()
 	require.Equal(t, int64(0), computeStat)
 
 	err := resycMgr.Start(ctx, options)
@@ -368,7 +369,7 @@ func TestResyncImportComputeStat(t *testing.T) {
 	}, 200, 200)
 	require.NoError(t, err)
 
-	computeStat1 := db.DbStats.DatabaseStats.ImportProcessCompute.Value()
+	computeStat1 := db.DbStats.Serverless().ImportProcessCompute.Value()
 	require.Greater(t, computeStat1, computeStat)
 
 }
@@ -380,7 +381,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 	base.LongRunningTest(t)
 
 	docsToCreate := 5000
-	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
+	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true, nil)
 	defer db.Close(ctx)
 
 	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
@@ -445,8 +446,14 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 }
 
 // helper function to insert documents equals to docsToCreate, and update sync function if updateResyncFuncAfterDocsAdded set to true
-func setupTestDBForResyncWithDocs(t *testing.T, docsToCreate int, updateResyncFuncAfterDocsAdded bool) (*Database, context.Context) {
-	db, ctx := setupTestDB(t)
+func setupTestDBForResyncWithDocs(t *testing.T, docsToCreate int, updateResyncFuncAfterDocsAdded bool, dbCtxOptions *DatabaseContextOptions) (*Database, context.Context) {
+	var ctx context.Context
+	var db *Database
+	if dbCtxOptions != nil {
+		db, ctx = SetupTestDBWithOptions(t, *dbCtxOptions)
+	} else {
+		db, ctx = setupTestDB(t)
+	}
 	db.Options.QueryPaginationLimit = 100
 	syncFn := `
 function sync(doc, oldDoc){

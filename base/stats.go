@@ -43,6 +43,7 @@ const (
 	SubsystemReplicationPush    = "replication_push"
 	SubsystemSecurity           = "security"
 	SubsystemSharedBucketImport = "shared_bucket_import"
+	SubsystemServerless         = "serverless"
 
 	DatabaseLabelKey    = "database"
 	ReplicationLabelKey = "replication"
@@ -376,6 +377,7 @@ type DbStats struct {
 	SecurityStats           *SecurityStats                `json:"security,omitempty"`
 	SharedBucketImportStats *SharedBucketImportStats      `json:"shared_bucket_import,omitempty"`
 	CollectionStats         map[string]*CollectionStats   `json:"per_collection,omitempty"`
+	ServerlessStats         *ServerlessStats              `json:"serverless_stats,omitempty"`
 	dbReplicatorStatsMutex  sync.Mutex
 }
 
@@ -526,8 +528,6 @@ type CollectionStats struct {
 }
 
 type DatabaseStats struct {
-	ReplicationBytesReceived *SgwIntStat `json:"replication_bytes_received"`
-	ReplicationBytesSent     *SgwIntStat `json:"replication_bytes_sent"`
 	// The compaction_attachment_start_time.
 	CompactionAttachmentStartTime *SgwIntStat `json:"compaction_attachment_start_time"`
 	// The compaction_tombstone_start_time.
@@ -562,17 +562,11 @@ type DatabaseStats struct {
 	NumDocReadsRest *SgwIntStat `json:"num_doc_reads_rest"`
 	// The total number of documents written by any means (replication, rest API interaction or imports) since Sync Gateway node startup.
 	NumDocWrites *SgwIntStat `json:"num_doc_writes"`
-	// The total number of requests sent over the public REST api
-	NumPublicRestRequests *SgwIntStat `json:"num_public_rest_requests"`
 	// The total number of active replications.
 	NumReplicationsActive *SgwIntStat `json:"num_replications_active"`
 	// The total number of replications created since Sync Gateway node startup.
 	NumReplicationsTotal   *SgwIntStat `json:"num_replications_total"`
 	NumTombstonesCompacted *SgwIntStat `json:"num_tombstones_compacted"`
-	// Number of bytes written over public interface for REST api
-	PublicRestBytesWritten *SgwIntStat `json:"public_rest_bytes_written"`
-	// The total amount of bytes read over the public REST api
-	PublicRestBytesRead *SgwIntStat `json:"public_rest_bytes_read"`
 	// The total number of sequence numbers assigned.
 	SequenceAssignedCount *SgwIntStat `json:"sequence_assigned_count"`
 	// The total number of high sequence lookups.
@@ -595,22 +589,34 @@ type DatabaseStats struct {
 	SyncFunctionCount *SgwIntStat `json:"sync_function_count"`
 	// The total time spent evaluating a sync function (across all collections).
 	SyncFunctionTime *SgwIntStat `json:"sync_function_time"`
-	// The total sync time is a proxy for websocket connections. Tracking long lived and potentially idle connections.
-	// This stat represents the continually growing number of connections per sec.
-	TotalSyncTime *SgwIntStat `json:"total_sync_time"`
 	// The total number of times that a sync function encountered an exception (across all collections).
 	SyncFunctionExceptionCount *SgwIntStat `json:"sync_function_exception_count"`
-	// The total number of times a replication connection is rejected due ot it being over the threshold
-	NumReplicationsRejectedLimit *SgwIntStat `json:"num_replications_rejected_limit"`
-	// Represents the compute unit for import processes on the database
-	ImportProcessCompute *SgwIntStat `json:"import_process_compute"`
-	// SyncProcessCompute the comopute unit for syncing with clients
-	SyncProcessCompute *SgwIntStat `json:"sync_process_compute"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
 	CacheFeedMapStats  *ExpVarMapWrapper `json:"cache_feed"`
 	ImportFeedMapStats *ExpVarMapWrapper `json:"import_feed"`
+}
+
+// ServerlessStats are stats added and dedicated for use of sync gateway in serverless mode
+type ServerlessStats struct {
+	// Represents the compute unit for import processes on the database
+	ImportProcessCompute *SgwIntStat `json:"import_process_compute"`
+	// SyncProcessCompute the comopute unit for syncing with clients
+	SyncProcessCompute *SgwIntStat `json:"sync_process_compute"`
+	// The total number of times a replication connection is rejected due ot it being over the threshold
+	NumReplicationsRejectedLimit *SgwIntStat `json:"num_replications_rejected_limit"`
+	// This stat represents the continually growing number of connections per sec.
+	TotalSyncTime *SgwIntStat `json:"total_sync_time"`
+	// Number of bytes written over public interface for REST api
+	PublicRestBytesWritten *SgwIntStat `json:"public_rest_bytes_written"`
+	// The total amount of bytes read over the public REST api
+	PublicRestBytesRead *SgwIntStat `json:"public_rest_bytes_read"`
+	// The total number of requests sent over the public REST api
+	NumPublicRestRequests *SgwIntStat `json:"num_public_rest_requests"`
+
+	ReplicationBytesReceived *SgwIntStat `json:"replication_bytes_received"`
+	ReplicationBytesSent     *SgwIntStat `json:"replication_bytes_sent"`
 }
 
 // This wrapper ensures that an expvar.Map type can be marshalled into JSON. The expvar.Map has no method to go direct to
@@ -1114,12 +1120,26 @@ type QueryStat struct {
 	QueryTime       *SgwIntStat
 }
 
-func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled bool, viewsEnabled bool, queryNames []string, collections []string) (*DbStats, error) {
+// DbStatsOptions contains the configuration options for initialising db stats
+type DbStatsOptions struct {
+	DeltaSyncEnabled  bool
+	ImportEnabled     bool
+	ViewsEnabled      bool
+	ServerlessEnabled bool
+	QueryNames        []string
+	Collections       []string
+}
+
+func (s *SgwStats) NewDBStats(name string, dbStatsOpts *DbStatsOptions) (*DbStats, error) {
 	s.dbStatsMapMutex.Lock()
 	defer s.dbStatsMapMutex.Unlock()
 	dbStats := &DbStats{
 		dbName:            name,
 		DbReplicatorStats: make(map[string]*DbReplicatorStats),
+	}
+
+	if dbStatsOpts == nil {
+		dbStatsOpts = &DbStatsOptions{}
 	}
 
 	// These have a pretty good chance of being used so we'll initialise these for every database stat struct created
@@ -1144,31 +1164,41 @@ func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled 
 		return nil, err
 	}
 
+	collections := dbStatsOpts.Collections
 	err = dbStats.InitCollectionStats(collections...)
 	if err != nil {
 		return nil, err
 	}
 
-	if deltaSyncEnabled {
+	if dbStatsOpts.ServerlessEnabled {
+		err = dbStats.initServerlessStats()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if dbStatsOpts.DeltaSyncEnabled {
 		err = dbStats.InitDeltaSyncStats()
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if importEnabled {
+	if dbStatsOpts.ImportEnabled {
 		err = dbStats.InitSharedBucketImportStats()
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if viewsEnabled {
+	if dbStatsOpts.ViewsEnabled {
+		queryNames := dbStatsOpts.QueryNames
 		err = dbStats.InitQueryStats(
 			true,
 			queryNames...,
 		)
 	} else {
+		queryNames := dbStatsOpts.QueryNames
 		err = dbStats.InitQueryStats(
 			false,
 			queryNames...,
@@ -1192,6 +1222,10 @@ func (s *SgwStats) ClearDBStats(name string) {
 
 	for scopeAndCollectionName := range s.DbStats[name].CollectionStats {
 		s.DbStats[name].unregisterCollectionStats(scopeAndCollectionName)
+	}
+
+	if s.DbStats[name].ServerlessStats != nil {
+		s.DbStats[name].unregisterServerlessStats()
 	}
 
 	s.DbStats[name].unregisterCacheStats()
@@ -1545,14 +1579,6 @@ func (d *DbStats) initDatabaseStats() error {
 	labelKeys := []string{DatabaseLabelKey}
 	labelVals := []string{d.dbName}
 
-	resUtil.ReplicationBytesReceived, err = NewIntStat(SubsystemDatabaseKey, "replication_bytes_received", StatUnitBytes, ReplicationBytesReceivedDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
-	if err != nil {
-		return err
-	}
-	resUtil.ReplicationBytesSent, err = NewIntStat(SubsystemDatabaseKey, "replication_bytes_sent", StatUnitBytes, ReplicationBytesSentDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
-	if err != nil {
-		return err
-	}
 	resUtil.CompactionAttachmentStartTime, err = NewIntStat(SubsystemDatabaseKey, "compaction_attachment_start_time", StatUnitUnixTimestamp, CompactionAttachmentStartTimeDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
@@ -1601,10 +1627,6 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.PublicRestBytesWritten, err = NewIntStat(SubsystemDatabaseKey, "http_bytes_written", StatUnitBytes, PublicRestBytesWrittenDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
-	if err != nil {
-		return err
-	}
 	resUtil.NumAttachmentsCompacted, err = NewIntStat(SubsystemDatabaseKey, "num_attachments_compacted", StatUnitNoUnits, NumAttachmentsCompactedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1634,10 +1656,6 @@ func (d *DbStats) initDatabaseStats() error {
 		return err
 	}
 	resUtil.NumTombstonesCompacted, err = NewIntStat(SubsystemDatabaseKey, "num_tombstones_compacted", StatUnitNoUnits, NumTombstonesCompactedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
-	if err != nil {
-		return err
-	}
-	resUtil.PublicRestBytesRead, err = NewIntStat(SubsystemDatabaseKey, "public_rest_bytes_read", StatUnitBytes, PublicRestBytesReadDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
@@ -1689,26 +1707,6 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.NumReplicationsRejectedLimit, err = NewIntStat(SubsystemDatabaseKey, "num_replications_rejected_limit", StatUnitNoUnits, NumReplicationsRejectedLimitDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
-	if err != nil {
-		return err
-	}
-	resUtil.NumPublicRestRequests, err = NewIntStat(SubsystemDatabaseKey, "num_public_rest_requests", StatUnitNoUnits, NumPublicRestRequestsDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
-	if err != nil {
-		return err
-	}
-	resUtil.TotalSyncTime, err = NewIntStat(SubsystemDatabaseKey, "total_sync_time", StatUnitSeconds, TotalSyncTimeDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
-	if err != nil {
-		return err
-	}
-	resUtil.ImportProcessCompute, err = NewIntStat(SubsystemDatabaseKey, "import_process_compute", StatUnitNoUnits, ImportProcessComputeDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
-	if err != nil {
-		return err
-	}
-	resUtil.SyncProcessCompute, err = NewIntStat(SubsystemDatabaseKey, "sync_process_compute", StatUnitNoUnits, ImportProcessComputeDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
-	if err != nil {
-		return err
-	}
 	resUtil.ImportFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
 
 	resUtil.CacheFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
@@ -1718,8 +1716,6 @@ func (d *DbStats) initDatabaseStats() error {
 }
 
 func (d *DbStats) unregisterDatabaseStats() {
-	prometheus.Unregister(d.DatabaseStats.ReplicationBytesReceived)
-	prometheus.Unregister(d.DatabaseStats.ReplicationBytesSent)
 	prometheus.Unregister(d.DatabaseStats.CompactionAttachmentStartTime)
 	prometheus.Unregister(d.DatabaseStats.CompactionTombstoneStartTime)
 	prometheus.Unregister(d.DatabaseStats.ConflictWriteCount)
@@ -1740,7 +1736,6 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.NumReplicationsActive)
 	prometheus.Unregister(d.DatabaseStats.NumReplicationsTotal)
 	prometheus.Unregister(d.DatabaseStats.NumTombstonesCompacted)
-	prometheus.Unregister(d.DatabaseStats.PublicRestBytesWritten)
 	prometheus.Unregister(d.DatabaseStats.SequenceAssignedCount)
 	prometheus.Unregister(d.DatabaseStats.SequenceGetCount)
 	prometheus.Unregister(d.DatabaseStats.SequenceIncrCount)
@@ -1753,12 +1748,6 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionCount)
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionTime)
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionExceptionCount)
-	prometheus.Unregister(d.DatabaseStats.NumReplicationsRejectedLimit)
-	prometheus.Unregister(d.DatabaseStats.NumPublicRestRequests)
-	prometheus.Unregister(d.DatabaseStats.TotalSyncTime)
-	prometheus.Unregister(d.DatabaseStats.PublicRestBytesRead)
-	prometheus.Unregister(d.DatabaseStats.ImportProcessCompute)
-	prometheus.Unregister(d.DatabaseStats.SyncProcessCompute)
 }
 
 func (d *DbStats) CollectionStat(scopeName, collectionName string) (*CollectionStats, error) {
@@ -1820,6 +1809,10 @@ func (d *DbStats) unregisterDeltaSyncStats() {
 
 func (d *DbStats) DeltaSync() *DeltaSyncStats {
 	return d.DeltaSyncStats
+}
+
+func (d *DbStats) Serverless() *ServerlessStats {
+	return d.ServerlessStats
 }
 
 func (d *DbStats) initSecurityStats() error {
@@ -1988,6 +1981,65 @@ func (d *DbStats) InitCollectionStats(scopeAndCollectionNames ...string) error {
 	}
 
 	return nil
+}
+
+func (db *DbStats) initServerlessStats() error {
+	var err error
+	resUtil := &ServerlessStats{}
+	labelKeys := []string{DatabaseLabelKey}
+	labelVals := []string{db.dbName}
+
+	resUtil.ImportProcessCompute, err = NewIntStat(SubsystemServerless, "import_process_compute", StatUnitNoUnits, ImportProcessComputeDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.SyncProcessCompute, err = NewIntStat(SubsystemServerless, "sync_process_compute", StatUnitNoUnits, SyncProcessComputeDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.NumReplicationsRejectedLimit, err = NewIntStat(SubsystemServerless, "num_replications_rejected_limit", StatUnitNoUnits, NumReplicationsRejectedLimitDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.TotalSyncTime, err = NewIntStat(SubsystemServerless, "total_sync_time", StatUnitSeconds, TotalSyncTimeDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.PublicRestBytesWritten, err = NewIntStat(SubsystemServerless, "http_bytes_written", StatUnitBytes, PublicRestBytesWrittenDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.PublicRestBytesRead, err = NewIntStat(SubsystemServerless, "public_rest_bytes_read", StatUnitBytes, PublicRestBytesReadDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.NumPublicRestRequests, err = NewIntStat(SubsystemServerless, "num_public_rest_requests", StatUnitNoUnits, NumPublicRestRequestsDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.ReplicationBytesReceived, err = NewIntStat(SubsystemServerless, "replication_bytes_received", StatUnitBytes, ReplicationBytesReceivedDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.ReplicationBytesSent, err = NewIntStat(SubsystemServerless, "replication_bytes_sent", StatUnitBytes, ReplicationBytesSentDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+
+	db.ServerlessStats = resUtil
+	return nil
+}
+
+func (db *DbStats) unregisterServerlessStats() {
+	prometheus.Unregister(db.ServerlessStats.ImportProcessCompute)
+	prometheus.Unregister(db.ServerlessStats.SyncProcessCompute)
+	prometheus.Unregister(db.ServerlessStats.NumReplicationsRejectedLimit)
+	prometheus.Unregister(db.ServerlessStats.TotalSyncTime)
+	prometheus.Unregister(db.ServerlessStats.PublicRestBytesWritten)
+	prometheus.Unregister(db.ServerlessStats.PublicRestBytesRead)
+	prometheus.Unregister(db.ServerlessStats.NumPublicRestRequests)
+	prometheus.Unregister(db.ServerlessStats.ReplicationBytesReceived)
+	prometheus.Unregister(db.ServerlessStats.ReplicationBytesSent)
 }
 
 func (d *DbStats) DBReplicatorStats(replicationID string) (*DbReplicatorStats, error) {
