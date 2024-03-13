@@ -36,7 +36,7 @@ func TestDuplicateDocID(t *testing.T) {
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 
 	cache := newSingleChannelCache(collection, channels.NewID("Test1", collection.GetCollectionID()), 0, dbstats.Cache())
@@ -89,7 +89,7 @@ func TestLateArrivingSequence(t *testing.T) {
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
@@ -130,7 +130,7 @@ func TestLateSequenceAsFirst(t *testing.T) {
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
@@ -171,7 +171,7 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
@@ -254,7 +254,7 @@ func TestPrependChanges(t *testing.T) {
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
@@ -279,7 +279,7 @@ func TestPrependChanges(t *testing.T) {
 	// 2. Test prepend to populated cache, with overlap and duplicates
 	stats, err = base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err = stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err = stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 	cache = newSingleChannelCache(collection, channels.NewID("PrependPopulatedCache", collection.GetCollectionID()), 0, dbstats.Cache())
 	cache.validFrom = 13
@@ -337,7 +337,7 @@ func TestPrependChanges(t *testing.T) {
 	// 3. Test prepend that exceeds cache capacity
 	stats, err = base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err = stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err = stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 	cache = newSingleChannelCache(collection, channels.NewID("PrependToFillCache", collection.GetCollectionID()), 0, dbstats.Cache())
 	cache.options.ChannelCacheMaxLength = 5
@@ -378,7 +378,7 @@ func TestPrependChanges(t *testing.T) {
 	// 4. Test prepend where all docids are already present in cache.  Cache entries shouldn't change, but validFrom is updated
 	stats, err = base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err = stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err = stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 	cache = newSingleChannelCache(collection, channels.NewID("PrependDuplicatesOnly", collection.GetCollectionID()), 0, dbstats.Cache())
 	cache.validFrom = 13
@@ -412,7 +412,7 @@ func TestPrependChanges(t *testing.T) {
 	// 5. Test prepend for an already full cache
 	stats, err = base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err = stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err = stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 	cache = newSingleChannelCache(collection, channels.NewID("PrependFullCache", collection.GetCollectionID()), 0, dbstats.Cache())
 	cache.options.ChannelCacheMaxLength = 5
@@ -462,7 +462,7 @@ func TestChannelCacheRemove(t *testing.T) {
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
@@ -510,7 +510,7 @@ func TestChannelCacheStats(t *testing.T) {
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
@@ -589,7 +589,7 @@ func TestChannelCacheStatsOnPrune(t *testing.T) {
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
@@ -628,7 +628,7 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
@@ -726,7 +726,7 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(b, err)
 
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(b, err)
 
 	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
@@ -753,7 +753,7 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(b, err)
 
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(b, err)
 
 	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
@@ -777,7 +777,7 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(b, err)
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(b, err)
 
 	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
@@ -801,7 +801,7 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(b, err)
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(b, err)
 
 	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
@@ -825,7 +825,7 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(b, err)
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(b, err)
 
 	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
@@ -849,7 +849,7 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(b, err)
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(b, err)
 
 	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
@@ -873,7 +873,7 @@ func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(b, err)
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(b, err)
 
 	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)

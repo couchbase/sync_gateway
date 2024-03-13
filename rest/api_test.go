@@ -69,8 +69,14 @@ func TestRoot(t *testing.T) {
 }
 
 func TestPublicRESTStatCount(t *testing.T) {
-	rt := NewRestTesterPersistentConfigServerless(t)
+	RequireBucketSpecificCredentials(t)
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		Serverless:       true,
+		SyncFn:           channels.DocChannelsSyncFunction,
+	})
 	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 	// create a user to authenticate as for public api calls and assert the stat hasn't incremented as a result
 	rt.CreateUser("greg", []string{"ABC"})

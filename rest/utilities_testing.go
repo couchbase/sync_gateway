@@ -121,12 +121,12 @@ func NewRestTesterPersistentConfig(tb testing.TB) *RestTester {
 	return rt
 }
 
+// NewRestTesterPersistentConfigServerless is a convenience function to set up RestTester in persistent config with serverless mode.
 func NewRestTesterPersistentConfigServerless(tb *testing.T) *RestTester {
 	RequireBucketSpecificCredentials(tb)
 	config := &RestTesterConfig{
 		PersistentConfig: true,
 		Serverless:       true,
-		SyncFn:           channels.DocChannelsSyncFunction,
 	}
 	rt := newRestTester(tb, config, useSingleCollection, 1)
 	RequireStatus(tb, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)

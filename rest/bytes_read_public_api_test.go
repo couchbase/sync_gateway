@@ -17,14 +17,21 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBytesReadDocOperations(t *testing.T) {
-	rt := NewRestTesterPersistentConfigServerless(t)
+	RequireBucketSpecificCredentials(t)
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		Serverless:       true,
+		SyncFn:           channels.DocChannelsSyncFunction,
+	})
 	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 	// create a user to authenticate as for public api calls and assert the stat hasn't incremented as a result
 	rt.CreateUser("greg", []string{"ABC"})
@@ -121,8 +128,14 @@ func TestBytesReadChanges(t *testing.T) {
 }
 
 func TestBytesReadPutAttachment(t *testing.T) {
-	rt := NewRestTesterPersistentConfigServerless(t)
+	RequireBucketSpecificCredentials(t)
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		Serverless:       true,
+		SyncFn:           channels.DocChannelsSyncFunction,
+	})
 	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 	// create user
 	rt.CreateUser("alice", []string{"ABC"})

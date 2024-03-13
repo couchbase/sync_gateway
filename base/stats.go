@@ -1112,12 +1112,26 @@ type QueryStat struct {
 	QueryTime       *SgwIntStat
 }
 
-func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled bool, viewsEnabled bool, serverlessEnabled bool, queryNames []string, collections []string) (*DbStats, error) {
+// DbStatsOptions contains the configuration options for initialising db stats
+type DbStatsOptions struct {
+	DeltaSyncEnabled  bool
+	ImportEnabled     bool
+	ViewsEnabled      bool
+	ServerlessEnabled bool
+	QueryNames        []string
+	Collections       []string
+}
+
+func (s *SgwStats) NewDBStats(name string, dbStatsOpts *DbStatsOptions) (*DbStats, error) {
 	s.dbStatsMapMutex.Lock()
 	defer s.dbStatsMapMutex.Unlock()
 	dbStats := &DbStats{
 		dbName:            name,
 		DbReplicatorStats: make(map[string]*DbReplicatorStats),
+	}
+
+	if dbStatsOpts == nil {
+		dbStatsOpts = &DbStatsOptions{}
 	}
 
 	// These have a pretty good chance of being used so we'll initialise these for every database stat struct created
@@ -1142,38 +1156,41 @@ func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled 
 		return nil, err
 	}
 
+	collections := dbStatsOpts.Collections
 	err = dbStats.InitCollectionStats(collections...)
 	if err != nil {
 		return nil, err
 	}
 
-	if serverlessEnabled {
+	if dbStatsOpts.ServerlessEnabled {
 		err = dbStats.initServerlessStats()
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if deltaSyncEnabled {
+	if dbStatsOpts.DeltaSyncEnabled {
 		err = dbStats.InitDeltaSyncStats()
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if importEnabled {
+	if dbStatsOpts.ImportEnabled {
 		err = dbStats.InitSharedBucketImportStats()
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if viewsEnabled {
+	if dbStatsOpts.ViewsEnabled {
+		queryNames := dbStatsOpts.QueryNames
 		err = dbStats.InitQueryStats(
 			true,
 			queryNames...,
 		)
 	} else {
+		queryNames := dbStatsOpts.QueryNames
 		err = dbStats.InitQueryStats(
 			false,
 			queryNames...,

@@ -79,7 +79,7 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 	testStats := dbstats.Cache()
 	activeChannelStat := &base.SgwIntStat{}
@@ -121,7 +121,7 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 	testStats := dbstats.Cache()
 	activeChannelStat := &base.SgwIntStat{}
@@ -181,7 +181,7 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 	testStats := dbstats.Cache()
 	activeChannelStat := &base.SgwIntStat{}
@@ -278,7 +278,7 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 	testStats := dbstats.Cache()
 	queryHandler := &testQueryHandler{}
@@ -353,7 +353,7 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 	testStats := dbstats.Cache()
 	queryHandler := &testQueryHandler{}
@@ -423,7 +423,7 @@ func TestChannelCacheBypass(t *testing.T) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 	testStats := dbstats.Cache()
 	queryHandler := &testQueryHandler{}
@@ -529,7 +529,7 @@ func TestChannelCacheBackgroundTaskWithIllegalTimeInterval(t *testing.T) {
 	options.ChannelCacheAge = 0
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	dbstats, err := stats.NewDBStats("", &base.DbStatsOptions{})
 	require.NoError(t, err)
 	testStats := dbstats.Cache()
 

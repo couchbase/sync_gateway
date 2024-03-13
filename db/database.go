@@ -2025,8 +2025,16 @@ func initDatabaseStats(ctx context.Context, dbName string, autoImport bool, opti
 			}
 		}
 	}
+	dbStatsOpts := base.DbStatsOptions{
+		DeltaSyncEnabled:  enabledDeltaSync,
+		ImportEnabled:     enabledImport,
+		ViewsEnabled:      enabledViews,
+		ServerlessEnabled: options.Serverless,
+		QueryNames:        queryNames,
+		Collections:       collections,
+	}
 
-	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, options.Serverless, queryNames, collections)
+	return base.SyncGatewayStats.NewDBStats(dbName, &dbStatsOpts)
 }
 
 func (context *DatabaseContext) AllowConflicts() bool {
