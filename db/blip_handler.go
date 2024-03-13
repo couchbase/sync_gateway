@@ -807,7 +807,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 		}
 		var status ProposedRevStatus
 		var currentRev string
-		if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
+		if bh.useHLV() {
 			status, currentRev = bh.collection.CheckProposedVersion(bh.loggingCtx, docID, rev, parentRevID)
 		} else {
 			status, currentRev = bh.collection.CheckProposedRev(bh.loggingCtx, docID, rev, parentRevID)
@@ -953,7 +953,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 	}()
 
-	if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 && bh.conflictResolver != nil {
+	if bh.useHLV() && bh.conflictResolver != nil {
 		return base.HTTPErrorf(http.StatusNotImplemented, "conflict resolver handling (ISGR) not yet implemented for v4 protocol")
 	}
 
@@ -1025,17 +1025,18 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	}
 
 	var history []string
+	historyStr := rq.Properties[RevMessageHistory]
 	var incomingHLV HybridLogicalVector
 	// Build history/HLV
-	if bh.activeCBMobileSubprotocol < CBMobileReplicationV4 {
+	if !bh.useHLV() {
 		newDoc.RevID = rev
 		history = []string{rev}
-		if historyStr := rq.Properties[RevMessageHistory]; historyStr != "" {
+		if historyStr != "" {
 			history = append(history, strings.Split(historyStr, ",")...)
 		}
 	} else {
 		versionVectorStr := rev
-		if historyStr := rq.Properties[RevMessageHistory]; historyStr != "" {
+		if historyStr != "" {
 			versionVectorStr += ";" + historyStr
 		}
 		incomingHLV, err = extractHLVFromBlipMessage(versionVectorStr)
@@ -1065,7 +1066,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		//       due to no-conflict write restriction, but we still need to enforce security here to prevent leaking data about previous
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
 		var deltaSrcRev DocumentRevision
-		if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
+		if bh.useHLV() {
 			cv := Version{}
 			cv.SourceID, cv.Value = incomingHLV.GetCurrentVersion()
 			deltaSrcRev, err = bh.collection.GetCV(bh.loggingCtx, docID, &cv, RevCacheOmitBody)
@@ -1137,31 +1138,32 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 	var rawBucketDoc *sgbucket.BucketDocument
 
-	// Pull out attachments
+	// Attachment processing
 	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
-		// temporarily error here if V4
-		if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
-			return base.HTTPErrorf(http.StatusNotImplemented, "attachment handling not yet supported for v4 protocol")
-		}
+
 		body := newDoc.Body(bh.loggingCtx)
 
 		var currentBucketDoc *Document
 
-		// Look at attachments with revpos > the last common ancestor's
-		minRevpos := 1
-		if len(history) > 0 {
-			currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
-			// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
-			// as we will already have any attachments on the common ancestor so don't need to ask for them.
-			// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
-			if err == nil {
-				commonAncestor := currentDoc.History.findAncestorFromSet(currentDoc.CurrentRev, history)
-				minRevpos, _ = ParseRevID(bh.loggingCtx, commonAncestor)
-				minRevpos++
-				rawBucketDoc = rawDoc
-				currentBucketDoc = currentDoc
-			} else {
-				minRevpos, _ = ParseRevID(bh.loggingCtx, history[len(history)-1])
+		minRevpos := 0
+		if historyStr != "" {
+			// fetch current bucket doc.  Treats error as not found
+			currentBucketDoc, rawBucketDoc, _ = bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
+
+			// For revtree clients, can use revPos as an optimization.  HLV always compares incoming
+			// attachments with current attachments on the document
+			if !bh.useHLV() {
+				// Look at attachments with revpos > the last common ancestor's
+				// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
+				// as we will already have any attachments on the common ancestor so don't need to ask for them.
+				// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
+				if currentBucketDoc != nil {
+					commonAncestor := currentBucketDoc.History.findAncestorFromSet(currentBucketDoc.CurrentRev, history)
+					minRevpos, _ = ParseRevID(bh.loggingCtx, commonAncestor)
+					minRevpos++
+				} else {
+					minRevpos, _ = ParseRevID(bh.loggingCtx, history[len(history)-1])
+				}
 			}
 		}
 
@@ -1179,7 +1181,9 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				if !ok {
 					// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
 					// update to ensure it's fetched and uploaded
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, rev)
+					if minRevpos > 0 {
+						bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, rev)
+					}
 					continue
 				}
 
@@ -1250,7 +1254,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// If the doc is a tombstone we want to allow conflicts when running SGR2
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
 	forceAllowConflictingTombstone := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
-	if bh.activeCBMobileSubprotocol >= CBMobileReplicationV4 {
+	if bh.useHLV() {
 		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, newDoc, incomingHLV, rawBucketDoc)
 	} else if bh.conflictResolver != nil {
 		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone, rawBucketDoc, ExistingVersionWithUpdateToHLV)
@@ -1583,4 +1587,8 @@ func allowedAttachmentKey(docID, digest string, activeCBMobileSubprotocol CBMobi
 
 func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
 	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, profile, endpoint)
+}
+
+func (bh *blipHandler) useHLV() bool {
+	return bh.activeCBMobileSubprotocol >= CBMobileReplicationV4
 }
