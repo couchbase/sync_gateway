@@ -1062,7 +1062,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta {
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
-		} else if bh.activeCBMobileSubprotocol < CBMobileReplicationV4 {
+		} else if !bh.useHLV() {
 			return base.HTTPErrorf(http.StatusBadRequest, "backwards compatibility for deltas not yet implemented")
 		}
 
@@ -1078,9 +1078,11 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
 		var deltaSrcRev DocumentRevision
 		if bh.useHLV() {
-			cv := Version{}
-			cv.SourceID, cv.Value = incomingHLV.GetCurrentVersion()
-			deltaSrcRev, err = bh.collection.GetCV(bh.loggingCtx, docID, &cv, RevCacheOmitBody)
+			deltaSrcVersion, err := ParseVersion(deltaSrcRevID)
+			if err != nil {
+				return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to parse version for delta source for doc %s, error: %v", base.UD(docID), err)
+			}
+			deltaSrcRev, err = bh.collection.GetCV(bh.loggingCtx, docID, &deltaSrcVersion, RevCacheOmitBody)
 		} else {
 			deltaSrcRev, err = bh.collection.GetRev(bh.loggingCtx, docID, deltaSrcRevID, false, nil)
 		}
