@@ -778,7 +778,7 @@ func (c *DatabaseCollection) RequireCurrentVersion(t *testing.T, key string, sou
 }
 
 // GetDocumentCurrentVersion fetches the document by key and returns the current version
-func (c *DatabaseCollection) GetDocumentCurrentVersion(t *testing.T, key string) (source string, version string) {
+func (c *DatabaseCollection) GetDocumentCurrentVersion(t testing.TB, key string) (source string, version string) {
 	ctx := base.TestCtx(t)
 	doc, err := c.GetDocument(ctx, key, DocUnmarshalSync)
 	require.NoError(t, err)
