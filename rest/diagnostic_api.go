@@ -69,10 +69,16 @@ func (h *handler) handleGetAllChannels() error {
 			if err != nil {
 				return err
 			}
+			if role == nil {
+				continue
+			}
 			resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
 			resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-			resp.AdminRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
-			resp.DynamicRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
+			if roleEntry.Source == channels.AdminGrant {
+				resp.AdminRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
+			} else if roleEntry.Source == channels.DynamicGrant {
+				resp.DynamicRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
+			}
 			for channel, chanEntry := range role.Channels() {
 				grantInfo := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}, Source: chanEntry.Source}
 				resp.addRoleGrants(roleName, roleEntry.Source, defaultKeyspace, channel, grantInfo)
@@ -112,15 +118,19 @@ func (h *handler) handleGetAllChannels() error {
 			continue
 		}
 		collAccessAll := role.GetCollectionsAccess()
-		resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-		resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-
+		if roleEntry.Source == channels.AdminGrant {
+			resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
+		} else if roleEntry.Source == channels.DynamicGrant {
+			resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
+		}
 		for scopeName, collections := range collAccessAll {
 			for collectionName, collectionAccess := range collections {
 				keyspace := scopeName + "." + collectionName
-				resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
-				resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
-
+				if roleEntry.Source == channels.AdminGrant {
+					resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+				} else if roleEntry.Source == channels.DynamicGrant {
+					resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+				}
 				// loop over current role channels
 				for channel, chanEntry := range collectionAccess.Channels() {
 					grantInfo := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}, Source: chanEntry.Source}
@@ -147,14 +157,19 @@ func (h *handler) handleGetAllChannels() error {
 			continue
 		}
 		collAccessAll := role.GetCollectionsAccess()
-		resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-		resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-
+		if roleHist.Source == channels.AdminGrant {
+			resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
+		} else if roleHist.Source == channels.DynamicGrant {
+			resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
+		}
 		for scopeName, collections := range collAccessAll {
 			for collectionName, collectionAccess := range collections {
 				keyspace := scopeName + "." + collectionName
-				resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
-				resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+				if roleHist.Source == channels.AdminGrant {
+					resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+				} else if roleHist.Source == channels.DynamicGrant {
+					resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+				}
 				// loop over current role channels
 				for channel, chanEntry := range collectionAccess.Channels() {
 					roleChanHistory := roleHist
@@ -235,6 +250,7 @@ func (resp getAllChannelsResponse) addGrants(source string, keyspace string, cha
 	} else if source == channels.JWTGrant {
 		resp.JWTGrants[keyspace][channelName] = grantInfo
 	}
+	grantInfo.Source = ""
 }
 
 func (resp getAllChannelsResponse) addRoleGrants(roleName string, source string, keyspace string, channelName string, grantInfo auth.GrantHistory) {
