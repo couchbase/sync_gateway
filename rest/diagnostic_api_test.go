@@ -80,7 +80,6 @@ func TestGetAllChannelsByUser(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants["_default._default"]), []string{"A", "B", "C"})
-	t.Log(channelMap)
 	assert.ElementsMatch(t, channelMap.AdminGrants["_default._default"]["A"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 1, EndSeq: 2}, {StartSeq: 3, EndSeq: 0}})
 
 	// Assert non existent user returns 404
@@ -128,7 +127,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 	// Assign new channel to user bob through role1 and assert all_channels includes it
 	response = rt.SendAdminRequest(http.MethodPut,
 		"/{{.keyspace}}/doc2",
-		`{"role":"role:role1", "user":"bob"}`)
+		`{"role":["role:role1", "role:roleInexistent"], "user":"bob"}`)
 	RequireStatus(t, response, http.StatusCreated)
 
 	response = rt.SendDiagnosticRequest(http.MethodGet,
@@ -138,6 +137,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants["_default._default"]), []string{"!", "NewChannel"})
+	assert.NotContains(t, maps.Keys(channelMap.DynamicRoleGrants), "roleInexistent")
 	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicRoleGrants["role1"]["_default._default"]), []string{"chan", "!"})
 }
 
@@ -258,7 +258,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 
 	// Assign new channel to user bob through role1 and assert all_channels includes it
 	response = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/doc2",
-		`{"role":"role:role1", "user":"bob", "accessUser":"alice", "accessChannel":["aliceDynamic"]}`)
+		`{"role":["role:role1","role:roleInexistent"], "user":"bob", "accessUser":"alice", "accessChannel":["aliceDynamic"]}`)
 	RequireStatus(t, response, http.StatusCreated)
 	var putResp putResponse
 	err = json.Unmarshal(response.BodyBytes(), &putResp)
@@ -276,6 +276,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	require.NoError(t, err)
 	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicRoleGrants["role1"][keyspace2]), []string{"role1Chan", "!"})
 	assert.Equal(t, channelMap.DynamicRoleGrants["role1"][keyspace2]["role1Chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 4, EndSeq: 0}})
+	assert.NotContains(t, maps.Keys(channelMap.DynamicRoleGrants), "roleInexistent")
 
 	revID := putResp.Rev
 	response = rt.SendAdminRequest(http.MethodDelete,
@@ -289,13 +290,8 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
-	t.Log(channelMap)
 	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicRoleGrants["role1"][keyspace2]), []string{"role1Chan", "!"})
 	assert.Equal(t, channelMap.DynamicRoleGrants["role1"][keyspace2]["role1Chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 5, EndSeq: 7}})
-	response = rt.SendAdminRequest(http.MethodGet,
-		"/"+dbName+"/_role/role1", ``)
-	RequireStatus(t, response, http.StatusOK)
-	t.Log(response.BodyString())
 
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+alice+"/_all_channels", ``)
@@ -308,7 +304,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 
 	//Remove channels a and chan2coll2 and assert theyre still in DynamicGrants
 	response = rt.SendAdminRequest(http.MethodPut,
-		"/"+dbName+"/_user/"+alice, fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`,
+		"/"+dbName+"/_user/"+alice, fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein","admin_roles":["inexistentRole2"],`,
 			scopeName, collection1Name, fmt.Sprintf(collectionPayload, collection2Name, ``)))
 	RequireStatus(t, response, http.StatusOK)
 
@@ -321,6 +317,8 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants[keyspace2]), []string{"!", "aliceDynamic"})
 	assert.Equal(t, channelMap.AdminGrants[keyspace2]["a"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 1, EndSeq: 8}})
 	assert.Equal(t, channelMap.DynamicGrants[keyspace2]["aliceDynamic"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 5, EndSeq: 6}})
+	// assert inexistent role is not in the map
+	assert.NotContains(t, maps.Keys(channelMap.AdminRoleGrants), "inexistentRole2")
 
 	//Reassign channel A and assert on sequence ranges
 	response = rt.SendAdminRequest(http.MethodPut,
