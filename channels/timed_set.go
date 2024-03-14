@@ -78,7 +78,7 @@ type TimedSet map[string]TimedSetEntry
 
 type TimedSetEntry struct {
 	VbSequence
-	Source string `json:"source:omitempty"`
+	Source string `json:"source,omitempty"`
 }
 
 // Role{role1: { adminAssigned:bool, Channels{Chan1: {adminAssigned: bool}}}
