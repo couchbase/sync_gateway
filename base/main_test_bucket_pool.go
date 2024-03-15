@@ -39,7 +39,7 @@ type TestBucketPool struct {
 
 	// readyBucketPool contains a buffered channel of buckets ready for use
 	readyBucketPool        chan Bucket
-	cluster                tbpCluster
+	cluster                *tbpCluster
 	bucketReadierQueue     chan tbpBucketName
 	bucketReadierWaitGroup *sync.WaitGroup
 	ctxCancelFunc          context.CancelFunc
@@ -122,7 +122,7 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		useDefaultScope:        options.UseDefaultScope,
 	}
 
-	tbp.cluster = newTestCluster(ctx, UnitTestUrl(), tbp.Logf)
+	tbp.cluster = newTestCluster(ctx, UnitTestUrl(), &tbp)
 
 	useCollections, err := tbp.canUseNamedCollections(ctx)
 	if err != nil {

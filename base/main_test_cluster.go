@@ -17,19 +17,6 @@ import (
 	"github.com/couchbase/gocb/v2"
 )
 
-// tbpCluster defines the required test bucket pool cluster operations
-type tbpCluster interface {
-	getBucketNames() ([]string, error)
-	insertBucket(ctx context.Context, name string, quotaMB int) error
-	removeBucket(name string) error
-	openTestBucket(ctx context.Context, name tbpBucketName, waitUntilReady time.Duration) (Bucket, error)
-	supportsCollections() (bool, error)
-	supportsMobileRBAC() (bool, error)
-	isServerEnterprise() (bool, error)
-	mobileXDCRCompatible(ctx context.Context) (bool, error)
-	close(context.Context) error
-}
-
 // firstServerVersionToSupportMobileXDCR this is the first server version to support Mobile XDCR feature
 var firstServerVersionToSupportMobileXDCR = &ComparableBuildVersion{
 	epoch: 0,
@@ -40,30 +27,35 @@ var firstServerVersionToSupportMobileXDCR = &ComparableBuildVersion{
 
 type clusterLogFunc func(ctx context.Context, format string, args ...interface{})
 
-// newTestCluster returns a cluster based on the driver used by the defaultBucketSpec.  Accepts a clusterLogFunc to support
-// cluster logging within a test bucket pool context
-func newTestCluster(ctx context.Context, server string, logger clusterLogFunc) tbpCluster {
-	return newTestClusterV2(ctx, server, logger)
-}
-
-// tbpClusterV2 implements the tbpCluster interface for a gocb v2 cluster
-type tbpClusterV2 struct {
-	logger      clusterLogFunc
-	server      string // server address to connect to cluster
-	connstr     string // connection string used to connect to the cluster
-	supportsHLV bool   // Flag to indicate cluster supports Mobile XDCR
+// tbpCluster represents a gocb v2 cluster
+type tbpCluster struct {
+	logger       clusterLogFunc
+	server       string // server address to connect to cluster
+	connstr      string // connection string used to connect to the cluster
+	supportsHLV  bool   // Flag to indicate cluster supports Mobile XDCR
+	majorVersion int
+	minorVersion int
+	version      string
 	// cluster can be used to perform cluster-level operations (but not bucket-level operations)
 	cluster *gocb.Cluster
 }
 
-var _ tbpCluster = &tbpClusterV2{}
-
-func newTestClusterV2(ctx context.Context, server string, logger clusterLogFunc) *tbpClusterV2 {
-	tbpCluster := &tbpClusterV2{
-		logger: logger,
+// newTestCluster returns a cluster based on the driver used by the defaultBucketSpec.
+func newTestCluster(ctx context.Context, server string, tbp *TestBucketPool) *tbpCluster {
+	tbpCluster := &tbpCluster{
+		logger: tbp.Logf,
 		server: server,
 	}
 	tbpCluster.cluster, tbpCluster.connstr = getGocbClusterForTest(ctx, server)
+	metadata, err := tbpCluster.cluster.Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
+	if err != nil {
+		tbp.Fatalf(ctx, "Couldn't get cluster metadata: %v", err)
+	}
+	tbpCluster.version = metadata[0].Version
+	tbpCluster.majorVersion, tbpCluster.minorVersion, err = getClusterVersion(tbpCluster.cluster)
+	if err != nil {
+		tbp.Fatalf(ctx, "Couldn't get cluster version: %v", err)
+	}
 	return tbpCluster
 }
 
@@ -113,19 +105,14 @@ func getGocbClusterForTest(ctx context.Context, server string) (*gocb.Cluster, s
 
 // isServerEnterprise returns true if the connected returns true if the connected couchbase server
 // instance is Enterprise edition And false for Community edition
-func (c *tbpClusterV2) isServerEnterprise() (bool, error) {
-	metadata, err := c.cluster.Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
-	if err != nil {
-		return false, err
-	}
-
-	if strings.Contains(metadata[0].Version, "enterprise") {
+func (c *tbpCluster) isServerEnterprise() (bool, error) {
+	if strings.Contains(c.version, "enterprise") {
 		return true, nil
 	}
 	return false, nil
 }
 
-func (c *tbpClusterV2) getBucketNames() ([]string, error) {
+func (c *tbpCluster) getBucketNames() ([]string, error) {
 
 	bucketSettings, err := c.cluster.Buckets().GetAllBuckets(nil)
 	if err != nil {
@@ -140,7 +127,7 @@ func (c *tbpClusterV2) getBucketNames() ([]string, error) {
 	return names, nil
 }
 
-func (c *tbpClusterV2) insertBucket(ctx context.Context, name string, quotaMB int) error {
+func (c *tbpCluster) insertBucket(ctx context.Context, name string, quotaMB int) error {
 
 	settings := gocb.CreateBucketSettings{
 		BucketSettings: gocb.BucketSettings{
@@ -158,12 +145,12 @@ func (c *tbpClusterV2) insertBucket(ctx context.Context, name string, quotaMB in
 	return c.cluster.Buckets().CreateBucket(settings, options)
 }
 
-func (c *tbpClusterV2) removeBucket(name string) error {
+func (c *tbpCluster) removeBucket(name string) error {
 	return c.cluster.Buckets().DropBucket(name, nil)
 }
 
 // openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
-func (c *tbpClusterV2) openTestBucket(ctx context.Context, testBucketName tbpBucketName, waitUntilReady time.Duration) (Bucket, error) {
+func (c *tbpCluster) openTestBucket(ctx context.Context, testBucketName tbpBucketName, waitUntilReady time.Duration) (Bucket, error) {
 
 	bucketCluster, connstr := getGocbClusterForTest(ctx, c.server)
 
@@ -182,7 +169,7 @@ func (c *tbpClusterV2) openTestBucket(ctx context.Context, testBucketName tbpBuc
 	return bucketFromSpec, nil
 }
 
-func (c *tbpClusterV2) close(ctx context.Context) error {
+func (c *tbpCluster) close(ctx context.Context) error {
 	// no close operations needed
 	if c.cluster != nil {
 		if err := c.cluster.Close(nil); err != nil {
@@ -193,7 +180,7 @@ func (c *tbpClusterV2) close(ctx context.Context) error {
 	return nil
 }
 
-func (c *tbpClusterV2) supportsCollections() (bool, error) {
+func (c *tbpCluster) supportsCollections() (bool, error) {
 	major, _, err := getClusterVersion(c.cluster)
 	if err != nil {
 		return false, err
@@ -202,7 +189,7 @@ func (c *tbpClusterV2) supportsCollections() (bool, error) {
 }
 
 // supportsMobileRBAC is true if running couchbase server with all Sync Gateway roles
-func (c *tbpClusterV2) supportsMobileRBAC() (bool, error) {
+func (c *tbpCluster) supportsMobileRBAC() (bool, error) {
 	isEE, err := c.isServerEnterprise()
 	if err != nil {
 		return false, err
@@ -220,7 +207,7 @@ func (c *tbpClusterV2) supportsMobileRBAC() (bool, error) {
 }
 
 // mobileXDCRCompatible checks if a cluster is mobile XDCR compatible, a cluster must be enterprise edition AND > 7.6.1
-func (c *tbpClusterV2) mobileXDCRCompatible(ctx context.Context) (bool, error) {
+func (c *tbpCluster) mobileXDCRCompatible(ctx context.Context) (bool, error) {
 	enterprise, err := c.isServerEnterprise()
 	if err != nil {
 		return false, err
@@ -229,14 +216,9 @@ func (c *tbpClusterV2) mobileXDCRCompatible(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 
-	metadata, err := c.cluster.Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
-	if err != nil {
-		return false, err
-	}
-
 	// take server version, server version will be the first 5 character of version string
 	// in the form of x.x.x
-	vrs := metadata[0].Version[:5]
+	vrs := c.version[:5]
 
 	// convert the above string into a comparable string
 	version, err := NewComparableBuildVersionFromString(vrs)

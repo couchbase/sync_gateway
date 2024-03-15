@@ -1746,13 +1746,7 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 				testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbase://", "couchbases://")
 			} else {
 				testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbases://", "couchbase://")
-				gocbBucket, err := AsGocbV2Bucket(testBucket)
-				require.NoError(t, err)
-				clusterCompatMajor, clusterCompatMinor, err := getClusterVersion(gocbBucket.cluster)
-				require.NoError(t, err)
-				if clusterCompatMajor == 7 && clusterCompatMinor == 6 {
-					t.Skip("Skipping test for Couchbase Server 7.6 due to GOCBC-1615")
-				}
+				SkipInvalidAuthForCouchbaseServer76(t)
 			}
 
 			// Attempt to open the bucket again using invalid creds. We should expect an error.
