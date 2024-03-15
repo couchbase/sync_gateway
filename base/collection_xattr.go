@@ -110,7 +110,7 @@ func (c *Collection) SubdocGetXattr(ctx context.Context, k string, xattrKey stri
 		cas := uint64(res.Cas())
 		return cas, nil
 	} else if errors.Is(lookupErr, gocbcore.ErrDocumentNotFound) {
-		DebugfCtx(ctx, KeyCRUD, "No document found for key=%s", UD(k))
+		TracefCtx(ctx, KeyCRUD, "No document found for key=%s", UD(k))
 		return 0, ErrNotFound
 	} else {
 		return 0, lookupErr
