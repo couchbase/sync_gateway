@@ -25,6 +25,6 @@ licenses/APL2.txt.
 
 
   <!-- Sync Gateway -->
-   <project name="sync_gateway" path="sync_gateway" remote="couchbase" revision="beryllium"/>
+   <project name="sync_gateway" path="sync_gateway" remote="couchbase" revision="release/anemone"/>
 
 </manifest>
