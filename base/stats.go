@@ -86,9 +86,11 @@ const (
 	StatAddedVersion3dot1dot3dot1 = "3.1.3.1"
 	StatAddedVersion3dot1dot4     = "3.1.4"
 	StatAddedVersion3dot2dot0     = "3.2.0"
+	StatAddedVersion3dot3dot0     = "3.3.0"
 
 	StatDeprecatedVersionNotDeprecated = ""
 	StatDeprecatedVersion3dot2dot0     = "3.2.0"
+	StatDeprecatedVersion3dot3dot0     = "3.3.0"
 
 	StatStabilityCommitted = "committed"
 	StatStabilityVolatile  = "volatile"
@@ -1987,39 +1989,39 @@ func (db *DbStats) initServerlessStats() error {
 	labelKeys := []string{DatabaseLabelKey}
 	labelVals := []string{db.dbName}
 
-	resUtil.ImportProcessCompute, err = NewIntStat(SubsystemServerless, "import_process_compute", StatUnitNoUnits, ImportProcessComputeDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.ImportProcessCompute, err = NewIntStat(SubsystemServerless, "import_process_compute", StatUnitNoUnits, ImportProcessComputeDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.SyncProcessCompute, err = NewIntStat(SubsystemServerless, "sync_process_compute", StatUnitNoUnits, SyncProcessComputeDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.SyncProcessCompute, err = NewIntStat(SubsystemServerless, "sync_process_compute", StatUnitNoUnits, SyncProcessComputeDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.NumReplicationsRejectedLimit, err = NewIntStat(SubsystemServerless, "num_replications_rejected_limit", StatUnitNoUnits, NumReplicationsRejectedLimitDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.NumReplicationsRejectedLimit, err = NewIntStat(SubsystemServerless, "num_replications_rejected_limit", StatUnitNoUnits, NumReplicationsRejectedLimitDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.TotalSyncTime, err = NewIntStat(SubsystemServerless, "total_sync_time", StatUnitSeconds, TotalSyncTimeDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.TotalSyncTime, err = NewIntStat(SubsystemServerless, "total_sync_time", StatUnitSeconds, TotalSyncTimeDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.PublicRestBytesWritten, err = NewIntStat(SubsystemServerless, "http_bytes_written", StatUnitBytes, PublicRestBytesWrittenDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.PublicRestBytesWritten, err = NewIntStat(SubsystemServerless, "http_bytes_written", StatUnitBytes, PublicRestBytesWrittenDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.PublicRestBytesRead, err = NewIntStat(SubsystemServerless, "public_rest_bytes_read", StatUnitBytes, PublicRestBytesReadDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.PublicRestBytesRead, err = NewIntStat(SubsystemServerless, "public_rest_bytes_read", StatUnitBytes, PublicRestBytesReadDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.NumPublicRestRequests, err = NewIntStat(SubsystemServerless, "num_public_rest_requests", StatUnitNoUnits, NumPublicRestRequestsDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.NumPublicRestRequests, err = NewIntStat(SubsystemServerless, "num_public_rest_requests", StatUnitNoUnits, NumPublicRestRequestsDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.ReplicationBytesReceived, err = NewIntStat(SubsystemServerless, "replication_bytes_received", StatUnitBytes, ReplicationBytesReceivedDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.ReplicationBytesReceived, err = NewIntStat(SubsystemServerless, "replication_bytes_received", StatUnitBytes, ReplicationBytesReceivedDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.ReplicationBytesSent, err = NewIntStat(SubsystemServerless, "replication_bytes_sent", StatUnitBytes, ReplicationBytesSentDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.ReplicationBytesSent, err = NewIntStat(SubsystemServerless, "replication_bytes_sent", StatUnitBytes, ReplicationBytesSentDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
