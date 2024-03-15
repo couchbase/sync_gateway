@@ -524,7 +524,7 @@
             "interval": 30,
             "go_version": "1.21.8",
             "trigger_blackduck": true,
-            "start_build": 316
+            "start_build": 318
         },
         "manifest/4.0.xml": {
             "release": "4.0.0",
