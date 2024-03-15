@@ -3237,7 +3237,6 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 
 func TestLegacyCredentialInheritance(t *testing.T) {
 	rest.RequireBucketSpecificCredentials(t)
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	ctx := base.TestCtx(t)
@@ -3975,6 +3974,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 // Make sure per DB credentials override per bucket credentials
 func TestPerDBCredsOverride(t *testing.T) {
 	rest.RequireBucketSpecificCredentials(t)
+	base.SkipInvalidAuthForCouchbaseServer76(t)
 
 	ctx := base.TestCtx(t)
 	// Get test bucket
