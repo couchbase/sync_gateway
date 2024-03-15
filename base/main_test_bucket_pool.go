@@ -463,7 +463,7 @@ func (tbp *TestBucketPool) setXDCRBucketSetting(ctx context.Context, bucket Buck
 		tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed, status code: %d error: %v output: %s", statusCode, err, string(output))
 	}
 	if statusCode != http.StatusOK {
-		tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed with status code, %d", statusCode)
+		tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed with status code, %d, output: %s", statusCode, string(output))
 	}
 }
 
