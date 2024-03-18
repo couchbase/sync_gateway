@@ -61,7 +61,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	docRev, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, len(docRev.Channels.ToArray()))
+	assert.Len(t, docRev.Channels.ToArray(), 0)
 	assert.Equal(t, syncData.CurrentRev, docRev.RevID)
 
 	// Write xattr to trigger import of user xattr

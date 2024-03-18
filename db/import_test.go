@@ -523,7 +523,7 @@ func TestImportStampClusterUUID(t *testing.T) {
 	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, existingDoc, ImportOnDemand)
 	require.NoError(t, err)
 	if assert.NotNil(t, importedDoc) {
-		require.Equal(t, 32, len(importedDoc.ClusterUUID))
+		require.Len(t, importedDoc.ClusterUUID, 32)
 	}
 
 	xattrs, _, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName})
@@ -531,7 +531,7 @@ func TestImportStampClusterUUID(t *testing.T) {
 	require.Contains(t, xattrs, base.SyncXattrName)
 	var xattr map[string]any
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
-	require.Equal(t, 32, len(xattr["cluster_uuid"].(string)))
+	require.Len(t, xattr["cluster_uuid"].(string), 32)
 }
 
 // TestImporNonZeroStart makes sure docs written before sync gateway start get imported

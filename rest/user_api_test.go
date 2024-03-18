@@ -52,7 +52,7 @@ func TestUsersAPI(t *testing.T) {
 	RequireStatus(t, response, 200)
 	err := json.Unmarshal(response.Body.Bytes(), &responseUsers)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, len(responseUsers))
+	assert.Len(t, responseUsers, 0)
 
 	// Test for user counts going from 1 to a few multiples of QueryPaginationLimit to check boundary conditions
 	for i := 1; i < 13; i++ {
@@ -184,7 +184,7 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 	RequireStatus(t, response, 200)
 	err := json.Unmarshal(response.Body.Bytes(), &responseUsers)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, len(responseUsers))
+	assert.Len(t, responseUsers, 0)
 
 	// Create users
 	numUsers := 12
@@ -978,7 +978,7 @@ func validateUsersNameOnlyFalse(t *testing.T, rt *RestTester) {
 	RequireStatus(t, response, 200)
 	err := json.Unmarshal(response.Body.Bytes(), &responseUsers)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, len(responseUsers))
+	assert.Len(t, responseUsers, 0)
 
 	// Test for user counts going from 1 to a few multiples of QueryPaginationLimit to check boundary conditions.
 	for i := 1; i <= 12; i++ {

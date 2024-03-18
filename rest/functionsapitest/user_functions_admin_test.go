@@ -272,7 +272,7 @@ func TestFunctionsConfigPutOne(t *testing.T) {
 		rest.RequireStatus(t, response, http.StatusOK)
 
 		assert.Nil(t, rt.GetDatabase().Options.UserFunctions.Definitions["square"])
-		assert.Equal(t, 1, len(rt.GetDatabase().Options.UserFunctions.Definitions))
+		assert.Len(t, rt.GetDatabase().Options.UserFunctions.Definitions, 1)
 
 		response = rt.SendAdminRequest("GET", "/db/_function/square?n=13", "")
 		rest.RequireStatus(t, response, http.StatusNotFound)

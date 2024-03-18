@@ -67,9 +67,9 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	assert.NoError(t, err, "Error reading changes response body")
 	err = base.JSONUnmarshal(body, &changeList)
 	assert.NoError(t, err, "Error unmarshalling response body")
-	require.Equal(t, 1, len(changeList)) // Should be 1 row, corresponding to the single doc that was queried in changes
+	require.Len(t, changeList, 1) // Should be 1 row, corresponding to the single doc that was queried in changes
 	changeRow := changeList[0]
-	assert.Equal(t, 0, len(changeRow)) // Should be empty, meaning the server is saying it doesn't have the revision yet
+	assert.Len(t, changeRow, 0) // Should be empty, meaning the server is saying it doesn't have the revision yet
 
 	// Send the doc revision in a rev request
 	_, _, revResponse, err := bt.SendRev(
@@ -96,9 +96,9 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	assert.NoError(t, err, "Error reading changes response body")
 	err = base.JSONUnmarshal(body2, &changeList2)
 	assert.NoError(t, err, "Error unmarshalling response body")
-	assert.Equal(t, 1, len(changeList2)) // Should be 1 row, corresponding to the single doc that was queried in changes
+	assert.Len(t, changeList2, 1) // Should be 1 row, corresponding to the single doc that was queried in changes
 	changeRow2 := changeList2[0]
-	assert.Equal(t, 1, len(changeRow2)) // Should have 1 item in row, which is the rev id of the previous revision pushed
+	assert.Len(t, changeRow2, 1) // Should have 1 item in row, which is the rev id of the previous revision pushed
 	assert.Equal(t, "1-abc", changeRow2[0])
 
 	// Call subChanges api and make sure we get expected changes back
@@ -117,9 +117,9 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 			changeListReceived := [][]interface{}{}
 			err = base.JSONUnmarshal(body, &changeListReceived)
 			assert.NoError(t, err, "Error unmarshalling changes received")
-			assert.Equal(t, 1, len(changeListReceived))
+			assert.Len(t, changeListReceived, 1)
 			change := changeListReceived[0] // [1,"foo","1-abc"]
-			assert.Equal(t, 3, len(change))
+			assert.Len(t, change, 3)
 			assert.Equal(t, float64(1), change[0].(float64)) // Expect sequence to be 1, since first item in DB
 			assert.Equal(t, "foo", change[1])                // Doc id of pushed rev
 			assert.Equal(t, "1-abc", change[2])              // Rev id of pushed rev
@@ -199,7 +199,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 				// The change should have three items in the array
 				// [1,"foo","1-abc"]
-				assert.Equal(t, 3, len(change))
+				assert.Len(t, change, 3)
 
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
@@ -312,7 +312,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 
 				// The change should have three items in the array
 				// [1,"foo","1-abc"]
-				assert.Equal(t, 3, len(change))
+				assert.Len(t, change, 3)
 
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
@@ -477,7 +477,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 
 				// The change should have three items in the array
 				// [1,"foo","1-abc"]
-				assert.Equal(t, 3, len(change))
+				assert.Len(t, change, 3)
 
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
@@ -632,7 +632,7 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 
 	// The common case of an empty array response tells the sender to send all of the proposed revisions,
 	// so the changeList returned by Sync Gateway is expected to be empty
-	assert.Equal(t, 0, len(changeList))
+	assert.Len(t, changeList, 0)
 
 }
 
@@ -795,13 +795,13 @@ func TestPublicPortAuthentication(t *testing.T) {
 
 	// Assert that user1 received a single expected change
 	changesChannelUser1 := btUser1.WaitForNumChanges(1)
-	assert.Equal(t, 1, len(changesChannelUser1))
+	assert.Len(t, changesChannelUser1, 1)
 	change := changesChannelUser1[0]
 	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
 
 	// Assert that user2 received user1's change as well as it's own change
 	changesChannelUser2 := btUser2.WaitForNumChanges(2)
-	assert.Equal(t, 2, len(changesChannelUser2))
+	assert.Len(t, changesChannelUser2, 2)
 	change = changesChannelUser2[0]
 	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
 
@@ -931,7 +931,7 @@ function(doc, oldDoc) {
 
 				// The change should have three items in the array
 				// [1,"foo","1-abc"]
-				assert.Equal(t, 3, len(change))
+				assert.Len(t, change, 3)
 
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
@@ -1058,7 +1058,7 @@ function(doc, oldDoc) {
 
 				// The change should have three items in the array
 				// [1,"foo","1-abc"]
-				assert.Equal(t, 3, len(change))
+				assert.Len(t, change, 3)
 
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
@@ -1463,7 +1463,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	// Make sure we can see it by getting changes
 	changes := bt.WaitForNumChanges(2)
 	log.Printf("changes: %+v", changes)
-	assert.Equal(t, 2, len(changes))
+	assert.Len(t, changes, 2)
 
 }
 
@@ -1505,7 +1505,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 
 	// Make sure we can see both docs in the changes
 	changes := bt.WaitForNumChanges(2)
-	assert.Equal(t, 2, len(changes))
+	assert.Len(t, changes, 2)
 
 }
 
@@ -1619,7 +1619,7 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 
 	// Make sure that a one-off GetChanges() returns no documents
 	changes := bt.GetChanges()
-	assert.Equal(t, 0, len(changes))
+	assert.Len(t, changes, 0)
 
 }
 
@@ -1656,7 +1656,7 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 
 	// Make sure that a one-off GetChanges() returns no documents
 	changes := bt.GetChanges()
-	assert.Equal(t, 0, len(changes))
+	assert.Len(t, changes, 0)
 
 }
 
@@ -2034,7 +2034,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(changes.Results))
+		assert.Len(t, changes.Results, 1)
 		assert.Equal(t, "doc", changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
@@ -2047,7 +2047,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 		changes, err = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(changes.Results))
+		assert.Len(t, changes.Results, 1)
 		assert.Equal(t, docID, changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
@@ -2148,7 +2148,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 
 		changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(changes.Results))
+		assert.Len(t, changes.Results, 1)
 		assert.Equal(t, docID, changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
@@ -2162,7 +2162,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		// At this point changes should send revocation, as document isn't in any of the user's channels
 		changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(changes.Results))
+		assert.Len(t, changes.Results, 1)
 		assert.Equal(t, docID, changes.Results[0].ID)
 		RequireChangeRevVersion(t, version, changes.Results[0].Changes[0])
 
@@ -2495,7 +2495,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 
 	remoteURL, _ := url.Parse(remoteURLString)
 
-	stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, nil, nil)
+	stats, err := base.SyncGatewayStats.NewDBStats("test", &base.DbStatsOptions{})
 	require.NoError(t, err)
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)

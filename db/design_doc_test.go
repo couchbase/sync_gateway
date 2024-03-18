@@ -63,7 +63,7 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 	// Invoke removal in preview mode
 	removedDDocs, removeErr := removeObsoleteDesignDocs(ctx, viewStore, true, true)
 	require.NoError(t, removeErr, "Error removing previous design docs")
-	assert.Equal(t, 2, len(removedDDocs))
+	assert.Len(t, removedDDocs, 2)
 	assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncGatewayPrefix), "Missing design doc from removed set")
 	assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncHousekeepingPrefix), "Missing design doc from removed set")
 
@@ -77,7 +77,7 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 	// Invoke removal in non-preview mode
 	removedDDocs, removeErr = removeObsoleteDesignDocs(ctx, viewStore, false, true)
 	require.NoError(t, removeErr, "Error removing previous design docs")
-	assert.Equal(t, 2, len(removedDDocs))
+	assert.Len(t, removedDDocs, 2)
 	assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncGatewayPrefix), "Missing design doc from removed set")
 	assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncHousekeepingPrefix), "Missing design doc from removed set")
 

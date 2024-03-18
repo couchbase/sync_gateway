@@ -222,7 +222,7 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 
 	var docs []interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
-	assert.Equal(t, 2, len(docs))
+	assert.Len(t, docs, 2)
 	assert.Equal(t, map[string]interface{}{"rev": "1-17424d2a21bf113768dfdbcd344741ac", "id": "bulk1"}, docs[0])
 
 	assert.Equal(t, map[string]interface{}{"rev": "1-f120ccb33c0a6ef43ef202ade28f98ef", "id": "bulk2"}, docs[1])
@@ -375,7 +375,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "alice")
 	log.Printf("1st _changes looks like: %s", response.Body.Bytes())
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-	require.Equal(t, 3, len(changes.Results))
+	require.Len(t, changes.Results, 3)
 	assert.Equal(t, "_user/alice", changes.Results[0].ID)
 	assert.Equal(t, "g1", changes.Results[1].ID)
 	assert.Equal(t, "a1", changes.Results[2].ID)
@@ -383,7 +383,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "zegpold")
 	log.Printf("2nd _changes looks like: %s", response.Body.Bytes())
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-	require.Equal(t, 2, len(changes.Results))
+	require.Len(t, changes.Results, 2)
 	assert.Equal(t, "_user/zegpold", changes.Results[0].ID)
 	assert.Equal(t, "b1", changes.Results[1].ID)
 	lastSeqPreGrant := changes.Last_Seq
@@ -430,7 +430,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	log.Printf("4th _changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-	require.Equal(t, 1, len(changes.Results))
+	require.Len(t, changes.Results, 1)
 	assert.Equal(t, "g1", changes.Results[0].ID)
 }
 

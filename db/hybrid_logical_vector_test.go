@@ -51,7 +51,7 @@ func TestInternalHLVFunctions(t *testing.T) {
 
 	// add new version vector with same sourceID as current sourceID and assert it doesn't add to previous versions then restore HLV to previous state
 	require.NoError(t, hlv.AddVersion(newVersionVector))
-	assert.Equal(t, 1, len(hlv.PreviousVersions))
+	assert.Len(t, hlv.PreviousVersions, 1)
 	hlv.Version = currVersion
 
 	// attempt to add new version vector to HLV that has a CAS value less than the current CAS value

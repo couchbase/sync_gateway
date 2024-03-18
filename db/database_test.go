@@ -1076,7 +1076,7 @@ func TestConflicts(t *testing.T) {
 
 	changeLog, err := collection.GetChangeLog(ctx, channels.NewID("all", collectionID), 0)
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(changeLog))
+	assert.Len(t, changeLog, 1)
 
 	// Create two conflicting changes:
 	body["n"] = 2
@@ -1114,7 +1114,7 @@ func TestConflicts(t *testing.T) {
 	cacheWaiter.Wait()
 	changeLog, err = collection.GetChangeLog(ctx, allChannel, 0)
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(changeLog))
+	assert.Len(t, changeLog, 1)
 	assert.Equal(t, uint64(3), changeLog[0].Sequence)
 	assert.Equal(t, "doc", changeLog[0].DocID)
 	assert.Equal(t, "2-b", changeLog[0].RevID)
@@ -1127,7 +1127,7 @@ func TestConflicts(t *testing.T) {
 	}
 	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
-	assert.Equal(t, 1, len(changes))
+	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 3},
 		ID:           "doc",
@@ -1162,7 +1162,7 @@ func TestConflicts(t *testing.T) {
 	// Verify the _changes feed:
 	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
-	assert.Equal(t, 1, len(changes))
+	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 4},
 		ID:           "doc",
@@ -1821,7 +1821,7 @@ func TestChannelView(t *testing.T) {
 	for i, entry := range entries {
 		log.Printf("View Query returned entry (%d): %v", i, entry)
 	}
-	assert.Equal(t, 1, len(entries))
+	assert.Len(t, entries, 1)
 
 }
 
@@ -2594,7 +2594,7 @@ func TestGetAllUsers(t *testing.T) {
 	log.Printf("Getting users...")
 	users, err := db.GetUsers(ctx, 0)
 	assert.NoError(t, err)
-	assert.Equal(t, 4, len(users))
+	assert.Len(t, users, 4)
 	log.Printf("THE USERS: %+v", users)
 	marshalled, err := json.Marshal(users)
 	require.NoError(t, err)
@@ -2602,7 +2602,7 @@ func TestGetAllUsers(t *testing.T) {
 
 	limitedUsers, err := db.GetUsers(ctx, 2)
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(limitedUsers))
+	assert.Len(t, limitedUsers, 2)
 }
 
 func TestGetRoleIDs(t *testing.T) {

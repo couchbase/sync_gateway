@@ -396,6 +396,65 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 	return activeRT, passiveRT, passiveDBURL.String(), teardown
 }
 
+// SetupSGRPeersServerless has the same functionality as SetupSGRPeers but will set up the SG peers in serverless mode
+func SetupSGRPeersServerless(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
+	RequireBucketSpecificCredentials(t)
+	// Can take a while to setup two rest testers with db's in persistent config mode
+	base.LongRunningTest(t)
+
+	// Set up passive RestTester (rt2)
+	passiveTestBucket := base.GetTestBucket(t)
+
+	passiveRTConfig := &RestTesterConfig{
+		CustomTestBucket: passiveTestBucket.NoCloseClone(),
+		SyncFn:           channels.DocChannelsSyncFunction,
+		Serverless:       true,
+		PersistentConfig: true,
+	}
+	passiveRT = NewRestTester(t, passiveRTConfig)
+
+	// Create passive RT db
+	RequireStatus(t, passiveRT.CreateDatabase("passivedb", passiveRT.NewDbConfig()), http.StatusCreated)
+
+	response := passiveRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", GetUserPayload(t, "", RestTesterDefaultUserPassword, "", passiveRT.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
+	RequireStatus(t, response, http.StatusCreated)
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+	srv := httptest.NewServer(passiveRT.TestPublicHandler())
+
+	// Build passiveDBURL with basic auth creds
+	passiveDBURL, _ := url.Parse(srv.URL + "/" + passiveRT.GetDatabase().Name)
+	passiveDBURL.User = url.UserPassword("alice", RestTesterDefaultUserPassword)
+
+	// Set up active RestTester (rt1)
+	activeTestBucket := base.GetTestBucket(t)
+	activeRTConfig := &RestTesterConfig{
+		CustomTestBucket:   activeTestBucket.NoCloseClone(),
+		SgReplicateEnabled: true,
+		SyncFn:             channels.DocChannelsSyncFunction,
+		Serverless:         true,
+		PersistentConfig:   true,
+	}
+	activeRT = NewRestTester(t, activeRTConfig)
+
+	// Create active RT db
+	RequireStatus(t, activeRT.CreateDatabase("activedb", activeRT.NewDbConfig()), http.StatusCreated)
+
+	// Initialize RT and bucket
+	_ = activeRT.Bucket()
+
+	teardown = func() {
+		ctx := base.TestCtx(t)
+		activeRT.Close()
+		activeTestBucket.Close(ctx)
+		srv.Close()
+		passiveRT.Close()
+		passiveTestBucket.Close(ctx)
+	}
+
+	return activeRT, passiveRT, passiveDBURL.String(), teardown
+}
+
 // TakeDbOffline takes the database offline.
 func (rt *RestTester) TakeDbOffline() {
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")

@@ -521,7 +521,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	// attachment assertions
 	attachments, err := retrievedDoc.GetAttachments()
 	assert.True(t, err == nil)
-	assert.Equal(t, 1, len(attachments))
+	assert.Len(t, attachments, 1)
 	retrievedAttachment := attachments[input.attachmentName]
 	require.NotNil(t, retrievedAttachment)
 	assert.Equal(t, input.attachmentBody, string(retrievedAttachment.Data))
@@ -716,21 +716,23 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 //   - wait for doc to replicate and assert on attachment stat
 func TestAttachmentComputeStat(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-	rtConfig := RestTesterConfig{
-		GuestEnabled: true,
-	}
+
 	const docID = "doc1"
 	btcRunner := NewBlipTesterClientRunner(t)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		rt := NewRestTester(t, &rtConfig)
+		rt := NewRestTesterPersistentConfigServerless(t)
 		defer rt.Close()
 
-		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		opts := &BlipTesterClientOpts{
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
+			Username:               "test",
+			Channels:               []string{"*"},
+		}
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer btc.Close()
 
-		syncProcessCompute := btc.rt.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value()
+		syncProcessCompute := btc.rt.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value()
 
 		err := btcRunner.StartPull(btc.id)
 		assert.NoError(t, err)
@@ -746,6 +748,6 @@ func TestAttachmentComputeStat(t *testing.T) {
 		require.JSONEq(t, bodyTextExpected, string(data))
 
 		// assert the attachment read compute stat is incremented
-		require.Greater(t, btc.rt.GetDatabase().DbStats.DatabaseStats.SyncProcessCompute.Value(), syncProcessCompute)
+		require.Greater(t, btc.rt.GetDatabase().DbStats.ServerlessStats.SyncProcessCompute.Value(), syncProcessCompute)
 	})
 }

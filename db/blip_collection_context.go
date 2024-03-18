@@ -65,7 +65,7 @@ func (bsc *blipSyncCollectionContext) notePendingInsertion(docID string) {
 	if len(bsc.pendingInsertions) < kMaxPendingInsertions {
 		bsc.pendingInsertions.Add(docID)
 	} else {
-		base.WarnfCtx(bsc.changesCtx, "Sync client has more than %d pending doc insertions in collection %q", kMaxPendingInsertions, base.UD(bsc.dbCollection.Name))
+		base.DebugfCtx(bsc.changesCtx, base.KeySync, "Sync client has more than %d pending doc insertions in collection %q", kMaxPendingInsertions, base.UD(bsc.dbCollection.Name))
 	}
 }
 

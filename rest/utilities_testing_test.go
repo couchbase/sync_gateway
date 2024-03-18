@@ -60,7 +60,7 @@ func TestDocumentUnmarshal(t *testing.T) {
 	attachments, err := doc.GetAttachments()
 	assert.True(t, err == nil)
 
-	assert.Equal(t, 1, len(attachments))
+	assert.Len(t, attachments, 1)
 	myattachment := attachments["myattachment"]
 	assert.Equal(t, "text", myattachment.ContentType)
 
@@ -87,7 +87,7 @@ func TestAttachmentRoundTrip(t *testing.T) {
 
 	attachments, err := doc.GetAttachments()
 	require.NoError(t, err)
-	require.Equal(t, 3, len(attachments))
+	require.Len(t, attachments, 3)
 
 	require.NotNil(t, attachments["foo"])
 	assert.Equal(t, "application/octet-stream", attachments["foo"].ContentType)

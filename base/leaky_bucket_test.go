@@ -37,7 +37,7 @@ func TestDedupeTapEventsLaterSeqSameDoc(t *testing.T) {
 	deduped := dedupeTapEvents(tapEvents)
 
 	// make sure that one was deduped
-	assert.Equal(t, 1, len(deduped))
+	assert.Len(t, deduped, 1)
 
 	// make sure the earlier event was deduped
 	dedupedEvent := deduped[0]

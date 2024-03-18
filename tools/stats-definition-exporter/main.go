@@ -105,7 +105,14 @@ func registerStats() (*base.GlobalStat, *base.DbStats, error) {
 		return nil, nil, fmt.Errorf("could not create sg stats: %w", err)
 	}
 
-	dbStats, err := sgStats.NewDBStats("", true, true, false, []string{""}, []string{""})
+	dbStatsOpts := base.DbStatsOptions{
+		DeltaSyncEnabled:  true,
+		ImportEnabled:     true,
+		ServerlessEnabled: true,
+		QueryNames:        []string{""},
+		Collections:       []string{""},
+	}
+	dbStats, err := sgStats.NewDBStats("", &dbStatsOpts)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not create db stats: %w", err)
 	}

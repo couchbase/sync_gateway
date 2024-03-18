@@ -941,6 +941,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 	rawVal, xattrs, _, err := dataStore.GetWithXattrs(ctx, key, []string{xattrName})
 	require.NoError(t, err)
 	require.Nil(t, rawVal)
+	assert.Len(t, retrievedVal, 0)
 	assert.Equal(t, 0, len(retrievedVal))
 	require.NoError(t, JSONUnmarshal(xattrs[xattrName], &retrievedXattr))
 	assert.Equal(t, float64(123), retrievedXattr["seq"])
@@ -983,6 +984,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, rawVal)
 
+	assert.Len(t, retrievedVal, 0)
 	assert.Equal(t, 0, len(retrievedVal))
 	require.NoError(t, JSONUnmarshal(xattrs[xattrName], &retrievedXattr))
 	assert.Equal(t, float64(1), retrievedXattr["seq"])
@@ -1005,6 +1007,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	require.NoError(t, JSONUnmarshal(postDeleteXattrBytes, &postDeleteXattr))
 	assert.NoError(t, err, "Error getting document post-delete")
 	assert.Equal(t, float64(2), postDeleteXattr["seq"])
+	assert.Len(t, postDeleteVal, 0)
 	log.Printf("Post-delete xattr (2): %s", postDeleteXattr)
 	log.Printf("Post-delete cas (2): %x", getCas2)
 
@@ -1826,26 +1829,36 @@ func TestCouchbaseServerMaxTTL(t *testing.T) {
 }
 
 func TestCouchbaseServerIncorrectLogin(t *testing.T) {
-
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
 	ctx := TestCtx(t)
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close(ctx)
+	for _, tls := range []bool{true, false} {
+		t.Run(fmt.Sprintf("tls=%v", tls), func(t *testing.T) {
+			testBucket := GetTestBucket(t)
+			defer testBucket.Close(ctx)
 
-	// Override test bucket spec with invalid creds
-	testBucket.BucketSpec.Auth = TestAuthenticator{
-		Username:   "invalid_username",
-		Password:   "invalid_password",
-		BucketName: testBucket.BucketSpec.BucketName,
+			// Override test bucket spec with invalid creds
+			fmt.Println("testBucket.BucketSpec: ", testBucket.BucketSpec)
+			testBucket.BucketSpec.Auth = TestAuthenticator{
+				Username:   "invalid_username",
+				Password:   "invalid_password",
+				BucketName: testBucket.BucketSpec.BucketName,
+			}
+			if tls {
+				testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbase://", "couchbases://")
+			} else {
+				testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbases://", "couchbase://")
+				SkipInvalidAuthForCouchbaseServer76(t)
+			}
+
+			// Attempt to open the bucket again using invalid creds. We should expect an error.
+			bucket, err := GetBucket(TestCtx(t), testBucket.BucketSpec)
+			assert.Equal(t, ErrAuthError, err)
+			assert.Nil(t, bucket)
+		})
 	}
-
-	// Attempt to open the bucket again using invalid creds. We should expect an error.
-	bucket, err := GetBucket(TestCtx(t), testBucket.BucketSpec)
-	assert.Equal(t, ErrAuthError, err)
-	assert.Nil(t, bucket)
 }
 
 // TestCouchbaseServerIncorrectX509Login tries to open a bucket using an example X509 Cert/Key

@@ -247,6 +247,9 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, rawXattr []byte, rawUserXattr []byte, cas uint64) (docOut *Document, err error) {
 	startTime := time.Now()
 	defer func() {
+		if !c.dbCtx.IsServerless() {
+			return
+		}
 		functionTime := time.Since(startTime).Milliseconds()
 		var bytes int
 		if docOut != nil {
@@ -255,7 +258,7 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 			return
 		}
 		stat := CalculateComputeStat(int64(bytes), functionTime)
-		c.dbCtx.DbStats.DatabaseStats.ImportProcessCompute.Add(stat)
+		c.dbCtx.DbStats.ServerlessStats.ImportProcessCompute.Add(stat)
 	}()
 	isDelete := rawDoc == nil
 	importDb := DatabaseCollectionWithUser{DatabaseCollection: c, user: nil}
@@ -844,6 +847,9 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context, docid string, doc *Document, deleted bool) error {
 	startTime := time.Now()
 	defer func() {
+		if !db.dbCtx.IsServerless() {
+			return
+		}
 		functionTime := time.Since(startTime).Milliseconds()
 		var bytes int
 		if doc != nil {
@@ -852,7 +858,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 			return
 		}
 		stat := CalculateComputeStat(int64(bytes), functionTime)
-		db.dbCtx.DbStats.DatabaseStats.ImportProcessCompute.Add(stat)
+		db.dbCtx.DbStats.ServerlessStats.ImportProcessCompute.Add(stat)
 	}()
 	// Check whether the doc requiring import is an SDK delete
 	isDelete := false

@@ -701,8 +701,12 @@ func (bsc *BlipSyncContext) reportStats(updateImmediately bool) {
 	if bsc.blipContextDb == nil || bsc.blipContext == nil {
 		return
 	}
-	dbStats := bsc.blipContextDb.DbStats.Database()
-	if dbStats == nil {
+	// return early if not in serverless mode
+	if !bsc.blipContextDb.IsServerless() {
+		return
+	}
+	dbServerlessStats := bsc.blipContextDb.DbStats.Serverless()
+	if dbServerlessStats == nil {
 		return
 	}
 	currentTime := time.Now().UnixMilli()
@@ -720,17 +724,21 @@ func (bsc *BlipSyncContext) reportStats(updateImmediately bool) {
 
 	totalBytesSent := bsc.blipContext.GetBytesSent()
 	newBytesSent := totalBytesSent - bsc.stats.bytesSent.Swap(totalBytesSent)
-	dbStats.ReplicationBytesSent.Add(int64(newBytesSent))
+	dbServerlessStats.ReplicationBytesSent.Add(int64(newBytesSent))
 
 	totalBytesReceived := bsc.blipContext.GetBytesReceived()
 	newBytesReceived := totalBytesReceived - bsc.stats.bytesReceived.Swap(totalBytesReceived)
-	dbStats.ReplicationBytesReceived.Add(int64(newBytesReceived))
+	dbServerlessStats.ReplicationBytesReceived.Add(int64(newBytesReceived))
+
 	bsc.stats.lastReportTime.Store(currentTime)
 
 }
 
 // reportComputeStat will report the amount of data transferred for a blip Message. This message can be a request or a response.
 func (bsc *BlipSyncContext) reportComputeStat(rq *blip.Message, startTime time.Time) {
+	if !bsc.blipContextDb.IsServerless() {
+		return
+	}
 	messageCPUtime := time.Since(startTime).Milliseconds()
 	messBody, err := rq.Body()
 	if err == nil && bsc.blipContextDb != nil {
@@ -739,6 +747,6 @@ func (bsc *BlipSyncContext) reportComputeStat(rq *blip.Message, startTime time.T
 			return
 		}
 		stat := CalculateComputeStat(int64(bytes), messageCPUtime)
-		bsc.blipContextDb.DbStats.DatabaseStats.SyncProcessCompute.Add(stat)
+		bsc.blipContextDb.DbStats.ServerlessStats.SyncProcessCompute.Add(stat)
 	}
 }

@@ -39,7 +39,7 @@ type TestBucketPool struct {
 
 	// readyBucketPool contains a buffered channel of buckets ready for use
 	readyBucketPool        chan Bucket
-	cluster                tbpCluster
+	cluster                *tbpCluster
 	bucketReadierQueue     chan tbpBucketName
 	bucketReadierWaitGroup *sync.WaitGroup
 	ctxCancelFunc          context.CancelFunc
@@ -122,7 +122,7 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		useDefaultScope:        options.UseDefaultScope,
 	}
 
-	tbp.cluster = newTestCluster(ctx, UnitTestUrl(), tbp.Logf)
+	tbp.cluster = newTestCluster(ctx, UnitTestUrl(), &tbp)
 
 	useCollections, err := tbp.canUseNamedCollections(ctx)
 	if err != nil {
@@ -463,7 +463,7 @@ func (tbp *TestBucketPool) setXDCRBucketSetting(ctx context.Context, bucket Buck
 		tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed, status code: %d error: %v output: %s", statusCode, err, string(output))
 	}
 	if statusCode != http.StatusOK {
-		tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed with status code, %d, output: %s", statusCode, output)
+		tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed with status code, %d, output: %s", statusCode, string(output))
 	}
 }
 
