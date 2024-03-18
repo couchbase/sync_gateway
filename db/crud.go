@@ -1684,6 +1684,11 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 			if err != nil {
 				return unusedSequences, err
 			}
+			numSkippedSequences := docSequence - doc.Sequence
+			if numSkippedSequences > oversizeSkippedSequenceWarning {
+				base.WarnfCtx(ctx, "doc %s / previous rev: %s /  new rev: %s be allocated sequence %d. This is significantly ahead of the previous sequence this document had %d.", base.UD(doc.ID), doc.CurrentRev, newRevID, docSequence, doc.Sequence)
+			}
+
 		}
 	}
 
