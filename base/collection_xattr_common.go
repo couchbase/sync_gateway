@@ -39,7 +39,6 @@ func (c *Collection) WriteWithXattrs(ctx context.Context, k string, exp uint32, 
 
 		// Otherwise, replace existing value
 		if v != nil {
-			fmt.Println("updateBodyAndXattrs")
 			// Have value and xattr value - update both
 			casOut, err = c.updateBodyAndXattrs(ctx, k, exp, cas, opts, v, xattrs)
 			if err != nil {

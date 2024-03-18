@@ -403,7 +403,7 @@ func TestAttachmentCompactionAbort(t *testing.T) {
 		attID := fmt.Sprintf("testAtt-%d", i)
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		rest.CreateLegacyAttachmentDoc(t, ctx, collection, dataStore, docID, []byte("{}"), attID, attJSONBody)
 	}
 

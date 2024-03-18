@@ -133,8 +133,8 @@ func (c *Collection) RemoveXattr(ctx context.Context, k string, xattrKey string,
 }
 */
 
-func (c *Collection) DeleteSubDocPaths(ctx context.Context, k string, xattrKeys ...string) (err error) {
-	return fmt.Errorf("RemoveSubDocPaths not implemented")
+func (c *Collection) DeleteSubDocPaths(ctx context.Context, k string, paths ...string) (err error) {
+	return removeSubdocPaths(ctx, c, k, paths...)
 }
 
 func (c *Collection) DeleteXattrs(ctx context.Context, k string, xattrKeys ...string) (err error) {
@@ -293,17 +293,18 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 
 		c.Bucket.waitForAvailKvOp()
 		defer c.Bucket.releaseKvOp()
-
 		// First, attempt to get the document and xattr in one shot.
 		ops := make([]gocb.LookupInSpec, 0, len(xattrKeys)+1)
 		for _, xattrKey := range xattrKeys {
+			if xattrKey == "" {
+				return false, fmt.Errorf("empty xattr key called"), uint64(0)
+			}
 			ops = append(ops, gocb.GetSpec(xattrKey, GetSpecXattr))
 		}
 		if fetchBody {
 			ops = append(ops, gocb.GetSpec("", &gocb.GetSpecOptions{}))
 		}
 		res, lookupErr := c.Collection.LookupIn(k, ops, LookupOptsAccessDeleted)
-
 		// There are two 'partial success' error codes:
 		//   ErrMemdSubDocBadMulti - one of the subdoc operations failed.  Occurs when doc exists but xattr does not
 		//   ErrMemdSubDocMultiPathFailureDeleted - one of the subdoc operations failed, and the doc is deleted.  Occurs when xattr exists but doc is deleted (tombstone)

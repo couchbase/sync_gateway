@@ -1631,9 +1631,9 @@ func TestPutStampClusterUUID(t *testing.T) {
 	_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
 	require.NoError(t, err)
 	require.Contains(t, xattrs, base.SyncXattrName)
-	var xattr map[string]string
+	var xattr map[string]any
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
-	require.Equal(t, 32, len(xattr["cluster_uuid"]))
+	require.Equal(t, 32, len(xattr["cluster_uuid"].(string)))
 }
 
 // TestAssignSequenceReleaseLoop repros conditions seen in CBG-3516 (where each sequence between nextSequence and docSequence has an unusedSeq doc)

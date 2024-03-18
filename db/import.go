@@ -55,9 +55,11 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 		Body: value,
 		Xattrs: map[string][]byte{
 			base.SyncXattrName: xattrValue,
-			db.userXattrKey():  userXattrValue,
 		},
 		Cas: cas,
+	}
+	if db.userXattrKey() != "" {
+		existingBucketDoc.Xattrs[db.userXattrKey()] = userXattrValue
 	}
 
 	return db.importDoc(ctx, docid, body, expiry, isDelete, existingBucketDoc, mode)
@@ -73,10 +75,11 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 	// TODO: We need to remarshal the existing doc into bytes.  Less performance overhead than the previous bucket op to get the value in WriteUpdateWithXattr,
 	//       but should refactor import processing to support using the already-unmarshalled doc.
 	existingBucketDoc := &sgbucket.BucketDocument{
-		Cas: existingDoc.Cas,
-		Xattrs: map[string][]byte{
-			db.userXattrKey(): existingDoc.rawUserXattr,
-		},
+		Cas:    existingDoc.Cas,
+		Xattrs: make(map[string][]byte),
+	}
+	if db.userXattrKey() != "" {
+		existingBucketDoc.Xattrs[db.userXattrKey()] = existingDoc.rawUserXattr
 	}
 
 	// If we marked this as having inline Sync Data ensure that the existingBucketDoc we pass to importDoc has syncData
