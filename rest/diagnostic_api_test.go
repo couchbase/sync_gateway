@@ -97,9 +97,10 @@ func TestGetAllChannelsByUser(t *testing.T) {
 		"/"+dbName+"/_user/"+bob+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
 
-	err = json.Unmarshal(response.BodyBytes(), &channelMap)
+	var channelMap2 getAllChannelsResponse
+	err = json.Unmarshal(response.BodyBytes(), &channelMap2)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants["_default._default"]), []string{})
+	assert.ElementsMatch(t, maps.Keys(channelMap2.AdminGrants["_default._default"]), []string{})
 
 	// Assign new channel to user bob and assert all_channels includes it
 	response = rt.SendAdminRequest(http.MethodPut,
@@ -129,7 +130,11 @@ func TestGetAllChannelsByUser(t *testing.T) {
 		"/{{.keyspace}}/doc2",
 		`{"role":["role:role1", "role:roleInexistent"], "user":"bob"}`)
 	RequireStatus(t, response, http.StatusCreated)
+	var putResp putResponse
+	err = json.Unmarshal(response.BodyBytes(), &putResp)
+	require.NoError(t, err)
 
+	revID := putResp.Rev
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+bob+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
@@ -138,7 +143,25 @@ func TestGetAllChannelsByUser(t *testing.T) {
 	require.NoError(t, err)
 	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants["_default._default"]), []string{"!", "NewChannel"})
 	assert.NotContains(t, maps.Keys(channelMap.DynamicRoleGrants), "roleInexistent")
-	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicRoleGrants["role1"]["_default._default"]), []string{"chan", "!"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicRoleGrants["role1"]["_default._default"]), []string{"chan"})
+	assert.Equal(t, channelMap.DynamicGrants["_default._default"]["NewChannel"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 5, EndSeq: 0}})
+
+	// Assign new channel to user bob through role1 and assert all_channels includes it
+	response = rt.SendAdminRequest(http.MethodDelete,
+		fmt.Sprintf("/{{.keyspace}}/doc2?rev=%s", revID), ``)
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/"+dbName+"/_user/"+bob+"/_all_channels", ``)
+	RequireStatus(t, response, http.StatusOK)
+	t.Log(response.BodyString())
+
+	err = json.Unmarshal(response.BodyBytes(), &channelMap)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants["_default._default"]), []string{"!", "NewChannel"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicRoleGrants["role1"]["_default._default"]), []string{"chan"})
+	assert.Equal(t, channelMap.DynamicRoleGrants["role1"]["_default._default"]["chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 7, EndSeq: 8}})
+
 }
 
 func TestGetAllChannelsByUserWithCollections(t *testing.T) {
@@ -290,7 +313,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicRoleGrants["role1"][keyspace2]), []string{"role1Chan", "!"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicRoleGrants["role1"][keyspace2]), []string{"role1Chan"})
 	assert.Equal(t, channelMap.DynamicRoleGrants["role1"][keyspace2]["role1Chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 5, EndSeq: 7}})
 
 	response = rt.SendDiagnosticRequest(http.MethodGet,
@@ -423,9 +446,24 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 		fmt.Sprintf("/%s/%s?rev=%s", newKeyspace, "doc1", revID), "")
 	RequireStatus(t, response, http.StatusOK)
 
+	response = rt.SendAdminRequest("PUT", "/db/_role/role1", fmt.Sprintf(`
+		{
+			"collection_access": {
+				"%s": {
+					"%s": {
+						"admin_channels":["role1Chan"]
+					},
+					"%s": {
+						"admin_channels":[]
+					}
+				}
+			}
+		}`, "_default", newCollection.Collection, "_default"))
+	RequireStatus(t, response, http.StatusCreated)
+
 	// Overwrite admin_channels and remove foo and bar channels
 	response = rt.SendAdminRequest(http.MethodPut,
-		"/"+dbName+"/_user/"+alice, fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`,
+		"/"+dbName+"/_user/"+alice, fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein", "admin_roles":["role1"],`,
 			`"channel"`, "_default", newCollection.Collection))
 	RequireStatus(t, response, http.StatusOK)
 
@@ -437,4 +475,24 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 
 	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicGrants[newCollection.String()]), []string{"!", "dynChannel"})
 	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants["_default._default"]), []string{"foo", "bar", "channel"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminRoleGrants["role1"]["_default._default"]), []string{})
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminRoleGrants["role1"][newCollection.String()]), []string{"role1Chan"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicRoleGrants["role1"][newCollection.String()]), []string{})
+
+	// Remove role and assert on role channels and sequences
+	response = rt.SendAdminRequest(http.MethodPut,
+		"/"+dbName+"/_user/"+alice, fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein", "admin_roles":[],`,
+			`"channel"`, "_default", newCollection.Collection))
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/"+dbName+"/_user/"+alice+"/_all_channels", ``)
+	RequireStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &channelMap)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminRoleGrants["role1"]["_default._default"]), []string{})
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminRoleGrants["role1"][newCollection.String()]), []string{"role1Chan"})
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicRoleGrants["role1"][newCollection.String()]), []string{})
+	assert.ElementsMatch(t, channelMap.AdminRoleGrants["role1"][newCollection.String()]["role1Chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 5, EndSeq: 6}})
+
 }
