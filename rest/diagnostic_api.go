@@ -100,26 +100,18 @@ func (h *handler) handleGetAllChannels() error {
 		}
 		for roleName, roleHist := range user.RoleHistory() {
 			role, err := h.db.Authenticator(h.ctx()).GetRole(roleName)
-			skipMapInit := true
 			if err != nil {
 				return err
 			}
 			if role == nil {
 				continue
 			}
-			if _, skipMapInit = resp.AdminRoleGrants[roleName]; !skipMapInit && roleHist.Source == channels.AdminGrant {
+			if _, skipMapInit := resp.AdminRoleGrants[roleName]; !skipMapInit && roleHist.Source == channels.AdminGrant {
 				resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-				skipMapInit = false
-			} else if _, skipMapInit = resp.DynamicRoleGrants[roleName]; !skipMapInit && roleHist.Source == channels.DynamicGrant {
+				resp.AdminRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
+			} else if _, skipMapInit := resp.DynamicRoleGrants[roleName]; !skipMapInit && roleHist.Source == channels.DynamicGrant {
 				resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-				skipMapInit = false
-			}
-			if !skipMapInit {
-				if roleHist.Source == channels.AdminGrant {
-					resp.AdminRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
-				} else if roleHist.Source == channels.DynamicGrant {
-					resp.DynamicRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
-				}
+				resp.DynamicRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
 			}
 			for channel, chanEntry := range role.Channels() {
 				if channel == channels.DocumentStarChannel {
