@@ -835,7 +835,6 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 }
 
-/*
 func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 
@@ -905,7 +904,6 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 
 	assert.Equal(t, userXattrVal, gotBody["userXattrVal"])
 }
-*/
 
 // TestXattrDeleteDocument.  Delete document that has a system xattr.  System XATTR should be retained and retrievable.
 func TestXattrDeleteDocument(t *testing.T) {
