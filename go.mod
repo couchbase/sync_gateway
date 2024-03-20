@@ -13,7 +13,7 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.3.1
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20240313055525-bac1a2e2fc3c
+	github.com/couchbase/sg-bucket v0.0.0-20240320160014-79baf843f9d3
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20231219142340-b718c3d1aa79
 	github.com/couchbaselabs/gocbconnstr v1.0.5
 	github.com/couchbaselabs/rosmar v0.0.0-20240313055759-6f5352c57bc0
@@ -97,3 +97,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	nhooyr.io/websocket v1.8.10 // indirect
 )
+
+replace github.com/couchbase/sg-bucket => ../sg-bucket

@@ -10,7 +10,6 @@ package rest
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -74,15 +73,12 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db
 			Val: attachmentSyncDataBytes,
 		})
 		require.NoError(t, err)
-		fmt.Println("xattr=", string(xattr))
-		rdoc := sgbucket.UpdatedDoc{
+		return sgbucket.UpdatedDoc{
 			Doc: doc,
 			Xattrs: map[string][]byte{
 				base.SyncXattrName: xattr,
 			},
-		}
-		fmt.Printf("doc: %+v\n", string(rdoc.Xattrs[base.SyncXattrName]))
-		return rdoc, nil
+		}, nil
 	})
 	require.NoError(t, err)
 

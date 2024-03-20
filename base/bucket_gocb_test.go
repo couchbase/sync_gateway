@@ -877,8 +877,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 		return sgbucket.UpdatedDoc{
 			Doc: MustJSONMarshal(t, docMap),
 			Xattrs: map[string][]byte{
-				xattrKey:     MustJSONMarshal(t, xattrMap),
-				userXattrKey: MustJSONMarshal(t, userXattrMap),
+				xattrKey: MustJSONMarshal(t, xattrMap),
 			},
 		}, nil
 	}
@@ -1101,9 +1100,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 	// Create w/ XATTR
 	cas3int := uint64(0)
 	cas3int, err = dataStore.WriteWithXattrs(ctx, key3, 0, cas3int, MustJSONMarshal(t, val), map[string][]byte{xattrName: MustJSONMarshal(t, xattrVal)}, nil)
-	if err != nil {
-		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
-	}
+	require.NoError(t, err)
 	// Delete the doc body
 	cas3, removeErr := dataStore.Remove(key3, cas3int)
 	if removeErr != nil {
@@ -1968,7 +1965,7 @@ func createTombstonedDoc(t *testing.T, dataStore sgbucket.DataStore, key, xattrN
 	require.NoError(t, err)
 
 	// Create tombstone revision which deletes doc body but preserves XATTR
-	_, mutateErr := dataStore.DeleteBody(ctx, key, []string{xattrName}, 0, cas, nil)
+	_, mutateErr := dataStore.WriteTombstoneWithXattrs(ctx, key, 0, cas, nil, true, nil)
 	/*
 		flags := gocb.SubdocDocFlagAccessDeleted
 		_, mutateErr := dataStore.dataStore.MutateInEx(key, flags, gocb.Cas(cas), uint32(0)).
@@ -2076,9 +2073,15 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 		"_sync": MustJSONMarshal(t, syncXattrVal),
 		"test":  MustJSONMarshal(t, userXattrVal),
 	}
-	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, xattrs, nil)
-	require.NoError(t, err)
-
+	if bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, xattrs, nil)
+		require.NoError(t, err)
+	} else {
+		for k, v := range xattrs {
+			cas, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{k: v}, nil)
+			require.NoError(t, err)
+		}
+	}
 	var docValRet map[string]any
 	docRaw, xattrsResult, _, err := dataStore.GetWithXattrs(ctx, docKey, []string{SyncXattrName, "test"})
 	require.NoError(t, JSONUnmarshal(docRaw, &docValRet))
@@ -2406,6 +2409,13 @@ func TestMobileSystemCollectionCRUD(t *testing.T) {
 
 	err = ds.Delete(docID)
 	require.NoError(t, err)
+}
+
+func TestDeleteBody(t *testing.T) {
+	ctx := TestCtx(t)
+	b := GetTestBucket(t)
+	defer b.Close(ctx)
+
 }
 
 // Used to test standard sync mutateInOpts from the base package
