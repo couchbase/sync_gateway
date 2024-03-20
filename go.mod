@@ -97,5 +97,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	nhooyr.io/websocket v1.8.10 // indirect
 )
-
-replace github.com/couchbase/sg-bucket => ../sg-bucket
