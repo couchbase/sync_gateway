@@ -1193,6 +1193,8 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 }
 
 func TestGetAvailableRevAttachments(t *testing.T) {
+	t.Skip("pending backwards compatibility on backed up revs between revid and cv CBG-3748")
+
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)

@@ -1147,6 +1147,16 @@ func (btc *BlipTesterClient) UseHLV() bool {
 	return false
 }
 
+func (btc *BlipTesterClient) AssertDeltaSrcProperty(t *testing.T, msg *blip.Message, docVersion DocVersion) {
+	subProtocol, err := db.ParseSubprotocolString(btc.SupportedBLIPProtocols[0])
+	require.NoError(t, err)
+	if subProtocol >= db.CBMobileReplicationV4 {
+		assert.Equal(t, docVersion.CV.String(), msg.Properties[db.RevMessageDeltaSrc])
+	} else {
+		assert.Equal(t, docVersion.RevTreeID, msg.Properties[db.RevMessageDeltaSrc])
+	}
+}
+
 func (btc *BlipTesterClient) AssertOnBlipHistory(t *testing.T, msg *blip.Message, docVersion DocVersion) {
 	subProtocol, err := db.ParseSubprotocolString(btc.SupportedBLIPProtocols[0])
 	require.NoError(t, err)

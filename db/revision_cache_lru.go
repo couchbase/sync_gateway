@@ -61,6 +61,10 @@ func (sc *ShardedLRURevisionCache) UpdateDelta(ctx context.Context, docID, revID
 	sc.getShard(docID).UpdateDelta(ctx, docID, revID, toDelta)
 }
 
+func (sc *ShardedLRURevisionCache) UpdateDeltaCV(ctx context.Context, docID string, cv *Version, toDelta RevisionDelta) {
+	sc.getShard(docID).UpdateDeltaCV(ctx, docID, cv, toDelta)
+}
+
 func (sc *ShardedLRURevisionCache) GetActive(ctx context.Context, docID string, includeBody bool) (docRev DocumentRevision, err error) {
 	return sc.getShard(docID).GetActive(ctx, docID, includeBody)
 }
@@ -152,6 +156,13 @@ func (rc *LRURevisionCache) Peek(ctx context.Context, docID, revID string) (docR
 // fails silently
 func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta) {
 	value := rc.getValue(docID, revID, false)
+	if value != nil {
+		value.updateDelta(toDelta)
+	}
+}
+
+func (rc *LRURevisionCache) UpdateDeltaCV(ctx context.Context, docID string, cv *Version, toDelta RevisionDelta) {
+	value := rc.getValueByCV(docID, cv, false)
 	if value != nil {
 		value.updateDelta(toDelta)
 	}

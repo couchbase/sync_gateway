@@ -2669,3 +2669,10 @@ func RequireGocbDCPResync(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server since rosmar has no support for DCP resync")
 	}
 }
+
+func JsonToMap(t *testing.T, jsonStr string) map[string]interface{} {
+	result := make(map[string]interface{})
+	err := json.Unmarshal([]byte(jsonStr), &result)
+	require.NoError(t, err)
+	return result
+}
