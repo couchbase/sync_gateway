@@ -2597,7 +2597,6 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 		level = DocUnmarshalHistory // doc.History only needed in this case (see below)
 	}
 	doc, err := db.GetDocSyncDataNoImport(ctx, docid, level)
-	fmt.Println("doc=", doc, "error=", err)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) && err != base.ErrXattrNotFound {
 			base.WarnfCtx(ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
