@@ -997,7 +997,6 @@ func TestDisablePermissionCheck(t *testing.T) {
 }
 
 func TestNewlyCreateSGWPermissions(t *testing.T) {
-	t.Skip("FIXME")
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}

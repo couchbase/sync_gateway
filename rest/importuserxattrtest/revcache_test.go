@@ -87,7 +87,7 @@ func TestUserXattrRevCache(t *testing.T) {
 	resp = rt2.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	// FIXME, why is cas different after import?
+	// get new cas to pass to UpdateXattrs
 	cas, err = rt.GetSingleDataStore().Get(docKey, nil)
 	require.NoError(t, err)
 

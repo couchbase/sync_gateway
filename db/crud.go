@@ -2536,7 +2536,7 @@ func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string,
 
 	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalHistory)
 	if err != nil {
-		if !base.IsDocNotFoundError(err) && err != base.ErrXattrNotFound {
+		if !base.IsDocNotFoundError(err) && !errors.Is(err, base.ErrXattrNotFound) {
 			base.WarnfCtx(ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
 		}
 		missing = revids
@@ -2598,7 +2598,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 	}
 	doc, err := db.GetDocSyncDataNoImport(ctx, docid, level)
 	if err != nil {
-		if !base.IsDocNotFoundError(err) && err != base.ErrXattrNotFound {
+		if !base.IsDocNotFoundError(err) && !errors.Is(err, base.ErrXattrNotFound) {
 			base.WarnfCtx(ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
 			return ProposedRev_Error, ""
 		}
