@@ -114,6 +114,14 @@ docid:
     type: string
   example: doc1
   description: The document ID to run the operation against.
+doc_id:
+  name: doc_id
+  in: query
+  required: false
+  schema:
+    type: string
+  example: doc1
+  description: The document ID to run the operation against.
 endkey:
   name: endkey
   in: query

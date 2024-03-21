@@ -92,7 +92,7 @@ func TestGetDocDryRuns(t *testing.T) {
 		bucket, base.TestUseXattrs(), newSyncFn, ImportFilter))
 	RequireStatus(t, resp, http.StatusCreated)
 
-	version := rt.PutDoc("doc", `{"user":{"num":123, "name":"user1"}, "channel":"channel1"}`)
+	_ = rt.PutDoc("doc", `{"user":{"num":123, "name":"user1"}, "channel":"channel1"}`)
 
 	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_sync", `{"user":{"num":23}}`)
 	RequireStatus(t, response, http.StatusOK)
@@ -101,12 +101,31 @@ func TestGetDocDryRuns(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, respMap.Exception, "403 user num too low")
 
-	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?docid=doc&rev=%s", version.RevID), `{"user":{"num":120, "name":"user2"}, "channel":"channel2"}`)
+	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?doc_id=doc"), `{"user":{"num":120, "name":"user2"}, "channel":"channel2"}`)
 	RequireStatus(t, response, http.StatusOK)
 
 	err = json.Unmarshal(response.BodyBytes(), &respMap)
 	assert.NoError(t, err)
 	assert.Equal(t, respMap.Access, channels.AccessMap{"user1": channels.BaseSetOf(t, "channel2")})
+
+	// get doc from bucket with no body provided
+	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?doc_id=doc"), ``)
+	RequireStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &respMap)
+	assert.NoError(t, err)
+	assert.Equal(t, respMap.Access, channels.AccessMap{"user1": channels.BaseSetOf(t, "channel1")})
+
+	// Get doc that doesnt exist, will error
+	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?doc_id=doc404"), ``)
+	RequireStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &respMap)
+	assert.NoError(t, err)
+	assert.Equal(t, respMap.Exception, "key \"doc404\" missing")
+	assert.Nil(t, respMap.Access)
+
+	// no doc id no body, will error
+	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?doc_id="), ``)
+	RequireStatus(t, response, http.StatusBadRequest)
 
 	// Import filter import=false and type error
 	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter", `{"accessUser": "user"}`)

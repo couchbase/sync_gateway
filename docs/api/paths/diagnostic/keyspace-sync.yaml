@@ -54,8 +54,7 @@ get:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   parameters:
-    - $ref: ../../components/parameters.yaml#/docid
-    - $ref: ../../components/parameters.yaml#/rev
+    - $ref: ../../components/parameters.yaml#/doc_id
   tags:
     - Document
   operationId: get_keyspace-sync

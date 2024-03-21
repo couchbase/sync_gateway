@@ -7,7 +7,6 @@
 # the file licenses/APL2.txt.
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
-  - $ref: ../../components/parameters.yaml#/docid
 get:
   summary: Run a doc body through the Import filter and return results.
   description: |-

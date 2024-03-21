@@ -34,8 +34,8 @@ paths:
     $ref: './paths/diagnostic/keyspace-docid-_all_channels.yaml'
   '/{keyspace}/sync':
     $ref: './paths/diagnostic/keyspace-sync.yaml'
-  '/{keyspace}/import_filter/{docid}':
-    $ref: './paths/diagnostic/keyspace-import_filter-docid.yaml'
+  '/{keyspace}/import_filter':
+    $ref: './paths/diagnostic/keyspace-import_filter.yaml'
 externalDocs:
   description: Sync Gateway Quickstart | Couchbase Docs
   url: 'https://docs.couchbase.com/sync-gateway/current/index.html'

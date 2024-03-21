@@ -56,14 +56,17 @@ func (h *handler) handleGetDocChannels() error {
 }
 
 // HTTP handler for running a document through the sync function and returning the results
+// body only provided, the sync function will run with no oldDoc provided
+// body and doc ID provided, the sync function will run using the current revision in the bucket as oldDoc
+// docid only provided, if the doc exists in the bucket, sync fn results will be returned, otherwise it will error
 func (h *handler) handleSyncFnDryRun() error {
-	docid := h.getQuery("docid")
-	revID := h.getQuery("rev")
+	docid := h.getQuery("doc_id")
 
 	body, err := h.readDocument()
-	body[db.BodyRev] = revID
 	if err != nil {
-		return err
+		if docid == "" {
+			return err
+		}
 	}
 	expiryPtr, channelSet, access, roles, err := h.collection.SyncFnDryrun(h.ctx(), body, docid)
 	errorMsg := ""
