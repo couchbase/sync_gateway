@@ -15,6 +15,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"net/http"
 )
 
 type SyncFnDryRun struct {
@@ -91,11 +92,19 @@ func (h *handler) handleSyncFnDryRun() error {
 
 // HTTP handler for running a document through the import filter and returning the results
 func (h *handler) handleImportFilterDryRun() error {
+	docid := h.getQuery("doc_id")
+
 	body, err := h.readDocument()
 	if err != nil {
-		return err
+		if docid == "" {
+			return err
+		}
 	}
-	shouldImport, err := h.collection.ImportFilterDryRun(h.ctx(), body)
+
+	if docid != "" && body != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "doc body and doc id provided. Please provide either the body or a doc id for the import filter dry run")
+	}
+	shouldImport, err := h.collection.ImportFilterDryRun(h.ctx(), body, docid)
 	errorMsg := ""
 	if err != nil {
 		errorMsg = err.Error()
