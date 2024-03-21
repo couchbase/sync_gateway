@@ -1151,9 +1151,19 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 		_body: body,
 	}
 	oldDoc := doc
-	if docInBucket, err := db.GetDocument(ctx, docID, DocUnmarshalAll); err == nil {
-		oldDoc = docInBucket
+	if docID != "" {
+		if docInBucket, err := db.GetDocument(ctx, docID, DocUnmarshalAll); err == nil {
+			oldDoc = docInBucket
+			if doc._body == nil {
+				body = oldDoc._body
+				doc._body = body
+			}
+			doc._body[BodyRev] = oldDoc.SyncData.CurrentRev
+		} else {
+			return nil, nil, nil, nil, err
+		}
 	}
+
 	delete(body, BodyId)
 
 	// Get the revision ID to match, and the new generation number:
@@ -2396,9 +2406,9 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 			expiry = output.Expiry
 			err = output.Rejection
 			if err != nil {
-				base.InfofCtx(ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(doc.NewestRev), err)
-				base.DebugfCtx(ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
+				dryRunMsg := ""
 				if !dryRun {
+					dryRunMsg = "[DRY RUN]"
 					col.dbStats().Security().NumDocsRejected.Add(1)
 					col.collectionStats.SyncFunctionRejectCount.Add(1)
 					if isAccessError(err) {
@@ -2406,6 +2416,8 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 						col.collectionStats.SyncFunctionRejectAccessCount.Add(1)
 					}
 				}
+				base.InfofCtx(ctx, base.KeyAll, "%s Sync fn rejected doc %q / %q --> %s", dryRunMsg, base.UD(doc.ID), base.UD(doc.NewestRev), err)
+				base.DebugfCtx(ctx, base.KeyAll, "%s    rejected doc %q / %q : new=%+v  old=%s", dryRunMsg, base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
 			} else if !validateAccessMap(ctx, access) || !validateRoleAccessMap(ctx, roles) {
 				err = base.HTTPErrorf(500, "Error in JS sync function")
 			}
@@ -2415,8 +2427,8 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 			if errors.Is(err, sgbucket.ErrJSTimeout) {
 				err = base.HTTPErrorf(500, "JS sync function timed out")
 			} else {
-				err = base.HTTPErrorf(500, "Exception in JS sync function")
 				if !dryRun {
+					err = base.HTTPErrorf(500, "Exception in JS sync function")
 					col.collectionStats.SyncFunctionExceptionCount.Add(1)
 					col.dbStats().Database().SyncFunctionExceptionCount.Add(1)
 				}
