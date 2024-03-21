@@ -11,11 +11,12 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"net/http"
+
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"net/http"
 )
 
 type SyncFnDryRun struct {
