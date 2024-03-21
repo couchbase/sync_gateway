@@ -516,10 +516,19 @@ func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body) (
 		return false, errors.New("Import filter function returned non-boolean value.")
 	}
 }
-func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, doc Body) (bool, error) {
+func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, doc Body, docid string) (bool, error) {
 
 	importFilter := db.importFilter()
-
+	if docid != "" {
+		docInBucket, err := db.GetDocument(ctx, docid, DocUnmarshalAll)
+		if err == nil {
+			if doc == nil {
+				doc = docInBucket._body
+			}
+		} else {
+			return false, err
+		}
+	}
 	shouldImport, err := importFilter.EvaluateFunction(ctx, doc)
 
 	return shouldImport, err

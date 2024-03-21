@@ -146,4 +146,25 @@ func TestGetDocDryRuns(t *testing.T) {
 	assert.Equal(t, respMap2.Error, "")
 	assert.True(t, respMap2.ShouldImport)
 
+	_ = rt.PutDoc("doc2", `{"user":{"num":125}}`)
+	// Import filter get doc from bucket with no body
+	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter?doc_id=doc2", ``)
+	RequireStatus(t, response, http.StatusOK)
+
+	err = json.Unmarshal(response.BodyBytes(), &respMap2)
+	assert.NoError(t, err)
+	assert.Equal(t, respMap2.Error, "")
+	assert.True(t, respMap2.ShouldImport)
+
+	// Import filter get doc from bucket error doc not found
+	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter?doc_id=doc404", ``)
+	RequireStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &respMap2)
+	assert.NoError(t, err)
+	assert.Equal(t, respMap2.Error, "key \"doc404\" missing")
+	assert.False(t, respMap2.ShouldImport)
+
+	// Import filter get doc from bucket error body also provided
+	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter?doc_id=doc2", `{"user":{"num":23}}`)
+	RequireStatus(t, response, http.StatusBadRequest)
 }
