@@ -1229,7 +1229,6 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 		base.InfofCtx(ctx, base.KeyDiagnostic, "Sync fn error: %v", err)
 		return nil, nil, nil, nil, err
 	}
-	oldDoc.History.removeRevisionBody(ctx, newRev)
 	return syncExpiry, channelSet, access, roles, err
 }
 
