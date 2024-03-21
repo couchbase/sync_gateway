@@ -35,6 +35,8 @@ get:
 
     '404':
       $ref: ../../components/responses.yaml#/Not-found
+  parameters:
+    - $ref: ../../components/parameters.yaml#/doc_id
   tags:
     - Document
   operationId: get_keyspace-import_filter-docid
