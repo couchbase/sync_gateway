@@ -396,8 +396,12 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 			// if dbState == db.DBOnline, continue flow and invoke the handler method
 			if dbState == db.DBOffline {
+				msg := "DB is currently under maintenance"
+				if len(dbContext.RequireResync) > 0 {
+					msg += " resync is required"
+				}
 				// DB is offline, only handlers with runOffline true can run in this state
-				return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is currently under maintenance")
+				return base.HTTPErrorf(http.StatusServiceUnavailable, msg)
 			} else if dbState != db.DBOnline {
 				// DB is in transition state, no calls will be accepted until it is Online or Offline state
 				return base.HTTPErrorf(http.StatusServiceUnavailable, fmt.Sprintf("DB is %v - try again later", db.RunStateString[dbState]))
