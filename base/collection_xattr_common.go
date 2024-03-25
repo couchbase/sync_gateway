@@ -67,6 +67,7 @@ func (c *Collection) WriteWithXattrs(ctx context.Context, k string, exp uint32, 
 // CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
 func (c *Collection) WriteTombstoneWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, xattrs map[string][]byte, deleteBody bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 
+	requiresBodyRemoval := false
 	worker := func() (shouldRetry bool, err error, value uint64) {
 
 		var casOut uint64
@@ -79,6 +80,7 @@ func (c *Collection) WriteTombstoneWithXattrs(ctx context.Context, k string, exp
 			if cas == 0 {
 				// if cas == 0, create a new server tombstone with xattr
 				casOut, tombstoneErr = c.createTombstone(ctx, k, exp, cas, xattrs, opts)
+				requiresBodyRemoval = !c.IsSupported(sgbucket.BucketStoreFeatureCreateDeletedWithXattr)
 			} else {
 				// If cas is non-zero, this is an already existing tombstone.  Update xattr only
 				casOut, tombstoneErr = c.UpdateXattrs(ctx, k, exp, cas, xattrs, opts)
@@ -97,6 +99,35 @@ func (c *Collection) WriteTombstoneWithXattrs(ctx context.Context, k string, exp
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "Error during UpdateTombstoneXattrs with key %v", UD(k).Redact())
 		return cas, err
+	}
+
+	// In the case where the SubdocDocFlagCreateAsDeleted is not available and we are performing the creation of a
+	// tombstoned document we need to perform this second operation. This is due to the fact that SubdocDocFlagMkDoc
+	// will have been used above instead which will create an empty body {} which we then need to delete here. If there
+	// is a CAS mismatch we exit the operation as this means there has been a subsequent update to the body.
+	if requiresBodyRemoval {
+		worker := func() (shouldRetry bool, err error, value uint64) {
+
+			casOut, removeErr := c.deleteBody(ctx, k, exp, cas, opts)
+			if removeErr != nil {
+				// If there is a cas mismatch the body has since been updated and so we don't need to bother removing
+				// body in this operation
+				if IsCasMismatch(removeErr) {
+					return false, nil, cas
+				}
+
+				shouldRetry = c.isRecoverableWriteError(removeErr)
+				return shouldRetry, removeErr, uint64(0)
+			}
+			return false, nil, casOut
+		}
+
+		err, cas = RetryLoopCas(ctx, "UpdateXattrDeleteBodySecondOp", worker, DefaultRetrySleeper())
+		if err != nil {
+			err = pkgerrors.Wrapf(err, "Error during UpdateTombstoneXattr delete op with key %v", UD(k).Redact())
+			return cas, err
+		}
+
 	}
 
 	return cas, err

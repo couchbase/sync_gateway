@@ -242,6 +242,7 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 			return false
 		}
 		return len(agent.N1qlEps()) > 0
+	// added in Couchbase Server 6.6
 	case sgbucket.BucketStoreFeatureCreateDeletedWithXattr:
 		status, err := b.bucket.Internal().CapabilityStatus(gocb.CapabilityCreateAsDeleted)
 		if err != nil {

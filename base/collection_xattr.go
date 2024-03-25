@@ -592,6 +592,27 @@ func (c *Collection) deleteBodyAndXattrs(_ context.Context, k string, xattrKeys 
 	return mutateErr
 }
 
+// deleteBody deletes the document body of an existing document, and updates cas and crc32c in the associated xattr. Used in Couchbase Server < 6.6
+func (c *Collection) deleteBody(_ context.Context, k string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+	c.Bucket.waitForAvailKvOp()
+	defer c.Bucket.releaseKvOp()
+
+	mutateOps := []gocb.MutateInSpec{
+		gocb.RemoveSpec("", nil),
+	}
+	mutateOps = appendMacroExpansions(mutateOps, opts)
+	options := &gocb.MutateInOptions{
+		StoreSemantic: gocb.StoreSemanticsReplace,
+		Expiry:        CbsExpiryToDuration(exp),
+		Cas:           gocb.Cas(cas),
+	}
+	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
+	if mutateErr != nil {
+		return 0, mutateErr
+	}
+	return uint64(result.Cas()), nil
+}
+
 // isKVError compares the status code of a gocb KeyValueError to the provided code.  Used for nested subdoc errors
 // where gocb doesn't return a typed error for the underlying error.
 func isKVError(err error, code memd.StatusCode) bool {
