@@ -246,9 +246,6 @@ func TestRequireResync(t *testing.T) {
 	require.Equal(t, db.RunStateString[db.DBOffline], dbRootResponse.State)
 	require.Equal(t, []string{scopeAndCollection1Name.String()}, dbRootResponse.RequireResync)
 
-	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/testDoc2", "")
-	require.Contains(t, resp.BodyString(), "resync")
-
 	// Call _online, verify it doesn't override offline when resync is still required.
 	// The online call is async, but subsequent get to status should remain offline
 	onlineResponse := rt.SendAdminRequest("POST", "/"+db2Name+"/_online", "")

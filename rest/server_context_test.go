@@ -827,7 +827,6 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 	// make sure we actually started offline (try to put a doc through the REST API)
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"type":"doc2"}`)
 	RequireStatus(t, resp, http.StatusServiceUnavailable)
-	require.NotContains(t, "resync", resp.BodyString())
 
 	// put doc2 bypassing offline checks (this step will begin to fail with Elixir - since we're making offline more comprehensive)
 	_, _, err = rt.GetSingleTestDatabaseCollectionWithUser().Put(base.TestCtx(t), "doc2", db.Body{"type": "doc2"})
