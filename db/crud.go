@@ -116,11 +116,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 func (c *DatabaseCollection) GetDocWithXattr(ctx context.Context, key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
-	xattrKeys := []string{base.SyncXattrName}
-	if c.userXattrKey() != "" {
-		xattrKeys = append(xattrKeys, c.userXattrKey())
-	}
-	rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattrs(ctx, key, xattrKeys)
+	rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattrs(ctx, key, c.syncAndUserXattrKeys())
 	if getErr != nil {
 		return nil, nil, getErr
 	}
@@ -146,11 +142,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 	if c.UseXattrs() {
 		// Retrieve doc and xattr from bucket, unmarshal only xattr.
 		// Triggers on-demand import when document xattr doesn't match cas.
-		xattrKeys := []string{base.SyncXattrName}
-		if c.userXattrKey() != "" {
-			xattrKeys = append(xattrKeys, c.userXattrKey())
-		}
-		rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, xattrKeys)
+		rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, c.syncAndUserXattrKeys())
 		if getErr != nil {
 			return emptySyncData, getErr
 		}
@@ -1928,11 +1920,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		if expiry != nil {
 			initialExpiry = *expiry
 		}
-		xattrKeys := []string{base.SyncXattrName}
-		if db.userXattrKey() != "" {
-			xattrKeys = append(xattrKeys, db.userXattrKey())
-		}
-		casOut, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, xattrKeys, initialExpiry, existingDoc, opts, func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
+		casOut, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncAndUserXattrKeys(), initialExpiry, existingDoc, opts, func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			currentXattr := currentXattrs[base.SyncXattrName]
 			currentUserXattr := currentXattrs[db.userXattrKey()]

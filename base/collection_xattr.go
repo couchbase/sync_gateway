@@ -191,6 +191,7 @@ func (c *Collection) SubdocWrite(ctx context.Context, k string, subdocKey string
 // subdocGetBodyAndXattr retrieves the document body and xattrs in a single LookupIn subdoc operation.  Does not require both to exist.
 func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattrKeys []string, fetchBody bool) (rawBody []byte, xattrs map[string][]byte, cas uint64, err error) {
 	xattrKey2 := ""
+	// Backward compatibility for one system xattr and one user xattr support.
 	if !c.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
 		if len(xattrKeys) > 2 {
 			return nil, nil, 0, fmt.Errorf("subdocGetBodyAndXattrs: more than 2 xattrKeys %+v not supported in this version of Couchbase Server", xattrKeys)
@@ -208,9 +209,6 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 		// First, attempt to get the document and xattr in one shot.
 		ops := make([]gocb.LookupInSpec, 0, len(xattrKeys)+1)
 		for _, xattrKey := range xattrKeys {
-			if xattrKey == "" {
-				return false, fmt.Errorf("empty xattr key called"), uint64(0)
-			}
 			ops = append(ops, gocb.GetSpec(xattrKey, GetSpecXattr))
 		}
 		if fetchBody {
@@ -290,7 +288,7 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 			shouldRetry = c.isRecoverableReadError(lookupErr)
 			return shouldRetry, lookupErr, uint64(0)
 		}
-		// If Couchbase Server < 7.6, do a second get for the second xattr.
+		// If BucketStoreFeatureMultiXattrSubdocOperations is not supported, do a second get for the second xattr.
 		if xattrKey2 != "" {
 			xattrs2, xattr2Cas, xattr2Err := c.GetXattrs(ctx, k, []string{xattrKey2})
 			switch pkgerrors.Cause(xattr2Err) {
