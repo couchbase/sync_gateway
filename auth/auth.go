@@ -489,7 +489,7 @@ func (auth *Authenticator) Save(p Principal) error {
 		return err
 	}
 
-	casOut, writeErr := auth.datastore.WriteCas(p.DocID(), 0, 0, p.Cas(), p, 0)
+	casOut, writeErr := auth.datastore.WriteCas(p.DocID(), 0, p.Cas(), p, 0)
 	if writeErr != nil {
 		return writeErr
 	}
@@ -512,7 +512,7 @@ func (auth *Authenticator) Save(p Principal) error {
 // Used for resync
 func (auth *Authenticator) UpdateSequenceNumber(p Principal, seq uint64) error {
 	p.SetSequence(seq)
-	casOut, writeErr := auth.datastore.WriteCas(p.DocID(), 0, 0, p.Cas(), p, 0)
+	casOut, writeErr := auth.datastore.WriteCas(p.DocID(), 0, p.Cas(), p, 0)
 	if writeErr != nil {
 		return writeErr
 	}

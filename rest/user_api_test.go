@@ -1147,8 +1147,12 @@ func TestRemovingUserXattr(t *testing.T) {
 			RequireStatus(t, resp, http.StatusCreated)
 
 			dataStore := rt.GetSingleDataStore()
+
+			cas, err := dataStore.Get(docKey, nil)
+			require.NoError(t, err)
+			ctx := rt.Context()
 			// Add xattr
-			_, err := dataStore.WriteUserXattr(docKey, xattrKey, channelName)
+			_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
 			assert.NoError(t, err)
 
 			// Trigger import
@@ -1159,14 +1163,17 @@ func TestRemovingUserXattr(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Get sync data for doc and ensure user xattr has been used correctly to set channel
+			xattrs, cas, err := dataStore.GetXattrs(rt.Context(), docKey, []string{base.SyncXattrName})
+			require.NoError(t, err)
+			require.Contains(t, xattrs, base.SyncXattrName)
+
 			var syncData db.SyncData
-			_, err = dataStore.GetXattr(rt.Context(), docKey, base.SyncXattrName, &syncData)
-			assert.NoError(t, err)
+			require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
 			assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
 
 			// Delete user xattr
-			_, err = dataStore.DeleteUserXattr(docKey, xattrKey)
+			err = dataStore.RemoveXattrs(ctx, docKey, []string{xattrKey}, cas)
 			assert.NoError(t, err)
 
 			// Trigger import
@@ -1177,9 +1184,11 @@ func TestRemovingUserXattr(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Ensure old channel set with user xattr has been removed
+			xattrs, _, err = dataStore.GetXattrs(rt.Context(), docKey, []string{base.SyncXattrName})
+			require.NoError(t, err)
+			require.Contains(t, xattrs, base.SyncXattrName)
 			var syncData2 db.SyncData
-			_, err = dataStore.GetXattr(rt.Context(), docKey, base.SyncXattrName, &syncData2)
-			assert.NoError(t, err)
+			require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData2))
 
 			assert.Equal(t, uint64(3), syncData2.Channels[channelName].Seq)
 		})

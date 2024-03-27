@@ -2422,7 +2422,6 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 }
 
 func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
-
 	if !base.TestUseXattrs() {
 		t.Skip("Xattrs required")
 	}
@@ -2447,12 +2446,15 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	var doc Body
 	var xattr Body
 
+	var xattrs map[string][]byte
 	// Ensure document has been added
-	waitAndAssertCondition(t, func() bool {
-		_, err = collection.dataStore.GetWithXattr(ctx, "doc", "_sync", "", &doc, &xattr, nil)
-		return err == nil
-	})
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		_, xattrs, _, err = collection.dataStore.GetWithXattrs(ctx, "doc", []string{base.SyncXattrName})
+		assert.NoError(c, err)
+	}, time.Second*5, time.Millisecond*100)
 
+	require.Contains(t, xattrs, base.SyncXattrName)
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
 	assert.Equal(t, int64(1), db.DbStats.SharedBucketImport().ImportCount.Value())
 
 	assert.Nil(t, doc)

@@ -193,7 +193,7 @@ func (b *BackgroundManager) markStart(ctx context.Context) error {
 
 	// If we're running in cluster aware 'mode' base the check off of a heartbeat doc
 	if b.isClusterAware() {
-		_, err := b.clusterAwareOptions.metadataStore.WriteCas(b.clusterAwareOptions.HeartbeatDocID(), 0, BackgroundManagerHeartbeatExpirySecs, 0, []byte("{}"), sgbucket.Raw)
+		_, err := b.clusterAwareOptions.metadataStore.WriteCas(b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs, 0, []byte("{}"), sgbucket.Raw)
 		if base.IsCasMismatch(err) {
 			// Check if markStop has been called but not yet processed
 			var status HeartbeatDoc

@@ -35,8 +35,11 @@ type treeMeta struct {
 func getRevTreeList(ctx context.Context, dataStore sgbucket.DataStore, key string, useXattrs bool) (revTreeList, error) {
 	switch useXattrs {
 	case true:
-		var rawDoc, rawXattr []byte
-		_, getErr := dataStore.GetWithXattr(ctx, key, base.SyncXattrName, "", &rawDoc, &rawXattr, nil)
+		_, xattrs, _, getErr := dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
+		rawXattr, ok := xattrs[base.SyncXattrName]
+		if !ok {
+			return revTreeList{}, base.ErrXattrNotFound
+		}
 		if getErr != nil {
 			return revTreeList{}, getErr
 		}
@@ -1625,10 +1628,12 @@ func TestPutStampClusterUUID(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, doc.ClusterUUID, 32)
 
-	var xattr map[string]string
-	_, err = collection.dataStore.GetWithXattr(ctx, key, base.SyncXattrName, "", &body, &xattr, nil)
+	_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
 	require.NoError(t, err)
-	require.Len(t, xattr["cluster_uuid"], 32)
+	require.Contains(t, xattrs, base.SyncXattrName)
+	var xattr map[string]any
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
+	require.Len(t, xattr["cluster_uuid"].(string), 32)
 }
 
 // TestAssignSequenceReleaseLoop repros conditions seen in CBG-3516 (where each sequence between nextSequence and docSequence has an unusedSeq doc)
@@ -1660,7 +1665,7 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 	err = json.Unmarshal(sd, &newSyncData)
 	require.NoError(t, err)
 	newSyncData["sequence"] = doc.SyncData.Sequence + otherClusterSequenceOffset
-	_, err = collection.dataStore.UpdateXattr(ctx, doc.ID, base.SyncXattrName, 0, doc.Cas, newSyncData, DefaultMutateInOpts())
+	_, err = collection.dataStore.UpdateXattrs(ctx, doc.ID, 0, doc.Cas, map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, newSyncData)}, DefaultMutateInOpts())
 	require.NoError(t, err)
 
 	_, doc, err = collection.Put(ctx, "doc1", Body{"foo": "buzz", BodyRev: rev})
