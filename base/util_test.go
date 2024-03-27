@@ -1691,3 +1691,17 @@ func TestCASToLittleEndianHex(t *testing.T) {
 	littleEndianHex := Uint64CASToLittleEndianHex(casValue)
 	require.Equal(t, expHexValue, string(littleEndianHex))
 }
+
+func TestParseLongDuration(t *testing.T) {
+	d, err := ParseLongDuration("1y2m3w4d")
+	require.NoError(t, err)
+	require.Equal(t, 24*(365+60+21+4)*time.Hour, d)
+
+	d, err = ParseLongDuration("2h30m")
+	require.NoError(t, err)
+	require.Equal(t, 2*time.Hour+30*time.Minute, d)
+
+	d, err = ParseLongDuration("1m2h3m")
+	require.NoError(t, err)
+	require.Equal(t, 30*24*time.Hour+2*time.Hour+3*time.Minute, d)
+}

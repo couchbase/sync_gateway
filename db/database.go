@@ -129,6 +129,7 @@ type DatabaseContext struct {
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
 	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
 	CORS                         *auth.CORSConfig               // CORS configuration
+	MQTTClients                  []MQTTClient                   // MQTT client connection(s)
 }
 
 type Scope struct {
@@ -151,6 +152,7 @@ type DatabaseContextOptions struct {
 	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
 	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
 	UserFunctions                 *UserFunctions   // JS/N1QL functions clients can call
+	MQTT                          MQTTConfig       // MQTT client connection & subscriptions
 	AllowConflicts                *bool            // False forbids creating conflicts
 	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
 	DisablePasswordAuthentication bool             // True enforces OIDC/guest only
@@ -255,6 +257,17 @@ type WarningThresholds struct {
 type ImportOptions struct {
 	BackupOldRev     bool   // Create temporary backup of old revision body when available
 	ImportPartitions uint16 // Number of partitions for import
+}
+
+// Per-database MQTT configuration. (Implemented by mqtt.PerDBConfig)
+type MQTTConfig interface {
+	IsEnabled() bool
+	Start(ctx context.Context, dbc *DatabaseContext) ([]MQTTClient, error)
+}
+
+// Represents a running MQTT client. (Implemented by mqtt.Client)
+type MQTTClient interface {
+	Stop() error
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
@@ -547,6 +560,15 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
 	}
 
+	// Start MQTT client connection(s)
+	if options.MQTT != nil && options.MQTT.IsEnabled() {
+		dbContext.MQTTClients, err = options.MQTT.Start(ctx, dbContext)
+		if err != nil {
+			//TODO: Should this be fatal, or should it just log an error?
+			return nil, fmt.Errorf("couldn't start MQTT client: %w", err)
+		}
+	}
+
 	return dbContext, nil
 }
 
@@ -571,6 +593,10 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 func (context *DatabaseContext) Close(ctx context.Context) {
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
+
+	for _, client := range context.MQTTClients {
+		client.Stop()
+	}
 
 	context.OIDCProviders.Stop()
 	close(context.terminator)
