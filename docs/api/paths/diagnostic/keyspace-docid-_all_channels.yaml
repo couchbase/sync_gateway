@@ -25,7 +25,6 @@ get:
               description: The channels the document has been in.
               type: array
               items:
-                sequences:
                 description: The sequence number that document was added to the channel.
                 type: string
                 example: "28-48"
