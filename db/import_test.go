@@ -247,15 +247,13 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
 			cas, _ := collection.dataStore.Get(key, &body)
-			_, err := collection.dataStore.WriteCas(key, 0, 0, cas, []byte(valStr), sgbucket.Raw)
+			_, err := collection.dataStore.WriteCas(key, 0, cas, []byte(valStr), sgbucket.Raw)
 			assert.NoError(t, err)
 		}
 	}
 
 	syncDataInXattrCallback := func(key string) {
 		if runOnce {
-			var body map[string]interface{}
-			var xattr map[string]interface{}
 
 			runOnce = false
 			valStr := `{
@@ -288,9 +286,10 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			}`
 
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
-			cas, _ := collection.dataStore.GetWithXattr(ctx, key, base.SyncXattrName, "", &body, &xattr, nil)
-			_, err := collection.dataStore.WriteCasWithXattr(ctx, key, base.SyncXattrName, 0, cas, []byte(valStr), []byte(xattrStr), DefaultMutateInOpts())
-			assert.NoError(t, err)
+
+			_, _, cas, _ := collection.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
+			_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, cas, []byte(valStr), map[string][]byte{base.SyncXattrName: []byte(xattrStr)}, DefaultMutateInOpts())
+			require.NoError(t, err)
 		}
 	}
 
@@ -338,13 +337,15 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 
 			// Check document has the rev and new body
 			var bodyOut map[string]interface{}
-			var xattrOut map[string]interface{}
-
-			_, err = collection.dataStore.GetWithXattr(ctx, testcase.docname, base.SyncXattrName, "", &bodyOut, &xattrOut, nil)
+			rawDoc, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, testcase.docname, []string{base.SyncXattrName})
 			assert.NoError(t, err)
 
-			assert.Equal(t, "2-abc", xattrOut["rev"])
+			require.Contains(t, xattrs, base.SyncXattrName)
+			var xattrOut map[string]any
+			require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattrOut))
+			require.NoError(t, base.JSONUnmarshal(rawDoc, &bodyOut))
 			assert.Equal(t, "val2", bodyOut["field2"])
+			assert.Equal(t, "2-abc", xattrOut["rev"])
 		})
 	}
 }
@@ -424,9 +425,11 @@ func TestImportNullDocRaw(t *testing.T) {
 }
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
-	xattr := map[string]interface{}{}
-	_, err := dataStore.GetWithXattr(base.TestCtx(t), key, base.SyncXattrName, "", nil, &xattr, nil)
+	_, xattrs, _, err := dataStore.GetWithXattrs(base.TestCtx(t), key, []string{base.SyncXattrName})
 	assert.NoError(t, err, "Error Getting Xattr")
+	require.Contains(t, xattrs, base.SyncXattrName)
+	var xattr map[string]any
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
 	revision, ok := xattr["rev"]
 	assert.True(t, ok)
 	generation, _ := ParseRevID(base.TestCtx(t), revision.(string))
@@ -523,10 +526,12 @@ func TestImportStampClusterUUID(t *testing.T) {
 		require.Len(t, importedDoc.ClusterUUID, 32)
 	}
 
-	var xattr map[string]string
-	_, err = collection.dataStore.GetWithXattr(ctx, key, base.SyncXattrName, "", &body, &xattr, nil)
+	xattrs, _, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName})
 	require.NoError(t, err)
-	require.Len(t, xattr["cluster_uuid"], 32)
+	require.Contains(t, xattrs, base.SyncXattrName)
+	var xattr map[string]any
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
+	require.Len(t, xattr["cluster_uuid"].(string), 32)
 }
 
 // TestImporNonZeroStart makes sure docs written before sync gateway start get imported

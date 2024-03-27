@@ -72,7 +72,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			var importErr error
-			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.UserXattr, rawBucketDoc.Cas)
+			doc, importErr = c.OnDemandImportForGet(ctx, docid, rawBucketDoc.Body, rawBucketDoc.Xattrs[base.SyncXattrName], rawBucketDoc.Xattrs[c.userXattrKey()], rawBucketDoc.Cas)
 			if importErr != nil {
 				return nil, nil, importErr
 			}
@@ -116,13 +116,13 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 func (c *DatabaseCollection) GetDocWithXattr(ctx context.Context, key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
-	rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattr(ctx, key, base.SyncXattrName, c.userXattrKey(), &rawBucketDoc.Body, &rawBucketDoc.Xattr, &rawBucketDoc.UserXattr)
+	rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattrs(ctx, key, c.syncAndUserXattrKeys())
 	if getErr != nil {
 		return nil, nil, getErr
 	}
 
 	var unmarshalErr error
-	doc, unmarshalErr = unmarshalDocumentWithXattr(ctx, key, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.UserXattr, rawBucketDoc.Cas, unmarshalLevel)
+	doc, unmarshalErr = unmarshalDocumentWithXattr(ctx, key, rawBucketDoc.Body, rawBucketDoc.Xattrs[base.SyncXattrName], rawBucketDoc.Xattrs[c.userXattrKey()], rawBucketDoc.Cas, unmarshalLevel)
 	if unmarshalErr != nil {
 		return nil, nil, unmarshalErr
 	}
@@ -142,11 +142,13 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 	if c.UseXattrs() {
 		// Retrieve doc and xattr from bucket, unmarshal only xattr.
 		// Triggers on-demand import when document xattr doesn't match cas.
-		var rawDoc, rawXattr, rawUserXattr []byte
-		cas, getErr := c.dataStore.GetWithXattr(ctx, key, base.SyncXattrName, c.userXattrKey(), &rawDoc, &rawXattr, &rawUserXattr)
+		rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, c.syncAndUserXattrKeys())
 		if getErr != nil {
 			return emptySyncData, getErr
 		}
+
+		rawXattr := xattrs[base.SyncXattrName]
+		rawUserXattr := xattrs[c.userXattrKey()]
 
 		// Unmarshal xattr only
 		doc, unmarshalErr := unmarshalDocumentWithXattr(ctx, docid, nil, rawXattr, rawUserXattr, cas, DocUnmarshalSync)
@@ -195,11 +197,12 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 // need to read the doc body from the bucket.
 func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid string, level DocumentUnmarshalLevel) (syncData SyncData, err error) {
 	if db.UseXattrs() {
+		var xattrs map[string][]byte
 		var cas uint64
-		var xattrValue []byte
-		if cas, err = db.dataStore.GetXattr(ctx, docid, base.SyncXattrName, &xattrValue); err == nil {
+		xattrs, cas, err = db.dataStore.GetXattrs(ctx, docid, []string{base.SyncXattrName})
+		if err == nil {
 			var doc *Document
-			doc, err = unmarshalDocumentWithXattr(ctx, docid, nil, xattrValue, nil, cas, level)
+			doc, err = unmarshalDocumentWithXattr(ctx, docid, nil, xattrs[base.SyncXattrName], nil, cas, level)
 			if err == nil {
 				syncData = doc.SyncData
 			}
@@ -1870,7 +1873,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		// If we can't find sync metadata in the document body, check for upgrade.  If upgrade, retry write using WriteUpdateWithXattr
 		if err != nil && err.Error() == "409 Not imported" {
 			_, bucketDocument := db.checkForUpgrade(ctx, key, DocUnmarshalAll)
-			if bucketDocument != nil && bucketDocument.Xattr != nil {
+			if bucketDocument != nil && bucketDocument.Xattrs[base.SyncXattrName] != nil {
 				existingDoc = bucketDocument
 				upgradeInProgress = true
 			}
@@ -1888,8 +1891,10 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		if expiry != nil {
 			initialExpiry = *expiry
 		}
-		casOut, err = db.dataStore.WriteUpdateWithXattr(ctx, key, base.SyncXattrName, db.userXattrKey(), initialExpiry, existingDoc, opts, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, updatedSpec []sgbucket.MacroExpansionSpec, err error) {
+		casOut, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncAndUserXattrKeys(), initialExpiry, existingDoc, opts, func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
+			currentXattr := currentXattrs[base.SyncXattrName]
+			currentUserXattr := currentXattrs[db.userXattrKey()]
 			if doc, err = unmarshalDocumentWithXattr(ctx, docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll); err != nil {
 				return
 			}
@@ -1907,12 +1912,12 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			docExists := currentValue != nil
-			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
 			}
 			// If importing and the sync function has modified the expiry, allow sgbucket.MutateInOptions to modify the expiry
-			if db.dataStore.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) && syncFuncExpiry != nil {
+			if db.dataStore.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) && updatedDoc.Expiry != nil {
 				opts.PreserveExpiry = false
 			}
 			docSequence = doc.Sequence
@@ -1923,12 +1928,14 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				return
 			}
 
-			deleteDoc = currentRevFromHistory.Deleted
+			updatedDoc.IsTombstone = currentRevFromHistory.Deleted
 
 			// Return the new raw document value for the bucket to store.
 			doc.SetCrc32cUserXattrHash()
-			raw, rawXattr, err = doc.MarshalWithXattr()
-			docBytes = len(raw)
+			var rawXattr []byte
+			updatedDoc.Doc, rawXattr, err = doc.MarshalWithXattr()
+			docBytes = len(updatedDoc.Doc)
+			updatedDoc.Xattrs = map[string][]byte{base.SyncXattrName: rawXattr}
 
 			// Warn when sync data is larger than a configured threshold
 			if db.unsupportedOptions() != nil && db.unsupportedOptions().WarningThresholds != nil {
@@ -1947,7 +1954,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			base.DebugfCtx(ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
-			return raw, rawXattr, deleteDoc, syncFuncExpiry, updatedSpec, err
+			return updatedDoc, err
 		})
 		if err != nil {
 			if err == base.ErrDocumentMigrated {
@@ -2256,7 +2263,7 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) err
 	}
 
 	if db.UseXattrs() {
-		return db.dataStore.DeleteWithXattr(ctx, key, base.SyncXattrName)
+		return db.dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName})
 	} else {
 		return db.dataStore.Delete(key)
 	}
@@ -2488,7 +2495,7 @@ func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string,
 
 	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalHistory)
 	if err != nil {
-		if !base.IsDocNotFoundError(err) && err != base.ErrXattrNotFound {
+		if !base.IsDocNotFoundError(err) && !errors.Is(err, base.ErrXattrNotFound) {
 			base.WarnfCtx(ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
 		}
 		missing = revids
@@ -2550,7 +2557,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 	}
 	doc, err := db.GetDocSyncDataNoImport(ctx, docid, level)
 	if err != nil {
-		if !base.IsDocNotFoundError(err) && err != base.ErrXattrNotFound {
+		if !base.IsDocNotFoundError(err) && !errors.Is(err, base.ErrXattrNotFound) {
 			base.WarnfCtx(ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
 			return ProposedRev_Error, ""
 		}

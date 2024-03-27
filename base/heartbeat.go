@@ -449,7 +449,7 @@ func (dh *documentBackedListener) updateNodeList(ctx context.Context, nodeID str
 
 		InfofCtx(ctx, KeyCluster, "Updating nodeList document (%s) with node IDs: %v", dh.nodeListKey, dh.nodeIDs)
 
-		casOut, err := dh.datastore.WriteCas(dh.nodeListKey, 0, 0, dh.cas, dh.nodeIDs, 0)
+		casOut, err := dh.datastore.WriteCas(dh.nodeListKey, 0, dh.cas, dh.nodeIDs, 0)
 
 		if err == nil { // Successful update
 			dh.cas = casOut

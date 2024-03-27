@@ -16,6 +16,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestUserXattrAutoImport(t *testing.T) {
@@ -47,8 +48,12 @@ func TestUserXattrAutoImport(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, "{}")
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
+	ctx := rt.Context()
+	cas, err := dataStore.Get(docKey, nil)
+
+	require.NoError(t, err)
 	// Add xattr to doc
-	_, err := dataStore.WriteUserXattr(docKey, xattrKey, channelName)
+	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
 	assert.NoError(t, err)
 
 	// Wait for doc to be imported
@@ -60,26 +65,29 @@ func TestUserXattrAutoImport(t *testing.T) {
 	// Ensure sync function has ran twice (once for PUT and once for xattr addition)
 	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
-	ctx := base.TestCtx(t)
 	// Get Xattr and ensure channel value set correctly
-	var syncData db.SyncData
-	_, err = dataStore.GetXattr(ctx, docKey, base.SyncXattrName, &syncData)
+	xattrs, cas, err := dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	assert.NoError(t, err)
+	require.Contains(t, xattrs, base.SyncXattrName)
+	var syncData db.SyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
 
 	// Update xattr again but same value and ensure it isn't imported again (crc32 hash should match)
-	_, err = dataStore.WriteUserXattr(docKey, xattrKey, channelName)
-	assert.NoError(t, err)
+	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
+	require.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
 		return rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value() == 1
 	})
 	assert.NoError(t, err)
 
-	var syncData2 db.SyncData
-	_, err = dataStore.GetXattr(ctx, docKey, base.SyncXattrName, &syncData2)
+	xattrs, _, err = dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	assert.NoError(t, err)
+	require.Contains(t, xattrs, base.SyncXattrName)
+	var syncData2 db.SyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData2))
 
 	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
 	assert.Equal(t, syncData.Crc32cUserXattr, syncData2.Crc32cUserXattr)
@@ -96,8 +104,10 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.NoError(t, err)
 
 	var syncData3 db.SyncData
-	_, err = dataStore.GetXattr(ctx, docKey, base.SyncXattrName, &syncData3)
+	xattrs, _, err = dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	assert.NoError(t, err)
+	require.Contains(t, xattrs, base.SyncXattrName)
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData3))
 
 	assert.Equal(t, syncData2.Crc32c, syncData3.Crc32c)
 	assert.Equal(t, syncData2.Crc32cUserXattr, syncData3.Crc32cUserXattr)
@@ -117,8 +127,10 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	var syncData4 db.SyncData
-	_, err = dataStore.GetXattr(ctx, docKey, base.SyncXattrName, &syncData4)
+	xattrs, _, err = dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	assert.NoError(t, err)
+	require.Contains(t, xattrs, base.SyncXattrName)
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData4))
 
 	assert.Equal(t, base.Crc32cHashString(updateVal), syncData4.Crc32c)
 	assert.Equal(t, syncData3.Crc32cUserXattr, syncData4.Crc32cUserXattr)
@@ -166,9 +178,13 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	// Ensure sync function has been ran on import
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
+	cas, err := dataStore.Get(docKey, nil)
+	require.NoError(t, err)
+
+	ctx := base.TestCtx(t)
 	// Write user xattr
-	_, err = dataStore.WriteUserXattr(docKey, xattrKey, channelName)
-	assert.NoError(t, err)
+	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
+	require.NoError(t, err)
 
 	// GET to trigger import
 	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docKey, "")
@@ -183,25 +199,30 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	// Ensure sync function has ran on import
 	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
-	ctx := base.TestCtx(t)
 	// Get sync data for doc and ensure user xattr has been used correctly to set channel
+	xattrs, cas, err := dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
+	require.NoError(t, err)
+
+	require.Contains(t, xattrs, base.SyncXattrName)
 	var syncData db.SyncData
-	_, err = dataStore.GetXattr(ctx, docKey, base.SyncXattrName, &syncData)
-	assert.NoError(t, err)
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
 
 	// Write same xattr value
-	_, err = dataStore.WriteUserXattr(docKey, xattrKey, channelName)
-	assert.NoError(t, err)
+	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
+	require.NoError(t, err)
 
 	// Perform GET and ensure import isn't triggered as crc32 hash is the same
 	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docKey, "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	var syncData2 db.SyncData
-	_, err = dataStore.GetXattr(ctx, docKey, base.SyncXattrName, &syncData2)
+	xattrs, _, err = dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	assert.NoError(t, err)
+
+	require.Contains(t, xattrs, base.SyncXattrName)
+	var syncData2 db.SyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData2))
 
 	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
 	assert.Equal(t, syncData.Crc32cUserXattr, syncData2.Crc32cUserXattr)
@@ -253,10 +274,13 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 
 	// Ensure sync function has ran on import
 	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+	cas, err := dataStore.Get(docKey, nil)
+	require.NoError(t, err)
 
+	ctx := base.TestCtx(t)
 	// Write user xattr
-	_, err = dataStore.WriteUserXattr(docKey, xattrKey, channelName)
-	assert.NoError(t, err)
+	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
+	require.NoError(t, err)
 
 	// Trigger import
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{"update": "update"}`)
@@ -271,10 +295,10 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	// Ensure sync function has ran on import
 	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
-	ctx := base.TestCtx(t)
+	xattrs, _, err := dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
+	require.NoError(t, err)
 	var syncData db.SyncData
-	_, err = dataStore.GetXattr(ctx, docKey, base.SyncXattrName, &syncData)
-	assert.NoError(t, err)
-
+	require.Contains(t, xattrs, base.SyncXattrName)
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
 }

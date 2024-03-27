@@ -800,15 +800,8 @@ func TestMigrateBodyAttachments(t *testing.T) {
   }
 }`
 
-		var bodyVal map[string]interface{}
-		var xattrVal map[string]interface{}
-		err = base.JSONUnmarshal([]byte(bodyPre25), &bodyVal)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal([]byte(syncData), &xattrVal)
-		assert.NoError(t, err)
-
 		if base.TestUseXattrs() {
-			_, err = collection.dataStore.WriteCasWithXattr(ctx, docKey, base.SyncXattrName, 0, 0, bodyVal, xattrVal, DefaultMutateInOpts())
+			_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, DefaultMutateInOpts())
 			assert.NoError(t, err)
 		} else {
 			newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
@@ -1094,15 +1087,8 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
   }
 }`
 
-	var bodyVal map[string]interface{}
-	var xattrVal map[string]interface{}
-	err = base.JSONUnmarshal([]byte(bodyPre25), &bodyVal)
-	assert.NoError(t, err)
-	err = base.JSONUnmarshal([]byte(syncData), &xattrVal)
-	assert.NoError(t, err)
-
 	if base.TestUseXattrs() {
-		_, err = collection.dataStore.WriteCasWithXattr(ctx, docKey, base.SyncXattrName, 0, 0, bodyVal, xattrVal, DefaultMutateInOpts())
+		_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, DefaultMutateInOpts())
 		assert.NoError(t, err)
 	} else {
 		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
@@ -1268,15 +1254,8 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
   }
 }`
 
-	var bodyVal map[string]interface{}
-	var xattrVal map[string]interface{}
-	err = base.JSONUnmarshal([]byte(bodyPre25), &bodyVal)
-	assert.NoError(t, err)
-	err = base.JSONUnmarshal([]byte(syncData), &xattrVal)
-	assert.NoError(t, err)
-
 	if base.TestUseXattrs() {
-		_, err = collection.dataStore.WriteCasWithXattr(ctx, docKey, base.SyncXattrName, 0, 0, bodyVal, xattrVal, DefaultMutateInOpts())
+		_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, DefaultMutateInOpts())
 		assert.NoError(t, err)
 	} else {
 		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})

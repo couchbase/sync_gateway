@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,7 +37,11 @@ func TestUserXattrsRawGet(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	_, err := rt.GetSingleDataStore().WriteUserXattr(docKey, xattrKey, "val")
+	cas, err := rt.GetSingleDataStore().Get(docKey, nil)
+	require.NoError(t, err)
+
+	ctx := rt.Context()
+	_, err = rt.GetSingleDataStore().UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, "val")}, nil)
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {

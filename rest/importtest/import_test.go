@@ -626,7 +626,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	xattrVal["actor"] = "not mobile"
 
 	ctx := base.TestCtx(t)
-	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal, nil)
+	_, mutateErr := dataStore.UpdateXattrs(ctx, mobileKey, uint32(0), cas, map[string][]byte{"_nonmobile": base.MustJSONMarshal(t, xattrVal)}, nil)
 
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
@@ -678,7 +678,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal, nil)
+	_, mutateErr := dataStore.UpdateXattrs(ctx, mobileKey, uint32(0), cas, map[string][]byte{"_nonmobile": base.MustJSONMarshal(t, xattrVal)}, nil)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to update the document again via Sync Gateway.  Should not trigger import, PUT should be successful,
@@ -739,7 +739,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal, nil)
+	_, mutateErr := dataStore.UpdateXattrs(ctx, mobileKey, uint32(0), cas, map[string][]byte{"_nonmobile": base.MustJSONMarshal(t, xattrVal)}, nil)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Wait until crc match count changes
@@ -1491,10 +1491,11 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 
 	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
 		docID := "TestImportDecimalScale" + strconv.Itoa(i)
-		var docBody []byte
 		var syncData db.SyncData
-		_, err := dataStore.GetWithXattr(ctx, docID, base.SyncXattrName, "", &docBody, &syncData, nil)
+		docBody, xattrs, _, err := dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName})
 		require.NoError(t, err)
+		require.Contains(t, xattrs, base.SyncXattrName)
+		require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
 		assert.NotEqualf(t, "", syncData.CurrentRev, "Expecting non-empty rev ID for imported doc %v", docID)
 		assert.Truef(t, strings.HasPrefix(syncData.CurrentRev, "1-"), "Expecting rev 1 for imported doc %v", docID)
@@ -1556,10 +1557,11 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 	ctx := base.TestCtx(t)
 	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
 		docID := "TestImportDecimalPlacesScientificNotation" + strconv.Itoa(i)
-		var docBody []byte
 		var syncData db.SyncData
-		_, err := dataStore.GetWithXattr(ctx, docID, base.SyncXattrName, "", &docBody, &syncData, nil)
+		docBody, xattrs, _, err := dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName})
 		require.NoError(t, err)
+		require.Contains(t, xattrs, base.SyncXattrName)
+		require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
 		assert.NotEqualf(t, "", syncData.CurrentRev, "Expecting non-empty rev ID for imported doc %v", docID)
 		assert.Truef(t, strings.HasPrefix(syncData.CurrentRev, "1-"), "Expecting rev 1 for imported doc %v", docID)
@@ -1851,7 +1853,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	// Modify the document via the SDK to add the body back
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	_, mutateErr := dataStore.UpdateXattr(ctx, mobileKey, "_nonmobile", uint32(0), cas, xattrVal, nil)
+	_, mutateErr := dataStore.UpdateXattrs(ctx, mobileKey, uint32(0), cas, map[string][]byte{"_nonmobile": base.MustJSONMarshal(t, xattrVal)}, nil)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to get the document again via Sync Gateway.  Should not trigger import.
@@ -1902,9 +1904,11 @@ func rawDocWithSyncMeta() string {
 }
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
-	xattr := map[string]interface{}{}
-	_, err := dataStore.GetWithXattr(base.TestCtx(t), key, base.SyncXattrName, "", nil, &xattr, nil)
+	xattrs, _, err := dataStore.GetXattrs(base.TestCtx(t), key, []string{base.SyncXattrName})
 	assert.NoError(t, err, "Error Getting Xattr")
+	xattr := map[string]interface{}{}
+	require.Contains(t, xattrs, base.SyncXattrName)
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
 	revision, ok := xattr["rev"]
 	assert.True(t, ok)
 	generation, _ := db.ParseRevID(base.TestCtx(t), revision.(string))

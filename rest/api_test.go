@@ -1652,9 +1652,11 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	}
 
 	// Fetch the xattr and make sure it contains the above value
-	var retrievedVal map[string]interface{}
-	var retrievedXattr map[string]interface{}
-	_, err = rt.GetSingleDataStore().GetWithXattr(rt.Context(), "-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, "", &retrievedVal, &retrievedXattr, nil)
+	xattrs, _, err := rt.GetSingleDataStore().GetXattrs(rt.Context(), "-21SK00U-ujxUO9fU2HezxL", []string{base.SyncXattrName})
+	require.NoError(t, err)
+	require.Contains(t, xattrs, base.SyncXattrName)
+	var retrievedXattr map[string]any
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
 	assert.NoError(t, err, "Unexpected Error")
 	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedXattr["rev"])
 
@@ -2474,7 +2476,7 @@ func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
 	// Create the document to trigger cas failure
 	value := make(map[string]interface{})
 	value["foo"] = "bar"
-	insCas, err := bucket.DefaultDataStore().WriteCas(t.Name(), 0, 0, 0, value, 0)
+	insCas, err := bucket.DefaultDataStore().WriteCas(t.Name(), 0, 0, value, 0)
 	require.NoError(t, err)
 
 	// Delete document

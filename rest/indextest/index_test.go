@@ -655,10 +655,12 @@ func waitAndRequireDBState(t *testing.T, sc *rest.ServerContext, dbName string, 
 }
 
 func requireActiveChannel(t *testing.T, dataStore base.DataStore, key string, channelName string) {
-	xattr := db.SyncData{}
-	_, err := dataStore.GetWithXattr(base.TestCtx(t), key, base.SyncXattrName, "", nil, &xattr, nil)
+	xattrs, _, err := dataStore.GetXattrs(base.TestCtx(t), key, []string{base.SyncXattrName})
 	require.NoError(t, err, "Error Getting Xattr as sync data")
+	require.Contains(t, xattrs, base.SyncXattrName)
+	var xattr db.SyncData
+	require.NoError(t, json.Unmarshal(xattrs[base.SyncXattrName], &xattr), "Error unmarshalling sync data")
 	channel, ok := xattr.Channels[channelName]
 	require.True(t, ok)
-	require.True(t, channel == nil)
+	require.Nil(t, channel)
 }

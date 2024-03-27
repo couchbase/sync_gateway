@@ -97,14 +97,16 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 		// verify VV is written to docs that are replicated
 		for _, doc := range []string{normalDoc, attachmentDoc} {
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				var response map[string]interface{}
-				_, err := bucket2.DefaultDataStore().GetXattr(ctx, doc, "_vv", &response)
+				xattrs, _, err := bucket2.DefaultDataStore().GetXattrs(ctx, doc, []string{"_vv"})
 				assert.NoError(c, err, "Could not get doc %s", doc)
-				for range response {
-					assert.NotNil(c, response[version])
-					assert.NotNil(c, response[source])
-					assert.NotNil(c, response[curCAS])
-				}
+				vvXattrBytes, ok := xattrs["_vv"]
+				require.True(t, ok)
+				var vvXattrVal map[string]any
+				require.NoError(t, base.JSONUnmarshal(vvXattrBytes, &vvXattrVal))
+				assert.NotNil(c, vvXattrVal[version])
+				assert.NotNil(c, vvXattrVal[source])
+				assert.NotNil(c, vvXattrVal[curCAS])
+
 			}, time.Second*5, time.Millisecond*100)
 		}
 	}

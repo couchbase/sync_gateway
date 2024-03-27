@@ -1499,16 +1499,23 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/accessDoc", `{}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	_, err := data.WriteUserXattr("accessDoc", xattrKey, map[string]interface{}{"userChannels": map[string]interface{}{"user": "a"}})
-	assert.NoError(t, err)
+	ctx := rt.Context()
+
+	cas, err := data.Get("accessDoc", nil)
+	require.NoError(t, err)
+
+	_, err = data.UpdateXattrs(ctx, "accessDoc", 0, cas, map[string][]byte{xattrKey: []byte(`{"userChannels" : {"user": "a"}}`)}, nil)
+	require.NoError(t, err)
 
 	_ = rt.PutDoc("doc", `{"channels": "a"}`)
 
 	changes := revocationTester.getChanges(0, 2)
 	assert.Len(t, changes.Results, 2)
 
-	_, err = data.WriteUserXattr("accessDoc", xattrKey, map[string]interface{}{})
-	assert.NoError(t, err)
+	cas, err = data.Get("accessDoc", nil)
+	require.NoError(t, err)
+
+	require.NoError(t, data.RemoveXattrs(ctx, "accessDoc", []string{xattrKey}, cas))
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)

@@ -96,7 +96,7 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 	}
 
 	bucketKey := c.sgCfgBucketKey(cfgKey)
-	casOut, err := c.datastore.WriteCas(bucketKey, 0, 0, cas, val, 0)
+	casOut, err := c.datastore.WriteCas(bucketKey, 0, cas, val, 0)
 
 	if IsCasMismatch(err) {
 		InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Set, ErrKeyExists key: %s, cas: %d", cfgKey, cas)

@@ -3238,6 +3238,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 func TestLegacyCredentialInheritance(t *testing.T) {
 	rest.RequireBucketSpecificCredentials(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+	base.SkipInvalidAuthForCouchbaseServer76(t)
 
 	ctx := base.TestCtx(t)
 	config := rest.BootstrapStartupConfigForTest(t)

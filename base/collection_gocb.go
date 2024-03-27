@@ -219,7 +219,7 @@ func (c *Collection) SetRaw(k string, exp uint32, opts *sgbucket.UpsertOptions, 
 	return err
 }
 
-func (c *Collection) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+func (c *Collection) WriteCas(k string, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
