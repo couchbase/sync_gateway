@@ -1590,7 +1590,7 @@ func TestGetChannelsAndAccess(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			body := Body{}
 			require.NoError(t, body.Unmarshal([]byte(test.body)))
-			result, access, roles, expiry, oldJson, err := collection.getChannelsAndAccess(base.TestCtx(t), doc, body, nil, "")
+			result, access, roles, expiry, oldJson, err := collection.getChannelsAndAccess(base.TestCtx(t), doc, body, nil, "", false)
 			require.NoError(t, err)
 			require.Equal(t, "", oldJson)
 			require.Nil(t, expiry)
