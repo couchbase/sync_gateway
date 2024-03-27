@@ -26,7 +26,13 @@ apis:
     decorators:
       remove-x-internal: on
   metric-internal:
-    root: "./docs/api/public.yaml"
+    root: "./docs/api/metric.yaml"
+  diagnostic:
+    root: "./docs/api/diagnostic.yaml"
+    decorators:
+      remove-x-internal: on
+  diagnostic-internal:
+    root: "./docs/api/diagnostic.yaml"
 
 extends:
   - minimal
