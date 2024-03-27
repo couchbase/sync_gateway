@@ -25,7 +25,8 @@ import (
 )
 
 const (
-	kMaxRecentSequences = 20 // Maximum number of sequences stored in RecentSequences before pruning is triggered
+	kMaxRecentSequences            = 20      // Maximum number of sequences stored in RecentSequences before pruning is triggered
+	oversizeSkippedSequenceWarning = 1000000 // Number of skipped sequences to issue a warning for
 )
 
 // ErrForbidden is returned when the user requests a document without a revision that they do not have access to.
@@ -1593,15 +1594,15 @@ func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAtt
 }
 
 // assignSequence assigns a global sequence number from database.
-func (c *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
-	return c.dbCtx.assignSequence(ctx, docSequence, doc, unusedSequences)
+func (c *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSequence uint64, doc *Document, newRevID string, unusedSequences []uint64) ([]uint64, error) {
+	return c.dbCtx.assignSequence(ctx, docSequence, doc, newRevID, unusedSequences)
 }
 
 // Sequence processing :
 // Assigns provided sequence to the document
 // Update unusedSequences in the event that there is a conflict and we have to provide a new sequence number
 // Update and prune RecentSequences
-func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
+func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint64, doc *Document, newRevID string, unusedSequences []uint64) ([]uint64, error) {
 
 	// Assign the next sequence number, for _changes feed.
 	// Be careful not to request a second sequence # on a retry if we don't need one.
@@ -1630,6 +1631,11 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 			if err != nil {
 				return unusedSequences, err
 			}
+			numSkippedSequences := docSequence - doc.Sequence
+			if numSkippedSequences > oversizeSkippedSequenceWarning {
+				base.WarnfCtx(ctx, "doc %s / previous rev: %s /  new rev: %s be allocated sequence %d. This is significantly ahead of the previous sequence this document had %d.", base.UD(doc.ID), doc.CurrentRev, newRevID, docSequence, doc.Sequence)
+			}
+
 		}
 	}
 
@@ -1794,7 +1800,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 
 	col.backupAncestorRevs(ctx, doc, newDoc)
 
-	unusedSequences, err = col.assignSequence(ctx, previousDocSequenceIn, doc, unusedSequences)
+	unusedSequences, err = col.assignSequence(ctx, previousDocSequenceIn, doc, newRevID, unusedSequences)
 	if err != nil {
 		return
 	}
