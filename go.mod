@@ -6,7 +6,7 @@ require (
 	dario.cat/mergo v1.0.0
 	github.com/bhoriuchi/graphql-go-tools v1.0.3
 	github.com/coreos/go-oidc v2.2.1+incompatible
-	github.com/couchbase/cbgt v1.3.9
+	github.com/couchbase/cbgt v1.3.16
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20231212195435-3490e96d30e3
 	github.com/couchbase/gocb/v2 v2.7.1
