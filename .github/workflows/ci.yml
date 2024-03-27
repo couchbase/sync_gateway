@@ -54,9 +54,9 @@ jobs:
           go-version: 1.21.8
           cache: false
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v4
         with:
-          version: v1.55.2
+          version: v1.57.1
           args: --config=.golangci-strict.yml
 
   test:
@@ -87,12 +87,22 @@ jobs:
         shell: bash
       - name: Annotate Failures
         if: always()
-        uses: guyarb/golang-test-annotations@v0.7.0
+        uses: guyarb/golang-test-annotations@v0.8.0
         with:
           test-results: test.json
 
   test-race:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macos
+          - os: windows-latest
+            name: windows
+          - os: ubuntu-latest
+            name: ubuntu
     env:
       GOPRIVATE: github.com/couchbaselabs
     steps:
@@ -105,7 +115,7 @@ jobs:
         shell: bash
       - name: Annotate Failures
         if: always()
-        uses: guyarb/golang-test-annotations@v0.6.0
+        uses: guyarb/golang-test-annotations@v0.8.0
         with:
           test-results: test.json
 
