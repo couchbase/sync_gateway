@@ -413,7 +413,6 @@ func (dh *documentBackedListener) RemoveNode(ctx context.Context, nodeID string)
 
 // Adds or removes a nodeID from the node list document
 func (dh *documentBackedListener) updateNodeList(ctx context.Context, nodeID string, remove bool) error {
-
 	dh.lock.Lock()
 	defer dh.lock.Unlock()
 
@@ -435,19 +434,22 @@ func (dh *documentBackedListener) updateNodeList(ctx context.Context, nodeID str
 			}
 		}
 
+		var what string
 		if remove { // RemoveNode handling
 			if nodeIndex == -1 {
 				return nil // NodeID isn't part of set, doesn't need to be removed
 			}
 			dh.nodeIDs = append(dh.nodeIDs[:nodeIndex], dh.nodeIDs[nodeIndex+1:]...)
+			what = "removing"
 		} else { // AddNode handling
 			if nodeIndex > -1 {
 				return nil // NodeID is already part of set, doesn't need to be added
 			}
 			dh.nodeIDs = append(dh.nodeIDs, nodeID)
+			what = "adding"
 		}
 
-		InfofCtx(ctx, KeyCluster, "Updating nodeList document (%s) with node IDs: %v", dh.nodeListKey, dh.nodeIDs)
+		InfofCtx(ctx, KeyCluster, "Updating nodeList document (%s) with node IDs: %v after %s %q", dh.nodeListKey, dh.nodeIDs, what, nodeID)
 
 		casOut, err := dh.datastore.WriteCas(dh.nodeListKey, 0, dh.cas, dh.nodeIDs, 0)
 

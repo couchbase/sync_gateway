@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/mqtt"
 )
 
 const (
@@ -130,6 +131,8 @@ type APIConfig struct {
 
 	HTTPS HTTPSConfig      `json:"https,omitempty"`
 	CORS  *auth.CORSConfig `json:"cors,omitempty"`
+
+	MQTT *mqtt.ServerConfig `json:"mqtt_broker,omitempty"`
 }
 
 type HTTPSConfig struct {
@@ -159,6 +162,7 @@ type UnsupportedConfig struct {
 	UseXattrConfig       *bool                `json:"use_xattr_config,omitempty"        help:"Store database configurations in system xattrs"`
 	AllowDbConfigEnvVars *bool                `json:"allow_dbconfig_env_vars,omitempty" help:"Can be set to false to skip environment variable expansion in database configs"`
 	DiagnosticInterface  string               `json:"diagnostic_interface,omitempty"    help:"Network interface to bind diagnostic API to"`
+	MQTT                 *bool                `json:"mqtt"                              help:"Enable MQTT server or clients"`
 }
 
 type ServerlessConfig struct {
@@ -226,6 +230,7 @@ func NewEmptyStartupConfig() StartupConfig {
 	return StartupConfig{
 		API: APIConfig{
 			CORS: &auth.CORSConfig{},
+			MQTT: &mqtt.ServerConfig{},
 		},
 		Logging: base.LoggingConfig{
 			Console: &base.ConsoleLoggerConfig{},

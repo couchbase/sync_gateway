@@ -49,6 +49,7 @@ const (
 	KeyImport
 	KeyJavascript
 	KeyMigrate
+	KeyMQTT
 	KeyQuery
 	KeyReplicate
 	KeySync
@@ -83,6 +84,7 @@ var (
 		KeyImport:         "Import",
 		KeyJavascript:     "Javascript",
 		KeyMigrate:        "Migrate",
+		KeyMQTT:           "MQTT",
 		KeyQuery:          "Query",
 		KeyReplicate:      "Replicate",
 		KeySync:           "Sync",

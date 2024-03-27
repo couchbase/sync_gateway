@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/gocbcore/v10/connstr"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/mqtt"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -67,6 +68,7 @@ type LegacyServerConfig struct {
 	MetricsInterfaceAuthentication            *bool                          `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
 	EnableAdminAuthenticationPermissionsCheck *bool                          `json:"enable_advanced_auth_dp,omitempty" help:"Whether to enable the permissions check feature of admin auth"`
 	ConfigUpgradeGroupID                      string                         `json:"config_upgrade_group_id,omitempty"` // If set, determines the config group ID used when this legacy config is upgraded to a persistent config.
+	MQTT                                      *mqtt.ServerConfig             `json:"mqtt_broker,omitempty"`
 	RemovedLegacyServerConfig
 }
 
@@ -106,6 +108,7 @@ type UnsupportedServerConfigLegacy struct {
 	Http2Config           *HTTP2Config `json:"http2,omitempty"`               // Config settings for HTTP2
 	StatsLogFrequencySecs *uint        `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
 	UseStdlibJSON         *bool        `json:"use_stdlib_json,omitempty"`     // Bypass the jsoniter package and use Go's stdlib instead
+	MQTT                  *bool        `json:"mqtt,omitempty"`                // MQTT support
 }
 
 // ToStartupConfig returns the given LegacyServerConfig as a StartupConfig and a set of DBConfigs.
@@ -274,6 +277,10 @@ func (lc *LegacyServerConfig) ToStartupConfig(ctx context.Context) (*StartupConf
 	}
 	if lc.SSLKey != nil {
 		sc.API.HTTPS.TLSKeyPath = *lc.SSLKey
+	}
+	if lc.MQTT != nil {
+		sc.API.MQTT = lc.MQTT
+		sc.Unsupported.MQTT = lc.Unsupported.MQTT
 	}
 	if lc.Unsupported != nil {
 		if lc.Unsupported.StatsLogFrequencySecs != nil {

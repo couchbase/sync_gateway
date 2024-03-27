@@ -30,6 +30,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/db/functions"
+	"github.com/couchbase/sync_gateway/mqtt"
 
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -76,6 +77,7 @@ type ServerContext struct {
 	cpuPprofFileMutex             sync.Mutex                 // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
 	cpuPprofFile                  *os.File                   // An open file descriptor holds the reference during CPU profiling
 	_httpServers                  map[serverType]*serverInfo // A list of HTTP servers running under the ServerContext
+	mqttServer                    *mqtt.Server               // MQTT server
 	GoCBAgent                     *gocbcore.Agent            // GoCB Agent to use when obtaining management endpoints
 	NoX509HTTPClient              *http.Client               // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
 	hasStarted                    chan struct{}              // A channel that is closed via PostStartup once the ServerContext has fully started
@@ -237,6 +239,12 @@ func (sc *ServerContext) Close(ctx context.Context) {
 	}
 	sc.databases_ = nil
 	sc.invalidDatabaseConfigTracking.dbNames = nil
+
+	if sc.mqttServer != nil {
+		if err := sc.mqttServer.Stop(); err != nil {
+			base.WarnfCtx(ctx, "Error closing MQTT server: %v", err)
+		}
+	}
 
 	for _, s := range sc._httpServers {
 		base.InfofCtx(ctx, base.KeyHTTP, "Closing HTTP Server: %v", s.addr)
@@ -1264,6 +1272,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		Serverless:                sc.Config.IsServerless(),
 		ChangesRequestPlus:        base.BoolDefault(config.ChangesRequestPlus, false),
 		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
+		// MQTT:                      config.MQTT,          // behind feature flag (see below)
 		MaxConcurrentChangesBatches: sc.Config.Replicator.MaxConcurrentChangesBatches,
 		MaxConcurrentRevs:           sc.Config.Replicator.MaxConcurrentRevs,
 	}
@@ -1281,6 +1290,17 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		}
 	} else if config.UserFunctions != nil {
 		base.WarnfCtx(ctx, `Database config option "functions" ignored because unsupported.user_queries feature flag is not enabled`)
+	}
+
+	if config.MQTT != nil {
+		if sc.Config.Unsupported.MQTT != nil && *sc.Config.Unsupported.MQTT {
+			contextOptions.MQTT = config.MQTT
+			if config.MQTT.Broker != nil && !sc.Config.API.MQTT.IsEnabled() {
+				base.WarnfCtx(ctx, `Database config option "mqtt.broker" ignored because server's MQTT broker is not enabled`)
+			}
+		} else {
+			base.WarnfCtx(ctx, `Database config option "mqtt" ignored because unsupported.mqtt feature flag is not enabled`)
+		}
 	}
 
 	return contextOptions, nil
