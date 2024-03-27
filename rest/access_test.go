@@ -861,10 +861,10 @@ func TestChannelAccessChanges(t *testing.T) {
 		t,
 
 		channels.TimedSet{
-			"!":     channels.NewVbSimpleSequence(uint64(1)),
-			"zero":  channels.NewVbSimpleSequence(uint64(1)),
-			"alpha": channels.NewVbSimpleSequence(uint64(1)),
-			"delta": channels.NewVbSimpleSequence(deltaGrantDocSeq),
+			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.DynamicGrant},
+			"zero":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.AdminGrant},
+			"alpha": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.DynamicGrant},
+			"delta": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(deltaGrantDocSeq), Source: channels.DynamicGrant},
 		}, alice.CollectionChannels(s, c))
 
 	zegpold, _ = a.GetUser("zegpold")
@@ -872,9 +872,9 @@ func TestChannelAccessChanges(t *testing.T) {
 		t,
 
 		channels.TimedSet{
-			"!":     channels.NewVbSimpleSequence(uint64(1)),
-			"zero":  channels.NewVbSimpleSequence(uint64(1)),
-			"gamma": channels.NewVbSimpleSequence(gammaGrantDocSeq),
+			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.DynamicGrant},
+			"zero":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.AdminGrant},
+			"gamma": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(gammaGrantDocSeq), Source: channels.DynamicGrant},
 		}, zegpold.CollectionChannels(s, c))
 
 	// Update a document to revoke access to alice and grant it to zegpold:
@@ -891,9 +891,9 @@ func TestChannelAccessChanges(t *testing.T) {
 		t,
 
 		channels.TimedSet{
-			"!":     channels.NewVbSimpleSequence(uint64(1)),
-			"zero":  channels.NewVbSimpleSequence(uint64(1)),
-			"delta": channels.NewVbSimpleSequence(deltaGrantDocSeq),
+			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.DynamicGrant},
+			"zero":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.AdminGrant},
+			"delta": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(deltaGrantDocSeq), Source: channels.DynamicGrant},
 		}, alice.CollectionChannels(s, c))
 
 	zegpold, _ = a.GetUser("zegpold")
@@ -901,10 +901,10 @@ func TestChannelAccessChanges(t *testing.T) {
 		t,
 
 		channels.TimedSet{
-			"!":     channels.NewVbSimpleSequence(uint64(1)),
-			"zero":  channels.NewVbSimpleSequence(uint64(1)),
-			"alpha": channels.NewVbSimpleSequence(alphaGrantDocSeq),
-			"gamma": channels.NewVbSimpleSequence(gammaGrantDocSeq),
+			"!":     channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.DynamicGrant},
+			"zero":  channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(uint64(1)), Source: channels.AdminGrant},
+			"alpha": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(alphaGrantDocSeq), Source: channels.DynamicGrant},
+			"gamma": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(gammaGrantDocSeq), Source: channels.DynamicGrant},
 		}, zegpold.CollectionChannels(s, c))
 
 	rt.MustWaitForDoc("alpha", t)
@@ -1130,14 +1130,14 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 
 	// Create a role with admin grant of chan1
 	role, err := a.NewRole("role1", nil)
-	role.SetCollectionExplicitChannels(scopeName, collectionName, channels.TimedSet{"chan1": channels.NewVbSimpleSequence(1)}, 1)
+	role.SetCollectionExplicitChannels(scopeName, collectionName, channels.TimedSet{"chan1": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)}}, 1)
 	require.NoError(t, err)
 	require.NoError(t, a.Save(role))
 
 	// Create a test user with access to the role
 	user, err = a.NewUser("user1", "letmein", nil)
 	require.NoError(t, err)
-	user.SetExplicitRoles(channels.TimedSet{"role1": channels.NewVbSimpleSequence(1)}, 1)
+	user.SetExplicitRoles(channels.TimedSet{"role1": channels.TimedSetEntry{VbSequence: channels.NewVbSimpleSequence(1)}}, 1)
 	require.NoError(t, a.Save(user))
 
 	// Create documents in channels chan1, chan2, chan3

@@ -2505,3 +2505,99 @@ CollectionNames:
           - Starting
           - Stopping
           - Resyncing
+AllUserChannels:
+  description: |-
+    All user channels split by how they were assigned to the user and by keyspace.
+  type: object
+  properties:
+    admin_grants:
+      description: |-
+        Channels assigned to the user through the admin API by adding them to admin_channels.
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: channel
+        description: Channel name
+        type: object
+        properties:
+          Entries:
+            type: array
+            description: Start sequence to end sequence
+          UpdatedAt:
+            type: integer
+            description: Unix timestamp of last update
+          source:
+            type: string
+            description: Either JWT, Admin or Dynamic.
+    dynamic_grants:
+      description: |-
+        Channels assigned to the user through the sync function.
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: channel
+        description: Channel name
+        type: object
+        properties:
+          Entries:
+            type: array
+            description: Start sequence to end sequence
+          UpdatedAt:
+            type: integer
+            description: Unix timestamp of last update
+          source:
+            type: string
+            description: Either JWT, Admin or Dynamic.
+    jwt_grants:
+      description: |-
+        Channels assigned to the user through JWT.
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: channel
+        description: Channel name
+        type: object
+        properties:
+          Entries:
+            type: array
+            description: Start sequence to end sequence
+          UpdatedAt:
+            type: integer
+            description: Unix timestamp of last update
+          source:
+            type: string
+            description: Either JWT, Admin or Dynamic.
+    admin_role_grants:
+      description: |-
+        Channels assigned to the user through the admin API, by assigning a role to the user through admin_roles,
+        and assigning the channels to that role. Does not include historic roles.
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: channel
+        description: Channel name
+        type: object
+        properties:
+          Entries:
+            type: array
+            description: Start sequence to end sequence
+          UpdatedAt:
+            type: integer
+            description: Unix timestamp of last update
+          source:
+            type: string
+            description: Either JWT, Admin or Dynamic.
+    dynamic_role_grants:
+      description: |-
+        Channels assigned to the user through roles assigned using the sync function. Does not include historic roles.
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: channel
+        description: Channel name
+        type: object
+        properties:
+          Entries:
+            type: array
+            description: Start sequence to end sequence
+          UpdatedAt:
+            type: integer
+            description: Unix timestamp of last update
+          source:
+            type: string
+            description: Either JWT, Admin or Dynamic.

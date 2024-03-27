@@ -373,6 +373,8 @@ func createDiagnosticRouter(sc *ServerContext) *mux.Router {
 	keyspace := r.PathPrefix("/{keyspace:" + dbRegex + "}/").Subrouter()
 	keyspace.StrictSlash(true)
 	keyspace.Handle("/{docid:"+docRegex+"}/_all_channels", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetDocChannels)).Methods("GET")
+	dbr.Handle("/_user/{name}/_all_channels",
+		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal}, nil, (*handler).handleGetAllChannels)).Methods("GET")
 	return r
 }
 

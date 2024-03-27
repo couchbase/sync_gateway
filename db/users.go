@@ -190,24 +190,23 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		princ.SetSequence(nextSeq)
 
 		// Now update the Principal object from the properties in the request, first the channels:
-		if updatedExplicitChannels.UpdateAtSequence(updates.ExplicitChannels, nextSeq) {
+		if updatedExplicitChannels.UpdateAtSequence(updates.ExplicitChannels, nextSeq, ch.AdminGrant) {
 			princ.SetExplicitChannels(updatedExplicitChannels, nextSeq)
 		}
-
 		if collectionAccessChanged {
 			dbc.UpdateCollectionExplicitChannels(ctx, princ, updates.CollectionAccess, nextSeq)
 		}
 
 		if isUser {
-			if updatedExplicitRoles.UpdateAtSequence(updates.ExplicitRoleNames, nextSeq) {
+			if updatedExplicitRoles.UpdateAtSequence(updates.ExplicitRoleNames, nextSeq, ch.AdminGrant) {
 				user.SetExplicitRoles(updatedExplicitRoles, nextSeq)
 			}
 			var hasJWTUpdates bool
-			if updates.JWTRoles != nil && updatedJWTRoles.UpdateAtSequence(updates.JWTRoles, nextSeq) {
+			if updates.JWTRoles != nil && updatedJWTRoles.UpdateAtSequence(updates.JWTRoles, nextSeq, ch.JWTGrant) {
 				user.SetJWTRoles(updatedJWTRoles, nextSeq)
 				hasJWTUpdates = true
 			}
-			if updates.JWTChannels != nil && updatedJWTChannels.UpdateAtSequence(updates.JWTChannels, nextSeq) {
+			if updates.JWTChannels != nil && updatedJWTChannels.UpdateAtSequence(updates.JWTChannels, nextSeq, ch.JWTGrant) {
 				user.SetJWTChannels(updatedJWTChannels, nextSeq)
 				hasJWTUpdates = true
 			}
@@ -249,7 +248,7 @@ func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context
 					if updatedExplicitChannels == nil {
 						updatedExplicitChannels = ch.TimedSet{}
 					}
-					changed := updatedExplicitChannels.UpdateAtSequence(updatedCollectionAccess.ExplicitChannels_, seq)
+					changed := updatedExplicitChannels.UpdateAtSequence(updatedCollectionAccess.ExplicitChannels_, seq, ch.AdminGrant)
 					if changed {
 						princ.SetCollectionExplicitChannels(scopeName, collectionName, updatedExplicitChannels, seq)
 					}
