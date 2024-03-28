@@ -72,10 +72,9 @@ func (s *SingleSkippedSequence) getLastSeq() uint64 {
 	return s.seq
 }
 
-// setLastSeq sets the last sequence in the range on the entry, for single items the single sequence will be set
+// setLastSeq sets the last sequence in the range on the entry, for single items its a no-op
 func (s *SingleSkippedSequence) setLastSeq(seq uint64) {
-	diff := seq - s.seq
-	s.seq = s.seq + diff
+	// no-op
 }
 
 // getStartSeq gets the start sequence in the range on the entry, for single items the sequence will be returned
@@ -198,6 +197,7 @@ func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry SkippedSequenceLis
 	lastEntryLastSeq := s.list[index].getLastSeq()
 	if (lastEntryLastSeq + 1) == entry.getStartSeq() {
 		// adding contiguous sequence
+		// below code is untested, pending CBG-3853
 		if s.list[index].isRange() {
 			// set last seq in the range to the new arriving sequence
 			s.list[index].setLastSeq(entry.getLastSeq())
