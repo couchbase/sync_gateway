@@ -79,7 +79,12 @@ func (c *Collection) ScopeName() string {
 	return c.Collection.ScopeName()
 }
 
-// GetName returns a qualified name
+// DataStoreName returns the scope and collection name.
+func (c *Collection) DataStoreName() sgbucket.DataStoreName {
+	return c
+}
+
+// GetName returns a qualified name bucket.scope.collection
 func (c *Collection) GetName() string {
 	if c.IsDefaultScopeCollection() {
 		return c.Collection.Bucket().Name()

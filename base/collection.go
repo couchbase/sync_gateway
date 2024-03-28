@@ -721,14 +721,3 @@ func (b *GocbV2Bucket) ServerMetrics(ctx context.Context) (map[string]*dto.Metri
 
 	return mf, nil
 }
-
-func GetCollectionID(dataStore DataStore) uint32 {
-	switch c := dataStore.(type) {
-	case WrappingDatastore:
-		return GetCollectionID(c.GetUnderlyingDataStore())
-	case sgbucket.Collection:
-		return c.GetCollectionID()
-	default:
-		return DefaultCollectionID
-	}
-}
