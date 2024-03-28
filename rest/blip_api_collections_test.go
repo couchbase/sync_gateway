@@ -266,8 +266,7 @@ func TestCollectionsReplication(t *testing.T) {
 		err := btcCollection.StartOneshotPull()
 		require.NoError(t, err)
 
-		_, ok := btcCollection.WaitForVersion(docID, version)
-		require.True(t, ok)
+		btcCollection.WaitForVersion(docID, version)
 	})
 }
 
@@ -301,8 +300,7 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 		}
 
 		for i, collectionClient := range btc.collectionClients {
-			msg, ok := collectionClient.WaitForVersion(docName, versions[i])
-			require.True(t, ok)
+			msg := collectionClient.WaitForVersion(docName, versions[i])
 			require.Equal(t, body, string(msg))
 		}
 
@@ -358,8 +356,7 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 		for _, collectionClient := range btc.collectionClients {
 			versions := collectionVersions[collectionClient.collection]
 			docIDs := collectionDocIDs[collectionClient.collection]
-			msg, ok := collectionClient.WaitForVersion(docIDs[len(docIDs)-1], versions[len(versions)-1])
-			require.True(t, ok)
+			msg := collectionClient.WaitForVersion(docIDs[len(docIDs)-1], versions[len(versions)-1])
 			require.Equal(t, body, string(msg))
 		}
 

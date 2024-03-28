@@ -2285,10 +2285,8 @@ func TestUpdateExistingAttachment(t *testing.T) {
 
 		err := btcRunner.StartOneshotPull(btc.id)
 		assert.NoError(t, err)
-		_, ok := btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
-		require.True(t, ok)
-		_, ok = btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version)
-		require.True(t, ok)
+		btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
+		btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version)
 
 		attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
 		attachmentBData := base64.StdEncoding.EncodeToString([]byte("attachmentB"))
@@ -2345,8 +2343,7 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 		err := btcRunner.StartOneshotPull(btc.id)
 		assert.NoError(t, err)
 
-		_, ok := btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
-		require.True(t, ok)
+		btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
 
 		// force attachment into test client's store to validate it's fetched
 		attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
@@ -2396,8 +2393,7 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 		// Replicate data to client and ensure doc arrives
 		err = btcRunner.StartOneshotPull(btc.id)
 		assert.NoError(t, err)
-		_, found := btcRunner.WaitForVersion(btc.id, docID, initialVersion)
-		assert.True(t, found)
+		btcRunner.WaitForVersion(btc.id, docID, initialVersion)
 
 		// Push a revision with a bunch of history simulating doc updated on mobile device
 		// Note this references revpos 1 and therefore SGW has it - Shouldn't need proveAttachment
@@ -2438,8 +2434,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 		// Pull rev and attachment down to client
 		err = btcRunner.StartOneshotPull(btc.id)
 		assert.NoError(t, err)
-		_, found := btcRunner.WaitForVersion(btc.id, docID, version)
-		assert.True(t, found)
+		btcRunner.WaitForVersion(btc.id, docID, version)
 
 		// Add an attachment to client
 		btcRunner.AttachmentsLock(btc.id).Lock()
@@ -2451,8 +2446,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ensure message and attachment is pushed up
-		_, ok := btc.pushReplication.WaitForMessage(2)
-		assert.True(t, ok)
+		btc.pushReplication.WaitForMessage(2)
 
 		// Get the attachment and ensure the data is updated
 		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc/hello.txt", "")
@@ -2623,10 +2617,8 @@ func TestCBLRevposHandling(t *testing.T) {
 
 		err := btcRunner.StartOneshotPull(btc.id)
 		assert.NoError(t, err)
-		_, ok := btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
-		require.True(t, ok)
-		_, ok = btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version)
-		require.True(t, ok)
+		btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
+		btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version)
 
 		attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
 		attachmentBData := base64.StdEncoding.EncodeToString([]byte("attachmentB"))
