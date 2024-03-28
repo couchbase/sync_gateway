@@ -9,7 +9,14 @@
 // Package xdcr implements an XDCR between different buckets. This is meant to be used for testing.
 package xdcr
 
-import "context"
+import (
+	"context"
+	"fmt"
+
+	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbaselabs/rosmar"
+)
 
 // Replication represents a bucket to bucket replication.
 type Replication interface {
@@ -21,4 +28,23 @@ type Replication interface {
 	Stats(context.Context) (*Stats, error)
 }
 
-var _ Replication = &CouchbaseServerXDCR{}
+// NewXDCR creates a new XDCR between two buckets.
+func NewXDCR(ctx context.Context, fromBucket, toBucket base.Bucket, opts sgbucket.XDCROptions) (sgbucket.XDCR, error) {
+	gocbFromBucket, err := base.AsGocbV2Bucket(fromBucket)
+	if err != nil {
+		rosmarFromBucket, ok := base.GetBaseBucket(fromBucket).(*rosmar.Bucket)
+		if !ok {
+			return nil, fmt.Errorf("fromBucket must be a *base.GocbV2Bucket or *rosmar.Bucket, got %T", fromBucket)
+		}
+		rosmarToBucket, ok := base.GetBaseBucket(toBucket).(*rosmar.Bucket)
+		if !ok {
+			return nil, fmt.Errorf("toBucket must be a *rosmar.Bucket since fromBucket was a rosmar bucket, got %T", toBucket)
+		}
+		return rosmar.NewXDCR(ctx, rosmarFromBucket, rosmarToBucket, opts)
+	}
+	gocbToBucket, err := base.AsGocbV2Bucket(toBucket)
+	if err != nil {
+		return nil, fmt.Errorf("toBucket must be a *base.GocbV2Bucket since fromBucket was a gocbBucket, got %T", toBucket)
+	}
+	return NewCouchbaseServerXDCR(ctx, gocbFromBucket, gocbToBucket, opts)
+}

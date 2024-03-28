@@ -14,9 +14,11 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+
+	sgbucket "github.com/couchbase/sg-bucket"
 )
 
-const SyncDocPrefix = "_sync:"                                 // Prefix for all legacy (non-namespaced) Sync Gateway metadata documents
+const SyncDocPrefix = sgbucket.SyncDocPrefix                   // Prefix for all legacy (non-namespaced) Sync Gateway metadata documents
 const MetadataIdPrefix = "m_"                                  // Prefix for metadataId, to prevent collisions between namespaced and non-namespaced metadata documents
 const SyncDocMetadataPrefix = SyncDocPrefix + MetadataIdPrefix // Prefix for all namespaced Sync Gateway metadata documents
 const DCPCheckpointPrefix = "dcp_ck:"
@@ -71,10 +73,10 @@ const (
 
 // The following collection-scoped metadata documents are stored with the collection, don't require MetadataKeys handling
 const (
-	RevBodyPrefix = SyncDocPrefix + "rb:"   // RevBodyPrefix stores a conflicting revision's body
-	RevPrefix     = SyncDocPrefix + "rev:"  // RevPrefix stores an old revision's body for temporary lookup (in-flight requests or delta sync)
-	AttPrefix     = SyncDocPrefix + "att:"  // AttPrefix SG (v1) attachment data
-	Att2Prefix    = SyncDocPrefix + "att2:" // Att2Prefix SG v2 attachment data
+	RevBodyPrefix = SyncDocPrefix + "rb:"  // RevBodyPrefix stores a conflicting revision's body
+	RevPrefix     = SyncDocPrefix + "rev:" // RevPrefix stores an old revision's body for temporary lookup (in-flight requests or delta sync)
+	AttPrefix     = SyncDocPrefix + "att:" // AttPrefix SG (v1) attachment data
+	Att2Prefix    = sgbucket.Att2Prefix    // Att2Prefix SG v2 attachment data
 )
 
 // The following keys and prefixes don't require MetadataKeys handling as they are cross-database or have

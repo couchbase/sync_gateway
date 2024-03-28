@@ -27,26 +27,12 @@ const (
 	totalDocsWrittenStat      = "xdcr_docs_written_total"
 )
 
-type serverMobileSetting uint8
-
-const (
-	serverMobileOff = iota
-	serverMobileOn
-)
-
-const (
-	MobileOff    = "Off"
-	MobileActive = "Active"
-)
-
-var MobileCompatibilityStrings = [...]string{MobileOff, MobileActive}
-
 // CouchbaseServerXDCR implements a XDCR setup cluster on Couchbase Server.
 type CouchbaseServerXDCR struct {
 	fromBucket    *base.GocbV2Bucket
 	toBucket      *base.GocbV2Bucket
 	replicationID string
-	MobileSetting string
+	mobileSetting sgbucket.XDCRMobileSetting
 	filter        string
 }
 
@@ -119,7 +105,7 @@ func createCluster(ctx context.Context, bucket *base.GocbV2Bucket) error {
 }
 
 // NewCouchbaseServerXDCR creates an instance of XDCR backed by Couchbase Server. This is not started until Start is called.
-func NewCouchbaseServerXDCR(ctx context.Context, fromBucket *base.GocbV2Bucket, toBucket *base.GocbV2Bucket, mobileSetting serverMobileSetting) (*CouchbaseServerXDCR, error) {
+func NewCouchbaseServerXDCR(ctx context.Context, fromBucket *base.GocbV2Bucket, toBucket *base.GocbV2Bucket, opts sgbucket.XDCROptions) (*CouchbaseServerXDCR, error) {
 	isPresent, err := isClusterPresent(ctx, fromBucket)
 	if err != nil {
 		return nil, err
@@ -138,7 +124,8 @@ func NewCouchbaseServerXDCR(ctx context.Context, fromBucket *base.GocbV2Bucket, 
 	return &CouchbaseServerXDCR{
 		fromBucket:    fromBucket,
 		toBucket:      toBucket,
-		MobileSetting: MobileCompatibilityStrings[mobileSetting],
+		mobileSetting: opts.Mobile,
+		filter:        opts.FilterExpression,
 	}, nil
 }
 
@@ -152,7 +139,7 @@ func (x *CouchbaseServerXDCR) Start(ctx context.Context) error {
 	body.Add("toCluster", xdcrClusterName)
 	body.Add("replicationType", "continuous")
 	// set the mobile flag on the replication
-	body.Add("mobile", x.MobileSetting)
+	body.Add("mobile", x.mobileSetting.String())
 	// add filter is needed
 	if x.filter != "" {
 		body.Add("filterExpression", x.filter)
@@ -196,12 +183,12 @@ func (x *CouchbaseServerXDCR) Stop(ctx context.Context) error {
 }
 
 // Stats returns the stats of the XDCR replication.
-func (x *CouchbaseServerXDCR) Stats(ctx context.Context) (*Stats, error) {
+func (x *CouchbaseServerXDCR) Stats(ctx context.Context) (*sgbucket.XDCRStats, error) {
 	mf, err := x.fromBucket.ServerMetrics(ctx)
 	if err != nil {
 		return nil, err
 	}
-	stats := &Stats{}
+	stats := &sgbucket.XDCRStats{}
 	stats.DocsFiltered, err = x.getValue(mf[totalDocsFilteredStat])
 	if err != nil {
 		return stats, err
@@ -242,3 +229,5 @@ outer:
 func BucketSupportsMobileXDCR(bucket base.Bucket) bool {
 	return bucket.IsSupported(sgbucket.BucketStoreFeatureMobileXDCR)
 }
+
+var _ sgbucket.XDCR = &CouchbaseServerXDCR{}

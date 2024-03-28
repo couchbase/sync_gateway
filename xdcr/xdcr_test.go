@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,31 +25,21 @@ import (
 //   - Assert that doc and attachment doc are replicated, sync doc is not
 //   - Assert that the version vector is written on destination bucket for each replicated doc
 func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is testing Couchbase Server XDCR, enable in CBG-3703")
-	}
 	ctx := base.TestCtx(t)
-	bucket1 := base.GetTestBucket(t)
-	bucket2 := base.GetTestBucket(t)
-	defer bucket1.Close(ctx)
-	defer bucket2.Close(ctx)
+	fromBucket := base.GetTestBucket(t)
+	defer fromBucket.Close(ctx)
+	toBucket := base.GetTestBucket(t)
+	defer toBucket.Close(ctx)
 
-	fromBucket, err := base.AsGocbV2Bucket(bucket1)
-	require.NoError(t, err)
-	toBucket, err := base.AsGocbV2Bucket(bucket2)
-	require.NoError(t, err)
-
-	var xdcr *CouchbaseServerXDCR
+	opts := sgbucket.XDCROptions{}
 	if base.TestSupportsMobileXDCR() {
-		xdcr, err = NewCouchbaseServerXDCR(ctx, fromBucket, toBucket, serverMobileOn)
-		require.NoError(t, err)
+		opts.Mobile = sgbucket.XDCRMobileOn
 	} else {
-		xdcr, err = NewCouchbaseServerXDCR(ctx, fromBucket, toBucket, serverMobileOff)
-		require.NoError(t, err)
-		// set filter for sync docs as mobile xdcr is not on
-		xdcr.filter = fmt.Sprintf("NOT REGEXP_CONTAINS(META().id, \"^%s\") OR REGEXP_CONTAINS(META().id, \"^%s\")", base.SyncDocPrefix, base.Att2Prefix)
+		opts.Mobile = sgbucket.XDCRMobileOff
+		opts.FilterExpression = fmt.Sprintf("NOT REGEXP_CONTAINS(META().id, \"^%s\") OR REGEXP_CONTAINS(META().id, \"^%s\")", base.SyncDocPrefix, base.Att2Prefix)
 	}
-
+	xdcr, err := NewXDCR(ctx, fromBucket, toBucket, opts)
+	require.NoError(t, err)
 	err = xdcr.Start(ctx)
 	require.NoError(t, err)
 	defer func() {
@@ -65,7 +56,7 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 		curCAS        = "cvCas"
 	)
 	for _, doc := range []string{syncDoc, attachmentDoc, normalDoc} {
-		_, err = bucket1.DefaultDataStore().Add(doc, exp, body)
+		_, err = fromBucket.DefaultDataStore().Add(doc, exp, body)
 		require.NoError(t, err)
 	}
 
@@ -73,15 +64,15 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 	for _, doc := range []string{normalDoc, attachmentDoc} {
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			var value string
-			_, err = bucket2.DefaultDataStore().Get(doc, &value)
+			_, err = toBucket.DefaultDataStore().Get(doc, &value)
 			assert.NoError(c, err, "Could not get doc %s", doc)
 			assert.Equal(c, body, value)
 		}, time.Second*5, time.Millisecond*100)
 	}
 
 	var value any
-	_, err = bucket2.DefaultDataStore().Get(syncDoc, &value)
-	require.True(t, base.IsKeyNotFoundError(bucket2.DefaultDataStore(), err))
+	_, err = toBucket.DefaultDataStore().Get(syncDoc, &value)
+	require.True(t, base.IsKeyNotFoundError(toBucket.DefaultDataStore(), err))
 
 	// stats are not updated in real time, so we need to wait a bit
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -92,12 +83,16 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 
 	}, time.Second*5, time.Millisecond*100)
 
+	if base.UnitTestUrlIsWalrus() {
+		// TODO: CBG-3861 implement _vv support in rosmar
+		return
+	}
 	// in mobile xdcr mode a version vector will be written
 	if base.TestSupportsMobileXDCR() {
 		// verify VV is written to docs that are replicated
 		for _, doc := range []string{normalDoc, attachmentDoc} {
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				xattrs, _, err := bucket2.DefaultDataStore().GetXattrs(ctx, doc, []string{"_vv"})
+				xattrs, _, err := toBucket.DefaultDataStore().GetXattrs(ctx, doc, []string{"_vv"})
 				assert.NoError(c, err, "Could not get doc %s", doc)
 				vvXattrBytes, ok := xattrs["_vv"]
 				require.True(t, ok)
