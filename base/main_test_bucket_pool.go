@@ -74,6 +74,7 @@ type TestBucketPool struct {
 type TestBucketPoolOptions struct {
 	MemWatermarkThresholdMB uint64
 	UseDefaultScope         bool
+	RequireXDCR             bool // Test buckets will be performing XDCR, requires Server > 7 for integration test robustness
 }
 
 func NewTestBucketPool(ctx context.Context, bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *TestBucketPool {
@@ -727,6 +728,10 @@ func TestBucketPoolMain(ctx context.Context, m *testing.M, bucketReadierFunc TBP
 	// must be the last teardown function added to the list to correctly detect leaked goroutines
 	teardownFuncs = append(teardownFuncs, SetUpTestGoroutineDump(m))
 
+	if options.RequireXDCR && GTestBucketPool.cluster != nil && GTestBucketPool.cluster.majorVersion < 7 {
+		fmt.Println("Test requires XDCR, but the cluster version is less than 7. Skipping test.")
+		return
+	}
 	// Run the test suite
 	status := m.Run()
 
