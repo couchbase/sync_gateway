@@ -72,7 +72,7 @@ func (lds *LeakyDataStore) ScopeName() string {
 }
 
 func (lds *LeakyDataStore) CollectionName() string {
-	return lds.dataStore.ScopeName()
+	return lds.dataStore.CollectionName()
 }
 
 func (lds *LeakyDataStore) GetCollectionID() uint32 {

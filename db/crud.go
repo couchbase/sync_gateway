@@ -1636,7 +1636,7 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 	doc.Sequence = docSequence
 	doc.UnusedSequences = unusedSequences
 
-	// The server TAP/DCP feed will deduplicate multiple revisions for the same doc if they occur in
+	// The server DCP feed will deduplicate multiple revisions for the same doc if they occur in
 	// the same mutation queue processing window. This results in missing sequences on the change listener.
 	// To account for this, we track the recent sequence numbers for the document.
 	if doc.RecentSequences == nil {

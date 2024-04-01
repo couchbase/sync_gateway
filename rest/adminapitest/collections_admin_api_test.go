@@ -46,14 +46,10 @@ func TestCollectionsSyncImportFunctions(t *testing.T) {
 
 	dataStore1, err := tb.GetNamedDataStore(0)
 	require.NoError(t, err)
-	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
-	require.True(t, ok)
 	dataStore2, err := tb.GetNamedDataStore(1)
 	require.NoError(t, err)
-	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
-	require.True(t, ok)
-	keyspace1 := fmt.Sprintf("%s.%s.%s", "db", dataStore1Name.ScopeName(), dataStore1Name.CollectionName())
-	keyspace2 := fmt.Sprintf("%s.%s.%s", "db", dataStore2Name.ScopeName(), dataStore2Name.CollectionName())
+	keyspace1 := fmt.Sprintf("%s.%s.%s", "db", dataStore1.ScopeName(), dataStore1.CollectionName())
+	keyspace2 := fmt.Sprintf("%s.%s.%s", "db", dataStore2.ScopeName(), dataStore2.CollectionName())
 
 	bucketConfig := fmt.Sprintf(
 		`{"bucket": "%s",
@@ -74,9 +70,9 @@ func TestCollectionsSyncImportFunctions(t *testing.T) {
 		  "num_index_replicas": 0,
 		  "enable_shared_bucket_access": true,
 		  "use_views": false}`,
-		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(),
+		tb.GetName(), dataStore1.ScopeName(), dataStore1.CollectionName(),
 		importFilter1,
-		syncFunction1, dataStore2Name.CollectionName(),
+		syncFunction1, dataStore2.CollectionName(),
 		importFilter2,
 		syncFunction2,
 	)

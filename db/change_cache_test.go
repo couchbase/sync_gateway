@@ -1299,44 +1299,6 @@ func TestChannelRace(t *testing.T) {
 	changesCtxCancel()
 }
 
-// Test that housekeeping goroutines get terminated when change cache is stopped
-func TestStopChangeCache(t *testing.T) {
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyDCP)
-
-	if base.TestUseXattrs() {
-		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
-	}
-
-	// Setup short-wait cache to ensure cleanup goroutines fire often
-	cacheOptions := DefaultCacheOptions()
-	cacheOptions.CachePendingSeqMaxWait = 10 * time.Millisecond
-	cacheOptions.CachePendingSeqMaxNum = 50
-	cacheOptions.CacheSkippedSeqMaxWait = 1 * time.Second
-
-	// Use leaky bucket to have the tap feed 'lose' document 3
-	leakyConfig := base.LeakyBucketConfig{
-		TapFeedMissingDocs: []string{"doc-3"},
-	}
-	db, ctx := setupTestLeakyDBWithCacheOptions(t, cacheOptions, leakyConfig)
-
-	// Write sequences direct
-	WriteDirect(t, db, []string{"ABC"}, 1)
-	WriteDirect(t, db, []string{"ABC"}, 2)
-	WriteDirect(t, db, []string{"ABC"}, 3)
-
-	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	err := db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Hour * -2)})
-	require.NoError(t, err)
-
-	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
-	db.Close(ctx)
-
-	// Hang around a while to see if the housekeeping tasks fire and panic
-	time.Sleep(1 * time.Second)
-
-}
-
 // Test size config
 func TestChannelCacheSize(t *testing.T) {
 	if base.TestUseXattrs() {

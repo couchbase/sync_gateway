@@ -3025,9 +3025,6 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 
-	dataStoreName, ok := base.AsDataStoreName(ds)
-	require.True(t, ok)
-
 	testCases := []struct {
 		name       string
 		scope      string
@@ -3042,9 +3039,9 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 			err:        false,
 			options: DatabaseContextOptions{
 				Scopes: map[string]ScopeOptions{
-					dataStoreName.ScopeName(): ScopeOptions{
+					ds.ScopeName(): ScopeOptions{
 						Collections: map[string]CollectionOptions{
-							dataStoreName.CollectionName(): {},
+							ds.CollectionName(): {},
 						},
 					},
 					base.DefaultScope: ScopeOptions{

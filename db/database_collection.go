@@ -43,19 +43,14 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, data
 		dataStore:       dataStore,
 		dbCtx:           dbContext,
 		collectionStats: stats,
+		ScopeName:       dataStore.ScopeName(),
+		Name:            dataStore.CollectionName(),
 	}
 	dbCollection.revisionCache = NewRevisionCache(
 		dbContext.Options.RevisionCacheOptions,
 		dbCollection,
 		dbContext.DbStats.Cache(),
 	)
-	if metadataStoreName, ok := base.AsDataStoreName(dataStore); ok {
-		dbCollection.ScopeName = metadataStoreName.ScopeName()
-		dbCollection.Name = metadataStoreName.CollectionName()
-	} else {
-		dbCollection.ScopeName = base.DefaultScope
-		dbCollection.Name = base.DefaultCollection
-	}
 
 	return dbCollection, nil
 }

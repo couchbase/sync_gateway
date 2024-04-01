@@ -7944,9 +7944,7 @@ func TestGroupIDReplications(t *testing.T) {
 	if !rt.GetDatabase().OnlyDefaultCollection() {
 		dataStore, err = activeBucket.GetNamedDataStore(0)
 		require.NoError(t, err)
-		dsName, ok := base.AsDataStoreName(dataStore)
-		require.True(t, ok)
-		keyspace = fmt.Sprintf("/db.%s.%s/", dsName.ScopeName(), dsName.CollectionName())
+		keyspace = fmt.Sprintf("/db.%s.%s/", dataStore.ScopeName(), dataStore.CollectionName())
 	}
 	for groupNum, group := range groupIDs {
 		channel := "chan" + group

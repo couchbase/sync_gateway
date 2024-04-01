@@ -301,12 +301,6 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		if err != nil {
 			return err
 		}
-		dsName, ok := base.AsDataStoreName(dataStore)
-		if !ok {
-			err := fmt.Errorf("Could not determine datastore name from datastore: %+v", dataStore)
-			tbp.Logf(ctx, "%s", err)
-			return err
-		}
 		if _, err := emptyAllDocsIndex(ctx, dataStore, tbp); err != nil {
 			return err
 		}
@@ -317,7 +311,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		if !ok {
 			return errors.New("attempting to empty indexes with non-N1QL store")
 		}
-		tbp.Logf(ctx, "waiting for empty bucket indexes %s.%s.%s", b.GetName(), dsName.ScopeName(), dsName.CollectionName())
+		tbp.Logf(ctx, "waiting for empty bucket indexes %s.%s.%s", b.GetName(), dataStore.ScopeName(), dataStore.CollectionName())
 		// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
 		if err := WaitForPrimaryIndexEmpty(ctx, n1qlStore); err != nil {
 			tbp.Logf(ctx, "waitForPrimaryIndexEmpty returned an error: %v", err)
@@ -390,13 +384,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			Serverless:      false,
 			MetadataIndexes: IndexesWithoutMetadata,
 		}
-		dsName, ok := base.AsDataStoreName(dataStore)
-		if !ok {
-			err := fmt.Errorf("Could not determine datastore name from datastore: %+v", dataStore)
-			tbp.Logf(ctx, "%s", err)
-			return err
-		}
-		if base.IsDefaultCollection(dsName.ScopeName(), dsName.CollectionName()) {
+		if base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()) {
 			options.MetadataIndexes = IndexesAll
 		}
 		if err := InitializeIndexes(ctx, n1qlStore, options); err != nil {
