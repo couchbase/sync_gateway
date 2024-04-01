@@ -26,6 +26,7 @@ import (
 //   - Assert that the version vector is written on destination bucket for each replicated doc
 func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 	ctx := base.TestCtx(t)
+	base.RequireNumTestBuckets(t, 2)
 	fromBucket := base.GetTestBucket(t)
 	defer fromBucket.Close(ctx)
 	toBucket := base.GetTestBucket(t)
@@ -55,54 +56,66 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 		source        = "src"
 		curCAS        = "cvCas"
 	)
-	for _, doc := range []string{syncDoc, attachmentDoc, normalDoc} {
-		_, err = fromBucket.DefaultDataStore().Add(doc, exp, body)
+	dataStores := map[base.DataStore]base.DataStore{
+		fromBucket.DefaultDataStore(): toBucket.DefaultDataStore(),
+	}
+	if base.TestsUseNamedCollections() {
+		fromDs, err := fromBucket.GetNamedDataStore(0)
 		require.NoError(t, err)
+		toDs, err := toBucket.GetNamedDataStore(0)
+		require.NoError(t, err)
+		dataStores[fromDs] = toDs
 	}
+	for fromDs, toDs := range dataStores {
+		for _, doc := range []string{syncDoc, attachmentDoc, normalDoc} {
+			_, err = fromDs.Add(doc, exp, body)
+			require.NoError(t, err)
+		}
 
-	// make sure attachments are copied
-	for _, doc := range []string{normalDoc, attachmentDoc} {
-		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			var value string
-			_, err = toBucket.DefaultDataStore().Get(doc, &value)
-			assert.NoError(c, err, "Could not get doc %s", doc)
-			assert.Equal(c, body, value)
-		}, time.Second*5, time.Millisecond*100)
-	}
-
-	var value any
-	_, err = toBucket.DefaultDataStore().Get(syncDoc, &value)
-	require.True(t, base.IsKeyNotFoundError(toBucket.DefaultDataStore(), err))
-
-	// stats are not updated in real time, so we need to wait a bit
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		stats, err := xdcr.Stats(ctx)
-		assert.NoError(t, err)
-		assert.Equal(c, uint64(1), stats.DocsFiltered)
-		assert.Equal(c, uint64(2), stats.DocsWritten)
-
-	}, time.Second*5, time.Millisecond*100)
-
-	if base.UnitTestUrlIsWalrus() {
-		// TODO: CBG-3861 implement _vv support in rosmar
-		return
-	}
-	// in mobile xdcr mode a version vector will be written
-	if base.TestSupportsMobileXDCR() {
-		// verify VV is written to docs that are replicated
+		// make sure attachments are copied
 		for _, doc := range []string{normalDoc, attachmentDoc} {
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				xattrs, _, err := toBucket.DefaultDataStore().GetXattrs(ctx, doc, []string{"_vv"})
+				var value string
+				_, err = toDs.Get(doc, &value)
 				assert.NoError(c, err, "Could not get doc %s", doc)
-				vvXattrBytes, ok := xattrs["_vv"]
-				require.True(t, ok)
-				var vvXattrVal map[string]any
-				require.NoError(t, base.JSONUnmarshal(vvXattrBytes, &vvXattrVal))
-				assert.NotNil(c, vvXattrVal[version])
-				assert.NotNil(c, vvXattrVal[source])
-				assert.NotNil(c, vvXattrVal[curCAS])
-
+				assert.Equal(c, body, value)
 			}, time.Second*5, time.Millisecond*100)
+		}
+
+		var value any
+		_, err = toDs.Get(syncDoc, &value)
+		require.True(t, base.IsKeyNotFoundError(toDs, err))
+
+		// stats are not updated in real time, so we need to wait a bit
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			stats, err := xdcr.Stats(ctx)
+			assert.NoError(t, err)
+			assert.Equal(c, uint64(1), stats.DocsFiltered)
+			assert.Equal(c, uint64(2), stats.DocsWritten)
+
+		}, time.Second*5, time.Millisecond*100)
+
+		if base.UnitTestUrlIsWalrus() {
+			// TODO: CBG-3861 implement _vv support in rosmar
+			return
+		}
+		// in mobile xdcr mode a version vector will be written
+		if base.TestSupportsMobileXDCR() {
+			// verify VV is written to docs that are replicated
+			for _, doc := range []string{normalDoc, attachmentDoc} {
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					xattrs, _, err := toDs.GetXattrs(ctx, doc, []string{"_vv"})
+					assert.NoError(c, err, "Could not get doc %s", doc)
+					vvXattrBytes, ok := xattrs["_vv"]
+					require.True(t, ok)
+					var vvXattrVal map[string]any
+					require.NoError(t, base.JSONUnmarshal(vvXattrBytes, &vvXattrVal))
+					assert.NotNil(c, vvXattrVal[version])
+					assert.NotNil(c, vvXattrVal[source])
+					assert.NotNil(c, vvXattrVal[curCAS])
+
+				}, time.Second*5, time.Millisecond*100)
+			}
 		}
 	}
 }
