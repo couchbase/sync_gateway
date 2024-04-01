@@ -221,7 +221,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	}
 
 	// Wrap Walrus buckets with a leaky bucket to support vbucket IDs on feed.
-	b = &LeakyBucket{bucket: walrusBucket, config: &LeakyBucketConfig{TapFeedVbuckets: true}}
+	b = &LeakyBucket{bucket: walrusBucket, config: &LeakyBucketConfig{}}
 
 	ctx := bucketCtx(testCtx, b)
 	tbp.Logf(ctx, "Creating new %s test bucket", typeName)

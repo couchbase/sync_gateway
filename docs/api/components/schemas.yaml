@@ -1273,7 +1273,7 @@ Database:
         db_state_changed:
           $ref: '#/Event-config'
     feed_type:
-      description: The type of feed to use to communicate with Couchbase Server.
+      description: The type of feed to use to communicate with Couchbase Server. This will use DCP regardless of specification.
       type: string
       default: DCP
       enum:

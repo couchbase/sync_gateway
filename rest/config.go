@@ -71,6 +71,8 @@ const (
 	DefaultUseTLSServer = true
 
 	DefaultMinConfigFetchInterval = time.Second
+
+	tapFeedType = "tap"
 )
 
 // serverType indicates which type of HTTP server sync gateway is running
@@ -152,7 +154,7 @@ type DbConfig struct {
 	ImportFilter                     *string                          `json:"import_filter,omitempty"`         // The import filter applied to import operations in the _default scope and collection
 	ImportBackupOldRev               *bool                            `json:"import_backup_old_rev,omitempty"` // Whether import should attempt to create a temporary backup of the previous revision body, when available.
 	EventHandlers                    *EventHandlerConfig              `json:"event_handlers,omitempty"`        // Event handlers (webhook)
-	FeedType                         string                           `json:"feed_type,omitempty"`             // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
+	FeedType                         string                           `json:"feed_type,omitempty"`             // Feed type - "DCP" only, "TAP" is ignored
 	AllowEmptyPassword               *bool                            `json:"allow_empty_password,omitempty"`  // Allow empty passwords?  Defaults to false
 	CacheConfig                      *CacheConfig                     `json:"cache,omitempty"`                 // Cache settings
 	DeprecatedRevCacheSize           *uint32                          `json:"rev_cache_size,omitempty"`        // Maximum number of revisions to store in the revision cache (deprecated, CBG-356)
@@ -781,7 +783,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	if err != nil {
 		multiError = multiError.Append(err)
 	}
-	if dbConfig.FeedType == base.TapFeedType && autoImportEnabled == true {
+	if dbConfig.FeedType == tapFeedType && autoImportEnabled == true {
 		multiError = multiError.Append(fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import"))
 	}
 

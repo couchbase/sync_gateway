@@ -31,11 +31,6 @@ import (
 )
 
 const (
-	TapFeedType = "tap"
-	DcpFeedType = "dcp"
-)
-
-const (
 	DefaultPool = "default"
 )
 
@@ -90,12 +85,6 @@ func GetBaseDataStore(ds DataStore) DataStore {
 		return GetBaseDataStore(wds.GetUnderlyingDataStore())
 	}
 	return ds
-}
-
-// AsDataStoreName is a temporary thing until DataStoreName is implemented on wrappers (pending further design work on FQName...)
-func AsDataStoreName(ds DataStore) (sgbucket.DataStoreName, bool) {
-	dsn, ok := GetBaseDataStore(ds).(sgbucket.DataStoreName)
-	return dsn, ok
 }
 
 func init() {
@@ -370,24 +359,6 @@ func IsCasMismatch(err error) bool {
 	}
 
 	return false
-}
-
-// Returns mutation feed type for bucket.  Will first return the feed type from the spec, when present.  If not found, returns default feed type for bucket
-// (DCP for any couchbase bucket, TAP otherwise)
-func GetFeedType(bucket Bucket) (feedType string) {
-	switch typedBucket := bucket.(type) {
-	case *GocbV2Bucket:
-		return DcpFeedType
-	case sgbucket.MutationFeedStore2:
-		return string(typedBucket.GetFeedType())
-	case *LeakyBucket:
-		return GetFeedType(typedBucket.bucket)
-	case *TestBucket:
-		return GetFeedType(typedBucket.Bucket)
-	default:
-		// unknown bucket type?
-		return TapFeedType
-	}
 }
 
 // Gets the bucket max TTL, or 0 if no TTL was set.  Sync gateway should fail to bring the DB online if this is non-zero,
