@@ -63,17 +63,18 @@ func (lds *LeakyDataStore) Exists(k string) (exists bool, err error) {
 	return lds.dataStore.Exists(k)
 }
 
-// GetName returns a fully qualified bucket.scope.collection name.
 func (lds *LeakyDataStore) GetName() string {
 	return lds.dataStore.GetName()
 }
 
-// DataStoreName returns the scope and collection name.
-func (lds *LeakyDataStore) DataStoreName() sgbucket.DataStoreName {
-	return lds.dataStore.DataStoreName()
+func (lds *LeakyDataStore) ScopeName() string {
+	return lds.dataStore.ScopeName()
 }
 
-// GetCollectionID returns the kv collection ID for the collection.
+func (lds *LeakyDataStore) CollectionName() string {
+	return lds.dataStore.ScopeName()
+}
+
 func (lds *LeakyDataStore) GetCollectionID() uint32 {
 	return lds.dataStore.GetCollectionID()
 }

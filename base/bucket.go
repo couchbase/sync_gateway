@@ -92,12 +92,6 @@ func GetBaseDataStore(ds DataStore) DataStore {
 	return ds
 }
 
-// AsDataStoreName is a temporary thing until DataStoreName is implemented on wrappers (pending further design work on FQName...)
-func AsDataStoreName(ds DataStore) (sgbucket.DataStoreName, bool) {
-	dsn, ok := GetBaseDataStore(ds).(sgbucket.DataStoreName)
-	return dsn, ok
-}
-
 func init() {
 	// Increase max memcached request size to 20M bytes, to support large docs (attachments!)
 	// arriving in a tap feed. (see issues #210, #333, #342)

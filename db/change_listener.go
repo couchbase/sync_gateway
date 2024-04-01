@@ -13,7 +13,6 @@ package db
 import (
 	"context"
 	"expvar"
-	"fmt"
 	"math"
 	"strings"
 	"sync"
@@ -77,10 +76,6 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 		// build the set of collections to be requested
 
 		// Add the metadata collection first
-		metadataStoreName, ok := base.AsDataStoreName(metadataStore)
-		if !ok {
-			return fmt.Errorf("changeListener started with collections, but unable to retrieve metadata store name for %T", metadataStore)
-		}
 
 		metadataStoreFoundInScopes := false
 		scopeArgs := make(map[string][]string)
@@ -88,7 +83,7 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 			collections := make([]string, 0)
 			for collectionName, _ := range scope.Collections {
 				collections = append(collections, collectionName)
-				if scopeName == metadataStoreName.ScopeName() && collectionName == metadataStoreName.CollectionName() {
+				if scopeName == metadataStore.ScopeName() && collectionName == metadataStore.CollectionName() {
 					metadataStoreFoundInScopes = true
 				}
 			}
@@ -97,11 +92,11 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 
 		// If the metadataStore's collection isn't already present in the list of scopes, add it to the DCP scopes
 		if !metadataStoreFoundInScopes {
-			_, ok = scopeArgs[metadataStoreName.ScopeName()]
+			_, ok := scopeArgs[metadataStore.ScopeName()]
 			if !ok {
-				scopeArgs[metadataStoreName.ScopeName()] = []string{metadataStoreName.CollectionName()}
+				scopeArgs[metadataStore.ScopeName()] = []string{metadataStore.CollectionName()}
 			} else {
-				scopeArgs[metadataStoreName.ScopeName()] = append(scopeArgs[metadataStoreName.ScopeName()], metadataStoreName.CollectionName())
+				scopeArgs[metadataStore.ScopeName()] = append(scopeArgs[metadataStore.ScopeName()], metadataStore.CollectionName())
 			}
 		}
 		listener.FeedArgs.Scopes = scopeArgs
