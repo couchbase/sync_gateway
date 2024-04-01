@@ -66,6 +66,8 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 		require.NoError(t, err)
 		dataStores[fromDs] = toDs
 	}
+	var totalDocsWritten uint64
+	var totalDocsFiltered uint64
 	for fromDs, toDs := range dataStores {
 		for _, doc := range []string{syncDoc, attachmentDoc, normalDoc} {
 			_, err = fromDs.Add(doc, exp, body)
@@ -90,14 +92,15 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			stats, err := xdcr.Stats(ctx)
 			assert.NoError(t, err)
-			assert.Equal(c, uint64(1), stats.DocsFiltered)
-			assert.Equal(c, uint64(2), stats.DocsWritten)
+			assert.Equal(c, totalDocsFiltered+1, stats.DocsFiltered)
+			assert.Equal(c, totalDocsWritten+2, stats.DocsWritten)
 
 		}, time.Second*5, time.Millisecond*100)
-
+		totalDocsWritten += 2
+		totalDocsFiltered += 1
 		if base.UnitTestUrlIsWalrus() {
 			// TODO: CBG-3861 implement _vv support in rosmar
-			return
+			continue
 		}
 		// in mobile xdcr mode a version vector will be written
 		if base.TestSupportsMobileXDCR() {
