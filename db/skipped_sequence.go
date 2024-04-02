@@ -52,7 +52,7 @@ type SingleSkippedSequence struct {
 func NewSkippedSequenceSlice(clipHeadroom int) *SkippedSequenceSlice {
 	return &SkippedSequenceSlice{
 		list:                 []SkippedSequenceListEntry{},
-		ClipCapacityHeadroom: clipHeadroom, // will make this tunable in
+		ClipCapacityHeadroom: clipHeadroom,
 	}
 }
 
@@ -116,7 +116,7 @@ func (s *SkippedSequenceSlice) SkippedSequenceCompact(ctx context.Context, maxWa
 		timeStamp := v.getTimestamp()
 		if (timeNow - timeStamp) >= maxWait {
 			indexToDelete++
-			// update count of sequences being compacted form the slice
+			// update count of sequences being compacted from the slice
 			numSequencesCompacted = numSequencesCompacted + v.getNumSequencesInEntry()
 		} else {
 			// exit early to avoid iterating through whole slice
