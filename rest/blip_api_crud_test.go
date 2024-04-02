@@ -1901,19 +1901,16 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 		// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 		version1 := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 
-		data, ok := btcRunner.WaitForVersion(client.id, docID, version1)
-		assert.True(t, ok)
+		data := btcRunner.WaitForVersion(client.id, docID, version1)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 		// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
 		version2 := rt.UpdateDoc(docID, version1, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
 
-		data, ok = btcRunner.WaitForVersion(client.id, docID, version2)
-		assert.True(t, ok)
+		data = btcRunner.WaitForVersion(client.id, docID, version2)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
 
-		msg, ok := client.pullReplication.WaitForMessage(5)
-		assert.True(t, ok)
+		msg := client.pullReplication.WaitForMessage(5)
 		assert.Equal(t, version1.RevID, msg.Properties[db.RevMessageHistory]) // CBG-3268 update to use version
 	})
 }
@@ -1939,15 +1936,13 @@ func TestActiveOnlyContinuous(t *testing.T) {
 
 		// start an initial pull
 		require.NoError(t, btcRunner.StartPullSince(btc.id, "true", "0", "true"))
-		rev, found := btcRunner.WaitForVersion(btc.id, docID, version)
-		assert.True(t, found)
+		rev := btcRunner.WaitForVersion(btc.id, docID, version)
 		assert.Equal(t, `{"test":true}`, string(rev))
 
 		// delete the doc and make sure the client still gets the tombstone replicated
 		deletedVersion := rt.DeleteDocReturnVersion(docID, version)
 
-		rev, found = btcRunner.WaitForVersion(btc.id, docID, deletedVersion)
-		assert.True(t, found)
+		rev = btcRunner.WaitForVersion(btc.id, docID, deletedVersion)
 		assert.Equal(t, `{}`, string(rev))
 	})
 }
@@ -2040,8 +2035,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 		err = btcRunner.StartOneshotPull(btc.id)
 		assert.NoError(t, err)
-		_, ok := btcRunner.WaitForVersion(btc.id, docID, version)
-		assert.True(t, ok)
+		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
 		version = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
 
@@ -2053,8 +2047,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 		err = btcRunner.StartOneshotPull(btc.id)
 		assert.NoError(t, err)
-		_, ok = btcRunner.WaitForVersion(btc.id, docID, version)
-		assert.True(t, ok)
+		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
 		version = rt.UpdateDoc(docID, version, `{"channels": []}`)
 		const docMarker = "docmarker"
@@ -2074,8 +2067,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 		err = btcRunner.StartOneshotPull(btc.id)
 		assert.NoError(t, err)
-		_, ok = btcRunner.WaitForVersion(btc.id, docMarker, docMarkerVersion)
-		assert.True(t, ok)
+		_ = btcRunner.WaitForVersion(btc.id, docMarker, docMarkerVersion)
 
 		messages := btc.pullReplication.GetMessages()
 
@@ -2154,8 +2146,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 
 		err = btcRunner.StartOneshotPull(btc.id)
 		assert.NoError(t, err)
-		_, ok := btcRunner.WaitForVersion(btc.id, docID, version)
-		assert.True(t, ok)
+		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
 		version = rt.UpdateDoc(docID, version, `{"channels": ["C"]}`)
 		require.NoError(t, rt.WaitForPendingChanges())
@@ -2168,8 +2159,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 
 		err = btcRunner.StartOneshotPullFiltered(btc.id, "A")
 		assert.NoError(t, err)
-		_, ok = btcRunner.WaitForVersion(btc.id, docID, version)
-		assert.True(t, ok)
+		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
 		_ = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
 		markerID := "docmarker"
@@ -2185,8 +2175,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 
 		err = btcRunner.StartOneshotPullFiltered(btc.id, "A")
 		assert.NoError(t, err)
-		_, ok = btcRunner.WaitForVersion(btc.id, markerID, markerVersion)
-		assert.True(t, ok)
+		_ = btcRunner.WaitForVersion(btc.id, markerID, markerVersion)
 
 		messages := btc.pullReplication.GetMessages()
 
@@ -2705,8 +2694,7 @@ func TestUnsubChanges(t *testing.T) {
 		require.NoError(t, err)
 
 		doc1Version := rt.PutDoc(doc1ID, `{"key":"val1"}`)
-		_, found := btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
-		require.True(t, found)
+		_ = btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
 
 		activeReplStat := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplActiveContinuous
 		require.EqualValues(t, 1, activeReplStat.Value())
@@ -2721,7 +2709,7 @@ func TestUnsubChanges(t *testing.T) {
 		// Confirm no more changes are being sent
 		doc2Version := rt.PutDoc(doc2ID, `{"key":"val1"}`)
 		err = rt.WaitForConditionWithOptions(func() bool {
-			_, found = btcRunner.GetVersion(btc.id, "doc2", doc2Version)
+			_, found := btcRunner.GetVersion(btc.id, "doc2", doc2Version)
 			return found
 		}, 10, 100)
 		assert.Error(t, err)
@@ -2734,8 +2722,7 @@ func TestUnsubChanges(t *testing.T) {
 		// Confirm the pull replication can be restarted and it syncs doc2
 		err = btcRunner.StartPull(btc.id)
 		require.NoError(t, err)
-		_, found = btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version)
-		assert.True(t, found)
+		_ = btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version)
 	})
 }
 
@@ -2792,8 +2779,7 @@ func TestRequestPlusPull(t *testing.T) {
 		require.NoError(t, releaseErr)
 
 		// The one-shot pull should unblock and replicate the document in the granted channel
-		data, ok := btcRunner.WaitForDoc(client.id, "pbs-1")
-		assert.True(t, ok)
+		data := btcRunner.WaitForDoc(client.id, "pbs-1")
 		assert.Equal(t, `{"channel":["PBS"]}`, string(data))
 	})
 }
@@ -2857,8 +2843,7 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 		require.NoError(t, releaseErr)
 
 		// The one-shot pull should unblock and replicate the document in the granted channel
-		data, ok := btcRunner.WaitForDoc(client.id, "pbs-1")
-		assert.True(t, ok)
+		data := btcRunner.WaitForDoc(client.id, "pbs-1")
 		assert.Equal(t, `{"channel":["PBS"]}`, string(data))
 	})
 }
@@ -2907,10 +2892,9 @@ func TestBlipRefreshUser(t *testing.T) {
 		err := btcRunner.StartPullSince(btc.id, "true", "0", "false")
 		require.NoError(t, err)
 
-		_, ok := btcRunner.WaitForDoc(btc.id, docID)
-		require.True(t, ok)
+		_ = btcRunner.WaitForDoc(btc.id, docID)
 
-		_, ok = btcRunner.GetVersion(btc.id, docID, version)
+		_, ok := btcRunner.GetVersion(btc.id, docID, version)
 		require.True(t, ok)
 
 		// delete user with an active blip connection
@@ -2979,8 +2963,8 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 		}
 		for i, testCase := range testCases {
 			rt.Run(testCase.name, func(t *testing.T) {
-				docID := fmt.Sprintf("doc%d,", i)
-				markerDoc := fmt.Sprintf("markerDoc%d", i)
+				docID := fmt.Sprintf("doc%d_%s,", i, testCase.name)
+				markerDoc := fmt.Sprintf("markerDoc%d_%s", i, testCase.name)
 				validBody := `{"foo":"bar"}`
 				_ = rt.PutDoc(docID, validBody)
 				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
@@ -2991,8 +2975,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				defer btc.Close()
 				require.NoError(t, btcRunner.StartOneshotPull(btc.id))
 
-				output, found := btcRunner.WaitForDoc(btc.id, docID)
-				require.True(t, found)
+				output := btcRunner.WaitForDoc(btc.id, docID)
 				require.JSONEq(t, validBody, string(output))
 
 				err := rt.GetSingleDataStore().SetRaw(docID, 0, nil, testCase.invalidBody)

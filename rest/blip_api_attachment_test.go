@@ -66,8 +66,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 		bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
 		version := btc.rt.PutDoc(docID, bodyText)
 
-		data, ok := btcRunner.WaitForVersion(btc.id, docID, version)
-		assert.True(t, ok)
+		data := btcRunner.WaitForVersion(btc.id, docID, version)
 		bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 		require.JSONEq(t, bodyTextExpected, string(data))
 
@@ -77,8 +76,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 		require.NoError(t, err)
 
 		// Wait for the document to be replicated at SG
-		_, ok = btc.pushReplication.WaitForMessage(2)
-		assert.True(t, ok)
+		btc.pushReplication.WaitForMessage(2)
 
 		respBody := btc.rt.GetDocVersion(docID, version)
 
@@ -139,8 +137,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 		bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
 		version := btc.rt.PutDoc(docID, bodyText)
 
-		data, ok := btcRunner.WaitForVersion(btc.id, docID, version)
-		assert.True(t, ok)
+		data := btcRunner.WaitForVersion(btc.id, docID, version)
 		bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 		require.JSONEq(t, bodyTextExpected, string(data))
 
@@ -150,8 +147,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 		require.NoError(t, err)
 
 		// Wait for the document to be replicated at SG
-		_, ok = btc.pushReplication.WaitForMessage(2)
-		assert.True(t, ok)
+		btc.pushReplication.WaitForMessage(2)
 
 		respBody := btc.rt.GetDocVersion(docID, version)
 
@@ -215,8 +211,7 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 		doc1Body := fmt.Sprintf(`{"greetings":[{"hi": "alice"}],"_attachments":{"%s":{"data":"%s"}}}`, attachmentName, attachmentDataB64)
 		doc1Version := btc.rt.PutDoc(doc1ID, doc1Body)
 
-		data, ok := btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
-		require.True(t, ok)
+		data := btcRunner.WaitForVersion(btc.id, doc1ID, doc1Version)
 		bodyTextExpected := fmt.Sprintf(`{"greetings":[{"hi":"alice"}],"_attachments":{"%s":{"revpos":1,"length":%d,"stub":true,"digest":"%s"}}}`, attachmentName, len(attachmentData), attachmentDigest)
 		require.JSONEq(t, bodyTextExpected, string(data))
 
@@ -224,8 +219,7 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 		doc2Body := fmt.Sprintf(`{"greetings":[{"howdy": "bob"}],"_attachments":{"%s":{"data":"%s"}}}`, attachmentName, attachmentDataB64)
 		doc2Version := btc.rt.PutDoc(doc2ID, doc2Body)
 
-		data, ok = btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version)
-		require.True(t, ok)
+		data = btcRunner.WaitForVersion(btc.id, doc2ID, doc2Version)
 		bodyTextExpected = fmt.Sprintf(`{"greetings":[{"howdy":"bob"}],"_attachments":{"%s":{"revpos":1,"length":%d,"stub":true,"digest":"%s"}}}`, attachmentName, len(attachmentData), attachmentDigest)
 		require.JSONEq(t, bodyTextExpected, string(data))
 
@@ -320,8 +314,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		assert.Equal(t, "2-abc", revId)
 
 		// Wait for the documents to be replicated at SG
-		_, ok := btc.pushReplication.WaitForMessage(2)
-		assert.True(t, ok)
+		btc.pushReplication.WaitForMessage(2)
 
 		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 		assert.Equal(t, http.StatusOK, resp.Code)
@@ -334,8 +327,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		assert.Equal(t, "4-abc", revId)
 
 		// Wait for the document to be replicated at SG
-		_, ok = btc.pushReplication.WaitForMessage(4)
-		assert.True(t, ok)
+		btc.pushReplication.WaitForMessage(4)
 
 		resp = btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 		assert.Equal(t, http.StatusOK, resp.Code)
@@ -397,8 +389,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		assert.Equal(t, "4-abc", revId)
 
 		// Wait for the document to be replicated at SG
-		_, ok := btc.pushReplication.WaitForMessage(2)
-		assert.True(t, ok)
+		btc.pushReplication.WaitForMessage(2)
 
 		resp := btc.rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 		assert.Equal(t, http.StatusOK, resp.Code)

@@ -2257,8 +2257,7 @@ func TestRevocationMessage(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Wait for doc revision to come over
-		_, ok := btcRunner.WaitForBlipRevMessage(btc.id, "doc", version)
-		require.True(t, ok)
+		_ = btcRunner.WaitForBlipRevMessage(btc.id, "doc", version)
 
 		// Remove role from user
 		revocationTester.removeRole("user", "foo")
@@ -2276,8 +2275,7 @@ func TestRevocationMessage(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Wait for doc1 rev2 - This is the last rev we expect so we can be sure replication is complete here
-		_, found := btcRunner.WaitForVersion(btc.id, doc1ID, version)
-		require.True(t, found)
+		_ = btcRunner.WaitForVersion(btc.id, doc1ID, version)
 
 		messages := btc.pullReplication.GetMessages()
 
@@ -2374,8 +2372,7 @@ func TestRevocationNoRev(t *testing.T) {
 		err := btcRunner.StartOneshotPull(btc.id)
 		assert.NoError(t, err)
 
-		_, ok := btcRunner.WaitForVersion(btc.id, docID, version)
-		require.True(t, ok)
+		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
 		// Remove role from user
 		revocationTester.removeRole("user", "foo")
@@ -2389,8 +2386,7 @@ func TestRevocationNoRev(t *testing.T) {
 		err = btcRunner.StartPullSince(btc.id, "false", lastSeqStr, "false")
 		assert.NoError(t, err)
 
-		_, ok = btcRunner.WaitForVersion(btc.id, waitMarkerID, waitMarkerVersion)
-		require.True(t, ok)
+		_ = btcRunner.WaitForVersion(btc.id, waitMarkerID, waitMarkerVersion)
 
 		messages := btc.pullReplication.GetMessages()
 
@@ -2472,8 +2468,7 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 		err := btcRunner.StartOneshotPull(btc.id)
 		assert.NoError(t, err)
 		throw = true
-		_, ok := btcRunner.WaitForVersion(btc.id, docID, version)
-		require.True(t, ok)
+		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
 		// Remove role from user
 		revocationTester.removeRole("user", "foo")
@@ -2487,8 +2482,7 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 		err = btcRunner.StartPullSince(btc.id, "false", lastSeqStr, "false")
 		assert.NoError(t, err)
 
-		_, ok = btcRunner.WaitForVersion(btc.id, waitMarkerID, waitMarkerVersion)
-		require.True(t, ok)
+		_ = btcRunner.WaitForVersion(btc.id, waitMarkerID, waitMarkerVersion)
 	})
 }
 
