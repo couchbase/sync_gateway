@@ -133,7 +133,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		btcr := btc.getCollectionClientFromMessage(msg)
 
 		attData, err := btcr.getAttachment(digest)
-		require.NoError(btr.TB(), err, "error getting client attachment %v", err)
+		require.NoError(btr.TB(), err, "error getting client attachment: %v", err)
 
 		proof := db.ProveAttachment(ctx, attData, nonce)
 
