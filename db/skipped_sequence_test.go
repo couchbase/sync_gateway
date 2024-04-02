@@ -25,7 +25,7 @@ import (
 //   - Assert that timestamp is increasing from the last entry (or equal to)
 //   - Pending CBG-3853 add contiguous sequence to slice and assert that it replaces the last element with a range entry
 func TestPushSingleSkippedSequence(t *testing.T) {
-	skippedSlice := NewSkippedSequenceSlice()
+	skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
 
 	for i := 0; i < 10; i++ {
 		skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
@@ -51,7 +51,7 @@ func BenchmarkPushSingleSkippedSequence(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			skippedSlice := NewSkippedSequenceSlice()
+			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
 			for i := 0; i < b.N; i++ {
 				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
 			}
@@ -61,8 +61,8 @@ func BenchmarkPushSingleSkippedSequence(b *testing.B) {
 
 // TestIsSequenceSkipped:
 //   - Create a skipped slice
-//   - Test each sequence added returns true for IsSkipped
-//   - Assert that IsSkipped returns false for a sequence that doesn't exist in the slice
+//   - Test each sequence added returns true for Contains
+//   - Assert that Contains returns false for a sequence that doesn't exist in the slice
 //
 // Will add more test cases to this as development continues (for sequence ranges + mixed single and ranges) pending CBG-3853
 func TestIsSequenceSkipped(t *testing.T) {
@@ -78,17 +78,17 @@ func TestIsSequenceSkipped(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			skippedSlice := NewSkippedSequenceSlice()
+			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
 
 			for _, input := range testCase.inputList {
 				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input))
 			}
 			for _, v := range testCase.inputList {
-				assert.True(t, skippedSlice.IsSkipped(v))
+				assert.True(t, skippedSlice.Contains(v))
 			}
 
 			// try a non existent sequence
-			assert.False(t, skippedSlice.IsSkipped(150))
+			assert.False(t, skippedSlice.Contains(150))
 
 		})
 	}
@@ -105,7 +105,7 @@ func BenchmarkIsSkippedFunction(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			skippedSlice := NewSkippedSequenceSlice()
+			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
 			if bm.largeSlice {
 				for i := 0; i < 10000; i++ {
 					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
@@ -116,7 +116,7 @@ func BenchmarkIsSkippedFunction(b *testing.B) {
 				}
 			}
 			for i := 0; i < b.N; i++ {
-				skippedSlice.IsSkipped(uint64(i * 2))
+				skippedSlice.Contains(uint64(i * 2))
 			}
 		})
 	}
@@ -146,7 +146,7 @@ func TestRemoveSeqFromSkipped(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			skippedSlice := NewSkippedSequenceSlice()
+			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
 			for _, input := range testCase.inputList {
 				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input))
 			}
@@ -175,7 +175,7 @@ func BenchmarkRemoveSeqFromSkippedList(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			skippedSlice := NewSkippedSequenceSlice()
+			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
 			if bm.largeSlice {
 				for i := 0; i < 10000; i++ {
 					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
@@ -216,7 +216,7 @@ func TestInsertItemInSlice(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			skippedSlice := NewSkippedSequenceSlice()
+			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
 
 			for _, input := range testCase.inputList {
 				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input))
@@ -243,7 +243,7 @@ func BenchmarkInsertSkippedItem(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			skippedSlice := NewSkippedSequenceSlice()
+			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
 			if bm.largeSlice {
 				for i := 0; i < 10000; i++ {
 					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
@@ -272,16 +272,18 @@ func TestCompactSkippedList(t *testing.T) {
 		name         string
 		inputList    []uint64
 		expectedList []uint64
+		numRemoved   int
 	}{
 		{
 			name:         "single_items",
 			inputList:    []uint64{2, 6, 100, 200, 500},
 			expectedList: []uint64{600},
+			numRemoved:   5,
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			skippedSlice := NewSkippedSequenceSlice()
+			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
 
 			for _, input := range testCase.inputList {
 				skippedSlice.PushSkippedSequenceEntry(testSingleSkippedEntryOldTimestamp(input))
@@ -291,16 +293,17 @@ func TestCompactSkippedList(t *testing.T) {
 			entry.timestamp = entry.timestamp + 10000
 			skippedSlice.PushSkippedSequenceEntry(entry)
 
-			skippedSlice.SkippedSequenceCompact(base.TestCtx(t), 1)
+			numRemoved := skippedSlice.SkippedSequenceCompact(base.TestCtx(t), 1)
 
 			require.Len(t, skippedSlice.list, 1)
 			assert.Equal(t, uint64(600), skippedSlice.list[0].getLastSeq())
+			assert.Equal(t, testCase.numRemoved, numRemoved)
 		})
 	}
 }
 
 // TestCompactSkippedListClipHandling:
-//   - Creat new skipped sequence slice with old timestamps
+//   - Create new skipped sequence slice with old timestamps + clip headroom defined at 100
 //   - Push new future entry on the slice
 //   - Run compact and assert that the capacity of the slice is correct after clip is run
 //
@@ -317,7 +320,8 @@ func TestCompactSkippedListClipHandling(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			skippedSlice := NewSkippedSequenceSlice()
+			// define clip headroom at 100 for test
+			skippedSlice := NewSkippedSequenceSlice(100)
 
 			for i := 0; i < 100; i++ {
 				skippedSlice.PushSkippedSequenceEntry(testSingleSkippedEntryOldTimestamp(uint64(i * 2)))
@@ -334,7 +338,7 @@ func TestCompactSkippedListClipHandling(t *testing.T) {
 	}
 }
 
-func BenchmarkInsertCompactSkippedList(b *testing.B) {
+func BenchmarkCompactSkippedList(b *testing.B) {
 	benchmarks := []struct {
 		name         string
 		rangeEntries bool
@@ -345,7 +349,8 @@ func BenchmarkInsertCompactSkippedList(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			skippedSlice := NewSkippedSequenceSlice()
+			// define clip headroom at 100 for test
+			skippedSlice := NewSkippedSequenceSlice(100)
 			if bm.largeSlice {
 				for i := 0; i < 10000; i++ {
 					skippedSlice.PushSkippedSequenceEntry(testSingleSkippedEntryOldTimestamp(uint64(i * 2)))
@@ -371,5 +376,36 @@ func testSingleSkippedEntryOldTimestamp(seq uint64) *SingleSkippedSequence {
 	return &SingleSkippedSequence{
 		seq:       seq,
 		timestamp: assignedTimestamp,
+	}
+}
+
+func TestGetOldestSkippedSequence(t *testing.T) {
+	testCases := []struct {
+		name      string
+		inputList []uint64
+		expected  uint64
+		empty     bool
+	}{
+		{
+			name:      "single_items",
+			inputList: []uint64{2, 6, 100, 200, 500},
+			expected:  2,
+		},
+		{
+			name:     "empty_slice",
+			empty:    true,
+			expected: 0,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
+			if !testCase.empty {
+				for _, v := range testCase.inputList {
+					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(v))
+				}
+			}
+			assert.Equal(t, testCase.expected, skippedSlice.getOldest())
+		})
 	}
 }
