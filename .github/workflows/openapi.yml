@@ -15,7 +15,9 @@ on:
       - 'docs/api/**'
     branches:
       - 'master'
+      - 'main'
       - 'release/*'
+      - 'feature/*'
       - 'beryllium'
       - 'CBG*'
       - 'ci-*'
@@ -26,6 +28,7 @@ on:
       - 'docs/api/**'
     branches:
       - 'master'
+      - 'main'
       - 'release/*'
       - 'beryllium'
 

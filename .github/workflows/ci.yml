@@ -12,13 +12,16 @@ on:
   push:
     branches:
       - 'master'
+      - 'main'
       - 'release/*'
+      - 'feature/*'
       - 'beryllium'
       - 'CBG*'
       - 'ci-*'
   pull_request:
     branches:
       - 'master'
+      - 'main'
       - 'release/*'
       - 'beryllium'
 
