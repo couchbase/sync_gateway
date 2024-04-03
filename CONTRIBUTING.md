@@ -14,7 +14,7 @@ It's great if you can scan the open issues to see if your problem/idea has been 
 
 ## Version
 
-Please indicate **what version of the software** you're using. If you compiled it yourself from source, it helps if you give the Git commit ID, or at least the branch name and date ("I last pulled from master on 6/30.")
+Please indicate **what version of the software** you're using. If you compiled it yourself from source, it helps if you give the Git commit ID, or at least the branch name and date ("I last pulled from main on 6/30.")
 
 If the bug involves replication, also indicate what software and version is on the other end of the line, i.e. "Couchbase Lite Android 1.0" or "Sync Gateway 1.0" or "Sync Gateway commit f3d3229c" or "CouchDB 1.6".
 

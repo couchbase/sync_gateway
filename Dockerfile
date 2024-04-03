@@ -10,7 +10,7 @@
 FROM golang:1.11.5-stretch as builder
 
 # Customize this with the commit hash or branch name you want to build
-ARG COMMIT=master
+ARG COMMIT=main
 
 # Refresh apt repository, install git
 RUN apt-get update && apt-get install -y \
@@ -25,7 +25,7 @@ RUN git config --global color.ui false
 
 # Download and run the bootstrap.sh script which will download and invoke the repo
 # tool to grap all required repositories
-RUN wget https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh && \
+RUN wget https://raw.githubusercontent.com/couchbase/sync_gateway/main/bootstrap.sh && \
     cat bootstrap.sh && \
     chmod +x bootstrap.sh && \
     ./bootstrap.sh -c $COMMIT -e ce
