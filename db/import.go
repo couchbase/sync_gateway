@@ -523,7 +523,7 @@ func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, do
 		docInBucket, err := db.GetDocument(ctx, docid, DocUnmarshalAll)
 		if err == nil {
 			if doc == nil {
-				doc = docInBucket._body
+				doc = docInBucket.Body(ctx)
 			}
 		} else {
 			return false, err

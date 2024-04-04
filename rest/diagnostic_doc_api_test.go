@@ -75,24 +75,26 @@ func TestGetDocDryRuns(t *testing.T) {
 	response := rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_sync", `{"accessChannel": ["dynamicChan5412"],"accessUser": "user","channel": ["dynamicChan222"],"expiry":10}`)
 	RequireStatus(t, response, http.StatusOK)
 	var respMap SyncFnDryRun
-	err := json.Unmarshal(response.BodyBytes(), &respMap)
+	var respMapinit SyncFnDryRun
+	err := json.Unmarshal(response.BodyBytes(), &respMapinit)
 	assert.NoError(t, err)
-	assert.ElementsMatch(t, respMap.Exception, nil)
-	assert.Equal(t, respMap.Roles, channels.AccessMap{})
-	assert.Equal(t, respMap.Access, channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")})
+	assert.ElementsMatch(t, respMapinit.Exception, nil)
+	assert.Equal(t, respMapinit.Roles, channels.AccessMap{})
+	assert.Equal(t, respMapinit.Access, channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")})
+	assert.EqualValues(t, *respMapinit.Expiry, 10)
 	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_sync", `{"role": ["role:role1"], "accessUser": "user"}`)
 	RequireStatus(t, response, http.StatusOK)
 
 	err = json.Unmarshal(response.BodyBytes(), &respMap)
 	assert.NoError(t, err)
 	assert.Equal(t, respMap.Roles, channels.AccessMap{"user": channels.BaseSetOf(t, "role1")})
-	newSyncFn := `"function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name, doc.channel);}}}"`
+	newSyncFn := `"function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}"`
 	resp = rt.SendAdminRequest("POST", "/db/_config", fmt.Sprintf(
 		`{"bucket":"%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s, "import_filter":%s}`,
 		bucket, base.TestUseXattrs(), newSyncFn, ImportFilter))
 	RequireStatus(t, resp, http.StatusCreated)
 
-	_ = rt.PutDoc("doc", `{"user":{"num":123, "name":"user1"}, "channel":"channel1"}`)
+	_ = rt.PutDoc("doc", `{"user":{"num":123, "name":["user1"]}, "channel":"channel1"}`)
 
 	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_sync", `{"user":{"num":23}}`)
 	RequireStatus(t, response, http.StatusOK)
@@ -101,7 +103,14 @@ func TestGetDocDryRuns(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, respMap.Exception, "403 user num too low")
 
-	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?doc_id=doc"), `{"user":{"num":120, "name":"user2"}, "channel":"channel2"}`)
+	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?doc_id=doc"), `{"user":{"num":150}, "channel":{num:88}}`)
+	RequireStatus(t, response, http.StatusOK)
+
+	err = json.Unmarshal(response.BodyBytes(), &respMap)
+	assert.NoError(t, err)
+	assert.Equal(t, respMap.Exception, "TypeError: Cannot access member '0' of undefined")
+
+	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?doc_id=doc"), `{"user":{"num":120, "name":["user2"]}, "channel":"channel2"}`)
 	RequireStatus(t, response, http.StatusOK)
 
 	err = json.Unmarshal(response.BodyBytes(), &respMap)
@@ -117,15 +126,14 @@ func TestGetDocDryRuns(t *testing.T) {
 
 	// Get doc that doesnt exist, will error
 	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?doc_id=doc404"), ``)
-	RequireStatus(t, response, http.StatusOK)
+	RequireStatus(t, response, http.StatusNotFound)
 	err = json.Unmarshal(response.BodyBytes(), &respMap)
 	assert.NoError(t, err)
-	assert.Equal(t, respMap.Exception, "key \"doc404\" missing")
-	assert.Nil(t, respMap.Access)
+	assert.Equal(t, respMap.Exception, "")
 
 	// no doc id no body, will error
 	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?doc_id="), ``)
-	RequireStatus(t, response, http.StatusBadRequest)
+	RequireStatus(t, response, http.StatusInternalServerError)
 
 	// Import filter import=false and type error
 	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter", `{"accessUser": "user"}`)
@@ -146,6 +154,15 @@ func TestGetDocDryRuns(t *testing.T) {
 	assert.Equal(t, respMap2.Error, "")
 	assert.True(t, respMap2.ShouldImport)
 
+	// Import filter import=true and no error
+	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter", `{"user":23}`)
+	RequireStatus(t, response, http.StatusOK)
+
+	err = json.Unmarshal(response.BodyBytes(), &respMap2)
+	assert.NoError(t, err)
+	assert.Equal(t, respMap2.Error, "")
+	assert.False(t, respMap2.ShouldImport)
+
 	_ = rt.PutDoc("doc2", `{"user":{"num":125}}`)
 	// Import filter get doc from bucket with no body
 	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter?doc_id=doc2", ``)
@@ -164,7 +181,7 @@ func TestGetDocDryRuns(t *testing.T) {
 	assert.Equal(t, respMap2.Error, "key \"doc404\" missing")
 	assert.False(t, respMap2.ShouldImport)
 
-	// Import filter get doc from bucket error body also provided
+	// Import filter get doc from bucket error body provided
 	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter?doc_id=doc2", `{"user":{"num":23}}`)
 	RequireStatus(t, response, http.StatusBadRequest)
 }

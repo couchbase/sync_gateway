@@ -961,7 +961,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 					return nil, nil, false, nil, ErrForbidden
 				}
 
-				_, _, _, _, _, err = db.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID, false)
+				_, _, _, _, _, err = db.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
 				if err != nil {
 					base.DebugfCtx(ctx, base.KeyCRUD, "Could not modify doc %q due to %s and sync func rejection: %v", base.UD(doc.ID), conflictErr, err)
 					return nil, nil, false, nil, ErrForbidden
@@ -1145,7 +1145,8 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 
 }
 
-func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Body, docID string) (*uint32, base.Set, channels.AccessMap, channels.AccessMap, error) {
+// SyncFnDryrun Runs a document through the sync function and returns expiry, channels doc was placed in, access map for users, roles, handler errors and sync fn exceptions
+func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Body, docID string) (*channels.ChannelMapperOutput, error, error) {
 	doc := &Document{
 		ID:    docID,
 		_body: body,
@@ -1155,12 +1156,12 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 		if docInBucket, err := db.GetDocument(ctx, docID, DocUnmarshalAll); err == nil {
 			oldDoc = docInBucket
 			if doc._body == nil {
-				body = oldDoc._body
+				body = oldDoc.Body(ctx)
 				doc._body = body
 			}
 			doc._body[BodyRev] = oldDoc.SyncData.CurrentRev
 		} else {
-			return nil, nil, nil, nil, err
+			return nil, err, nil
 		}
 	}
 
@@ -1170,7 +1171,7 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 	matchRev, _ := body[BodyRev].(string)
 	generation, _ := ParseRevID(ctx, matchRev)
 	if generation < 0 {
-		return nil, nil, nil, nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID"), nil
 	}
 	generation++
 	oldDoc.RevID = body.ExtractRev()
@@ -1187,12 +1188,12 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 
 	err := validateAPIDocUpdate(body)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, err, nil
 	}
 	bodyWithoutInternalProps, wasStripped := stripInternalProperties(body)
 	canonicalBytesForRevID, err := base.JSONMarshalCanonical(bodyWithoutInternalProps)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, err, nil
 	}
 
 	// We needed to keep _deleted around in the body until we generated a rev ID, but now we can ditch it.
@@ -1215,21 +1216,29 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 	mutableBody, metaMap, newRevID, err := db.prepareSyncFn(oldDoc, newDoc)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyDiagnostic, "Failed to prepare to run sync function: %v", err)
-		return nil, nil, nil, nil, err
+		return nil, err, nil
 	}
 	if oldDoc.History != nil {
 		if err := oldDoc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: isDeleted}); err != nil {
-			base.InfofCtx(ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(doc.ID), err)
-			return nil, nil, nil, nil, base.ErrRevTreeAddRevFailure
+			return nil, base.ErrRevTreeAddRevFailure, nil
 		}
 	}
-
-	syncExpiry, _, channelSet, access, roles, err := db.runSyncFn(ctx, oldDoc, mutableBody, metaMap, newRevID, true)
-	if err != nil {
-		base.InfofCtx(ctx, base.KeyDiagnostic, "Sync fn error: %v", err)
-		return nil, nil, nil, nil, err
+	// Get the parent revision, to pass to the sync function:
+	var oldJsonBytes []byte
+	if oldJsonBytes, err = db.getAncestorJSON(ctx, oldDoc, newRevID); err != nil {
+		return nil, err, nil
 	}
-	return syncExpiry, channelSet, access, roles, err
+	oldJson := string(oldJsonBytes)
+	base.InfofCtx(ctx, base.KeyDiagnostic, "old json: %s", oldJson)
+	output, err := db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, oldJson, metaMap,
+		MakeUserCtx(db.user, db.ScopeName, db.Name))
+
+	//syncExpiry, _, channelSet, access, roles, err := db.runSyncFn(ctx, oldDoc, mutableBody, metaMap, newRevID, true)
+	//if err != nil {
+	//	base.InfofCtx(ctx, base.KeyDiagnostic, "Sync fn error: %v", err)
+	//	return nil, nil, nil, nil, nil, err
+	//}
+	return output, nil, err
 }
 
 // resolveConflict runs the conflictResolverFunction with doc and newDoc.  doc and newDoc's bodies and revision trees
@@ -1596,12 +1605,12 @@ func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Docum
 
 // Run the sync function on the given document and body. Need to inject the document ID and rev ID temporarily to run
 // the sync function.
-func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, newRevId string, dryRun bool) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
-	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, newRevId, dryRun)
+func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
+	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, newRevId)
 	if err != nil {
 		return nil, ``, nil, nil, nil, err
 	}
-	db.checkDocChannelsAndGrantsLimits(ctx, doc.ID, channelSet, access, roles, dryRun)
+	db.checkDocChannelsAndGrantsLimits(ctx, doc.ID, channelSet, access, roles)
 	return syncExpiry, oldBody, channelSet, access, roles, nil
 }
 
@@ -1622,7 +1631,7 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 	if curBody != nil {
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
 			base.UD(doc.ID), newRevID, doc.CurrentRev)
-		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(ctx, doc, curBody, metaMap, doc.CurrentRev, false)
+		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(ctx, doc, curBody, metaMap, doc.CurrentRev)
 		if err != nil {
 			return
 		}
@@ -1830,9 +1839,8 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 	doc.updateWinningRevAndSetDocFlags(ctx)
 	newDocHasAttachments := len(newAttachments) > 0
 	col.storeOldBodyInRevTreeAndUpdateCurrent(ctx, doc, prevCurrentRev, newRevID, newDoc, newDocHasAttachments)
-	base.DebugfCtx(ctx, base.KeyDiagnostic, "NEWREVID in documentUpdateFunc: %v", newDoc.RevID)
 
-	syncExpiry, oldBodyJSON, channelSet, access, roles, err := col.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID, false)
+	syncExpiry, oldBodyJSON, channelSet, access, roles, err := col.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
 	if err != nil {
 		if col.ForceAPIForbiddenErrors() {
 			base.InfofCtx(ctx, base.KeyCRUD, "Sync function rejected update to %s %s due to %v",
@@ -2211,8 +2219,7 @@ func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectio
 
 	return leafAttachments, nil
 }
-
-func (db *DatabaseCollectionWithUser) checkDocChannelsAndGrantsLimits(ctx context.Context, docID string, channels base.Set, accessGrants channels.AccessMap, roleGrants channels.AccessMap, dryRun bool) {
+func (db *DatabaseCollectionWithUser) checkDocChannelsAndGrantsLimits(ctx context.Context, docID string, channels base.Set, accessGrants channels.AccessMap, roleGrants channels.AccessMap) {
 	if db.unsupportedOptions() == nil || db.unsupportedOptions().WarningThresholds == nil {
 		return
 	}
@@ -2220,7 +2227,7 @@ func (db *DatabaseCollectionWithUser) checkDocChannelsAndGrantsLimits(ctx contex
 	// Warn when channel count is larger than a configured threshold
 	if channelCountThreshold := db.unsupportedOptions().WarningThresholds.ChannelsPerDoc; channelCountThreshold != nil {
 		channelCount := len(channels)
-		if uint32(channelCount) >= *channelCountThreshold && !dryRun {
+		if uint32(channelCount) >= *channelCountThreshold {
 			db.dbStats().Database().WarnChannelsPerDocCount.Add(1)
 			base.WarnfCtx(ctx, "Doc id: %v channel count: %d exceeds %d for channels per doc warning threshold", base.UD(docID), channelCount, *channelCountThreshold)
 		}
@@ -2229,7 +2236,7 @@ func (db *DatabaseCollectionWithUser) checkDocChannelsAndGrantsLimits(ctx contex
 	// Warn when grants are larger than a configured threshold
 	if grantThreshold := db.unsupportedOptions().WarningThresholds.GrantsPerDoc; grantThreshold != nil {
 		grantCount := len(accessGrants) + len(roleGrants)
-		if uint32(grantCount) >= *grantThreshold && !dryRun {
+		if uint32(grantCount) >= *grantThreshold {
 			db.dbStats().Database().WarnGrantsPerDocCount.Add(1)
 			base.WarnfCtx(ctx, "Doc id: %v access and role grants count: %d exceeds %d for grants per doc warning threshold", base.UD(docID), grantCount, *grantThreshold)
 		}
@@ -2238,7 +2245,7 @@ func (db *DatabaseCollectionWithUser) checkDocChannelsAndGrantsLimits(ctx contex
 	// Warn when channel names are larger than a configured threshold
 	if channelNameSizeThreshold := db.unsupportedOptions().WarningThresholds.ChannelNameSize; channelNameSizeThreshold != nil {
 		for c := range channels {
-			if uint32(len(c)) > *channelNameSizeThreshold && !dryRun {
+			if uint32(len(c)) > *channelNameSizeThreshold {
 				db.dbStats().Database().WarnChannelNameSizeCount.Add(1)
 				base.WarnfCtx(ctx, "Doc: %q channel %q exceeds %d characters for channel name size warning threshold", base.UD(docID), base.UD(c), *channelNameSizeThreshold)
 			}
@@ -2361,7 +2368,7 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) err
 
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, revID string, dryRun bool) (
+func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, revID string) (
 	result base.Set,
 	access channels.AccessMap,
 	roles channels.AccessMap,
@@ -2384,6 +2391,9 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 
 	if col.ChannelMapper != nil {
 		// Call the ChannelMapper:
+		col.dbStats().Database().SyncFunctionCount.Add(1)
+		col.collectionStats.SyncFunctionCount.Add(1)
+
 		var output *channels.ChannelMapperOutput
 
 		startTime := time.Now()
@@ -2391,12 +2401,8 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 			MakeUserCtx(col.user, col.ScopeName, col.Name))
 		syncFunctionTimeNano := time.Since(startTime).Nanoseconds()
 
-		if !dryRun {
-			col.dbStats().Database().SyncFunctionCount.Add(1)
-			col.collectionStats.SyncFunctionCount.Add(1)
-			col.dbStats().Database().SyncFunctionTime.Add(syncFunctionTimeNano)
-			col.collectionStats.SyncFunctionTime.Add(syncFunctionTimeNano)
-		}
+		col.dbStats().Database().SyncFunctionTime.Add(syncFunctionTimeNano)
+		col.collectionStats.SyncFunctionTime.Add(syncFunctionTimeNano)
 
 		if err == nil {
 			result = output.Channels
@@ -2405,18 +2411,14 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 			expiry = output.Expiry
 			err = output.Rejection
 			if err != nil {
-				dryRunMsg := ""
-				if !dryRun {
-					dryRunMsg = "[DRY RUN]"
-					col.dbStats().Security().NumDocsRejected.Add(1)
-					col.collectionStats.SyncFunctionRejectCount.Add(1)
-					if isAccessError(err) {
-						col.dbStats().Security().NumAccessErrors.Add(1)
-						col.collectionStats.SyncFunctionRejectAccessCount.Add(1)
-					}
+				base.InfofCtx(ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(doc.NewestRev), err)
+				base.DebugfCtx(ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
+				col.dbStats().Security().NumDocsRejected.Add(1)
+				col.collectionStats.SyncFunctionRejectCount.Add(1)
+				if isAccessError(err) {
+					col.dbStats().Security().NumAccessErrors.Add(1)
+					col.collectionStats.SyncFunctionRejectAccessCount.Add(1)
 				}
-				base.InfofCtx(ctx, base.KeyAll, "%s Sync fn rejected doc %q / %q --> %s", dryRunMsg, base.UD(doc.ID), base.UD(doc.NewestRev), err)
-				base.DebugfCtx(ctx, base.KeyAll, "%s    rejected doc %q / %q : new=%+v  old=%s", dryRunMsg, base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
 			} else if !validateAccessMap(ctx, access) || !validateRoleAccessMap(ctx, roles) {
 				err = base.HTTPErrorf(500, "Error in JS sync function")
 			}
@@ -2426,11 +2428,9 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 			if errors.Is(err, sgbucket.ErrJSTimeout) {
 				err = base.HTTPErrorf(500, "JS sync function timed out")
 			} else {
-				if !dryRun {
-					err = base.HTTPErrorf(500, "Exception in JS sync function")
-					col.collectionStats.SyncFunctionExceptionCount.Add(1)
-					col.dbStats().Database().SyncFunctionExceptionCount.Add(1)
-				}
+				err = base.HTTPErrorf(500, "Exception in JS sync function")
+				col.collectionStats.SyncFunctionExceptionCount.Add(1)
+				col.dbStats().Database().SyncFunctionExceptionCount.Add(1)
 			}
 		}
 

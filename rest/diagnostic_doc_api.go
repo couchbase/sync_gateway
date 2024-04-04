@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -24,7 +25,7 @@ type SyncFnDryRun struct {
 	Access    channels.AccessMap `json:"Access"`
 	Roles     channels.AccessMap `json:"Roles"`
 	Exception string             `json:"Exception"`
-	Expiry    uint32             `json:"Expiry"`
+	Expiry    *uint32            `json:"Expiry,omitempty"`
 }
 
 type ImportFilterDryRun struct {
@@ -60,33 +61,41 @@ func (h *handler) handleGetDocChannels() error {
 // HTTP handler for running a document through the sync function and returning the results
 // body only provided, the sync function will run with no oldDoc provided
 // body and doc ID provided, the sync function will run using the current revision in the bucket as oldDoc
-// docid only provided, if the doc exists in the bucket, sync fn results will be returned, otherwise it will error
+// docid only provided, the sync function will run using the current revision in the bucket as doc
+// If docid is specified and the document does not exist in the bucket, it will return error
 func (h *handler) handleSyncFnDryRun() error {
 	docid := h.getQuery("doc_id")
 
 	body, err := h.readDocument()
 	if err != nil {
 		if docid == "" {
-			return err
+			return fmt.Errorf("no doc id provided for dry run and error reading body: %s", err)
 		}
 	}
-	expiryPtr, channelSet, access, roles, err := h.collection.SyncFnDryrun(h.ctx(), body, docid)
-	errorMsg := ""
+
+	output, err, syncFnErr := h.collection.SyncFnDryrun(h.ctx(), body, docid)
 	if err != nil {
-		errorMsg = err.Error()
+		return err
 	}
-	expiry := uint32(0)
-	if expiryPtr != nil {
-		expiry = *expiryPtr
+	if syncFnErr != nil {
+		resp := SyncFnDryRun{
+			Exception: syncFnErr.Error(),
+		}
+		h.writeJSON(resp)
+		return nil
 	}
-	resp := SyncFnDryRun{
-		channelSet,
-		access,
-		roles,
-		errorMsg,
-		expiry,
+	errorMsg := ""
+	if output.Rejection != nil {
+		errorMsg = output.Rejection.Error()
 	}
 
+	resp := SyncFnDryRun{
+		output.Channels,
+		output.Access,
+		output.Roles,
+		errorMsg,
+		output.Expiry,
+	}
 	h.writeJSON(resp)
 	return nil
 }
@@ -98,7 +107,7 @@ func (h *handler) handleImportFilterDryRun() error {
 	body, err := h.readDocument()
 	if err != nil {
 		if docid == "" {
-			return err
+			return fmt.Errorf("Error reading body: %s, no doc id provided for dry run", err)
 		}
 	}
 
