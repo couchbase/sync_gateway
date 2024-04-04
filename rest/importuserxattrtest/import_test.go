@@ -302,3 +302,83 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
 }
+
+// TestAutoImportUserXattrNoSyncData:
+//   - Define rest tester with sync function assigning channels defined in user xattr
+//   - Insert doc via SDK with user xattr defined to single channel
+//   - Wait for import feed to pick the doc up and assert the doc is correctly assigned the channel defined in user xattr
+//   - Insert another doc via SDK with user xattr defined with array of channels
+//   - Wait for import feed to pick the doc up and assert the doc is correctly assigned the channels defined in user xattr
+func TestAutoImportUserXattrNoSyncData(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	rtConfig := rest.RestTesterConfig{
+		SyncFn: `function (doc, oldDoc, meta) {
+   if (meta.xattrs.channels === undefined) {
+      console.log("no user_xattr_key defined");
+      throw ({
+         forbidden: "Missing required property - metadata channel info"
+      });
+   } else {
+      console.log(meta.xattrs.channels);
+      channel(meta.xattrs.channels);
+   }
+}`,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport:   true,
+			UserXattrKey: base.StringPtr("channels"),
+		}},
+	}
+
+	rt := rest.NewRestTester(t,
+		&rtConfig)
+	defer rt.Close()
+	const (
+		docKey  = "doc1"
+		docKey2 = "doc2"
+	)
+	ctx := base.TestCtx(t)
+	dataStore := rt.GetSingleDataStore()
+
+	// Write doc with user xattr defined and assert it correctly imports
+	userXattrVal := "chan1"
+	val := make(map[string]interface{})
+	val["test"] = "doc"
+	_, err := dataStore.WriteCasWithXattr(ctx, docKey, "channels", 0, 0, val, userXattrVal, nil)
+	assert.NoError(t, err)
+
+	// Wait for doc to be imported
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
+	})
+	assert.NoError(t, err)
+
+	// Ensure sync function has run on import
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	// Assert the sync data has correct channels populated
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(ctx, docKey)
+	require.NoError(t, err)
+	assert.Equal(t, []string{userXattrVal}, syncData.Channels.KeySet())
+	assert.Len(t, syncData.Channels, 1)
+
+	// Write doc with array of channels in user xattr and assert it correctly imports
+	userXattrValArray := []string{"chan1", "chan2"}
+	_, err = dataStore.WriteCasWithXattr(ctx, docKey2, "channels", 0, 0, val, userXattrValArray, nil)
+	assert.NoError(t, err)
+
+	// Wait for doc to be imported
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
+	})
+	assert.NoError(t, err)
+
+	// Ensure sync function has run on import
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	// Assert the sync data has correct channels populated
+	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(ctx, docKey2)
+	require.NoError(t, err)
+	assert.Equal(t, userXattrValArray, syncData.Channels.KeySet())
+	assert.Len(t, syncData.Channels, 2)
+}
