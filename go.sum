@@ -45,14 +45,12 @@ github.com/couchbase/gocbcore/v10 v10.3.1 h1:dx+lub02eDYiQXavtF0EwYMppVUcbjCxAAq
 github.com/couchbase/gocbcore/v10 v10.3.1/go.mod h1:lYQIIk+tzoMcwtwU5GzPbDdqEkwkH3isI2rkSpfL0oM=
 github.com/couchbase/gocbcoreps v0.1.1 h1:H5Q/TVmRqEpcdTDlepwAmLW7cemP9Di6Lp91Qa9oz1A=
 github.com/couchbase/gocbcoreps v0.1.1/go.mod h1:tpbHglpBO7DZZmr8XhHe7INj5VJcJ3i+41Ktep9lejI=
-github.com/couchbase/gomemcached v0.2.1 h1:lDONROGbklo8pOt4Sr4eV436PVEaKDr3o9gUlhv9I2U=
-github.com/couchbase/gomemcached v0.2.1/go.mod h1:mxliKQxOv84gQ0bJWbI+w9Wxdpt9HjDvgW9MjCym5Vo=
+github.com/couchbase/gomemcached v0.3.1 h1:jfspNuQIXgWy+5GUPQrsQ6yC5uJCfMmd/JKvK6C26r8=
+github.com/couchbase/gomemcached v0.3.1/go.mod h1:mxliKQxOv84gQ0bJWbI+w9Wxdpt9HjDvgW9MjCym5Vo=
 github.com/couchbase/goprotostellar v1.0.1 h1:mtDVYTgnnDSQ3t7mQRG6jl/tOXKOuuFM9PakqC1qhCY=
 github.com/couchbase/goprotostellar v1.0.1/go.mod h1:gs1eioLVOHETTFWxDY4v7Q/kRPMgqmX6t/TPcI429ls=
 github.com/couchbase/goutils v0.1.2 h1:gWr8B6XNWPIhfalHNog3qQKfGiYyh4K4VhO3P2o9BCs=
 github.com/couchbase/goutils v0.1.2/go.mod h1:h89Ek/tiOxxqjz30nPPlwZdQbdB8BwgnuBxeoUe/ViE=
-github.com/couchbase/sg-bucket v0.0.0-20240326230241-0b197e169b27 h1:FGNvJsAQk6JZzuVXvoLXcoSQzOnQxWkywzYJFQqzXEg=
-github.com/couchbase/sg-bucket v0.0.0-20240326230241-0b197e169b27/go.mod h1:5me3TJLTPfR0s3aMJZcPoTu5FT8oelaINz5l7Q3cApE=
 github.com/couchbase/sg-bucket v0.0.0-20240402154301-12625d8851a8 h1:kfWMYvUgSg2yIZJx+t63Ucl+zorvFqlYayXPkiXFtSE=
 github.com/couchbase/sg-bucket v0.0.0-20240402154301-12625d8851a8/go.mod h1:5me3TJLTPfR0s3aMJZcPoTu5FT8oelaINz5l7Q3cApE=
 github.com/couchbase/tools-common/cloud v1.0.0 h1:SQZIccXoedbrThehc/r9BJbpi/JhwJ8X00PDjZ2gEBE=
@@ -74,8 +72,6 @@ github.com/couchbaselabs/gocbconnstr v1.0.5 h1:e0JokB5qbcz7rfnxEhNRTKz8q1svoRvDo
 github.com/couchbaselabs/gocbconnstr v1.0.5/go.mod h1:KV3fnIKMi8/AzX0O9zOrO9rofEqrRF1d2rG7qqjxC7o=
 github.com/couchbaselabs/gocbconnstr/v2 v2.0.0-20230515165046-68b522a21131 h1:2EAfFswAfgYn3a05DVcegiw6DgMgn1Mv5eGz6IHt1Cw=
 github.com/couchbaselabs/gocbconnstr/v2 v2.0.0-20230515165046-68b522a21131/go.mod h1:o7T431UOfFVHDNvMBUmUxpHnhivwv7BziUao/nMl81E=
-github.com/couchbaselabs/rosmar v0.0.0-20240326232309-04dfb3337b60 h1:w9E8CEvQia8BPA+2Ai6dJh64wYTmxNUrXNPkKhtPpGw=
-github.com/couchbaselabs/rosmar v0.0.0-20240326232309-04dfb3337b60/go.mod h1:MnlZ8BXE9Z7rUQEyb069P/6E9+YVkUxcqW5cmN23h0I=
 github.com/couchbaselabs/rosmar v0.0.0-20240404180245-795e6df684f3 h1:AUvojYsPc2WgiO9xRalRQLyXzooRRWemdEkiGl+PZno=
 github.com/couchbaselabs/rosmar v0.0.0-20240404180245-795e6df684f3/go.mod h1:SM0w4YHwXFMIyfqUbkpXZNWwAQKLwsUH91fsKUooMqw=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
