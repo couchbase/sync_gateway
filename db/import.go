@@ -243,13 +243,13 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 			if isDelete && body == nil {
 				deleteBody := Body{BodyDeleted: true}
-				shouldImport, err = importFilter.EvaluateFunction(ctx, deleteBody)
+				shouldImport, err = importFilter.EvaluateFunction(ctx, deleteBody, false)
 			} else if isDelete && body != nil {
 				deleteBody := body.ShallowCopy()
 				deleteBody[BodyDeleted] = true
-				shouldImport, err = importFilter.EvaluateFunction(ctx, deleteBody)
+				shouldImport, err = importFilter.EvaluateFunction(ctx, deleteBody, false)
 			} else {
-				shouldImport, err = importFilter.EvaluateFunction(ctx, body)
+				shouldImport, err = importFilter.EvaluateFunction(ctx, body, false)
 			}
 
 			if err != nil {
@@ -495,11 +495,13 @@ func NewImportFilterFunction(ctx context.Context, fnSource string, timeout time.
 }
 
 // Calls a jsEventFunction returning an interface{}
-func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body) (bool, error) {
+func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body, dryRun bool) (bool, error) {
 
 	result, err := i.Call(ctx, doc)
 	if err != nil {
-		base.WarnfCtx(ctx, "Unexpected error invoking import filter for document %s - processing aborted, document will not be imported.  Error: %v", base.UD(doc), err)
+		if !dryRun {
+			base.WarnfCtx(ctx, "Unexpected error invoking import filter for document %s - processing aborted, document will not be imported.  Error: %v", base.UD(doc), err)
+		}
 		return false, err
 	}
 	switch result := result.(type) {
@@ -512,7 +514,9 @@ func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body) (
 		}
 		return boolResult, nil
 	default:
-		base.WarnfCtx(ctx, "Import filter function returned non-boolean result %v Type: %T", result, result)
+		if !dryRun {
+			base.WarnfCtx(ctx, "Import filter function returned non-boolean result %v Type: %T", result, result)
+		}
 		return false, errors.New("Import filter function returned non-boolean value.")
 	}
 }
@@ -529,7 +533,7 @@ func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, do
 			return false, err
 		}
 	}
-	shouldImport, err := importFilter.EvaluateFunction(ctx, doc)
+	shouldImport, err := importFilter.EvaluateFunction(ctx, doc, true)
 
 	return shouldImport, err
 }
