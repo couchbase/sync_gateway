@@ -3301,10 +3301,10 @@ func (i *testBackgroundProcess) ResetStatus() {
 func TestBadDCPStart(t *testing.T) {
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
 	if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		t.Skip("This test requires collections support on server (7.0 or greater)")
 	}
-	defer bucket.Close(ctx)
 	dbcOptions := DatabaseContextOptions{
 		Scopes: GetScopesOptions(t, bucket, 1),
 	}

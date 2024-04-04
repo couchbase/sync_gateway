@@ -93,6 +93,21 @@ linters-settings:
   gocritic:
     enabled-checks:
       - ruleguard
+    disabled-checks:
+      - appendAssign
+      - assignOp
+      - badCond
+      - captLocal
+      - commentFormatting
+      - deprecatedComment
+      - elseif
+      - ifElseChain
+      - regexpMust
+      - singleCaseSwitch
+      - sloppyLen
+      - unlambda
+      - valSwap
+      - wrapperFunc
     settings:
       ruleguard:
         rules: '${configDir}/ruleguard/*.go'

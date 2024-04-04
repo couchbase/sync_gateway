@@ -19,6 +19,6 @@ import (
 
 func TestMain(m *testing.M) {
 	ctx := context.Background() // start of test process
-	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
+	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048, RequireXDCR: true}
 	base.TestBucketPoolNoIndexes(ctx, m, tbpOptions)
 }
