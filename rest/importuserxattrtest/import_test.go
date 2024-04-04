@@ -340,11 +340,15 @@ func TestAutoImportUserXattrNoSyncData(t *testing.T) {
 	ctx := base.TestCtx(t)
 	dataStore := rt.GetSingleDataStore()
 
+	userXattrChan := "chan1"
+	userXattrVal := map[string][]byte{
+		"channels": base.MustJSONMarshal(t, userXattrChan),
+	}
+
 	// Write doc with user xattr defined and assert it correctly imports
-	userXattrVal := "chan1"
 	val := make(map[string]interface{})
 	val["test"] = "doc"
-	_, err := dataStore.WriteCasWithXattr(ctx, docKey, "channels", 0, 0, val, userXattrVal, nil)
+	_, err := dataStore.WriteWithXattrs(ctx, docKey, 0, 0, base.MustJSONMarshal(t, val), userXattrVal, nil)
 	assert.NoError(t, err)
 
 	// Wait for doc to be imported
@@ -359,12 +363,15 @@ func TestAutoImportUserXattrNoSyncData(t *testing.T) {
 	// Assert the sync data has correct channels populated
 	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(ctx, docKey)
 	require.NoError(t, err)
-	assert.Equal(t, []string{userXattrVal}, syncData.Channels.KeySet())
+	assert.Equal(t, []string{userXattrChan}, syncData.Channels.KeySet())
 	assert.Len(t, syncData.Channels, 1)
 
 	// Write doc with array of channels in user xattr and assert it correctly imports
 	userXattrValArray := []string{"chan1", "chan2"}
-	_, err = dataStore.WriteCasWithXattr(ctx, docKey2, "channels", 0, 0, val, userXattrValArray, nil)
+	userXattrVal = map[string][]byte{
+		"channels": base.MustJSONMarshal(t, userXattrValArray),
+	}
+	_, err = dataStore.WriteWithXattrs(ctx, docKey2, 0, 0, base.MustJSONMarshal(t, val), userXattrVal, nil)
 	assert.NoError(t, err)
 
 	// Wait for doc to be imported
