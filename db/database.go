@@ -747,14 +747,7 @@ func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, preview
 	var errs *base.MultiError
 	var removedIndexes []string
 	for _, dataStore := range dbCtx.getDataStores() {
-		dsName, ok := base.AsDataStoreName(dataStore)
-		if !ok {
-			err := fmt.Sprintf("Cannot get datastore name from %s", dataStore)
-			base.WarnfCtx(ctx, err)
-			errs = errs.Append(errors.New(err))
-			continue
-		}
-		collectionName := fmt.Sprintf("`%s`.`%s`", dsName.ScopeName(), dsName.CollectionName())
+		collectionName := fmt.Sprintf("`%s`.`%s`", dataStore.ScopeName(), dataStore.CollectionName())
 		n1qlStore, ok := base.AsN1QLStore(dataStore)
 		if !ok {
 			err := fmt.Sprintf("Cannot remove obsolete indexes for non-gocb collection %s - skipping.", base.MD(collectionName))

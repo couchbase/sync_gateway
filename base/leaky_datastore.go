@@ -67,12 +67,16 @@ func (lds *LeakyDataStore) GetName() string {
 	return lds.dataStore.GetName()
 }
 
+func (lds *LeakyDataStore) ScopeName() string {
+	return lds.dataStore.ScopeName()
+}
+
+func (lds *LeakyDataStore) CollectionName() string {
+	return lds.dataStore.CollectionName()
+}
+
 func (lds *LeakyDataStore) GetCollectionID() uint32 {
-	if coll, ok := lds.dataStore.(sgbucket.Collection); ok {
-		return coll.GetCollectionID()
-	} else {
-		return DefaultCollectionID
-	}
+	return lds.dataStore.GetCollectionID()
 }
 
 func (lds *LeakyDataStore) Get(k string, rv interface{}) (cas uint64, err error) {

@@ -1273,12 +1273,11 @@ Database:
         db_state_changed:
           $ref: '#/Event-config'
     feed_type:
-      description: The type of feed to use to communicate with Couchbase Server.
+      description: The type of feed to use to communicate with Couchbase Server. This will use DCP regardless of specification.
       type: string
       default: DCP
       enum:
         - DCP
-        - TAP
       deprecated: true
     allow_empty_password:
       description: This controls whether users that are created can have an empty password or not.

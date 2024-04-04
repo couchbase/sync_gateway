@@ -718,11 +718,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 					MetadataIndexes: indexInfo.indexSet,
 					UseXattrs:       config.UseXattrs(),
 				}
-				dsName, ok := base.AsDataStoreName(ds)
-				if !ok {
-					return nil, fmt.Errorf("Could not get datastore name from %s", base.MD(ds.GetName()))
-				}
-				ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), dsName.ScopeName(), dsName.CollectionName())
+				ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), ds.ScopeName(), ds.CollectionName())
 				indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
 				if indexErr != nil {
 					return nil, indexErr
@@ -1334,15 +1330,11 @@ func validateMetadataStore(ctx context.Context, metadataStore base.DataStore) er
 	if err == nil {
 		return nil
 	}
-	metadataStoreName, ok := base.AsDataStoreName(metadataStore)
-	if ok {
-		keyspace := strings.Join([]string{metadataStore.GetName(), metadataStoreName.ScopeName(), metadataStoreName.CollectionName()}, base.ScopeCollectionSeparator)
-		if base.IsDefaultCollection(metadataStoreName.ScopeName(), metadataStoreName.CollectionName()) {
-			base.WarnfCtx(ctx, "_default._default has been deleted from the server for bucket %s, to recover recreate the bucket", metadataStore.GetName())
-		}
-		return fmt.Errorf("metadata store %s does not exist on couchbase server: %w", base.MD(keyspace), err)
+	keyspace := strings.Join([]string{metadataStore.GetName(), metadataStore.ScopeName(), metadataStore.CollectionName()}, base.ScopeCollectionSeparator)
+	if base.IsDefaultCollection(metadataStore.ScopeName(), metadataStore.CollectionName()) {
+		base.WarnfCtx(ctx, "_default._default has been deleted from the server for bucket %s, to recover recreate the bucket", metadataStore.GetName())
 	}
-	return fmt.Errorf("metadata store %s does not exist on couchbase server: %w", base.MD(metadataStore.GetName()), err)
+	return fmt.Errorf("metadata store %s does not exist on couchbase server: %w", base.MD(keyspace), err)
 }
 
 // validateEventConfigOptions returns errors for all invalid event type options.

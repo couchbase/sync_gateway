@@ -930,15 +930,12 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 
 	dataStore1, err := rt.TestBucket.GetNamedDataStore(0)
 	require.NoError(t, err)
-	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
-	require.True(t, ok)
-
 	// Run resync for single collection // Request body {"scopes": "scopeName": ["collection1Name", "collection2Name"]}}
 	body := fmt.Sprintf(`{
 			"scopes" :{
 				"%s": ["%s"]
 			}
-		}`, dataStore1Name.ScopeName(), dataStore1Name.CollectionName())
+		}`, dataStore1.ScopeName(), dataStore1.CollectionName())
 	resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", body)
 	rest.RequireStatus(t, resp, http.StatusOK)
 	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)

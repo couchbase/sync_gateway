@@ -207,12 +207,8 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 	dbOne := "dbone"
 	bucket1Datastore1, err := rt.TestBucket.GetNamedDataStore(0)
 	require.NoError(t, err)
-	bucket1Datastore1Name, ok := base.AsDataStoreName(bucket1Datastore1)
-	require.True(t, ok)
 	bucket1Datastore2, err := rt.TestBucket.GetNamedDataStore(1)
 	require.NoError(t, err)
-	bucket1Datastore2Name, ok := base.AsDataStoreName(bucket1Datastore2)
-	require.True(t, ok)
 	resp := rt.CreateDatabase(dbOne, dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 	testCases = []struct {
@@ -236,11 +232,11 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 		},
 		{
 			input:  "/{{.keyspace1}}/",
-			output: fmt.Sprintf("/%s.%s.%s/", dbOne, bucket1Datastore1Name.ScopeName(), bucket1Datastore1Name.CollectionName()),
+			output: fmt.Sprintf("/%s.%s.%s/", dbOne, bucket1Datastore1.ScopeName(), bucket1Datastore1.CollectionName()),
 		},
 		{
 			input:  "/{{.keyspace2}}/",
-			output: fmt.Sprintf("/%s.%s.%s/", dbOne, bucket1Datastore2Name.ScopeName(), bucket1Datastore2Name.CollectionName()),
+			output: fmt.Sprintf("/%s.%s.%s/", dbOne, bucket1Datastore2.ScopeName(), bucket1Datastore2.CollectionName()),
 		},
 	}
 	for _, test := range testCases {
@@ -266,12 +262,8 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 	dbTwo := "dbtwo"
 	bucket2Datastore1, err := rt.TestBucket.GetNamedDataStore(0)
 	require.NoError(t, err)
-	bucket2Datastore1Name, ok := base.AsDataStoreName(bucket2Datastore1)
-	require.True(t, ok)
 	bucket2Datastore2, err := rt.TestBucket.GetNamedDataStore(1)
 	require.NoError(t, err)
-	bucket2Datastore2Name, ok := base.AsDataStoreName(bucket2Datastore2)
-	require.True(t, ok)
 	resp = rt.CreateDatabase(dbTwo, dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 	testCases = []struct {
@@ -305,20 +297,20 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 		},
 		{
 			input:  "/{{.db1keyspace1}}/",
-			output: fmt.Sprintf("/%s.%s.%s/", dbOne, bucket1Datastore1Name.ScopeName(), bucket2Datastore1Name.CollectionName()),
+			output: fmt.Sprintf("/%s.%s.%s/", dbOne, bucket1Datastore1.ScopeName(), bucket2Datastore1.CollectionName()),
 		},
 		{
 			input:  "/{{.db1keyspace2}}/",
-			output: fmt.Sprintf("/%s.%s.%s/", dbOne, bucket1Datastore2Name.ScopeName(), bucket2Datastore2Name.CollectionName()),
+			output: fmt.Sprintf("/%s.%s.%s/", dbOne, bucket1Datastore2.ScopeName(), bucket2Datastore2.CollectionName()),
 		},
 
 		{
 			input:  "/{{.db2keyspace1}}/",
-			output: fmt.Sprintf("/%s.%s.%s/", dbTwo, bucket2Datastore1Name.ScopeName(), bucket2Datastore1Name.CollectionName()),
+			output: fmt.Sprintf("/%s.%s.%s/", dbTwo, bucket2Datastore1.ScopeName(), bucket2Datastore1.CollectionName()),
 		},
 		{
 			input:  "/{{.db2keyspace2}}/",
-			output: fmt.Sprintf("/%s.%s.%s/", dbTwo, bucket2Datastore2Name.ScopeName(), bucket2Datastore2Name.CollectionName()),
+			output: fmt.Sprintf("/%s.%s.%s/", dbTwo, bucket2Datastore2.ScopeName(), bucket2Datastore2.CollectionName()),
 		},
 	}
 	for _, test := range testCases {

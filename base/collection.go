@@ -289,10 +289,6 @@ func (b *GocbV2Bucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArgum
 	return StartGocbDCPFeed(ctx, b, b.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
 }
 
-func (b *GocbV2Bucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
-	return nil, errors.New("StartTapFeed not implemented")
-}
-
 func (b *GocbV2Bucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 
 	agent, agentErr := b.getGoCBAgent()
@@ -720,15 +716,4 @@ func (b *GocbV2Bucket) ServerMetrics(ctx context.Context) (map[string]*dto.Metri
 	}
 
 	return mf, nil
-}
-
-func GetCollectionID(dataStore DataStore) uint32 {
-	switch c := dataStore.(type) {
-	case WrappingDatastore:
-		return GetCollectionID(c.GetUnderlyingDataStore())
-	case sgbucket.Collection:
-		return c.GetCollectionID()
-	default:
-		return DefaultCollectionID
-	}
 }
