@@ -63,6 +63,9 @@ func TestGetAlldocChannels(t *testing.T) {
 }
 
 func TestGetDocDryRuns(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test asserts on an error message that will not be the same without walrus")
+	}
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
 	bucket := rt.Bucket().GetName()
@@ -103,12 +106,12 @@ func TestGetDocDryRuns(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, respMap.Exception, "403 user num too low")
 
-	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?doc_id=doc"), `{"user":{"num":150}, "channel":{num:88}}`)
+	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?doc_id=doc"), `{"user":{"num":150}, "channel":"abc"}`)
 	RequireStatus(t, response, http.StatusOK)
-
-	err = json.Unmarshal(response.BodyBytes(), &respMap)
+	var newrespMap SyncFnDryRun
+	err = json.Unmarshal(response.BodyBytes(), &newrespMap)
 	assert.NoError(t, err)
-	assert.Equal(t, respMap.Exception, "TypeError: Cannot access member '0' of undefined")
+	assert.Equal(t, newrespMap.Exception, "TypeError: Cannot access member '0' of undefined")
 
 	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?doc_id=doc"), `{"user":{"num":120, "name":["user2"]}, "channel":"channel2"}`)
 	RequireStatus(t, response, http.StatusOK)
