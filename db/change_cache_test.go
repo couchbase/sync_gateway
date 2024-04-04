@@ -504,10 +504,6 @@ func WriteUserDirect(t *testing.T, db *Database, username string, sequence uint6
 
 func WriteDirectWithKey(t *testing.T, db *Database, key string, channelArray []string, sequence uint64) {
 
-	if base.TestUseXattrs() {
-		panic(fmt.Sprintf("WriteDirectWithKey() cannot be used in tests that are xattr enabled"))
-	}
-
 	rev := "1-a"
 	chanMap := make(map[string]*channels.ChannelRemoval, 10)
 
@@ -521,8 +517,15 @@ func WriteDirectWithKey(t *testing.T, db *Database, key string, channelArray []s
 		Channels:   chanMap,
 		TimeSaved:  time.Now(),
 	}
+	body := fmt.Sprintf(`{"key": "%s"}`, key)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	_, _ = collection.dataStore.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
+	if base.TestUseXattrs() {
+		_, err := collection.dataStore.WriteWithXattrs(base.TestCtx(t), key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil)
+		require.NoError(t, err)
+	} else {
+		_, err := collection.dataStore.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
+		require.NoError(t, err)
+	}
 }
 
 // Create a document directly to the bucket with specific _sync metadata - used for
@@ -1304,10 +1307,6 @@ func TestStopChangeCache(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyDCP)
 
-	if base.TestUseXattrs() {
-		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
-	}
-
 	// Setup short-wait cache to ensure cleanup goroutines fire often
 	cacheOptions := DefaultCacheOptions()
 	cacheOptions.CachePendingSeqMaxWait = 10 * time.Millisecond
@@ -1316,7 +1315,7 @@ func TestStopChangeCache(t *testing.T) {
 
 	// Use leaky bucket to have the tap feed 'lose' document 3
 	leakyConfig := base.LeakyBucketConfig{
-		TapFeedMissingDocs: []string{"doc-3"},
+		DCPFeedMissingDocs: []string{"doc-3"},
 	}
 	db, ctx := setupTestLeakyDBWithCacheOptions(t, cacheOptions, leakyConfig)
 

@@ -45,8 +45,6 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	defer rt.Close()
 
 	ds := rt.GetSingleDataStore()
-	dataStoreName, ok := base.AsDataStoreName(ds)
-	require.True(t, ok)
 	tests := []struct {
 		name               string
 		keyspace           string
@@ -60,17 +58,17 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		},
 		{
 			name:           "collection only",
-			keyspace:       strings.Join([]string{dbName, dataStoreName.CollectionName()}, base.ScopeCollectionSeparator),
+			keyspace:       strings.Join([]string{dbName, ds.CollectionName()}, base.ScopeCollectionSeparator),
 			expectedStatus: http.StatusCreated,
 		},
 		{
 			name:           "invalid collection",
-			keyspace:       strings.Join([]string{dbName, dataStoreName.ScopeName(), "buzz"}, base.ScopeCollectionSeparator),
+			keyspace:       strings.Join([]string{dbName, ds.ScopeName(), "buzz"}, base.ScopeCollectionSeparator),
 			expectedStatus: http.StatusNotFound,
 		},
 		{
 			name:           "invalid scope",
-			keyspace:       strings.Join([]string{dbName, "buzz", dataStoreName.CollectionName()}, base.ScopeCollectionSeparator),
+			keyspace:       strings.Join([]string{dbName, "buzz", ds.CollectionName()}, base.ScopeCollectionSeparator),
 			expectedStatus: http.StatusNotFound,
 		},
 		{

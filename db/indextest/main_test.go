@@ -81,12 +81,6 @@ var primaryIndexReadier base.TBPBucketReadierFunc = func(ctx context.Context, b 
 		if err != nil {
 			return err
 		}
-		dsName, ok := base.AsDataStoreName(dataStore)
-		if !ok {
-			err := fmt.Errorf("Could not determine datastore name from datastore: %+v", dataStore)
-			tbp.Logf(ctx, "%s", err)
-			return err
-		}
 		tbp.Logf(ctx, "dropping existing bucket indexes")
 
 		if err := db.EmptyPrimaryIndex(ctx, dataStore); err != nil {
@@ -104,7 +98,7 @@ var primaryIndexReadier base.TBPBucketReadierFunc = func(ctx context.Context, b 
 		if len(indexes) != 1 && indexes[0] != base.PrimaryIndexName {
 			return fmt.Errorf("expected only primary index to be present, found: %v", indexes)
 		}
-		tbp.Logf(ctx, "waiting for empty bucket indexes %s.%s.%s", b.GetName(), dsName.ScopeName(), dsName.CollectionName())
+		tbp.Logf(ctx, "waiting for empty bucket indexes %s.%s.%s", b.GetName(), dataStore.ScopeName(), dataStore.CollectionName())
 		// wait for primary index to be empty
 		if err := db.WaitForPrimaryIndexEmpty(ctx, n1qlStore); err != nil {
 			tbp.Logf(ctx, "waitForPrimaryIndexEmpty returned an error: %v", err)

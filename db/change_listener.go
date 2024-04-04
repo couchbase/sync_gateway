@@ -13,7 +13,6 @@ package db
 import (
 	"context"
 	"expvar"
-	"fmt"
 	"math"
 	"strings"
 	"sync"
@@ -77,18 +76,13 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 		// build the set of collections to be requested
 
 		// Add the metadata collection first
-		metadataStoreName, ok := base.AsDataStoreName(metadataStore)
-		if !ok {
-			return fmt.Errorf("changeListener started with collections, but unable to retrieve metadata store name for %T", metadataStore)
-		}
-
 		metadataStoreFoundInScopes := false
 		scopeArgs := make(map[string][]string)
 		for scopeName, scope := range scopes {
 			collections := make([]string, 0)
 			for collectionName, _ := range scope.Collections {
 				collections = append(collections, collectionName)
-				if scopeName == metadataStoreName.ScopeName() && collectionName == metadataStoreName.CollectionName() {
+				if scopeName == metadataStore.ScopeName() && collectionName == metadataStore.CollectionName() {
 					metadataStoreFoundInScopes = true
 				}
 			}
@@ -97,11 +91,11 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 
 		// If the metadataStore's collection isn't already present in the list of scopes, add it to the DCP scopes
 		if !metadataStoreFoundInScopes {
-			_, ok = scopeArgs[metadataStoreName.ScopeName()]
+			_, ok := scopeArgs[metadataStore.ScopeName()]
 			if !ok {
-				scopeArgs[metadataStoreName.ScopeName()] = []string{metadataStoreName.CollectionName()}
+				scopeArgs[metadataStore.ScopeName()] = []string{metadataStore.CollectionName()}
 			} else {
-				scopeArgs[metadataStoreName.ScopeName()] = append(scopeArgs[metadataStoreName.ScopeName()], metadataStoreName.CollectionName())
+				scopeArgs[metadataStore.ScopeName()] = append(scopeArgs[metadataStore.ScopeName()], metadataStore.CollectionName())
 			}
 		}
 		listener.FeedArgs.Scopes = scopeArgs
@@ -118,38 +112,10 @@ func (listener *changeListener) StartMutationFeed(ctx context.Context, bucket ba
 		}
 	}()
 
-	// Uses DCP by default, unless TAP is explicitly specified
-	feedType := base.GetFeedType(bucket)
-	switch feedType {
-	case base.TapFeedType:
-		// TAP Feed
-		//    TAP feed is a go-channel of Tap events served by the bucket.  Start the feed, then
-		//    start a goroutine to work the event channel, calling ProcessEvent for each event
-		var err error
-		listener.tapFeed, err = bucket.StartTapFeed(listener.FeedArgs, dbStats)
-		if err != nil {
-			return err
-		}
-		go func() {
-			defer func() {
-				if listener.FeedArgs.DoneChan != nil {
-					close(listener.FeedArgs.DoneChan)
-				}
-			}()
-			defer base.FatalPanicHandler()
-			defer listener.notifyStopping(ctx)
-			for event := range listener.tapFeed.Events() {
-				event.TimeReceived = time.Now()
-				listener.ProcessFeedEvent(event)
-			}
-		}()
-		return nil
-	default:
-		// DCP Feed
-		//    DCP receiver isn't go-channel based - DCPReceiver calls ProcessEvent directly.
-		base.InfofCtx(ctx, base.KeyDCP, "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.MD(bucket.GetName()))
-		return bucket.StartDCPFeed(ctx, listener.FeedArgs, listener.ProcessFeedEvent, dbStats)
-	}
+	// DCP Feed
+	//    DCP receiver isn't go-channel based - DCPReceiver calls ProcessEvent directly.
+	base.InfofCtx(ctx, base.KeyDCP, "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.MD(bucket.GetName()))
+	return bucket.StartDCPFeed(ctx, listener.FeedArgs, listener.ProcessFeedEvent, dbStats)
 }
 
 // ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed (TAP or DCP).  Uses document
@@ -274,15 +240,6 @@ func (listener *changeListener) NotifyCheckForTermination(ctx context.Context, k
 	}
 
 	base.DebugfCtx(ctx, base.KeyChanges, "Notifying to check for _changes feed termination")
-	listener.tapNotifier.Broadcast()
-	listener.tapNotifier.L.Unlock()
-}
-
-func (listener *changeListener) notifyStopping(ctx context.Context) {
-	listener.tapNotifier.L.Lock()
-	listener.counter = 0
-	listener.keyCounts = map[string]uint64{}
-	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that changeListener is stopping")
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }

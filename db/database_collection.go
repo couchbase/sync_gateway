@@ -43,19 +43,14 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, data
 		dataStore:       dataStore,
 		dbCtx:           dbContext,
 		collectionStats: stats,
+		ScopeName:       dataStore.ScopeName(),
+		Name:            dataStore.CollectionName(),
 	}
 	dbCollection.revisionCache = NewRevisionCache(
 		dbContext.Options.RevisionCacheOptions,
 		dbCollection,
 		dbContext.DbStats.Cache(),
 	)
-	if metadataStoreName, ok := base.AsDataStoreName(dataStore); ok {
-		dbCollection.ScopeName = metadataStoreName.ScopeName()
-		dbCollection.Name = metadataStoreName.CollectionName()
-	} else {
-		dbCollection.ScopeName = base.DefaultScope
-		dbCollection.Name = base.DefaultCollection
-	}
 
 	return dbCollection, nil
 }
@@ -141,8 +136,7 @@ func (c *DatabaseCollection) exitChanges() chan struct{} {
 
 // GetCollectionID returns a collectionID. If couchbase server does not return collections, it will return base.DefaultCollectionID, like the default collection for a Couchbase Server that does support collections.
 func (c *DatabaseCollection) GetCollectionID() uint32 {
-	ds := base.GetBaseDataStore(c.dataStore)
-	return base.GetCollectionID(ds)
+	return c.dataStore.GetCollectionID()
 }
 
 // GetRevisionCacheForTest allow accessing a copy of revision cache.
