@@ -192,7 +192,7 @@ pipeline {
                 stage('Unit') {
                     stages {
                         stage('CE') {
-                            when { branch 'master' }
+                            when { branch 'main' }
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
                                 withEnv(["PATH+GO=${env.GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
@@ -332,11 +332,11 @@ pipeline {
 
                 stage('Integration') {
                     stages {
-                        stage('Master') {
-                            when { branch 'master' }
+                        stage('main') {
+                            when { branch 'main' }
                             steps {
-                                echo 'Queueing Integration test for branch "master" ...'
-                                // Queues up an async integration test run using default build params (master branch),
+                                echo 'Queueing Integration test for branch "main" ...'
+                                // Queues up an async integration test run using default build params (main branch),
                                 // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
                                 build job: 'MasterIntegration', quietPeriod: 3600, wait: false
                             }
@@ -362,9 +362,9 @@ pipeline {
             }
         }
         stage('Benchmarks'){
-            when { branch 'master' }
+            when { branch 'main' }
             steps{
-                echo 'Queueing Benchmark Run test for branch "master" ...'
+                echo 'Queueing Benchmark Run test for branch "main" ...'
                 // TODO: Add this back with new system
                 // build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: false
             }
@@ -389,8 +389,8 @@ pipeline {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                if ("${env.BRANCH_NAME}" == 'master') {
-                    slackSend color: "danger", message: "Failed tests in master SGW pipeline: ${currentBuild.fullDisplayName}\nAt least one test failed: ${env.BUILD_URL}"
+                if ("${env.BRANCH_NAME}" == 'main') {
+                    slackSend color: "danger", message: "Failed tests in main SGW pipeline: ${currentBuild.fullDisplayName}\nAt least one test failed: ${env.BUILD_URL}"
                 }
             }
         }
@@ -398,16 +398,16 @@ pipeline {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                if ("${env.BRANCH_NAME}" == 'master') {
-                    slackSend color: "danger", message: "Build failure!!!\nA build failure occurred in the master SGW pipeline: ${currentBuild.fullDisplayName}\nSomething went wrong building: ${env.BUILD_URL}"
+                if ("${env.BRANCH_NAME}" == 'main') {
+                    slackSend color: "danger", message: "Build failure!!!\nA build failure occurred in the main SGW pipeline: ${currentBuild.fullDisplayName}\nSomething went wrong building: ${env.BUILD_URL}"
                 }
             }
         }
         aborted {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                if ("${env.BRANCH_NAME}" == 'master') {
-                    slackSend color: "danger", message: "Master SGW pipeline build aborted: ${currentBuild.fullDisplayName}\nCould be due to build timeout: ${env.BUILD_URL}"
+                if ("${env.BRANCH_NAME}" == 'main') {
+                    slackSend color: "danger", message: "main SGW pipeline build aborted: ${currentBuild.fullDisplayName}\nCould be due to build timeout: ${env.BUILD_URL}"
                 }
             }
         }
