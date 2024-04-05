@@ -54,9 +54,9 @@ jobs:
           go-version: 1.21.8
           cache: false
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v4
         with:
-          version: v1.55.2
+          version: v1.57.2
           args: --config=.golangci-strict.yml
 
   test:

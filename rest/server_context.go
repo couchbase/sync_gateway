@@ -43,6 +43,8 @@ const KDefaultNumShards = 16
 // defaultBytesStatsReportingInterval is the default interval when to report bytes transferred stats
 const defaultBytesStatsReportingInterval = 30 * time.Second
 
+const dbLoadedStateChangeMsg = "DB loaded from config"
+
 var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named collections specified in database config, but not supported by connected Couchbase Server.")
 
 var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
@@ -903,6 +905,26 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		return nil, replicationErr
 	}
 
+	// startOnlineProcesses will be set to true if the database should be started, either synchronously or asynchronously
+	startOnlineProcesses := true
+	needsResync := len(dbcontext.RequireResync) > 0
+	if needsResync || (startOffline && !options.forceOnline) {
+		startOnlineProcesses = false
+		var stateChangeMsg string
+		if needsResync {
+			stateChangeMsg = "Resync required for collections"
+		} else {
+			stateChangeMsg = dbLoadedStateChangeMsg + " in offline state"
+		}
+		// Defer state change event to after the databases are registered. This should not matter because this function holds ServerContext.lock and databases_ can't be read while the lock is present.
+		defer func() {
+			atomic.StoreUint32(&dbcontext.State, db.DBOffline)
+			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", stateChangeMsg, &sc.Config.API.AdminInterface)
+		}()
+	} else {
+		atomic.StoreUint32(&dbcontext.State, db.DBStarting)
+	}
+
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
 	sc.dbConfigs[dbcontext.Name] = &RuntimeDatabaseConfig{DatabaseConfig: config}
@@ -911,18 +933,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		sc.collectionRegistry[name] = dbName
 	}
 
-	stateChangeMsg := "DB loaded from config"
-
-	needsResync := len(dbcontext.RequireResync) > 0
-
-	if needsResync || (startOffline && !options.forceOnline) {
-		if needsResync {
-			stateChangeMsg = "Resync required for collections"
-		}
-
-		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
-		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", stateChangeMsg, &sc.Config.API.AdminInterface)
-
+	if !startOnlineProcesses {
 		return dbcontext, nil
 	}
 
@@ -940,13 +951,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return nil, err
 		}
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
-		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "online", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
 		return dbcontext, nil
 	} else {
 		// If asyncOnline is requested, set state to Starting and spawn a separate goroutine to wait for init completion
 		// before going online
 		base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete asynchonously...")
-		atomic.StoreUint32(&dbcontext.State, db.DBStarting)
 		nonCancelCtx := base.NewNonCancelCtxForDatabase(dbName, dbcontext.Options.LoggingConfig.Console)
 		go sc.asyncDatabaseOnline(nonCancelCtx, dbcontext, dbInitDoneChan, config.Version)
 		return dbcontext, nil
@@ -989,8 +999,7 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 		base.PanicfCtx(ctx, "database state wasn't Starting during asyncDatabaseOnline Online transition... now %q", db.RunStateString[atomic.LoadUint32(&dbc.State)])
 	}
 
-	stateChangeMsg := "DB loaded from config"
-	_ = dbc.EventMgr.RaiseDBStateChangeEvent(ctx, dbc.Name, "online", stateChangeMsg, &sc.Config.API.AdminInterface)
+	_ = dbc.EventMgr.RaiseDBStateChangeEvent(ctx, dbc.Name, "online", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
 }
 
 func (sc *ServerContext) GetDbVersion(dbName string) string {

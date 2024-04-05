@@ -504,10 +504,6 @@ func WriteUserDirect(t *testing.T, db *Database, username string, sequence uint6
 
 func WriteDirectWithKey(t *testing.T, db *Database, key string, channelArray []string, sequence uint64) {
 
-	if base.TestUseXattrs() {
-		panic(fmt.Sprintf("WriteDirectWithKey() cannot be used in tests that are xattr enabled"))
-	}
-
 	rev := "1-a"
 	chanMap := make(map[string]*channels.ChannelRemoval, 10)
 
@@ -521,8 +517,15 @@ func WriteDirectWithKey(t *testing.T, db *Database, key string, channelArray []s
 		Channels:   chanMap,
 		TimeSaved:  time.Now(),
 	}
+	body := fmt.Sprintf(`{"key": "%s"}`, key)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	_, _ = collection.dataStore.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
+	if base.TestUseXattrs() {
+		_, err := collection.dataStore.WriteWithXattrs(base.TestCtx(t), key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil)
+		require.NoError(t, err)
+	} else {
+		_, err := collection.dataStore.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
+		require.NoError(t, err)
+	}
 }
 
 // Create a document directly to the bucket with specific _sync metadata - used for
@@ -1297,6 +1300,40 @@ func TestChannelRace(t *testing.T) {
 	fmt.Println("changes: ", changesString)
 
 	changesCtxCancel()
+}
+
+// Test that housekeeping goroutines get terminated when change cache is stopped
+func TestStopChangeCache(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyDCP)
+
+	// Setup short-wait cache to ensure cleanup goroutines fire often
+	cacheOptions := DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 10 * time.Millisecond
+	cacheOptions.CachePendingSeqMaxNum = 50
+	cacheOptions.CacheSkippedSeqMaxWait = 1 * time.Second
+
+	// Use leaky bucket to have the tap feed 'lose' document 3
+	leakyConfig := base.LeakyBucketConfig{
+		DCPFeedMissingDocs: []string{"doc-3"},
+	}
+	db, ctx := setupTestLeakyDBWithCacheOptions(t, cacheOptions, leakyConfig)
+
+	// Write sequences direct
+	WriteDirect(t, db, []string{"ABC"}, 1)
+	WriteDirect(t, db, []string{"ABC"}, 2)
+	WriteDirect(t, db, []string{"ABC"}, 3)
+
+	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
+	err := db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Hour * -2)})
+	require.NoError(t, err)
+
+	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
+	db.Close(ctx)
+
+	// Hang around a while to see if the housekeeping tasks fire and panic
+	time.Sleep(1 * time.Second)
+
 }
 
 // Test size config

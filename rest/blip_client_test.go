@@ -27,6 +27,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -122,25 +123,17 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		btr.storeMessage(msg)
 
 		nonce, err := msg.Body()
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(btr.TB(), err)
 
-		if len(nonce) == 0 {
-			panic("no nonce sent with proveAttachment")
-		}
+		require.NotEmpty(btr.TB(), nonce, "no nonce sent with proveAttachment")
 
 		digest, ok := msg.Properties[db.ProveAttachmentDigest]
-		if !ok {
-			panic("no digest sent with proveAttachment")
-		}
+		require.True(btr.TB(), ok, "no digest sent with proveAttachment")
 
 		btcr := btc.getCollectionClientFromMessage(msg)
 
 		attData, err := btcr.getAttachment(digest)
-		if err != nil {
-			panic(fmt.Sprintf("error getting client attachment: %v", err))
-		}
+		require.NoError(btr.TB(), err, "error getting client attachment: %v", err)
 
 		proof := db.ProveAttachment(ctx, attData, nonce)
 
@@ -160,18 +153,14 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		}
 
 		body, err := msg.Body()
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(btr.TB(), err)
 
 		knownRevs := []interface{}{}
 
 		if string(body) != "null" {
 			var changesReqs [][]interface{}
 			err = base.JSONUnmarshal(body, &changesReqs)
-			if err != nil {
-				panic(err)
-			}
+			require.NoError(btr.TB(), err)
 
 			knownRevs = make([]interface{}, len(changesReqs))
 			// changesReqs == [[sequence, docID, revID, {deleted}, {size (bytes)}], ...]
@@ -233,9 +222,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		}
 
 		b, err := base.JSONMarshal(knownRevs)
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(btr.TB(), err)
 
 		response.SetBody(b)
 	}
@@ -254,9 +241,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		deltaSrc := msg.Properties[db.RevMessageDeltaSrc]
 
 		body, err := msg.Body()
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(btr.TB(), err)
 
 		if msg.Properties[db.RevMessageDeleted] == "1" {
 			btcr.docsLock.Lock()
@@ -289,27 +274,24 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					response.SetError("HTTP", http.StatusUnprocessableEntity, "test code intentionally rejected delta")
 					return
 				}
-				panic("expected delta rev message to be sent without noreply flag")
+				require.FailNow(btr.TB(), "expected delta rev message to be sent without noreply flag: %+v", msg)
 			}
 
 			// unmarshal body to extract deltaSrc
 			var delta db.Body
-			if err := delta.Unmarshal(body); err != nil {
-				panic(err)
-			}
+			err := delta.Unmarshal(body)
+			require.NoError(btc.TB(), err)
 
 			var old db.Body
 			btcr.docsLock.RLock()
 			oldBytes := btcr.docs[docID][deltaSrc].body
 			btcr.docsLock.RUnlock()
-			if err := old.Unmarshal(oldBytes); err != nil {
-				panic(err)
-			}
+			err = old.Unmarshal(oldBytes)
+			require.NoError(btc.TB(), err)
 
 			var oldMap = map[string]interface{}(old)
-			if err := base.Patch(&oldMap, delta); err != nil {
-				panic(err)
-			}
+			err = base.Patch(&oldMap, delta)
+			require.NoError(btc.TB(), err)
 
 			bodyJSON = oldMap
 		}
@@ -319,25 +301,20 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 			// We'll need to unmarshal the body in order to do attachment processing
 			if bodyJSON == nil {
-				if err := bodyJSON.Unmarshal(body); err != nil {
-					panic(err)
-				}
+				err := bodyJSON.Unmarshal(body)
+				require.NoError(btr.TB(), err)
 			}
 
 			if atts, ok := bodyJSON[db.BodyAttachments]; ok {
 				attsMap, ok := atts.(map[string]interface{})
-				if !ok {
-					panic("atts in doc wasn't map[string]interface{}")
-				}
+				require.True(btr.TB(), ok, "atts in doc wasn't map[string]interface{}")
 
 				var missingDigests []string
 				var knownDigests []string
 				btcr.attachmentsLock.RLock()
 				for _, attachment := range attsMap {
 					attMap, ok := attachment.(map[string]interface{})
-					if !ok {
-						panic("att in doc wasn't map[string]interface{}")
-					}
+					require.True(btr.TB(), ok, "att in doc wasn't map[string]interface{}")
 					digest := attMap["digest"].(string)
 
 					if _, found := btcr.attachments[digest]; !found {
@@ -353,13 +330,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 				for _, digest := range knownDigests {
 					attData, err := btcr.getAttachment(digest)
-					if err != nil {
-						panic(err)
-					}
+					require.NoError(btr.TB(), err)
 					nonce, proof, err := db.GenerateProofOfAttachment(ctx, attData)
-					if err != nil {
-						panic(err)
-					}
+					require.NoError(btr.TB(), err)
 
 					// if we already have this attachment, _we_ should ask the peer whether _they_ have the attachment
 					outrq := blip.NewRequest()
@@ -368,16 +341,12 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					outrq.SetBody(nonce)
 
 					err = btcr.sendPullMsg(outrq)
-					if err != nil {
-						panic(err)
-					}
+					require.NoError(btr.TB(), err)
 
 					resp := outrq.Response()
 					btc.pullReplication.storeMessage(resp)
 					respBody, err := resp.Body()
-					if err != nil {
-						panic(err)
-					}
+					require.NoError(btr.TB(), err)
 
 					if resp.Type() == blip.ErrorType {
 						// forward error from proveAttachment response into rev response
@@ -408,16 +377,12 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					}
 
 					err := btcr.sendPullMsg(outrq)
-					if err != nil {
-						panic(err)
-					}
+					require.NoError(btr.TB(), err)
 
 					resp := outrq.Response()
 					btc.pullReplication.storeMessage(resp)
 					respBody, err := resp.Body()
-					if err != nil {
-						panic(err)
-					}
+					require.NoError(btr.TB(), err)
 
 					if resp.Type() == blip.ErrorType {
 						// forward error from getAttachment response into rev response
@@ -439,9 +404,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		if bodyJSON != nil {
 			body, err = base.JSONMarshal(bodyJSON)
-			if err != nil {
-				panic(err)
-			}
+			require.NoError(btr.TB(), err)
 		}
 
 		btcr.docsLock.Lock()
@@ -491,6 +454,16 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		btr.storeMessage(msg)
 		base.PanicfCtx(ctx, "Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)
 	}
+}
+
+// TB returns testing.TB for the current test
+func (btr *BlipTesterReplicator) TB() testing.TB {
+	return btr.bt.restTester.TB
+}
+
+// TB returns testing.TB for the current test
+func (btc *BlipTesterCollectionClient) TB() testing.TB {
+	return btc.parent.rt.TB
 }
 
 // saveAttachment takes a content-type, and base64 encoded data and stores the attachment on the client
@@ -594,13 +567,13 @@ func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
 
 func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient) {
 	if !btcRunner.initialisedInsideRunnerCode {
-		btcRunner.t.Fatalf("must initialise BlipTesterClient inside Run() method")
+		require.FailNow(btcRunner.TB(), "must initialise BlipTesterClient inside Run() method")
 	}
 	if opts == nil {
 		opts = &BlipTesterClientOpts{}
 	}
 	id, err := uuid.NewRandom()
-	require.NoError(btcRunner.t, err)
+	require.NoError(btcRunner.TB(), err)
 
 	client = &BlipTesterClient{
 		BlipTesterClientOpts: *opts,
@@ -609,9 +582,14 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 	}
 	btcRunner.clients[client.id] = client
 	err = client.createBlipTesterReplications()
-	require.NoError(btcRunner.t, err)
+	require.NoError(btcRunner.TB(), err)
 
 	return client
+}
+
+// TB returns testing.TB for the current test
+func (btc *BlipTesterClient) TB() testing.TB {
+	return btc.rt.TB
 }
 
 func (btc *BlipTesterClient) Close() {
@@ -622,6 +600,11 @@ func (btc *BlipTesterClient) Close() {
 	if btc.nonCollectionAwareClient != nil {
 		btc.nonCollectionAwareClient.Close()
 	}
+}
+
+// TB returns testing.TB for the current test
+func (btcRunner *BlipTestClientRunner) TB() testing.TB {
+	return btcRunner.t
 }
 
 func (btcRunner *BlipTestClientRunner) Run(test func(t *testing.T, SupportedBLIPProtocols []string)) {
@@ -653,14 +636,14 @@ func (btc *BlipTesterClient) createBlipTesterReplications() error {
 		return err
 	}
 
-	if btc.pushReplication, err = newBlipTesterReplication(btc.rt.TB, "push"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization); err != nil {
+	if btc.pushReplication, err = newBlipTesterReplication(btc.TB(), "push"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization); err != nil {
 		return err
 	}
-	if btc.pullReplication, err = newBlipTesterReplication(btc.rt.TB, "pull"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization); err != nil {
+	if btc.pullReplication, err = newBlipTesterReplication(btc.TB(), "pull"+id.String(), btc, btc.BlipTesterClientOpts.SkipCollectionsInitialization); err != nil {
 		return err
 	}
 
-	collections := getCollectionsForBLIP(btc.rt.TB, btc.rt)
+	collections := getCollectionsForBLIP(btc.TB(), btc.rt)
 	if !btc.BlipTesterClientOpts.SkipCollectionsInitialization && len(collections) > 0 {
 		btc.collectionClients = make([]*BlipTesterCollectionClient, len(collections))
 		for i, collection := range collections {
@@ -698,15 +681,11 @@ func (btc *BlipTesterClient) initCollectionReplication(collection string, collec
 	return nil
 }
 
-func (btc *BlipTesterClient) waitForReplicationMessage(collection *db.DatabaseCollection, serialNumber blip.MessageNumber) (*blip.Message, bool) {
-	var msg *blip.Message
-	var ok bool
+func (btc *BlipTesterClient) waitForReplicationMessage(collection *db.DatabaseCollection, serialNumber blip.MessageNumber) *blip.Message {
 	if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
-		msg, ok = btc.pushReplication.WaitForMessage(serialNumber)
-	} else {
-		msg, ok = btc.pushReplication.WaitForMessage(serialNumber + 1)
+		return btc.pushReplication.WaitForMessage(serialNumber)
 	}
-	return msg, ok
+	return btc.pushReplication.WaitForMessage(serialNumber + 1)
 }
 
 // SingleCollection returns a single collection blip tester if the RestTester database is configured with only one collection. Otherwise, throw a fatal test error.
@@ -714,7 +693,7 @@ func (btcRunner *BlipTestClientRunner) SingleCollection(clientID uint32) *BlipTe
 	if btcRunner.clients[clientID].nonCollectionAwareClient != nil {
 		return btcRunner.clients[clientID].nonCollectionAwareClient
 	}
-	require.Equal(btcRunner.clients[clientID].rt.TB, 1, len(btcRunner.clients[clientID].collectionClients))
+	require.Equal(btcRunner.clients[clientID].TB(), 1, len(btcRunner.clients[clientID].collectionClients))
 	return btcRunner.clients[clientID].collectionClients[0]
 }
 
@@ -728,7 +707,7 @@ func (btcRunner *BlipTestClientRunner) Collection(clientID uint32, collectionNam
 			return collectionClient
 		}
 	}
-	btcRunner.clients[clientID].rt.TB.Fatalf("Could not find collection %s in BlipTesterClient", collectionName)
+	require.FailNow(btcRunner.clients[clientID].TB(), "Could not find collection %s in BlipTesterClient", collectionName)
 	return nil
 }
 
@@ -1033,24 +1012,17 @@ func (btc *BlipTesterCollectionClient) GetVersion(docID string, docVersion DocVe
 	return nil, false
 }
 
-// WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found.
-func (btc *BlipTesterCollectionClient) WaitForVersion(docID string, docVersion DocVersion) (data []byte, found bool) {
+// WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found. The test will fail after 10 seocnds if a matching document is not found.
+func (btc *BlipTesterCollectionClient) WaitForVersion(docID string, docVersion DocVersion) (data []byte) {
 	if data, found := btc.GetVersion(docID, docVersion); found {
-		return data, found
+		return data
 	}
-	ticker := time.NewTicker(50 * time.Millisecond)
-	timeout := time.After(10 * time.Second)
-	for {
-		select {
-		case <-timeout:
-			require.FailNowf(btc.parent.rt.TB, "BlipTesterClient timed out waiting for doc", "DocID:%+v Version: %+v", docID, docVersion)
-			return nil, false
-		case <-ticker.C:
-			if data, found := btc.GetVersion(docID, docVersion); found {
-				return data, found
-			}
-		}
-	}
+	require.EventuallyWithT(btc.TB(), func(c *assert.CollectT) {
+		var found bool
+		data, found = btc.GetVersion(docID, docVersion)
+		assert.True(c, found, "Could not find docID:%+v Version %+v", docID, docVersion)
+	}, 10*time.Second, 50*time.Millisecond, "BlipTesterClient timed out waiting for doc %+v Version %+v", docID, docVersion)
+	return data
 }
 
 // GetDoc returns a rev stored in the Client under the given docID.  (if multiple revs are present, rev body returned is non-deterministic)
@@ -1067,25 +1039,18 @@ func (btc *BlipTesterCollectionClient) GetDoc(docID string) (data []byte, found 
 	return nil, false
 }
 
-// WaitForDoc blocks until the given doc ID has been stored by the client, and returns the data when found.
-func (btc *BlipTesterCollectionClient) WaitForDoc(docID string) (data []byte, found bool) {
+// WaitForDoc blocks until any document with the doc ID has been stored by the client, and returns the document body when found. If a document will be reported multiple times, the latest copy of the document is returned (not necessarily the first). The test will fail after 10 seconds if the document
+func (btc *BlipTesterCollectionClient) WaitForDoc(docID string) (data []byte) {
 
 	if data, found := btc.GetDoc(docID); found {
-		return data, found
+		return data
 	}
-	ticker := time.NewTicker(50 * time.Millisecond)
-	timeout := time.After(10 * time.Second)
-	for {
-		select {
-		case <-timeout:
-			btc.parent.rt.TB.Fatalf("BlipTesterClient timed out waiting for doc ID: %v", docID)
-			return nil, false
-		case <-ticker.C:
-			if data, found := btc.GetDoc(docID); found {
-				return data, found
-			}
-		}
-	}
+	require.EventuallyWithT(btc.TB(), func(c *assert.CollectT) {
+		var found bool
+		data, found = btc.GetDoc(docID)
+		assert.True(c, found, "Could not find docID:%+v", docID)
+	}, 10*time.Second, 50*time.Millisecond, "BlipTesterClient timed out waiting for doc %+v", docID)
+	return data
 }
 
 // GetMessage returns the message stored in the Client under the given serial number
@@ -1115,21 +1080,14 @@ func (btr *BlipTesterReplicator) GetMessages() map[blip.MessageNumber]blip.Messa
 	return messages
 }
 
-// WaitForMessage blocks until the given message serial number has been stored by the replicator, and returns the message when found.
-func (btr *BlipTesterReplicator) WaitForMessage(serialNumber blip.MessageNumber) (msg *blip.Message, found bool) {
-	ticker := time.NewTicker(50 * time.Millisecond)
-	timeout := time.After(10 * time.Second)
-	for {
-		select {
-		case <-timeout:
-			btr.bt.restTester.TB.Fatalf("BlipTesterReplicator timed out waiting for BLIP message: %v", serialNumber)
-			return nil, false
-		case <-ticker.C:
-			if msg, ok := btr.GetMessage(serialNumber); ok {
-				return msg, ok
-			}
-		}
-	}
+// WaitForMessage blocks until the given message serial number has been stored by the replicator, and returns the message when found. The test will fail if message is not found after 10 seconds.
+func (btr *BlipTesterReplicator) WaitForMessage(serialNumber blip.MessageNumber) (msg *blip.Message) {
+	require.EventuallyWithT(btr.TB(), func(c *assert.CollectT) {
+		var ok bool
+		msg, ok = btr.GetMessage(serialNumber)
+		assert.True(c, ok)
+	}, 10*time.Second, 50*time.Millisecond, "BlipTesterReplicator timed out waiting for BLIP message: %v", serialNumber)
+	return msg
 }
 
 func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
@@ -1138,20 +1096,14 @@ func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
 	btr.messages[msg.SerialNumber()] = msg
 }
 
-func (btc *BlipTesterCollectionClient) WaitForBlipRevMessage(docID string, docVersion DocVersion) (msg *blip.Message, found bool) {
-	ticker := time.NewTicker(50 * time.Millisecond)
-	timeout := time.After(10 * time.Second)
-	for {
-		select {
-		case <-timeout:
-			btc.parent.rt.TB.Fatalf("BlipTesterClient timed out waiting for BLIP message docID: %v, revID: %v", docID, docVersion.RevID)
-			return nil, false
-		case <-ticker.C:
-			if data, found := btc.GetBlipRevMessage(docID, docVersion.RevID); found {
-				return data, found
-			}
-		}
-	}
+// WaitForBlipRevMessage blocks until the given doc ID and rev ID has been stored by the client, and returns the message when found. If not found after 10 seconds, test will fail.
+func (btc *BlipTesterCollectionClient) WaitForBlipRevMessage(docID string, docVersion DocVersion) (msg *blip.Message) {
+	require.EventuallyWithT(btc.TB(), func(c *assert.CollectT) {
+		var ok bool
+		msg, ok = btc.GetBlipRevMessage(docID, docVersion.RevID)
+		assert.True(c, ok, "Could not find docID:%+v, RevID: %+v", docID, docVersion.RevID)
+	}, 10*time.Second, 50*time.Millisecond, "BlipTesterReplicator timed out waiting for BLIP message")
+	return msg
 }
 
 func (btc *BlipTesterCollectionClient) GetBlipRevMessage(docID, revID string) (msg *blip.Message, found bool) {
@@ -1172,16 +1124,18 @@ func (btcRunner *BlipTestClientRunner) StartPull(clientID uint32) error {
 	return btcRunner.SingleCollection(clientID).StartPull()
 }
 
-// WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found.
-func (btcRunner *BlipTestClientRunner) WaitForVersion(clientID uint32, docID string, docVersion DocVersion) (data []byte, found bool) {
+// WaitForVersion blocks until the given document version has been stored by the client, and returns the data when found or fails test if document is not found after 10 seconds.
+func (btcRunner *BlipTestClientRunner) WaitForVersion(clientID uint32, docID string, docVersion DocVersion) (data []byte) {
 	return btcRunner.SingleCollection(clientID).WaitForVersion(docID, docVersion)
 }
 
-func (btcRunner *BlipTestClientRunner) WaitForDoc(clientID uint32, docID string) ([]byte, bool) {
+// WaitForBlipRevMessage blocks until any blip message with a given docID has been stored by the client, and returns the message when found. If document is not not found after 10 seconds, test will fail.
+func (btcRunner *BlipTestClientRunner) WaitForDoc(clientID uint32, docID string) []byte {
 	return btcRunner.SingleCollection(clientID).WaitForDoc(docID)
 }
 
-func (btcRunner *BlipTestClientRunner) WaitForBlipRevMessage(clientID uint32, docID string, docVersion DocVersion) (*blip.Message, bool) {
+// WaitForBlipRevMessage blocks until the given doc ID and rev ID has been stored by the client, and returns the message when found. If document is not found after 10 seconds, test will fail.
+func (btcRunner *BlipTestClientRunner) WaitForBlipRevMessage(clientID uint32, docID string, docVersion DocVersion) *blip.Message {
 	return btcRunner.SingleCollection(clientID).WaitForBlipRevMessage(docID, docVersion)
 }
 
@@ -1254,7 +1208,7 @@ func (btc *BlipTesterCollectionClient) addCollectionProperty(msg *blip.Message) 
 // addCollectionProperty will automatically add a collection. If we are running with the default collection, or a single named collection, automatically add the right value. If there are multiple collections on the database, the test will fatally exit, since the behavior is undefined.
 func (bt *BlipTesterClient) addCollectionProperty(msg *blip.Message) *blip.Message {
 	if bt.nonCollectionAwareClient == nil {
-		require.Equal(bt.rt.TB, 1, len(bt.collectionClients), "Multiple collection clients, exist so assuming that the only named collection is the single element of an array is not valid")
+		require.Equal(bt.TB(), 1, len(bt.collectionClients), "Multiple collection clients, exist so assuming that the only named collection is the single element of an array is not valid")
 		msg.Properties[db.BlipCollection] = "0"
 	}
 
@@ -1267,17 +1221,15 @@ func (btc *BlipTesterClient) getCollectionClientFromMessage(msg *blip.Message) *
 	if !exists {
 		// If a collection property is passed, assume that the BlipTesterClient hasn't been initialized with collections.
 		// If this fails, this means a message wasn't sent with the correct BlipCollection property, see use of addCollectionProperty
-		require.NotNil(btc.rt.TB, btc.nonCollectionAwareClient)
+		require.NotNil(btc.TB(), btc.nonCollectionAwareClient)
 		return btc.nonCollectionAwareClient
 	}
 
-	if collectionIdx == "" {
-		btc.rt.TB.Fatalf("no collection given in %q message", msg.Profile())
-	}
+	require.NotEqual(btc.TB(), "", collectionIdx, "no collection given in %q message", msg.Profile())
 
 	idx, err := strconv.Atoi(collectionIdx)
-	require.NoError(btc.rt.TB, err)
-	require.Greater(btc.rt.TB, len(btc.collectionClients), idx)
+	require.NoError(btc.TB(), err)
+	require.Greater(btc.TB(), len(btc.collectionClients), idx)
 	return btc.collectionClients[idx]
 }
 

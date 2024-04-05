@@ -121,6 +121,8 @@ type LeakyBucketConfig struct {
 	DDocDeleteErrorCount int
 	DDocGetErrorCount    int
 
+	DCPFeedMissingDocs []string // Emulate entry not appearing on DCP feed
+
 	ForceErrorSetRawKeys []string // Issuing a SetRaw call with a specified key will return an error
 
 	// Returns a partial error the first time ViewCustom is called
@@ -153,5 +155,16 @@ type LeakyBucketConfig struct {
 }
 
 func (b *LeakyBucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+	if len(b.config.DCPFeedMissingDocs) > 0 {
+		wrappedCallback := func(event sgbucket.FeedEvent) bool {
+			for _, key := range b.config.DCPFeedMissingDocs {
+				if string(event.Key) == key {
+					return false
+				}
+			}
+			return callback(event)
+		}
+		return b.bucket.StartDCPFeed(ctx, args, wrappedCallback, dbStats)
+	}
 	return b.bucket.StartDCPFeed(ctx, args, callback, dbStats)
 }

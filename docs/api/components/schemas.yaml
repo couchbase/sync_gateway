@@ -1278,7 +1278,6 @@ Database:
       default: DCP
       enum:
         - DCP
-        - TAP
       deprecated: true
     allow_empty_password:
       description: This controls whether users that are created can have an empty password or not.
