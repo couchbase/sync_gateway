@@ -187,4 +187,24 @@ func TestGetDocDryRuns(t *testing.T) {
 	// Import filter get doc from bucket error body provided
 	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter?doc_id=doc2", `{"user":{"num":23}}`)
 	RequireStatus(t, response, http.StatusBadRequest)
+
+	newSyncFn = `"function(doc,oldDoc){if(oldDoc){ channel(oldDoc.channel)} else {channel(doc.channel)} }"`
+	resp = rt.SendAdminRequest("POST", "/db/_config", fmt.Sprintf(
+		`{"bucket":"%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s, "import_filter":%s}`,
+		bucket, base.TestUseXattrs(), newSyncFn, ImportFilter))
+	RequireStatus(t, resp, http.StatusCreated)
+	_ = rt.PutDoc("doc22", `{"chan1":"channel1", "channel":"chanOld"}`)
+
+	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_sync", `{"channel":"channel2"}`)
+	RequireStatus(t, response, http.StatusOK)
+
+	err = json.Unmarshal(response.BodyBytes(), &respMap)
+	assert.NoError(t, err)
+	assert.EqualValues(t, respMap.Channels.ToArray(), []string{"channel2"})
+
+	response = rt.SendDiagnosticRequest("GET", fmt.Sprintf("/{{.keyspace}}/_sync?doc_id=doc22"), `{"channel":"chanNew"}`)
+	RequireStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &newrespMap)
+	assert.NoError(t, err)
+	assert.EqualValues(t, newrespMap.Channels.ToArray(), []string{"chanOld"})
 }
