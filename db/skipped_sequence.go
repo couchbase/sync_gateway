@@ -190,13 +190,13 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 func (s *SkippedSequenceSlice) insert(index int, entry SkippedSequenceListEntry) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.list = append(s.list[:index+1], s.list[index:]...)
+	s.list = append(s.list, nil)
+	copy(s.list[index+1:], s.list[index:])
 	s.list[index] = entry
 }
 
 // PushSkippedSequenceEntry will append a new skipped sequence entry to the end of the slice, if adding a contiguous
 // sequence function will expand the last entry of the slice to reflect this
-// nolint:staticcheck
 func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry *SingleSkippedSequence) {
 	s.lock.Lock()
 	defer s.lock.Unlock()

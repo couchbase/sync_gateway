@@ -50,8 +50,8 @@ func BenchmarkPushSingleSkippedSequence(b *testing.B) {
 		{name: "single_entries", rangeEntries: false},
 	}
 	for _, bm := range benchmarks {
+		skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
 		b.Run(bm.name, func(b *testing.B) {
-			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
 			for i := 0; i < b.N; i++ {
 				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
 			}
@@ -98,25 +98,15 @@ func BenchmarkIsSkippedFunction(b *testing.B) {
 	benchmarks := []struct {
 		name         string
 		rangeEntries bool
-		largeSlice   bool
+		inputSlice   *SkippedSequenceSlice
 	}{
-		{name: "single_entries_large_slice", rangeEntries: false, largeSlice: true},
-		{name: "single_entries_small_slice", rangeEntries: false, largeSlice: false},
+		{name: "single_entries_large_slice", rangeEntries: false, inputSlice: setupBenchmark(true, DefaultClipCapacityHeadroom)},
+		{name: "single_entries_small_slice", rangeEntries: false, inputSlice: setupBenchmark(false, DefaultClipCapacityHeadroom)},
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
-			if bm.largeSlice {
-				for i := 0; i < 10000; i++ {
-					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
-				}
-			} else {
-				for i := 0; i < 100; i++ {
-					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
-				}
-			}
 			for i := 0; i < b.N; i++ {
-				skippedSlice.Contains(uint64(i * 2))
+				bm.inputSlice.Contains(uint64(i * 2))
 			}
 		})
 	}
@@ -168,25 +158,15 @@ func BenchmarkRemoveSeqFromSkippedList(b *testing.B) {
 	benchmarks := []struct {
 		name         string
 		rangeEntries bool
-		largeSlice   bool
+		inputSlice   *SkippedSequenceSlice
 	}{
-		{name: "single_entries_large_slice", rangeEntries: false, largeSlice: true},
-		{name: "single_entries_small_slice", rangeEntries: false, largeSlice: false},
+		{name: "single_entries_large_slice", rangeEntries: false, inputSlice: setupBenchmark(true, DefaultClipCapacityHeadroom)},
+		{name: "single_entries_small_slice", rangeEntries: false, inputSlice: setupBenchmark(false, DefaultClipCapacityHeadroom)},
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
-			if bm.largeSlice {
-				for i := 0; i < 10000; i++ {
-					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
-				}
-			} else {
-				for i := 0; i < 100; i++ {
-					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
-				}
-			}
 			for i := 0; i < b.N; i++ {
-				_ = skippedSlice.removeSeq(uint64(i * 2))
+				_ = bm.inputSlice.removeSeq(uint64(i * 2))
 			}
 		})
 	}
@@ -236,26 +216,16 @@ func BenchmarkInsertSkippedItem(b *testing.B) {
 	benchmarks := []struct {
 		name         string
 		rangeEntries bool
-		largeSlice   bool
+		inputSlice   *SkippedSequenceSlice
 	}{
-		{name: "single_entries_large_slice", rangeEntries: false, largeSlice: true},
-		{name: "single_entries_small_slice", rangeEntries: false, largeSlice: false},
+		{name: "single_entries_large_slice", rangeEntries: false, inputSlice: setupBenchmark(true, DefaultClipCapacityHeadroom)},
+		{name: "single_entries_small_slice", rangeEntries: false, inputSlice: setupBenchmark(false, DefaultClipCapacityHeadroom)},
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
-			if bm.largeSlice {
-				for i := 0; i < 10000; i++ {
-					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
-				}
-			} else {
-				for i := 0; i < 100; i++ {
-					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
-				}
-			}
 			sequenceNum := 40000
 			for i := 0; i < b.N; i++ {
-				skippedSlice.insert(i, NewSingleSkippedSequenceEntry(uint64(sequenceNum*i)))
+				bm.inputSlice.insert(i, NewSingleSkippedSequenceEntry(uint64(sequenceNum*i)))
 			}
 		})
 	}
@@ -342,28 +312,15 @@ func BenchmarkCompactSkippedList(b *testing.B) {
 	benchmarks := []struct {
 		name         string
 		rangeEntries bool
-		largeSlice   bool
+		inputSlice   *SkippedSequenceSlice
 	}{
-		{name: "single_entries_large_slice", rangeEntries: false, largeSlice: true},
-		{name: "single_entries_small_slice", rangeEntries: false, largeSlice: false},
+		{name: "single_entries_large_slice", rangeEntries: false, inputSlice: setupBenchmarkToCompact(true, 100)},
+		{name: "single_entries_small_slice", rangeEntries: false, inputSlice: setupBenchmarkToCompact(false, 100)},
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			// define clip headroom at 100 for test
-			skippedSlice := NewSkippedSequenceSlice(100)
-			if bm.largeSlice {
-				for i := 0; i < 10000; i++ {
-					skippedSlice.PushSkippedSequenceEntry(testSingleSkippedEntryOldTimestamp(uint64(i * 2)))
-				}
-			} else {
-				for i := 0; i < 100; i++ {
-					skippedSlice.PushSkippedSequenceEntry(testSingleSkippedEntryOldTimestamp(uint64(i * 2)))
-				}
-			}
-			// have one entry to not be compacted
-			skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(60000))
 			for i := 0; i < b.N; i++ {
-				skippedSlice.SkippedSequenceCompact(base.TestCtx(b), 100)
+				bm.inputSlice.SkippedSequenceCompact(base.TestCtx(b), 100)
 			}
 		})
 	}
@@ -408,4 +365,36 @@ func TestGetOldestSkippedSequence(t *testing.T) {
 			assert.Equal(t, testCase.expected, skippedSlice.getOldest())
 		})
 	}
+}
+
+// setupBenchmark sets up a skipped sequence slice for benchmark tests
+func setupBenchmark(largeSlice bool, clipHeadroom int) *SkippedSequenceSlice {
+	skippedSlice := NewSkippedSequenceSlice(clipHeadroom)
+	if largeSlice {
+		for i := 0; i < 10000; i++ {
+			skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
+		}
+	} else {
+		for i := 0; i < 100; i++ {
+			skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
+		}
+	}
+	return skippedSlice
+}
+
+// setupBenchmarkToCompact sets up a skipped sequence slice for compaction based benchmark tests
+func setupBenchmarkToCompact(largeSlice bool, clipHeadroom int) *SkippedSequenceSlice {
+	skippedSlice := NewSkippedSequenceSlice(clipHeadroom)
+	if largeSlice {
+		for i := 0; i < 10000; i++ {
+			skippedSlice.PushSkippedSequenceEntry(testSingleSkippedEntryOldTimestamp(uint64(i * 2)))
+		}
+	} else {
+		for i := 0; i < 100; i++ {
+			skippedSlice.PushSkippedSequenceEntry(testSingleSkippedEntryOldTimestamp(uint64(i * 2)))
+		}
+	}
+	// have one entry to not be compacted
+	skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(60000))
+	return skippedSlice
 }
