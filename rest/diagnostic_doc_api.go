@@ -21,11 +21,11 @@ import (
 )
 
 type SyncFnDryRun struct {
-	Channels  base.Set           `json:"Channels"`
-	Access    channels.AccessMap `json:"Access"`
-	Roles     channels.AccessMap `json:"Roles"`
-	Exception string             `json:"Exception"`
-	Expiry    *uint32            `json:"Expiry,omitempty"`
+	Channels  base.Set           `json:"channels"`
+	Access    channels.AccessMap `json:"access"`
+	Roles     channels.AccessMap `json:"roles"`
+	Exception string             `json:"exception"`
+	Expiry    *uint32            `json:"expiry,omitempty"`
 }
 
 type ImportFilterDryRun struct {

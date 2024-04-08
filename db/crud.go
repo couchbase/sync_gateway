@@ -1163,6 +1163,8 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 		} else {
 			return nil, err, nil
 		}
+	} else {
+		oldDoc._body = nil
 	}
 
 	delete(body, BodyId)
@@ -1174,7 +1176,6 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID"), nil
 	}
 	generation++
-	oldDoc.RevID = body.ExtractRev()
 
 	// Create newDoc which will be used to pass around Body
 	newDoc := &Document{
@@ -1213,31 +1214,15 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 
 	newRev := CreateRevIDWithBytes(generation, matchRev, canonicalBytesForRevID)
 	newDoc.RevID = newRev
-	mutableBody, metaMap, newRevID, err := db.prepareSyncFn(oldDoc, newDoc)
+	mutableBody, metaMap, _, err := db.prepareSyncFn(oldDoc, newDoc)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyDiagnostic, "Failed to prepare to run sync function: %v", err)
 		return nil, err, nil
 	}
-	if oldDoc.History != nil {
-		if err := oldDoc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: isDeleted}); err != nil {
-			return nil, base.ErrRevTreeAddRevFailure, nil
-		}
-	}
-	// Get the parent revision, to pass to the sync function:
-	var oldJsonBytes []byte
-	if oldJsonBytes, err = db.getAncestorJSON(ctx, oldDoc, newRevID); err != nil {
-		return nil, err, nil
-	}
-	oldJson := string(oldJsonBytes)
-	base.InfofCtx(ctx, base.KeyDiagnostic, "old json: %s", oldJson)
-	output, err := db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, oldJson, metaMap,
+
+	output, err := db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, string(oldDoc._rawBody), metaMap,
 		MakeUserCtx(db.user, db.ScopeName, db.Name))
 
-	//syncExpiry, _, channelSet, access, roles, err := db.runSyncFn(ctx, oldDoc, mutableBody, metaMap, newRevID, true)
-	//if err != nil {
-	//	base.InfofCtx(ctx, base.KeyDiagnostic, "Sync fn error: %v", err)
-	//	return nil, nil, nil, nil, nil, err
-	//}
 	return output, nil, err
 }
 
