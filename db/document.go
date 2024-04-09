@@ -434,8 +434,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 	// Note that there could be a non-sync xattr present
 	if dataType&base.MemcachedDataTypeXattr != 0 {
 		var syncXattr []byte
-		var userXattr []byte
-		body, syncXattr, userXattr, err = parseXattrStreamData(base.SyncXattrName, userXattrKey, data)
+		body, syncXattr, rawUserXattr, err = parseXattrStreamData(base.SyncXattrName, userXattrKey, data)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -450,7 +449,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 			if err != nil {
 				return nil, nil, nil, nil, err
 			}
-			return result, body, syncXattr, userXattr, nil
+			return result, body, syncXattr, rawUserXattr, nil
 		}
 	} else {
 		// Xattr flag not set - data is just the document body
@@ -459,7 +458,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 
 	// Non-xattr data, or sync xattr not present.  Attempt to retrieve sync metadata from document body
 	result, err = UnmarshalDocumentSyncData(body, needHistory)
-	return result, body, rawUserXattr, nil, err
+	return result, body, nil, rawUserXattr, err
 }
 
 func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, data []byte, dataType uint8, userXattrKey string) (doc *Document, err error) {

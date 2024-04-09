@@ -11,7 +11,9 @@ package importuserxattrtest
 import (
 	"net/http"
 	"testing"
+	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
@@ -286,4 +288,141 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+}
+
+// TestAutoImportUserXattrNoSyncData:
+//   - Define rest tester with sync function assigning channels defined in user xattr
+//   - Insert doc via SDK with user xattr defined to single channel
+//   - Wait for import feed to pick the doc up and assert the doc is correctly assigned the channel defined in user xattr
+//   - Insert another doc via SDK with user xattr defined with array of channels
+//   - Wait for import feed to pick the doc up and assert the doc is correctly assigned the channels defined in user xattr
+func TestAutoImportUserXattrNoSyncData(t *testing.T) {
+	rtConfig := rest.RestTesterConfig{
+		SyncFn: `function (doc, oldDoc, meta) {
+   if (meta.xattrs.channels === undefined) {
+      console.log("no user_xattr_key defined");
+      throw ({
+         forbidden: "Missing required property - metadata channel info"
+      });
+   } else {
+      console.log(meta.xattrs.channels);
+      channel(meta.xattrs.channels);
+   }
+}`,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport:   true,
+			UserXattrKey: base.StringPtr("channels"),
+		}},
+	}
+
+	rt := rest.NewRestTester(t,
+		&rtConfig)
+	defer rt.Close()
+	const (
+		docKey  = "doc1"
+		docKey2 = "doc2"
+	)
+	ctx := base.TestCtx(t)
+	dataStore := rt.GetSingleDataStore()
+
+	userXattrChan := "chan1"
+	userXattrVal := map[string][]byte{
+		"channels": base.MustJSONMarshal(t, userXattrChan),
+	}
+
+	// Write doc with user xattr defined and assert it correctly imports
+	val := make(map[string]interface{})
+	val["test"] = "doc"
+	_, err := dataStore.WriteWithXattrs(ctx, docKey, 0, 0, base.MustJSONMarshal(t, val), userXattrVal, nil)
+	require.NoError(t, err)
+
+	// Wait for doc to be imported
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// Ensure sync function has run on import
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	// Assert the sync data has correct channels populated
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(ctx, docKey)
+	require.NoError(t, err)
+	assert.Equal(t, []string{userXattrChan}, syncData.Channels.KeySet())
+	assert.Len(t, syncData.Channels, 1)
+
+	// Write doc with array of channels in user xattr and assert it correctly imports
+	userXattrValArray := []string{"chan1", "chan2"}
+	userXattrVal = map[string][]byte{
+		"channels": base.MustJSONMarshal(t, userXattrValArray),
+	}
+	_, err = dataStore.WriteWithXattrs(ctx, docKey2, 0, 0, base.MustJSONMarshal(t, val), userXattrVal, nil)
+	require.NoError(t, err)
+
+	// Wait for doc to be imported
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(2), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// Ensure sync function has run on import
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	// Assert the sync data has correct channels populated
+	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(ctx, docKey2)
+	require.NoError(t, err)
+	assert.Len(t, syncData.Channels, 2)
+}
+
+// TestUnmarshalDocFromImportFeed:
+//   - Construct data as seen over dcp on the import feed with both _sync and user xattr defined
+//   - Assert each value returned from UnmarshalDocumentSyncDataFromFeed is as expected
+//   - Construct data as seen over dcp on the imp[ort feed with just user xattr defined
+//   - Assert each value returned from UnmarshalDocumentSyncDataFromFeed is as expected
+//   - Construct data as seen over dcp on the import feed with no xattrs at all
+//   - Assert each value returned from UnmarshalDocumentSyncDataFromFeed is as expected
+func TestUnmarshalDocFromImportFeed(t *testing.T) {
+
+	const (
+		userXattrKey = "channels"
+		syncXattr    = `{"rev":"1234"}`
+		channelName  = "chan1"
+	)
+
+	// construct data into dcp format with both _sync xattr and user xattr defined
+	body := []byte(`{"test":"document"}`)
+	xattrs := []sgbucket.Xattr{
+		{Name: base.SyncXattrName, Value: []byte(syncXattr)},
+		{Name: userXattrKey, Value: []byte(channelName)},
+	}
+	value := sgbucket.EncodeValueWithXattrs(body, xattrs...)
+
+	syncData, rawBody, rawXattr, rawUserXattr, err := db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
+	require.NoError(t, err)
+	assert.Equal(t, syncXattr, string(rawXattr))
+	assert.Equal(t, "1234", syncData.CurrentRev)
+	assert.Equal(t, channelName, string(rawUserXattr))
+	assert.Equal(t, body, rawBody)
+
+	// construct data into dcp format with just user xattr defined
+	xattrs = []sgbucket.Xattr{
+		{Name: userXattrKey, Value: []byte(channelName)},
+	}
+	value = sgbucket.EncodeValueWithXattrs(body, xattrs...)
+
+	syncData, rawBody, rawXattr, rawUserXattr, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
+	require.NoError(t, err)
+	assert.Nil(t, syncData)
+	assert.Nil(t, rawXattr)
+	assert.Equal(t, channelName, string(rawUserXattr))
+	assert.Equal(t, body, rawBody)
+
+	// construct data into dcp format with no xattr defined
+	xattrs = []sgbucket.Xattr{}
+	value = sgbucket.EncodeValueWithXattrs(body, xattrs...)
+
+	syncData, rawBody, rawXattr, rawUserXattr, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
+	require.NoError(t, err)
+	assert.Nil(t, syncData)
+	assert.Nil(t, rawXattr)
+	assert.Nil(t, rawUserXattr)
+	assert.Equal(t, body, rawBody)
 }
