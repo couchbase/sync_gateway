@@ -2212,6 +2212,14 @@ Startup-config:
             enabled:
               description: Whether HTTP2 support is enabled
               type: boolean
+        diagnostic_interface:
+          description: |-
+            Network interface to bind diagnotic API to.
+
+            By default, this API will not be run unless this string is specified.
+          type: string
+          default: ""
+          x-internal: true
       readOnly: true
     database_credentials:
       description: 'A map of database name to credentials, that can be used instead of the bootstrap ones.'
