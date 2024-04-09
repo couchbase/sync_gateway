@@ -1158,6 +1158,8 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 			if doc._body == nil {
 				body = oldDoc.Body(ctx)
 				doc._body = body
+				// If no body is given, use doc in bucket as doc with no old doc
+				oldDoc._body = nil
 			}
 			doc._body[BodyRev] = oldDoc.SyncData.CurrentRev
 		} else {
