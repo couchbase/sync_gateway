@@ -25,8 +25,8 @@ import (
 )
 
 const (
-	kMaxRecentSequences            = 20      // Maximum number of sequences stored in RecentSequences before pruning is triggered
-	oversizeSkippedSequenceWarning = 1000000 // Number of skipped sequences to issue a warning for
+	kMaxRecentSequences            = 20    // Maximum number of sequences stored in RecentSequences before pruning is triggered
+	oversizeSkippedSequenceWarning = 10000 // Number of skipped sequences to issue a warning
 )
 
 // ErrForbidden is returned when the user requests a document without a revision that they do not have access to.
@@ -1674,6 +1674,7 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 		if docSequence, err = db.sequences.nextSequence(ctx); err != nil {
 			return unusedSequences, err
 		}
+		firstAllocatedSequence := docSequence
 
 		// If the assigned sequence is less than or equal to the previous sequence on the document, release
 		// the assigned sequence and acquire one using nextSequenceGreaterThan
@@ -1681,17 +1682,13 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 			if err = db.sequences.releaseSequence(ctx, docSequence); err != nil {
 				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
 			}
-			numSkippedSequences := doc.Sequence - docSequence
-			if numSkippedSequences > oversizeSkippedSequenceWarning {
-				base.WarnfCtx(ctx, "doc %s / previous rev: %s new rev: %s has sequence %d which is significantly ahead of the known highest sequence %d", base.UD(doc.ID), doc.CurrentRev, newRevID, doc.Sequence, docSequence)
-			}
 			docSequence, err = db.sequences.nextSequenceGreaterThan(ctx, doc.Sequence)
 			if err != nil {
 				return unusedSequences, err
 			}
 			numSkippedSequences := docSequence - doc.Sequence
 			if numSkippedSequences > oversizeSkippedSequenceWarning {
-				base.WarnfCtx(ctx, "doc %s / previous rev: %s /  new rev: %s be allocated sequence %d. This is significantly ahead of the previous sequence this document had %d.", base.UD(doc.ID), doc.CurrentRev, newRevID, docSequence, doc.Sequence)
+				base.WarnfCtx(ctx, "doc %s / previous rev: %s /  new rev: %s be allocated sequence %d but standard next sequence allocation would be %d. This is significantly ahead of the previous sequence this document had %d.", base.UD(doc.ID), doc.CurrentRev, newRevID, docSequence, firstAllocatedSequence, doc.Sequence)
 			}
 
 		}
