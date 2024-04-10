@@ -52,7 +52,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 
 	rev1ID, _, err := collection.Put(ctx, docID, rev1Body)
 	require.NoError(t, err)
-	assert.Equal(t, "1-12ff9ce1dd501524378fe092ce9aee8f", rev1ID)
+	require.Equal(t, "1-12ff9ce1dd501524378fe092ce9aee8f", rev1ID)
 
 	rev1OldBody, err := collection.getOldRevisionJSON(ctx, docID, rev1ID)
 	if deltasEnabled && xattrsEnabled {
