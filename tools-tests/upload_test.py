@@ -210,10 +210,16 @@ def test_stream_file(tmpdir, httpserver):
     p = tmpdir.join("testfile.txt")
     body = "foobar"
     p.write(body)
+    r = None
     def handler(request):
-        assert request.data == body.encode()
+        nonlocal r
+        r = request
 
     httpserver.expect_request("/").respond_with_handler(handler)
     assert tasks.do_upload(p, httpserver.url_for("/"), "") == 0
 
     httpserver.check()
+
+    assert r.headers.get("Content-Length") == '6'
+    assert r.headers.get("Transfer-Encoding") is None
+    assert r.data == body.encode()

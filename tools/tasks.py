@@ -1081,6 +1081,7 @@ def do_upload(path, url, proxy):
         opener = urllib.request.build_opener(proxy_handler)
         request = urllib.request.Request(url, data=f, method='PUT')
         request.add_header(str('Content-Type'), str('application/zip'))
+        request.add_header('Content-Length', os.fstat(f.fileno()).st_size)
 
         exit_code = 0
         try:
