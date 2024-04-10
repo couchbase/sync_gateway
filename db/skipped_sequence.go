@@ -90,6 +90,7 @@ func (s *SingleSkippedSequence) getTimestamp() int64 {
 	return s.timestamp
 }
 
+// setTimestamp sets the timestamp of the skipped sequence list entry
 func (s *SingleSkippedSequence) setTimestamp(time int64) {
 	s.timestamp = time
 }
@@ -130,6 +131,7 @@ func (s *SkippedSequenceRange) getTimestamp() int64 {
 	return s.timestamp
 }
 
+// setTimestamp sets the timestamp of the skipped sequence list entry
 func (s *SkippedSequenceRange) setTimestamp(time int64) {
 	s.timestamp = time
 }
@@ -309,8 +311,6 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 
 // insert will insert element in middle of slice maintaining order of rest of slice
 func (s *SkippedSequenceSlice) insert(index int, entry SkippedSequenceListEntry) {
-	//s.lock.Lock()
-	//defer s.lock.Unlock()
 	s.list = append(s.list, nil)
 	copy(s.list[index+1:], s.list[index:])
 	s.list[index] = entry
