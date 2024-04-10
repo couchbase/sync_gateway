@@ -1284,40 +1284,87 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	RequireStatus(t, putResponse, 404)
 }
 
-// TestPutUserUnsetAdminChannels ensures that a PUT on the /_user/... endpoint with `null` admin_channels can be used to unset channels.
-// Repros CBG-3610, a regression introduced in 3.1.0
-func TestPutUserUnsetAdminChannels(t *testing.T) {
-	rt := NewRestTester(t, nil)
+// TestPutUserUnsetAdminChannelsDefaultCollection ensures that a PUT on the /_user/... endpoint that omits admin_channels for the default collection will not unset channels, but empty array will.
+// See CBG-3883
+func TestPutUserUnsetAdminChannelsDefaultCollection(t *testing.T) {
+	rt := NewRestTesterDefaultCollection(t, nil)
 	defer rt.Close()
 
-	defaultCollection := rt.GetSingleTestDatabaseCollection().IsDefaultCollection()
+	collection := rt.GetSingleTestDatabaseCollection()
+	userRoles := []string{"role1"}
 
 	// Create a user with some admin channels and a role
-	payload := GetUserPayload(t, "demo", "password1", "", rt.GetSingleTestDatabaseCollection(), []string{"foo", "bar"}, []string{"quux"})
+	payload := GetUserPayload(t, "demo", "password1", "", collection, []string{"foo", "bar"}, userRoles)
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
 	RequireStatus(t, response, http.StatusCreated)
 
 	// Note: Password not a required field for updates (only creations)
-	// Update the user to unset the admin channels
-	payload = GetUserPayload(t, "demo", "", "", rt.GetSingleTestDatabaseCollection(), nil, nil)
+	// Update the user with empty payload, ensure no changes
+	payload = GetUserPayload(t, "", "", "", collection, nil, nil)
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
 	RequireStatus(t, response, http.StatusOK)
 
-	// Check that the user no longer has access to the channels - they should've been removed in the above update
-	response = rt.SendAdminRequest(http.MethodGet, "/db/_user/demo", "")
+	// Check that the user still has access to the channels
+	userConfig := rt.GetUserAdminAPI("demo")
+	requireAdminChannels(t, base.SetFromArray([]string{"foo", "bar"}), userConfig, collection)
+	assert.Equal(t, base.SetFromArray(userRoles), userConfig.ExplicitRoleNames)
+
+	// Update the user with an empty admin channels to remove them
+	payload = `{"admin_channels":[]}`
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
 	RequireStatus(t, response, http.StatusOK)
-	var responseConfig auth.PrincipalConfig
-	err := json.Unmarshal(response.Body.Bytes(), &responseConfig)
-	require.NoError(t, err)
 
-	explicitChannels := responseConfig.ExplicitChannels
-	explicitRoles := responseConfig.ExplicitRoleNames
-	if !defaultCollection {
-		explicitChannels = responseConfig.CollectionAccess[rt.GetDbCollections()[0].ScopeName][rt.GetDbCollections()[0].Name].ExplicitChannels_
+	// Verify that the user still has access to the channels
+	userConfig = rt.GetUserAdminAPI("demo")
+	requireAdminChannels(t, base.Set(nil), userConfig, collection)
+	assert.Equal(t, base.SetFromArray(userRoles), userConfig.ExplicitRoleNames)
+}
+
+// TestPutUserUnsetAdminChannelsNamedCollection ensures that a PUT on the /_user/... endpoint that omits admin_channels for a named collection will unset channels (since it's the
+// only writable property in collection_access via the REST API.
+// See CBG-3883
+func TestPutUserUnsetAdminChannelsNamedCollection(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	collection := rt.GetSingleTestDatabaseCollection()
+	if collection.IsDefaultCollection() {
+		t.Skip("Named collection test")
 	}
+	userRoles := []string{"role1"}
 
-	assert.Equal(t, base.Set(nil), explicitChannels)
-	assert.Equal(t, base.Set(nil), explicitRoles)
+	// Create a user with some admin channels and a role
+	payload := GetUserPayload(t, "demo", "password1", "", collection, []string{"foo", "bar"}, userRoles)
+	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
+	RequireStatus(t, response, http.StatusCreated)
+
+	// Note: Password not a required field for updates (only creations)
+	// Update the user with empty admin channels, ensure channels are removed but roles are preserved
+	payload = GetUserPayload(t, "", "", "", collection, nil, nil)
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
+	RequireStatus(t, response, http.StatusOK)
+
+	// Check that channel access has been removed, but role access is unchanged
+	userConfig := rt.GetUserAdminAPI("demo")
+	requireAdminChannels(t, base.Set(nil), userConfig, collection)
+	assert.Equal(t, base.SetFromArray(userRoles), userConfig.ExplicitRoleNames)
+
+}
+
+func requireAdminChannels(t *testing.T, expectedChannels base.Set, principalConfig auth.PrincipalConfig, collection *db.DatabaseCollection) {
+	configChannels := principalConfig.ExplicitChannels
+	if !collection.IsDefaultCollection() {
+		configChannels = principalConfig.CollectionAccess[collection.ScopeName][collection.Name].ExplicitChannels_
+	}
+	require.Equal(t, expectedChannels, configChannels)
+}
+
+func requireJWTChannels(t *testing.T, expectedChannels base.Set, principalConfig auth.PrincipalConfig, collection *db.DatabaseCollection) {
+	configChannels := principalConfig.JWTChannels
+	if !collection.IsDefaultCollection() {
+		configChannels = principalConfig.CollectionAccess[collection.ScopeName][collection.Name].JWTChannels_
+	}
+	require.Equal(t, expectedChannels, configChannels)
 }
 
 func TestPutUserCollectionAccess(t *testing.T) {

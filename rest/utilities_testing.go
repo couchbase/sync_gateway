@@ -494,6 +494,15 @@ func (rt *RestTester) CreateUser(username string, channels []string) {
 	RequireStatus(rt.TB, response, http.StatusCreated)
 }
 
+func (rt *RestTester) GetUserAdminAPI(username string) auth.PrincipalConfig {
+	response := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/"+username, "")
+	RequireStatus(rt.TB, response, http.StatusOK)
+	var responseConfig auth.PrincipalConfig
+	err := json.Unmarshal(response.Body.Bytes(), &responseConfig)
+	require.NoError(rt.TB, err)
+	return responseConfig
+}
+
 // GetSingleTestDatabaseCollection will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
 func (rt *RestTester) GetSingleTestDatabaseCollection() *db.DatabaseCollection {
 	return db.GetSingleDatabaseCollection(rt.TB, rt.GetDatabase())
