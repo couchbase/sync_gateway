@@ -15,7 +15,6 @@ import (
 	"net/url"
 	"strings"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	dto "github.com/prometheus/client_model/go"
 )
@@ -27,27 +26,13 @@ const (
 	totalDocsWrittenStat      = "xdcr_docs_written_total"
 )
 
-type serverMobileSetting uint8
-
-const (
-	serverMobileOff = iota
-	serverMobileOn
-)
-
-const (
-	MobileOff    = "Off"
-	MobileActive = "Active"
-)
-
-var MobileCompatibilityStrings = [...]string{MobileOff, MobileActive}
-
-// CouchbaseServerXDCR implements a XDCR setup cluster on Couchbase Server.
-type CouchbaseServerXDCR struct {
+// couchbaseServerManager implements a XDCR setup cluster on Couchbase Server.
+type couchbaseServerManager struct {
 	fromBucket    *base.GocbV2Bucket
 	toBucket      *base.GocbV2Bucket
 	replicationID string
-	MobileSetting string
 	filter        string
+	mobileSetting MobileSetting
 }
 
 // isClusterPresent returns true if the XDCR cluster is present, false if it is not present, and an error if it could not be determined.
@@ -118,8 +103,8 @@ func createCluster(ctx context.Context, bucket *base.GocbV2Bucket) error {
 	return nil
 }
 
-// NewCouchbaseServerXDCR creates an instance of XDCR backed by Couchbase Server. This is not started until Start is called.
-func NewCouchbaseServerXDCR(ctx context.Context, fromBucket *base.GocbV2Bucket, toBucket *base.GocbV2Bucket, mobileSetting serverMobileSetting) (*CouchbaseServerXDCR, error) {
+// newCouchbaseServerManager creates an instance of XDCR backed by Couchbase Server. This is not started until Start is called.
+func newCouchbaseServerManager(ctx context.Context, fromBucket *base.GocbV2Bucket, toBucket *base.GocbV2Bucket, opts XDCROptions) (*couchbaseServerManager, error) {
 	isPresent, err := isClusterPresent(ctx, fromBucket)
 	if err != nil {
 		return nil, err
@@ -135,15 +120,16 @@ func NewCouchbaseServerXDCR(ctx context.Context, fromBucket *base.GocbV2Bucket, 
 	if err != nil {
 		return nil, err
 	}
-	return &CouchbaseServerXDCR{
+	return &couchbaseServerManager{
 		fromBucket:    fromBucket,
 		toBucket:      toBucket,
-		MobileSetting: MobileCompatibilityStrings[mobileSetting],
+		mobileSetting: opts.Mobile,
+		filter:        opts.FilterExpression,
 	}, nil
 }
 
 // Start starts the XDCR replication.
-func (x *CouchbaseServerXDCR) Start(ctx context.Context) error {
+func (x *couchbaseServerManager) Start(ctx context.Context) error {
 	method := http.MethodPost
 	body := url.Values{}
 	body.Add("name", xdcrClusterName)
@@ -152,7 +138,7 @@ func (x *CouchbaseServerXDCR) Start(ctx context.Context) error {
 	body.Add("toCluster", xdcrClusterName)
 	body.Add("replicationType", "continuous")
 	// set the mobile flag on the replication
-	body.Add("mobile", x.MobileSetting)
+	body.Add("mobile", x.mobileSetting.String())
 	// add filter is needed
 	if x.filter != "" {
 		body.Add("filterExpression", x.filter)
@@ -181,7 +167,7 @@ func (x *CouchbaseServerXDCR) Start(ctx context.Context) error {
 }
 
 // Stop starts the XDCR replication and deletes the replication from Couchbase Server.
-func (x *CouchbaseServerXDCR) Stop(ctx context.Context) error {
+func (x *couchbaseServerManager) Stop(ctx context.Context) error {
 	method := http.MethodDelete
 	url := "/controller/cancelXDCR/" + url.PathEscape(x.replicationID)
 	output, statusCode, err := x.fromBucket.MgmtRequest(ctx, method, url, "application/x-www-form-urlencoded", nil)
@@ -196,7 +182,7 @@ func (x *CouchbaseServerXDCR) Stop(ctx context.Context) error {
 }
 
 // Stats returns the stats of the XDCR replication.
-func (x *CouchbaseServerXDCR) Stats(ctx context.Context) (*Stats, error) {
+func (x *couchbaseServerManager) Stats(ctx context.Context) (*Stats, error) {
 	mf, err := x.fromBucket.ServerMetrics(ctx)
 	if err != nil {
 		return nil, err
@@ -213,7 +199,7 @@ func (x *CouchbaseServerXDCR) Stats(ctx context.Context) (*Stats, error) {
 	return stats, nil
 }
 
-func (x *CouchbaseServerXDCR) getValue(metrics *dto.MetricFamily) (uint64, error) {
+func (x *couchbaseServerManager) getValue(metrics *dto.MetricFamily) (uint64, error) {
 outer:
 	for _, metric := range metrics.GetMetric() {
 		for _, label := range metric.Label {
@@ -239,6 +225,4 @@ outer:
 	return 0, fmt.Errorf("Could not find relevant value for metrics %v", metrics)
 }
 
-func BucketSupportsMobileXDCR(bucket base.Bucket) bool {
-	return bucket.IsSupported(sgbucket.BucketStoreFeatureMobileXDCR)
-}
+var _ Manager = &couchbaseServerManager{}

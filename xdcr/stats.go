@@ -13,5 +13,10 @@ type Stats struct {
 	// DocsFiltered is the number of documents that have been filtered out and have not been replicated to the target cluster.
 	DocsFiltered uint64
 	// DocsWritten is the number of documents written to the destination cluster, since the start or resumption of the current replication.
-	DocsWritten uint64 // json:"docs_written"`
+	DocsWritten uint64
+	// ErrorCount is the number of errors that have occurred during the replication.
+	ErrorCount uint64
+
+	// TargetNewerDocs is the number of documents that were newer on the target cluster than the source cluster.
+	TargetNewerDocs uint64
 }
