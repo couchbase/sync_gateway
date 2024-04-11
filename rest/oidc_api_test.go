@@ -1285,6 +1285,80 @@ func TestUserAPIReadOnlyFields(t *testing.T) {
 	assert.Equal(t, userOutput, resp.Body.String())
 }
 
+// TestAdminAndJWTChannels validates interaction between admin channels and JWT channels, to ensure each are preserved when
+// the other is changed
+func TestAdminAndJWTChannels(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	testProviders := auth.OIDCProviderMap{
+		"foo": mockProviderWith("foo", mockProviderUserPrefix{"foo"}, mockProviderChannelsClaim{"channels"}),
+	}
+	defaultProvider := "foo"
+
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/" + defaultProvider
+	refreshProviderConfig(testProviders, mockAuthServer.URL)
+
+	opts := auth.OIDCOptions{Providers: testProviders, DefaultProvider: &defaultProvider}
+	restTesterConfig := RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
+
+	// JWT claim based grants do not support named collections
+	restTester := NewRestTesterDefaultCollection(t, &restTesterConfig)
+	require.NoError(t, restTester.SetAdminParty(false))
+	defer restTester.Close()
+
+	// Create user with admin channels and roles
+	collection := restTester.GetSingleTestDatabaseCollection()
+	payload := GetUserPayload(t, "foo_noah", "pass", "", collection, []string{"ABC"}, []string{"role1"})
+	response := restTester.SendAdminRequest(http.MethodPut, "/db/_user/foo_noah", payload)
+	RequireStatus(t, response, http.StatusCreated)
+
+	token, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{"foo"}}))
+	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
+	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
+
+	// Use bearer token in a keyspace request to update channels
+	resp := restTester.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", map[string]string{"Authorization": BearerToken + " " + token})
+	RequireStatus(t, resp, http.StatusOK)
+
+	userConfig := restTester.GetUserAdminAPI("foo_noah")
+	requireAdminChannels(t, base.SetFromArray([]string{"ABC"}), userConfig, collection)
+	requireJWTChannels(t, base.SetFromArray([]string{"foo"}), userConfig, collection)
+
+	// Update the admin channels to DEF, ensure JWT channels are preserved
+	payload = GetUserPayload(t, "", "", "", collection, []string{"DEF"}, nil)
+	response = restTester.SendAdminRequest(http.MethodPut, "/db/_user/foo_noah", payload)
+	RequireStatus(t, response, http.StatusOK)
+
+	userConfig = restTester.GetUserAdminAPI("foo_noah")
+	requireAdminChannels(t, base.SetFromArray([]string{"DEF"}), userConfig, collection)
+	requireJWTChannels(t, base.SetFromArray([]string{"foo"}), userConfig, collection)
+
+	// Update token to update the channels claim to 'bar'
+	updatedToken, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{"bar"}}))
+	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
+	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
+	resp = restTester.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", map[string]string{"Authorization": BearerToken + " " + updatedToken})
+	RequireStatus(t, resp, http.StatusOK)
+
+	userConfig = restTester.GetUserAdminAPI("foo_noah")
+	requireAdminChannels(t, base.SetFromArray([]string{"DEF"}), userConfig, collection)
+	requireJWTChannels(t, base.SetFromArray([]string{"bar"}), userConfig, collection)
+
+	// Update token with no channel claims, ensure it removes JWT channels and preserves admin channels
+	updatedToken, err = mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{"otherClaim": "not a channel"}))
+	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
+	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
+	resp = restTester.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", map[string]string{"Authorization": BearerToken + " " + updatedToken})
+	RequireStatus(t, resp, http.StatusOK)
+	userConfig = restTester.GetUserAdminAPI("foo_noah")
+	requireAdminChannels(t, base.SetFromArray([]string{"DEF"}), userConfig, collection)
+	requireJWTChannels(t, base.Set(nil), userConfig, collection)
+}
+
 // checkGoodAuthResponse asserts expected session response values against the given response.
 func checkGoodAuthResponse(t *testing.T, rt *RestTester, response *http.Response, username string) {
 	var responseBodyExpected map[string]interface{}
