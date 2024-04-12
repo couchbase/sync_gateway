@@ -562,8 +562,8 @@ func TestImportNonZeroStart(t *testing.T) {
 	require.Equal(t, revID1, doc.SyncData.CurrentRev)
 }
 
-// TestImportInvalidMetadata tests triggering an import error if the metadata is unmarshalable
-func TestImportInvalidMetadata(t *testing.T) {
+// TestImportFeedInvalidInlineSyncMetadata tests avoiding an import error if the metadata is unmarshable
+func TestImportFeedInvalidInlineSyncMetadata(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(base.TestCtx(t))
@@ -575,13 +575,124 @@ func TestImportInvalidMetadata(t *testing.T) {
 	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
 	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
 
-	// write a document with inline sync metadata that is unmarshalable, triggering an import error
-	// can't write a document with invalid sync metadata as an xattr, so rely on legacy behavior
-	_, err := bucket.GetSingleDataStore().Add("doc1", 0, `{"foo" : "bar", "_sync" : 1 }`)
+	// docs named so they will both be on vBucket 1 in both 64 and 1024 vbuckets
+	const (
+		doc1 = "bookstand"
+		doc2 = "chipchop"
+	)
+	// write a document with inline sync metadata that is unmarshalable. This document will be ignored.
+	_, err := bucket.GetSingleDataStore().Add(doc1, 0, []byte(`{"foo" : "bar", "_sync" : 1 }`))
+	require.NoError(t, err)
+
+	// this will be imported
+	err = bucket.GetSingleDataStore().Set(doc2, 0, nil, []byte(`{"foo" : "bar"}`))
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
-		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
 	}, 1)
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+}
+
+func TestImportFeedInvalidSyncMetadata(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
+	base.SkipImportTestsIfNotEnabled(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(base.TestCtx(t))
+
+	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	// make sure no documents are imported
 	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+
+	// docs named so they will both be on vBucket 1 in both 64 and 1024 vbuckets
+	const (
+		doc1 = "bookstand"
+		doc2 = "chipchop"
+	)
+
+	// this is silently ignored because the sync metadata is invalid
+	_, err := bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc1, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`1`)}, nil)
+	require.NoError(t, err)
+
+	_, err = bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc2, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{}`)}, nil)
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 1)
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+}
+
+func TestImportFeedNonJSONNewDoc(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
+	base.SkipImportTestsIfNotEnabled(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(base.TestCtx(t))
+
+	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	// make sure no documents are imported
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+
+	// docs named so they will both be on vBucket 1 in both 64 and 1024 vbuckets
+	const (
+		doc1 = "bookstand"
+		doc2 = "chipchop"
+	)
+
+	// this is silently ignored because a JSON number is not a JSON object
+	_, err := bucket.GetSingleDataStore().Add(doc1, 0, []byte(`1`))
+	require.NoError(t, err)
+
+	_, err = bucket.GetSingleDataStore().Add(doc2, 0, []byte(`{"foo" : "bar"}`))
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 1)
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+}
+
+func TestImportFeedNonJSONExistingDoc(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyMigrate, base.KeyImport)
+	base.SkipImportTestsIfNotEnabled(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(base.TestCtx(t))
+
+	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	// make sure no documents are imported
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+
+	// docs named so they will both be on vBucket 1 in both 64 and 1024 vbuckets
+	const (
+		doc1 = "bookstand"
+		doc2 = "chipchop"
+	)
+
+	// this is silently ignored because a JSON number is not a JSON object
+	_, err := bucket.GetSingleDataStore().Add(doc1, 0, []byte(`{"foo": "bar"}`))
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 1)
+
+	err = bucket.GetSingleDataStore().Set(doc1, 0, nil, []byte(`1`))
+	require.NoError(t, err)
+
+	_, err = bucket.GetSingleDataStore().Add(doc2, 0, []byte(`{"foo" : "bar"}`))
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 2)
+	require.Equal(t, int64(1), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
 }
