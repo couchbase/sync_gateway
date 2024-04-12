@@ -69,10 +69,6 @@ func NewSkippedSequenceSlice(clipHeadroom int) *SkippedSequenceSlice {
 // NewSingleSkippedSequenceEntry returns a SingleSkippedSequence with the specified sequence and the current
 // time in unix time
 func NewSingleSkippedSequenceEntry(sequence uint64, timeStamp int64) *SingleSkippedSequence {
-	// if no timestamp provided, take current unix time
-	if timeStamp == 0 {
-		timeStamp = time.Now().Unix()
-	}
 	return &SingleSkippedSequence{
 		seq:       sequence,
 		timestamp: timeStamp,
@@ -82,10 +78,6 @@ func NewSingleSkippedSequenceEntry(sequence uint64, timeStamp int64) *SingleSkip
 // NewSkippedSequenceRangeEntry returns a SkippedSequenceRange with the specified sequence range and the current
 // time in unix time
 func NewSkippedSequenceRangeEntry(start, end uint64, timeStamp int64) *SkippedSequenceRange {
-	// if no timestamp provided, take current unix time
-	if timeStamp == 0 {
-		timeStamp = time.Now().Unix()
-	}
 	return &SkippedSequenceRange{
 		start:     start,
 		end:       end,
@@ -357,7 +349,7 @@ func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry SkippedSequenceLis
 				s.list[index] = entry
 			} else {
 				endSeq := entry.getLastSeq()
-				s.list[index] = NewSkippedSequenceRangeEntry(lastEntryStartSeq, endSeq, 0)
+				s.list[index] = NewSkippedSequenceRangeEntry(lastEntryStartSeq, endSeq, time.Now().Unix())
 			}
 		}
 	} else {
