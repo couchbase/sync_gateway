@@ -185,7 +185,7 @@ func (s *SkippedSequenceSlice) SkippedSequenceCompact(ctx context.Context, maxWa
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	timeNow := time.Now().Unix()
+	timeNow := getCurrentUnixTime()
 	indexToDelete := -1
 	for _, v := range s.list {
 		timeStamp := v.getTimestamp()
@@ -349,7 +349,7 @@ func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry SkippedSequenceLis
 				s.list[index] = entry
 			} else {
 				endSeq := entry.getLastSeq()
-				s.list[index] = NewSkippedSequenceRangeEntry(lastEntryStartSeq, endSeq, time.Now().Unix())
+				s.list[index] = NewSkippedSequenceRangeEntry(lastEntryStartSeq, endSeq, getCurrentUnixTime())
 			}
 		}
 	} else {
@@ -367,4 +367,9 @@ func (s *SkippedSequenceSlice) getOldest() uint64 {
 	}
 	// grab fist element in slice and take the start seq of that range/single sequence
 	return s.list[0].getStartSeq()
+}
+
+// getCurrentUnixTime will return the current time in unix time format
+func getCurrentUnixTime() int64 {
+	return time.Now().Unix()
 }
