@@ -9,7 +9,6 @@
 import os
 import pathlib
 import unittest.mock
-import urllib.error
 import ssl
 
 import pytest
@@ -48,14 +47,6 @@ class FakeResponse:
 
     def getcode(self):
         return self.status_code
-
-
-class FakeFailureUrlOpener:
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def open(request):
-        return FakeResponse(500)
 
 
 class FakeSuccessUrlOpener:
@@ -303,7 +294,6 @@ def test_stream_large_file(tmpdir, httpserver):
     Write a file greater than 2GB to make sure it does not throw an exception.
     """
     p = tmpdir.join("testfile.txt")
-    body = "foobar"
     with open(p, "wb") as f:
         for i in range(2200):
             f.write(os.urandom(1_000_000))

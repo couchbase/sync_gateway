@@ -17,7 +17,6 @@ import glob
 import gzip
 import hashlib
 import io
-import mmap
 import optparse
 import os
 import re
@@ -1355,7 +1354,6 @@ def do_upload(path, url, proxy):
         request.add_header(str("Content-Type"), str("application/zip"))
         request.add_header("Content-Length", os.fstat(f.fileno()).st_size)
 
-        exit_code = 0
         try:
             url = opener.open(request)
             if url.getcode() == 200:
@@ -1366,7 +1364,7 @@ def do_upload(path, url, proxy):
                         url.getcode()
                     )
                 )
-        except Exception as e:
+        except Exception:
             log(traceback.format_exc())
             return 1
 

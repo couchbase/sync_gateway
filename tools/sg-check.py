@@ -125,11 +125,11 @@ print("\r\n_all_docs returned " + str(len(all_seqs)) + " rows")
 print("_changes  returned " + str(len(all_seqs)) + " results")
 
 for value in all_seqs:
-    if not value in changes_seqs:
+    if value not in changes_seqs:
         print("all_docs seq #" + str(value) + "not found in _changes")
 
 for value in changes_seqs:
-    if not value in deletes and not value in user_docs and not value in all_seqs:
+    if value not in deletes and value not in user_docs and value not in all_seqs:
         print("_changes seq #" + str(value) + " not found in all_docs")
 
 print("\r\nupdate_seq: " + update_seq)

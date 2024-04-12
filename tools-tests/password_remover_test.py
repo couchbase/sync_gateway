@@ -15,9 +15,9 @@ import password_remover
 
 
 class TestStripPasswordsFromUrl(unittest.TestCase):
-    def basic_test(self):
+    def test_basic(self):
         url_with_password = "http://bucket-1:foobar@localhost:8091"
-        url_no_password = strip_password_from_url(url_with_password)
+        url_no_password = password_remover.strip_password_from_url(url_with_password)
         assert "foobar" not in url_no_password
         assert "bucket-1" in url_no_password
 
@@ -164,7 +164,7 @@ class TestTagUserData(unittest.TestCase):
 
 
 class TestConvertToValidJSON(unittest.TestCase):
-    def basic_test(self):
+    def test_basic(self):
         invalid_json = r"""
         {
           "log": ["*"],
@@ -195,7 +195,7 @@ class TestConvertToValidJSON(unittest.TestCase):
         }
         """
 
-        valid_json = convert_to_valid_json(invalid_json)
+        valid_json = password_remover.convert_to_valid_json(invalid_json)
 
         got_exception = True
         try:
@@ -207,7 +207,7 @@ class TestConvertToValidJSON(unittest.TestCase):
 
         assert got_exception is False, "Failed to convert to valid JSON"
 
-    def basic_test_two_sync_functions(self):
+    def test_basic_two_sync_functions(self):
         invalid_json = r"""
             {
               "log": ["*"],
@@ -255,12 +255,12 @@ class TestConvertToValidJSON(unittest.TestCase):
                 }
                   }
                 `
-                },
+                }
               }
             }
             """
 
-        valid_json = convert_to_valid_json(invalid_json)
+        valid_json = password_remover.convert_to_valid_json(invalid_json)
 
         got_exception = True
         try:
