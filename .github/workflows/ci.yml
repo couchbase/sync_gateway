@@ -111,7 +111,18 @@ jobs:
         uses: guyarb/golang-test-annotations@v0.6.0
         with:
           test-results: test.json
-
+  python-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: chartboost/ruff-action@v1
+        with:
+          args: 'format --check'
+  python-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: chartboost/ruff-action@v1
   test-sgcollect:
     runs-on: ${{ matrix.os }}
     strategy:
