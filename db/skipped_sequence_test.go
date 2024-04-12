@@ -28,7 +28,7 @@ func TestPushSingleSkippedSequence(t *testing.T) {
 	skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
 
 	for i := 0; i < 10; i++ {
-		skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
+		skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i*2), 0))
 	}
 
 	var prevTime int64 = 0
@@ -39,7 +39,7 @@ func TestPushSingleSkippedSequence(t *testing.T) {
 	}
 	// add a new single entry that is contiguous with end of the slice which should replace last
 	// single entry with a range
-	skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(19))
+	skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(19, 0))
 	// grab last entry in list
 	index := len(skippedSlice.list) - 1
 	entry := skippedSlice.list[index]
@@ -59,7 +59,7 @@ func TestPushSkippedSequenceRange(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		start := i * 10
-		skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(uint64(start), uint64(start+5)))
+		skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(uint64(start), uint64(start+5), 0))
 	}
 
 	var prevTime int64 = 0
@@ -73,7 +73,7 @@ func TestPushSkippedSequenceRange(t *testing.T) {
 	}
 
 	// add a new range entry that is contiguous with end of the slice which should alter range last element in list
-	skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(96, 110))
+	skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(96, 110, 0))
 	// grab last entry in list
 	index := len(skippedSlice.list) - 1
 	entry := skippedSlice.list[index]
@@ -82,6 +82,23 @@ func TestPushSkippedSequenceRange(t *testing.T) {
 	assert.True(t, entry.isRange())
 	assert.Equal(t, uint64(90), entry.getStartSeq())
 	assert.Equal(t, uint64(110), entry.getLastSeq())
+
+	// add new single entry that is not contiguous with last element on slice
+	skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(500, 0))
+
+	// add new range that is contiguous with the single entry on the last element of the slice + garbage timestamp
+	// for later assertion
+	newTimeStamp := time.Now().Unix() + 10000
+	skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(501, 510, newTimeStamp))
+
+	index = len(skippedSlice.list) - 1
+	entry = skippedSlice.list[index]
+	// assert that last element in list is a range and holds sequences we expect + timestamp
+	// is what the new pushed range above holds
+	assert.True(t, entry.isRange())
+	assert.Equal(t, uint64(500), entry.getStartSeq())
+	assert.Equal(t, uint64(510), entry.getLastSeq())
+	assert.Equal(t, newTimeStamp, entry.getTimestamp())
 }
 
 func BenchmarkPushSkippedSequenceEntry(b *testing.B) {
@@ -97,9 +114,9 @@ func BenchmarkPushSkippedSequenceEntry(b *testing.B) {
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				if !bm.rangeEntries {
-					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
+					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i*2), 0))
 				} else {
-					skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(uint64(i*10), uint64(i*10)+5))
+					skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(uint64(i*10), uint64(i*10)+5, 0))
 				}
 			}
 		})
@@ -136,14 +153,14 @@ func TestIsSequenceSkipped(t *testing.T) {
 
 			if !testCase.rangeItems {
 				for _, input := range testCase.inputList {
-					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input))
+					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input, 0))
 				}
 				for _, v := range testCase.inputList {
 					assert.True(t, skippedSlice.Contains(v))
 				}
 			} else {
 				for _, input := range testCase.inputList {
-					skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(input, input+5))
+					skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(input, input+5, 0))
 				}
 				for _, v := range testCase.inputList {
 					assert.True(t, skippedSlice.Contains(v))
@@ -156,11 +173,11 @@ func TestIsSequenceSkipped(t *testing.T) {
 			assert.False(t, skippedSlice.Contains(550))
 
 			// push this sequence and assert Contains returns true after
-			skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(550))
+			skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(550, 0))
 			assert.True(t, skippedSlice.Contains(550))
 
 			// push another range much higher, assert Contains works as expected
-			skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(60000, 70000))
+			skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(60000, 70000, 0))
 			assert.True(t, skippedSlice.Contains(60000))
 			assert.True(t, skippedSlice.Contains(70000))
 			assert.True(t, skippedSlice.Contains(65000))
@@ -263,11 +280,11 @@ func TestRemoveSeqFromSkipped(t *testing.T) {
 			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
 			if !testCase.rangeItems {
 				for _, input := range testCase.inputList {
-					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input))
+					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input, 0))
 				}
 			} else {
 				for _, input := range testCase.inputList {
-					skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(input, input+5))
+					skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(input, input+5, 0))
 				}
 			}
 
@@ -314,10 +331,10 @@ func TestRemoveSeqFromThreeSequenceRange(t *testing.T) {
 	expectedEndSeqList := []uint64{10, 20, 30, 40, 50, 60, 62, 75}
 
 	for _, v := range inputList {
-		skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(v, v+5))
+		skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(v, v+5, 0))
 	}
-	skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(60, 62))
-	skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(70, 75))
+	skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(60, 62, 0))
+	skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(70, 75, 0))
 
 	i, found := skippedSlice.findSequence(60)
 	assert.True(t, found)
@@ -336,7 +353,7 @@ func TestRemoveSeqFromThreeSequenceRange(t *testing.T) {
 	}
 
 	// assert that items second and third from last are single items now
-	assert.False(t, skippedSlice.list[skippedLen-3].isRange())
+	assert.True(t, skippedSlice.list[skippedLen-3].isRange())
 	assert.False(t, skippedSlice.list[skippedLen-2].isRange())
 	// assert that items second and third from last timestamps are preserved
 	assert.Equal(t, timestampAtSequence, skippedSlice.list[skippedLen-3].getTimestamp())
@@ -401,16 +418,16 @@ func TestInsertItemInSlice(t *testing.T) {
 
 			if !testCase.rangeItems {
 				for _, input := range testCase.inputList {
-					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input))
+					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input, 0))
 				}
 			} else {
 				for _, input := range testCase.inputList {
-					skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(input, input+5))
+					skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(input, input+5, 0))
 				}
 			}
 
 			// attempt to insert at test case index to keep order
-			skippedSlice.insert(testCase.index, NewSingleSkippedSequenceEntry(testCase.insert))
+			skippedSlice.insert(testCase.index, NewSingleSkippedSequenceEntry(testCase.insert, 0))
 
 			if !testCase.rangeItems {
 				for i := 0; i < len(skippedSlice.list); i++ {
@@ -442,9 +459,9 @@ func BenchmarkInsertSkippedItem(b *testing.B) {
 			sequenceNum := 40000
 			for i := 0; i < b.N; i++ {
 				if !bm.rangeEntries {
-					bm.inputSlice.insert(i, NewSingleSkippedSequenceEntry(uint64(sequenceNum*i)))
+					bm.inputSlice.insert(i, NewSingleSkippedSequenceEntry(uint64(sequenceNum*i), 0))
 				} else {
-					bm.inputSlice.insert(i, NewSkippedSequenceRangeEntry(uint64(sequenceNum*i), uint64(sequenceNum*i)+5))
+					bm.inputSlice.insert(i, NewSkippedSequenceRangeEntry(uint64(sequenceNum*i), uint64(sequenceNum*i)+5, 0))
 				}
 			}
 		})
@@ -496,12 +513,14 @@ func TestCompactSkippedList(t *testing.T) {
 
 			// alter timestamp so we don't compact this entry
 			var entry SkippedSequenceListEntry
+			var timeNow int64
 			if !testCase.rangeItems {
-				entry = NewSingleSkippedSequenceEntry(600)
+				timeNow = time.Now().Unix()
+				entry = NewSingleSkippedSequenceEntry(600, timeNow+10000)
 			} else {
-				entry = NewSkippedSequenceRangeEntry(600, 605)
+				timeNow = time.Now().Unix()
+				entry = NewSkippedSequenceRangeEntry(600, 605, timeNow+10000)
 			}
-			entry.setTimestamp(entry.getTimestamp() + 10000)
 			skippedSlice.PushSkippedSequenceEntry(entry)
 
 			numRemoved := skippedSlice.SkippedSequenceCompact(base.TestCtx(t), 1)
@@ -552,12 +571,14 @@ func TestCompactSkippedListClipHandling(t *testing.T) {
 			}
 			// alter timestamp so we don't compact this entry
 			var entry SkippedSequenceListEntry
+			var timeNow int64
 			if !testCase.rangeItems {
-				entry = NewSingleSkippedSequenceEntry(600)
+				timeNow = time.Now().Unix()
+				entry = NewSingleSkippedSequenceEntry(600, timeNow+10000)
 			} else {
-				entry = NewSkippedSequenceRangeEntry(600, 605)
+				timeNow = time.Now().Unix()
+				entry = NewSkippedSequenceRangeEntry(600, 605, timeNow+10000)
 			}
-			entry.setTimestamp(entry.getTimestamp() + 10000)
 			skippedSlice.PushSkippedSequenceEntry(entry)
 
 			skippedSlice.SkippedSequenceCompact(base.TestCtx(t), 1)
@@ -641,11 +662,11 @@ func TestGetOldestSkippedSequence(t *testing.T) {
 			if !testCase.empty {
 				if !testCase.rangeItems {
 					for _, v := range testCase.inputList {
-						skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(v))
+						skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(v, 0))
 					}
 				} else {
 					for _, v := range testCase.inputList {
-						skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(v, v+5))
+						skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(v, v+5, 0))
 					}
 				}
 			}
@@ -660,17 +681,17 @@ func setupBenchmark(largeSlice bool, rangeEntries bool, clipHeadroom int) *Skipp
 	if largeSlice {
 		for i := 0; i < 10000; i++ {
 			if rangeEntries {
-				skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(uint64(i*2), uint64(i*2)+5))
+				skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(uint64(i*2), uint64(i*2)+5, 0))
 			} else {
-				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
+				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i*2), 0))
 			}
 		}
 	} else {
 		for i := 0; i < 100; i++ {
 			if rangeEntries {
-				skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(uint64(i*2), uint64(i*2)+5))
+				skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(uint64(i*2), uint64(i*2)+5, 0))
 			} else {
-				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
+				skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i*2), 0))
 			}
 		}
 	}
@@ -698,6 +719,6 @@ func setupBenchmarkToCompact(largeSlice bool, rangeEntries bool, clipHeadroom in
 		}
 	}
 	// have one entry to not be compacted
-	skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(60000))
+	skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(60000, 0))
 	return skippedSlice
 }
