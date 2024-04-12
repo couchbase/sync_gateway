@@ -38,11 +38,12 @@ import urllib.request
 # processed through sgcollect will be decodable from 'utf-8' (which is the default in Python)
 # and the decoder may fail if it encounters any such byte sequence whilst decoding byte strings.
 # The 'latin-1' encoding belongs to the ISO-8859 family and is capable of decoding any byte sequence.
-ENCODING_LATIN1 = 'latin-1'
+ENCODING_LATIN1 = "latin-1"
 
 # Error handler is being used to handle special cases on Windows platforms when the cp1252
 # encoding is  referred to as 'latin-1',  it does not map all possible byte values.
-BACKSLASH_REPLACE = 'backslashreplace'
+BACKSLASH_REPLACE = "backslashreplace"
+
 
 class LogRedactor:
     def __init__(self, salt, tmpdir):
@@ -54,8 +55,20 @@ class LogRedactor:
 
     def _process_file(self, ifile, ofile, processor):
         try:
-            with open(ifile, 'r', newline='', encoding=ENCODING_LATIN1, errors=BACKSLASH_REPLACE) as inp:
-                with open(ofile, 'w+', newline='', encoding=ENCODING_LATIN1, errors=BACKSLASH_REPLACE) as out:
+            with open(
+                ifile,
+                "r",
+                newline="",
+                encoding=ENCODING_LATIN1,
+                errors=BACKSLASH_REPLACE,
+            ) as inp:
+                with open(
+                    ofile,
+                    "w+",
+                    newline="",
+                    encoding=ENCODING_LATIN1,
+                    errors=BACKSLASH_REPLACE,
+                ) as out:
                     # Write redaction header
                     out.write(self.couchbase_log.do("RedactLevel"))
                     for line in inp:
@@ -83,17 +96,21 @@ class CouchbaseLogProcessor:
         if "RedactLevel" in line:
             # salt + salt to maintain consistency with other
             # occurrences of hashed salt in the logs.
-            return 'RedactLevel:partial,HashOfSalt:%s\n' \
-                   % generate_hash(self.salt + self.salt).hexdigest()
+            return (
+                "RedactLevel:partial,HashOfSalt:%s\n"
+                % generate_hash(self.salt + self.salt).hexdigest()
+            )
         else:
             return line
 
 
 class RegularLogProcessor:
-    rexes = [re.compile('(<ud>)(.+?)(</ud>)'),
-             # Redact the rest of the line in the case we encounter
-             # log-redaction-salt. Needed to redact ps output containing sgcollect flags safely.
-             re.compile('(log-redaction-salt)(.+)')]
+    rexes = [
+        re.compile("(<ud>)(.+?)(</ud>)"),
+        # Redact the rest of the line in the case we encounter
+        # log-redaction-salt. Needed to redact ps output containing sgcollect flags safely.
+        re.compile("(log-redaction-salt)(.+)"),
+    ]
 
     def __init__(self, salt):
         self.salt = salt
@@ -150,7 +167,7 @@ class AltExitC(object):
 AltExit = AltExitC()
 
 
-def log(message, end='\n'):
+def log(message, end="\n"):
     sys.stderr.write(message + end)
     sys.stderr.flush()
 
@@ -170,6 +187,7 @@ class Task(object):
     def execute(self, fp):
         """Run the task"""
         import subprocess
+
         use_shell = not isinstance(self.command, list)
         if "literal" in self.__dict__:
             print(self.literal, file=fp)
@@ -180,11 +198,15 @@ class Task(object):
             env = os.environ.copy()
             env.update(self.addenv)
         try:
-            p = subprocess.Popen(self.command, bufsize=-1,
-                                 stdin=subprocess.PIPE,
-                                 stdout=subprocess.PIPE,
-                                 stderr=subprocess.STDOUT,
-                                 shell=use_shell, env=env)
+            p = subprocess.Popen(
+                self.command,
+                bufsize=-1,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                shell=use_shell,
+                env=env,
+            )
         except OSError as e:
             # if use_shell is False then Popen may raise exception
             # if binary is missing. In this case we mimic what
@@ -201,7 +223,8 @@ class Task(object):
         timer = None
         timer_fired = Event()
 
-        if self.timeout is not None and hasattr(p, 'kill'):
+        if self.timeout is not None and hasattr(p, "kill"):
+
             def on_timeout():
                 p.kill()
                 timer_fired.set()
@@ -225,7 +248,11 @@ class Task(object):
                 # timer is fired; that would result in a spurious timeout
                 # message
                 if timer_fired.isSet():
-                    print("`%s` timed out after %s seconds" % (self.command, self.timeout), file=fp)
+                    print(
+                        "`%s` timed out after %s seconds"
+                        % (self.command, self.timeout),
+                        file=fp,
+                    )
 
         return p.wait()
 
@@ -239,6 +266,7 @@ class PythonTask(object):
     A task that takes a python function as an argument rather than an OS command.
     These will run on any platform.
     """
+
     privileged = False
     no_header = False
     num_samples = 1
@@ -249,7 +277,9 @@ class PythonTask(object):
         self.callable = callable
         self.command = "pythontask"
         self.timeout = timeout
-        self.log_exception = False  # default to false, may be overridden by val in **kwargs
+        self.log_exception = (
+            False  # default to false, may be overridden by val in **kwargs
+        )
         self.__dict__.update(kwargs)
 
     def execute(self, fp):
@@ -273,9 +303,7 @@ class PythonTask(object):
 
 
 class TaskRunner(object):
-
-    def __init__(self, verbosity=0, default_name="couchbase.log",
-                 tmp_dir=None):
+    def __init__(self, verbosity=0, default_name="couchbase.log", tmp_dir=None):
         self.files = {}
         self.tasks = {}
         self.verbosity = verbosity
@@ -294,7 +322,11 @@ class TaskRunner(object):
             sys.exit(1)
 
         # If a dir wasn't passed by --tmp-dir, check if the env var was set and if we were able to use it
-        if not tmp_dir and os.getenv("TMPDIR") and os.path.split(self.tmpdir)[0] != os.getenv("TMPDIR"):
+        if (
+            not tmp_dir
+            and os.getenv("TMPDIR")
+            and os.path.split(self.tmpdir)[0] != os.getenv("TMPDIR")
+        ):
             log("Could not use TMPDIR {0}".format(os.getenv("TMPDIR")))
             log("Using temporary dir {0}".format(os.path.split(self.tmpdir)[0]))
 
@@ -315,22 +347,21 @@ class TaskRunner(object):
         filename - Absolute path to file to collect.
         """
         if filename not in self.files:
-            self.files[filename] = open(filename, 'r')
+            self.files[filename] = open(filename, "r")
         else:
-            log("Unable to collect file '{0}' - already collected.".format(
-                filename))
+            log("Unable to collect file '{0}' - already collected.".format(filename))
 
     def get_file(self, filename):
         if filename in self.files:
             fp = self.files[filename]
         else:
-            fp = open(os.path.join(self.tmpdir, filename), 'wb+')
+            fp = open(os.path.join(self.tmpdir, filename), "wb+")
             self.files[filename] = fp
 
         return fp
 
     def header(self, fp, title, subtitle):
-        separator = '=' * 78
+        separator = "=" * 78
         message = f"{separator}\n{title}\n{subtitle}\n{separator}\n"
         fp.write(message.encode())
 
@@ -343,17 +374,17 @@ class TaskRunner(object):
     def run(self, task):
         """Run a task with a file descriptor corresponding to its log file"""
         if task.will_run():
-            if hasattr(task, 'command_to_print'):
+            if hasattr(task, "command_to_print"):
                 command_to_print = task.command_to_print
             else:
                 command_to_print = task.command
 
-            log("%s (%s) - " % (task.description, command_to_print), end='')
+            log("%s (%s) - " % (task.description, command_to_print), end="")
             if task.privileged and os.getuid() != 0:
                 log("skipped (needs root privs)")
                 return
 
-            if hasattr(task, 'log_file'):
+            if hasattr(task, "log_file"):
                 filename = task.log_file
             else:
                 filename = self.default_name
@@ -364,23 +395,31 @@ class TaskRunner(object):
 
             for i in range(task.num_samples):
                 if i > 0:
-                    log("Taking sample %d after %f seconds - " % (i+1, task.interval), end='')
+                    log(
+                        "Taking sample %d after %f seconds - " % (i + 1, task.interval),
+                        end="",
+                    )
                     time.sleep(task.interval)
                 result = task.execute(fp)
                 self.log_result(result)
             fp.flush()
 
         elif self.verbosity >= 2:
-            log('Skipping "%s" (%s): not for platform %s' % (task.description, task.command_to_print, sys.platform))
+            log(
+                'Skipping "%s" (%s): not for platform %s'
+                % (task.description, task.command_to_print, sys.platform)
+            )
 
     def redact_and_zip(self, filename, log_type, salt, node):
         files = []
         redactor = LogRedactor(salt, self.tmpdir)
 
         for name, fp in self.files.items():
-            if not (".gz" in name or
-                    "expvars.json" in name or
-                    os.path.basename(name) == "sync_gateway"):
+            if not (
+                ".gz" in name
+                or "expvars.json" in name
+                or os.path.basename(name) == "sync_gateway"
+            ):
                 files.append(redactor.redact_file(name, fp.name))
             else:
                 files.append(fp.name)
@@ -402,7 +441,8 @@ class TaskRunner(object):
         """Write all our logs to a zipfile"""
 
         from zipfile import ZipFile, ZIP_DEFLATED
-        zf = ZipFile(filename, mode='w', compression=ZIP_DEFLATED)
+
+        zf = ZipFile(filename, mode="w", compression=ZIP_DEFLATED)
         try:
             for name in files:
                 zf.write(name, f"{prefix}/{os.path.basename(name)}")
@@ -411,19 +451,19 @@ class TaskRunner(object):
 
 
 class SolarisTask(Task):
-    platforms = ['sunos5', 'solaris']
+    platforms = ["sunos5", "solaris"]
 
 
 class LinuxTask(Task):
-    platforms = ['linux']
+    platforms = ["linux"]
 
 
 class WindowsTask(Task):
-    platforms = ['win32', 'cygwin']
+    platforms = ["win32", "cygwin"]
 
 
 class MacOSXTask(Task):
-    platforms = ['darwin']
+    platforms = ["darwin"]
 
 
 class UnixTask(SolarisTask, LinuxTask, MacOSXTask):
@@ -434,9 +474,16 @@ class AllOsTask(UnixTask, WindowsTask):
     platforms = UnixTask.platforms + WindowsTask.platforms
 
 
-def make_curl_task(name, url, user="", password="", content_postprocessors=[],
-                   timeout=60, log_file="python_curl.log",
-                   **kwargs):
+def make_curl_task(
+    name,
+    url,
+    user="",
+    password="",
+    content_postprocessors=[],
+    timeout=60,
+    log_file="python_curl.log",
+    **kwargs,
+):
     """
     NOTE: this used to use curl but was later reworked to use pure python
     in order to be more cross platform, since Windows doesn't ship with curl
@@ -455,11 +502,12 @@ def make_curl_task(name, url, user="", password="", content_postprocessors=[],
     sensitive info
 
     """
+
     def python_curl_task():
         r = urllib.request.Request(url=url)
         if user and len(user) > 0:
-            base64string = base64.b64encode(bytes('%s:%s' % (user, password),'utf-8'))
-            r.add_header("Authorization", "Basic %s" % base64string.decode('utf-8'))
+            base64string = base64.b64encode(bytes("%s:%s" % (user, password), "utf-8"))
+            r.add_header("Authorization", "Basic %s" % base64string.decode("utf-8"))
         try:
             response_file_handle = urllib.request.urlopen(r, timeout=timeout)
         except urllib.error.URLError as e:
@@ -471,10 +519,7 @@ def make_curl_task(name, url, user="", password="", content_postprocessors=[],
         return response_string
 
     return PythonTask(
-        description=name,
-        callable=python_curl_task,
-        log_file=log_file,
-        **kwargs
+        description=name, callable=python_curl_task, log_file=log_file, **kwargs
     )
 
 
@@ -484,9 +529,10 @@ def add_gzip_file_task(sourcefile_path, salt, content_postprocessors=[]):
 
     The content_postprocessors is a list of functions -- see make_curl_task
     """
+
     def python_add_file_task():
-        with gzip.open(sourcefile_path, 'r') as infile:
-            contents = infile.read().decode('utf-8')
+        with gzip.open(sourcefile_path, "r") as infile:
+            contents = infile.read().decode("utf-8")
             for content_postprocessor in content_postprocessors:
                 contents = content_postprocessor(contents)
             redactor = LogRedactor(salt, tempfile.mkdtemp())
@@ -517,8 +563,9 @@ def add_file_task(sourcefile_path, content_postprocessors=[]):
 
     The content_postprocessors is a list of functions -- see make_curl_task
     """
+
     def python_add_file_task():
-        with open(sourcefile_path, 'br') as infile:
+        with open(sourcefile_path, "br") as infile:
             contents = infile.read()
             for content_postprocessor in content_postprocessors:
                 contents = content_postprocessor(contents)
@@ -535,10 +582,17 @@ def add_file_task(sourcefile_path, content_postprocessors=[]):
 
 
 def make_query_task(statement, user, password, port):
-    url = "http://127.0.0.1:%s/query/service?statement=%s" % (port, urllib.parse.quote(statement))
+    url = "http://127.0.0.1:%s/query/service?statement=%s" % (
+        port,
+        urllib.parse.quote(statement),
+    )
 
-    return make_curl_task(name="Result of query statement \'%s\'" % statement,
-                          user=user, password=password, url=url)
+    return make_curl_task(
+        name="Result of query statement '%s'" % statement,
+        user=user,
+        password=password,
+        url=url,
+    )
 
 
 def basedir():
@@ -554,16 +608,18 @@ def make_event_log_task():
     # I found that wmic ntevent can be extremely slow; so limiting the output
     # to approximately last month
     limit = datetime.today() - timedelta(days=31)
-    limit = limit.strftime('%Y%m%d000000.000000-000')
+    limit = limit.strftime("%Y%m%d000000.000000-000")
 
-    return WindowsTask("Event log",
-                       "wmic ntevent where "
-                       "\""
-                       "(LogFile='application' or LogFile='system') and "
-                       "EventType<3 and TimeGenerated>'%(limit)s'"
-                       "\" "
-                       "get TimeGenerated,LogFile,SourceName,EventType,Message,InsertionStrings "
-                       "/FORMAT:list" % locals())
+    return WindowsTask(
+        "Event log",
+        "wmic ntevent where "
+        '"'
+        "(LogFile='application' or LogFile='system') and "
+        "EventType<3 and TimeGenerated>'%(limit)s'"
+        '" '
+        "get TimeGenerated,LogFile,SourceName,EventType,Message,InsertionStrings "
+        "/FORMAT:list" % locals(),
+    )
 
 
 def make_event_log_task_sg_info():
@@ -572,16 +628,18 @@ def make_event_log_task_sg_info():
     # I found that wmic ntevent can be extremely slow; so limiting the output
     # to approximately last month
     limit = datetime.today() - timedelta(days=31)
-    limit = limit.strftime('%Y%m%d000000.000000-000')
+    limit = limit.strftime("%Y%m%d000000.000000-000")
 
-    return WindowsTask("SG Event log",
-                       "wmic ntevent where "
-                       "\""
-                       "SourceName='SyncGateway' and "
-                       "TimeGenerated>'%(limit)s'"
-                       "\" "
-                       "get TimeGenerated,LogFile,SourceName,EventType,InsertionStrings "
-                       "/FORMAT:list" % locals())
+    return WindowsTask(
+        "SG Event log",
+        "wmic ntevent where "
+        '"'
+        "SourceName='SyncGateway' and "
+        "TimeGenerated>'%(limit)s'"
+        '" '
+        "get TimeGenerated,LogFile,SourceName,EventType,InsertionStrings "
+        "/FORMAT:list" % locals(),
+    )
 
 
 def make_os_tasks(processes):
@@ -590,10 +648,13 @@ def make_os_tasks(processes):
     _tasks = [
         UnixTask("uname", "uname -a"),
         UnixTask("time and TZ", "date; date -u"),
-        UnixTask("ntp time",
-                 "ntpdate -q pool.ntp.org || "
-                 "nc time.nist.gov 13 || "
-                 "netcat time.nist.gov 13", timeout=60),
+        UnixTask(
+            "ntp time",
+            "ntpdate -q pool.ntp.org || "
+            "nc time.nist.gov 13 || "
+            "netcat time.nist.gov 13",
+            timeout=60,
+        ),
         UnixTask("ntp peers", "ntpq -p"),
         UnixTask("raw /etc/sysconfig/clock", "cat /etc/sysconfig/clock"),
         UnixTask("raw /etc/timezone", "cat /etc/timezone"),
@@ -608,11 +669,19 @@ def make_os_tasks(processes):
         SolarisTask("Disk activity", "zpool iostat 1 10"),
         SolarisTask("Disk activity", "iostat -E 1 10"),
         LinuxTask("Process list snapshot", "export TERM=''; top -Hb -n1 || top -H n1"),
-        LinuxTask("Process list", "ps -AwwL -o user,pid,lwp,ppid,nlwp,pcpu,maj_flt,min_flt,pri,nice,vsize,rss,tty,stat,wchan:12,start,bsdtime,command"),
+        LinuxTask(
+            "Process list",
+            "ps -AwwL -o user,pid,lwp,ppid,nlwp,pcpu,maj_flt,min_flt,pri,nice,vsize,rss,tty,stat,wchan:12,start,bsdtime,command",
+        ),
         LinuxTask("Raw /proc/vmstat", "cat /proc/vmstat"),
         LinuxTask("Raw /proc/mounts", "cat /proc/mounts"),
         LinuxTask("Raw /proc/partitions", "cat /proc/partitions"),
-        LinuxTask("Raw /proc/diskstats", "cat /proc/diskstats; echo ''", num_samples=10, interval=1),
+        LinuxTask(
+            "Raw /proc/diskstats",
+            "cat /proc/diskstats; echo ''",
+            num_samples=10,
+            interval=1,
+        ),
         LinuxTask("Raw /proc/interrupts", "cat /proc/interrupts"),
         LinuxTask("Swap configuration", "free -t"),
         LinuxTask("Swap configuration", "swapon -s"),
@@ -628,30 +697,44 @@ def make_os_tasks(processes):
         # years and then drop, however.
         LinuxTask("Installed software", "COLUMNS=300 dpkg -l"),
         LinuxTask("Extended iostat", "iostat -x -p ALL 1 10 || iostat -x 1 10"),
-        LinuxTask("Core dump settings", "find /proc/sys/kernel -type f -name '*core*' -print -exec cat '{}' ';'"),
+        LinuxTask(
+            "Core dump settings",
+            "find /proc/sys/kernel -type f -name '*core*' -print -exec cat '{}' ';'",
+        ),
         UnixTask("sysctl settings", "sysctl -a"),
-        LinuxTask("Relevant lsof output",
-                  "echo %(programs)s | xargs -n1 pgrep | xargs -n1 -r -- lsof -n -p" % locals()),
+        LinuxTask(
+            "Relevant lsof output",
+            "echo %(programs)s | xargs -n1 pgrep | xargs -n1 -r -- lsof -n -p"
+            % locals(),
+        ),
         LinuxTask("LVM info", "lvdisplay"),
         LinuxTask("LVM info", "vgdisplay"),
         LinuxTask("LVM info", "pvdisplay"),
         MacOSXTask("Process list snapshot", "top -l 1"),
         MacOSXTask("Disk activity", "iostat 1 10"),
-        MacOSXTask("Process list",
-                   "ps -Aww -o user,pid,lwp,ppid,nlwp,pcpu,pri,nice,vsize,rss,tty,"
-                   "stat,wchan:12,start,bsdtime,command"),
+        MacOSXTask(
+            "Process list",
+            "ps -Aww -o user,pid,lwp,ppid,nlwp,pcpu,pri,nice,vsize,rss,tty,"
+            "stat,wchan:12,start,bsdtime,command",
+        ),
         WindowsTask("Installed software", "wmic product get name, version"),
-        WindowsTask("Service list", "wmic service where state=\"running\" GET caption, name, state"),
+        WindowsTask(
+            "Service list",
+            'wmic service where state="running" GET caption, name, state',
+        ),
         WindowsTask("Process list", "wmic process"),
         WindowsTask("Process usage", "tasklist /V /fo list"),
         WindowsTask("Swap settings", "wmic pagefile"),
         WindowsTask("Disk partition", "wmic partition"),
         WindowsTask("Disk volumes", "wmic volume"),
-        UnixTask("Network configuration", "ifconfig -a", interval=10,
-                 num_samples=2),
-        LinuxTask("Network configuration", "echo link addr neigh rule route netns | xargs -n1 -- sh -x -c 'ip $1 list' --"),
-        WindowsTask("Network configuration", "ipconfig /all", interval=10,
-                    num_samples=2),
+        UnixTask("Network configuration", "ifconfig -a", interval=10, num_samples=2),
+        LinuxTask(
+            "Network configuration",
+            "echo link addr neigh rule route netns | xargs -n1 -- sh -x -c 'ip $1 list' --",
+        ),
+        WindowsTask(
+            "Network configuration", "ipconfig /all", interval=10, num_samples=2
+        ),
         LinuxTask("Raw /proc/net/dev", "cat /proc/net/dev"),
         LinuxTask("Network link statistics", "ip -s link"),
         UnixTask("Network status", "netstat -anp || netstat -an"),
@@ -679,37 +762,72 @@ def make_os_tasks(processes):
         UnixTask("System paging activity", "vmstat 1 10"),
         UnixTask("System uptime", "uptime"),
         UnixTask("couchbase user definition", "getent passwd couchbase"),
-        UnixTask("couchbase user limits", "su couchbase -c \"ulimit -a\"",
-                 privileged=True),
+        UnixTask(
+            "couchbase user limits", 'su couchbase -c "ulimit -a"', privileged=True
+        ),
         UnixTask("sync_gateway user definition", "getent passwd sync_gateway"),
-        UnixTask("sync_gateway user limits", "su sync_gateway -c \"ulimit -a\"",
-                 privileged=True),
+        UnixTask(
+            "sync_gateway user limits",
+            'su sync_gateway -c "ulimit -a"',
+            privileged=True,
+        ),
         UnixTask("Interrupt status", "intrstat 1 10"),
         UnixTask("Processor status", "mpstat 1 10"),
         UnixTask("System log", "cat /var/adm/messages"),
         LinuxTask("Raw /proc/uptime", "cat /proc/uptime"),
-        LinuxTask("Systemd journal", "journalctl 2>&1 | gzip -c",
-                  log_file="systemd_journal.gz", no_header=True),
-        LinuxTask("All logs", "tar cz /var/log/syslog* /var/log/dmesg /var/log/messages* /var/log/daemon* /var/log/debug* /var/log/kern.log* 2>/dev/null",
-                  log_file="syslog.tar.gz", no_header=True),
-        LinuxTask("Relevant proc data", "echo %(programs)s | "
-                  "xargs -n1 pgrep | xargs -n1 -- sh -c 'echo $1; cat /proc/$1/status; cat /proc/$1/limits; cat /proc/$1/smaps; cat /proc/$1/numa_maps; cat /proc/$1/task/*/sched; echo' --" % locals()),
-        LinuxTask("Processes' environment", "echo %(programs)s | "
-                  r"xargs -n1 pgrep | xargs -n1 -- sh -c 'echo $1; ( cat /proc/$1/environ | tr \\0 \\n ); echo' --" % locals()),
+        LinuxTask(
+            "Systemd journal",
+            "journalctl 2>&1 | gzip -c",
+            log_file="systemd_journal.gz",
+            no_header=True,
+        ),
+        LinuxTask(
+            "All logs",
+            "tar cz /var/log/syslog* /var/log/dmesg /var/log/messages* /var/log/daemon* /var/log/debug* /var/log/kern.log* 2>/dev/null",
+            log_file="syslog.tar.gz",
+            no_header=True,
+        ),
+        LinuxTask(
+            "Relevant proc data",
+            "echo %(programs)s | "
+            "xargs -n1 pgrep | xargs -n1 -- sh -c 'echo $1; cat /proc/$1/status; cat /proc/$1/limits; cat /proc/$1/smaps; cat /proc/$1/numa_maps; cat /proc/$1/task/*/sched; echo' --"
+            % locals(),
+        ),
+        LinuxTask(
+            "Processes' environment",
+            "echo %(programs)s | "
+            r"xargs -n1 pgrep | xargs -n1 -- sh -c 'echo $1; ( cat /proc/$1/environ | tr \\0 \\n ); echo' --"
+            % locals(),
+        ),
         LinuxTask("NUMA data", "numactl --hardware"),
         LinuxTask("NUMA data", "numactl --show"),
         LinuxTask("NUMA data", "cat /sys/devices/system/node/node*/numastat"),
         UnixTask("Kernel log buffer", "dmesg -H || dmesg"),
-        LinuxTask("Transparent Huge Pages data", "cat /sys/kernel/mm/transparent_hugepage/enabled"),
-        LinuxTask("Transparent Huge Pages data", "cat /sys/kernel/mm/transparent_hugepage/defrag"),
-        LinuxTask("Transparent Huge Pages data", "cat /sys/kernel/mm/redhat_transparent_hugepage/enabled"),
-        LinuxTask("Transparent Huge Pages data", "cat /sys/kernel/mm/redhat_transparent_hugepage/defrag"),
+        LinuxTask(
+            "Transparent Huge Pages data",
+            "cat /sys/kernel/mm/transparent_hugepage/enabled",
+        ),
+        LinuxTask(
+            "Transparent Huge Pages data",
+            "cat /sys/kernel/mm/transparent_hugepage/defrag",
+        ),
+        LinuxTask(
+            "Transparent Huge Pages data",
+            "cat /sys/kernel/mm/redhat_transparent_hugepage/enabled",
+        ),
+        LinuxTask(
+            "Transparent Huge Pages data",
+            "cat /sys/kernel/mm/redhat_transparent_hugepage/defrag",
+        ),
         LinuxTask("Network statistics", "netstat -s"),
         LinuxTask("Full raw netstat", "cat /proc/net/netstat"),
-        LinuxTask("CPU throttling info", "echo /sys/devices/system/cpu/cpu*/thermal_throttle/* | xargs -n1 -- sh -c 'echo $1; cat $1' --"),
+        LinuxTask(
+            "CPU throttling info",
+            "echo /sys/devices/system/cpu/cpu*/thermal_throttle/* | xargs -n1 -- sh -c 'echo $1; cat $1' --",
+        ),
         make_event_log_task(),
         make_event_log_task_sg_info(),
-        ]
+    ]
 
     return _tasks
 
@@ -734,14 +852,14 @@ def read_guts(guts, key):
 
 
 def winquote_path(s):
-    return '"'+s.replace("\\\\", "\\").replace('/', "\\")+'"'
+    return '"' + s.replace("\\\\", "\\").replace("/", "\\") + '"'
 
 
 # python's split splits empty string to [''] which doesn't make any
 # sense. So this function works around that.
 def correct_split(string, splitchar):
     rv = string.split(splitchar)
-    if rv == ['']:
+    if rv == [""]:
         rv = []
     return rv
 
@@ -755,13 +873,20 @@ def make_stats_archives_task(guts, initargs_path):
     if dump_stats is None or escript_wrapper is None or not stats_dir:
         return []
 
-    return AllOsTask("stats archives",
-                     [escript,
-                      escript_wrapper,
-                      "--initargs-path", initargs_path, "--",
-                      dump_stats, stats_dir],
-                     no_header=True,
-                     log_file="stats_archives.json")
+    return AllOsTask(
+        "stats archives",
+        [
+            escript,
+            escript_wrapper,
+            "--initargs-path",
+            initargs_path,
+            "--",
+            dump_stats,
+            stats_dir,
+        ],
+        no_header=True,
+        log_file="stats_archives.json",
+    )
 
 
 def make_product_task(guts, initargs_path, options):
@@ -783,176 +908,319 @@ def make_product_task(guts, initargs_path, options):
 
     lookup_tasks = []
     if lookup_cmd is not None:
-        lookup_tasks = [UnixTask("DNS lookup information for %s" % node,
-                                 "%(lookup_cmd)s '%(node)s'" % locals())
-                        for node in correct_split(read_guts(guts, "nodes"), ",")]
+        lookup_tasks = [
+            UnixTask(
+                "DNS lookup information for %s" % node,
+                "%(lookup_cmd)s '%(node)s'" % locals(),
+            )
+            for node in correct_split(read_guts(guts, "nodes"), ",")
+        ]
 
     query_tasks = []
     query_port = read_guts(guts, "query_port")
     if query_port:
-        def make(statement):
-            return make_query_task(statement, user="@",
-                                   password=read_guts(guts, "memcached_pass"),
-                                   port=query_port)
 
-        query_tasks = [make("SELECT * FROM system:datastores"),
-                       make("SELECT * FROM system:namespaces"),
-                       make("SELECT * FROM system:keyspaces"),
-                       make("SELECT * FROM system:indexes")]
+        def make(statement):
+            return make_query_task(
+                statement,
+                user="@",
+                password=read_guts(guts, "memcached_pass"),
+                port=query_port,
+            )
+
+        query_tasks = [
+            make("SELECT * FROM system:datastores"),
+            make("SELECT * FROM system:namespaces"),
+            make("SELECT * FROM system:keyspaces"),
+            make("SELECT * FROM system:indexes"),
+        ]
 
     index_tasks = []
     index_port = read_guts(guts, "indexer_http_port")
     if index_port:
-        url = 'http://127.0.0.1:%s/getIndexStatus' % index_port
-        index_tasks = [make_curl_task(name="Index definitions are: ",
-                       user="@", password=read_guts(guts, "memcached_pass"), url=url)]
+        url = "http://127.0.0.1:%s/getIndexStatus" % index_port
+        index_tasks = [
+            make_curl_task(
+                name="Index definitions are: ",
+                user="@",
+                password=read_guts(guts, "memcached_pass"),
+                url=url,
+            )
+        ]
 
     fts_tasks = []
     fts_port = read_guts(guts, "fts_http_port")
     if fts_port:
-        url = 'http://127.0.0.1:%s/api/diag' % fts_port
-        fts_tasks = [make_curl_task(name="FTS /api/diag: ",
-                     user="@", password=read_guts(guts, "memcached_pass"), url=url)]
+        url = "http://127.0.0.1:%s/api/diag" % fts_port
+        fts_tasks = [
+            make_curl_task(
+                name="FTS /api/diag: ",
+                user="@",
+                password=read_guts(guts, "memcached_pass"),
+                url=url,
+            )
+        ]
 
     _tasks = [
-        UnixTask("Directory structure",
-                 ["ls", "-lRai", root]),
-        UnixTask("Database directory structure",
-                 ["ls", "-lRai", dbdir]),
-        UnixTask("Index directory structure",
-                 ["ls", "-lRai", viewdir]),
-        UnixTask("couch_dbinfo",
-                 ["find", dbdir, "-type", "f",
-                  "-name", "*.couch.*",
-                  "-exec", "couch_dbinfo", "{}", "+"]),
-        LinuxTask("Database directory filefrag info",
-                  ["find", dbdir, "-type", "f", "-exec", "filefrag", "-v", "{}", "+"]),
-        LinuxTask("Index directory filefrag info",
-                  ["find", viewdir, "-type", "f", "-exec", "filefrag", "-v", "{}", "+"]),
-        WindowsTask("Database directory structure",
-                    "dir /s " + winquote_path(dbdir)),
-        WindowsTask("Index directory structure",
-                    "dir /s " + winquote_path(viewdir)),
-        WindowsTask("Version file",
-                    "type " + winquote_path(basedir()) + "\\..\\VERSION.txt"),
-        WindowsTask("Manifest file",
-                    "type " + winquote_path(basedir()) + "\\..\\manifest.txt"),
-        WindowsTask("Manifest file",
-                    "type " + winquote_path(basedir()) + "\\..\\manifest.xml"),
+        UnixTask("Directory structure", ["ls", "-lRai", root]),
+        UnixTask("Database directory structure", ["ls", "-lRai", dbdir]),
+        UnixTask("Index directory structure", ["ls", "-lRai", viewdir]),
+        UnixTask(
+            "couch_dbinfo",
+            [
+                "find",
+                dbdir,
+                "-type",
+                "f",
+                "-name",
+                "*.couch.*",
+                "-exec",
+                "couch_dbinfo",
+                "{}",
+                "+",
+            ],
+        ),
+        LinuxTask(
+            "Database directory filefrag info",
+            ["find", dbdir, "-type", "f", "-exec", "filefrag", "-v", "{}", "+"],
+        ),
+        LinuxTask(
+            "Index directory filefrag info",
+            ["find", viewdir, "-type", "f", "-exec", "filefrag", "-v", "{}", "+"],
+        ),
+        WindowsTask("Database directory structure", "dir /s " + winquote_path(dbdir)),
+        WindowsTask("Index directory structure", "dir /s " + winquote_path(viewdir)),
+        WindowsTask(
+            "Version file", "type " + winquote_path(basedir()) + "\\..\\VERSION.txt"
+        ),
+        WindowsTask(
+            "Manifest file", "type " + winquote_path(basedir()) + "\\..\\manifest.txt"
+        ),
+        WindowsTask(
+            "Manifest file", "type " + winquote_path(basedir()) + "\\..\\manifest.xml"
+        ),
         LinuxTask("Version file", "cat '%s/VERSION.txt'" % root),
         LinuxTask("Manifest file", "cat '%s/manifest.txt'" % root),
         LinuxTask("Manifest file", "cat '%s/manifest.xml'" % root),
         AllOsTask("Couchbase config", "", literal=read_guts(guts, "ns_config")),
-        AllOsTask("Couchbase static config", "", literal=read_guts(guts, "static_config")),
+        AllOsTask(
+            "Couchbase static config", "", literal=read_guts(guts, "static_config")
+        ),
         AllOsTask("Raw ns_log", "", literal=read_guts(guts, "ns_log")),
         # TODO: just gather those in python
-        WindowsTask("Memcached logs",
-                    "cd " + winquote_path(read_guts(guts, "memcached_logs_path")) + " && " +
-                    "for /f %a IN ('dir /od /b memcached.log.*') do type %a",
-                    log_file="memcached.log"),
-        UnixTask("Memcached logs",
-                 ["sh", "-c", 'cd "$1"; for file in $(ls -tr memcached.log.*); do cat \"$file\"; done', "--", read_guts(guts, "memcached_logs_path")],
-                 log_file="memcached.log"),
-        [WindowsTask("Ini files (%s)" % p,
-                     "type " + winquote_path(p),
-                     log_file="ini.log")
-         for p in read_guts(guts, "couch_inis").split(";")],
-        UnixTask("Ini files",
-                 ["sh", "-c", 'for i in "$@"; do echo "file: $i"; cat "$i"; done', "--"] + read_guts(guts, "couch_inis").split(";"),
-                 log_file="ini.log"),
-
-        make_curl_task(name="couchbase diags",
-                       user="@",
-                       password=read_guts(guts, "memcached_pass"),
-                       timeout=600,
-                       url=diag_url,
-                       log_file="diag.log"),
-
-        make_curl_task(name="master events",
-                       user="@",
-                       password=read_guts(guts, "memcached_pass"),
-                       timeout=300,
-                       url='http://127.0.0.1:%s/diag/masterEvents?o=1' % read_guts(guts, "rest_port"),
-                       log_file="master_events.log",
-                       no_header=True),
-
-        make_curl_task(name="ale configuration",
-                       user="@",
-                       password=read_guts(guts, "memcached_pass"),
-                       url='http://127.0.0.1:%s/diag/ale' % read_guts(guts, "rest_port"),
-                       log_file="couchbase.log"),
-
-        [AllOsTask("couchbase logs (%s)" % name, "cbbrowse_logs %s" % name,
-                   addenv=[("REPORT_DIR", read_guts(guts, "log_path"))],
-                   log_file="ns_server.%s" % name)
-         for name in ["debug.log", "info.log", "error.log", "couchdb.log",
-                      "xdcr.log", "xdcr_errors.log",
-                      "views.log", "mapreduce_errors.log",
-                      "stats.log", "babysitter.log", "ssl_proxy.log",
-                      "reports.log", "xdcr_trace.log", "http_access.log",
-                      "http_access_internal.log", "ns_couchdb.log",
-                      "goxdcr.log", "query.log", "projector.log", "indexer.log",
-                      "fts.log", "metakv.log"]],
-
-        [AllOsTask("memcached stats %s" % kind,
-
-                   flatten(["cbstats", "-a", "127.0.0.1:%s" % read_guts(guts, "memcached_port"), kind, "-b", read_guts(guts, "memcached_admin"), "-p", read_guts(guts, "memcached_pass")]),
-                   log_file="stats.log",
-                   timeout=60)
-         for kind in ["all", "allocator", "checkpoint", "config",
-                      "dcp", "dcpagg",
-                      ["diskinfo", "detail"], ["dispatcher", "logs"],
-                      "failovers", ["hash", "detail"],
-                      "kvstore", "kvtimings", "memory",
-                      "prev-vbucket",
-                      "runtimes", "scheduler",
-                      "tap", "tapagg",
-                      "timings", "uuid",
-                      "vbucket", "vbucket-details", "vbucket-seqno",
-                      "warmup", "workload"]],
-
-        [AllOsTask("memcached mcstat %s" % kind,
-                   flatten(["mcstat", "-h", "127.0.0.1:%s" % read_guts(guts, "memcached_port"),
-                            "-u", read_guts(guts, "memcached_admin"),
-                            "-P", read_guts(guts, "memcached_pass"), kind]),
-                   log_file="stats.log",
-                   timeout=60)
-         for kind in ["connections"]],
-
-        [AllOsTask("ddocs for %s (%s)" % (bucket, path),
-                   ["couch_dbdump", path],
-                   log_file="ddocs.log")
-         for bucket in set(correct_split(read_guts(guts, "buckets"), ",")) - set(correct_split(read_guts(guts, "memcached_buckets"), ","))
-         for path in glob.glob(os.path.join(dbdir, bucket, "master.couch*"))],
-        [AllOsTask("replication docs (%s)" % (path),
-                   ["couch_dbdump", path],
-                   log_file="ddocs.log")
-         for path in glob.glob(os.path.join(dbdir, "_replicator.couch*"))],
-
-        [AllOsTask("Couchstore local documents (%s, %s)" % (bucket, os.path.basename(path)),
-                   ["couch_dbdump", "--local", path],
-                   log_file="couchstore_local.log")
-         for bucket in set(correct_split(read_guts(guts, "buckets"), ",")) - set(correct_split(read_guts(guts, "memcached_buckets"), ","))
-         for path in glob.glob(os.path.join(dbdir, bucket, "*.couch.*"))],
-
-        [UnixTask("moxi stats (port %s)" % port,
-                  "echo stats proxy | nc 127.0.0.1 %s" % port,
-                  log_file="stats.log",
-                  timeout=60)
-         for port in correct_split(read_guts(guts, "moxi_ports"), ",")],
-
-        [AllOsTask("mctimings",
-                   ["mctimings",
-                    "-u", read_guts(guts, "memcached_admin"),
-                    "-P", read_guts(guts, "memcached_pass"),
-                    "-h", "127.0.0.1:%s" % read_guts(guts, "memcached_port"),
-                    "-v"] + stat,
-                   log_file="stats.log",
-                   timeout=60)
-         for stat in ([], ["subdoc_execute"])],
-
-        make_stats_archives_task(guts, initargs_path)
-        ]
+        WindowsTask(
+            "Memcached logs",
+            "cd "
+            + winquote_path(read_guts(guts, "memcached_logs_path"))
+            + " && "
+            + "for /f %a IN ('dir /od /b memcached.log.*') do type %a",
+            log_file="memcached.log",
+        ),
+        UnixTask(
+            "Memcached logs",
+            [
+                "sh",
+                "-c",
+                'cd "$1"; for file in $(ls -tr memcached.log.*); do cat "$file"; done',
+                "--",
+                read_guts(guts, "memcached_logs_path"),
+            ],
+            log_file="memcached.log",
+        ),
+        [
+            WindowsTask(
+                "Ini files (%s)" % p, "type " + winquote_path(p), log_file="ini.log"
+            )
+            for p in read_guts(guts, "couch_inis").split(";")
+        ],
+        UnixTask(
+            "Ini files",
+            ["sh", "-c", 'for i in "$@"; do echo "file: $i"; cat "$i"; done', "--"]
+            + read_guts(guts, "couch_inis").split(";"),
+            log_file="ini.log",
+        ),
+        make_curl_task(
+            name="couchbase diags",
+            user="@",
+            password=read_guts(guts, "memcached_pass"),
+            timeout=600,
+            url=diag_url,
+            log_file="diag.log",
+        ),
+        make_curl_task(
+            name="master events",
+            user="@",
+            password=read_guts(guts, "memcached_pass"),
+            timeout=300,
+            url="http://127.0.0.1:%s/diag/masterEvents?o=1"
+            % read_guts(guts, "rest_port"),
+            log_file="master_events.log",
+            no_header=True,
+        ),
+        make_curl_task(
+            name="ale configuration",
+            user="@",
+            password=read_guts(guts, "memcached_pass"),
+            url="http://127.0.0.1:%s/diag/ale" % read_guts(guts, "rest_port"),
+            log_file="couchbase.log",
+        ),
+        [
+            AllOsTask(
+                "couchbase logs (%s)" % name,
+                "cbbrowse_logs %s" % name,
+                addenv=[("REPORT_DIR", read_guts(guts, "log_path"))],
+                log_file="ns_server.%s" % name,
+            )
+            for name in [
+                "debug.log",
+                "info.log",
+                "error.log",
+                "couchdb.log",
+                "xdcr.log",
+                "xdcr_errors.log",
+                "views.log",
+                "mapreduce_errors.log",
+                "stats.log",
+                "babysitter.log",
+                "ssl_proxy.log",
+                "reports.log",
+                "xdcr_trace.log",
+                "http_access.log",
+                "http_access_internal.log",
+                "ns_couchdb.log",
+                "goxdcr.log",
+                "query.log",
+                "projector.log",
+                "indexer.log",
+                "fts.log",
+                "metakv.log",
+            ]
+        ],
+        [
+            AllOsTask(
+                "memcached stats %s" % kind,
+                flatten(
+                    [
+                        "cbstats",
+                        "-a",
+                        "127.0.0.1:%s" % read_guts(guts, "memcached_port"),
+                        kind,
+                        "-b",
+                        read_guts(guts, "memcached_admin"),
+                        "-p",
+                        read_guts(guts, "memcached_pass"),
+                    ]
+                ),
+                log_file="stats.log",
+                timeout=60,
+            )
+            for kind in [
+                "all",
+                "allocator",
+                "checkpoint",
+                "config",
+                "dcp",
+                "dcpagg",
+                ["diskinfo", "detail"],
+                ["dispatcher", "logs"],
+                "failovers",
+                ["hash", "detail"],
+                "kvstore",
+                "kvtimings",
+                "memory",
+                "prev-vbucket",
+                "runtimes",
+                "scheduler",
+                "tap",
+                "tapagg",
+                "timings",
+                "uuid",
+                "vbucket",
+                "vbucket-details",
+                "vbucket-seqno",
+                "warmup",
+                "workload",
+            ]
+        ],
+        [
+            AllOsTask(
+                "memcached mcstat %s" % kind,
+                flatten(
+                    [
+                        "mcstat",
+                        "-h",
+                        "127.0.0.1:%s" % read_guts(guts, "memcached_port"),
+                        "-u",
+                        read_guts(guts, "memcached_admin"),
+                        "-P",
+                        read_guts(guts, "memcached_pass"),
+                        kind,
+                    ]
+                ),
+                log_file="stats.log",
+                timeout=60,
+            )
+            for kind in ["connections"]
+        ],
+        [
+            AllOsTask(
+                "ddocs for %s (%s)" % (bucket, path),
+                ["couch_dbdump", path],
+                log_file="ddocs.log",
+            )
+            for bucket in set(correct_split(read_guts(guts, "buckets"), ","))
+            - set(correct_split(read_guts(guts, "memcached_buckets"), ","))
+            for path in glob.glob(os.path.join(dbdir, bucket, "master.couch*"))
+        ],
+        [
+            AllOsTask(
+                "replication docs (%s)" % (path),
+                ["couch_dbdump", path],
+                log_file="ddocs.log",
+            )
+            for path in glob.glob(os.path.join(dbdir, "_replicator.couch*"))
+        ],
+        [
+            AllOsTask(
+                "Couchstore local documents (%s, %s)"
+                % (bucket, os.path.basename(path)),
+                ["couch_dbdump", "--local", path],
+                log_file="couchstore_local.log",
+            )
+            for bucket in set(correct_split(read_guts(guts, "buckets"), ","))
+            - set(correct_split(read_guts(guts, "memcached_buckets"), ","))
+            for path in glob.glob(os.path.join(dbdir, bucket, "*.couch.*"))
+        ],
+        [
+            UnixTask(
+                "moxi stats (port %s)" % port,
+                "echo stats proxy | nc 127.0.0.1 %s" % port,
+                log_file="stats.log",
+                timeout=60,
+            )
+            for port in correct_split(read_guts(guts, "moxi_ports"), ",")
+        ],
+        [
+            AllOsTask(
+                "mctimings",
+                [
+                    "mctimings",
+                    "-u",
+                    read_guts(guts, "memcached_admin"),
+                    "-P",
+                    read_guts(guts, "memcached_pass"),
+                    "-h",
+                    "127.0.0.1:%s" % read_guts(guts, "memcached_port"),
+                    "-v",
+                ]
+                + stat,
+                log_file="stats.log",
+                timeout=60,
+            )
+            for stat in ([], ["subdoc_execute"])
+        ],
+        make_stats_archives_task(guts, initargs_path),
+    ]
 
     _tasks = flatten([lookup_tasks, query_tasks, index_tasks, fts_tasks, _tasks])
 
@@ -991,18 +1259,18 @@ def get_server_guts(initargs_path):
     d = {}
     if len(tokens) > 1:
         for i in range(0, len(tokens), 2):
-            d[tokens[i]] = tokens[i+1]
+            d[tokens[i]] = tokens[i + 1]
     return d
 
 
 def guess_utility(command):
     if isinstance(command, list):
-        command = ' '.join(command)
+        command = " ".join(command)
 
     if not command:
         return None
 
-    if re.findall(r'[|;&]|\bsh\b|\bsu\b|\bfind\b|\bfor\b', command):
+    if re.findall(r"[|;&]|\bsh\b|\bsu\b|\bfind\b|\bfor\b", command):
         # something hard to easily understand; let the human decide
         return command
     else:
@@ -1010,10 +1278,12 @@ def guess_utility(command):
 
 
 def dump_utilities(*args, **kwargs):
-    specific_platforms = {SolarisTask: 'Solaris',
-                          LinuxTask: 'Linux',
-                          WindowsTask: 'Windows',
-                          MacOSXTask: 'Mac OS X'}
+    specific_platforms = {
+        SolarisTask: "Solaris",
+        LinuxTask: "Linux",
+        WindowsTask: "Windows",
+        MacOSXTask: "Mac OS X",
+    }
     platform_utils = dict((name, set()) for name in list(specific_platforms.values()))
 
     class FakeOptions(object):
@@ -1027,13 +1297,15 @@ def dump_utilities(*args, **kwargs):
         if utility is None:
             continue
 
-        for (platform, name) in list(specific_platforms.items()):
+        for platform, name in list(specific_platforms.items()):
             if isinstance(task, platform):
                 platform_utils[name].add(utility)
 
-    print("This is an autogenerated, possibly incomplete and flawed list of utilites used by cbcollect_info")
+    print(
+        "This is an autogenerated, possibly incomplete and flawed list of utilites used by cbcollect_info"
+    )
 
-    for (name, utilities) in sorted(list(platform_utils.items()), key=lambda x: x[0]):
+    for name, utilities in sorted(list(platform_utils.items()), key=lambda x: x[0]):
         print("\n%s:" % name)
 
         for utility in sorted(utilities):
@@ -1046,6 +1318,7 @@ def setup_stdin_watcher():
     def _in_thread():
         sys.stdin.readline()
         AltExit.exit(2)
+
     th = threading.Thread(target=_in_thread)
     th.setDaemon(True)
     th.start()
@@ -1070,26 +1343,29 @@ def do_upload(path, url, proxy):
     Uploads file path to a URL and returns exit code for the program.
     """
 
-    with open(path, 'rb') as f:
-
+    with open(path, "rb") as f:
         # Get proxies from environment/system
         proxy_handler = urllib.request.ProxyHandler(urllib.request.getproxies())
         if proxy != "":
             # unless a proxy is explicitly passed, then use that instead
-            proxy_handler = urllib.request.ProxyHandler({'https': proxy, 'http': proxy})
+            proxy_handler = urllib.request.ProxyHandler({"https": proxy, "http": proxy})
 
         opener = urllib.request.build_opener(proxy_handler)
-        request = urllib.request.Request(url, data=f, method='PUT')
-        request.add_header(str('Content-Type'), str('application/zip'))
-        request.add_header('Content-Length', os.fstat(f.fileno()).st_size)
+        request = urllib.request.Request(url, data=f, method="PUT")
+        request.add_header(str("Content-Type"), str("application/zip"))
+        request.add_header("Content-Length", os.fstat(f.fileno()).st_size)
 
         exit_code = 0
         try:
             url = opener.open(request)
             if url.getcode() == 200:
-                log('Done uploading')
+                log("Done uploading")
             else:
-                raise Exception('Error uploading, expected status code 200, got status code: {0}'.format(url.getcode()))
+                raise Exception(
+                    "Error uploading, expected status code 200, got status code: {0}".format(
+                        url.getcode()
+                    )
+                )
         except Exception as e:
             log(traceback.format_exc())
             return 1
@@ -1100,7 +1376,7 @@ def do_upload(path, url, proxy):
 def parse_host(host):
     url = urllib.parse.urlsplit(host)
     if not url.scheme:
-        url = urllib.parse.urlsplit('https://' + host)
+        url = urllib.parse.urlsplit("https://" + host)
 
     return url.scheme, url.netloc, url.path
 
@@ -1116,21 +1392,22 @@ def generate_upload_url(parser, options, zip_filename):
         customer = urllib.parse.quote(options.upload_customer)
         fname = urllib.parse.quote(os.path.basename(zip_filename))
         if options.upload_ticket:
-            full_path = '%s/%s/%d/%s' % (path, customer, options.upload_ticket, fname)
+            full_path = "%s/%s/%d/%s" % (path, customer, options.upload_ticket, fname)
         else:
-            full_path = '%s/%s/%s' % (path, customer, fname)
+            full_path = "%s/%s/%s" % (path, customer, fname)
 
-        upload_url = urllib.parse.urlunsplit((scheme, netloc, full_path, '', ''))
+        upload_url = urllib.parse.urlunsplit((scheme, netloc, full_path, "", ""))
         log("Will upload collected .zip file into %s" % upload_url)
     return upload_url
 
 
 def check_ticket(option, opt, value):
-    if re.match(r'^\d{1,7}$', value):
+    if re.match(r"^\d{1,7}$", value):
         return int(value)
     else:
         raise optparse.OptionValueError(
-            "option %s: invalid ticket number: %r" % (opt, value))
+            "option %s: invalid ticket number: %r" % (opt, value)
+        )
 
 
 class CbcollectInfoOptions(optparse.Option):
@@ -1155,6 +1432,6 @@ def find_primary_addr(default=None):
 
 
 def exec_name(name):
-    if sys.platform == 'win32':
+    if sys.platform == "win32":
         name += ".exe"
     return name
