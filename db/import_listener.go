@@ -174,7 +174,7 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 			il.importStats.ImportErrorCount.Add(1)
 			return
 		}
-		base.DebugfCtx(ctx, base.KeyImport, "%s not able to be imported. Error: %v", base.UD(event.Key), err)
+		base.DebugfCtx(ctx, base.KeyImport, "%s will not be imported: %v", base.UD(event.Key), err)
 		return
 	}
 
