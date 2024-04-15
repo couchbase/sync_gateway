@@ -2070,13 +2070,16 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			var rawXattr []byte
 			updatedDoc.Doc, rawXattr, err = doc.MarshalWithXattr()
 			docBytes = len(updatedDoc.Doc)
-			mou, err := base.JSONMarshal(Mou{})
+			/*mou, err := base.JSONMarshal(Mou{
+				cas: cas,
+			})
 			if err != nil {
 				return sgbucket.UpdatedDoc{}, fmt.Errorf("Could not marshal mou: %w", err)
 			}
+			*/
 			updatedDoc.Xattrs = map[string][]byte{
 				base.SyncXattrName: rawXattr,
-				mouXattrName:       mou,
+				//mouXattrName:       mou,
 			}
 
 			// Warn when sync data is larger than a configured threshold

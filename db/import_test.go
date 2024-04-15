@@ -588,6 +588,7 @@ func TestImportInvalidMetadata(t *testing.T) {
 
 // TestMetadataOnlyImport
 func TestMetadataOnlyImport(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyMigrate, base.KeyImport)
 	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(base.TestCtx(t))

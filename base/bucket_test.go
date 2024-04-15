@@ -16,6 +16,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"math/big"
 	"os"
@@ -23,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/rosmar"
 
 	"github.com/stretchr/testify/assert"
@@ -536,4 +538,44 @@ func TestKeyNotFound(t *testing.T) {
 
 	_, _, getRawErr := ds.GetRaw("nonexistentKey")
 	require.True(t, IsKeyNotFoundError(ds, getRawErr))
+}
+
+func TestMacroExpansionMultipleXattrs(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	coll := bucket.GetSingleDataStore()
+	// Successful case - sets cas and crc32c in the _sync xattr
+	opts := &sgbucket.MutateInOptions{}
+	opts.MacroExpansion = []sgbucket.MacroExpansionSpec{
+		{Path: "_xattr1.testcas", Type: sgbucket.MacroCas},
+		{Path: "_xattr2.testcas", Type: sgbucket.MacroCas},
+	}
+	bodyBytes := []byte(`{"a":123}`)
+
+	xattrsInput := map[string][]byte{
+		"_xattr1": []byte(`{"x":"abc"}`),
+		"_xattr2": []byte(`{"x":"def"}`),
+		"_xattr3": []byte(`{"x":"ghi"}`),
+	}
+	casOut, err := coll.WriteWithXattrs(ctx, "key", 0, 0, bodyBytes, xattrsInput, opts)
+	require.NoError(t, err)
+
+	_, xattrs, getCas, err := coll.GetWithXattrs(ctx, "key", []string{"_xattr1", "_xattr2", "_xattr3"})
+	require.NoError(t, err)
+	require.Equal(t, getCas, casOut)
+
+	for _, xattr := range []string{"_xattr1", "_xattr2", "_xattr3"} {
+		marshalledXval, ok := xattrs[xattr]
+		require.True(t, ok, "xattr %s not found", xattr)
+		var xattr1 map[string]string
+		err = json.Unmarshal(marshalledXval, &xattr1)
+		require.NoError(t, err)
+		if xattr == "_xattr1" || xattr == "_xattr2" {
+			require.Equal(t, string(Uint64CASToLittleEndianHex(casOut)), xattr1["testcas"])
+		} else {
+			require.NotContains(t, xattr1, "testcas")
+		}
+	}
 }
