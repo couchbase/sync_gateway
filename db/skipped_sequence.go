@@ -32,7 +32,7 @@ type SkippedSequenceListEntry interface {
 	getStartSeq() uint64
 	isRange() bool
 	getNumSequencesInEntry() int64
-	setRangeForIncomingContiguousEntry(lastSeq uint64, timeStamp int64)
+	extendRange(lastSeq uint64, timeStamp int64)
 }
 
 // SkippedSequenceSlice stores the set of skipped sequences as an ordered slice of single skipped sequences
@@ -66,22 +66,41 @@ func NewSkippedSequenceSlice(clipHeadroom int) *SkippedSequenceSlice {
 	}
 }
 
-// NewSingleSkippedSequenceEntry returns a SingleSkippedSequence with the specified sequence and the current
-// time in unix time
-func NewSingleSkippedSequenceEntry(sequence uint64, timeStamp int64) *SingleSkippedSequence {
+// NewSingleSkippedSequenceEntryAt returns a SingleSkippedSequence with the specified sequence and the supplied
+// timestamp in unix time
+func NewSingleSkippedSequenceEntryAt(sequence uint64, timeStamp int64) *SingleSkippedSequence {
 	return &SingleSkippedSequence{
 		seq:       sequence,
 		timestamp: timeStamp,
 	}
 }
 
-// NewSkippedSequenceRangeEntry returns a SkippedSequenceRange with the specified sequence range and the current
+// NewSingleSkippedSequenceEntry returns a SingleSkippedSequence with the specified sequence and the current
 // time in unix time
-func NewSkippedSequenceRangeEntry(start, end uint64, timeStamp int64) *SkippedSequenceRange {
+func NewSingleSkippedSequenceEntry(sequence uint64) *SingleSkippedSequence {
+	return &SingleSkippedSequence{
+		seq:       sequence,
+		timestamp: time.Now().Unix(),
+	}
+}
+
+// NewSkippedSequenceRangeEntryAt returns a SkippedSequenceRange with the specified sequence range and the supplied
+// timestamp in unix time
+func NewSkippedSequenceRangeEntryAt(start, end uint64, timeStamp int64) *SkippedSequenceRange {
 	return &SkippedSequenceRange{
 		start:     start,
 		end:       end,
 		timestamp: timeStamp,
+	}
+}
+
+// NewSkippedSequenceRangeEntry returns a SkippedSequenceRange with the specified sequence range and the current
+// timestamp in unix time
+func NewSkippedSequenceRangeEntry(start, end uint64) *SkippedSequenceRange {
+	return &SkippedSequenceRange{
+		start:     start,
+		end:       end,
+		timestamp: time.Now().Unix(),
 	}
 }
 
@@ -121,9 +140,9 @@ func (s *SingleSkippedSequence) getNumSequencesInEntry() int64 {
 	return 1
 }
 
-// setRangeForIncomingContiguousEntry will set the range last seq to the incoming contiguous entry's last seq
+// extendRange will set the range last seq to the incoming contiguous entry's last seq
 // + set the timestamp.
-func (s *SingleSkippedSequence) setRangeForIncomingContiguousEntry(lastSeq uint64, timeStamp int64) {
+func (s *SingleSkippedSequence) extendRange(lastSeq uint64, timeStamp int64) {
 	// no-op
 }
 
@@ -164,9 +183,9 @@ func (s *SkippedSequenceRange) getNumSequencesInEntry() int64 {
 	return int64(numSequences)
 }
 
-// setRangeForIncomingContiguousEntry will set the range last seq to the incoming contiguous entry's last seq
+// extendRange will set the range last seq to the incoming contiguous entry's last seq
 // + set the timestamp.
-func (s *SkippedSequenceRange) setRangeForIncomingContiguousEntry(lastSeq uint64, timeStamp int64) {
+func (s *SkippedSequenceRange) extendRange(lastSeq uint64, timeStamp int64) {
 	s.timestamp = timeStamp
 	s.setLastSeq(lastSeq)
 }
@@ -185,7 +204,7 @@ func (s *SkippedSequenceSlice) SkippedSequenceCompact(ctx context.Context, maxWa
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	timeNow := getCurrentUnixTime()
+	timeNow := time.Now().Unix()
 	indexToDelete := -1
 	for _, v := range s.list {
 		timeStamp := v.getTimestamp()
@@ -263,7 +282,8 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 	} else {
 		// range entry handling
 		rangeElem := s.list[index]
-		if rangeElem.getNumSequencesInEntry() == 1 {
+		numSequences := rangeElem.getNumSequencesInEntry()
+		if numSequences == 1 {
 			// simple delete case
 			s.list = slices.Delete(s.list, index, index+1)
 			return nil
@@ -279,11 +299,11 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 			return nil
 		}
 
-		if rangeElem.getNumSequencesInEntry() == 3 {
+		if numSequences == 3 {
 			// if we get here then x is in middle of the 3 sequence range. x being == startSeq or
 			// lastSeq is handled above
 			// add new single entry at elem + 1 then modify range
-			newElem := NewSingleSkippedSequenceEntry(rangeElem.getLastSeq(), rangeElem.getTimestamp())
+			newElem := NewSingleSkippedSequenceEntryAt(rangeElem.getLastSeq(), rangeElem.getTimestamp())
 			s.insert(index+1, newElem)
 			rangeElem.setLastSeq(x - 1)
 			return nil
@@ -292,7 +312,7 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 		// handling for if x is startSeq+1 or lastSeq-1
 		if rangeElem.getStartSeq() == x-1 {
 			// insert single skipped entry + alter start seq to x + 1
-			newElem := NewSingleSkippedSequenceEntry(x-1, rangeElem.getTimestamp())
+			newElem := NewSingleSkippedSequenceEntryAt(x-1, rangeElem.getTimestamp())
 			s.insert(index, newElem)
 			rangeElem.setStartSeq(x + 1)
 			return nil
@@ -300,7 +320,7 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 
 		if rangeElem.getLastSeq() == x+1 {
 			// insert single skipped entry at index+1 + alter last seq to x - 1
-			newElem := NewSingleSkippedSequenceEntry(x+1, rangeElem.getTimestamp())
+			newElem := NewSingleSkippedSequenceEntryAt(x+1, rangeElem.getTimestamp())
 			s.insert(index+1, newElem)
 			rangeElem.setLastSeq(x - 1)
 			return nil
@@ -308,7 +328,7 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 
 		// if we get here we can assume that startSeq < x < lastSeq
 		// split index range
-		newElem := NewSkippedSequenceRangeEntry(x+1, rangeElem.getLastSeq(), rangeElem.getTimestamp())
+		newElem := NewSkippedSequenceRangeEntryAt(x+1, rangeElem.getLastSeq(), rangeElem.getTimestamp())
 		s.insert(index+1, newElem)
 		rangeElem.setLastSeq(x - 1)
 	}
@@ -339,7 +359,7 @@ func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry SkippedSequenceLis
 		// adding contiguous sequence
 		if s.list[index].isRange() {
 			// set last seq in the range to the new arriving sequence + alter timestamp to incoming entries timestamp
-			s.list[index].setRangeForIncomingContiguousEntry(entry.getLastSeq(), entry.getTimestamp())
+			s.list[index].extendRange(entry.getLastSeq(), entry.getTimestamp())
 		} else {
 			// take the sequence from the single entry and create a new range entry in its place
 			lastEntryStartSeq := s.list[index].getStartSeq()
@@ -349,7 +369,7 @@ func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry SkippedSequenceLis
 				s.list[index] = entry
 			} else {
 				endSeq := entry.getLastSeq()
-				s.list[index] = NewSkippedSequenceRangeEntry(lastEntryStartSeq, endSeq, getCurrentUnixTime())
+				s.list[index] = NewSkippedSequenceRangeEntry(lastEntryStartSeq, endSeq)
 			}
 		}
 	} else {
@@ -367,9 +387,4 @@ func (s *SkippedSequenceSlice) getOldest() uint64 {
 	}
 	// grab fist element in slice and take the start seq of that range/single sequence
 	return s.list[0].getStartSeq()
-}
-
-// getCurrentUnixTime will return the current time in unix time format
-func getCurrentUnixTime() int64 {
-	return time.Now().Unix()
 }
