@@ -170,9 +170,10 @@ class Task(object):
     def execute(self, fp):
         """Run the task"""
         import subprocess
+
         use_shell = not isinstance(self.command, list)
         if "literal" in self.__dict__:
-            print(self.literal, file=fp)
+            fp.write(self.literal.encode("utf-8"))
             return 0
 
         env = None
@@ -192,7 +193,7 @@ class Task(object):
             # setting non-zero status code. It's might also
             # automatically handle things like "failed to fork due
             # to some system limit".
-            print("Failed to execute %s: %s" % (self.command, e), file=fp)
+            fp.write(f"Failed to execute {self.command}: {e}".encode("utf-8"))
             return 127
         p.stdin.close()
 
@@ -225,7 +226,11 @@ class Task(object):
                 # timer is fired; that would result in a spurious timeout
                 # message
                 if timer_fired.isSet():
-                    print("`%s` timed out after %s seconds" % (self.command, self.timeout), file=fp)
+                    fp.write(
+                        f"`{self.command}` timed out after {self.timeout} seconds".encode(
+                            "utf-8"
+                        )
+                    )
 
         return p.wait()
 

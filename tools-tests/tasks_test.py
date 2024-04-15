@@ -8,6 +8,7 @@
 
 import json
 import pathlib
+import unittest
 
 import password_remover
 import tasks
@@ -99,3 +100,31 @@ def test_make_curl_task(tmpdir, httpserver):
         assert REDACTED_OUTPUT in fh.read()
 
     httpserver.check()
+
+
+def test_task_print_literal(tmp_path):
+    task = tasks.AllOsTask("test_task", ["notacommand"], literal="literal")
+    runner = tasks.TaskRunner(tmp_dir=tmp_path)
+    runner.run(task)
+    with open(pathlib.Path(runner.tmpdir) / runner.default_name) as fh:
+        assert "literal" in fh.read()
+
+
+def test_task_timeout(tmp_path):
+    task = tasks.AllOsTask("test_task", ["sleep", "5"], timeout=0.01)
+    runner = tasks.TaskRunner(tmp_dir=tmp_path)
+    runner.run(task)
+
+    with open(pathlib.Path(runner.tmpdir) / runner.default_name) as fh:
+        assert "`['sleep', '5']` timed out after 0.01 seconds" in fh.read()
+
+
+def test_task_popen_exception(tmp_path):
+    task = tasks.AllOsTask("test_task", ["notacommand"], timeout=0.01)
+    runner = tasks.TaskRunner(tmp_dir=tmp_path)
+    with unittest.mock.patch("subprocess.Popen") as popen:
+        popen.side_effect = OSError("Boom!")
+        runner.run(task)
+
+    with open(pathlib.Path(runner.tmpdir) / runner.default_name) as fh:
+        assert "Failed to execute ['notacommand']: Boom!" in fh.read()
