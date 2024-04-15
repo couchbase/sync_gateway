@@ -253,7 +253,7 @@ func (c *DatabaseCollection) unsupportedOptions() *UnsupportedOptions {
 
 // syncAndUserXattrKeys returns the xattr keys for the user and sync xattrs.
 func (c *DatabaseCollection) syncAndUserXattrKeys() []string {
-	xattrKeys := []string{base.SyncXattrName}
+	xattrKeys := []string{base.SyncXattrName, mouXattrName}
 	userXattrKey := c.userXattrKey()
 	if userXattrKey != "" {
 		xattrKeys = append(xattrKeys, userXattrKey)

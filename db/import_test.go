@@ -585,3 +585,35 @@ func TestImportInvalidMetadata(t *testing.T) {
 	}, 1)
 	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
 }
+
+// TestMetadataOnlyImport
+func TestMetadataOnlyImport(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(base.TestCtx(t))
+
+	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	const docID = "doc1"
+
+	_, err := bucket.GetSingleDataStore().AddRaw(docID, 0, []byte(`{"foo" : "bar"}`))
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 1)
+	// test import on feed, should show mou
+
+	// test import of updated doc on feed, should clear mou with 2-abc
+
+	// test import on feed of document with inline xattrs, should not show mou
+
+	// test on demand import of document with inline xattrs, should not show mou
+
+	// test on demand import of document with xattrs, should show mou
+
+	// test clear mou of document PUT
+
+	// test resync ..
+}

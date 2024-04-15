@@ -149,6 +149,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, expiry, mutationOptions, existingDoc, func(doc *Document) (*updateAndReturnResult, error) {
 		var updatedExpiry *uint32
+		metadataOnly := true
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
 		if doc.Cas != existingDoc.Cas {
@@ -203,6 +204,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 				return nil, base.ErrDocumentMigrated
 			}
 
+			metadataOnly = false
 			// If document still requires import post-migration attempt, continue with import processing based on the body returned by migrate
 			doc = migratedDoc
 			body = migratedDoc.Body(ctx)
@@ -331,6 +333,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		return &updateAndReturnResult{
 			doc:                   newDoc,
 			createNewRevIDSkipped: !shouldGenerateNewRev,
+			metadataOnly:          metadataOnly,
 			updatedExpiry:         updatedExpiry}, nil
 	})
 
