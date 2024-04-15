@@ -564,6 +564,7 @@ func TestImportNonZeroStart(t *testing.T) {
 
 // TestImportFeedInvalidInlineSyncMetadata tests avoiding an import error if the metadata is unmarshable
 func TestImportFeedInvalidInlineSyncMetadata(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
 	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(base.TestCtx(t))
@@ -580,7 +581,8 @@ func TestImportFeedInvalidInlineSyncMetadata(t *testing.T) {
 		doc1 = "bookstand"
 		doc2 = "chipchop"
 	)
-	// write a document with inline sync metadata that is unmarshalable. This document will be ignored.
+	// write a document with inline sync metadata that not unmarshalable into SyncData. This document will be ignored and logged at debug level.
+	// 	[DBG] .. col:sg_test_0 <ud>bookstand</ud> not able to be imported. Error: Could not unmarshal _sync out of document body: json: cannot unmarshal number into Go struct field documentRoot._sync of type db.SyncData
 	_, err := bucket.GetSingleDataStore().Add(doc1, 0, []byte(`{"foo" : "bar", "_sync" : 1 }`))
 	require.NoError(t, err)
 
@@ -613,10 +615,12 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 		doc2 = "chipchop"
 	)
 
-	// this is silently ignored because the sync metadata is invalid
+	// this document will be ignored for input with debug logging as follows:
+	// 	[DBG] .. col:sg_test_0 <ud>bookstand</ud> not able to be imported. Error: Found _sync xattr ("1"), but could not unmarshal: json: cannot unmarshal number into Go value of type db.SyncData
 	_, err := bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc1, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`1`)}, nil)
 	require.NoError(t, err)
 
+	// fix xattrs, and the document is able to be imported
 	_, err = bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc2, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{}`)}, nil)
 	require.NoError(t, err)
 
@@ -645,7 +649,8 @@ func TestImportFeedNonJSONNewDoc(t *testing.T) {
 		doc2 = "chipchop"
 	)
 
-	// this is silently ignored because a JSON number is not a JSON object
+	// logs because a JSON number is not a JSON object
+	// 	[DBG] .. col:sg_test_0 <ud>bookstand</ud> not able to be imported. Error: Could not unmarshal _sync out of document body: json: cannot unmarshal number into Go value of type db.documentRoot
 	_, err := bucket.GetSingleDataStore().Add(doc1, 0, []byte(`1`))
 	require.NoError(t, err)
 
@@ -677,7 +682,6 @@ func TestImportFeedNonJSONExistingDoc(t *testing.T) {
 		doc2 = "chipchop"
 	)
 
-	// this is silently ignored because a JSON number is not a JSON object
 	_, err := bucket.GetSingleDataStore().Add(doc1, 0, []byte(`{"foo": "bar"}`))
 	require.NoError(t, err)
 
@@ -685,6 +689,8 @@ func TestImportFeedNonJSONExistingDoc(t *testing.T) {
 		return db.DbStats.SharedBucketImport().ImportCount.Value()
 	}, 1)
 
+	// logs and increments ImportErrorCount
+	//     [INF] .. col:sg_test_0 Unmarshal error during importDoc json: cannot unmarshal number into Go value of type db.Body
 	err = bucket.GetSingleDataStore().Set(doc1, 0, nil, []byte(`1`))
 	require.NoError(t, err)
 
