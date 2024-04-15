@@ -20,7 +20,7 @@ const (
 	ProductName = "Couchbase Sync Gateway"
 
 	ProductAPIVersionMajor = "3"
-	ProductAPIVersionMinor = "3"
+	ProductAPIVersionMinor = "2"
 	ProductAPIVersion      = ProductAPIVersionMajor + "." + ProductAPIVersionMinor
 )
 
