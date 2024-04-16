@@ -598,15 +598,38 @@ func TestMetadataOnlyImport(t *testing.T) {
 
 	const docID = "doc1"
 
-	_, err := bucket.GetSingleDataStore().AddRaw(docID, 0, []byte(`{"foo" : "bar"}`))
+	collection := bucket.GetSingleDataStore()
+
+	// test import on feed, should show mou
+	_, err := collection.AddRaw(docID, 0, []byte(`{"foo" : "bar"}`))
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
 		return db.DbStats.SharedBucketImport().ImportCount.Value()
 	}, 1)
-	// test import on feed, should show mou
+
+	xattrs, cas, err := collection.GetXattrs(ctx, docID, []string{mouXattrName})
+	require.NoError(t, err)
+	require.Contains(t, xattrs, mouXattrName)
+
+	var mou Mou
+	require.NoError(t, base.JSONUnmarshal(xattrs[mouXattrName], &mou))
+	require.Equal(t, string(base.Uint64CASToLittleEndianHex(cas)), mou.Cas)
 
 	// test import of updated doc on feed, should clear mou with 2-abc
+	err = collection.SetRaw(docID, 0, nil, []byte(`{"foo" : "baz"}`))
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 2)
+
+	xattrs, cas, err = collection.GetXattrs(ctx, docID, []string{mouXattrName})
+	require.NoError(t, err)
+	require.Contains(t, xattrs, mouXattrName)
+
+	require.NoError(t, base.JSONUnmarshal(xattrs[mouXattrName], &mou))
+	require.Equal(t, string(base.Uint64CASToLittleEndianHex(cas)), mou.Cas)
 
 	// test import on feed of document with inline xattrs, should not show mou
 
@@ -617,4 +640,50 @@ func TestMetadataOnlyImport(t *testing.T) {
 	// test clear mou of document PUT
 
 	// test resync ..
+}
+
+func TestMetadataOnlyImportInline(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyMigrate, base.KeyImport)
+	base.SkipImportTestsIfNotEnabled(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(base.TestCtx(t))
+
+	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	const docID = "doc1"
+
+	collection := bucket.GetSingleDataStore()
+
+	// test import on feed with inline xattrs, shouldn't show mou
+	_, err := collection.AddRaw(docID, 0, rawDocWithSyncMeta())
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
+	}, 1)
+
+	xattrs, cas, err := collection.GetXattrs(ctx, docID, []string{mouXattrName})
+	require.NoError(t, err)
+	require.Contains(t, xattrs, mouXattrName)
+
+	var mou Mou
+	require.NoError(t, base.JSONUnmarshal(xattrs[mouXattrName], &mou))
+	require.Equal(t, string(base.Uint64CASToLittleEndianHex(cas)), mou.Cas)
+
+	// test import of updated doc on feed, should clear mou with 2-abc
+	err = collection.SetRaw(docID, 0, nil, []byte(`{"foo" : "baz"}`))
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 2)
+
+	xattrs, cas, err = collection.GetXattrs(ctx, docID, []string{mouXattrName})
+	require.NoError(t, err)
+	require.Contains(t, xattrs, mouXattrName)
+
+	require.NoError(t, base.JSONUnmarshal(xattrs[mouXattrName], &mou))
+	require.Equal(t, string(base.Uint64CASToLittleEndianHex(cas)), mou.Cas)
+
 }

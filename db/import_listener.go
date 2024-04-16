@@ -130,6 +130,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 // Returns true if the checkpoints should be persisted.
 func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPersistCheckpoint bool) {
 
+	fmt.Printf("!!! EVENT: %+v\n", event)
 	ctx := il.loggingCtx
 	// Ignore non-mutation/deletion events
 	if event.Opcode != sgbucket.FeedOpMutation && event.Opcode != sgbucket.FeedOpDeletion {
@@ -152,16 +153,19 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 
 	// If this is a delete and there are no xattrs (no existing SG revision), we shouldn't import
 	if event.Opcode == sgbucket.FeedOpDeletion && len(event.Value) == 0 {
+		fmt.Println("!!! IGNORING DELETE: ", docID)
 		base.DebugfCtx(ctx, base.KeyImport, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))
 		return true
 	}
 
 	// If this is a binary document we can ignore, but update checkpoint to avoid reprocessing upon restart
 	if event.DataType == base.MemcachedDataTypeRaw {
+		fmt.Println("!!! IGNORING RAW: ", docID)
 		base.InfofCtx(ctx, base.KeyImport, "Ignoring binary mutation event for %s.", base.UD(docID))
 		return true
 	}
 
+	fmt.Println("!!! IMPORTING DOC: ", docID)
 	il.ImportFeedEvent(ctx, &collection, event)
 	return true
 }
