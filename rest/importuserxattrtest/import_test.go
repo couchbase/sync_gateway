@@ -398,7 +398,7 @@ func TestUnmarshalDocFromImportFeed(t *testing.T) {
 
 	const (
 		userXattrKey = "channels"
-		syncXattr    = `{"rev":"1234"}`
+		syncXattr    = `{"sequence":200}`
 		channelName  = "chan1"
 	)
 
@@ -413,7 +413,7 @@ func TestUnmarshalDocFromImportFeed(t *testing.T) {
 	syncData, rawBody, rawXattr, rawUserXattr, err := db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
 	require.NoError(t, err)
 	assert.Equal(t, syncXattr, string(rawXattr))
-	assert.Equal(t, "1234", syncData.CurrentRev)
+	assert.Equal(t, uint64(200), syncData.Sequence)
 	assert.Equal(t, channelName, string(rawUserXattr))
 	assert.Equal(t, body, rawBody)
 
