@@ -626,7 +626,7 @@ func TestMetadataOnlyImport(t *testing.T) {
 
 	xattrs, cas, err = collection.GetXattrs(ctx, docID, []string{mouXattrName})
 	require.NoError(t, err)
-	require.Contains(t, xattrs, mouXattrName)
+	require.Nil(t, xattrs[mouXattrName])
 
 	require.NoError(t, base.JSONUnmarshal(xattrs[mouXattrName], &mou))
 	require.Equal(t, string(base.Uint64CASToLittleEndianHex(cas)), mou.Cas)
@@ -663,13 +663,8 @@ func TestMetadataOnlyImportInline(t *testing.T) {
 		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
 	}, 1)
 
-	xattrs, cas, err := collection.GetXattrs(ctx, docID, []string{mouXattrName})
-	require.NoError(t, err)
-	require.Contains(t, xattrs, mouXattrName)
-
-	var mou Mou
-	require.NoError(t, base.JSONUnmarshal(xattrs[mouXattrName], &mou))
-	require.Equal(t, string(base.Uint64CASToLittleEndianHex(cas)), mou.Cas)
+	_, _, err = collection.GetXattrs(ctx, docID, []string{mouXattrName})
+	require.Error(t, err) // xattr missing
 
 	// test import of updated doc on feed, should clear mou with 2-abc
 	err = collection.SetRaw(docID, 0, nil, []byte(`{"foo" : "baz"}`))
@@ -679,11 +674,7 @@ func TestMetadataOnlyImportInline(t *testing.T) {
 		return db.DbStats.SharedBucketImport().ImportCount.Value()
 	}, 2)
 
-	xattrs, cas, err = collection.GetXattrs(ctx, docID, []string{mouXattrName})
-	require.NoError(t, err)
-	require.Contains(t, xattrs, mouXattrName)
-
-	require.NoError(t, base.JSONUnmarshal(xattrs[mouXattrName], &mou))
-	require.Equal(t, string(base.Uint64CASToLittleEndianHex(cas)), mou.Cas)
+	_, _, err = collection.GetXattrs(ctx, docID, []string{mouXattrName})
+	require.Error(t, err)
 
 }

@@ -57,6 +57,7 @@ type documentUpdateFuncResult struct {
 	changedAccessPrincipals []string
 	changedRoleAccessUsers  []string
 	createNewRevIDSkipped   bool
+	metadataOnlyUpdate      bool
 }
 
 func (c *DatabaseCollection) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
@@ -1873,6 +1874,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 		unusedSequences:       unusedSequences,
 		createNewRevIDSkipped: newDoc.createNewRevIDSkipped,
 		expiry:                newDoc.updatedExpiry,
+		metadataOnlyUpdate:    newDoc.metadataOnlyUpdate,
 	}
 
 	if doc.CurrentRev != prevCurrentRev || newDoc.createNewRevIDSkipped {
@@ -1920,7 +1922,7 @@ type updateAndReturnResult struct {
 	attachments           AttachmentData // attachments to be added to the document
 	updatedExpiry         *uint32        // if set, the new expiry, otherwise preserve expiry
 	createNewRevIDSkipped bool           // if true, this change did not create a new rev ID. This is true for imported documents where the only change was to the user xattr, and it did affect the sync function.
-	metadataOnly          bool           // if true, this change only updated the metadata, and did not update the document body
+	metadataOnlyUpdate    bool           // if true, this change only updated the metadata, and did not update the document body
 }
 
 // Function type for the callback passed into updateAndReturnDoc
@@ -2010,7 +2012,6 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			opts = &sgbucket.MutateInOptions{}
 		}
 		opts.MacroExpansion = macroExpandSpec(base.SyncXattrName)
-		opts.MacroExpansion = append(opts.MacroExpansion, mouExpandSpec())
 		var initialExpiry uint32
 		if expiry != nil {
 			initialExpiry = *expiry
@@ -2070,15 +2071,23 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			var rawXattr []byte
 			updatedDoc.Doc, rawXattr, err = doc.MarshalWithXattr()
 			docBytes = len(updatedDoc.Doc)
-			mou, err := base.JSONMarshal(Mou{})
-			if err != nil {
-				return sgbucket.UpdatedDoc{}, fmt.Errorf("Could not marshal mou: %w", err)
-			}
 			updatedDoc.Xattrs = map[string][]byte{
 				base.SyncXattrName: rawXattr,
-				mouXattrName:       mou,
 			}
-
+			if returnedDoc.metadataOnlyUpdate {
+				opts.MacroExpansion = append(opts.MacroExpansion, mouExpandSpec())
+				mou, err := base.JSONMarshal(Mou{})
+				if err != nil {
+					return sgbucket.UpdatedDoc{}, fmt.Errorf("Could not marshal mou: %w", err)
+				}
+				updatedDoc.Xattrs[mouXattrName] = mou
+			} else {
+				panic("here")
+				if currentXattrs[mouXattrName] != nil {
+					panic("here")
+					updatedDoc.Xattrs[mouXattrName] = nil
+				}
+			}
 			// Warn when sync data is larger than a configured threshold
 			if db.unsupportedOptions() != nil && db.unsupportedOptions().WarningThresholds != nil {
 				if xattrBytesThreshold := db.unsupportedOptions().WarningThresholds.XattrSize; xattrBytesThreshold != nil {
