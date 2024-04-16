@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/couchbase/cbgt"
+	sgbucket "github.com/couchbase/sg-bucket"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -511,4 +513,130 @@ func TestCBGTKvPoolSize(t *testing.T) {
 	assert.NoError(t, err)
 	defer cbgtContext.Stop()
 	require.Contains(t, cbgtContext.Manager.Server(), "kv_pool_size=1")
+}
+
+func TestDCPDataType(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	dataStore := bucket.GetSingleDataStore()
+
+	args := sgbucket.FeedArguments{
+		ID:       t.Name(),
+		Backfill: sgbucket.FeedNoBackfill,
+		Scopes:   map[string][]string{dataStore.ScopeName(): []string{dataStore.CollectionName()}},
+	}
+	testCases := []struct {
+		name     string
+		isJSON   bool
+		body     []byte
+		dataType sgbucket.FeedDataType
+	}{
+		{
+			name:     "JSONObject",
+			body:     []byte(`{"foo": "bar"}`),
+			dataType: sgbucket.FeedDataTypeJSON,
+			isJSON:   true,
+		},
+		{
+			name:     "JSONArray",
+			body:     []byte(`["foo", "bar"]`),
+			dataType: sgbucket.FeedDataTypeJSON,
+			isJSON:   true,
+		},
+		{
+			name:     "JSONNumber",
+			body:     []byte(`123`),
+			dataType: sgbucket.FeedDataTypeJSON,
+			isJSON:   true,
+		},
+		{
+			name:     "JSONString",
+			body:     []byte(`"foo"`),
+			dataType: sgbucket.FeedDataTypeJSON,
+			isJSON:   true,
+		},
+		{
+			name:     "JSONBoolean",
+			body:     []byte(`true`),
+			dataType: sgbucket.FeedDataTypeJSON,
+			isJSON:   true,
+		},
+		{
+			name:     "JSONNull",
+			body:     []byte(`null`),
+			dataType: sgbucket.FeedDataTypeJSON,
+			isJSON:   true,
+		},
+		{
+			name:     "NonJSON",
+			body:     []byte(`foo`),
+			dataType: sgbucket.FeedDataTypeRaw,
+			isJSON:   false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run("SetRaw_"+test.name, func(t *testing.T) {
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			callback := func(event sgbucket.FeedEvent) bool {
+				defer wg.Done()
+				require.Equal(t, test.dataType, event.DataType)
+				return true
+			}
+			args.Terminator = make(chan bool)
+			require.NoError(t, bucket.StartDCPFeed(ctx, args, callback, nil))
+			require.NoError(t, dataStore.SetRaw(t.Name(), 0, nil, test.body))
+			wg.Wait()
+			close(args.Terminator)
+		})
+		t.Run("AddRaw_"+test.name, func(t *testing.T) {
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			callback := func(event sgbucket.FeedEvent) bool {
+				defer wg.Done()
+				require.Equal(t, test.dataType, event.DataType)
+				return true
+			}
+			args.Terminator = make(chan bool)
+			require.NoError(t, bucket.StartDCPFeed(ctx, args, callback, nil))
+			added, err := dataStore.AddRaw(t.Name(), 0, test.body)
+			require.NoError(t, err)
+			require.True(t, added)
+			wg.Wait()
+			close(args.Terminator)
+		})
+		t.Run("Set_"+test.name, func(t *testing.T) {
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			callback := func(event sgbucket.FeedEvent) bool {
+				defer wg.Done()
+				require.Equal(t, test.dataType, event.DataType)
+				return true
+			}
+			args.Terminator = make(chan bool)
+			require.NoError(t, bucket.StartDCPFeed(ctx, args, callback, nil))
+			require.NoError(t, dataStore.Set(t.Name(), 0, nil, test.body))
+			wg.Wait()
+			close(args.Terminator)
+		})
+		t.Run("Add_"+test.name, func(t *testing.T) {
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			callback := func(event sgbucket.FeedEvent) bool {
+				defer wg.Done()
+				require.Equal(t, test.dataType, event.DataType)
+				return true
+			}
+			args.Terminator = make(chan bool)
+			require.NoError(t, bucket.StartDCPFeed(ctx, args, callback, nil))
+			added, err := dataStore.Add(t.Name(), 0, test.body)
+			require.NoError(t, err)
+			require.True(t, added)
+			wg.Wait()
+			close(args.Terminator)
+		})
+
+	}
 }
