@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.21.8
+          go-version: 1.22.2
       - name: go-build
         run: go build "./..."
 
@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.21.8
+          go-version: 1.22.2
       - run: go install github.com/google/addlicense@latest
       - run: addlicense -check -f licenses/addlicense.tmpl .
 
@@ -54,7 +54,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.21.8
+          go-version: 1.22.2
           cache: false
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v4
@@ -82,7 +82,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.21.8
+          go-version: 1.22.2
       - name: Build
         run: go build -v "./..."
       - name: Run Tests
@@ -102,7 +102,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.21.8
+          go-version: 1.22.2
       - name: Run Tests
         run: go test -race -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
         shell: bash
@@ -142,7 +142,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.21.8
+          go-version: 1.22.2
       - name: Build
         run: go build -v "./tools/stats-definition-exporter"
       - name: Run Tests
