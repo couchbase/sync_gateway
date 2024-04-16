@@ -362,7 +362,7 @@ func TestRemoveSeqFromThreeSequenceRange(t *testing.T) {
 	skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(60, 62))
 	skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(70, 75))
 
-	i, found := skippedSlice.findSequence(60)
+	i, found := skippedSlice._findSequence(60)
 	assert.True(t, found)
 
 	// grab timestamp from range that is getting split
@@ -482,7 +482,7 @@ func TestInsertItemInSlice(t *testing.T) {
 			}
 
 			// attempt to insert at test case index to keep order
-			skippedSlice.insert(testCase.index, NewSingleSkippedSequenceEntry(testCase.insert))
+			skippedSlice._insert(testCase.index, NewSingleSkippedSequenceEntry(testCase.insert))
 
 			if !testCase.rangeItems {
 				for i := 0; i < len(skippedSlice.list); i++ {
@@ -520,9 +520,9 @@ func BenchmarkInsertSkippedItem(b *testing.B) {
 			sequenceNum := 40000
 			for i := 0; i < b.N; i++ {
 				if !bm.rangeEntries {
-					bm.inputSlice.insert(i, NewSingleSkippedSequenceEntry(uint64(sequenceNum*i)))
+					bm.inputSlice._insert(i, NewSingleSkippedSequenceEntry(uint64(sequenceNum*i)))
 				} else {
-					bm.inputSlice.insert(i, NewSkippedSequenceRangeEntry(uint64(sequenceNum*i), uint64(sequenceNum*i)+5))
+					bm.inputSlice._insert(i, NewSkippedSequenceRangeEntry(uint64(sequenceNum*i), uint64(sequenceNum*i)+5))
 				}
 			}
 		})
@@ -599,7 +599,7 @@ func TestCompactSkippedList(t *testing.T) {
 // TestCompactSkippedListClipHandling:
 //   - Create new skipped sequence slice with old timestamps + clip headroom defined at 100
 //   - Push new future entry on the slice
-//   - Run compact and assert that the capacity of the slice is correct after clip is run
+//   - Run compact and assert that the capacity of the slice is correct after _clip is run
 func TestCompactSkippedListClipHandling(t *testing.T) {
 	testCases := []struct {
 		name        string

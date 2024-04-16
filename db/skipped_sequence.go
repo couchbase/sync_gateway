@@ -194,7 +194,7 @@ func (s *SkippedSequenceRange) extendRange(lastSeq uint64, timeStamp int64) {
 func (s *SkippedSequenceSlice) Contains(x uint64) bool {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
-	_, found := s.findSequence(x)
+	_, found := s._findSequence(x)
 	return found
 }
 
@@ -222,13 +222,13 @@ func (s *SkippedSequenceSlice) SkippedSequenceCompact(ctx context.Context, maxWa
 		s.list = slices.Delete(s.list, 0, indexToDelete+1)
 	}
 	// resize slice to reclaim memory if we need to
-	s.clip(ctx)
+	s._clip(ctx)
 	return numSequencesCompacted
 }
 
-// clip will clip the capacity of the slice to the current length plus the configured headroom in ClipCapacityHeadroom
+// _clip will clip the capacity of the slice to the current length plus the configured headroom in ClipCapacityHeadroom
 // if the current capacity of the slice in 2.5x the length
-func (s *SkippedSequenceSlice) clip(ctx context.Context) {
+func (s *SkippedSequenceSlice) _clip(ctx context.Context) {
 	// threshold is 2.5x the current length of the slice
 	threshold := 2.5 * float64(len(s.list))
 
@@ -241,36 +241,36 @@ func (s *SkippedSequenceSlice) clip(ctx context.Context) {
 	}
 }
 
-// findSequence will use binary search to search the elements in the slice for a given sequence
-func (s *SkippedSequenceSlice) findSequence(x uint64) (int, bool) {
+// _findSequence will use binary search to search the elements in the slice for a given sequence
+func (s *SkippedSequenceSlice) _findSequence(x uint64) (int, bool) {
 	i, found := slices.BinarySearchFunc(s.list, x, binarySearchFunc)
 	return i, found
 }
 
 // binarySearchFunc contains the custom search function for searching the skipped sequence slice for a particular sequence
 func binarySearchFunc(a SkippedSequenceListEntry, seq uint64) int {
+	if a.getStartSeq() > seq {
+		return 1
+	}
+
 	if !a.isRange() {
-		if a.getStartSeq() > seq {
-			return 1
-		} else if a.getStartSeq() == seq {
-			return 0
-		}
-		return -1
-	} else {
-		if a.getStartSeq() > seq {
-			return 1
-		} else if a.getLastSeq() >= seq {
+		if a.getStartSeq() == seq {
 			return 0
 		}
 		return -1
 	}
+
+	if a.getLastSeq() >= seq {
+		return 0
+	}
+	return -1
 }
 
 // removeSeq will remove a given sequence from the slice if it exists
 func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	index, found := s.findSequence(x)
+	index, found := s._findSequence(x)
 	if !found {
 		return fmt.Errorf("sequence %d not found in the skipped list", x)
 	}
@@ -304,7 +304,7 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 			// lastSeq is handled above
 			// add new single entry at elem + 1 then modify range
 			newElem := NewSingleSkippedSequenceEntryAt(rangeElem.getLastSeq(), rangeElem.getTimestamp())
-			s.insert(index+1, newElem)
+			s._insert(index+1, newElem)
 			rangeElem.setLastSeq(x - 1)
 			return nil
 		}
@@ -313,7 +313,7 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 		if rangeElem.getStartSeq() == x-1 {
 			// insert single skipped entry + alter start seq to x + 1
 			newElem := NewSingleSkippedSequenceEntryAt(x-1, rangeElem.getTimestamp())
-			s.insert(index, newElem)
+			s._insert(index, newElem)
 			rangeElem.setStartSeq(x + 1)
 			return nil
 		}
@@ -321,7 +321,7 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 		if rangeElem.getLastSeq() == x+1 {
 			// insert single skipped entry at index+1 + alter last seq to x - 1
 			newElem := NewSingleSkippedSequenceEntryAt(x+1, rangeElem.getTimestamp())
-			s.insert(index+1, newElem)
+			s._insert(index+1, newElem)
 			rangeElem.setLastSeq(x - 1)
 			return nil
 		}
@@ -329,14 +329,14 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 		// if we get here we can assume that startSeq < x < lastSeq
 		// split index range
 		newElem := NewSkippedSequenceRangeEntryAt(x+1, rangeElem.getLastSeq(), rangeElem.getTimestamp())
-		s.insert(index+1, newElem)
+		s._insert(index+1, newElem)
 		rangeElem.setLastSeq(x - 1)
 	}
 	return nil
 }
 
-// insert will insert element in middle of slice maintaining order of rest of slice
-func (s *SkippedSequenceSlice) insert(index int, entry SkippedSequenceListEntry) {
+// _insert will insert element in middle of slice maintaining order of rest of slice
+func (s *SkippedSequenceSlice) _insert(index int, entry SkippedSequenceListEntry) {
 	s.list = append(s.list, nil)
 	copy(s.list[index+1:], s.list[index:])
 	s.list[index] = entry
