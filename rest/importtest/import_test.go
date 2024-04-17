@@ -39,15 +39,7 @@ func assertExpiry(t testing.TB, expected uint32, actual uint32) {
 func TestImportFeed(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
-
-	rtConfig := rest.RestTesterConfig{
-		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			AutoImport: true,
-		}},
-	}
-
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 	dataStore := rt.GetSingleDataStore()
 
@@ -58,7 +50,7 @@ func TestImportFeed(t *testing.T) {
 	mobileBody := make(map[string]interface{})
 	mobileBody["channels"] = "ABC"
 	_, err := dataStore.Add(mobileKey, 0, mobileBody)
-	assert.NoError(t, err, "Error writing SDK doc")
+	require.NoError(t, err, "Error writing SDK doc")
 
 	// Wait for import
 	err = rt.WaitForCondition(func() bool {
