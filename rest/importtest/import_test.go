@@ -35,11 +35,18 @@ func assertExpiry(t testing.TB, expected uint32, actual uint32) {
 	assert.True(t, base.DiffUint32(expected, actual) < 10, fmt.Sprintf("Unexpected difference between expected: %v actual %v", expected, actual))
 }
 
-// TestImportFeed validates basic feed-based import
+// Test feed-based import
 func TestImportFeed(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
-	rt := rest.NewRestTester(t, nil)
+
+	rtConfig := rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: true,
+		}},
+	}
+
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	dataStore := rt.GetSingleDataStore()
 
@@ -50,7 +57,7 @@ func TestImportFeed(t *testing.T) {
 	mobileBody := make(map[string]interface{})
 	mobileBody["channels"] = "ABC"
 	_, err := dataStore.Add(mobileKey, 0, mobileBody)
-	require.NoError(t, err, "Error writing SDK doc")
+	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Wait for import
 	err = rt.WaitForCondition(func() bool {
