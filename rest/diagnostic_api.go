@@ -117,7 +117,6 @@ func (h *handler) handleGetAllChannels() error {
 				resp.DynamicRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
 			}
 			for channel, chanEntry := range role.Channels() {
-				base.InfofCtx(h.ctx(), base.KeyAll, "chanentry", chanEntry.String())
 				if channel == channels.DocumentStarChannel {
 					continue
 				}

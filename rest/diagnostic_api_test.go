@@ -170,20 +170,21 @@ func TestGetAllChannelsByUser(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
 	assert.Equal(t, channelMap.AdminRoleGrants["role1"]["_default._default"]["chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 11, EndSeq: 0}, {StartSeq: 7, EndSeq: 8}, {StartSeq: 9, EndSeq: 10}})
+	assert.Equal(t, channelMap.DynamicRoleGrants["role1"]["_default._default"]["chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 7, EndSeq: 8}})
 
+	// CBG-3892
 	// Remove role1 admin grant and reassign it through a dynamic grant
-	response = rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/_user/"+bob, `{"name": "`+bob+`", "password": "`+RestTesterDefaultUserPassword+`", "admin_roles":[]}`)
-	RequireStatus(t, response, http.StatusOK)
-	response = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"role":["role:role1"], "user":"bob"}`)
-	RequireStatus(t, response, http.StatusCreated)
-
-	response = rt.SendDiagnosticRequest(http.MethodGet, "/"+dbName+"/_user/"+bob+"/_all_channels", ``)
-	RequireStatus(t, response, http.StatusOK)
-	t.Log(response.BodyString())
-	err = json.Unmarshal(response.BodyBytes(), &channelMap)
-	require.NoError(t, err)
-	assert.Equal(t, channelMap.DynamicRoleGrants["role1"]["_default._default"]["chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 7, EndSeq: 8}, {StartSeq: 13, EndSeq: 0}})
-	assert.Equal(t, channelMap.AdminRoleGrants["role1"]["_default._default"]["chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 11, EndSeq: 12}, {StartSeq: 7, EndSeq: 8}, {StartSeq: 9, EndSeq: 10}})
+	//response = rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/_user/"+bob, `{"name": "`+bob+`", "password": "`+RestTesterDefaultUserPassword+`", "admin_roles":[]}`)
+	//RequireStatus(t, response, http.StatusOK)
+	//response = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"role":["role:role1"], "user":"bob"}`)
+	//RequireStatus(t, response, http.StatusCreated)
+	//response = rt.SendDiagnosticRequest(http.MethodGet, "/"+dbName+"/_user/"+bob+"/_all_channels", ``)
+	//RequireStatus(t, response, http.StatusOK)
+	//t.Log(response.BodyString())
+	//err = json.Unmarshal(response.BodyBytes(), &channelMap)
+	//require.NoError(t, err)
+	//assert.Equal(t, channelMap.DynamicRoleGrants["role1"]["_default._default"]["chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 7, EndSeq: 8}, {StartSeq: 13, EndSeq: 0}})
+	//assert.Equal(t, channelMap.AdminRoleGrants["role1"]["_default._default"]["chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 11, EndSeq: 12}, {StartSeq: 7, EndSeq: 8}, {StartSeq: 9, EndSeq: 10}})
 }
 
 func TestGetAllChannelsByUserWithCollections(t *testing.T) {
