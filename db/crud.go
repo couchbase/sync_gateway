@@ -1083,7 +1083,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 	if generation < 0 {
 		return nil, nil, "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
-	generation++
+	generation++ //nolint
 
 	docUpdateEvent := ExistingVersion
 	allowImport := db.UseXattrs()
