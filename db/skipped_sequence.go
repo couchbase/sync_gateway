@@ -24,168 +24,112 @@ const (
 	DefaultClipCapacityHeadroom = 1000
 )
 
-type SkippedSequenceListEntry interface {
-	getTimestamp() int64
-	getLastSeq() uint64
-	setStartSeq(seq uint64)
-	setLastSeq(seq uint64)
-	getStartSeq() uint64
-	isRange() bool
-	getNumSequencesInEntry() int64
-	extendRange(lastSeq uint64, timeStamp int64)
-}
-
 // SkippedSequenceSlice stores the set of skipped sequences as an ordered slice of single skipped sequences
 // or skipped sequence ranges
 type SkippedSequenceSlice struct {
-	list                 []SkippedSequenceListEntry
+	list                 []*SkippedSequenceListEntry
 	ClipCapacityHeadroom int
 	lock                 sync.RWMutex
 }
 
-var _ SkippedSequenceListEntry = &SingleSkippedSequence{}
-var _ SkippedSequenceListEntry = &SkippedSequenceRange{}
-
-// SingleSkippedSequence contains a single skipped sequence value + unix timestamp of the time it's created
-type SingleSkippedSequence struct {
-	seq       uint64
-	timestamp int64
-}
-
-// SkippedSequenceRange contains a skipped sequence range + unix timestamp of the time it's created
-type SkippedSequenceRange struct {
-	start     uint64
-	end       uint64
-	timestamp int64
+// SkippedSequenceListEntry contains start + end sequence for a range of skipped sequences +
+// a timestamp at which the entry was created in unix format. If an entry is a singular skipped sequence the end
+// sequence will not be 0
+type SkippedSequenceListEntry struct {
+	start     uint64 // start sequence of a range
+	end       uint64 // end sequence of the range (0 if a singular skipped sequence)
+	timestamp int64  // timestamp this entry was created in unix format
 }
 
 func NewSkippedSequenceSlice(clipHeadroom int) *SkippedSequenceSlice {
 	return &SkippedSequenceSlice{
-		list:                 []SkippedSequenceListEntry{},
+		list:                 []*SkippedSequenceListEntry{},
 		ClipCapacityHeadroom: clipHeadroom,
 	}
 }
 
-// NewSingleSkippedSequenceEntryAt returns a SingleSkippedSequence with the specified sequence and the supplied
+// NewSkippedSequenceRangeEntry returns a SkippedSequenceListEntry with the specified sequence range and the current
 // timestamp in unix time
-func NewSingleSkippedSequenceEntryAt(sequence uint64, timeStamp int64) *SingleSkippedSequence {
-	return &SingleSkippedSequence{
-		seq:       sequence,
-		timestamp: timeStamp,
-	}
-}
-
-// NewSingleSkippedSequenceEntry returns a SingleSkippedSequence with the specified sequence and the current
-// time in unix time
-func NewSingleSkippedSequenceEntry(sequence uint64) *SingleSkippedSequence {
-	return &SingleSkippedSequence{
-		seq:       sequence,
-		timestamp: time.Now().Unix(),
-	}
-}
-
-// NewSkippedSequenceRangeEntryAt returns a SkippedSequenceRange with the specified sequence range and the supplied
-// timestamp in unix time
-func NewSkippedSequenceRangeEntryAt(start, end uint64, timeStamp int64) *SkippedSequenceRange {
-	return &SkippedSequenceRange{
-		start:     start,
-		end:       end,
-		timestamp: timeStamp,
-	}
-}
-
-// NewSkippedSequenceRangeEntry returns a SkippedSequenceRange with the specified sequence range and the current
-// timestamp in unix time
-func NewSkippedSequenceRangeEntry(start, end uint64) *SkippedSequenceRange {
-	return &SkippedSequenceRange{
+func NewSkippedSequenceRangeEntry(start, end uint64) *SkippedSequenceListEntry {
+	return &SkippedSequenceListEntry{
 		start:     start,
 		end:       end,
 		timestamp: time.Now().Unix(),
 	}
 }
 
-// getTimestamp returns the timestamp of the entry
-func (s *SingleSkippedSequence) getTimestamp() int64 {
-	return s.timestamp
+// NewSkippedSequenceRangeEntryAt returns a SkippedSequenceListEntry with the specified sequences and the supplied
+// timestamp in unix time
+func NewSkippedSequenceRangeEntryAt(start, end uint64, timeStamp int64) *SkippedSequenceListEntry {
+	return &SkippedSequenceListEntry{
+		start:     start,
+		end:       end,
+		timestamp: timeStamp,
+	}
 }
 
-// getLastSeq gets the last sequence in the range on the entry, for single items the sequence will be returned
-func (s *SingleSkippedSequence) getLastSeq() uint64 {
-	return s.seq
+// NewSingleSkippedSequenceEntry returns a SkippedSequenceListEntry with just start seq defined with the current
+// timestamp in unix time
+func NewSingleSkippedSequenceEntry(seq uint64) *SkippedSequenceListEntry {
+	return &SkippedSequenceListEntry{
+		start:     seq,
+		timestamp: time.Now().Unix(),
+	}
 }
 
-// setLastSeq sets the last sequence in the range on the entry, for single items it's a no-op
-func (s *SingleSkippedSequence) setLastSeq(seq uint64) {
-	// no-op
-}
-
-// setStartSeq sets the last sequence in the range on the entry, for single items it's a no-op
-func (s *SingleSkippedSequence) setStartSeq(seq uint64) {
-	// no-op
-}
-
-// getStartSeq gets the start sequence in the range on the entry, for single items the sequence will be returned
-func (s *SingleSkippedSequence) getStartSeq() uint64 {
-	return s.seq
-}
-
-// isRange returns true if the entry is a sequence range entry, false if not
-func (s *SingleSkippedSequence) isRange() bool {
-	return false
-}
-
-// getNumSequencesInEntry returns the number of sequences an entry in skipped slice holds,
-// for single entries it will return just 1
-func (s *SingleSkippedSequence) getNumSequencesInEntry() int64 {
-	return 1
-}
-
-// extendRange will set the range last seq to the incoming contiguous entry's last seq
-// + set the timestamp.
-func (s *SingleSkippedSequence) extendRange(lastSeq uint64, timeStamp int64) {
-	// no-op
+// NewSingleSkippedSequenceEntryAt returns a SkippedSequenceListEntry with just start seq defined and the supplied
+// timestamp in unix time
+func NewSingleSkippedSequenceEntryAt(seq uint64, timeStamp int64) *SkippedSequenceListEntry {
+	return &SkippedSequenceListEntry{
+		start:     seq,
+		timestamp: timeStamp,
+	}
 }
 
 // getTimestamp returns the timestamp of the entry
-func (s *SkippedSequenceRange) getTimestamp() int64 {
+func (s *SkippedSequenceListEntry) getTimestamp() int64 {
 	return s.timestamp
 }
 
-// getStartSeq gets the start sequence in the range on the entry, for single items the sequence will be returned
-func (s *SkippedSequenceRange) getStartSeq() uint64 {
+// getStartSeq gets the start sequence in the range on the entry, for single items the sequence (startSeq) will be returned
+func (s *SkippedSequenceListEntry) getStartSeq() uint64 {
 	return s.start
 }
 
-// getLastSeq gets the last sequence in the range on the entry, for single items the sequence will be returned
-func (s *SkippedSequenceRange) getLastSeq() uint64 {
+// getLastSeq gets the last sequence in the range on the entry, for single items the sequence 0 will be returned
+func (s *SkippedSequenceListEntry) getLastSeq() uint64 {
 	return s.end
 }
 
 // isRange returns true if the entry is a sequence range entry, false if not
-func (s *SkippedSequenceRange) isRange() bool {
-	return true
+func (s *SkippedSequenceListEntry) isRange() bool {
+	// if no end seq defined then we assume single entry
+	return s.end != 0
 }
 
-// setLastSeq sets the last sequence in the range on the entry, for single items it's a no-op
-func (s *SkippedSequenceRange) setLastSeq(seq uint64) {
+// setLastSeq sets the last sequence in the range on the entry
+func (s *SkippedSequenceListEntry) setLastSeq(seq uint64) {
 	s.end = seq
 }
 
-// setStartSeq sets the last sequence in the range on the entry, for single items it's a no-op
-func (s *SkippedSequenceRange) setStartSeq(seq uint64) {
+// setStartSeq sets the last sequence in the range on the entry
+func (s *SkippedSequenceListEntry) setStartSeq(seq uint64) {
 	s.start = seq
 }
 
 // getNumSequencesInEntry returns the number of sequences an entry in skipped slice holds,
 // for single entries it will return just 1
-func (s *SkippedSequenceRange) getNumSequencesInEntry() int64 {
+func (s *SkippedSequenceListEntry) getNumSequencesInEntry() int64 {
+	if s.end == 0 {
+		return 1
+	}
 	numSequences := (s.end - s.start) + 1
 	return int64(numSequences)
 }
 
 // extendRange will set the range last seq to the incoming contiguous entry's last seq
 // + set the timestamp.
-func (s *SkippedSequenceRange) extendRange(lastSeq uint64, timeStamp int64) {
+func (s *SkippedSequenceListEntry) extendRange(lastSeq uint64, timeStamp int64) {
 	s.timestamp = timeStamp
 	s.setLastSeq(lastSeq)
 }
@@ -248,7 +192,7 @@ func (s *SkippedSequenceSlice) _findSequence(x uint64) (int, bool) {
 }
 
 // binarySearchFunc contains the custom search function for searching the skipped sequence slice for a particular sequence
-func binarySearchFunc(a SkippedSequenceListEntry, seq uint64) int {
+func binarySearchFunc(a *SkippedSequenceListEntry, seq uint64) int {
 	if a.getStartSeq() > seq {
 		return 1
 	}
@@ -283,18 +227,22 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 		// range entry handling
 		rangeElem := s.list[index]
 		numSequences := rangeElem.getNumSequencesInEntry()
-		if numSequences == 1 {
-			// simple delete case
-			s.list = slices.Delete(s.list, index, index+1)
-			return nil
-		}
 
 		// if x == startSeq set startSeq+1, if x == lastSeq set lastSeq-1
 		if rangeElem.getStartSeq() == x {
+			if numSequences == 2 {
+				// make rangeElem single sequence entry
+				rangeElem.setLastSeq(0)
+			}
 			rangeElem.setStartSeq(x + 1)
 			return nil
 		}
 		if rangeElem.getLastSeq() == x {
+			if numSequences == 2 {
+				// make rangeElem single sequence entry
+				rangeElem.setLastSeq(0)
+				return nil
+			}
 			rangeElem.setLastSeq(x - 1)
 			return nil
 		}
@@ -305,7 +253,8 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 			// add new single entry at elem + 1 then modify range
 			newElem := NewSingleSkippedSequenceEntryAt(rangeElem.getLastSeq(), rangeElem.getTimestamp())
 			s._insert(index+1, newElem)
-			rangeElem.setLastSeq(x - 1)
+			// make rangeElem a single entry
+			rangeElem.setLastSeq(0)
 			return nil
 		}
 
@@ -336,7 +285,7 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 }
 
 // _insert will insert element in middle of slice maintaining order of rest of slice
-func (s *SkippedSequenceSlice) _insert(index int, entry SkippedSequenceListEntry) {
+func (s *SkippedSequenceSlice) _insert(index int, entry *SkippedSequenceListEntry) {
 	s.list = append(s.list, nil)
 	copy(s.list[index+1:], s.list[index:])
 	s.list[index] = entry
@@ -344,7 +293,7 @@ func (s *SkippedSequenceSlice) _insert(index int, entry SkippedSequenceListEntry
 
 // PushSkippedSequenceEntry will append a new skipped sequence entry to the end of the slice, if adding a contiguous
 // sequence function will expand the last entry of the slice to reflect this
-func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry SkippedSequenceListEntry) {
+func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry *SkippedSequenceListEntry) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -354,23 +303,21 @@ func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry SkippedSequenceLis
 	}
 	// get index of last entry + last seq of entry
 	index := len(s.list) - 1
-	lastEntryLastSeq := s.list[index].getLastSeq()
+	var lastEntryLastSeq uint64
+	if s.list[index].isRange() {
+		lastEntryLastSeq = s.list[index].getLastSeq()
+	} else {
+		lastEntryLastSeq = s.list[index].getStartSeq()
+	}
 	if (lastEntryLastSeq + 1) == entry.getStartSeq() {
 		// adding contiguous sequence
-		if s.list[index].isRange() {
-			// set last seq in the range to the new arriving sequence + alter timestamp to incoming entries timestamp
+		// set last seq in the range to the new arriving sequence + alter timestamp to incoming entries timestamp
+		if entry.isRange() {
+			// extend range to incoming last seq
 			s.list[index].extendRange(entry.getLastSeq(), entry.getTimestamp())
 		} else {
-			// take the sequence from the single entry and create a new range entry in its place
-			lastEntryStartSeq := s.list[index].getStartSeq()
-			if entry.isRange() {
-				// avoid extra allocation by altering its start seq and simply replacing last entry with the incoming entry
-				entry.setStartSeq(lastEntryStartSeq)
-				s.list[index] = entry
-			} else {
-				endSeq := entry.getLastSeq()
-				s.list[index] = NewSkippedSequenceRangeEntry(lastEntryStartSeq, endSeq)
-			}
+			// extend range to incoming start seq if incoming sequence is a single one
+			s.list[index].extendRange(entry.getStartSeq(), entry.getTimestamp())
 		}
 	} else {
 		s.list = append(s.list, entry)
