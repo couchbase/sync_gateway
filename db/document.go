@@ -412,7 +412,7 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*SyncData, error)
 		root.SyncData = &SyncData{History: make(RevTree)}
 	}
 	if err := base.JSONUnmarshal(data, &root); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Could not unmarshal _sync out of document body: %w", err)
 	}
 	if root.SyncData != nil && root.SyncData.Deleted_OLD {
 		root.SyncData.Deleted_OLD = false
@@ -448,7 +448,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 			}
 			err = base.JSONUnmarshal(syncXattr, result)
 			if err != nil {
-				return nil, nil, nil, nil, err
+				return nil, nil, nil, nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", string(syncXattr), err)
 			}
 			return result, body, syncXattr, userXattr, nil
 		}

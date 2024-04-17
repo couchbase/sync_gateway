@@ -40,6 +40,7 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 	} else {
 		err := body.Unmarshal(value)
 		if err != nil {
+			db.dbStats().SharedBucketImport().ImportErrorCount.Add(1)
 			base.InfofCtx(ctx, base.KeyImport, "Unmarshal error during importDoc %v", err)
 			return nil, base.HTTPErrorf(http.StatusNotFound, "Error unmarshalling %s: %s", base.UD(docid).Redact(), err)
 		}
