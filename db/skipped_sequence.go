@@ -33,8 +33,8 @@ type SkippedSequenceSlice struct {
 }
 
 // SkippedSequenceListEntry contains start + end sequence for a range of skipped sequences +
-// a timestamp at which the entry was created in unix format. If an entry is a singular skipped sequence the end
-// sequence will not be 0
+// a timestamp at which the entry was created in unix format. If an entry is a singular skipped sequence the start and
+// end sequence will be equal
 type SkippedSequenceListEntry struct {
 	start     uint64 // start sequence of a range
 	end       uint64 // end sequence of the range (0 if a singular skipped sequence)
@@ -68,20 +68,22 @@ func NewSkippedSequenceRangeEntryAt(start, end uint64, timeStamp int64) *Skipped
 	}
 }
 
-// NewSingleSkippedSequenceEntry returns a SkippedSequenceListEntry with just start seq defined with the current
-// timestamp in unix time
+// NewSingleSkippedSequenceEntry returns a SkippedSequenceListEntry with start and end seq defined as equal
+// with the current timestamp in unix time
 func NewSingleSkippedSequenceEntry(seq uint64) *SkippedSequenceListEntry {
 	return &SkippedSequenceListEntry{
 		start:     seq,
+		end:       seq,
 		timestamp: time.Now().Unix(),
 	}
 }
 
-// NewSingleSkippedSequenceEntryAt returns a SkippedSequenceListEntry with just start seq defined and the supplied
-// timestamp in unix time
+// NewSingleSkippedSequenceEntryAt returns a SkippedSequenceListEntry with start and end seq defined as equal
+// and the supplied timestamp in unix time
 func NewSingleSkippedSequenceEntryAt(seq uint64, timeStamp int64) *SkippedSequenceListEntry {
 	return &SkippedSequenceListEntry{
 		start:     seq,
+		end:       seq,
 		timestamp: timeStamp,
 	}
 }
@@ -101,12 +103,6 @@ func (s *SkippedSequenceListEntry) getLastSeq() uint64 {
 	return s.end
 }
 
-// isRange returns true if the entry is a sequence range entry, false if not
-func (s *SkippedSequenceListEntry) isRange() bool {
-	// if no end seq defined then we assume single entry
-	return s.end != 0
-}
-
 // setLastSeq sets the last sequence in the range on the entry
 func (s *SkippedSequenceListEntry) setLastSeq(seq uint64) {
 	s.end = seq
@@ -120,7 +116,7 @@ func (s *SkippedSequenceListEntry) setStartSeq(seq uint64) {
 // getNumSequencesInEntry returns the number of sequences an entry in skipped slice holds,
 // for single entries it will return just 1
 func (s *SkippedSequenceListEntry) getNumSequencesInEntry() int64 {
-	if s.end == 0 {
+	if s.end == s.start {
 		return 1
 	}
 	numSequences := (s.end - s.start) + 1
@@ -197,13 +193,6 @@ func binarySearchFunc(a *SkippedSequenceListEntry, seq uint64) int {
 		return 1
 	}
 
-	if !a.isRange() {
-		if a.getStartSeq() == seq {
-			return 0
-		}
-		return -1
-	}
-
 	if a.getLastSeq() >= seq {
 		return 0
 	}
@@ -218,69 +207,67 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 	if !found {
 		return fmt.Errorf("sequence %d not found in the skipped list", x)
 	}
-	// handle border cases where x is equal to start or end sequence on range (or just sequence for single entries)
-	if !s.list[index].isRange() {
+
+	// take the element at the index and handle cases required to removal of a sequence
+	rangeElem := s.list[index]
+	numSequences := rangeElem.getNumSequencesInEntry()
+
+	if numSequences == 1 {
 		// if not a range, we can just remove the single entry from the slice
 		s.list = slices.Delete(s.list, index, index+1)
 		return nil
-	} else {
-		// range entry handling
-		rangeElem := s.list[index]
-		numSequences := rangeElem.getNumSequencesInEntry()
+	}
 
-		// if x == startSeq set startSeq+1, if x == lastSeq set lastSeq-1
-		if rangeElem.getStartSeq() == x {
-			if numSequences == 2 {
-				// make rangeElem single sequence entry
-				rangeElem.setLastSeq(0)
-			}
-			rangeElem.setStartSeq(x + 1)
+	// range entry handling
+	// if x == startSeq set startSeq+1, if x == lastSeq set lastSeq-1
+	if rangeElem.getStartSeq() == x {
+		rangeElem.setStartSeq(x + 1)
+		return nil
+	}
+	if rangeElem.getLastSeq() == x {
+		if numSequences == 2 {
+			// make rangeElem single sequence entry
+			rangeElem.setLastSeq(rangeElem.getStartSeq())
 			return nil
 		}
-		if rangeElem.getLastSeq() == x {
-			if numSequences == 2 {
-				// make rangeElem single sequence entry
-				rangeElem.setLastSeq(0)
-				return nil
-			}
-			rangeElem.setLastSeq(x - 1)
-			return nil
-		}
+		rangeElem.setLastSeq(x - 1)
+		return nil
+	}
 
-		if numSequences == 3 {
-			// if we get here then x is in middle of the 3 sequence range. x being == startSeq or
-			// lastSeq is handled above
-			// add new single entry at elem + 1 then modify range
-			newElem := NewSingleSkippedSequenceEntryAt(rangeElem.getLastSeq(), rangeElem.getTimestamp())
-			s._insert(index+1, newElem)
-			// make rangeElem a single entry
-			rangeElem.setLastSeq(0)
-			return nil
-		}
+	if numSequences == 3 {
+		// if we get here then x is in middle of the 3 sequence range. x being == startSeq or
+		// lastSeq is handled above
+		// add new single entry at elem + 1 then modify range
+		newElem := NewSingleSkippedSequenceEntryAt(rangeElem.getLastSeq(), rangeElem.getTimestamp())
+		s._insert(index+1, newElem)
+		// make rangeElem a single entry
+		rangeElem.setLastSeq(rangeElem.getStartSeq())
+		return nil
+	}
 
-		// handling for if x is startSeq+1 or lastSeq-1
-		if rangeElem.getStartSeq() == x-1 {
-			// insert single skipped entry + alter start seq to x + 1
-			newElem := NewSingleSkippedSequenceEntryAt(x-1, rangeElem.getTimestamp())
-			s._insert(index, newElem)
-			rangeElem.setStartSeq(x + 1)
-			return nil
-		}
+	// handling for if x is startSeq+1 or lastSeq-1
+	if rangeElem.getStartSeq() == x-1 {
+		// insert single skipped entry + alter start seq to x + 1
+		newElem := NewSingleSkippedSequenceEntryAt(x-1, rangeElem.getTimestamp())
+		s._insert(index, newElem)
+		rangeElem.setStartSeq(x + 1)
+		return nil
+	}
 
-		if rangeElem.getLastSeq() == x+1 {
-			// insert single skipped entry at index+1 + alter last seq to x - 1
-			newElem := NewSingleSkippedSequenceEntryAt(x+1, rangeElem.getTimestamp())
-			s._insert(index+1, newElem)
-			rangeElem.setLastSeq(x - 1)
-			return nil
-		}
-
-		// if we get here we can assume that startSeq < x < lastSeq
-		// split index range
-		newElem := NewSkippedSequenceRangeEntryAt(x+1, rangeElem.getLastSeq(), rangeElem.getTimestamp())
+	if rangeElem.getLastSeq() == x+1 {
+		// insert single skipped entry at index+1 + alter last seq to x - 1
+		newElem := NewSingleSkippedSequenceEntryAt(x+1, rangeElem.getTimestamp())
 		s._insert(index+1, newElem)
 		rangeElem.setLastSeq(x - 1)
+		return nil
 	}
+
+	// if we get here we can assume that startSeq < x < lastSeq
+	// split index range
+	newElem := NewSkippedSequenceRangeEntryAt(x+1, rangeElem.getLastSeq(), rangeElem.getTimestamp())
+	s._insert(index+1, newElem)
+	rangeElem.setLastSeq(x - 1)
+
 	return nil
 }
 
@@ -303,22 +290,11 @@ func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry *SkippedSequenceLi
 	}
 	// get index of last entry + last seq of entry
 	index := len(s.list) - 1
-	var lastEntryLastSeq uint64
-	if s.list[index].isRange() {
-		lastEntryLastSeq = s.list[index].getLastSeq()
-	} else {
-		lastEntryLastSeq = s.list[index].getStartSeq()
-	}
+	lastEntryLastSeq := s.list[index].getLastSeq()
 	if (lastEntryLastSeq + 1) == entry.getStartSeq() {
 		// adding contiguous sequence
 		// set last seq in the range to the new arriving sequence + alter timestamp to incoming entries timestamp
-		if entry.isRange() {
-			// extend range to incoming last seq
-			s.list[index].extendRange(entry.getLastSeq(), entry.getTimestamp())
-		} else {
-			// extend range to incoming start seq if incoming sequence is a single one
-			s.list[index].extendRange(entry.getStartSeq(), entry.getTimestamp())
-		}
+		s.list[index].extendRange(entry.getLastSeq(), entry.getTimestamp())
 	} else {
 		s.list = append(s.list, entry)
 	}
