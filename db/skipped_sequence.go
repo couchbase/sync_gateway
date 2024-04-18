@@ -225,11 +225,6 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 		return nil
 	}
 	if rangeElem.getLastSeq() == x {
-		if numSequences == 2 {
-			// make rangeElem single sequence entry
-			rangeElem.setLastSeq(rangeElem.getStartSeq())
-			return nil
-		}
 		rangeElem.setLastSeq(x - 1)
 		return nil
 	}
@@ -242,23 +237,6 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 		s._insert(index+1, newElem)
 		// make rangeElem a single entry
 		rangeElem.setLastSeq(rangeElem.getStartSeq())
-		return nil
-	}
-
-	// handling for if x is startSeq+1 or lastSeq-1
-	if rangeElem.getStartSeq() == x-1 {
-		// insert single skipped entry + alter start seq to x + 1
-		newElem := NewSingleSkippedSequenceEntryAt(x-1, rangeElem.getTimestamp())
-		s._insert(index, newElem)
-		rangeElem.setStartSeq(x + 1)
-		return nil
-	}
-
-	if rangeElem.getLastSeq() == x+1 {
-		// insert single skipped entry at index+1 + alter last seq to x - 1
-		newElem := NewSingleSkippedSequenceEntryAt(x+1, rangeElem.getTimestamp())
-		s._insert(index+1, newElem)
-		rangeElem.setLastSeq(x - 1)
 		return nil
 	}
 
