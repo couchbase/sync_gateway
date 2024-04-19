@@ -76,9 +76,9 @@ func (h *handler) handleGetAllChannels() error {
 			}
 			if roleEntry.Source == channels.AdminGrant {
 				resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-				resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-			} else if roleEntry.Source == channels.AdminGrant {
 				resp.AdminRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
+			} else if roleEntry.Source == channels.AdminGrant {
+				resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
 				resp.DynamicRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
 			}
 			for channel, chanEntry := range role.Channels() {
