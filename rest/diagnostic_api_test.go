@@ -537,3 +537,67 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 	assert.ElementsMatch(t, channelMap.AdminRoleGrants["role1"][newCollection.String()]["role1Chan"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 5, EndSeq: 6}})
 
 }
+
+func TestGetAllChannelsByUser2CollectionsTo1(t *testing.T) {
+	SyncFn := `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.user, doc.role);}`
+	base.TestRequiresCollections(t)
+
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 2)
+	defer rt.Close()
+
+	dbName := "db"
+	tb := base.GetTestBucket(t)
+	defer tb.Close(rt.Context())
+	scopesConfig := GetCollectionsConfig(t, tb, 2)
+	for scope, _ := range scopesConfig {
+		for _, cnf := range scopesConfig[scope].Collections {
+			cnf.SyncFn = &SyncFn
+		}
+	}
+	dbConfig := makeDbConfig(tb.GetName(), dbName, scopesConfig)
+	rt.CreateDatabase("db", dbConfig)
+
+	scopeName := rt.GetDbCollections()[0].ScopeName
+	collection1Name := rt.GetDbCollections()[0].Name
+	collection2Name := rt.GetDbCollections()[1].Name
+	scopesConfig[scopeName].Collections[collection1Name] = &CollectionConfig{}
+	keyspace1 := scopeName + "." + collection1Name
+	keyspace2 := scopeName + "." + collection2Name
+	const alice = "alice"
+	userPayload := `{
+		%s
+		"collection_access": {
+			"%s": {
+				"%s": {
+					"admin_channels":["coll1chan"]
+				},
+				"%s": {
+					"admin_channels":["coll2chan"]
+				}
+			}
+		}
+	}`
+	// Put user alice and assert admin assigned channels are returned by the get all_channels endpoint
+	response := rt.SendAdminRequest(http.MethodPut,
+		"/"+dbName+"/_user/"+alice, fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`,
+			scopeName, collection1Name, collection2Name))
+	RequireStatus(t, response, http.StatusCreated)
+
+	resp := rt.UpsertDbConfig(dbName, DbConfig{Scopes: ScopesConfig{
+		scopeName: {Collections: CollectionsConfig{
+			collection1Name: {SyncFn: &SyncFn},
+		}},
+	}})
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// ensure endpoint does not error and deleted collection is not there
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/"+dbName+"/_user/"+alice+"/_all_channels", ``)
+	RequireStatus(t, response, http.StatusOK)
+	var channelMap getAllChannelsResponse
+	err := json.Unmarshal(response.BodyBytes(), &channelMap)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[keyspace1]), []string{"coll1chan"})
+	assert.NotContains(t, maps.Keys(channelMap.AdminGrants), keyspace2)
+
+}

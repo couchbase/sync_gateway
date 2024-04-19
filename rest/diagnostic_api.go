@@ -50,7 +50,7 @@ func (h *handler) handleGetAllChannels() error {
 			resp.AdminGrants[defaultKeyspace] = make(map[string]auth.GrantHistory)
 		}
 		resp.DynamicGrants[defaultKeyspace] = make(map[string]auth.GrantHistory)
-		err = authenticator.RebuildCollectionChannels(userPrinc, "_default", "_default")
+		err = authenticator.RebuildCollectionChannels(userPrinc, base.DefaultScope, base.DefaultCollection)
 		if err != nil {
 			return err
 		}
@@ -76,12 +76,9 @@ func (h *handler) handleGetAllChannels() error {
 			}
 			if roleEntry.Source == channels.AdminGrant {
 				resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-			} else if roleEntry.Source == channels.DynamicGrant {
 				resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-			}
-			if roleEntry.Source == channels.AdminGrant {
+			} else if roleEntry.Source == channels.AdminGrant {
 				resp.AdminRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
-			} else if roleEntry.Source == channels.DynamicGrant {
 				resp.DynamicRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
 			}
 			for channel, chanEntry := range role.Channels() {
@@ -137,8 +134,6 @@ func (h *handler) handleGetAllChannels() error {
 			}
 			// loop over previous role channels
 			for channel, chanHistory := range role.ChannelHistory() {
-				base.InfofCtx(h.ctx(), base.KeyAll, "chanHistory", chanHistory.Source, channel)
-
 				if chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq < roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
 					chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = roleHist.Entries[len(roleHist.Entries)-1].StartSeq
 				}
@@ -152,10 +147,16 @@ func (h *handler) handleGetAllChannels() error {
 		h.writeRawJSON(bytes)
 		return err
 	}
-
 	// Rebuild roles and channels
 	for scope, collectionConfig := range user.GetCollectionsAccess() {
+		// skip if scope/collection has been removed
+		if _, ok := h.db.CollectionNames[scope]; !ok {
+			continue
+		}
 		for collectionName, _ := range collectionConfig {
+			if _, ok := h.db.CollectionNames[scope][collectionName]; !ok {
+				continue
+			}
 			err = authenticator.RebuildCollectionChannels(userPrinc, scope, collectionName)
 			if err != nil {
 				return err
@@ -166,7 +167,6 @@ func (h *handler) handleGetAllChannels() error {
 		return err
 	}
 
-	user, err = h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
 	if err != nil {
 		return err
 	}
@@ -269,7 +269,13 @@ func (h *handler) handleGetAllChannels() error {
 
 	// Loop over current and past channels
 	for scope, collectionConfig := range user.GetCollectionsAccess() {
+		if _, ok := h.db.CollectionNames[scope]; !ok {
+			continue
+		}
 		for collectionName, CAConfig := range collectionConfig {
+			if _, ok := h.db.CollectionNames[scope][collectionName]; !ok {
+				continue
+			}
 			keyspace := scope + "." + collectionName
 			resp.AdminGrants[keyspace] = make(map[string]auth.GrantHistory)
 			resp.DynamicGrants[keyspace] = make(map[string]auth.GrantHistory)
