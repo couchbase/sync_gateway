@@ -384,7 +384,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 				sentSeqs = append(sentSeqs, seq)
 			}
 		} else {
-			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Peer didn't want revision %s / %s (seq:%v)", base.UD(docID), revID, seq)
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Peer didn't want revision %s/%s (seq:%v)", base.UD(docID), revID, seq)
 			if collectionCtx.sgr2PushAlreadyKnownSeqsCallback != nil {
 				alreadyKnownSeqs = append(alreadyKnownSeqs, seq)
 			}

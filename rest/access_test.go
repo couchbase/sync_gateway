@@ -716,7 +716,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	require.NoError(t, err)
-	require.Len(t, allDocsResult.Rows, 3)
+	require.Len(t, allDocsResult.Rows, 3) // FIXME (bbrks): Forbidden/403 with revcache changes
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 	assert.Equal(t, "doc4", allDocsResult.Rows[1].ID)
 	assert.Equal(t, "doc5", allDocsResult.Rows[2].ID)

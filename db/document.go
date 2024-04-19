@@ -95,6 +95,19 @@ type SyncData struct {
 
 	addedRevisionBodies     []string          // revIDs of non-winning revision bodies that have been added (and so require persistence)
 	removedRevisionBodyKeys map[string]string // keys of non-winning revisions that have been removed (and so may require deletion), indexed by revID
+
+	currentRevChannels base.Set // A base.Set of the current revision's channels (determined by SyncData.Channels at UnmarshalJSON time)
+}
+
+// determine set of current channels based on removal entries.
+func (sd *SyncData) getCurrentChannels() base.Set {
+	ch := base.SetOf()
+	for channelName, channelRemoval := range sd.Channels {
+		if channelRemoval == nil || channelRemoval.Seq == 0 {
+			ch.Add(channelName)
+		}
+	}
+	return ch
 }
 
 func (sd *SyncData) HashRedact(salt string) SyncData {
@@ -181,6 +194,8 @@ type Document struct {
 	RevID          string
 	DocAttachments AttachmentsMeta
 	inlineSyncData bool
+
+	currentRevChannels base.Set // A base.Set of the current revision's channels (determined by SyncData.Channels at UnmarshalJSON time)
 }
 
 type historyOnlySyncData struct {
@@ -939,7 +954,7 @@ func (doc *Document) addToChannelSetHistory(channelName string, historyEntry Cha
 
 // Updates the Channels property of a document object with current & past channels.
 // Returns the set of channels that have changed (document joined or left in this revision)
-func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (changedChannels base.Set, err error) {
+func (doc *Document) updateChannels(ctx context.Context, isWinningRev bool, newChannels base.Set) (changedChannels base.Set, err error) {
 	var changed []string
 	oldChannels := doc.Channels
 	if oldChannels == nil {
@@ -968,6 +983,9 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 			doc.updateChannelHistory(channel, doc.Sequence, true)
 		}
 	}
+	if isWinningRev {
+		doc.SyncData.currentRevChannels = newChannels
+	}
 	if changed != nil {
 		base.InfofCtx(ctx, base.KeyCRUD, "\tDoc %q / %q in channels %q", base.UD(doc.ID), doc.CurrentRev, base.UD(newChannels))
 		changedChannels, err = channels.SetFromArray(changed, channels.KeepStar)
@@ -980,6 +998,7 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 // Set of channels returned from IsChannelRemoval are "Active" channels and NOT "Removed".
 func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBytes []byte, history Revisions, channels base.Set, isRemoval bool, isDelete bool, err error) {
 
+	activeChannels := make(base.Set)
 	removedChannels := make(base.Set)
 
 	// Iterate over the document's channel history, looking for channels that were removed at revID.  If found, also identify whether the removal was a tombstone.
@@ -989,23 +1008,14 @@ func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBy
 			if removal.Deleted == true {
 				isDelete = true
 			}
+		} else {
+			activeChannels[channel] = struct{}{}
 		}
 	}
+
 	// If no matches found, return isRemoval=false
 	if len(removedChannels) == 0 {
 		return nil, nil, nil, false, false, nil
-	}
-
-	// Construct removal body
-	// doc ID and rev ID aren't required to be inserted here, as both of those are available in the request.
-	bodyBytes = []byte(RemovedRedactedDocument)
-
-	activeChannels := make(base.Set)
-	// Add active channels to the channel set if the the revision is available in the revision tree.
-	if revInfo, ok := doc.History[revID]; ok {
-		for channel, _ := range revInfo.Channels {
-			activeChannels[channel] = struct{}{}
-		}
 	}
 
 	// Build revision history for revID
@@ -1019,6 +1029,10 @@ func (doc *Document) IsChannelRemoval(ctx context.Context, revID string) (bodyBy
 		revHistory = []string{revID}
 	}
 	history = encodeRevisions(ctx, doc.ID, revHistory)
+
+	// Construct removal body
+	// doc ID and rev ID aren't required to be inserted here, as both of those are available in the request.
+	bodyBytes = []byte(RemovedRedactedDocument)
 
 	return bodyBytes, history, activeChannels, true, isDelete, nil
 }
@@ -1215,4 +1229,30 @@ func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 	}
 
 	return data, xdata, nil
+}
+
+// channelsForRev returns the set of channels the given revision is in for the document
+// Channel information is only stored for leaf nodes in the revision tree, as we don't keep full history of channel information
+func (doc *Document) channelsForRev(revid string) (base.Set, bool) {
+	if revid == "" || doc.CurrentRev == revid {
+		return doc.currentRevChannels, true
+	}
+
+	if rev, ok := doc.History[revid]; ok {
+		return rev.Channels, true
+	}
+
+	// no rev
+	return nil, false
+}
+
+// Returns a set of the current (winning revision's) channels for the document.
+func (doc *Document) currentChannels() base.Set {
+	ch := base.SetOf()
+	for channelName, channelRemoval := range doc.Channels {
+		if channelRemoval == nil || channelRemoval.Seq == 0 {
+			ch.Add(channelName)
+		}
+	}
+	return ch
 }

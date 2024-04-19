@@ -2096,12 +2096,15 @@ func TestRawRedaction(t *testing.T) {
 
 	// Test redact being disabled by default
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc", ``)
+	bodyBytes := res.Body.Bytes()
+	t.Logf("body: %s", string(bodyBytes))
 	var body map[string]interface{}
-	err := base.JSONUnmarshal(res.Body.Bytes(), &body)
+	err := base.JSONUnmarshal(bodyBytes, &body)
 	assert.NoError(t, err)
 	syncData := body[base.SyncPropertyName]
 	assert.Equal(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
-	assert.Equal(t, []interface{}{[]interface{}{"achannel"}}, syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
+	// active revision for a doc that isn't in conflict, so don't expect a channelsMap
+	assert.Nil(t, syncData.(map[string]interface{})["channelsMap"])
 
 	// Test redacted
 	body = map[string]interface{}{}
@@ -2111,7 +2114,8 @@ func TestRawRedaction(t *testing.T) {
 	syncData = body[base.SyncPropertyName]
 	require.NotNil(t, syncData)
 	assert.NotEqual(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
-	assert.NotEqual(t, []interface{}{[]interface{}{"achannel"}}, syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
+	// active revision for a doc that isn't in conflict, so don't expect a channelsMap
+	assert.Nil(t, syncData.(map[string]interface{})["channelsMap"])
 
 	// Test include doc false doesn't return doc
 	body = map[string]interface{}{}
