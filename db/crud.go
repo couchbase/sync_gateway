@@ -26,7 +26,7 @@ import (
 
 const (
 	kMaxRecentSequences            = 20    // Maximum number of sequences stored in RecentSequences before pruning is triggered
-	oversizeSkippedSequenceWarning = 10000 // Number of skipped sequences to issue a warning
+	unusedSequenceWarningThreshold = 10000 // Warn when releasing more than this many sequences due to existing sequence on the document
 )
 
 // ErrForbidden is returned when the user requests a document without a revision that they do not have access to.
@@ -1648,15 +1648,15 @@ func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAtt
 }
 
 // assignSequence assigns a global sequence number from database.
-func (c *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSequence uint64, doc *Document, newRevID string, unusedSequences []uint64) ([]uint64, error) {
-	return c.dbCtx.assignSequence(ctx, docSequence, doc, newRevID, unusedSequences)
+func (c *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
+	return c.dbCtx.assignSequence(ctx, docSequence, doc, unusedSequences)
 }
 
 // Sequence processing :
 // Assigns provided sequence to the document
 // Update unusedSequences in the event that there is a conflict and we have to provide a new sequence number
 // Update and prune RecentSequences
-func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint64, doc *Document, newRevID string, unusedSequences []uint64) ([]uint64, error) {
+func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
 
 	// Assign the next sequence number, for _changes feed.
 	// Be careful not to request a second sequence # on a retry if we don't need one.
@@ -1682,13 +1682,13 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 			if err = db.sequences.releaseSequence(ctx, docSequence); err != nil {
 				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
 			}
-			docSequence, err = db.sequences.nextSequenceGreaterThan(ctx, doc.Sequence)
+			var releasedSequenceCount uint64
+			docSequence, releasedSequenceCount, err = db.sequences.nextSequenceGreaterThan(ctx, doc.Sequence)
 			if err != nil {
 				return unusedSequences, err
 			}
-			numSkippedSequences := docSequence - doc.Sequence
-			if numSkippedSequences > oversizeSkippedSequenceWarning {
-				base.WarnfCtx(ctx, "doc %s / previous rev: %s /  new rev: %s be allocated sequence %d but standard next sequence allocation would be %d. This is significantly ahead of the previous sequence this document had %d.", base.UD(doc.ID), doc.CurrentRev, newRevID, docSequence, firstAllocatedSequence, doc.Sequence)
+			if releasedSequenceCount > unusedSequenceWarningThreshold {
+				base.WarnfCtx(ctx, "Doc %s / %s had an existing sequence %d that is higher than the next db sequence value %d, resulting in the release of %d unused sequences. This may indicate documents being migrated between databases by an external process.", base.UD(doc.ID), doc.CurrentRev, doc.Sequence, firstAllocatedSequence, releasedSequenceCount)
 			}
 
 		}
@@ -1855,7 +1855,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 
 	col.backupAncestorRevs(ctx, doc, newDoc)
 
-	unusedSequences, err = col.assignSequence(ctx, previousDocSequenceIn, doc, newRevID, unusedSequences)
+	unusedSequences, err = col.assignSequence(ctx, previousDocSequenceIn, doc, unusedSequences)
 	if err != nil {
 		return
 	}
