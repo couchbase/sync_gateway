@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"fmt"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -39,114 +40,10 @@ func (h *handler) handleGetAllChannels() error {
 	resp.DynamicRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory, len(user.RoleNames())-len(user.ExplicitRoles()))
 	resp.AdminRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory, len(user.ExplicitRoles()))
 	authenticator := h.db.Authenticator(h.ctx())
-	userPrinc, err := authenticator.GetPrincipal(user.Name(), true)
 	if err != nil {
 		return err
 	}
 
-	if h.db.OnlyDefaultCollection() {
-		defaultKeyspace := "_default._default"
-		if len(user.ExplicitChannels()) > 0 {
-			resp.AdminGrants[defaultKeyspace] = make(map[string]auth.GrantHistory)
-		}
-		resp.DynamicGrants[defaultKeyspace] = make(map[string]auth.GrantHistory)
-		err = authenticator.RebuildCollectionChannels(userPrinc, base.DefaultScope, base.DefaultCollection)
-		if err != nil {
-			return err
-		}
-		for channel, chanHistory := range user.ChannelHistory() {
-			resp.addGrants(chanHistory.Source, defaultKeyspace, channel, chanHistory)
-		}
-		for channel, chanEntry := range user.Channels() {
-			grantInfo := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
-			if chanHistory, ok := user.ChannelHistory()[channel]; ok {
-				for _, entry := range chanHistory.Entries {
-					grantInfo.Entries = append(grantInfo.Entries, entry)
-				}
-			}
-			resp.addGrants(chanEntry.Source, defaultKeyspace, channel, grantInfo)
-		}
-		for roleName, roleEntry := range user.RoleNames() {
-			role, err := h.db.Authenticator(h.ctx()).GetRole(roleName)
-			if err != nil {
-				return err
-			}
-			if role == nil {
-				continue
-			}
-			if roleEntry.Source == channels.AdminGrant {
-				resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-				resp.AdminRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
-			} else if roleEntry.Source == channels.DynamicGrant {
-				resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-				resp.DynamicRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
-			}
-			for channel, chanEntry := range role.Channels() {
-				if channel == channels.DocumentStarChannel {
-					continue
-				}
-				grantInfo := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}, Source: chanEntry.Source}
-				if roleEntry.VbSequence.Sequence > chanEntry.VbSequence.Sequence {
-					grantInfo.Entries[len(grantInfo.Entries)-1].StartSeq = roleEntry.VbSequence.Sequence
-				}
-				resp.addRoleGrants(roleName, roleEntry.Source, defaultKeyspace, channel, grantInfo)
-			}
-			for channel, chanHistory := range role.ChannelHistory() {
-				if roleEntry.VbSequence.Sequence > chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq {
-					chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = roleEntry.VbSequence.Sequence
-				}
-				resp.addRoleGrants(roleName, roleEntry.Source, defaultKeyspace, channel, chanHistory)
-			}
-		}
-		for roleName, roleHist := range user.RoleHistory() {
-			role, err := h.db.Authenticator(h.ctx()).GetRole(roleName)
-			if err != nil {
-				return err
-			}
-			if role == nil {
-				continue
-			}
-			if _, skipMapInit := resp.AdminRoleGrants[roleName]; !skipMapInit && roleHist.Source == channels.AdminGrant {
-				resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-				resp.AdminRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
-			} else if _, skipMapInit := resp.DynamicRoleGrants[roleName]; !skipMapInit && roleHist.Source == channels.DynamicGrant {
-				resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-				resp.DynamicRoleGrants[roleName][defaultKeyspace] = make(map[string]auth.GrantHistory)
-			}
-			for channel, chanEntry := range role.Channels() {
-				if channel == channels.DocumentStarChannel {
-					continue
-				}
-				roleChanHistory := roleHist
-				if chanEntry.VbSequence.Sequence > roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
-					roleChanHistory.Entries = append(roleChanHistory.Entries, auth.GrantHistorySequencePair{StartSeq: chanEntry.VbSequence.Sequence, EndSeq: roleHist.Entries[len(roleHist.Entries)-1].EndSeq})
-				}
-				if roleHist.Source == channels.DynamicGrant {
-					if entry, ok := resp.DynamicRoleGrants[roleName][defaultKeyspace][channel]; ok {
-						roleChanHistory.Entries = append(entry.Entries, roleChanHistory.Entries...)
-					}
-				} else {
-					if entry, ok := resp.AdminRoleGrants[roleName][defaultKeyspace][channel]; ok {
-						roleChanHistory.Entries = append(entry.Entries, roleChanHistory.Entries...)
-					}
-				}
-				resp.addRoleGrants(roleName, roleHist.Source, defaultKeyspace, channel, roleChanHistory)
-			}
-			// loop over previous role channels
-			for channel, chanHistory := range role.ChannelHistory() {
-				if chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq < roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
-					chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = roleHist.Entries[len(roleHist.Entries)-1].StartSeq
-				}
-				resp.addRoleGrants(roleName, roleHist.Source, defaultKeyspace, channel, chanHistory)
-			}
-		}
-		bytes, err := base.JSONMarshal(resp)
-		if err != nil {
-			return err
-		}
-		h.writeRawJSON(bytes)
-		return err
-	}
 	// Rebuild roles and channels
 	for scope, collectionConfig := range user.GetCollectionsAccess() {
 		// skip if scope/collection has been removed
@@ -157,7 +54,7 @@ func (h *handler) handleGetAllChannels() error {
 			if _, ok := h.db.CollectionNames[scope][collectionName]; !ok {
 				continue
 			}
-			err = authenticator.RebuildCollectionChannels(userPrinc, scope, collectionName)
+			err = authenticator.RebuildCollectionChannels(user, scope, collectionName)
 			if err != nil {
 				return err
 			}
@@ -178,38 +75,40 @@ func (h *handler) handleGetAllChannels() error {
 		if role == nil {
 			continue
 		}
-		collAccessAll := role.GetCollectionsAccess()
 		if roleEntry.Source == channels.AdminGrant {
 			resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
 		} else if roleEntry.Source == channels.DynamicGrant {
 			resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
 		}
-		for scopeName, collections := range collAccessAll {
-			for collectionName, collectionAccess := range collections {
-				keyspace := scopeName + "." + collectionName
-				if roleEntry.Source == channels.AdminGrant {
-					resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
-				} else if roleEntry.Source == channels.DynamicGrant {
-					resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
-				}
+		for _, dsName := range h.db.DataStoreNames() {
+			keyspace := fmt.Sprintf("%s.%s", dsName.Scope, dsName.Collection)
+			collectionChannels := role.CollectionChannels(dsName.Scope, dsName.Collection)
+			channelHistory := role.CollectionChannelHistory(dsName.Scope, dsName.Collection)
+			if len(collectionChannels) == 0 && len(channelHistory) == 0 {
+				continue
+			}
+			if roleEntry.Source == channels.AdminGrant {
+				resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+			} else if roleEntry.Source == channels.DynamicGrant {
+				resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+			}
+			for channel, chanEntry := range collectionChannels {
 				// loop over current role channels
-				for channel, chanEntry := range collectionAccess.Channels() {
-					if channel == channels.DocumentStarChannel {
-						continue
-					}
-					grantInfo := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}, Source: chanEntry.Source}
-					if roleEntry.VbSequence.Sequence > chanEntry.VbSequence.Sequence {
-						grantInfo.Entries[len(grantInfo.Entries)-1].StartSeq = roleEntry.VbSequence.Sequence
-					}
-					resp.addRoleGrants(roleName, roleEntry.Source, keyspace, channel, grantInfo)
+				if channel == channels.DocumentStarChannel {
+					continue
 				}
+				grantInfo := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}, Source: chanEntry.Source}
+				if roleEntry.VbSequence.Sequence > chanEntry.VbSequence.Sequence {
+					grantInfo.Entries[len(grantInfo.Entries)-1].StartSeq = roleEntry.VbSequence.Sequence
+				}
+				resp.addRoleGrants(roleName, roleEntry.Source, keyspace, channel, grantInfo)
 				// loop over previous role channels
-				for channel, chanHistory := range collectionAccess.ChannelHistory() {
-					if roleEntry.VbSequence.Sequence > chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq {
-						chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = roleEntry.VbSequence.Sequence
-					}
-					resp.addRoleGrants(roleName, roleEntry.Source, keyspace, channel, chanHistory)
+			}
+			for channel, chanHistory := range channelHistory {
+				if roleEntry.VbSequence.Sequence > chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq {
+					chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = roleEntry.VbSequence.Sequence
 				}
+				resp.addRoleGrants(roleName, roleEntry.Source, keyspace, channel, chanHistory)
 			}
 		}
 	}
@@ -222,100 +121,75 @@ func (h *handler) handleGetAllChannels() error {
 		if role == nil {
 			continue
 		}
-		collAccessAll := role.GetCollectionsAccess()
 		if _, ok := resp.AdminRoleGrants[roleName]; !ok && roleHist.Source == channels.AdminGrant {
 			resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
 		} else if _, ok := resp.DynamicRoleGrants[roleName]; !ok && roleHist.Source == channels.DynamicGrant {
 			resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
 		}
-		for scopeName, collections := range collAccessAll {
-			for collectionName, collectionAccess := range collections {
-				keyspace := scopeName + "." + collectionName
-				if _, ok := resp.AdminRoleGrants[roleName][keyspace]; !ok && roleHist.Source == channels.AdminGrant {
-					resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
-				} else if _, ok := resp.DynamicRoleGrants[roleName][keyspace]; !ok && roleHist.Source == channels.DynamicGrant {
-					resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+		for _, dsName := range h.db.DataStoreNames() {
+			keyspace := fmt.Sprintf("%s.%s", dsName.Scope, dsName.Collection)
+			collectionChannels := role.CollectionChannels(dsName.Scope, dsName.Collection)
+			channelHistory := role.CollectionChannelHistory(dsName.Scope, dsName.Collection)
+			if len(collectionChannels) == 0 && len(channelHistory) == 0 {
+				continue
+			}
+			if _, ok := resp.AdminRoleGrants[roleName][keyspace]; !ok && roleHist.Source == channels.AdminGrant {
+				resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+			} else if _, ok := resp.DynamicRoleGrants[roleName][keyspace]; !ok && roleHist.Source == channels.DynamicGrant {
+				resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+			}
+			// loop over previous role channels
+			for channel, chanEntry := range collectionChannels {
+				if channel == channels.DocumentStarChannel {
+					continue
 				}
-				// loop over current role channels
-				for channel, chanEntry := range collectionAccess.Channels() {
-					if channel == channels.DocumentStarChannel {
-						continue
-					}
-					roleChanHistory := roleHist
-					if chanEntry.VbSequence.Sequence > roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
-						roleChanHistory.Entries = append(roleChanHistory.Entries, auth.GrantHistorySequencePair{StartSeq: chanEntry.VbSequence.Sequence, EndSeq: roleHist.Entries[len(roleHist.Entries)-1].EndSeq})
-					}
-					if roleHist.Source == channels.DynamicGrant {
-						if entry, ok := resp.DynamicRoleGrants[roleName][keyspace][channel]; ok {
-							roleChanHistory.Entries = append(entry.Entries, roleChanHistory.Entries...)
-						}
-					} else {
-						if entry, ok := resp.AdminRoleGrants[roleName][keyspace][channel]; ok {
-							roleChanHistory.Entries = append(entry.Entries, roleChanHistory.Entries...)
-						}
-					}
-					resp.addRoleGrants(roleName, roleHist.Source, keyspace, channel, roleChanHistory)
+				roleChanHistory := roleHist
+				if chanEntry.VbSequence.Sequence > roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
+					roleChanHistory.Entries = append(roleChanHistory.Entries, auth.GrantHistorySequencePair{StartSeq: chanEntry.VbSequence.Sequence, EndSeq: roleHist.Entries[len(roleHist.Entries)-1].EndSeq})
 				}
-				// loop over previous role channels
-				for channel, chanHistory := range collectionAccess.ChannelHistory() {
-					if chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq < roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
-						chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = roleHist.Entries[len(roleHist.Entries)-1].StartSeq
+				if roleHist.Source == channels.DynamicGrant {
+					if entry, ok := resp.DynamicRoleGrants[roleName][keyspace][channel]; ok {
+						roleChanHistory.Entries = append(entry.Entries, roleChanHistory.Entries...)
 					}
-					resp.addRoleGrants(roleName, roleHist.Source, keyspace, channel, chanHistory)
+				} else {
+					if entry, ok := resp.AdminRoleGrants[roleName][keyspace][channel]; ok {
+						roleChanHistory.Entries = append(entry.Entries, roleChanHistory.Entries...)
+					}
 				}
+				resp.addRoleGrants(roleName, roleHist.Source, keyspace, channel, roleChanHistory)
+			}
+
+			for channel, chanHistory := range channelHistory {
+				if chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq < roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
+					chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = roleHist.Entries[len(roleHist.Entries)-1].StartSeq
+				}
+				resp.addRoleGrants(roleName, roleHist.Source, keyspace, channel, chanHistory)
 			}
 		}
 	}
 
 	// Loop over current and past channels
-	for scope, collectionConfig := range user.GetCollectionsAccess() {
-		if _, ok := h.db.CollectionNames[scope]; !ok {
+	for _, dsName := range h.db.DataStoreNames() {
+		keyspace := fmt.Sprintf("%s.%s", dsName.Scope, dsName.Collection)
+		collectionChannels := user.CollectionChannels(dsName.Scope, dsName.Collection)
+		channelHistory := user.CollectionChannelHistory(dsName.Scope, dsName.Collection)
+		if len(collectionChannels) == 0 && len(channelHistory) == 0 {
 			continue
 		}
-		for collectionName, CAConfig := range collectionConfig {
-			if _, ok := h.db.CollectionNames[scope][collectionName]; !ok {
-				continue
-			}
-			keyspace := scope + "." + collectionName
-			resp.AdminGrants[keyspace] = make(map[string]auth.GrantHistory)
-			resp.DynamicGrants[keyspace] = make(map[string]auth.GrantHistory)
-
-			for channel, chanHistory := range CAConfig.ChannelHistory() {
-				resp.addGrants(chanHistory.Source, keyspace, channel, chanHistory)
-			}
-			for channel, chanEntry := range CAConfig.Channels() {
-				history := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
-				// If channel is in history, add grant history to current info
-				if _, ok := CAConfig.ChannelHistory_[channel]; ok {
-					for _, entry := range CAConfig.ChannelHistory_[channel].Entries {
-						history.Entries = append(history.Entries, entry)
-					}
-				}
-				resp.addGrants(chanEntry.Source, keyspace, channel, history)
-			}
+		resp.AdminGrants[keyspace] = make(map[string]auth.GrantHistory)
+		resp.DynamicGrants[keyspace] = make(map[string]auth.GrantHistory)
+		for channel, chanHistory := range channelHistory {
+			resp.addGrants(chanHistory.Source, keyspace, channel, chanHistory)
 		}
-	}
-
-	// Single named collection + default collection handling, if all_channels includes more than one channel ("!"), its using the default collection.
-	if len(user.ExplicitChannels().AllKeys()) != 0 {
-		err = authenticator.RebuildCollectionChannels(userPrinc, "_default", "_default")
-		if err != nil {
-			return err
-		}
-
-		resp.AdminGrants["_default._default"] = make(map[string]auth.GrantHistory)
-		resp.DynamicGrants["_default._default"] = make(map[string]auth.GrantHistory)
-		for channel, chanHistory := range user.ChannelHistory() {
-			resp.addGrants(chanHistory.Source, "_default._default", channel, chanHistory)
-		}
-		for channel, chanEntry := range user.Channels() {
-			grantInfo := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
-			if chanHistory, ok := user.ChannelHistory()[channel]; ok {
-				for _, entry := range chanHistory.Entries {
-					grantInfo.Entries = append(grantInfo.Entries, entry)
+		for channel, chanEntry := range collectionChannels {
+			history := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
+			// If channel is in history, add grant history to current info
+			if _, ok := channelHistory[channel]; ok {
+				for _, entry := range channelHistory[channel].Entries {
+					history.Entries = append(history.Entries, entry)
 				}
 			}
-			resp.addGrants(chanEntry.Source, "_default._default", channel, grantInfo)
+			resp.addGrants(chanEntry.Source, keyspace, channel, history)
 		}
 	}
 
