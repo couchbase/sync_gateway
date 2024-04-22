@@ -446,6 +446,7 @@ func (c *Collection) UpdateXattrs(ctx context.Context, k string, exp uint32, cas
 		Cas:           gocb.Cas(cas),
 	}
 	options.Internal.DocFlags = gocb.SubdocDocFlagAccessDeleted
+	fillMutateInOptions(ctx, options, opts)
 
 	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {
