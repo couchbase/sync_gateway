@@ -10,6 +10,7 @@ package rest
 
 import (
 	"fmt"
+
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -25,39 +26,42 @@ type getAllChannelsResponse struct {
 	DynamicRoleGrants map[string]map[string]map[string]auth.GrantHistory `json:"dynamic_role_grants,omitempty"`
 }
 
+func newGetAllChannelsResponse() getAllChannelsResponse {
+	var resp getAllChannelsResponse
+	resp.AdminGrants = make(map[string]map[string]auth.GrantHistory)
+	resp.DynamicGrants = make(map[string]map[string]auth.GrantHistory)
+	resp.DynamicRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory)
+	resp.AdminRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory)
+	return resp
+}
+
 func (h *handler) handleGetAllChannels() error {
 	h.assertAdminOnly()
-	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	username := mux.Vars(h.rq)["name"]
+	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(username))
 	if err != nil {
-		return err
+		return fmt.Errorf("Could not get user %s: %w", username, err)
 	}
 	if user == nil {
-		return kNotFoundError
+		return fmt.Errorf("Could not get user %s: %w", username, err)
 	}
-	var resp getAllChannelsResponse
-	resp.AdminGrants = make(map[string]map[string]auth.GrantHistory, len(user.ExplicitChannels()))
-	resp.DynamicGrants = make(map[string]map[string]auth.GrantHistory, len(user.Channels())-len(user.ExplicitChannels()))
-	resp.DynamicRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory, len(user.RoleNames())-len(user.ExplicitRoles()))
-	resp.AdminRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory, len(user.ExplicitRoles()))
+
 	authenticator := h.db.Authenticator(h.ctx())
 	if err != nil {
 		return err
 	}
 
+	resp := newGetAllChannelsResponse()
+
 	// Rebuild roles and channels
-	for scope, collectionConfig := range user.GetCollectionsAccess() {
+	for _, dsName := range h.db.DataStoreNames() {
 		// skip if scope/collection has been removed
-		if _, ok := h.db.CollectionNames[scope]; !ok {
+		if _, ok := h.db.CollectionNames[dsName.Scope]; !ok {
 			continue
 		}
-		for collectionName, _ := range collectionConfig {
-			if _, ok := h.db.CollectionNames[scope][collectionName]; !ok {
-				continue
-			}
-			err = authenticator.RebuildCollectionChannels(user, scope, collectionName)
-			if err != nil {
-				return err
-			}
+		err = authenticator.RebuildCollectionChannels(user, dsName.Scope, dsName.Collection)
+		if err != nil {
+			return fmt.Errorf("Could not rebuild channels for %s: %w", dsName.String(), err)
 		}
 	}
 	if err := authenticator.RebuildRoles(user); err != nil {
@@ -68,17 +72,15 @@ func (h *handler) handleGetAllChannels() error {
 		return err
 	}
 	for roleName, roleEntry := range user.RoleNames() {
-		role, err := h.db.Authenticator(h.ctx()).GetRole(roleName)
+		role, err := h.db.Authenticator(h.ctx()).GetRoleIncDeleted(roleName)
+		if role != nil && role.IsDeleted() {
+			base.InfofCtx(h.ctx(), base.KeyDiagnostic, "Role %s deleted, continuing")
+		}
 		if err != nil {
 			return err
 		}
 		if role == nil {
 			continue
-		}
-		if roleEntry.Source == channels.AdminGrant {
-			resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-		} else if roleEntry.Source == channels.DynamicGrant {
-			resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
 		}
 		for _, dsName := range h.db.DataStoreNames() {
 			keyspace := fmt.Sprintf("%s.%s", dsName.Scope, dsName.Collection)
@@ -86,11 +88,6 @@ func (h *handler) handleGetAllChannels() error {
 			channelHistory := role.CollectionChannelHistory(dsName.Scope, dsName.Collection)
 			if len(collectionChannels) == 0 && len(channelHistory) == 0 {
 				continue
-			}
-			if roleEntry.Source == channels.AdminGrant {
-				resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
-			} else if roleEntry.Source == channels.DynamicGrant {
-				resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
 			}
 			for channel, chanEntry := range collectionChannels {
 				// loop over current role channels
@@ -121,11 +118,7 @@ func (h *handler) handleGetAllChannels() error {
 		if role == nil {
 			continue
 		}
-		if _, ok := resp.AdminRoleGrants[roleName]; !ok && roleHist.Source == channels.AdminGrant {
-			resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-		} else if _, ok := resp.DynamicRoleGrants[roleName]; !ok && roleHist.Source == channels.DynamicGrant {
-			resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
-		}
+
 		for _, dsName := range h.db.DataStoreNames() {
 			keyspace := fmt.Sprintf("%s.%s", dsName.Scope, dsName.Collection)
 			collectionChannels := role.CollectionChannels(dsName.Scope, dsName.Collection)
@@ -133,11 +126,7 @@ func (h *handler) handleGetAllChannels() error {
 			if len(collectionChannels) == 0 && len(channelHistory) == 0 {
 				continue
 			}
-			if _, ok := resp.AdminRoleGrants[roleName][keyspace]; !ok && roleHist.Source == channels.AdminGrant {
-				resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
-			} else if _, ok := resp.DynamicRoleGrants[roleName][keyspace]; !ok && roleHist.Source == channels.DynamicGrant {
-				resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
-			}
+
 			// loop over previous role channels
 			for channel, chanEntry := range collectionChannels {
 				if channel == channels.DocumentStarChannel {
@@ -201,7 +190,7 @@ func (h *handler) handleGetAllChannels() error {
 	return err
 }
 
-func (resp getAllChannelsResponse) addGrants(source string, keyspace string, channelName string, grantInfo auth.GrantHistory) {
+func (resp *getAllChannelsResponse) addGrants(source string, keyspace string, channelName string, grantInfo auth.GrantHistory) {
 	if source == channels.AdminGrant {
 		resp.AdminGrants[keyspace][channelName] = grantInfo
 	} else if source == channels.DynamicGrant {
@@ -212,10 +201,22 @@ func (resp getAllChannelsResponse) addGrants(source string, keyspace string, cha
 	grantInfo.Source = ""
 }
 
-func (resp getAllChannelsResponse) addRoleGrants(roleName string, source string, keyspace string, channelName string, grantInfo auth.GrantHistory) {
+func (resp *getAllChannelsResponse) addRoleGrants(roleName string, source string, keyspace string, channelName string, grantInfo auth.GrantHistory) {
 	if source == channels.AdminGrant {
+		if _, ok := resp.AdminRoleGrants[roleName]; !ok {
+			resp.AdminRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
+		}
+		if _, ok := resp.AdminRoleGrants[roleName][keyspace]; !ok {
+			resp.AdminRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+		}
 		resp.AdminRoleGrants[roleName][keyspace][channelName] = grantInfo
 	} else if source == channels.DynamicGrant {
+		if _, ok := resp.DynamicRoleGrants[roleName]; !ok {
+			resp.DynamicRoleGrants[roleName] = make(map[string]map[string]auth.GrantHistory)
+		}
+		if _, ok := resp.DynamicRoleGrants[roleName][keyspace]; !ok {
+			resp.DynamicRoleGrants[roleName][keyspace] = make(map[string]auth.GrantHistory)
+		}
 		resp.DynamicRoleGrants[roleName][keyspace][channelName] = grantInfo
 	}
 }
