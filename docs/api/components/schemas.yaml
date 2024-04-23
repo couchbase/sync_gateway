@@ -2519,7 +2519,7 @@ AllUserChannels:
   properties:
     admin_grants:
       description: |-
-        Channels assigned to the user through the admin API by adding them to admin_channels.
+        Channels assigned to the user through the admin API by adding them to admin_channels on a /{db}/_user modification..
       type: object
       additionalProperties:
         $ref: '#/channelEntry'
@@ -2537,7 +2537,7 @@ AllUserChannels:
         $ref: '#/channelEntry'
     admin_role_grants:
       description: |-
-        Channels assigned to the user through the admin API, by assigning a role to the user through admin_roles,
+        Channels assigned to the user through the admin API, by assigning a role to the user through admin_roles on a /{db}/_user modification.,
         and assigning the channels to that role. Does not include historic roles.
       type: object
       additionalProperties:
