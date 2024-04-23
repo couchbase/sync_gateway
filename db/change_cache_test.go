@@ -74,45 +74,6 @@ func logEntry(seq uint64, docid string, revid string, channelNames []string, col
 	return entry
 }
 
-func TestSkippedSequenceList(t *testing.T) {
-
-	skipList := NewSkippedSequenceList()
-	// Push values
-	assert.NoError(t, skipList.Push(&SkippedSequence{4, time.Now()}))
-	assert.NoError(t, skipList.Push(&SkippedSequence{7, time.Now()}))
-	assert.NoError(t, skipList.Push(&SkippedSequence{8, time.Now()}))
-	assert.NoError(t, skipList.Push(&SkippedSequence{12, time.Now()}))
-	assert.NoError(t, skipList.Push(&SkippedSequence{18, time.Now()}))
-	assert.True(t, verifySkippedSequences(skipList, []uint64{4, 7, 8, 12, 18}))
-
-	// Retrieval of low value
-	assert.Equal(t, uint64(4), skipList.getOldest())
-
-	// Removal of first value
-	assert.NoError(t, skipList.Remove(4))
-	assert.True(t, verifySkippedSequences(skipList, []uint64{7, 8, 12, 18}))
-
-	// Removal of middle values
-	assert.NoError(t, skipList.Remove(8))
-	assert.True(t, verifySkippedSequences(skipList, []uint64{7, 12, 18}))
-
-	assert.NoError(t, skipList.Remove(12))
-	assert.True(t, verifySkippedSequences(skipList, []uint64{7, 18}))
-
-	// Removal of last value
-	assert.NoError(t, skipList.Remove(18))
-	assert.True(t, verifySkippedSequences(skipList, []uint64{7}))
-
-	// Removal of non-existent returns error
-	assert.Error(t, skipList.Remove(25))
-	assert.True(t, verifySkippedSequences(skipList, []uint64{7}))
-
-	// Add an out-of-sequence entry (make sure bad sequencing doesn't throw us into an infinite loop)
-	assert.Error(t, skipList.Push(&SkippedSequence{6, time.Now()}))
-	assert.NoError(t, skipList.Push(&SkippedSequence{9, time.Now()}))
-	assert.True(t, verifySkippedSequences(skipList, []uint64{7, 9}))
-}
-
 func TestLateSequenceHandling(t *testing.T) {
 
 	context, ctx := setupTestDBWithCacheOptions(t, DefaultCacheOptions())
@@ -1325,8 +1286,7 @@ func TestStopChangeCache(t *testing.T) {
 	WriteDirect(t, db, []string{"ABC"}, 3)
 
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	err := db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Hour * -2)})
-	require.NoError(t, err)
+	db.changeCache.skippedSeqs.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(3, time.Now().Unix()-7200))
 
 	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
 	db.Close(ctx)
@@ -1386,33 +1346,8 @@ func shortWaitCache() CacheOptions {
 	cacheOptions := DefaultCacheOptions()
 	cacheOptions.CachePendingSeqMaxWait = 5 * time.Millisecond
 	cacheOptions.CachePendingSeqMaxNum = 50
-	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
+	cacheOptions.CacheSkippedSeqMaxWait = 120
 	return cacheOptions
-}
-
-func verifySkippedSequences(list *SkippedSequenceList, sequences []uint64) bool {
-	if len(list.skippedMap) != len(sequences) {
-		log.Printf("verifySkippedSequences: skippedMap size (%v) not equals to sequences size (%v)",
-			len(list.skippedMap), len(sequences))
-		return false
-	}
-
-	i := -1
-	for e := list.skippedList.Front(); e != nil; e = e.Next() {
-		i++
-		skippedSeq := e.Value.(*SkippedSequence)
-		if skippedSeq.seq != sequences[i] {
-			log.Printf("verifySkippedSequences: sequence mismatch at index %v, queue=%v, sequences=%v",
-				i, skippedSeq.seq, sequences[i])
-			return false
-		}
-	}
-	if i != len(sequences)-1 {
-		log.Printf("verifySkippedSequences: skippedList size (%d) not equals to sequences size (%d)",
-			i+1, len(sequences))
-		return false
-	}
-	return true
 }
 
 func verifyCacheSequences(singleCache SingleChannelCache, sequences []uint64) bool {
@@ -2193,4 +2128,212 @@ func TestInvalidXattrStream(t *testing.T) {
 	require.Nil(t, body)
 	require.Nil(t, xattr)
 	require.Nil(t, userXattr)
+}
+
+// TestProcessSkippedEntry:
+//   - Creates change cache with minimal pending seq wait time to push sequences to skipped quick
+//   - Push a sequence higher than expected to cache
+//   - Have NewTestProcessEntryFeed push sequences to the cache and assert that the current skipped sequence count decrements each time
+//   - Iterate through the skipped slice and cumulative add number of sequences currently in the slice, assert this is
+//     equal to the corresponding stat
+//   - Assert that the length of slice stat is equal to the length of the skipped sequence slice + assert that number of
+//     sequences skipped overall stat is correct
+func TestProcessSkippedEntry(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, bucket, 1),
+	})
+	require.NoError(t, err)
+	defer dbContext.Close(ctx)
+
+	err = dbContext.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
+	ctx = dbContext.AddDatabaseLogContext(ctx)
+	testChangeCache := &changeCache{}
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
+		CachePendingSeqMaxWait: 5 * time.Millisecond,
+		CacheSkippedSeqMaxWait: 2 * time.Minute,
+	}, dbContext.MetadataKeys); err != nil {
+		log.Printf("Init failed for testChangeCache: %v", err)
+		t.Fail()
+	}
+
+	if err := testChangeCache.Start(0); err != nil {
+		log.Printf("Start error for testChangeCache: %v", err)
+		t.Fail()
+	}
+	defer testChangeCache.Stop(ctx)
+	require.NoError(t, err)
+
+	feed := NewTestProcessEntryFeed(1, 5)
+
+	// add cache entry that is higher than expected
+	highEntry := &LogEntry{
+		Sequence:     20,
+		DocID:        fmt.Sprintf("doc_%d", 50),
+		RevID:        "1-abcdefabcdefabcdef",
+		TimeReceived: time.Now(),
+		TimeSaved:    time.Now(),
+	}
+	_ = testChangeCache.processEntry(ctx, highEntry)
+
+	// assert this pushes an entry on the skipped sequence slice
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, 1, len(testChangeCache.skippedSeqs.list))
+	}, time.Second*10, time.Millisecond*100)
+
+	// process some sequences over cache
+	currNumSkippedSeqs := dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
+	for j := 0; j < 10; j++ {
+		en := feed.Next()
+		_ = testChangeCache.processEntry(ctx, en)
+		assert.Equal(t, currNumSkippedSeqs-1, dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
+		currNumSkippedSeqs = dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
+	}
+
+	// assert on skipped sequence slice stats after above operations on cache
+	var numSeqsInList int64
+	for _, v := range testChangeCache.skippedSeqs.list {
+		numSeqsInList = numSeqsInList + v.getNumSequencesInEntry()
+	}
+	assert.Equal(t, numSeqsInList, dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
+	assert.Equal(t, int64(len(testChangeCache.skippedSeqs.list)), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
+	assert.Equal(t, int64(19), dbContext.DbStats.CacheStats.NumSkippedSeqs.Value())
+}
+
+// TestProcessSkippedEntryStats:
+//   - Creates change cache with minimal pending seq wait time to push sequences to skipped quick
+//   - Push a sequence higher than expected to cache
+//   - Push some sequences that are skipped onto the cache and assert that the stats: number of current skipped sequences,
+//     length of slice, cumulative number of skipped sequences and capacity of slice are all updated as expected
+func TestProcessSkippedEntryStats(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, bucket, 1),
+	})
+	require.NoError(t, err)
+	defer dbContext.Close(ctx)
+
+	err = dbContext.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
+	ctx = dbContext.AddDatabaseLogContext(ctx)
+	testChangeCache := &changeCache{}
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
+		CachePendingSeqMaxWait: 5 * time.Millisecond,
+		CacheSkippedSeqMaxWait: 2 * time.Minute,
+	}, dbContext.MetadataKeys); err != nil {
+		log.Printf("Init failed for testChangeCache: %v", err)
+		t.Fail()
+	}
+
+	if err := testChangeCache.Start(0); err != nil {
+		log.Printf("Start error for testChangeCache: %v", err)
+		t.Fail()
+	}
+	defer testChangeCache.Stop(ctx)
+	require.NoError(t, err)
+
+	// add cache entry that is higher than expected
+	highEntry := &LogEntry{
+		Sequence:     20,
+		DocID:        fmt.Sprintf("doc_%d", 50),
+		RevID:        "1-abcdefabcdefabcdef",
+		TimeReceived: time.Now(),
+		TimeSaved:    time.Now(),
+	}
+	_ = testChangeCache.processEntry(ctx, highEntry)
+
+	// assert this pushes an entry on the skipped sequence slice
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, 1, len(testChangeCache.skippedSeqs.list))
+	}, time.Second*10, time.Millisecond*100)
+
+	// expected values for stats on skipped slice
+	arrivingSeqs := []uint64{3, 15, 18, 2, 1}
+	expSliceLen := []int64{2, 3, 4, 4, 3}
+	expSliceCap := []int64{2, 4, 4, 4, 4}
+
+	numSeqsInList := dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
+	for j := 0; j < len(arrivingSeqs); j++ {
+		newEntry := &LogEntry{
+			DocID:    fmt.Sprintf("doc_%d", arrivingSeqs),
+			RevID:    "1-abcdefabcdefabcdef",
+			Sequence: arrivingSeqs[j],
+		}
+
+		_ = testChangeCache.processEntry(ctx, newEntry)
+		// assert on skipped sequence slice stats
+		assert.Equal(t, numSeqsInList-1, dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
+		assert.Equal(t, expSliceLen[j], dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
+		assert.Equal(t, int64(19), dbContext.DbStats.CacheStats.NumSkippedSeqs.Value())
+		assert.Equal(t, expSliceCap[j], dbContext.DbStats.CacheStats.SkippedSeqCap.Value())
+		numSeqsInList = dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
+	}
+
+}
+
+// TestSkippedSequenceCompact:
+//   - Creates change cache with minimal pending seq wait time to push sequences to skipped quick but with
+//     small max wait on skipped sequences
+//   - Push a sequence higher than expected to cache
+//   - Assert that the skipped slice eventually ends up with 0 length and the number of abandoned sequences are as expected
+func TestSkippedSequenceCompact(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, bucket, 1),
+	})
+	require.NoError(t, err)
+	defer dbContext.Close(ctx)
+
+	err = dbContext.StartOnlineProcesses(ctx)
+	require.NoError(t, err)
+
+	ctx = dbContext.AddDatabaseLogContext(ctx)
+	testChangeCache := &changeCache{}
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
+		CachePendingSeqMaxWait: 5 * time.Millisecond,
+		CacheSkippedSeqMaxWait: 2 * time.Second,
+	}, dbContext.MetadataKeys); err != nil {
+		log.Printf("Init failed for testChangeCache: %v", err)
+		t.Fail()
+	}
+
+	if err := testChangeCache.Start(0); err != nil {
+		log.Printf("Start error for testChangeCache: %v", err)
+		t.Fail()
+	}
+	defer testChangeCache.Stop(ctx)
+	require.NoError(t, err)
+
+	// add cache entry that is higher than expected
+	highEntry := &LogEntry{
+		Sequence:     20,
+		DocID:        fmt.Sprintf("doc_%d", 50),
+		RevID:        "1-abcdefabcdefabcdef",
+		TimeReceived: time.Now(),
+		TimeSaved:    time.Now(),
+	}
+	_ = testChangeCache.processEntry(ctx, highEntry)
+
+	// assert this pushes an entry on the skipped sequence slice
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, 1, len(testChangeCache.skippedSeqs.list))
+	}, time.Second*10, time.Millisecond*100)
+
+	// assert that compaction empties the skipped slice and we have correct value for abandoned sequences
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, 0, len(testChangeCache.skippedSeqs.list))
+		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.AbandonedSeqs.Value())
+	}, time.Second*10, time.Millisecond*100)
 }

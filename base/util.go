@@ -874,6 +874,11 @@ func IntPtr(i int) *int {
 	return &i
 }
 
+// Int64Prt returns a pointer to the given int64 literal.
+func Int64Prt(i int64) *int64 {
+	return &i
+}
+
 // BoolPtr returns a pointer to the given bool literal.
 func BoolPtr(b bool) *bool {
 	return &b

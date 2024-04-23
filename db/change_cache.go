@@ -12,7 +12,6 @@ package db
 
 import (
 	"container/heap"
-	"container/list"
 	"context"
 	"errors"
 	"fmt"
@@ -59,7 +58,7 @@ type changeCache struct {
 	notifyChange       func(context.Context, channels.Set) // Client callback that notifies of channel changes
 	started            base.AtomicBool                     // Set by the Start method
 	stopped            base.AtomicBool                     // Set by the Stop method
-	skippedSeqs        *SkippedSequenceList                // Skipped sequences still pending on the TAP feed
+	skippedSeqs        *SkippedSequenceSlice               // Skipped sequences still pending on the DCP caching feed
 	lock               sync.RWMutex                        // Coordinates access to struct fields
 	options            CacheOptions                        // Cache config
 	terminator         chan bool                           // Signal termination of background goroutines
@@ -170,7 +169,7 @@ func (c *changeCache) Init(ctx context.Context, dbContext *DatabaseContext, chan
 	c.receivedSeqs = make(map[uint64]struct{})
 	c.terminator = make(chan bool)
 	c.initTime = time.Now()
-	c.skippedSeqs = NewSkippedSequenceList()
+	c.skippedSeqs = NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
 	c.lastAddPendingTime = time.Now().UnixNano()
 	c.sgCfgPrefix = dbContext.MetadataKeys.SGCfgPrefix(c.db.Options.GroupID)
 	c.metaKeys = metaKeys
@@ -300,23 +299,23 @@ func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 
 // Cleanup function, invoked periodically.
 // Removes skipped entries from skippedSeqs that have been waiting longer
-// than MaxChannelLogMissingWaitTime from the queue.  Attempts view retrieval
-// prior to removal.  Only locks skipped sequence queue to build the initial set (GetSkippedSequencesOlderThanMaxWait)
-// and subsequent removal (RemoveSkipped).
+// than MaxChannelLogMissingWaitTime from the queue.
 func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 
-	oldSkippedSequences := c.GetSkippedSequencesOlderThanMaxWait()
-	if len(oldSkippedSequences) == 0 {
+	base.InfofCtx(ctx, base.KeyCache, "Starting CleanSkippedSequenceQueue for database %s", base.MD(c.db.Name))
+
+	maxWait := int64(c.options.CacheSkippedSeqMaxWait.Seconds())
+	if maxWait < 1 {
+		maxWait = 1
+	}
+	numOldSkippedSequences := c.skippedSeqs.SkippedSequenceCompact(ctx, maxWait)
+	if numOldSkippedSequences == 0 {
 		return nil
 	}
 
-	base.InfofCtx(ctx, base.KeyCache, "Starting CleanSkippedSequenceQueue, found %d skipped sequences older than max wait for database %s", len(oldSkippedSequences), base.MD(c.db.Name))
+	c.db.DbStats.Cache().AbandonedSeqs.Add(numOldSkippedSequences)
 
-	// Purge sequences not found from the skipped sequence queue
-	numRemoved := c.RemoveSkippedSequences(ctx, oldSkippedSequences)
-	c.db.DbStats.Cache().AbandonedSeqs.Add(numRemoved)
-
-	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Not Found:%d for database %s.", len(oldSkippedSequences), base.MD(c.db.Name))
+	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Cleaned %d sequences from skipped list for database %s.", numOldSkippedSequences, base.MD(c.db.Name))
 	return nil
 }
 
@@ -787,9 +786,8 @@ func (c *changeCache) _addPendingLogs(ctx context.Context) channels.Set {
 			heap.Pop(&c.pendingLogs)
 			changedChannels = changedChannels.UpdateWithSlice(c._addToCache(ctx, change))
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
-			c.db.DbStats.Cache().NumSkippedSeqs.Add(1)
-			c.PushSkipped(ctx, c.nextSequence)
-			c.nextSequence++
+			c.PushSkipped(ctx, c.nextSequence, change.Sequence-1)
+			c.nextSequence = change.Sequence
 		} else {
 			break
 		}
@@ -878,33 +876,32 @@ func (h *LogPriorityQueue) Pop() interface{} {
 // ////// SKIPPED SEQUENCE QUEUE
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
-	err := c.skippedSeqs.Remove(x)
-	c.db.DbStats.Cache().SkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len()))
+	err := c.skippedSeqs.removeSeq(x)
+	c.db.DbStats.Cache().SkippedSeqLen.Set(int64(len(c.skippedSeqs.list)))
+	c.db.DbStats.Cache().SkippedSeqCap.Set(int64(cap(c.skippedSeqs.list)))
+	if err == nil {
+		c.db.DbStats.Cache().NumCurrentSeqsSkipped.Add(-1)
+	}
 	return err
 }
 
 // Removes a set of sequences.  Logs warning on removal error, returns count of successfully removed.
-func (c *changeCache) RemoveSkippedSequences(ctx context.Context, sequences []uint64) (removedCount int64) {
-	numRemoved := c.skippedSeqs.RemoveSequences(ctx, sequences)
-	c.db.DbStats.Cache().SkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len()))
-	return numRemoved
+func (c *changeCache) RemoveSkippedSequences(ctx context.Context, sequences []uint64) {
+	// this can be used for removal or ranges, pending CBG-3855
 }
 
 func (c *changeCache) WasSkipped(x uint64) bool {
 	return c.skippedSeqs.Contains(x)
 }
 
-func (c *changeCache) PushSkipped(ctx context.Context, sequence uint64) {
-	err := c.skippedSeqs.Push(&SkippedSequence{seq: sequence, timeAdded: time.Now()})
-	if err != nil {
-		base.InfofCtx(ctx, base.KeyCache, "Error pushing skipped sequence: %d, %v", sequence, err)
-		return
-	}
-	c.db.DbStats.Cache().SkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len()))
-}
-
-func (c *changeCache) GetSkippedSequencesOlderThanMaxWait() (oldSequences []uint64) {
-	return c.skippedSeqs.getOlderThan(c.options.CacheSkippedSeqMaxWait)
+func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq uint64) {
+	newEntry := NewSkippedSequenceRangeEntry(startSeq, endSeq)
+	numSequences := newEntry.getNumSequencesInEntry()
+	c.skippedSeqs.PushSkippedSequenceEntry(newEntry)
+	c.db.DbStats.Cache().SkippedSeqLen.Set(int64(len(c.skippedSeqs.list)))
+	c.db.DbStats.Cache().SkippedSeqCap.Set(int64(cap(c.skippedSeqs.list)))
+	c.db.DbStats.Cache().NumSkippedSeqs.Add(numSequences)
+	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Add(numSequences)
 }
 
 // waitForSequence blocks up to maxWaitTime until the given sequence has been received.
@@ -956,117 +953,4 @@ func (c *changeCache) _getMaxStableCached(ctx context.Context) uint64 {
 		return oldestSkipped - 1
 	}
 	return c.nextSequence - 1
-}
-
-// SkippedSequenceList stores the set of skipped sequences as an ordered list of *SkippedSequence with an associated map
-// for sequence-based lookup.
-type SkippedSequenceList struct {
-	skippedList *list.List               // Ordered list of skipped sequences
-	skippedMap  map[uint64]*list.Element // Map from sequence to list elements
-	lock        sync.RWMutex             // Coordinates access to skippedSequenceList
-}
-
-func NewSkippedSequenceList() *SkippedSequenceList {
-	return &SkippedSequenceList{
-		skippedMap:  map[uint64]*list.Element{},
-		skippedList: list.New(),
-	}
-}
-
-// getOldest returns the sequence of the first element in the skippedSequenceList
-func (l *SkippedSequenceList) getOldest() (oldestSkippedSeq uint64) {
-	l.lock.RLock()
-	if firstElement := l.skippedList.Front(); firstElement != nil {
-		value := firstElement.Value.(*SkippedSequence)
-		oldestSkippedSeq = value.seq
-	}
-	l.lock.RUnlock()
-	return oldestSkippedSeq
-}
-
-// Removes a single entry from the list.
-func (l *SkippedSequenceList) Remove(x uint64) error {
-	l.lock.Lock()
-	err := l._remove(x)
-	l.lock.Unlock()
-	return err
-}
-
-func (l *SkippedSequenceList) RemoveSequences(ctx context.Context, sequences []uint64) (removedCount int64) {
-	l.lock.Lock()
-	for _, seq := range sequences {
-		err := l._remove(seq)
-		if err != nil {
-			base.WarnfCtx(ctx, "Error purging skipped sequence %d from skipped sequence queue: %v", seq, err)
-		} else {
-			removedCount++
-		}
-	}
-	l.lock.Unlock()
-	return removedCount
-}
-
-// Removes an entry from the list.  Expects callers to hold l.lock.Lock
-func (l *SkippedSequenceList) _remove(x uint64) error {
-	if listElement, ok := l.skippedMap[x]; ok {
-		l.skippedList.Remove(listElement)
-		delete(l.skippedMap, x)
-		return nil
-	} else {
-		return errors.New("Value not found")
-	}
-}
-
-// Contains does a simple search to detect presence
-func (l *SkippedSequenceList) Contains(x uint64) bool {
-	l.lock.RLock()
-	_, ok := l.skippedMap[x]
-	l.lock.RUnlock()
-	return ok
-}
-
-// Push sequence to the end of SkippedSequenceList.  Validates sequence ordering in list.
-func (l *SkippedSequenceList) Push(x *SkippedSequence) (err error) {
-
-	l.lock.Lock()
-	validPush := false
-	lastElement := l.skippedList.Back()
-	if lastElement == nil {
-		validPush = true
-	} else {
-		lastSkipped, _ := lastElement.Value.(*SkippedSequence)
-		if lastSkipped.seq < x.seq {
-			validPush = true
-		}
-	}
-
-	if validPush {
-		newListElement := l.skippedList.PushBack(x)
-		l.skippedMap[x.seq] = newListElement
-	} else {
-		err = errors.New("Can't push sequence lower than existing maximum")
-	}
-
-	l.lock.Unlock()
-	return err
-
-}
-
-// getOldest returns a slice of sequences older than the specified duration of the first element in the skippedSequenceList
-func (l *SkippedSequenceList) getOlderThan(skippedExpiry time.Duration) []uint64 {
-
-	l.lock.RLock()
-	oldSequences := make([]uint64, 0)
-	for e := l.skippedList.Front(); e != nil; e = e.Next() {
-		skippedSeq := e.Value.(*SkippedSequence)
-		if time.Since(skippedSeq.timeAdded) > skippedExpiry {
-			oldSequences = append(oldSequences, skippedSeq.seq)
-		} else {
-			// skippedSeqs are ordered by arrival time, so can stop iterating once we find one
-			// still inside the time window
-			break
-		}
-	}
-	l.lock.RUnlock()
-	return oldSequences
 }
