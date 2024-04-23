@@ -1346,7 +1346,7 @@ func shortWaitCache() CacheOptions {
 	cacheOptions := DefaultCacheOptions()
 	cacheOptions.CachePendingSeqMaxWait = 5 * time.Millisecond
 	cacheOptions.CachePendingSeqMaxNum = 50
-	cacheOptions.CacheSkippedSeqMaxWait = 120
+	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
 	return cacheOptions
 }
 
@@ -2333,7 +2333,8 @@ func TestSkippedSequenceCompact(t *testing.T) {
 
 	// assert that compaction empties the skipped slice and we have correct value for abandoned sequences
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, 0, len(testChangeCache.skippedSeqs.list))
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
 		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.AbandonedSeqs.Value())
+		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 	}, time.Second*10, time.Millisecond*100)
 }

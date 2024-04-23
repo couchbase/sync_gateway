@@ -124,11 +124,6 @@ type LogEntries []*LogEntry
 // A priority-queue of LogEntries, kept ordered by increasing sequence #.
 type LogPriorityQueue []*LogEntry
 
-type SkippedSequence struct {
-	seq       uint64
-	timeAdded time.Time
-}
-
 type CacheOptions struct {
 	ChannelCacheOptions
 	CachePendingSeqMaxWait time.Duration // Max wait for pending sequence before skipping
@@ -314,6 +309,9 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	}
 
 	c.db.DbStats.Cache().AbandonedSeqs.Add(numOldSkippedSequences)
+	c.db.DbStats.Cache().SkippedSeqLen.Set(int64(len(c.skippedSeqs.list)))
+	c.db.DbStats.Cache().SkippedSeqCap.Set(int64(cap(c.skippedSeqs.list)))
+	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Add(-numOldSkippedSequences)
 
 	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Cleaned %d sequences from skipped list for database %s.", numOldSkippedSequences, base.MD(c.db.Name))
 	return nil
