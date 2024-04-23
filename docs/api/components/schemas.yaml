@@ -2521,33 +2521,59 @@ AllUserChannels:
       description: |-
         Channels assigned to the user through the admin API by adding them to admin_channels on a /{db}/_user modification..
       type: object
-      additionalProperties:
-        $ref: '#/channelEntry'
+      properties:
+        keyspace:
+          type: object
+          properties:
+            channel:
+              $ref: '#/channelEntry'
     dynamic_grants:
       description: |-
         Channels assigned to the user through the sync function.
       type: object
-      additionalProperties:
-        $ref: '#/channelEntry'
+      properties:
+        keyspace:
+          type: object
+          properties:
+            channel:
+              $ref: '#/channelEntry'
     jwt_grants:
       description: |-
         Channels assigned to the user through JWT.
       type: object
-      additionalProperties:
-        $ref: '#/channelEntry'
+      properties:
+        keyspace:
+          type: object
+          properties:
+            channel:
+              $ref: '#/channelEntry'
     admin_role_grants:
       description: |-
         Channels assigned to the user through the admin API, by assigning a role to the user through admin_roles on a /{db}/_user modification.,
         and assigning the channels to that role. Does not include historic roles.
       type: object
-      additionalProperties:
-        $ref: '#/channelEntry'
+      properties:
+        roleName:
+          type: object
+          properties:
+            keyspace:
+              type: object
+              properties:
+                channel:
+                  $ref: '#/channelEntry'
     dynamic_role_grants:
       description: |-
         Channels assigned to the user through roles assigned using the sync function. Does not include historic roles.
       type: object
-      additionalProperties:
-        $ref: '#/channelEntry'
+      properties:
+        roleName:
+          type: object
+          properties:
+            keyspace:
+              type: object
+              properties:
+                channel:
+                  $ref: '#/channelEntry'
 channelEntry:
   description: Channel name
   type: object
