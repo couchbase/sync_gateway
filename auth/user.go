@@ -648,11 +648,19 @@ func (user *userImpl) filterToAvailableChannels(channelNames base.Set) (filtered
 
 func (user *userImpl) FilterToAvailableCollectionChannels(scope, collection string, channelNames base.Set) (filtered ch.TimedSet, removed []string) {
 	filtered = ch.TimedSet{}
+	channelTimedSet, sourceAvailable := user.getCollectionAccess(scope, collection)
+
 	for channelName, _ := range channelNames {
 		if channelName == ch.AllChannelWildcard {
 			return user.InheritedCollectionChannels(scope, collection).Copy(), nil
 		}
-		added := filtered.AddChannel(channelName, user.canSeeCollectionChannelSince(scope, collection, channelName), "")
+		source := ""
+		if sourceAvailable {
+			if entry, ok := channelTimedSet.Channels_[channelName]; ok {
+				source = entry.Source
+			}
+		}
+		added := filtered.AddChannel(channelName, user.canSeeCollectionChannelSince(scope, collection, channelName), source)
 		if !added {
 			removed = append(removed, channelName)
 		}
