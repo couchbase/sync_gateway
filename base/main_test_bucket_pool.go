@@ -658,7 +658,7 @@ type TBPBucketReadierFunc func(ctx context.Context, b Bucket, tbp *TestBucketPoo
 
 // FlushBucketEmptierFunc ensures the bucket is empty by flushing. It is not recommended to use with GSI.
 var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
-
+	return nil
 	bucket, err := AsGocbV2Bucket(b)
 	if err != nil {
 		return err

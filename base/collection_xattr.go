@@ -461,10 +461,22 @@ func (c *Collection) updateBodyAndXattrs(ctx context.Context, k string, exp uint
 
 	mutateOps := make([]gocb.MutateInSpec, 0, len(xattrs)+1)
 	for xattrKey, xattrVal := range xattrs {
+		if xattrVal == nil {
+			mutateOps = append(mutateOps, gocb.RemoveSpec(xattrKey, RemoveSpecXattr))
+			continue
+		}
 		mutateOps = append(mutateOps, gocb.UpsertSpec(xattrKey, bytesToRawMessage(xattrVal), UpsertSpecXattr))
 	}
 	mutateOps = append(mutateOps, gocb.ReplaceSpec("", bytesToRawMessage(v), nil))
+	fmt.Println("before appendMacroExpansions")
+	for _, v := range mutateOps {
+		fmt.Printf("v=%+v\n", v)
+	}
 	mutateOps = appendMacroExpansions(mutateOps, opts)
+	fmt.Println("after appendMacroExpansions")
+	for _, v := range mutateOps {
+		fmt.Printf("v=%+v\n", v)
+	}
 
 	options := &gocb.MutateInOptions{
 		Expiry:        CbsExpiryToDuration(exp),
@@ -660,6 +672,7 @@ func appendMacroExpansions(mutateInSpec []gocb.MutateInSpec, opts *sgbucket.Muta
 	if opts == nil {
 		return mutateInSpec
 	}
+	fmt.Printf("opts.MacroExpansion=%+v\n", opts.MacroExpansion)
 	for _, v := range opts.MacroExpansion {
 		mutateInSpec = append(mutateInSpec, gocb.UpsertSpec(v.Path, gocbMutationMacro(v.Type), UpsertSpecXattr))
 	}

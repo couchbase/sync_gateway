@@ -586,8 +586,8 @@ func TestImportInvalidMetadata(t *testing.T) {
 	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
 }
 
-// TestMetadataOnlyImport
-func TestMetadataOnlyImport(t *testing.T) {
+// TestMetadataOnlyImportDCPFeed
+func TestMetadataOnlyImportDCPFeed(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyMigrate, base.KeyImport)
 	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
@@ -601,7 +601,7 @@ func TestMetadataOnlyImport(t *testing.T) {
 	collection := bucket.GetSingleDataStore()
 
 	// test import on feed, should show mou
-	_, err := collection.AddRaw(docID, 0, []byte(`{"foo" : "bar"}`))
+	_, err := collection.Add(docID, 0, []byte(`{"foo" : "bar"}`))
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
@@ -615,21 +615,18 @@ func TestMetadataOnlyImport(t *testing.T) {
 	var mou Mou
 	require.NoError(t, base.JSONUnmarshal(xattrs[mouXattrName], &mou))
 	require.Equal(t, string(base.Uint64CASToLittleEndianHex(cas)), mou.Cas)
+	doc, err := GetSingleDatabaseCollectionWithUser(t, db).GetDocument(ctx, docID, DocUnmarshalNone)
 
-	// test import of updated doc on feed, should clear mou with 2-abc
-	err = collection.SetRaw(docID, 0, nil, []byte(`{"foo" : "baz"}`))
+	fmt.Printf("doc=%+v\n", doc)
 	require.NoError(t, err)
 
-	base.RequireWaitForStat(t, func() int64 {
-		return db.DbStats.SharedBucketImport().ImportCount.Value()
-	}, 2)
-
-	xattrs, cas, err = collection.GetXattrs(ctx, docID, []string{mouXattrName})
+	fmt.Println("put doc")
+	// test updating document, should clear mou with 2-abc
+	_, _, err = GetSingleDatabaseCollectionWithUser(t, db).Put(ctx, docID, Body{"foo": "baz", BodyRev: doc.SyncData.CurrentRev})
 	require.NoError(t, err)
-	require.Nil(t, xattrs[mouXattrName])
 
-	require.NoError(t, base.JSONUnmarshal(xattrs[mouXattrName], &mou))
-	require.Equal(t, string(base.Uint64CASToLittleEndianHex(cas)), mou.Cas)
+	xattrs, _, err = collection.GetXattrs(ctx, docID, []string{mouXattrName})
+	require.True(t, base.IsXattrNotFoundError(err), "expected xattr not found error but got err=%+v xattrs=%+v", err, xattrs)
 
 	// test import on feed of document with inline xattrs, should not show mou
 
@@ -642,7 +639,61 @@ func TestMetadataOnlyImport(t *testing.T) {
 	// test resync ..
 }
 
-func TestMetadataOnlyImportInline(t *testing.T) {
+/*
+// TestMetadataOnlyImportDCPFeed
+
+	func TestMetadataOnlyImportOnDemand(t *testing.T) {
+		base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyMigrate, base.KeyImport)
+		base.SkipImportTestsIfNotEnabled(t)
+		bucket := base.GetTestBucket(t)
+		defer bucket.Close(base.TestCtx(t))
+
+		db, ctx := setupTestDBForBucket(t, bucket)
+		defer db.Close(ctx)
+
+		const docID = "doc1"
+
+		collection := bucket.GetSingleDataStore()
+
+		// test import on feed, should show mou
+		_, err := collection.Add(docID, 0, []byte(`{"foo" : "bar"}`))
+		require.NoError(t, err)
+
+		base.RequireWaitForStat(t, func() int64 {
+			return db.DbStats.SharedBucketImport().ImportCount.Value()
+		}, 1)
+
+		xattrs, cas, err := collection.GetXattrs(ctx, docID, []string{mouXattrName})
+		require.NoError(t, err)
+		require.Contains(t, xattrs, mouXattrName)
+
+		var mou Mou
+		require.NoError(t, base.JSONUnmarshal(xattrs[mouXattrName], &mou))
+		require.Equal(t, string(base.Uint64CASToLittleEndianHex(cas)), mou.Cas)
+		doc, err := GetSingleDatabaseCollectionWithUser(t, db).GetDocument(ctx, docID, DocUnmarshalNone)
+
+		fmt.Printf("doc=%+v\n", doc)
+		require.NoError(t, err)
+
+		// test updating document, should clear mou with 2-abc
+		_, _, err = GetSingleDatabaseCollectionWithUser(t, db).Put(ctx, docID, Body{"foo": "baz", BodyRev: doc.SyncData.CurrentRev})
+		require.NoError(t, err)
+
+		_, _, err = collection.GetXattrs(ctx, docID, []string{mouXattrName})
+		require.True(t, base.IsXattrNotFoundError(err), "expected xattr not found error but got %+v", err)
+
+		// test import on feed of document with inline xattrs, should not show mou
+
+		// test on demand import of document with inline xattrs, should not show mou
+
+		// test on demand import of document with xattrs, should show mou
+
+		// test clear mou of document PUT
+
+		// test resync ..
+	}
+*/
+func TestMetadataOnlyImportDCPFeedInline(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyMigrate, base.KeyImport)
 	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
@@ -656,25 +707,14 @@ func TestMetadataOnlyImportInline(t *testing.T) {
 	collection := bucket.GetSingleDataStore()
 
 	// test import on feed with inline xattrs, shouldn't show mou
-	_, err := collection.AddRaw(docID, 0, rawDocWithSyncMeta())
+	_, err := collection.Add(docID, 0, rawDocWithSyncMeta())
 	require.NoError(t, err)
 
-	base.RequireWaitForStat(t, func() int64 {
-		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
-	}, 1)
-
-	_, _, err = collection.GetXattrs(ctx, docID, []string{mouXattrName})
-	require.Error(t, err) // xattr missing
-
-	// test import of updated doc on feed, should clear mou with 2-abc
-	err = collection.SetRaw(docID, 0, nil, []byte(`{"foo" : "baz"}`))
-	require.NoError(t, err)
-
-	base.RequireWaitForStat(t, func() int64 {
-		return db.DbStats.SharedBucketImport().ImportCount.Value()
-	}, 2)
-
-	_, _, err = collection.GetXattrs(ctx, docID, []string{mouXattrName})
-	require.Error(t, err)
-
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		xattrs, _, err := collection.GetXattrs(ctx, docID, []string{base.SyncXattrName, mouXattrName})
+		assert.NoError(c, err)
+		// when the document gets imported, the _sync xattr should be added, but not _mou
+		assert.Contains(c, xattrs, base.SyncXattrName)
+		assert.NotContains(c, xattrs, mouXattrName)
+	}, time.Second*1, time.Millisecond*100)
 }

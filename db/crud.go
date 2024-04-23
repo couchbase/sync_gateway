@@ -2082,9 +2082,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				}
 				updatedDoc.Xattrs[mouXattrName] = mou
 			} else {
-				panic("here")
 				if currentXattrs[mouXattrName] != nil {
-					panic("here")
 					updatedDoc.Xattrs[mouXattrName] = nil
 				}
 			}
