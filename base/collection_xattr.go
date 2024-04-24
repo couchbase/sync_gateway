@@ -460,8 +460,10 @@ func (c *Collection) updateBodyAndXattrs(ctx context.Context, k string, exp uint
 	defer c.Bucket.releaseKvOp()
 
 	mutateOps := make([]gocb.MutateInSpec, 0, len(xattrs)+1)
+	deletedXattrs := false
 	for xattrKey, xattrVal := range xattrs {
 		if xattrVal == nil {
+			deletedXattrs = true
 			mutateOps = append(mutateOps, gocb.RemoveSpec(xattrKey, RemoveSpecXattr))
 			continue
 		}
@@ -482,6 +484,9 @@ func (c *Collection) updateBodyAndXattrs(ctx context.Context, k string, exp uint
 		Expiry:        CbsExpiryToDuration(exp),
 		StoreSemantic: gocb.StoreSemanticsUpsert,
 		Cas:           gocb.Cas(cas),
+	}
+	if deletedXattrs {
+		options.StoreSemantic = gocb.StoreSemanticsReplace
 	}
 	fillMutateInOptions(ctx, options, opts)
 	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)

@@ -1470,7 +1470,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key3)
 	_, key3err := dataStore.WriteWithXattrs(ctx, key3, exp, cas3int, MustJSONMarshal(t, updatedVal), map[string][]byte{xattrName: MustJSONMarshal(t, updatedXattrVal)}, nil)
-	assert.NoError(t, key3err, fmt.Sprintf("Unexpected error mutating %s", key3))
+	require.NoError(t, key3err, fmt.Sprintf("Unexpected error mutating %s", key3))
 	var key3DocResult map[string]interface{}
 	var key3XattrResult map[string]interface{}
 	docRaw, key3xattrs, _, key3err := dataStore.GetWithXattrs(ctx, key3, []string{xattrName})
@@ -2411,11 +2411,29 @@ func TestMobileSystemCollectionCRUD(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestDeleteBody(t *testing.T) {
+func TestDeleteXattrOnUpdate(t *testing.T) {
 	ctx := TestCtx(t)
 	b := GetTestBucket(t)
 	defer b.Close(ctx)
 
+	collection := b.GetSingleDataStore()
+	docID := t.Name()
+
+	xattr1Name := "xattr1"
+	xattr2Name := "xattr2"
+	xattrBody := []byte(`{"some": "val"}`)
+
+	cas, err := collection.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo": "bar"}`), map[string][]byte{xattr1Name: xattrBody, xattr2Name: xattrBody}, nil)
+	require.NoError(t, err)
+
+	_, err = collection.WriteWithXattrs(ctx, docID, 0, cas, []byte(`{"foo": "baz"}`), map[string][]byte{xattr1Name: nil}, nil)
+	require.NoError(t, err)
+
+	_, xattrs, _, err := collection.GetWithXattrs(ctx, docID, []string{xattr1Name, xattr2Name})
+	require.NoError(t, err)
+
+	require.Contains(t, xattrs, xattr2Name)
+	require.NotContains(t, xattrs, xattr1Name, "did not expect=%s", xattrs[xattr1Name])
 }
 
 // Used to test standard sync mutateInOpts from the base package
