@@ -27,9 +27,11 @@ const (
 // SkippedSequenceSlice stores the set of skipped sequences as an ordered slice of single skipped sequences
 // or skipped sequence ranges
 type SkippedSequenceSlice struct {
-	list                 []*SkippedSequenceListEntry
-	ClipCapacityHeadroom int
-	lock                 sync.RWMutex
+	list                          []*SkippedSequenceListEntry
+	ClipCapacityHeadroom          int
+	NumCurrentSkippedSequences    int64
+	NumCumulativeSkippedSequences int64
+	lock                          sync.RWMutex
 }
 
 // SkippedSequenceListEntry contains start + end sequence for a range of skipped sequences +
@@ -276,6 +278,7 @@ func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry *SkippedSequenceLi
 	} else {
 		s.list = append(s.list, entry)
 	}
+	s.NumCurrentSkippedSequences += entry.getNumSequencesInEntry()
 
 }
 

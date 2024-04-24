@@ -2181,6 +2181,9 @@ func TestProcessSkippedEntry(t *testing.T) {
 	}
 	_ = testChangeCache.processEntry(ctx, highEntry)
 
+	// update cache stats for assertions
+	testChangeCache.updateStats(ctx)
+
 	// assert this pushes an entry on the skipped sequence slice
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, 1, len(testChangeCache.skippedSeqs.list))
@@ -2191,6 +2194,7 @@ func TestProcessSkippedEntry(t *testing.T) {
 	for j := 0; j < 10; j++ {
 		en := feed.Next()
 		_ = testChangeCache.processEntry(ctx, en)
+		testChangeCache.updateStats(ctx)
 		assert.Equal(t, currNumSkippedSeqs-1, dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		currNumSkippedSeqs = dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
 	}
@@ -2251,6 +2255,9 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 	}
 	_ = testChangeCache.processEntry(ctx, highEntry)
 
+	// update cache stats for assertions
+	testChangeCache.updateStats(ctx)
+
 	// assert this pushes an entry on the skipped sequence slice
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, 1, len(testChangeCache.skippedSeqs.list))
@@ -2271,6 +2278,7 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 
 		_ = testChangeCache.processEntry(ctx, newEntry)
 		// assert on skipped sequence slice stats
+		testChangeCache.updateStats(ctx)
 		assert.Equal(t, numSeqsInList-1, dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(t, expSliceLen[j], dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
 		assert.Equal(t, int64(19), dbContext.DbStats.CacheStats.NumSkippedSeqs.Value())
@@ -2326,6 +2334,9 @@ func TestSkippedSequenceCompact(t *testing.T) {
 	}
 	_ = testChangeCache.processEntry(ctx, highEntry)
 
+	// update cache stats for assertions
+	testChangeCache.updateStats(ctx)
+
 	// assert this pushes an entry on the skipped sequence slice
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, 1, len(testChangeCache.skippedSeqs.list))
@@ -2333,6 +2344,7 @@ func TestSkippedSequenceCompact(t *testing.T) {
 
 	// assert that compaction empties the skipped slice and we have correct value for abandoned sequences
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		testChangeCache.updateStats(ctx)
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
 		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.AbandonedSeqs.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())

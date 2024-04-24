@@ -422,7 +422,7 @@ type CacheStats struct {
 	// The total number of active channels.
 	NumActiveChannels *SgwIntStat `json:"num_active_channels"`
 	// The total number of skipped sequences. This is a cumulative value.
-	NumSkippedSeqs *SgwIntStat `json:"num_skipped_seqs"`
+	NumSkippedSeqs *SgwIntStat `json:"cumulative_num_skipped_seqs"`
 	// The total number of pending sequences. These are out-of-sequence entries waiting to be cached.
 	PendingSeqLen *SgwIntStat `json:"pending_seq_len"`
 	// The total number of revision cache bypass operations performed.
@@ -436,7 +436,7 @@ type CacheStats struct {
 	// The current capacity of the skipped sequence slice
 	SkippedSeqCap *SgwIntStat `json:"skipped_seq_cap"`
 	// The number of sequences currently in the skipped sequence slice
-	NumCurrentSeqsSkipped *SgwIntStat `json:"num_seqs_skipped"`
+	NumCurrentSeqsSkipped *SgwIntStat `json:"current_skipped_seq_count"`
 	// The total view_queries.
 	ViewQueries *SgwIntStat `json:"view_queries"`
 }
@@ -1307,7 +1307,7 @@ func (d *DbStats) initCacheStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.NumSkippedSeqs, err = NewIntStat(SubsystemCacheKey, "num_skipped_seqs", StatUnitNoUnits, NumSkippedSeqsDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.NumSkippedSeqs, err = NewIntStat(SubsystemCacheKey, "cumulative_num_skipped_seqs", StatUnitNoUnits, NumSkippedSeqsDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
@@ -1335,7 +1335,7 @@ func (d *DbStats) initCacheStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.NumCurrentSeqsSkipped, err = NewIntStat(SubsystemCacheKey, "num_seqs_skipped", StatUnitNoUnits, NumCurrentSkippedSeq, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.NumCurrentSeqsSkipped, err = NewIntStat(SubsystemCacheKey, "current_skipped_seq_count", StatUnitNoUnits, NumCurrentSkippedSeq, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}

@@ -89,6 +89,10 @@ func (c *changeCache) updateStats(ctx context.Context) {
 	c.db.DbStats.Cache().PendingSeqLen.Set(int64(c.internalStats.pendingSeqLen))
 	c.db.DbStats.CBLReplicationPull().MaxPending.SetIfMax(int64(c.internalStats.maxPending))
 	c.db.DbStats.Cache().HighSeqStable.Set(int64(c._getMaxStableCached(ctx)))
+	c.db.DbStats.Cache().SkippedSeqLen.Set(int64(len(c.skippedSeqs.list)))
+	c.db.DbStats.Cache().SkippedSeqCap.Set(int64(cap(c.skippedSeqs.list)))
+	c.db.DbStats.Cache().NumSkippedSeqs.Set(c.skippedSeqs.NumCumulativeSkippedSequences)
+	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(c.skippedSeqs.NumCurrentSkippedSequences)
 
 }
 
@@ -294,7 +298,7 @@ func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 
 // Cleanup function, invoked periodically.
 // Removes skipped entries from skippedSeqs that have been waiting longer
-// than MaxChannelLogMissingWaitTime from the queue.
+// than CacheSkippedSeqMaxWait from the slice.
 func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 
 	base.InfofCtx(ctx, base.KeyCache, "Starting CleanSkippedSequenceQueue for database %s", base.MD(c.db.Name))
@@ -303,17 +307,16 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	if maxWait < 1 {
 		maxWait = 1
 	}
-	numOldSkippedSequences := c.skippedSeqs.SkippedSequenceCompact(ctx, maxWait)
-	if numOldSkippedSequences == 0 {
+	compactedSequences := c.skippedSeqs.SkippedSequenceCompact(ctx, maxWait)
+	if compactedSequences == 0 {
+		base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  No sequences to be compacted from skipped sequence list for database %s.", base.MD(c.db.Name))
 		return nil
 	}
 
-	c.db.DbStats.Cache().AbandonedSeqs.Add(numOldSkippedSequences)
-	c.db.DbStats.Cache().SkippedSeqLen.Set(int64(len(c.skippedSeqs.list)))
-	c.db.DbStats.Cache().SkippedSeqCap.Set(int64(cap(c.skippedSeqs.list)))
-	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Add(-numOldSkippedSequences)
+	c.db.DbStats.Cache().AbandonedSeqs.Add(compactedSequences)
+	c.skippedSeqs.NumCurrentSkippedSequences -= compactedSequences
 
-	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Cleaned %d sequences from skipped list for database %s.", numOldSkippedSequences, base.MD(c.db.Name))
+	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Cleaned %d sequences from skipped list for database %s.", compactedSequences, base.MD(c.db.Name))
 	return nil
 }
 
@@ -875,10 +878,8 @@ func (h *LogPriorityQueue) Pop() interface{} {
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
 	err := c.skippedSeqs.removeSeq(x)
-	c.db.DbStats.Cache().SkippedSeqLen.Set(int64(len(c.skippedSeqs.list)))
-	c.db.DbStats.Cache().SkippedSeqCap.Set(int64(cap(c.skippedSeqs.list)))
 	if err == nil {
-		c.db.DbStats.Cache().NumCurrentSeqsSkipped.Add(-1)
+		c.skippedSeqs.NumCurrentSkippedSequences -= 1
 	}
 	return err
 }
@@ -895,11 +896,9 @@ func (c *changeCache) WasSkipped(x uint64) bool {
 func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq uint64) {
 	newEntry := NewSkippedSequenceRangeEntry(startSeq, endSeq)
 	numSequences := newEntry.getNumSequencesInEntry()
+	c.skippedSeqs.NumCurrentSkippedSequences += numSequences
+	c.skippedSeqs.NumCumulativeSkippedSequences += numSequences
 	c.skippedSeqs.PushSkippedSequenceEntry(newEntry)
-	c.db.DbStats.Cache().SkippedSeqLen.Set(int64(len(c.skippedSeqs.list)))
-	c.db.DbStats.Cache().SkippedSeqCap.Set(int64(cap(c.skippedSeqs.list)))
-	c.db.DbStats.Cache().NumSkippedSeqs.Add(numSequences)
-	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Add(numSequences)
 }
 
 // waitForSequence blocks up to maxWaitTime until the given sequence has been received.
