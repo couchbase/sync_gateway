@@ -253,14 +253,12 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 	s.dbStats.SequenceReservedCount.Add(int64(numberToRelease + numberToAllocate))
 	s.dbStats.SequenceAssignedCount.Add(1)
 
-	if prevAllocReleaseFrom < prevAllocReleaseTo {
-		// Release previously allocated sequences (c), if any
-		released, err := s.releaseSequenceRange(ctx, prevAllocReleaseFrom, prevAllocReleaseTo)
-		if err != nil {
-			base.WarnfCtx(ctx, "Error returned when releasing sequence range [%d-%d] for previously allocated sequences. Will be handled by skipped sequence handling.  Error:%v", prevAllocReleaseFrom, prevAllocReleaseTo, err)
-		}
-		releasedSequenceCount += released
+	// Release previously allocated sequences (c), if any
+	released, err := s.releaseSequenceRange(ctx, prevAllocReleaseFrom, prevAllocReleaseTo)
+	if err != nil {
+		base.WarnfCtx(ctx, "Error returned when releasing sequence range [%d-%d] for previously allocated sequences. Will be handled by skipped sequence handling.  Error:%v", prevAllocReleaseFrom, prevAllocReleaseTo, err)
 	}
+	releasedSequenceCount += released
 	// Release the newly allocated sequences that were used to catch up to existingSequence (d)
 	if numberToRelease > 0 {
 		releaseTo := allocatedToSeq - numberToAllocate
