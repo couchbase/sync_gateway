@@ -1790,9 +1790,9 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 				updatedDoc.UpdateExpiry(*updatedExpiry)
 			}
 			doc.SetCrc32cUserXattrHash()
-			raw, rawXattr, err := updatedDoc.MarshalWithXattr()
+			_, rawXattr, err := updatedDoc.MarshalWithXattr()
 			return sgbucket.UpdatedDoc{
-				Doc: raw,
+				Doc: nil, // Resync does not require document body update
 				Xattrs: map[string][]byte{
 					base.SyncXattrName: rawXattr,
 				},

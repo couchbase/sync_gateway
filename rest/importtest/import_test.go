@@ -35,6 +35,44 @@ func assertExpiry(t testing.TB, expected uint32, actual uint32) {
 	assert.True(t, base.DiffUint32(expected, actual) < 10, fmt.Sprintf("Unexpected difference between expected: %v actual %v", expected, actual))
 }
 
+// Test feed-based import
+func TestImportFeed(t *testing.T) {
+
+	base.SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: true,
+		}},
+	}
+
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
+
+	// Create doc via the SDK
+	mobileKey := t.Name()
+	mobileBody := make(map[string]interface{})
+	mobileBody["channels"] = "ABC"
+	_, err := dataStore.Add(mobileKey, 0, mobileBody)
+	assert.NoError(t, err, "Error writing SDK doc")
+
+	// Wait for import
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value() == 1
+	})
+	require.NoError(t, err)
+
+	// Attempt to get the document via Sync Gateway.
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
+	assert.Equal(t, 200, response.Code)
+
+	// Verify this didn't trigger an on-demand import
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value())
+}
+
 // Test import of an SDK delete.
 func TestXattrImportOldDoc(t *testing.T) {
 	rtConfig := rest.RestTesterConfig{
