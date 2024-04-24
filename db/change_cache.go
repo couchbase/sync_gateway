@@ -89,10 +89,10 @@ func (c *changeCache) updateStats(ctx context.Context) {
 	c.db.DbStats.Cache().PendingSeqLen.Set(int64(c.internalStats.pendingSeqLen))
 	c.db.DbStats.CBLReplicationPull().MaxPending.SetIfMax(int64(c.internalStats.maxPending))
 	c.db.DbStats.Cache().HighSeqStable.Set(int64(c._getMaxStableCached(ctx)))
-	c.db.DbStats.Cache().SkippedSeqLen.Set(int64(len(c.skippedSeqs.list)))
-	c.db.DbStats.Cache().SkippedSeqCap.Set(int64(cap(c.skippedSeqs.list)))
-	c.db.DbStats.Cache().NumSkippedSeqs.Set(c.skippedSeqs.NumCumulativeSkippedSequences)
-	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(c.skippedSeqs.NumCurrentSkippedSequences)
+	c.db.DbStats.Cache().SkippedSeqLen.Set(c.skippedSeqs.getSliceLength())
+	c.db.DbStats.Cache().SkippedSeqCap.Set(c.skippedSeqs.getSliceCapacity())
+	c.db.DbStats.Cache().NumSkippedSeqs.Set(c.skippedSeqs.getCumulativeNumSkippedSequenceValue())
+	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(c.skippedSeqs.getNumCurrentSkippedSequenceValue())
 
 }
 
@@ -314,7 +314,6 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	}
 
 	c.db.DbStats.Cache().AbandonedSeqs.Add(compactedSequences)
-	c.skippedSeqs.NumCurrentSkippedSequences -= compactedSequences
 
 	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Cleaned %d sequences from skipped list for database %s.", compactedSequences, base.MD(c.db.Name))
 	return nil
@@ -878,9 +877,6 @@ func (h *LogPriorityQueue) Pop() interface{} {
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
 	err := c.skippedSeqs.removeSeq(x)
-	if err == nil {
-		c.skippedSeqs.NumCurrentSkippedSequences -= 1
-	}
 	return err
 }
 
@@ -894,11 +890,7 @@ func (c *changeCache) WasSkipped(x uint64) bool {
 }
 
 func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq uint64) {
-	newEntry := NewSkippedSequenceRangeEntry(startSeq, endSeq)
-	numSequences := newEntry.getNumSequencesInEntry()
-	c.skippedSeqs.NumCurrentSkippedSequences += numSequences
-	c.skippedSeqs.NumCumulativeSkippedSequences += numSequences
-	c.skippedSeqs.PushSkippedSequenceEntry(newEntry)
+	c.skippedSeqs.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq, endSeq))
 }
 
 // waitForSequence blocks up to maxWaitTime until the given sequence has been received.

@@ -2334,9 +2334,6 @@ func TestSkippedSequenceCompact(t *testing.T) {
 	}
 	_ = testChangeCache.processEntry(ctx, highEntry)
 
-	// update cache stats for assertions
-	testChangeCache.updateStats(ctx)
-
 	// assert this pushes an entry on the skipped sequence slice
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, 1, len(testChangeCache.skippedSeqs.list))
