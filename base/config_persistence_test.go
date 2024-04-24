@@ -53,13 +53,15 @@ func TestConfigPersistence(t *testing.T) {
 			configBody := make(map[string]interface{})
 			configBody["sampleConfig"] = "value"
 			configKey := "testConfigKey"
+			rawConfigBody, marshalErr := JSONMarshal(configBody)
+			require.NoError(t, marshalErr)
 
 			insertCas, insertErr := cp.insertConfig(c, configKey, configBody)
 			require.NoError(t, insertErr)
 
 			// attempt to re-insert, must return ErrAlreadyExists
 			_, reinsertErr := cp.insertConfig(c, configKey, configBody)
-			require.ErrorIs(t, reinsertErr, ErrAlreadyExists)
+			require.Equal(t, ErrAlreadyExists, reinsertErr)
 
 			ctx := TestCtx(t)
 			var loadedConfig map[string]interface{}
@@ -70,10 +72,11 @@ func TestConfigPersistence(t *testing.T) {
 			rawConfig, rawCas, rawErr := cp.loadRawConfig(ctx, c, configKey)
 			require.NoError(t, rawErr)
 			assert.Equal(t, insertCas, uint64(rawCas))
-			require.JSONEq(t, string(MustJSONMarshal(t, configBody)), string(rawConfig))
+			assert.Equal(t, rawConfigBody, rawConfig)
 
 			configBody["updated"] = true
-			updatedRawBody := MustJSONMarshal(t, configBody)
+			updatedRawBody, marshalErr := JSONMarshal(configBody)
+			require.NoError(t, marshalErr)
 
 			// update with incorrect cas
 			_, updateErr := cp.replaceRawConfig(c, configKey, updatedRawBody, 1234)
@@ -94,7 +97,7 @@ func TestConfigPersistence(t *testing.T) {
 			rawConfig, rawCas, rawErr = cp.loadRawConfig(ctx, c, configKey)
 			require.NoError(t, rawErr)
 			assert.Equal(t, updateCas, rawCas)
-			require.JSONEq(t, string(updatedRawBody), string(rawConfig))
+			assert.JSONEq(t, string(updatedRawBody), string(rawConfig))
 
 			// delete with incorrect cas
 			_, removeErr := cp.removeRawConfig(c, configKey, gocb.Cas(insertCas))
@@ -107,7 +110,7 @@ func TestConfigPersistence(t *testing.T) {
 			// attempt to retrieve config, validate not found
 			var deletedConfig map[string]interface{}
 			_, loadErr = cp.loadConfig(ctx, c, configKey, &deletedConfig)
-			require.ErrorIs(t, loadErr, ErrNotFound)
+			assert.Equal(t, ErrNotFound, loadErr)
 
 			// attempt to retrieve raw config, validate updated value
 			_, _, rawErr = cp.loadRawConfig(ctx, c, configKey)
@@ -138,6 +141,8 @@ func TestXattrConfigPersistence(t *testing.T) {
 	configBody := make(map[string]interface{})
 	configBody["sampleConfig"] = "value"
 	configKey := "testConfigKey"
+	_, marshalErr := JSONMarshal(configBody)
+	require.NoError(t, marshalErr)
 
 	insertCas, insertErr := cp.insertConfig(c, configKey, configBody)
 	require.NoError(t, insertErr)
@@ -150,7 +155,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 
 	// attempt to re-insert, must return ErrAlreadyExists
 	_, reinsertErr := cp.insertConfig(c, configKey, configBody)
-	require.ErrorIs(t, reinsertErr, ErrAlreadyExists)
+	require.Equal(t, ErrAlreadyExists, reinsertErr)
 
 	// Retrieve the config, cas should still match insertCas
 	var loadedConfig map[string]interface{}
@@ -172,12 +177,12 @@ func TestXattrConfigPersistence(t *testing.T) {
 	// Fetch the document directly from the bucket to verify resurrect handling didn't occur
 	var docBody map[string]interface{}
 	_, err = dataStore.Get(configKey, &docBody)
-	require.NoError(t, err)
-	require.Nil(t, docBody)
+	assert.NoError(t, err)
+	assert.True(t, docBody == nil)
 
 	// delete the document directly in the bucket (system xattr will be preserved)
 	deleteErr := dataStore.Delete(configKey)
-	require.NoError(t, deleteErr)
+	assert.NoError(t, deleteErr)
 
 	// Retrieve the config, cas should still match insertCas
 	loadCas, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
@@ -188,7 +193,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	// Fetch the document directly from the bucket to verify resurrect handling DID occur
 	_, err = dataStore.Get(configKey, &docBody)
 	assert.NoError(t, err)
-	require.NotNil(t, docBody)
+	assert.True(t, docBody != nil)
 
 	// Retrieve the config, cas should still match insertCas
 	loadCas, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)

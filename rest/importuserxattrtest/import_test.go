@@ -348,7 +348,7 @@ func TestAutoImportUserXattrNoSyncData(t *testing.T) {
 	// Write doc with user xattr defined and assert it correctly imports
 	val := make(map[string]interface{})
 	val["test"] = "doc"
-	_, err := dataStore.WriteWithXattrs(ctx, docKey, 0, 0, base.MustJSONMarshal(t, val), userXattrVal, nil)
+	_, err := dataStore.WriteWithXattrs(ctx, docKey, 0, 0, base.MustJSONMarshal(t, val), userXattrVal, nil, nil)
 	require.NoError(t, err)
 
 	// Wait for doc to be imported
@@ -370,7 +370,7 @@ func TestAutoImportUserXattrNoSyncData(t *testing.T) {
 	userXattrVal = map[string][]byte{
 		"channels": base.MustJSONMarshal(t, userXattrValArray),
 	}
-	_, err = dataStore.WriteWithXattrs(ctx, docKey2, 0, 0, base.MustJSONMarshal(t, val), userXattrVal, nil)
+	_, err = dataStore.WriteWithXattrs(ctx, docKey2, 0, 0, base.MustJSONMarshal(t, val), userXattrVal, nil, nil)
 	require.NoError(t, err)
 
 	// Wait for doc to be imported

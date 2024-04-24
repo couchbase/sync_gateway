@@ -288,7 +288,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 			_, _, cas, _ := collection.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
-			_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, cas, []byte(valStr), map[string][]byte{base.SyncXattrName: []byte(xattrStr)}, DefaultMutateInOpts())
+			_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, cas, []byte(valStr), map[string][]byte{base.SyncXattrName: []byte(xattrStr)}, nil, DefaultMutateInOpts())
 			require.NoError(t, err)
 		}
 	}
@@ -617,11 +617,11 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 
 	// this document will be ignored for input with debug logging as follows:
 	// 	[DBG] .. col:sg_test_0 <ud>bookstand</ud> not able to be imported. Error: Found _sync xattr ("1"), but could not unmarshal: json: cannot unmarshal number into Go value of type db.SyncData
-	_, err := bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc1, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`1`)}, nil)
+	_, err := bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc1, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`1`)}, nil, nil)
 	require.NoError(t, err)
 
 	// fix xattrs, and the document is able to be imported
-	_, err = bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc2, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{}`)}, nil)
+	_, err = bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc2, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{}`)}, nil, nil)
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {

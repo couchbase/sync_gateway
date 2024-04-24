@@ -248,11 +248,11 @@ func (lds *LeakyDataStore) GetMaxVbno() (uint16, error) {
 	return lds.bucket.GetMaxVbno()
 }
 
-func (lds *LeakyDataStore) WriteWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, value []byte, xattrs map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+func (lds *LeakyDataStore) WriteWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, value []byte, xattrs map[string][]byte, xattrsToDelete []string, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 	if lds.config.WriteWithXattrCallback != nil {
 		lds.config.WriteWithXattrCallback(k)
 	}
-	return lds.dataStore.WriteWithXattrs(ctx, k, exp, cas, value, xattrs, opts)
+	return lds.dataStore.WriteWithXattrs(ctx, k, exp, cas, value, xattrs, xattrsToDelete, opts)
 }
 
 func (lds *LeakyDataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xattrKeys []string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrsFunc) (casOut uint64, err error) {
@@ -338,9 +338,13 @@ func (lds *LeakyDataStore) UpdateXattrs(ctx context.Context, k string, exp uint3
 	return lds.dataStore.UpdateXattrs(ctx, k, exp, cas, xv, opts)
 }
 
-func (lds *LeakyDataStore) WriteTombstoneWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, deleteBody bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
-	return lds.dataStore.WriteTombstoneWithXattrs(ctx, k, exp, cas, xv, deleteBody, opts)
+func (lds *LeakyDataStore) WriteTombstoneWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, xattrsToDelete []string, deleteBody bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+	return lds.dataStore.WriteTombstoneWithXattrs(ctx, k, exp, cas, xv, xattrsToDelete, deleteBody, opts)
 
+}
+
+func (lds *LeakyDataStore) WriteResurrectionWithXattrs(ctx context.Context, k string, exp uint32, body []byte, xv map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+	return lds.dataStore.WriteResurrectionWithXattrs(ctx, k, exp, body, xv, opts)
 }
 
 func (lds *LeakyDataStore) GetSpec() BucketSpec {

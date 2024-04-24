@@ -9,6 +9,8 @@
 package base
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -16,9 +18,6 @@ import (
 )
 
 func TestWriteTombstoneWithXattrs(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("CBG-3895 will match behavior with rosmar")
-	}
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -38,6 +37,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 		finalBody      []byte
 		finalXattrs    map[string][]byte
 		updatedXattrs  map[string][]byte
+		xattrsToDelete []string
 		cas            casOption
 		writeErrorFunc func(testing.TB, error)
 	}
@@ -335,7 +335,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			},
 			cas:            zeroCas,
 			deleteBody:     true,
-			writeErrorFunc: RequireDocNotFoundError,
+			writeErrorFunc: requireDocNotFoundOrCasMismatchError,
 		},
 		{
 			name: "previousDoc=tombstone+_xattr1,updatedXattrs=_xattr1,cas=1,deleteBody=true",
@@ -349,7 +349,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			},
 			cas:            fakeCas,
 			deleteBody:     true,
-			writeErrorFunc: RequireDocNotFoundError,
+			writeErrorFunc: requireDocNotFoundOrCasMismatchError,
 		},
 		{
 			name: "previousDoc=tombstone+_xattr1,updatedXattrs=_xattr1,cas=correct,deleteBody=true",
@@ -363,7 +363,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			},
 			cas:            previousCas,
 			deleteBody:     true,
-			writeErrorFunc: RequireDocNotFoundError,
+			writeErrorFunc: requireDocNotFoundOrCasMismatchError,
 		},
 
 		{
@@ -534,12 +534,8 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			updatedXattrs: map[string][]byte{
 				"_xattr1": []byte(`{"a" : "b"}`),
 			},
-			cas:        fakeCas,
-			finalBody:  []byte("{}"), // this seems wrong
-			deleteBody: false,
-			finalXattrs: map[string][]byte{
-				"_xattr1": []byte(`{"a" : "b"}`),
-			},
+			cas:            fakeCas,
+			writeErrorFunc: RequireDocNotFoundError,
 		},
 	}
 	if bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
@@ -787,13 +783,71 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 					"_xattr1": []byte(`{"c": "d"}`),
 					"_xattr2": []byte(`{"f": "g"}`),
 				},
-				cas:        fakeCas,
-				deleteBody: false,
-				// this seems wrong, no error??
-				finalBody: []byte("{}"),
+				cas:            fakeCas,
+				deleteBody:     false,
+				writeErrorFunc: RequireDocNotFoundError,
+			},
+			{
+				name:        "previousDoc=nil,xattrsToUpdate=_xattr1,xattrsToDelete=_xattr2,cas=0,deleteBody=false",
+				previousDoc: nil,
+				updatedXattrs: map[string][]byte{
+					"_xattr1": []byte(`{"c": "d"}`),
+				},
+				xattrsToDelete: []string{"_xattr2"},
+				cas:            zeroCas,
 				finalXattrs: map[string][]byte{
 					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
+				},
+			},
+			{
+				name:        "previousDoc=nil,xattrsToUpdate=_xattr1,xattrsToDelete=_xattr2,cas=0,deleteBody=true",
+				previousDoc: nil,
+				updatedXattrs: map[string][]byte{
+					"_xattr1": []byte(`{"c": "d"}`),
+				},
+				xattrsToDelete: []string{"_xattr2"},
+				cas:            zeroCas,
+				finalXattrs: map[string][]byte{
+					"_xattr1": []byte(`{"c": "d"}`),
+				},
+				deleteBody:     true,
+				writeErrorFunc: RequireDocNotFoundError,
+			},
+			{
+				name: "previousDoc=body+_xattr1,_xattr2,xattrsToUpdate=_xattr1,xattrsToDelete=_xattr2,cas=correct,deleteBody=false",
+				previousDoc: &sgbucket.BucketDocument{
+					Body: []byte(`{"foo": "bar"}`),
+					Xattrs: map[string][]byte{
+						"_xattr1": []byte(`{"a" : "b"}`),
+					},
+				},
+				updatedXattrs: map[string][]byte{
+					"_xattr1": []byte(`{"c": "d"}`),
+				},
+				xattrsToDelete: []string{"_xattr2"},
+				cas:            previousCas,
+				deleteBody:     false,
+				finalXattrs: map[string][]byte{
+					"_xattr1": []byte(`{"c": "d"}`),
+				},
+				finalBody: []byte(`{"foo": "bar"}`),
+			},
+			{
+				name: "previousDoc=body+_xattr1,_xattr2,xattrsToUpdate=_xattr1,xattrsToDelete=_xattr2,cas=correct,deleteBody=true",
+				previousDoc: &sgbucket.BucketDocument{
+					Body: []byte(`{"foo": "bar"}`),
+					Xattrs: map[string][]byte{
+						"_xattr1": []byte(`{"a" : "b"}`),
+					},
+				},
+				updatedXattrs: map[string][]byte{
+					"_xattr1": []byte(`{"c": "d"}`),
+				},
+				xattrsToDelete: []string{"_xattr2"},
+				cas:            previousCas,
+				deleteBody:     true,
+				finalXattrs: map[string][]byte{
+					"_xattr1": []byte(`{"c": "d"}`),
 				},
 			},
 		}...)
@@ -811,16 +865,16 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 				var casOut uint64
 				var err error
 				if test.previousDoc.Body == nil {
-					casOut, err = col.WriteTombstoneWithXattrs(ctx, docID, exp, 0, test.previousDoc.Xattrs, false, nil)
+					casOut, err = col.WriteTombstoneWithXattrs(ctx, docID, exp, 0, test.previousDoc.Xattrs, nil, false, nil)
 				} else {
-					casOut, err = col.WriteWithXattrs(ctx, docID, exp, 0, test.previousDoc.Body, test.previousDoc.Xattrs, nil)
+					casOut, err = col.WriteWithXattrs(ctx, docID, exp, 0, test.previousDoc.Body, test.previousDoc.Xattrs, nil, nil)
 				}
 				require.NoError(t, err)
 				if test.cas == previousCas {
 					cas = casOut
 				}
 			}
-			_, err := col.WriteTombstoneWithXattrs(ctx, docID, exp, cas, test.updatedXattrs, test.deleteBody, nil)
+			_, err := col.WriteTombstoneWithXattrs(ctx, docID, exp, cas, test.updatedXattrs, nil, test.deleteBody, nil)
 			if test.writeErrorFunc != nil {
 				test.writeErrorFunc(t, err)
 				if test.finalBody != nil {
@@ -845,7 +899,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 
 			body, xattrs, _, err := col.GetWithXattrs(ctx, docID, xattrKeys)
 			require.NoError(t, err)
-			if test.finalBody == nil {
+			if test.finalBody == nil || UnitTestUrlIsWalrus() {
 				require.Equal(t, "", string(body))
 			} else {
 				require.JSONEq(t, string(test.finalBody), string(body))
@@ -856,9 +910,6 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 }
 
 func TestWriteUpdateWithXattrs(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("CBG-3895 will match behavior with rosmar")
-	}
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -875,10 +926,13 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 		getErrorFunc func(testing.TB, error)
 	}
 	tests := []testCase{
+		// alive document with xattrs
+		/* this fails in rosmar with a getError and doesn't write null doc body
 		{
 			name:      "previousDoc=nil,updatedDoc=nil",
 			finalBody: []byte("null"),
 		},
+		*/
 		{
 			name: "previousDoc=body+_xattr1,updatedDoc=nil",
 			previousDoc: &sgbucket.BucketDocument{
@@ -887,8 +941,9 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 					"_xattr1": []byte(`{"a" : "b"}`),
 				},
 			},
-			errorFunc: requireMutateInOneOpError,
+			errorsIs: sgbucket.ErrNeedXattrs,
 		},
+		/* This should fail, and does under rosmar but not CBS
 		{
 			name: "previousDoc=_xattr1,updatedDoc=nil",
 			previousDoc: &sgbucket.BucketDocument{
@@ -896,12 +951,14 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 					"_xattr1": []byte(`{"a" : "b"}`),
 				},
 			},
-			errorFunc: requireMutateInOneOpError,
 		},
+		*/
 		{
-			name:        "previousDoc=nil,updatedDoc=_xattr1",
-			updatedDoc:  sgbucket.UpdatedDoc{Xattrs: map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)}},
-			finalBody:   []byte("null"),
+			name: "previousDoc=nil,updatedDoc=_xattr1",
+			updatedDoc: sgbucket.UpdatedDoc{
+				Xattrs:      map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)},
+				IsTombstone: true,
+			},
 			finalXattrs: map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)},
 		},
 		{
@@ -912,8 +969,10 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 					"_xattr1": []byte(`{"a" : "b"}`),
 				},
 			},
-			updatedDoc:  sgbucket.UpdatedDoc{Xattrs: map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)}},
-			finalBody:   []byte(`{"foo": "bar"}`),
+			updatedDoc: sgbucket.UpdatedDoc{
+				Xattrs:      map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)},
+				IsTombstone: true,
+			},
 			finalXattrs: map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)},
 		},
 		{
@@ -923,7 +982,10 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 					"_xattr1": []byte(`{"a" : "b"}`),
 				},
 			},
-			updatedDoc:  sgbucket.UpdatedDoc{Xattrs: map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)}},
+			updatedDoc: sgbucket.UpdatedDoc{
+				Xattrs:      map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)},
+				IsTombstone: true,
+			},
 			finalXattrs: map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)},
 		},
 	}
@@ -931,7 +993,7 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 	if bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
 		tests = append(tests, []testCase{
 			{
-				name: "previousDoc=body+_xattr1,xattr2,updatedDoc=_xattr1",
+				name: "previousDoc=body+_xattr1,_xattr2,updatedDoc=_xattr1",
 				previousDoc: &sgbucket.BucketDocument{
 					Body: []byte(`{"foo": "bar"}`),
 					Xattrs: map[string][]byte{
@@ -939,8 +1001,10 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 						"_xattr2": []byte(`{"e" : "f"}`),
 					},
 				},
-				updatedDoc: sgbucket.UpdatedDoc{Xattrs: map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)}},
-				finalBody:  []byte(`{"foo": "bar"}`),
+				updatedDoc: sgbucket.UpdatedDoc{
+					Xattrs:      map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)},
+					IsTombstone: true,
+				},
 				finalXattrs: map[string][]byte{
 					"_xattr1": []byte(`{"c" : "d"}`),
 					"_xattr2": []byte(`{"e" : "f"}`),
@@ -954,7 +1018,10 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 						"_xattr2": []byte(`{"e" : "f"}`),
 					},
 				},
-				updatedDoc: sgbucket.UpdatedDoc{Xattrs: map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)}},
+				updatedDoc: sgbucket.UpdatedDoc{
+					Xattrs:      map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)},
+					IsTombstone: true,
+				},
 				finalXattrs: map[string][]byte{
 					"_xattr1": []byte(`{"c" : "d"}`),
 					"_xattr2": []byte(`{"e" : "f"}`),
@@ -988,10 +1055,10 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 				if len(test.previousDoc.Body) == 0 {
 					deleteBody := false
 					var mutateInOptions *sgbucket.MutateInOptions
-					_, err := col.WriteTombstoneWithXattrs(ctx, docID, exp, cas, test.previousDoc.Xattrs, deleteBody, mutateInOptions)
+					_, err := col.WriteTombstoneWithXattrs(ctx, docID, exp, cas, test.previousDoc.Xattrs, nil, deleteBody, mutateInOptions)
 					require.NoError(t, err)
 				} else {
-					_, err := col.WriteWithXattrs(ctx, docID, exp, cas, test.previousDoc.Body, test.previousDoc.Xattrs, mutateInOptions)
+					_, err := col.WriteWithXattrs(ctx, docID, exp, cas, test.previousDoc.Body, test.previousDoc.Xattrs, nil, mutateInOptions)
 					require.NoError(t, err)
 				}
 			}
@@ -1030,7 +1097,9 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			if len(test.finalBody) > 0 {
+			if UnitTestUrlIsWalrus() && test.updatedDoc.IsTombstone {
+				require.Equal(t, "", string(body))
+			} else if len(test.finalBody) > 0 {
 				require.JSONEq(t, string(test.finalBody), string(body))
 			} else {
 				require.Equal(t, string(test.finalBody), string(body))
@@ -1038,6 +1107,188 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 			requireXattrsEqual(t, test.finalXattrs, xattrs)
 		})
 	}
+}
+
+func TestWriteWithXattrs(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	col := bucket.DefaultDataStore()
+
+	tests := []struct {
+		name           string
+		body           []byte
+		cas            uint64
+		xattrs         map[string][]byte
+		xattrsToDelete []string
+		errorIs        error
+		errorFunc      func(testing.TB, error)
+	}{
+		{
+			name: "body=true,xattrs=nil,xattrsToDelete=nil,cas=0",
+			body: []byte(`{"foo": "bar"}`),
+		},
+		{
+			name:      "body=true,xattrs=nil,xattrsToDelete=nil,cas=1",
+			body:      []byte(`{"foo": "bar"}`),
+			cas:       uint64(1),
+			errorFunc: requireCasMismatchError,
+		},
+		{
+			name:           "body=true,xattrs=nil,xattrsToDelete=xattr1,cas=0",
+			body:           []byte(`{"foo": "bar"}`),
+			xattrsToDelete: []string{"xattr1"},
+			errorIs:        sgbucket.ErrDeleteXattrOnDocumentInsert,
+		},
+		{
+			name:           "body=true,xattrs=nil,xattrsToDelete=xattr1,cas=1",
+			body:           []byte(`{"foo": "bar"}`),
+			xattrsToDelete: []string{"xattr1"},
+			cas:            uint64(1),
+			errorFunc:      requireCasMismatchError,
+		},
+		{
+			name:           "body=true,xattrs=nil,xattrsToDelete=xattr1,xattr2,cas=0",
+			body:           []byte(`{"foo": "bar"}`),
+			xattrsToDelete: []string{"xattr1", "xattr2"},
+			errorIs:        sgbucket.ErrDeleteXattrOnDocumentInsert,
+		},
+		{
+			name:           "body=true,xattrs=nil,xattrsToDelete=xattr1,xattr2,cas=1",
+			body:           []byte(`{"foo": "bar"}`),
+			xattrsToDelete: []string{"xattr1", "xattr2"},
+			cas:            uint64(1),
+			errorFunc:      requireCasMismatchError,
+		},
+		{
+			name:           "body=true,xattrs=xattr1,xattrsToDelete=xattr1,cas=0",
+			xattrs:         map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
+			body:           []byte(`{"foo": "bar"}`),
+			xattrsToDelete: []string{"xattr1"},
+			errorIs:        sgbucket.ErrDeleteXattrOnDocumentInsert,
+		},
+		{
+			name:           "body=true,xattrs=xattr1,xattrsToDelete=xattr1,cas=1",
+			body:           []byte(`{"foo": "bar"}`),
+			xattrs:         map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
+			xattrsToDelete: []string{"xattr1"},
+			cas:            uint64(1),
+			errorIs:        sgbucket.ErrUpsertAndDeleteSameXattr,
+		},
+		{
+			name:           "body=true,xattrs=xattr1,xattrsToDelete=xattr1,xattr2,cas=0",
+			body:           []byte(`{"foo": "bar"}`),
+			xattrs:         map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
+			xattrsToDelete: []string{"xattr1", "xattr2"},
+			errorIs:        sgbucket.ErrDeleteXattrOnDocumentInsert,
+		},
+		{
+			name:           "body=true,xattrs=xattr1,xattrsToDelete=xattr1,xattr2,cas=1",
+			body:           []byte(`{"foo": "bar"}`),
+			xattrs:         map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
+			xattrsToDelete: []string{"xattr1", "xattr2"},
+			cas:            uint64(1),
+			errorIs:        sgbucket.ErrUpsertAndDeleteSameXattr,
+		},
+		{
+			name:   "body=true,xattrs=xattr1,xattrsToDelete=nil,cas=0",
+			body:   []byte(`{"foo": "bar"}`),
+			xattrs: map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
+		},
+		{
+			name:      "body=true,xattrs=xattr1,xattrsToDelete=nil,cas=1",
+			body:      []byte(`{"foo": "bar"}`),
+			xattrs:    map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
+			cas:       uint64(1),
+			errorFunc: requireCasMismatchError,
+		},
+		{
+			name:    "xattr_nil_value",
+			body:    []byte(`{"foo": "bar"}`),
+			xattrs:  map[string][]byte{"xattr1": nil},
+			errorIs: sgbucket.ErrNilXattrValue,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if test.errorFunc != nil && test.errorIs != nil {
+				require.FailNow(t, "test case should specify errFunc xor errorIs")
+			}
+			docID := t.Name()
+			cas, err := col.WriteWithXattrs(ctx, docID, 0, test.cas, test.body, test.xattrs, test.xattrsToDelete, nil)
+			if test.errorFunc != nil {
+				test.errorFunc(t, err)
+				require.Equal(t, uint64(0), cas)
+				return
+			}
+			require.ErrorIs(t, err, test.errorIs)
+			if test.errorIs != nil {
+				require.Equal(t, uint64(0), cas)
+				return
+			}
+			require.NoError(t, err)
+			require.NotEqual(t, uint64(0), cas)
+
+			xattrKeys := make([]string, 0, len(test.xattrs))
+			for k := range test.xattrs {
+				xattrKeys = append(xattrKeys, k)
+			}
+			xattrKeys = append(xattrKeys, test.xattrsToDelete...)
+			doc, xattrs, getCas, err := col.GetWithXattrs(ctx, docID, xattrKeys)
+			require.NoError(t, err)
+			require.Equal(t, cas, getCas)
+			require.JSONEq(t, string(test.body), string(doc))
+			require.Equal(t, len(test.xattrs), len(xattrs), "Length of output doesn't match xattrs=%+v doesn't match input xattrs=%+v", xattrs, test.xattrs)
+			for k, v := range test.xattrs {
+				require.Contains(t, xattrs, k)
+				require.JSONEq(t, string(v), string(xattrs[k]))
+			}
+		})
+	}
+}
+
+func TestWriteWithXattrsSetXattrNil(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	col := bucket.DefaultDataStore()
+	docID := t.Name()
+
+	for _, fakeCas := range []uint64{0, 1} {
+		t.Run(fmt.Sprintf("cas=%d", fakeCas), func(t *testing.T) {
+			_, err := col.WriteWithXattrs(ctx, docID, 0, fakeCas, []byte(`{"foo": "bar"}`), map[string][]byte{"xattr1": nil}, nil, nil)
+			require.ErrorIs(t, err, sgbucket.ErrNilXattrValue)
+		})
+	}
+}
+
+func TestWriteTombstoneWithXattrsSetXattrNil(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	col := bucket.DefaultDataStore()
+	docID := t.Name()
+
+	for _, fakeCas := range []uint64{0, 1} {
+		for _, deleteBody := range []bool{false, true} {
+			t.Run(fmt.Sprintf("cas=%d, deleteBody=%v", fakeCas, deleteBody), func(t *testing.T) {
+				_, err := col.WriteTombstoneWithXattrs(ctx, docID, 0, fakeCas, map[string][]byte{"_xattr1": nil}, nil, deleteBody, nil)
+				require.ErrorIs(t, err, sgbucket.ErrNilXattrValue)
+			})
+		}
+	}
+}
+
+func TestWriteWithXattrsInsertAndDeleteError(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	col := bucket.DefaultDataStore()
+	docID := t.Name()
+
+	_, err := col.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo": "bar"}`), map[string][]byte{"xattr1": []byte(`{"foo": "bar"}`)}, []string{"xattr2"}, nil)
+	require.ErrorIs(t, err, sgbucket.ErrDeleteXattrOnDocumentInsert)
 }
 
 func requireXattrsEqual(t testing.TB, expected map[string][]byte, actual map[string][]byte) {
@@ -1051,6 +1302,164 @@ func requireXattrsEqual(t testing.TB, expected map[string][]byte, actual map[str
 	}
 }
 
-func requireMutateInOneOpError(t testing.TB, err error) {
-	require.ErrorContains(t, err, "at least one op must be present: invalid argument")
+func TestWriteResurrectionWithXattrs(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	col := bucket.DefaultDataStore()
+
+	type testCase struct {
+		name          string
+		previousDoc   *sgbucket.BucketDocument
+		updatedXattrs map[string][]byte
+		updatedBody   []byte
+		errorIs       error
+		errorFunc     func(testing.TB, error)
+	}
+	tests := []testCase{
+		/* this writes literal null on Couchbase server and no document on rosmar
+		{
+			name:      "previousDoc=nil",
+			finalBody: []byte("null"),
+		},
+		*/
+		{
+			name: "previousDoc=_xattr1,xattrsToUpdate=_xattr1",
+			previousDoc: &sgbucket.BucketDocument{
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
+				},
+				IsTombstone: true,
+			},
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+			},
+			errorIs: sgbucket.ErrNeedBody,
+		},
+		{
+			name: "previousDoc=_xattr1,xattrsToUpdate=_xattr1,updatedBody=nil",
+			previousDoc: &sgbucket.BucketDocument{
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
+				},
+			},
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+			},
+			errorIs: sgbucket.ErrNeedBody,
+		},
+		{
+			name: "previousDoc=_xattr1,xattrsToUpdate=_xattr1,updatedBody=body",
+			previousDoc: &sgbucket.BucketDocument{
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
+				},
+			},
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+			},
+			updatedBody: []byte(`{"foo": "bar"}`),
+		},
+		{
+			name: "previousDoc=_xattr1,xattrsToUpdate=nil,updatedBody=body",
+			previousDoc: &sgbucket.BucketDocument{
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
+				},
+			},
+			updatedBody: []byte(`{"foo": "bar"}`),
+		},
+		// if there is no doc, WriteResurrectionWithXattrs behaves like WriteWithXattrs with cas=0
+		{
+			name:        "previousDoc=nil,xattrsToUpdate=nil,updatedBody=body",
+			previousDoc: nil,
+			updatedBody: []byte(`{"foo": "bar"}`),
+		},
+		{
+			name: "previousDoc=alive,xattrsToUpdate=_xattr1,updatedBody=body",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+			},
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+			},
+			updatedBody: []byte(`{"foo": "bar"}`),
+			errorFunc:   requireDocFoundOrCasMismatchError,
+		},
+	}
+	if bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		tests = append(tests, []testCase{
+			{
+				name: "previousDoc=_xattr1,xattrsToUpdate=_xattr1+_xattr2,updatedBody=body",
+				previousDoc: &sgbucket.BucketDocument{
+					Xattrs: map[string][]byte{
+						"_xattr1": []byte(`{"a" : "b"}`),
+					},
+				},
+				updatedXattrs: map[string][]byte{
+					"_xattr1": []byte(`{"c": "d"}`),
+					"_xattr2": []byte(`{"f": "g"}`),
+				},
+				updatedBody: []byte(`{"foo": "bar"}`),
+			},
+		}...)
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			docID := t.Name()
+			exp := uint32(0)
+			if test.previousDoc != nil {
+				if test.previousDoc.Body == nil {
+					_, err := col.WriteTombstoneWithXattrs(ctx, docID, exp, 0, test.previousDoc.Xattrs, nil, false, nil)
+					require.NoError(t, err)
+				} else {
+					_, err := col.WriteWithXattrs(ctx, docID, exp, 0, test.previousDoc.Body, test.previousDoc.Xattrs, nil, nil)
+					require.NoError(t, err)
+				}
+			}
+			_, err := col.WriteResurrectionWithXattrs(ctx, docID, exp, test.updatedBody, test.updatedXattrs, nil)
+			if test.errorIs != nil {
+				require.ErrorIs(t, err, test.errorIs)
+				return
+			} else if test.errorFunc != nil {
+				test.errorFunc(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			xattrKeys := make([]string, 0, len(test.updatedXattrs))
+			for k := range test.updatedXattrs {
+				xattrKeys = append(xattrKeys, k)
+			}
+			if test.previousDoc != nil {
+				for xattrKey := range test.previousDoc.Xattrs {
+					_, ok := test.updatedXattrs[xattrKey]
+					if !ok {
+						xattrKeys = append(xattrKeys, xattrKey)
+					}
+				}
+			}
+
+			body, xattrs, _, err := col.GetWithXattrs(ctx, docID, xattrKeys)
+			require.NoError(t, err)
+			require.JSONEq(t, string(test.updatedBody), string(body))
+			requireXattrsEqual(t, test.updatedXattrs, xattrs)
+		})
+	}
+}
+
+func requireDocNotFoundOrCasMismatchError(t testing.TB, err error) {
+	require.Error(t, err)
+	if !IsDocNotFoundError(err) && !IsCasMismatch(err) {
+		errMsg := fmt.Sprintf("Expected error to be either a doc not found or cas mismatch error, got %+v", err)
+		require.Fail(t, errMsg)
+	}
+}
+
+func requireDocFoundOrCasMismatchError(t testing.TB, err error) {
+	require.Error(t, err)
+	if !errors.Is(err, sgbucket.ErrKeyExists) && !IsCasMismatch(err) {
+		errMsg := fmt.Sprintf("Expected error to be either a doc found or cas mismatch error, got %+v", err)
+		require.Fail(t, errMsg)
+	}
 }

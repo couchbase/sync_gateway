@@ -393,18 +393,18 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 		return nil, false, marshalErr
 	}
 
-	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
 	xattrs := map[string][]byte{
 		base.SyncXattrName: xattrValue,
 	}
 	var casOut uint64
 	var writeErr error
+	var xattrsToDelete []string
 	if doc.hasFlag(channels.Deleted) {
 		// Migration of tombstone.  Delete body, update xattrs
-		casOut, writeErr = db.dataStore.WriteTombstoneWithXattrs(ctx, docid, existingDoc.Expiry, existingDoc.Cas, xattrs, true, opts)
+		casOut, writeErr = db.dataStore.WriteTombstoneWithXattrs(ctx, docid, existingDoc.Expiry, existingDoc.Cas, xattrs, xattrsToDelete, true, opts)
 	} else {
 		// Non-tombstone - update doc and xattrs
-		casOut, writeErr = db.dataStore.WriteWithXattrs(ctx, docid, existingDoc.Expiry, existingDoc.Cas, value, xattrs, opts)
+		casOut, writeErr = db.dataStore.WriteWithXattrs(ctx, docid, existingDoc.Expiry, existingDoc.Cas, value, xattrs, xattrsToDelete, opts)
 	}
 	if writeErr == nil {
 		doc.Cas = casOut

@@ -480,7 +480,7 @@ func WriteDirectWithKey(t *testing.T, db *Database, key string, channelArray []s
 	body := fmt.Sprintf(`{"key": "%s"}`, key)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	if base.TestUseXattrs() {
-		_, err := collection.dataStore.WriteWithXattrs(base.TestCtx(t), key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil)
+		_, err := collection.dataStore.WriteWithXattrs(base.TestCtx(t), key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil, nil)
 		require.NoError(t, err)
 	} else {
 		_, err := collection.dataStore.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})

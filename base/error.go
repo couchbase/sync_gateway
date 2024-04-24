@@ -221,11 +221,13 @@ func IsDocNotFoundError(err error) bool {
 		return true
 	}
 
+	var missingError sgbucket.MissingError
+	if errors.As(err, &missingError) {
+		return true
+	}
 	switch unwrappedErr := unwrappedErr.(type) {
 	case *gomemcached.MCResponse:
 		return unwrappedErr.Status == gomemcached.KEY_ENOENT || unwrappedErr.Status == gomemcached.NOT_STORED
-	case sgbucket.MissingError:
-		return true
 	case *HTTPError:
 		return unwrappedErr.Status == http.StatusNotFound
 	default:
