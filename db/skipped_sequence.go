@@ -278,7 +278,6 @@ func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry *SkippedSequenceLi
 	} else {
 		s.list = append(s.list, entry)
 	}
-	s.NumCurrentSkippedSequences += entry.getNumSequencesInEntry()
 
 }
 
