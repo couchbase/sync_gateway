@@ -73,12 +73,8 @@ func (h *handler) handleGetAllChannels() error {
 				if channel == channels.DocumentStarChannel {
 					continue
 				}
-				// if channel was assigned after user got the role, the correct sequence is in chanEntry
-				sequence := roleEntry.VbSequence.Sequence
-				if chanEntry.VbSequence.Sequence > sequence {
-					sequence = chanEntry.VbSequence.Sequence
-				}
-				grantInfo := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: sequence}}, Source: chanEntry.Source}
+				// use more recent sequence as start
+				grantInfo := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: max(chanEntry.VbSequence.Sequence, roleEntry.VbSequence.Sequence)}}, Source: chanEntry.Source}
 				resp.addRoleGrants(roleName, roleEntry.Source, keyspace, channel, grantInfo)
 			}
 			// loop over previous role channels
@@ -88,14 +84,14 @@ func (h *handler) handleGetAllChannels() error {
 					continue
 				}
 				var newEntries []auth.GrantHistorySequencePair
+
 				// only take last entry
-				newEntries = append(newEntries, chanHistory.Entries[len(chanHistory.Entries)-1])
+				newEntries = entriesVbSeqOverlap(chanHistory.Entries, roleEntry.Sequence)
+				if newEntries == nil {
+					continue
+				}
 				grantInfo := auth.GrantHistory{Entries: newEntries, Source: chanHistory.Source, UpdatedAt: chanHistory.UpdatedAt}
 
-				// if channel was assigned before user got the role, the correct sequence is in roleEntry
-				if chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq < roleEntry.VbSequence.Sequence {
-					newEntries[0].StartSeq = roleEntry.VbSequence.Sequence
-				}
 				resp.addRoleGrants(roleName, roleEntry.Source, keyspace, channel, grantInfo)
 			}
 		}
@@ -120,36 +116,36 @@ func (h *handler) handleGetAllChannels() error {
 				if channel == channels.DocumentStarChannel {
 					continue
 				}
-				roleChanHistory := roleHist
-				if chanEntry.VbSequence.Sequence > roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
-					roleChanHistory.Entries = append(roleChanHistory.Entries, auth.GrantHistorySequencePair{StartSeq: chanEntry.VbSequence.Sequence, EndSeq: roleHist.Entries[len(roleHist.Entries)-1].EndSeq})
+				//roleChanHistory := roleHist
+				newEntries := entriesVbSeqOverlap(roleHist.Entries, chanEntry.Sequence)
+				if newEntries == nil {
+					continue
 				}
+				grantInfo := auth.GrantHistory{Entries: newEntries, Source: chanEntry.Source, UpdatedAt: roleHist.UpdatedAt}
+
 				// If role is currently assigned, append entries to existing role info in response
 				if roleHist.Source == channels.DynamicGrant {
 					if entry, ok := resp.DynamicRoleGrants[roleName][keyspace][channel]; ok {
-						roleChanHistory.Entries = append(entry.Entries, roleChanHistory.Entries...)
+						grantInfo.Entries = append(entry.Entries, grantInfo.Entries...)
 					}
 				} else {
 					if entry, ok := resp.AdminRoleGrants[roleName][keyspace][channel]; ok {
-						roleChanHistory.Entries = append(entry.Entries, roleChanHistory.Entries...)
+						grantInfo.Entries = append(entry.Entries, grantInfo.Entries...)
 					}
 				}
-				resp.addRoleGrants(roleName, roleHist.Source, keyspace, channel, roleChanHistory)
+				resp.addRoleGrants(roleName, roleHist.Source, keyspace, channel, grantInfo)
 			}
 
 			for channel, chanHistory := range channelHistory {
 				// if channel is in history for a sequence span before the user had access to the role
-				if chanHistory.Entries[len(chanHistory.Entries)-1].EndSeq < roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
+
+				newEntries := roleChanEntryOverlap(chanHistory.Entries, roleHist.Entries)
+				if newEntries == nil {
 					continue
 				}
-				var newEntries []auth.GrantHistorySequencePair
-				_ = copy(newEntries, roleHist.Entries)
-				// if channel was assigned to role after user had access to the role, take channel start seq
-				if chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq > roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
-					newEntries[len(roleHist.Entries)-1].StartSeq = chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq
-					chanHistory = auth.GrantHistory{Entries: newEntries, Source: chanHistory.Source, UpdatedAt: chanHistory.UpdatedAt}
-				}
-				resp.addRoleGrants(roleName, roleHist.Source, keyspace, channel, chanHistory)
+				grantInfo := auth.GrantHistory{Entries: newEntries, Source: chanHistory.Source, UpdatedAt: chanHistory.UpdatedAt}
+
+				resp.addRoleGrants(roleName, roleHist.Source, keyspace, channel, grantInfo)
 			}
 		}
 	}
@@ -228,4 +224,55 @@ func (resp *getAllChannelsResponse) addRoleGrants(roleName string, source string
 		}
 		resp.DynamicRoleGrants[roleName][keyspace][channelName] = grantInfo
 	}
+}
+
+// roleChanEntryOverlap finds the overlap between 2 lists of GrantHistorySequencePairs
+// the overlap is the sequence span where a user had access to a channel through a role, both historic
+func roleChanEntryOverlap(chanEntries []auth.GrantHistorySequencePair, roleEntries []auth.GrantHistorySequencePair) []auth.GrantHistorySequencePair {
+	var overlapSequences []auth.GrantHistorySequencePair
+	for _, roleEntry := range roleEntries {
+		for _, chanEntry := range chanEntries {
+			// if role start > chan end no entry
+			if roleEntry.StartSeq > chanEntry.EndSeq {
+				break
+			}
+			if roleEntry.StartSeq > chanEntry.EndSeq {
+				break
+			}
+			entry := auth.GrantHistorySequencePair{StartSeq: chanEntry.StartSeq, EndSeq: chanEntry.EndSeq}
+			overlapSequences = append(overlapSequences, entry)
+			// role was assigned to user after chan was assigned to role
+			if roleEntry.StartSeq > chanEntry.StartSeq {
+				entry.StartSeq = roleEntry.StartSeq
+			}
+			// last entry in overlap
+			if roleEntry.EndSeq < chanEntry.EndSeq {
+				entry.EndSeq = roleEntry.EndSeq
+				break
+			}
+
+		}
+	}
+	return overlapSequences
+}
+
+// entriesVbSeqOverlap finds the overlap between a Vbsequence sequence and a list of GrantHistorySequencePairs
+// the overlap is the sequence span where a user had access to a channel through a role, where either the user still has the role
+// or the channel is still accessible through that role
+func entriesVbSeqOverlap(entries []auth.GrantHistorySequencePair, seq uint64) []auth.GrantHistorySequencePair {
+	var overlapSequences []auth.GrantHistorySequencePair
+	for _, entry := range entries {
+		// if channel was granted after the role was removed or the role was grantafter a channel was removed
+		if seq > entry.EndSeq {
+			break
+		}
+		pair := auth.GrantHistorySequencePair{StartSeq: seq, EndSeq: entry.EndSeq}
+		overlapSequences = append(overlapSequences, entry)
+		// last entry in overlap
+		if seq < entry.StartSeq {
+			pair.StartSeq = entry.StartSeq
+		}
+
+	}
+	return overlapSequences
 }
