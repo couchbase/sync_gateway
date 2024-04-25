@@ -26,7 +26,8 @@ import (
 )
 
 const (
-	kMaxRecentSequences = 20 // Maximum number of sequences stored in RecentSequences before pruning is triggered
+	kMaxRecentSequences            = 20    // Maximum number of sequences stored in RecentSequences before pruning is triggered
+	unusedSequenceWarningThreshold = 10000 // Warn when releasing more than this many sequences due to existing sequence on the document
 )
 
 // ErrForbidden is returned when the user requests a document without a revision that they do not have access to.
@@ -1550,6 +1551,7 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 		if docSequence, err = db.sequences.nextSequence(ctx); err != nil {
 			return unusedSequences, err
 		}
+		firstAllocatedSequence := docSequence
 
 		// If the assigned sequence is less than or equal to the previous sequence on the document, release
 		// the assigned sequence and acquire one using nextSequenceGreaterThan
@@ -1557,10 +1559,15 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 			if err = db.sequences.releaseSequence(ctx, docSequence); err != nil {
 				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
 			}
-			docSequence, err = db.sequences.nextSequenceGreaterThan(ctx, doc.Sequence)
+			var releasedSequenceCount uint64
+			docSequence, releasedSequenceCount, err = db.sequences.nextSequenceGreaterThan(ctx, doc.Sequence)
 			if err != nil {
 				return unusedSequences, err
 			}
+			if releasedSequenceCount > unusedSequenceWarningThreshold {
+				base.WarnfCtx(ctx, "Doc %s / %s had an existing sequence %d that is higher than the next db sequence value %d, resulting in the release of %d unused sequences. This may indicate documents being migrated between databases by an external process.", base.UD(doc.ID), doc.CurrentRev, doc.Sequence, firstAllocatedSequence, releasedSequenceCount)
+			}
+
 		}
 	}
 

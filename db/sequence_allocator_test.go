@@ -262,47 +262,54 @@ func TestNextSequenceGreaterThanSingleNode(t *testing.T) {
 	assert.NoError(t, err, "error retrieving last sequence")
 
 	// nextSequenceGreaterThan(0) should perform initial batch allocation of size 10,  and not release any sequences
-	nextSequence, err := a.nextSequenceGreaterThan(ctx, 0)
+	nextSequence, releasedSequenceCount, err := a.nextSequenceGreaterThan(ctx, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(1), nextSequence)
+	require.Equal(t, 0, int(releasedSequenceCount))
 	assertNewAllocatorStats(t, testStats, 1, 10, 1, 0) // incr, reserved, assigned, released counts
 
 	// Calling the same again should use from the existing batch
-	nextSequence, err = a.nextSequenceGreaterThan(ctx, 0)
+	nextSequence, releasedSequenceCount, err = a.nextSequenceGreaterThan(ctx, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(2), nextSequence)
+	assert.Equal(t, 0, int(releasedSequenceCount))
 	assertNewAllocatorStats(t, testStats, 1, 10, 2, 0)
 
 	// Test case where greaterThan == s.Last + 1
-	nextSequence, err = a.nextSequenceGreaterThan(ctx, 2)
+	nextSequence, releasedSequenceCount, err = a.nextSequenceGreaterThan(ctx, 2)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(3), nextSequence)
+	require.Equal(t, 0, int(releasedSequenceCount))
 	assertNewAllocatorStats(t, testStats, 1, 10, 3, 0)
 
 	// When requested nextSequenceGreaterThan is > s.Last + 1, we should release previously allocated sequences but
 	// don't require a new incr
-	nextSequence, err = a.nextSequenceGreaterThan(ctx, 5)
+	nextSequence, releasedSequenceCount, err = a.nextSequenceGreaterThan(ctx, 5)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(6), nextSequence)
+	require.Equal(t, 2, int(releasedSequenceCount))
 	assertNewAllocatorStats(t, testStats, 1, 10, 4, 2)
 
 	// Test when requested nextSequenceGreaterThan == s.Max; should release previously allocated sequences and allocate a new batch
-	nextSequence, err = a.nextSequenceGreaterThan(ctx, 10)
+	nextSequence, releasedSequenceCount, err = a.nextSequenceGreaterThan(ctx, 10)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(11), nextSequence)
+	assert.Equal(t, 4, int(releasedSequenceCount))
 	assertNewAllocatorStats(t, testStats, 2, 20, 5, 6)
 
 	// Test when requested nextSequenceGreaterThan = s.Max + 1; should release previously allocated sequences AND max+1
-	nextSequence, err = a.nextSequenceGreaterThan(ctx, 21)
+	nextSequence, releasedSequenceCount, err = a.nextSequenceGreaterThan(ctx, 21)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(22), nextSequence)
+	assert.Equal(t, 10, int(releasedSequenceCount))
 	assertNewAllocatorStats(t, testStats, 3, 31, 6, 16)
 
 	// Test when requested nextSequenceGreaterThan > s.Max + batch size; should release 9 previously allocated sequences (23-31)
 	// and 19 in the gap to the requested sequence (32-50)
-	nextSequence, err = a.nextSequenceGreaterThan(ctx, 50)
+	nextSequence, releasedSequenceCount, err = a.nextSequenceGreaterThan(ctx, 50)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(51), nextSequence)
+	assert.Equal(t, 28, int(releasedSequenceCount))
 	assertNewAllocatorStats(t, testStats, 4, 60, 7, 44)
 
 }
@@ -350,21 +357,24 @@ func TestNextSequenceGreaterThanMultiNode(t *testing.T) {
 	assert.NoError(t, err, "error retrieving last sequence")
 
 	// nextSequenceGreaterThan(0) on A should perform initial batch allocation of size 10 (allocs 1-10),  and not release any sequences
-	nextSequence, err := a.nextSequenceGreaterThan(ctx, 0)
+	nextSequence, releasedSequenceCount, err := a.nextSequenceGreaterThan(ctx, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(1), nextSequence)
+	assert.Equal(t, 0, int(releasedSequenceCount))
 	assertNewAllocatorStats(t, dbStatsA, 1, 10, 1, 0) // incr, reserved, assigned, released counts
 
 	// nextSequenceGreaterThan(0) on B should perform initial batch allocation of size 10 (allocs 11-20),  and not release any sequences
-	nextSequence, err = b.nextSequenceGreaterThan(ctx, 0)
+	nextSequence, releasedSequenceCount, err = b.nextSequenceGreaterThan(ctx, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(11), nextSequence)
+	assert.Equal(t, 0, int(releasedSequenceCount))
 	assertNewAllocatorStats(t, dbStatsB, 1, 10, 1, 0)
 
 	// calling nextSequenceGreaterThan(15) on B will assign from the existing batch, and release 12-15
-	nextSequence, err = b.nextSequenceGreaterThan(ctx, 15)
+	nextSequence, releasedSequenceCount, err = b.nextSequenceGreaterThan(ctx, 15)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(16), nextSequence)
+	assert.Equal(t, 4, int(releasedSequenceCount))
 	assertNewAllocatorStats(t, dbStatsB, 1, 10, 2, 4)
 
 	// calling nextSequenceGreaterThan(15) on A will increment _sync:seq by 5 on it's previously allocated sequence (10).
@@ -372,9 +382,10 @@ func TestNextSequenceGreaterThanMultiNode(t *testing.T) {
 	//   node A releasing sequences 2-10 from it's existing buffer
 	//   node A allocating and releasing sequences 21-24
 	//   node A adding sequences 25-35 to its buffer, and assigning 25 to the current request
-	nextSequence, err = a.nextSequenceGreaterThan(ctx, 15)
+	nextSequence, releasedSequenceCount, err = a.nextSequenceGreaterThan(ctx, 15)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(26), nextSequence)
+	assert.Equal(t, 14, int(releasedSequenceCount))
 	assertNewAllocatorStats(t, dbStatsA, 2, 25, 2, 14)
 
 }
