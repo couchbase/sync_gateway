@@ -2578,10 +2578,10 @@ channelEntry:
   description: Channel name
   type: object
   properties:
-    Entries:
+    entries:
       type: array
       description: Start sequence to end sequence
-    UpdatedAt:
+    updated_at:
       type: integer
       description: Unix timestamp of last update
     source:

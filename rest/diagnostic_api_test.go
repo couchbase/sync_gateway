@@ -85,7 +85,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 	// Assert non existent user returns 404
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+bob+"/_all_channels", ``)
-	RequireStatus(t, response, http.StatusInternalServerError)
+	RequireStatus(t, response, http.StatusNotFound)
 
 	// Put user bob and assert on channels returned by all_channels
 	response = rt.SendAdminRequest(http.MethodPut,
@@ -97,10 +97,10 @@ func TestGetAllChannelsByUser(t *testing.T) {
 		"/"+dbName+"/_user/"+bob+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
 
-	var channelMap2 getAllChannelsResponse
-	err = json.Unmarshal(response.BodyBytes(), &channelMap2)
+	channelMap = getAllChannelsResponse{}
+	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, maps.Keys(channelMap2.AdminGrants["_default._default"]), []string{})
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants["_default._default"]), []string{})
 
 	// Assign new channel to user bob and assert all_channels includes it
 	response = rt.SendAdminRequest(http.MethodPut,
@@ -217,7 +217,6 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 					"admin_channels":[%s]
 				}`
 
-	// create sessions before users
 	const alice = "alice"
 	const bob = "bob"
 	userPayload := `{
@@ -249,7 +248,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	// Assert non existent user returns 404
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+bob+"/_all_channels", ``)
-	RequireStatus(t, response, http.StatusInternalServerError)
+	RequireStatus(t, response, http.StatusNotFound)
 
 	// Put user bob and assert on channels returned by all_channels
 	response = rt.SendAdminRequest(http.MethodPut,
@@ -260,7 +259,7 @@ func TestGetAllChannelsByUserWithCollections(t *testing.T) {
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/"+dbName+"/_user/"+bob+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
-
+	channelMap = getAllChannelsResponse{}
 	err = json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, maps.Keys(channelMap.AdminGrants[keyspace1]), []string{})
@@ -603,6 +602,61 @@ func TestGetAllChannelsByUser2CollectionsTo1(t *testing.T) {
 }
 
 func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 2)
+	defer rt.Close()
+
+	dbName := "db"
+	tb := base.GetTestBucket(t)
+	defer tb.Close(rt.Context())
+	scopesConfig := GetCollectionsConfig(t, tb, 1)
+
+	dbConfig := makeDbConfig(tb.GetName(), dbName, scopesConfig)
+	rt.CreateDatabase("db", dbConfig)
+
+	scopeName := rt.GetDbCollections()[0].ScopeName
+	collection1Name := rt.GetDbCollections()[0].Name
+	scopesConfig[scopeName].Collections[collection1Name] = &CollectionConfig{}
+	keyspace1 := scopeName + "." + collection1Name
+
+	const alice = "alice"
+	//userPayload := `{
+	//	%s
+	//	"admin_roles":["role1"],
+	//}`
+
+	response := rt.SendAdminRequest("PUT", "/db/_role/role1", fmt.Sprintf(`
+		{
+			"collection_access": {
+				"%s": {
+					"%s": {
+						"admin_channels":["A", "B", "C"]
+					}
+				}
+			}
+		}`, scopeName, collection1Name))
+	RequireStatus(t, response, http.StatusCreated)
+
+	// Put user alice and assert admin assigned channels are returned by the get all_channels endpoint
+	response = rt.SendAdminRequest(http.MethodPut,
+		"/"+dbName+"/_user/"+alice, `{"admin_roles":["role1"],"email":"bob@couchbase.com","password":"letmein"}`)
+	RequireStatus(t, response, http.StatusCreated)
+
+	// Delete role and assert channel is not there anymore
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_role/role1", ``)
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendDiagnosticRequest(http.MethodGet, "/"+dbName+"/_user/"+alice+"/_all_channels", ``)
+	RequireStatus(t, response, http.StatusOK)
+
+	var channelMap getAllChannelsResponse
+	err := json.Unmarshal(response.BodyBytes(), &channelMap)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, maps.Keys(channelMap.AdminRoleGrants["role1"][keyspace1]), []string{})
+}
+
+func TestGetAllChannelsByUserRoleHistory(t *testing.T) {
 	SyncFn := `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.user, doc.role);}`
 	base.TestRequiresCollections(t)
 
@@ -612,7 +666,7 @@ func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
 	dbName := "db"
 	tb := base.GetTestBucket(t)
 	defer tb.Close(rt.Context())
-	scopesConfig := GetCollectionsConfig(t, tb, 2)
+	scopesConfig := GetCollectionsConfig(t, tb, 1)
 	for scope, _ := range scopesConfig {
 		for _, cnf := range scopesConfig[scope].Collections {
 			cnf.SyncFn = &SyncFn
@@ -623,47 +677,44 @@ func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
 
 	scopeName := rt.GetDbCollections()[0].ScopeName
 	collection1Name := rt.GetDbCollections()[0].Name
-	collection2Name := rt.GetDbCollections()[1].Name
 	scopesConfig[scopeName].Collections[collection1Name] = &CollectionConfig{}
 	keyspace1 := scopeName + "." + collection1Name
 
-	collectionPayload := `,"%s": {
-					"admin_channels":[%s]
-				}`
-
-	// create sessions before users
 	const alice = "alice"
-	userPayload := `{
-		%s
-		"collection_access": {
-			"%s": {
-				"%s": {
-					"admin_roles":["role1"],
-					"admin_channels":["A", "B", "C"]
-				}
-				%s
-			}
-		}
-	}`
 
-	response := rt.SendAdminRequest(http.MethodPut, "/db/_role/role1", `{"admin_channels":["chan"]}`)
+	// Assign channel to role and remove it
+	response := rt.SendAdminRequest("PUT", "/db/_role/role1", fmt.Sprintf(`
+		{"collection_access": {"%s": {"%s": {"admin_channels":["role1Chan"]}}}}`, scopeName, collection1Name))
 	RequireStatus(t, response, http.StatusCreated)
-
-	// Put user alice and assert admin assigned channels are returned by the get all_channels endpoint
-	response = rt.SendAdminRequest(http.MethodPut,
-		"/"+dbName+"/_user/"+alice, fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`,
-			scopeName, collection1Name, fmt.Sprintf(collectionPayload, collection2Name, `"a"`)))
-	RequireStatus(t, response, http.StatusCreated)
-
-	// Delete role and assert channel is not there anymore
-	response = rt.SendAdminRequest(http.MethodDelete, "/db/_role/role1", `{"admin_channels":["role1Chan"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_role/role1", fmt.Sprintf(`
+		{"collection_access": {"%s": {"%s": {"admin_channels":[]}}}}`, scopeName, collection1Name))
 	RequireStatus(t, response, http.StatusOK)
 
+	// Put user alice with role1
+	response = rt.SendAdminRequest(http.MethodPut,
+		"/"+dbName+"/_user/"+alice, `{"admin_roles":["role1"],"email":"bob@couchbase.com","password":"letmein"}`)
+	RequireStatus(t, response, http.StatusCreated)
+
+	// Assert channels in role history from before the role was granted are not returned by the get all_channels endpoint
 	response = rt.SendDiagnosticRequest(http.MethodGet, "/"+dbName+"/_user/"+alice+"/_all_channels", ``)
 	RequireStatus(t, response, http.StatusOK)
-	t.Log(response.BodyString())
 	var channelMap getAllChannelsResponse
 	err := json.Unmarshal(response.BodyBytes(), &channelMap)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, maps.Keys(channelMap.AdminRoleGrants["role1"][keyspace1]), []string{})
+	assert.ElementsMatch(t, maps.Keys(channelMap.DynamicRoleGrants["role1"][keyspace1]), []string{})
+
+	// Assign a channel to role1 and assert get user channels response has the right sequence span
+	response = rt.SendAdminRequest("PUT", "/db/_role/role1", fmt.Sprintf(`
+		{"collection_access": {"%s": {"%s": {"admin_channels":["newChannel"]}}}}`, scopeName, collection1Name))
+	RequireStatus(t, response, http.StatusOK)
+
+	// Assert on sequence span for newChannel
+	response = rt.SendDiagnosticRequest(http.MethodGet, "/"+dbName+"/_user/"+alice+"/_all_channels", ``)
+	RequireStatus(t, response, http.StatusOK)
+	channelMap = getAllChannelsResponse{}
+	t.Log(response.BodyString())
+	err = json.Unmarshal(response.BodyBytes(), &channelMap)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, channelMap.AdminRoleGrants["role1"][keyspace1]["newChannel"].Entries, []auth.GrantHistorySequencePair{{StartSeq: 4, EndSeq: 0}})
 }

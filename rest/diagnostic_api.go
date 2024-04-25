@@ -10,6 +10,7 @@ package rest
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -26,59 +27,39 @@ type getAllChannelsResponse struct {
 	DynamicRoleGrants map[string]map[string]map[string]auth.GrantHistory `json:"dynamic_role_grants,omitempty"`
 }
 
-func newGetAllChannelsResponse() getAllChannelsResponse {
+func newGetAllChannelsResponse() *getAllChannelsResponse {
 	var resp getAllChannelsResponse
 	resp.AdminGrants = make(map[string]map[string]auth.GrantHistory)
 	resp.DynamicGrants = make(map[string]map[string]auth.GrantHistory)
 	resp.DynamicRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory)
 	resp.AdminRoleGrants = make(map[string]map[string]map[string]auth.GrantHistory)
-	return resp
+	return &resp
 }
 
 func (h *handler) handleGetAllChannels() error {
 	h.assertAdminOnly()
+	authenticator := h.db.Authenticator(h.ctx())
 	username := mux.Vars(h.rq)["name"]
-	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(username))
+	user, err := authenticator.GetUser(internalUserName(username))
 	if err != nil {
-		return fmt.Errorf("Could not get user %s: %w", username, err)
+		return fmt.Errorf("Error getting user %s: %w", username, err)
 	}
 	if user == nil {
-		return fmt.Errorf("Could not get user %s: %w", username, err)
+		return base.HTTPErrorf(http.StatusNotFound, "User not found %s", username)
 	}
-
-	authenticator := h.db.Authenticator(h.ctx())
-	if err != nil {
-		return err
-	}
-
 	resp := newGetAllChannelsResponse()
 
-	// Rebuild roles and channels
-	for _, dsName := range h.db.DataStoreNames() {
-		// skip if scope/collection has been removed
-		if _, ok := h.db.CollectionNames[dsName.Scope]; !ok {
-			continue
-		}
-		err = authenticator.RebuildCollectionChannels(user, dsName.Scope, dsName.Collection)
-		if err != nil {
-			return fmt.Errorf("Could not rebuild channels for %s: %w", dsName.String(), err)
-		}
-	}
+	// Rebuild roles
 	if err := authenticator.RebuildRoles(user); err != nil {
-		return err
+		return fmt.Errorf("error rebuilding roles: %w", err)
 	}
 
-	if err != nil {
-		return err
-	}
 	for roleName, roleEntry := range user.RoleNames() {
-		role, err := h.db.Authenticator(h.ctx()).GetRoleIncDeleted(roleName)
-		if role != nil && role.IsDeleted() {
-			base.InfofCtx(h.ctx(), base.KeyDiagnostic, "Role %s deleted, continuing")
-		}
+		role, err := authenticator.GetRole(roleName)
 		if err != nil {
-			return err
+			return fmt.Errorf("error getting role %s: %w", roleName, err)
 		}
+		// deleted role will return nil with no error
 		if role == nil {
 			continue
 		}
@@ -86,26 +67,36 @@ func (h *handler) handleGetAllChannels() error {
 			keyspace := fmt.Sprintf("%s.%s", dsName.Scope, dsName.Collection)
 			collectionChannels := role.CollectionChannels(dsName.Scope, dsName.Collection)
 			channelHistory := role.CollectionChannelHistory(dsName.Scope, dsName.Collection)
-			if len(collectionChannels) == 0 && len(channelHistory) == 0 {
-				continue
-			}
+
 			for channel, chanEntry := range collectionChannels {
 				// loop over current role channels
 				if channel == channels.DocumentStarChannel {
 					continue
 				}
-				grantInfo := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}, Source: chanEntry.Source}
-				if roleEntry.VbSequence.Sequence > chanEntry.VbSequence.Sequence {
-					grantInfo.Entries[len(grantInfo.Entries)-1].StartSeq = roleEntry.VbSequence.Sequence
+				// if channel was assigned after user got the role, the correct sequence is in chanEntry
+				sequence := roleEntry.VbSequence.Sequence
+				if chanEntry.VbSequence.Sequence > sequence {
+					sequence = chanEntry.VbSequence.Sequence
+				}
+				grantInfo := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: sequence}}, Source: chanEntry.Source}
+				resp.addRoleGrants(roleName, roleEntry.Source, keyspace, channel, grantInfo)
+			}
+			// loop over previous role channels
+			for channel, chanHistory := range channelHistory {
+				// if channel is in history for a sequence span before the user had access to the role, skip
+				if chanHistory.Entries[len(chanHistory.Entries)-1].EndSeq < roleEntry.VbSequence.Sequence {
+					continue
+				}
+				var newEntries []auth.GrantHistorySequencePair
+				// only take last entry
+				newEntries = append(newEntries, chanHistory.Entries[len(chanHistory.Entries)-1])
+				grantInfo := auth.GrantHistory{Entries: newEntries, Source: chanHistory.Source, UpdatedAt: chanHistory.UpdatedAt}
+
+				// if channel was assigned before user got the role, the correct sequence is in roleEntry
+				if chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq < roleEntry.VbSequence.Sequence {
+					newEntries[0].StartSeq = roleEntry.VbSequence.Sequence
 				}
 				resp.addRoleGrants(roleName, roleEntry.Source, keyspace, channel, grantInfo)
-				// loop over previous role channels
-			}
-			for channel, chanHistory := range channelHistory {
-				if roleEntry.VbSequence.Sequence > chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq {
-					chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = roleEntry.VbSequence.Sequence
-				}
-				resp.addRoleGrants(roleName, roleEntry.Source, keyspace, channel, chanHistory)
 			}
 		}
 	}
@@ -123,9 +114,6 @@ func (h *handler) handleGetAllChannels() error {
 			keyspace := fmt.Sprintf("%s.%s", dsName.Scope, dsName.Collection)
 			collectionChannels := role.CollectionChannels(dsName.Scope, dsName.Collection)
 			channelHistory := role.CollectionChannelHistory(dsName.Scope, dsName.Collection)
-			if len(collectionChannels) == 0 && len(channelHistory) == 0 {
-				continue
-			}
 
 			// loop over previous role channels
 			for channel, chanEntry := range collectionChannels {
@@ -136,6 +124,7 @@ func (h *handler) handleGetAllChannels() error {
 				if chanEntry.VbSequence.Sequence > roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
 					roleChanHistory.Entries = append(roleChanHistory.Entries, auth.GrantHistorySequencePair{StartSeq: chanEntry.VbSequence.Sequence, EndSeq: roleHist.Entries[len(roleHist.Entries)-1].EndSeq})
 				}
+				// If role is currently assigned, append entries to existing role info in response
 				if roleHist.Source == channels.DynamicGrant {
 					if entry, ok := resp.DynamicRoleGrants[roleName][keyspace][channel]; ok {
 						roleChanHistory.Entries = append(entry.Entries, roleChanHistory.Entries...)
@@ -149,8 +138,16 @@ func (h *handler) handleGetAllChannels() error {
 			}
 
 			for channel, chanHistory := range channelHistory {
-				if chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq < roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
-					chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq = roleHist.Entries[len(roleHist.Entries)-1].StartSeq
+				// if channel is in history for a sequence span before the user had access to the role
+				if chanHistory.Entries[len(chanHistory.Entries)-1].EndSeq < roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
+					continue
+				}
+				var newEntries []auth.GrantHistorySequencePair
+				_ = copy(newEntries, roleHist.Entries)
+				// if channel was assigned to role after user had access to the role, take channel start seq
+				if chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq > roleHist.Entries[len(roleHist.Entries)-1].StartSeq {
+					newEntries[len(roleHist.Entries)-1].StartSeq = chanHistory.Entries[len(chanHistory.Entries)-1].StartSeq
+					chanHistory = auth.GrantHistory{Entries: newEntries, Source: chanHistory.Source, UpdatedAt: chanHistory.UpdatedAt}
 				}
 				resp.addRoleGrants(roleName, roleHist.Source, keyspace, channel, chanHistory)
 			}
@@ -159,14 +156,17 @@ func (h *handler) handleGetAllChannels() error {
 
 	// Loop over current and past channels
 	for _, dsName := range h.db.DataStoreNames() {
+		err = authenticator.RebuildCollectionChannels(user, dsName.Scope, dsName.Collection)
+		if err != nil {
+			return fmt.Errorf("could not rebuild channels for %s: %w", dsName.String(), err)
+		}
 		keyspace := fmt.Sprintf("%s.%s", dsName.Scope, dsName.Collection)
 		collectionChannels := user.CollectionChannels(dsName.Scope, dsName.Collection)
 		channelHistory := user.CollectionChannelHistory(dsName.Scope, dsName.Collection)
+		// skip making maps if collections are empty
 		if len(collectionChannels) == 0 && len(channelHistory) == 0 {
 			continue
 		}
-		resp.AdminGrants[keyspace] = make(map[string]auth.GrantHistory)
-		resp.DynamicGrants[keyspace] = make(map[string]auth.GrantHistory)
 		for channel, chanHistory := range channelHistory {
 			resp.addGrants(chanHistory.Source, keyspace, channel, chanHistory)
 		}
@@ -174,9 +174,7 @@ func (h *handler) handleGetAllChannels() error {
 			history := auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.VbSequence.Sequence}}}
 			// If channel is in history, add grant history to current info
 			if _, ok := channelHistory[channel]; ok {
-				for _, entry := range channelHistory[channel].Entries {
-					history.Entries = append(history.Entries, entry)
-				}
+				history.Entries = append(history.Entries, channelHistory[channel].Entries...)
 			}
 			resp.addGrants(chanEntry.Source, keyspace, channel, history)
 		}
@@ -184,23 +182,34 @@ func (h *handler) handleGetAllChannels() error {
 
 	bytes, err := base.JSONMarshal(resp)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error marshaling getAllChannelsResponse %w", err)
 	}
 	h.writeRawJSON(bytes)
 	return err
 }
 
+// addGrants creates maps for each keyspace if they're not there and adds grant info to the response
 func (resp *getAllChannelsResponse) addGrants(source string, keyspace string, channelName string, grantInfo auth.GrantHistory) {
 	if source == channels.AdminGrant {
+		if _, ok := resp.AdminGrants[keyspace]; !ok {
+			resp.AdminGrants[keyspace] = make(map[string]auth.GrantHistory)
+		}
 		resp.AdminGrants[keyspace][channelName] = grantInfo
 	} else if source == channels.DynamicGrant {
+		if _, ok := resp.DynamicGrants[keyspace]; !ok {
+			resp.DynamicGrants[keyspace] = make(map[string]auth.GrantHistory)
+		}
 		resp.DynamicGrants[keyspace][channelName] = grantInfo
 	} else if source == channels.JWTGrant {
+		if _, ok := resp.JWTGrants[keyspace]; !ok {
+			resp.JWTGrants[keyspace] = make(map[string]auth.GrantHistory)
+		}
 		resp.JWTGrants[keyspace][channelName] = grantInfo
 	}
 	grantInfo.Source = ""
 }
 
+// addGrants creates maps for each role and keyspace if they're not there and adds grant info to the response
 func (resp *getAllChannelsResponse) addRoleGrants(roleName string, source string, keyspace string, channelName string, grantInfo auth.GrantHistory) {
 	if source == channels.AdminGrant {
 		if _, ok := resp.AdminRoleGrants[roleName]; !ok {
