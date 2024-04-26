@@ -43,6 +43,14 @@ type SkippedSequenceListEntry struct {
 	timestamp int64  // timestamp this entry was created in unix format
 }
 
+// SkippedSequenceStats will hold all stats associated with the skipped sequence slice, used for getStats()
+type SkippedSequenceStats struct {
+	NumCurrentSkippedSequencesStat    int64
+	NumCumulativeSkippedSequencesStat int64
+	ListCapacityStat                  int64
+	ListLengthStat                    int64
+}
+
 func NewSkippedSequenceSlice(clipHeadroom int) *SkippedSequenceSlice {
 	return &SkippedSequenceSlice{
 		list:                 []*SkippedSequenceListEntry{},
@@ -302,30 +310,15 @@ func (s *SkippedSequenceSlice) getOldest() uint64 {
 	return s.list[0].getStartSeq()
 }
 
-// getSliceLength retrieves the current skipped sequence slice length
-func (s *SkippedSequenceSlice) getSliceLength() int64 {
+// getStats will return all associated stats with the skipped sequence slice
+func (s *SkippedSequenceSlice) getStats() SkippedSequenceStats {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
-	return int64(len(s.list))
-}
 
-// getSliceCapacity retrieves the current skipped sequence slice capacity
-func (s *SkippedSequenceSlice) getSliceCapacity() int64 {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	return int64(cap(s.list))
-}
-
-// getNumCurrentSkippedSequenceValue retrieves the current skipped sequence count
-func (s *SkippedSequenceSlice) getNumCurrentSkippedSequenceValue() int64 {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	return s.NumCurrentSkippedSequences
-}
-
-// getCumulativeNumSkippedSequenceValue retrieves the cumulative skipped sequence count
-func (s *SkippedSequenceSlice) getCumulativeNumSkippedSequenceValue() int64 {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	return s.NumCumulativeSkippedSequences
+	return SkippedSequenceStats{
+		NumCumulativeSkippedSequencesStat: s.NumCumulativeSkippedSequences,
+		NumCurrentSkippedSequencesStat:    s.NumCurrentSkippedSequences,
+		ListCapacityStat:                  int64(cap(s.list)),
+		ListLengthStat:                    int64(len(s.list)),
+	}
 }

@@ -85,15 +85,17 @@ func (c *changeCache) updateStats(ctx context.Context) {
 	if c.db == nil {
 		return
 	}
+	// grab skipped sequence stats
+	skippedSequenceListStats := c.skippedSeqs.getStats()
+
 	c.db.DbStats.Database().HighSeqFeed.SetIfMax(int64(c.internalStats.highSeqFeed))
 	c.db.DbStats.Cache().PendingSeqLen.Set(int64(c.internalStats.pendingSeqLen))
 	c.db.DbStats.CBLReplicationPull().MaxPending.SetIfMax(int64(c.internalStats.maxPending))
 	c.db.DbStats.Cache().HighSeqStable.Set(int64(c._getMaxStableCached(ctx)))
-	c.db.DbStats.Cache().SkippedSeqLen.Set(c.skippedSeqs.getSliceLength())
-	c.db.DbStats.Cache().SkippedSeqCap.Set(c.skippedSeqs.getSliceCapacity())
-	c.db.DbStats.Cache().NumSkippedSeqs.Set(c.skippedSeqs.getCumulativeNumSkippedSequenceValue())
-	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(c.skippedSeqs.getNumCurrentSkippedSequenceValue())
-
+	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(skippedSequenceListStats.NumCurrentSkippedSequencesStat)
+	c.db.DbStats.Cache().NumSkippedSeqs.Set(skippedSequenceListStats.NumCumulativeSkippedSequencesStat)
+	c.db.DbStats.Cache().SkippedSeqLen.Set(skippedSequenceListStats.ListLengthStat)
+	c.db.DbStats.Cache().SkippedSeqCap.Set(skippedSequenceListStats.ListCapacityStat)
 }
 
 type LogEntry channels.LogEntry
@@ -304,9 +306,6 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	base.InfofCtx(ctx, base.KeyCache, "Starting CleanSkippedSequenceQueue for database %s", base.MD(c.db.Name))
 
 	maxWait := int64(c.options.CacheSkippedSeqMaxWait.Seconds())
-	if maxWait < 1 {
-		maxWait = 1
-	}
 	compactedSequences := c.skippedSeqs.SkippedSequenceCompact(ctx, maxWait)
 	if compactedSequences == 0 {
 		base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  No sequences to be compacted from skipped sequence list for database %s.", base.MD(c.db.Name))
@@ -780,14 +779,15 @@ func (c *changeCache) _addPendingLogs(ctx context.Context) channels.Set {
 	var changedChannels channels.Set
 
 	for len(c.pendingLogs) > 0 {
-		change := c.pendingLogs[0]
-		isNext := change.Sequence == c.nextSequence
+		oldestPending := c.pendingLogs[0]
+		isNext := oldestPending.Sequence == c.nextSequence
 		if isNext {
 			heap.Pop(&c.pendingLogs)
-			changedChannels = changedChannels.UpdateWithSlice(c._addToCache(ctx, change))
+			changedChannels = changedChannels.UpdateWithSlice(c._addToCache(ctx, oldestPending))
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
-			c.PushSkipped(ctx, c.nextSequence, change.Sequence-1)
-			c.nextSequence = change.Sequence
+			//  Skip all sequences up to the oldest Pending
+			c.PushSkipped(ctx, c.nextSequence, oldestPending.Sequence-1)
+			c.nextSequence = oldestPending.Sequence
 		} else {
 			break
 		}
