@@ -2587,9 +2587,6 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 func TestSendRevisionNoRevHandling(t *testing.T) {
 
 	base.LongRunningTest(t)
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Skip LeakyBucket test when running in integration")
-	}
 	testCases := []struct {
 		error       error
 		expectNoRev bool
@@ -2610,8 +2607,8 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 				docName := fmt.Sprintf("%s", test.error)
 				rt := NewRestTester(t,
 					&RestTesterConfig{
-						GuestEnabled:     true,
-						CustomTestBucket: base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
+						GuestEnabled:      true,
+						leakyBucketConfig: &base.LeakyBucketConfig{},
 					})
 				defer rt.Close()
 
