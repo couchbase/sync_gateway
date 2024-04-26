@@ -27,9 +27,11 @@ const (
 // SkippedSequenceSlice stores the set of skipped sequences as an ordered slice of single skipped sequences
 // or skipped sequence ranges
 type SkippedSequenceSlice struct {
-	list                 []*SkippedSequenceListEntry
-	ClipCapacityHeadroom int
-	lock                 sync.RWMutex
+	list                          []*SkippedSequenceListEntry
+	ClipCapacityHeadroom          int
+	NumCurrentSkippedSequences    int64
+	NumCumulativeSkippedSequences int64
+	lock                          sync.RWMutex
 }
 
 // SkippedSequenceListEntry contains start + end sequence for a range of skipped sequences +
@@ -39,6 +41,14 @@ type SkippedSequenceListEntry struct {
 	start     uint64 // start sequence of a range
 	end       uint64 // end sequence of the range (0 if a singular skipped sequence)
 	timestamp int64  // timestamp this entry was created in unix format
+}
+
+// SkippedSequenceStats will hold all stats associated with the skipped sequence slice, used for getStats()
+type SkippedSequenceStats struct {
+	NumCurrentSkippedSequencesStat    int64
+	NumCumulativeSkippedSequencesStat int64
+	ListCapacityStat                  int64
+	ListLengthStat                    int64
 }
 
 func NewSkippedSequenceSlice(clipHeadroom int) *SkippedSequenceSlice {
@@ -163,6 +173,9 @@ func (s *SkippedSequenceSlice) SkippedSequenceCompact(ctx context.Context, maxWa
 	}
 	// resize slice to reclaim memory if we need to
 	s._clip(ctx)
+	// decrement number of current skipped sequences by the number of sequences compacted
+	s.NumCurrentSkippedSequences -= numSequencesCompacted
+
 	return numSequencesCompacted
 }
 
@@ -207,6 +220,8 @@ func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 	if !found {
 		return fmt.Errorf("sequence %d not found in the skipped list", x)
 	}
+	// if found we need to decrement the current num skipped sequences stat
+	s.NumCurrentSkippedSequences -= 1
 
 	// take the element at the index and handle cases required to removal of a sequence
 	rangeElem := s.list[index]
@@ -262,6 +277,11 @@ func (s *SkippedSequenceSlice) PushSkippedSequenceEntry(entry *SkippedSequenceLi
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
+	// update num current skipped sequences count + the cumulative count of skipped sequences
+	numSequencesIncoming := entry.getNumSequencesInEntry()
+	s.NumCurrentSkippedSequences += numSequencesIncoming
+	s.NumCumulativeSkippedSequences += numSequencesIncoming
+
 	if len(s.list) == 0 {
 		s.list = append(s.list, entry)
 		return
@@ -288,4 +308,17 @@ func (s *SkippedSequenceSlice) getOldest() uint64 {
 	}
 	// grab fist element in slice and take the start seq of that range/single sequence
 	return s.list[0].getStartSeq()
+}
+
+// getStats will return all associated stats with the skipped sequence slice
+func (s *SkippedSequenceSlice) getStats() SkippedSequenceStats {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	return SkippedSequenceStats{
+		NumCumulativeSkippedSequencesStat: s.NumCumulativeSkippedSequences,
+		NumCurrentSkippedSequencesStat:    s.NumCurrentSkippedSequences,
+		ListCapacityStat:                  int64(cap(s.list)),
+		ListLengthStat:                    int64(len(s.list)),
+	}
 }
