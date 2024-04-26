@@ -305,8 +305,7 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 
 	base.InfofCtx(ctx, base.KeyCache, "Starting CleanSkippedSequenceQueue for database %s", base.MD(c.db.Name))
 
-	maxWait := int64(c.options.CacheSkippedSeqMaxWait.Seconds())
-	compactedSequences := c.skippedSeqs.SkippedSequenceCompact(ctx, maxWait)
+	compactedSequences := c.skippedSeqs.SkippedSequenceCompact(ctx, int64(c.options.CacheSkippedSeqMaxWait.Seconds()))
 	if compactedSequences == 0 {
 		base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  No sequences to be compacted from skipped sequence list for database %s.", base.MD(c.db.Name))
 		return nil
