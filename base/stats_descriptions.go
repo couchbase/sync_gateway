@@ -115,7 +115,7 @@ const (
 
 	NumActiveChannelsDesc = "The total number of active channels."
 
-	NumSkippedSeqsDesc = "The total number of skipped sequences."
+	NumSkippedSeqsDesc = "The total number of skipped sequences. This is a cumulative value"
 
 	PendingSeqLengthDesc = "The total number of pending sequences. These are out-of-sequence entries waiting to be cached."
 
@@ -127,7 +127,11 @@ const (
 	RevCacheMissesDesc = "The total number of revision cache misses. This metric can be used to calculate the ratio of revision cache misses: " +
 		"Rev Cache Miss Ratio = rev_cache_misses / (rev_cache_hits + rev_cache_misses)"
 
-	SkippedSeqLengthDesc = "The current length of the pending skipped sequence queue."
+	SkippedSeqLengthDesc = "The current length of the pending skipped sequence slice."
+
+	SkippedSeqCapDesc = "The current capacity of the skipped sequence slice."
+
+	NumCurrentSkippedSeq = "The number of sequences currently in the skipped sequence slice."
 
 	ViewQueriesDesc = "The total view_queries."
 
