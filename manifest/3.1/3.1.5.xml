@@ -25,6 +25,6 @@ licenses/APL2.txt.
 
 
   <!-- Sync Gateway -->
-   <project name="sync_gateway" path="sync_gateway" remote="couchbase" revision="release/3.1.5"/>
+   <project name="sync_gateway" path="sync_gateway" remote="couchbase" revision="04ccf3d401e8b935a1c037ede1d7b9bc708efe46"/>
 
 </manifest>
