@@ -19,7 +19,7 @@ import (
 // SkipTestMain logs in the same format as actual test output that we're skipping the current package.
 func SkipTestMain(m *testing.M, format string, args ...interface{}) {
 	fmt.Println("=== RUN   TestMain")
-	printfFromLine(2, format+"\n", args...)
+	printfFromLine(2, "    "+format+"\n", args...)
 	fmt.Println("--- SKIP: TestMain (0.00s)")
 	os.Exit(0)
 }
