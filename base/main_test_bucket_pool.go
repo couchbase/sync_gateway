@@ -729,9 +729,9 @@ func TestBucketPoolMain(ctx context.Context, m *testing.M, bucketReadierFunc TBP
 	teardownFuncs = append(teardownFuncs, SetUpTestGoroutineDump(m))
 
 	if options.RequireXDCR && GTestBucketPool.cluster != nil && GTestBucketPool.cluster.majorVersion < 7 {
-		fmt.Println("Test requires XDCR, but the cluster version is less than 7. Skipping test.")
-		return
+		SkipTestMain(m, "Test requires XDCR, but the cluster version is less than 7. Skipping test.")
 	}
+
 	// Run the test suite
 	status := m.Run()
 

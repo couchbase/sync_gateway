@@ -21,7 +21,7 @@ import (
 func TestMain(m *testing.M) {
 	// user xattr tests require xattrs and EE
 	if !base.TestUseXattrs() || !base.IsEnterpriseEdition() {
-		return
+		base.SkipTestMain(m, "user xattr tests require xattrs and EE")
 	}
 
 	ctx := context.Background() // start of test process
