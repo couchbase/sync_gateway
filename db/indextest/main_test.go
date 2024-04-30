@@ -23,8 +23,9 @@ import (
 func TestMain(m *testing.M) {
 	// these tests are only meant to be be run against Couchbase Server with GSI
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
-		return
+		base.SkipTestMain(m, "these tests are only meant to be be run against Couchbase Server with GSI")
 	}
+
 	ctx := context.Background() // start of test process
 	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
 	base.TestBucketPoolMain(ctx, m, primaryIndexReadier, primaryIndexInit, tbpOptions)
