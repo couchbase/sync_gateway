@@ -18,7 +18,7 @@ require (
 	github.com/couchbaselabs/gocbconnstr v1.0.5
 	github.com/couchbaselabs/rosmar v0.0.0-20240417141520-4127f7d4c389
 	github.com/elastic/gosigar v0.14.3
-	github.com/felixge/fgprof v0.9.3
+	github.com/felixge/fgprof v0.9.4
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/graphql-go/graphql v0.8.1
@@ -62,7 +62,7 @@ require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/google/pprof v0.0.0-20211214055906-6f57359322fd // indirect
+	github.com/google/pprof v0.0.0-20240227163752-401108e1b7e7 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/klauspost/compress v1.17.3 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
