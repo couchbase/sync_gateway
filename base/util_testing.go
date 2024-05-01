@@ -916,3 +916,23 @@ func GetVbucketForKey(bucket Bucket, key string) (vbNo uint32, err error) {
 
 	return sgbucket.VBHash(key, maxVbNo), nil
 }
+
+// InsertBodyAndUserXattrNoMacroExpansion is equivalent to SubdocInsertXattr without any macro expansions. It allows us to insert a document and non-_sync xattr in a single mutateIn operation.
+func InsertBodyAndUserXattrNoMacroExpansion(t testing.TB, ds DataStore, k string, xattrKey string, exp uint32, v interface{}, xv interface{}) (casOut uint64) {
+	c, err := AsCollection(ds)
+	require.NoError(t, err)
+
+	mutateOps := []gocb.MutateInSpec{
+		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xv), UpsertSpecXattr),
+		gocb.ReplaceSpec("", bytesToRawMessage(v), nil),
+	}
+	options := &gocb.MutateInOptions{
+		Expiry:        CbsExpiryToDuration(exp),
+		StoreSemantic: gocb.StoreSemanticsInsert,
+	}
+
+	result, err := c.Collection.MutateIn(k, mutateOps, options)
+	require.NoError(t, err)
+
+	return uint64(result.Cas())
+}

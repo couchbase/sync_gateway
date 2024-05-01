@@ -324,16 +324,15 @@ func TestAutoImportUserXattrNoSyncData(t *testing.T) {
 	ctx := base.TestCtx(t)
 	dataStore := rt.GetSingleDataStore()
 
-	userXattrChan := "chan1"
-	userXattrVal := map[string][]byte{
-		"channels": base.MustJSONMarshal(t, userXattrChan),
-	}
-
 	// Write doc with user xattr defined and assert it correctly imports
-	val := make(map[string]interface{})
-	val["test"] = "doc"
-	_, err := dataStore.WriteWithXattrs(ctx, docKey, 0, 0, base.MustJSONMarshal(t, val), userXattrVal, nil)
-	require.NoError(t, err)
+	userXattrKey := "channels"
+	userXattrVal := "chan1"
+	docVal := make(map[string]interface{})
+	docVal["test"] = "doc"
+
+	// This test has been modified to work specifically on 3.1.x with the backport. In 3.2.x we're using a new bucket API to allow multi-xattr (and Rosmar xattr support)
+	// On 3.1.x, we're having to write this via GoCB directly since the bucket API can't write a document body and an arbitrary (non-_sync) xattr in a single operation in this SG version.
+	_ = base.InsertBodyAndUserXattrNoMacroExpansion(t, dataStore, docKey, userXattrKey, 0, docVal, userXattrVal)
 
 	// Wait for doc to be imported
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -346,16 +345,12 @@ func TestAutoImportUserXattrNoSyncData(t *testing.T) {
 	// Assert the sync data has correct channels populated
 	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(ctx, docKey)
 	require.NoError(t, err)
-	assert.Equal(t, []string{userXattrChan}, syncData.Channels.KeySet())
+	assert.Equal(t, []string{userXattrVal}, syncData.Channels.KeySet())
 	assert.Len(t, syncData.Channels, 1)
 
 	// Write doc with array of channels in user xattr and assert it correctly imports
 	userXattrValArray := []string{"chan1", "chan2"}
-	userXattrVal = map[string][]byte{
-		"channels": base.MustJSONMarshal(t, userXattrValArray),
-	}
-	_, err = dataStore.WriteWithXattrs(ctx, docKey2, 0, 0, base.MustJSONMarshal(t, val), userXattrVal, nil)
-	require.NoError(t, err)
+	_ = base.InsertBodyAndUserXattrNoMacroExpansion(t, dataStore, docKey2, userXattrKey, 0, docVal, userXattrValArray)
 
 	// Wait for doc to be imported
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
