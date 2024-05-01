@@ -57,14 +57,14 @@ func cbgtRootCAsProvider(bucketName, bucketUUID string) func() *x509.CertPool {
 			return pool
 		}
 	}
-	ctx := bucketNameCtx(context.Background(), bucketName) // this function is global, so reconstruct context
+	ctx := BucketNameCtx(context.Background(), bucketName) // this function is global, so reconstruct context
 	TracefCtx(ctx, KeyDCP, "Bucket %v not found in root cert pools, not using TLS.", MD(bucketName))
 	return nil
 }
 
 // cbgt's default GetPoolsDefaultForBucket only works with cbauth
 func cbgtGetPoolsDefaultForBucket(server, bucket string, scopes bool) ([]byte, error) {
-	ctx := bucketNameCtx(context.Background(), bucket) // this function is global, so reconstruct context
+	ctx := BucketNameCtx(context.Background(), bucket) // this function is global, so reconstruct context
 	cbgtGlobalsLock.Lock()
 	dbName, ok := cbgtBucketToDBName[bucket]
 	if !ok {
