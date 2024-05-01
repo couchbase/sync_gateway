@@ -228,36 +228,36 @@ func (s *SkippedSequenceSlice) removeSeqRange(startSeq, endSeq uint64) error {
 
 	// if both sequence x and y aren't in the same element, the range contains sequences that are not present in
 	// skipped sequence list. This is due to any contiguous sequences in the list will be in the same element. So
-	// if startSeq and endSeq are in different elements there is at least oen sequence between these values not in the list
+	// if startSeq and endSeq are in different elements there is at least one sequence between these values not in the list
 	if startIndex != endIndex {
 		return fmt.Errorf("sequence range %d to %d specified has sequences in that are not present in skipped list", startSeq, endSeq)
-	} else {
-		// handle sequence range removal
-		rangeElem := s.list[startIndex]
-
-		// update number of sequences currently in slice stat
-		s.NumCurrentSkippedSequences -= numSequencesInRemovalRange(startSeq, endSeq)
-
-		// if single sequence element
-		if rangeElem.getStartSeq() == startSeq && rangeElem.getLastSeq() == endSeq {
-			// simply remove the element
-			s.list = slices.Delete(s.list, startIndex, startIndex+1)
-			return nil
-		}
-		// check if one of x or y is equal to start or end seq
-		if rangeElem.getStartSeq() == startSeq {
-			rangeElem.setStartSeq(endSeq + 1)
-			return nil
-		}
-		if rangeElem.getLastSeq() == endSeq {
-			rangeElem.setLastSeq(startSeq - 1)
-			return nil
-		}
-		// assume we are removing from middle of the range
-		newElem := NewSkippedSequenceRangeEntryAt(endSeq+1, rangeElem.getLastSeq(), rangeElem.getTimestamp())
-		s._insert(startIndex+1, newElem)
-		rangeElem.setLastSeq(startSeq - 1)
 	}
+
+	// handle sequence range removal
+	rangeElem := s.list[startIndex]
+	// update number of sequences currently in slice stat
+	rangeRemoved := SkippedSequenceListEntry{start: startSeq, end: endSeq}
+	s.NumCurrentSkippedSequences -= rangeRemoved.getNumSequencesInEntry()
+
+	// if single sequence element
+	if rangeElem.getStartSeq() == startSeq && rangeElem.getLastSeq() == endSeq {
+		// simply remove the element
+		s.list = slices.Delete(s.list, startIndex, startIndex+1)
+		return nil
+	}
+	// check if one of x or y is equal to start or end seq
+	if rangeElem.getStartSeq() == startSeq {
+		rangeElem.setStartSeq(endSeq + 1)
+		return nil
+	}
+	if rangeElem.getLastSeq() == endSeq {
+		rangeElem.setLastSeq(startSeq - 1)
+		return nil
+	}
+	// assume we are removing from middle of the range
+	newElem := NewSkippedSequenceRangeEntryAt(endSeq+1, rangeElem.getLastSeq(), rangeElem.getTimestamp())
+	s._insert(startIndex+1, newElem)
+	rangeElem.setLastSeq(startSeq - 1)
 	return nil
 
 }
@@ -371,12 +371,4 @@ func (s *SkippedSequenceSlice) getStats() SkippedSequenceStats {
 		ListCapacityStat:                  int64(cap(s.list)),
 		ListLengthStat:                    int64(len(s.list)),
 	}
-}
-
-func numSequencesInRemovalRange(startSeq, endSeq uint64) int64 {
-	if startSeq == endSeq {
-		return 1
-	}
-	numSequences := (endSeq - startSeq) + 1
-	return int64(numSequences)
 }
