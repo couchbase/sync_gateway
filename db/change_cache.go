@@ -880,8 +880,10 @@ func (c *changeCache) RemoveSkipped(x uint64) error {
 }
 
 // Removes a set of sequences.  Logs warning on removal error, returns count of successfully removed.
-func (c *changeCache) RemoveSkippedSequences(ctx context.Context, sequences []uint64) {
+func (c *changeCache) RemoveSkippedSequences(ctx context.Context, startSeq, endSeq uint64) error {
 	// this can be used for removal or ranges, pending CBG-3855
+	err := c.skippedSeqs.removeSeqRange(startSeq, endSeq)
+	return err
 }
 
 func (c *changeCache) WasSkipped(x uint64) bool {

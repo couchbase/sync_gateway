@@ -431,6 +431,13 @@ func BenchmarkRemoveSeqFromSkippedList(b *testing.B) {
 	}
 }
 
+func BenchmarkRemoveSeqRangeFromSkippedList(b *testing.B) {
+	skipedSlice := setupBenchmark(true, true, DefaultClipCapacityHeadroom)
+	for i := 0; i < b.N; i++ {
+		_ = skipedSlice.removeSeqRange(uint64(i*2), uint64(i*2)+5)
+	}
+}
+
 // TestInsertItemInSlice:
 //   - Create skipped sequence slice
 //   - Insert a new value in the slice at index specified to maintain order
@@ -701,6 +708,138 @@ func TestGetOldestSkippedSequence(t *testing.T) {
 			assert.Equal(t, testCase.expected, skippedSlice.getOldest())
 		})
 	}
+}
+
+// TestRemoveSequenceRange:
+//   - Setup skipped list
+//   - Remove the range specified in the test case
+//   - Assert on error returned from removeSeqRange depending on whether testcase is a error case
+//   - Assert on expected resulting skipped list
+//   - Assert on number of skipped sequences in the list after removal
+func TestRemoveSequenceRange(t *testing.T) {
+	testCases := []struct {
+		name                        string
+		inputList                   [][]uint64
+		expected                    [][]uint64
+		expectedNumSequencesInSlice int64
+		rangeToRemove               []uint64
+		errorCase                   bool
+	}{
+		{
+			name:                        "x_startSeq_on_range",
+			inputList:                   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			expected:                    [][]uint64{{5, 10}, {15, 20}, {29, 30}, {35, 40}, {45, 50}},
+			rangeToRemove:               []uint64{25, 28},
+			expectedNumSequencesInSlice: 26,
+		},
+		{
+			name:                        "y_endSeq_on_range",
+			inputList:                   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			expected:                    [][]uint64{{5, 10}, {15, 20}, {25, 26}, {35, 40}, {45, 50}},
+			rangeToRemove:               []uint64{27, 30},
+			expectedNumSequencesInSlice: 26,
+		},
+		{
+			name:                        "x_y_startSeq_endSeq_on_range",
+			inputList:                   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			expected:                    [][]uint64{{5, 10}, {15, 20}, {25, 30}, {45, 50}},
+			rangeToRemove:               []uint64{35, 40},
+			expectedNumSequencesInSlice: 24,
+		},
+		{
+			name:                        "x_y_in_middle_of_range",
+			inputList:                   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			expected:                    [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 36}, {39, 40}, {45, 50}},
+			rangeToRemove:               []uint64{37, 38},
+			expectedNumSequencesInSlice: 28,
+		},
+		{
+			name:                        "x+1_from_startSeq_y_-1_from_startSeq",
+			inputList:                   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			expected:                    [][]uint64{{5, 10}, {15, 15}, {20, 20}, {25, 30}, {35, 40}, {45, 50}},
+			rangeToRemove:               []uint64{16, 19},
+			expectedNumSequencesInSlice: 26,
+		},
+		{
+			name:                        "single_sequence_removed",
+			inputList:                   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}, {55}},
+			expected:                    [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			rangeToRemove:               []uint64{55, 55},
+			expectedNumSequencesInSlice: 30,
+		},
+		{
+			name:                        "single_sequence_removed_from_range",
+			inputList:                   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			expected:                    [][]uint64{{5, 10}, {15, 20}, {25, 26}, {28, 30}, {35, 40}, {45, 50}},
+			rangeToRemove:               []uint64{27, 27},
+			expectedNumSequencesInSlice: 29,
+		},
+		{
+			name:                        "x_y_across_multiple_elements",
+			inputList:                   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			expected:                    [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			rangeToRemove:               []uint64{26, 37},
+			expectedNumSequencesInSlice: 30,
+			errorCase:                   true,
+		},
+		{
+			name:                        "x_does_not_exist_in_list",
+			inputList:                   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			expected:                    [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			rangeToRemove:               []uint64{32, 35},
+			expectedNumSequencesInSlice: 30,
+			errorCase:                   true,
+		},
+		{
+			name:                        "y_does_not_exist_in_list",
+			inputList:                   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			expected:                    [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			rangeToRemove:               []uint64{25, 31},
+			expectedNumSequencesInSlice: 30,
+			errorCase:                   true,
+		},
+		{
+			name:                        "x_and_y_do_not_exist_in_list",
+			inputList:                   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			expected:                    [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
+			rangeToRemove:               []uint64{31, 33},
+			expectedNumSequencesInSlice: 30,
+			errorCase:                   true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
+			for _, input := range testCase.inputList {
+				if len(input) == 1 {
+					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input[0]))
+				} else {
+					skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(input[0], input[1]))
+				}
+			}
+
+			err := skippedSlice.removeSeqRange(testCase.rangeToRemove[0], testCase.rangeToRemove[1])
+			if testCase.errorCase {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			for i := 0; i < len(skippedSlice.list); i++ {
+				if testCase.expected[i][0] == testCase.expected[i][1] {
+					assert.True(t, skippedSlice.list[i].singleEntry())
+				} else {
+					assert.False(t, skippedSlice.list[i].singleEntry())
+				}
+				// if we expect range at this index, assert on it
+				assert.Equal(t, testCase.expected[i][0], skippedSlice.list[i].getStartSeq())
+				assert.Equal(t, testCase.expected[i][1], skippedSlice.list[i].getLastSeq())
+			}
+			// assert on current count of skipped sequences
+			assert.Equal(t, testCase.expectedNumSequencesInSlice, skippedSlice.NumCurrentSkippedSequences)
+		})
+	}
+
 }
 
 // setupBenchmark sets up a skipped sequence slice for benchmark tests
