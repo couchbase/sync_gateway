@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
@@ -389,11 +388,12 @@ func TestUnmarshalDocFromImportFeed(t *testing.T) {
 
 	// construct data into dcp format with both _sync xattr and user xattr defined
 	body := []byte(`{"test":"document"}`)
-	xattrs := []sgbucket.Xattr{
-		{Name: base.SyncXattrName, Value: []byte(syncXattr)},
-		{Name: userXattrKey, Value: []byte(channelName)},
-	}
-	value := sgbucket.EncodeValueWithXattrs(body, xattrs...)
+
+	// 3.1.x backport NOTE:
+	// We don't have sgbucket.Xattr or EncodeValueWithXattrs available, as those changes are mixed with Rosmar refactoring, so it's not easy to cherry-pick.
+	// `value` has been replaced with pre-computed values taken from `main` during this backport.
+
+	value := []byte{0x0, 0x0, 0x0, 0x2e, 0x0, 0x0, 0x0, 0x17, 0x5f, 0x73, 0x79, 0x6e, 0x63, 0x0, 0x7b, 0x22, 0x73, 0x65, 0x71, 0x75, 0x65, 0x6e, 0x63, 0x65, 0x22, 0x3a, 0x32, 0x30, 0x30, 0x7d, 0x0, 0x0, 0x0, 0x0, 0xf, 0x63, 0x68, 0x61, 0x6e, 0x6e, 0x65, 0x6c, 0x73, 0x0, 0x63, 0x68, 0x61, 0x6e, 0x31, 0x0, 0x7b, 0x22, 0x74, 0x65, 0x73, 0x74, 0x22, 0x3a, 0x22, 0x64, 0x6f, 0x63, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x22, 0x7d}
 
 	syncData, rawBody, rawXattr, rawUserXattr, err := db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
 	require.NoError(t, err)
@@ -403,10 +403,7 @@ func TestUnmarshalDocFromImportFeed(t *testing.T) {
 	assert.Equal(t, body, rawBody)
 
 	// construct data into dcp format with just user xattr defined
-	xattrs = []sgbucket.Xattr{
-		{Name: userXattrKey, Value: []byte(channelName)},
-	}
-	value = sgbucket.EncodeValueWithXattrs(body, xattrs...)
+	value = []byte{0x0, 0x0, 0x0, 0x13, 0x0, 0x0, 0x0, 0xf, 0x63, 0x68, 0x61, 0x6e, 0x6e, 0x65, 0x6c, 0x73, 0x0, 0x63, 0x68, 0x61, 0x6e, 0x31, 0x0, 0x7b, 0x22, 0x74, 0x65, 0x73, 0x74, 0x22, 0x3a, 0x22, 0x64, 0x6f, 0x63, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x22, 0x7d}
 
 	syncData, rawBody, rawXattr, rawUserXattr, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
 	require.NoError(t, err)
@@ -416,8 +413,7 @@ func TestUnmarshalDocFromImportFeed(t *testing.T) {
 	assert.Equal(t, body, rawBody)
 
 	// construct data into dcp format with no xattr defined
-	xattrs = []sgbucket.Xattr{}
-	value = sgbucket.EncodeValueWithXattrs(body, xattrs...)
+	value = []byte{0x0, 0x0, 0x0, 0x0, 0x7b, 0x22, 0x74, 0x65, 0x73, 0x74, 0x22, 0x3a, 0x22, 0x64, 0x6f, 0x63, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x22, 0x7d}
 
 	syncData, rawBody, rawXattr, rawUserXattr, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
 	require.NoError(t, err)
