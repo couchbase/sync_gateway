@@ -588,29 +588,37 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
 	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close(base.TestCtx(t))
+	ctx := base.TestCtx(t)
+	defer bucket.Close(ctx)
 
-	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
-	defer db.Close(ctx)
-
-	// make sure no documents are imported
-	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
-	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+	col, ok := bucket.GetSingleDataStore().(*base.Collection)
+	require.True(t, ok)
 
 	// docs named so they will both be on vBucket 1 in both 64 and 1024 vbuckets
 	const (
 		doc1 = "bookstand"
 		doc2 = "chipchop"
+
+		exp = 0
 	)
+
+	// perform doc writes in two parts (Add + WriteUserXattr) since WriteWithXattr does cas expansion on _sync, to write the document and the unexpanded xattr
 
 	// this document will be ignored for input with debug logging as follows:
 	// 	[DBG] .. col:sg_test_0 <ud>bookstand</ud> not able to be imported. Error: Found _sync xattr ("1"), but could not unmarshal: json: cannot unmarshal number into Go value of type db.SyncData
-	_, err := bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc1, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`1`)}, nil)
+	_, err := col.Add(doc1, exp, []byte(`{"foo" : "bar"}`))
+	require.NoError(t, err)
+	_, err = col.WriteUserXattr(doc1, base.SyncXattrName, 1)
 	require.NoError(t, err)
 
 	// fix xattrs, and the document is able to be imported
-	_, err = bucket.GetSingleDataStore().WriteWithXattrs(ctx, doc2, 0, 0, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{}`)}, nil)
+	_, err = col.Add(doc2, exp, []byte(`{"foo": "bar"}`))
 	require.NoError(t, err)
+	_, err = col.WriteUserXattr(doc2, base.SyncXattrName, []byte(`{}`))
+	require.NoError(t, err)
+
+	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
+	defer db.Close(ctx)
 
 	base.RequireWaitForStat(t, func() int64 {
 		return db.DbStats.SharedBucketImport().ImportCount.Value()
