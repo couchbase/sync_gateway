@@ -121,7 +121,7 @@ func (s *sequenceAllocator) releaseUnusedSequences(ctx context.Context) {
 		return
 	}
 	if s.last < s.max {
-		err := s.releaseSequenceRange(ctx, s.last+1, s.max)
+		_, err := s.releaseSequenceRange(ctx, s.last+1, s.max)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error returned when releasing sequence range [%d-%d]. Falling back to skipped sequence handling.  Error:%v", s.last+1, s.max, err)
 		}
@@ -185,7 +185,7 @@ func (s *sequenceAllocator) nextSequence(ctx context.Context) (sequence uint64, 
 // nextSequenceGreaterThan increments _sync:seq such that it's greater than existingSequence + s.sequenceBatchSize
 // In the case where our local s.max < _sync:seq (another node has incremented _sync:seq), we may be releasing
 // sequences greater than existingSequence, but we will only ever release sequences allocated by this node's incr operation
-func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existingSequence uint64) (sequence uint64, err error) {
+func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existingSequence uint64) (sequence uint64, releasedSequenceCount uint64, err error) {
 
 	targetSequence := existingSequence + 1
 	s.mutex.Lock()
@@ -194,13 +194,13 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 		sequence, sequencesReserved, err := s._nextSequence(ctx)
 		s.mutex.Unlock()
 		if err != nil {
-			return 0, err
+			return 0, 0, err
 		}
 		if sequencesReserved {
 			s.reserveNotify <- struct{}{}
 		}
 		s.dbStats.SequenceAssignedCount.Add(1)
-		return sequence, nil
+		return sequence, 0, nil
 	}
 
 	// If the target sequence is in our existing batch (between s.last and s.max), we want to release all unused sequences in the batch earlier
@@ -210,12 +210,14 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 		s.last = targetSequence
 		s.mutex.Unlock()
 		if releaseFrom < targetSequence {
-			if err := s.releaseSequenceRange(ctx, releaseFrom, targetSequence-1); err != nil {
+			released, err := s.releaseSequenceRange(ctx, releaseFrom, targetSequence-1)
+			if err != nil {
 				base.WarnfCtx(ctx, "Error returned when releasing sequence range [%d-%d] from existing batch. Will be handled by skipped sequence handling.  Error:%v", releaseFrom, targetSequence-1, err)
 			}
+			releasedSequenceCount += released
 		}
 		s.dbStats.SequenceAssignedCount.Add(1)
-		return targetSequence, nil
+		return targetSequence, releasedSequenceCount, nil
 
 	}
 
@@ -237,7 +239,7 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 	if err != nil {
 		base.WarnfCtx(ctx, "Error from incrementSequence in nextSequenceGreaterThan(%d): %v", existingSequence, err)
 		s.mutex.Unlock()
-		return 0, err
+		return 0, 0, err
 	}
 
 	s.max = allocatedToSeq
@@ -252,22 +254,23 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 	s.dbStats.SequenceAssignedCount.Add(1)
 
 	// Release previously allocated sequences (c), if any
-	err = s.releaseSequenceRange(ctx, prevAllocReleaseFrom, prevAllocReleaseTo)
+	released, err := s.releaseSequenceRange(ctx, prevAllocReleaseFrom, prevAllocReleaseTo)
 	if err != nil {
 		base.WarnfCtx(ctx, "Error returned when releasing sequence range [%d-%d] for previously allocated sequences. Will be handled by skipped sequence handling.  Error:%v", prevAllocReleaseFrom, prevAllocReleaseTo, err)
 	}
-
+	releasedSequenceCount += released
 	// Release the newly allocated sequences that were used to catch up to existingSequence (d)
 	if numberToRelease > 0 {
 		releaseTo := allocatedToSeq - numberToAllocate
 		releaseFrom := releaseTo - numberToRelease + 1 // +1, as releaseSequenceRange is inclusive
-		err = s.releaseSequenceRange(ctx, releaseFrom, releaseTo)
+		released, err := s.releaseSequenceRange(ctx, releaseFrom, releaseTo)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error returned when releasing sequence range [%d-%d] to reach target sequence. Will be handled by skipped sequence handling.  Error:%v", releaseFrom, releaseTo, err)
 		}
+		releasedSequenceCount += released
 	}
 
-	return sequence, err
+	return sequence, releasedSequenceCount, err
 }
 
 // _nextSequence reserves if needed, and then returns the next sequence
@@ -349,11 +352,12 @@ func (s *sequenceAllocator) releaseSequence(ctx context.Context, sequence uint64
 // releaseSequenceRange writes a binary document with the key _sync:unusedSeqs:fromSeq:toSeq.
 // fromSeq and toSeq are inclusive (i.e. both fromSeq and toSeq are unused).
 // From and to seq are stored as the document contents to avoid null doc issues.
-func (s *sequenceAllocator) releaseSequenceRange(ctx context.Context, fromSequence, toSequence uint64) error {
+// Returns the number of sequences released.
+func (s *sequenceAllocator) releaseSequenceRange(ctx context.Context, fromSequence, toSequence uint64) (uint64, error) {
 
 	// Exit if there's nothing to release
 	if toSequence == 0 || toSequence < fromSequence {
-		return nil
+		return 0, nil
 	}
 	key := s.metaKeys.UnusedSeqRangeKey(fromSequence, toSequence)
 	body := make([]byte, 16)
@@ -361,11 +365,12 @@ func (s *sequenceAllocator) releaseSequenceRange(ctx context.Context, fromSequen
 	binary.LittleEndian.PutUint64(body[8:16], toSequence)
 	_, err := s.datastore.AddRaw(key, UnusedSequenceTTL, body)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	s.dbStats.SequenceReleasedCount.Add(int64(toSequence - fromSequence + 1))
+	count := toSequence - fromSequence + 1
+	s.dbStats.SequenceReleasedCount.Add(int64(count))
 	base.DebugfCtx(ctx, base.KeyCRUD, "Released unused sequences #%d-#%d", fromSequence, toSequence)
-	return nil
+	return count, nil
 }
 
 // waitForReleasedSequences blocks for 'releaseSequenceWait' past the provided startTime.
