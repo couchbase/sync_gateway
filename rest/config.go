@@ -1727,16 +1727,16 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
 	for _, bucket := range buckets {
-
-		base.TracefCtx(ctx, base.KeyConfig, "Checking for configs for group %q from bucket %q", sc.Config.Bootstrap.ConfigGroupID, base.MD(bucket))
+		ctx := base.BucketNameCtx(ctx, bucket)
+		base.TracefCtx(ctx, base.KeyConfig, "Checking for configs for group %q", sc.Config.Bootstrap.ConfigGroupID)
 		configs, err := sc.BootstrapContext.GetDatabaseConfigs(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID)
 		if err != nil {
 			// Unexpected error fetching config - SDK has already performed retries, so we'll treat it as a registry removal
 			// this could be due to invalid JSON or some other non-recoverable error.
 			if isInitialStartup {
-				base.WarnfCtx(ctx, "Unable to fetch configs for group %q from bucket %q on startup: %v", sc.Config.Bootstrap.ConfigGroupID, base.MD(bucket), err)
+				base.WarnfCtx(ctx, "Unable to fetch configs for group %q on startup: %v", sc.Config.Bootstrap.ConfigGroupID, err)
 			} else {
-				base.DebugfCtx(ctx, base.KeyConfig, "Unable to fetch configs for group %q from bucket %q: %v", sc.Config.Bootstrap.ConfigGroupID, base.MD(bucket), err)
+				base.DebugfCtx(ctx, base.KeyConfig, "Unable to fetch configs for group %q: %v", sc.Config.Bootstrap.ConfigGroupID, err)
 			}
 			continue
 		}
@@ -1773,7 +1773,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 				cnf.KeyPath = sc.Config.Bootstrap.X509KeyPath
 			}
 
-			base.DebugfCtx(ctx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.Config.Bootstrap.ConfigGroupID, bucket, cnf.cfgCas)
+			base.DebugfCtx(ctx, base.KeyConfig, "Got config for group %q with cas %d", sc.Config.Bootstrap.ConfigGroupID, cnf.cfgCas)
 			fetchedConfigs[cnf.Name] = *cnf
 		}
 	}

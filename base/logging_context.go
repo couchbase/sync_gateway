@@ -121,9 +121,9 @@ func TestCtx(t testing.TB) context.Context {
 	return LogContextWith(ctx, &LogContext{TestName: t.Name()})
 }
 
-// bucketCtx extends the parent context with a bucket name.
+// BucketCtx extends the parent context with a bucket name.
 func bucketCtx(parent context.Context, b Bucket) context.Context {
-	return bucketNameCtx(parent, b.GetName())
+	return BucketNameCtx(parent, b.GetName())
 }
 
 // getLogContext returns a log context possibly extending from previous context.
@@ -135,8 +135,8 @@ func getLogCtx(ctx context.Context) LogContext {
 	return parentLogCtx.getCopy()
 }
 
-// bucketNameCtx extends the parent context with a bucket name.
-func bucketNameCtx(parent context.Context, bucketName string) context.Context {
+// BucketNameCtx extends the parent context with a bucket name.
+func BucketNameCtx(parent context.Context, bucketName string) context.Context {
 	newCtx := getLogCtx(parent)
 	newCtx.Bucket = bucketName
 	return LogContextWith(parent, &newCtx)
