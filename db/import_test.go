@@ -550,8 +550,9 @@ func TestImportNonZeroStart(t *testing.T) {
 	require.Equal(t, revID1, doc.SyncData.CurrentRev)
 }
 
-// TestImportInvalidMetadata tests triggering an import error if the metadata is unmarshalable
-func TestImportInvalidMetadata(t *testing.T) {
+// TestImportFeedInvalidInlineSyncMetadata tests avoiding an import error if the metadata is unmarshable
+func TestImportFeedInvalidInlineSyncMetadata(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
 	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(base.TestCtx(t))
@@ -563,13 +564,137 @@ func TestImportInvalidMetadata(t *testing.T) {
 	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
 	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
 
-	// write a document with inline sync metadata that is unmarshalable, triggering an import error
-	// can't write a document with invalid sync metadata as an xattr, so rely on legacy behavior
-	_, err := bucket.GetSingleDataStore().Add("doc1", 0, `{"foo" : "bar", "_sync" : 1 }`)
+	// docs named so they will both be on vBucket 1 in both 64 and 1024 vbuckets
+	const (
+		doc1 = "bookstand"
+		doc2 = "chipchop"
+	)
+	// write a document with inline sync metadata that not unmarshalable into SyncData. This document will be ignored and logged at debug level.
+	// 	[DBG] .. col:sg_test_0 <ud>bookstand</ud> not able to be imported. Error: Could not unmarshal _sync out of document body: json: cannot unmarshal number into Go struct field documentRoot._sync of type db.SyncData
+	_, err := bucket.GetSingleDataStore().Add(doc1, 0, []byte(`{"foo" : "bar", "_sync" : 1 }`))
+	require.NoError(t, err)
+
+	// this will be imported
+	err = bucket.GetSingleDataStore().Set(doc2, 0, nil, []byte(`{"foo" : "bar"}`))
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
-		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
 	}, 1)
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+}
+
+func TestImportFeedInvalidSyncMetadata(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
+	base.SkipImportTestsIfNotEnabled(t)
+	bucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer bucket.Close(ctx)
+
+	col, ok := bucket.GetSingleDataStore().(*base.Collection)
+	require.True(t, ok)
+
+	// docs named so they will both be on vBucket 1 in both 64 and 1024 vbuckets
+	const (
+		doc1 = "bookstand"
+		doc2 = "chipchop"
+
+		exp = 0
+	)
+
+	// perform doc writes in two parts (Add + WriteUserXattr) since WriteWithXattr does cas expansion on _sync, to write the document and the unexpanded xattr
+
+	// this document will be ignored for input with debug logging as follows:
+	// 	[DBG] .. col:sg_test_0 <ud>bookstand</ud> not able to be imported. Error: Found _sync xattr ("1"), but could not unmarshal: json: cannot unmarshal number into Go value of type db.SyncData
+	_, err := col.Add(doc1, exp, []byte(`{"foo" : "bar"}`))
+	require.NoError(t, err)
+	_, err = col.WriteUserXattr(doc1, base.SyncXattrName, 1)
+	require.NoError(t, err)
+
+	// fix xattrs, and the document is able to be imported
+	_, err = col.Add(doc2, exp, []byte(`{"foo": "bar"}`))
+	require.NoError(t, err)
+	_, err = col.WriteUserXattr(doc2, base.SyncXattrName, []byte(`{}`))
+	require.NoError(t, err)
+
+	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 1)
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+}
+
+func TestImportFeedNonJSONNewDoc(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
+	base.SkipImportTestsIfNotEnabled(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(base.TestCtx(t))
+
+	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	// make sure no documents are imported
 	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+
+	// docs named so they will both be on vBucket 1 in both 64 and 1024 vbuckets
+	const (
+		doc1 = "bookstand"
+		doc2 = "chipchop"
+	)
+
+	// logs because a JSON number is not a JSON object
+	// 	[DBG] .. col:sg_test_0 <ud>bookstand</ud> not able to be imported. Error: Could not unmarshal _sync out of document body: json: cannot unmarshal number into Go value of type db.documentRoot
+	_, err := bucket.GetSingleDataStore().Add(doc1, 0, []byte(`1`))
+	require.NoError(t, err)
+
+	_, err = bucket.GetSingleDataStore().Add(doc2, 0, []byte(`{"foo" : "bar"}`))
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 1)
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+}
+
+func TestImportFeedNonJSONExistingDoc(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyMigrate, base.KeyImport)
+	base.SkipImportTestsIfNotEnabled(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(base.TestCtx(t))
+
+	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	// make sure no documents are imported
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportCount.Value())
+	require.Equal(t, int64(0), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
+
+	// docs named so they will both be on vBucket 1 in both 64 and 1024 vbuckets
+	const (
+		doc1 = "bookstand"
+		doc2 = "chipchop"
+	)
+
+	_, err := bucket.GetSingleDataStore().Add(doc1, 0, []byte(`{"foo": "bar"}`))
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 1)
+
+	// logs and increments ImportErrorCount
+	//     [INF] .. col:sg_test_0 Unmarshal error during importDoc json: cannot unmarshal number into Go value of type db.Body
+	err = bucket.GetSingleDataStore().Set(doc1, 0, nil, []byte(`1`))
+	require.NoError(t, err)
+
+	_, err = bucket.GetSingleDataStore().Add(doc2, 0, []byte(`{"foo" : "bar"}`))
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 2)
+	require.Equal(t, int64(1), db.DbStats.SharedBucketImport().ImportErrorCount.Value())
 }
