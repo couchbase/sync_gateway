@@ -44,6 +44,9 @@ type BlipTesterClientOpts struct {
 
 	// optional Origin header
 	origin *string
+
+	// sendReplacementRevs opts into the replacement rev behaviour in the event that we do not find the requested one.
+	sendReplacementRevs bool
 }
 
 // BlipTesterClient is a fully fledged client to emulate CBL behaviour on both push and pull replications through methods on this type.
@@ -746,6 +749,10 @@ func (btc *BlipTesterCollectionClient) StartPullSince(continuous, since, activeO
 
 	if btc.parent.BlipTesterClientOpts.SendRevocations {
 		subChangesRequest.Properties[db.SubChangesRevocations] = "true"
+	}
+
+	if btc.parent.BlipTesterClientOpts.sendReplacementRevs {
+		subChangesRequest.Properties[db.SubChangesSendReplacementRevs] = "true"
 	}
 
 	if err := btc.sendPullMsg(subChangesRequest); err != nil {
