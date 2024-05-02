@@ -48,7 +48,6 @@ var handlersByProfile = map[string]blipHandlerFunc{
 
 var kConnectedClientHandlersByProfile = map[string]blipHandlerFunc{
 	MessageFunction: userBlipHandler((*blipHandler).handleFunction),
-	MessageGraphQL:  userBlipHandler((*blipHandler).handleGraphQL),
 }
 
 // Replication throttling

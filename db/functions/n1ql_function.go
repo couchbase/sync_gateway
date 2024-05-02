@@ -21,7 +21,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/graphql-go/graphql"
 )
 
 // implements UserFunctionInvocation and resolver
@@ -102,39 +101,4 @@ func (fn *n1qlInvocation) Run(ctx context.Context) (any, error) {
 	err = rows.Close()
 	rows = nil // prevent 'defer' from closing again
 	return result, err
-}
-
-func (fn *n1qlInvocation) Resolve(ctx context.Context, params graphql.ResolveParams) (any, error) {
-	fn.n1qlArgs = map[string]any{
-		"parent": params.Source,
-		"info":   resolverInfo(params),
-	}
-	// Run the query:
-	result, err := fn.Run(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if !isGraphQLListType(params.Info.ReturnType) {
-		// GraphQL result type is not a list (array), but N1QL always returns an array.
-		// So use the first row of the result as the value, if there is one.
-		if rows, ok := result.([]any); ok {
-			if len(rows) > 0 {
-				result = rows[0]
-			} else {
-				return nil, nil
-			}
-		}
-		if isGraphQLScalarType(params.Info.ReturnType) {
-			// GraphQL result type is a scalar, but a N1QL row is always an object.
-			// Use the single field of the object, if any, as the result:
-			row := result.(map[string]any)
-			if len(row) != 1 {
-				return nil, base.HTTPErrorf(http.StatusInternalServerError, "resolver %q returns scalar type %s, but its N1QL query returns %d columns, not 1", fn.name, params.Info.ReturnType, len(row))
-			}
-			for _, value := range row {
-				result = value
-			}
-		}
-	}
-	return result, nil
 }

@@ -21,6 +21,10 @@ import (
 	"github.com/robertkrimen/otto"
 )
 
+type jsContextKey string
+
+var readOnlyKey = jsContextKey("readOnly") // Context key preventing mutation; val is fn name
+
 func (runner *jsRunner) defineNativeCallbacks(_ context.Context) {
 	// Implementation of the 'delete(docID)' callback:
 	runner.DefineNativeFunction("_delete", func(call otto.FunctionCall) otto.Value {
@@ -53,15 +57,6 @@ func (runner *jsRunner) defineNativeCallbacks(_ context.Context) {
 		sudo := ottoBoolParam(call, 1)
 		doc, err := runner.do_get(docID, nil, sudo)
 		return ottoJSONResult(call, doc, err)
-	})
-
-	// Implementation of the 'graphql(query,params)' callback:
-	runner.DefineNativeFunction("_graphql", func(call otto.FunctionCall) otto.Value {
-		query := ottoStringParam(call, 0, "user.graphql")
-		params := ottoObjectParam(call, 1, true, "user.graphql")
-		sudo := ottoBoolParam(call, 2)
-		result, err := runner.do_graphql(query, params, sudo)
-		return ottoJSONResult(call, result, err)
 	})
 
 	// Implementation of the 'save(doc,docID?)' callback:
@@ -175,15 +170,6 @@ func (runner *jsRunner) do_get(docID string, docType *string, sudo bool) (any, e
 	body["_id"] = docID
 	body["_rev"] = rev.RevID
 	return body, nil
-}
-
-// Implementation of JS `user.graphql(query, params)` function
-func (runner *jsRunner) do_graphql(query string, params map[string]any, sudo bool) (any, error) {
-	if sudo {
-		exitSudo := runner.enterSudo()
-		defer exitSudo()
-	}
-	return runner.currentDB.UserGraphQLQuery(runner.ctx, query, "", params, true)
 }
 
 // Implementation of JS `user.save(body, docID?)` function

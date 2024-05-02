@@ -4,7 +4,6 @@ go 1.21
 
 require (
 	dario.cat/mergo v1.0.0
-	github.com/bhoriuchi/graphql-go-tools v1.0.3
 	github.com/coreos/go-oidc v2.2.1+incompatible
 	github.com/couchbase/cbgt v1.3.9
 	github.com/couchbase/clog v0.1.0
@@ -21,7 +20,6 @@ require (
 	github.com/felixge/fgprof v0.9.4
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
-	github.com/graphql-go/graphql v0.8.1
 	github.com/json-iterator/go v1.1.12
 	github.com/kardianos/service v1.2.2
 	github.com/natefinch/lumberjack v2.0.0+incompatible
