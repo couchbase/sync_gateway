@@ -22,9 +22,6 @@ import (
 )
 
 const kFnNameParam = "name"
-const kGraphQLQueryParam = "query"
-const kGraphQLOperationNameParam = "operationName"
-const kGraphQLVariablesParam = "variables"
 
 //////// FUNCTIONS:
 
@@ -151,84 +148,4 @@ func (h *handler) writeQueryRows(rows sgbucket.QueryResultIterator) error {
 	}
 	_, err = h.response.Write([]byte("]\n"))
 	return err
-}
-
-//////// GRAPHQL QUERIES:
-
-// HTTP handler for GET or POST `/$db/_graphql`
-// See <https://graphql.org/learn/serving-over-http/#http-methods-headers-and-body>
-func (h *handler) handleGraphQL() error {
-	var queryString string
-	var operationName string
-	var variables map[string]interface{}
-	canMutate := false
-
-	if h.db.Options.GraphQL == nil {
-		return base.HTTPErrorf(http.StatusServiceUnavailable, "GraphQL is not configured")
-	}
-	maxSize := h.db.Options.GraphQL.MaxRequestSize()
-
-	if h.rq.Method == "POST" {
-		if h.rq.ContentLength >= 0 {
-			if err := db.CheckRequestSize(h.rq.ContentLength, maxSize); err != nil {
-				return err
-			}
-		}
-		canMutate = true
-		if h.rq.Header.Get("Content-Type") == "application/graphql" {
-			// POST graphql data: Request body contains the query string alone:
-			query, err := h.readBody()
-			if err != nil {
-				return err
-			}
-			if err := db.CheckRequestSize(len(query), maxSize); err != nil {
-				return err
-			}
-			queryString = string(query)
-		} else {
-			// POST JSON: Get the "query", "operationName" and "variables" properties.
-			// go-graphql does not like the Number type, so decode leaving numbers as float64:
-			body, err := h.readJSONWithoutNumber()
-			if err != nil {
-				return err
-			}
-			if h.rq.ContentLength < 0 {
-				if err := db.CheckRequestSize(db.EstimateSizeOfJSON(body), maxSize); err != nil {
-					return err
-				}
-			}
-			queryString = body[kGraphQLQueryParam].(string)
-			operationName, _ = body[kGraphQLOperationNameParam].(string)
-			if variablesVal := body[kGraphQLVariablesParam]; variablesVal != nil {
-				variables, _ = variablesVal.(map[string]interface{})
-				if variables == nil {
-					return base.HTTPErrorf(http.StatusBadRequest, "`variables` property must be an object")
-				}
-			}
-		}
-	} else {
-		// GET: Params come from the URL queries (`?query=...&operationName=...&variables=...`):
-		if err := db.CheckRequestSize(h.rq.ContentLength, maxSize); err != nil {
-			return err
-		}
-		queryString = h.getQuery(kGraphQLQueryParam)
-		operationName = h.getQuery(kGraphQLOperationNameParam)
-		if varsJSON := h.getQuery(kGraphQLVariablesParam); len(varsJSON) > 0 {
-			if err := json.Unmarshal([]byte(varsJSON), &variables); err != nil {
-				return err
-			}
-		}
-	}
-
-	if len(queryString) == 0 {
-		return base.HTTPErrorf(http.StatusBadRequest, "Missing/empty `query` property")
-	}
-
-	return db.WithTimeout(h.ctx(), h.db.UserFunctionTimeout, func(ctx context.Context) error {
-		result, err := h.db.UserGraphQLQuery(ctx, queryString, operationName, variables, canMutate)
-		if err == nil {
-			h.writeJSON(result)
-		}
-		return err
-	})
 }

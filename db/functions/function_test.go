@@ -177,7 +177,7 @@ func TestUserFunctions(t *testing.T) {
 	t.Skip("Skipping test until access view is available with collections")
 
 	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig, nil)
+	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig)
 	defer db.Close(ctx)
 
 	assert.NotNil(t, db.Options.UserFunctions)
@@ -335,7 +335,7 @@ func testUserFunctionsAsUser(t *testing.T, ctx context.Context, db *db.Database)
 func TestUserFunctionsCRUD(t *testing.T) {
 	t.Skip("not collection aware")
 	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig, nil)
+	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig)
 	defer db.Close(ctx)
 
 	body := map[string]any{"key": "value"}
@@ -482,7 +482,7 @@ func TestUserFunctionAllow(t *testing.T) {
 	t.Skip("Skipping test until access view is available with collections")
 
 	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig, nil)
+	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig)
 	defer db.Close(ctx)
 
 	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions(ctx))
@@ -642,7 +642,7 @@ func assertHTTPError(t *testing.T, err error, status int) bool {
 
 //////// SETUP FUNCTIONS
 
-func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) (*db.Database, context.Context) {
+func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig) (*db.Database, context.Context) {
 	cacheOptions := db.DefaultCacheOptions()
 	options := db.DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
@@ -651,10 +651,6 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig 
 	var err error
 	if fnConfig != nil {
 		options.UserFunctions, err = CompileFunctions(base.TestCtx(t), *fnConfig)
-		assert.NoError(t, err)
-	}
-	if gqConfig != nil {
-		options.GraphQL, err = CompileGraphQL(base.TestCtx(t), gqConfig)
 		assert.NoError(t, err)
 	}
 	return setupTestDBWithOptions(t, options)
@@ -680,17 +676,4 @@ func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptio
 
 	ctx = db.AddDatabaseLogContext(ctx)
 	return db, ctx
-}
-
-// createPrimaryIndex returns true if there was no index created before
-func createPrimaryIndex(t *testing.T, n1qlStore base.N1QLStore) bool {
-	ctx := base.TestCtx(t)
-	hasPrimary, _, err := base.GetIndexMeta(ctx, n1qlStore, base.PrimaryIndexName)
-	assert.NoError(t, err)
-	if hasPrimary {
-		return false
-	}
-	err = n1qlStore.CreatePrimaryIndex(ctx, base.PrimaryIndexName, nil)
-	assert.NoError(t, err)
-	return true
 }

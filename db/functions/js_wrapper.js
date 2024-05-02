@@ -27,7 +27,6 @@ function() {    var userFn = (%s);  // <-- substitutes the JS function
                 save:   function(body, docID)   {return _save(body, docID);},
             },
             function:   function(name, args)    {return unmarshal(_func(name, args));},
-            graphql:    function(q,args)        {return unmarshal(_graphql(q,args));},
         },
         admin: {
             defaultCollection: {
@@ -36,7 +35,6 @@ function() {    var userFn = (%s);  // <-- substitutes the JS function
                 save:   function(body, docID)   {return _save(body, docID, true);},
             },
             function:   function(name, args)    {return unmarshal(_func(name, args, true));},
-            graphql:    function(q,args)        {return unmarshal(_graphql(q,args, true));},
         },
 
         requireAdmin: function() {
@@ -107,18 +105,12 @@ function() {    var userFn = (%s);  // <-- substitutes the JS function
 
 
     // Return the JS function that will be invoked repeatedly by the runner:
-    return function (a, b, c, d) {
-        // Note: Can't declare this as `function(...args)` because Otto doesn't support rest parameters.
-        // - If called with 4 args, I'm a GraphQL resolver and 'context' is the 3rd argument.
-        // - If called with 2 args, I'm a regular function and 'context' is the 1st argument.
-        var contextIndex = (arguments.length == 4) ? 2 : 0;
-        var userInfo = arguments[contextIndex];
+    return function (userInfo, arg) {
         var context = Object.create(Context);
         context.user = Object.create(Context.user);
         context.user.name = userInfo.name;
         context.user.roles = userInfo.roles;
         context.user.channels = userInfo.channels;
-        arguments[contextIndex] = context;
-        return userFn(a, b, c, d);
+        return userFn(context, arg);
     };
 }()

@@ -155,7 +155,7 @@ type UnsupportedConfig struct {
 	UseStdlibJSON        *bool                `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
 	Serverless           ServerlessConfig     `json:"serverless,omitempty"`
 	HTTP2                *HTTP2Config         `json:"http2,omitempty"`
-	UserQueries          *bool                `json:"user_queries,omitempty"            help:"Feature flag for user N1QL/JS/GraphQL queries"`
+	UserQueries          *bool                `json:"user_queries,omitempty"            help:"Feature flag for user N1QL/JS queries"`
 	UseXattrConfig       *bool                `json:"use_xattr_config,omitempty"        help:"Store database configurations in system xattrs"`
 	AllowDbConfigEnvVars *bool                `json:"allow_dbconfig_env_vars,omitempty" help:"Can be set to false to skip environment variable expansion in database configs"`
 	DiagnosticInterface  string               `json:"diagnostic_interface,omitempty"    help:"Network interface to bind diagnostic API to"`

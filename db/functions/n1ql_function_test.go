@@ -103,7 +103,7 @@ func TestUserN1QLQueries(t *testing.T) {
 	}
 
 	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db, ctx := setupTestDBWithFunctions(t, &kUserN1QLFunctionsConfig, nil)
+	db, ctx := setupTestDBWithFunctions(t, &kUserN1QLFunctionsConfig)
 	defer db.Close(ctx)
 
 	// First run the tests as an admin:

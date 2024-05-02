@@ -187,7 +187,6 @@ type DbConfig struct {
 	ClientPartitionWindowSecs        *int                             `json:"client_partition_window_secs,omitempty"`         // How long clients can remain offline for without losing replication metadata. Default 30 days (in seconds)
 	Guest                            *auth.PrincipalConfig            `json:"guest,omitempty"`                                // Guest user settings
 	JavascriptTimeoutSecs            *uint32                          `json:"javascript_timeout_secs,omitempty"`              // The amount of seconds a Javascript function can run for. Set to 0 for no timeout.
-	GraphQL                          *functions.GraphQLConfig         `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
 	UserFunctions                    *functions.FunctionsConfig       `json:"functions,omitempty"`                            // Named JS fns for clients to call
 	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
 	ChangesRequestPlus               *bool                            `json:"changes_request_plus,omitempty"`                 // If set, is used as the default value of request_plus for non-continuous replications
@@ -994,11 +993,6 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 
 	if dbConfig.UserFunctions != nil {
 		if err := functions.ValidateFunctions(ctx, *dbConfig.UserFunctions); err != nil {
-			multiError = multiError.Append(err)
-		}
-	}
-	if dbConfig.GraphQL != nil {
-		if err := dbConfig.GraphQL.Validate(ctx); err != nil {
 			multiError = multiError.Append(err)
 		}
 	}

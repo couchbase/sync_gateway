@@ -151,44 +151,12 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 	})
 }
 
-//////// GRAPHQL:
-
-// Handles a Connected-Client "graphql" request.
-// - GraphQL query string is in the "query" property.
-// - GraphQL operationName (optional) is in the "operationName" property.
-// - Variables (optional) are JSON-encoded in the body of the request.
-// - Response JSON is returned in the body of the response in GraphQL format (including errors.)
-func (bh *blipHandler) handleGraphQL(rq *blip.Message) error {
-	query, found := rq.Properties[GraphQLQuery]
-	if !found {
-		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'query'")
-	}
-	operationName := rq.Properties[GraphQLOperationName]
-
-	variables, err := bh.parseJsonBody(rq, bh.db.Options.GraphQL.MaxRequestSize())
-	if err != nil {
-		return err
-	}
-
-	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("query: %s", query))
-	return WithTimeout(bh.loggingCtx, bh.db.UserFunctionTimeout, func(ctx context.Context) error {
-		result, err := bh.db.UserGraphQLQuery(ctx, query, operationName, variables, true)
-		if err != nil {
-			return err
-		}
-		response := rq.Response()
-		response.SetCompressed(true)
-		_ = response.SetJSONBody(result)
-		return nil
-	})
-}
-
 func (bh *blipHandler) parseJsonBody(rq *blip.Message, maxSize *int) (map[string]any, error) {
 	bodyBytes, err := rq.Body()
 	if err != nil {
 		return nil, err
 	}
-	if err := CheckRequestSize(len(bodyBytes), bh.db.Options.UserFunctions.MaxRequestSize); err != nil {
+	if err := CheckRequestSize(len(bodyBytes), maxSize); err != nil {
 		return nil, err
 	}
 	var parsedBody map[string]any

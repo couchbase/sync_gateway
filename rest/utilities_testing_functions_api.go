@@ -18,7 +18,7 @@ import (
 // Only the user-query-related fields are copied from `queryConfig`; the rest are ignored.
 func NewRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester {
 	if base.TestsDisableGSI() {
-		t.Skip("graphql implies GSI")
+		t.Skip("These tests use N1QL functions which requires GSI")
 	}
 	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
 		EnableUserQueries: true,
@@ -28,7 +28,6 @@ func NewRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester
 	dbConfig := rt.NewDbConfig()
 
 	dbConfig.UserFunctions = queryConfig.UserFunctions
-	dbConfig.GraphQL = queryConfig.GraphQL
 
 	resp := rt.CreateDatabase("db", dbConfig)
 	if !AssertStatus(t, resp, 201) {

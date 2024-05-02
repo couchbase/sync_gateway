@@ -22,7 +22,7 @@ import (
 
 //////// Concurrency Tests
 
-var kGraphQLTestConfig = &DatabaseConfig{DbConfig: DbConfig{
+var kFunctionsTestConfig = &DatabaseConfig{DbConfig: DbConfig{
 	UserFunctions: &functions.FunctionsConfig{
 		Definitions: functions.FunctionsDefs{
 			"square": {
@@ -36,18 +36,6 @@ var kGraphQLTestConfig = &DatabaseConfig{DbConfig: DbConfig{
 				Code:  "SELECT $args.n * $args.n AS square",
 				Args:  []string{"n"},
 				Allow: &functions.Allow{Channels: []string{"*"}},
-			},
-		},
-	},
-	GraphQL: &functions.GraphQLConfig{
-		Schema: base.StringPtr(`type Query { square(n: Int!): Int! }`),
-		Resolvers: map[string]functions.GraphQLResolverConfig{
-			"Query": {
-				"square": functions.FunctionConfig{
-					Type:  "javascript",
-					Code:  `function(context,args) {return args.n * args.n;}`,
-					Allow: &functions.Allow{Channels: []string{"*"}},
-				},
 			},
 		},
 	},
@@ -92,36 +80,14 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 	return assert.LessOrEqual(t, concurrentDuration, 1.1*numTasks*sequentialDuration)
 }
 
-func TestFunctions(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
-	defer rt.Close()
-
-	t.Run("GraphQL with variables", func(t *testing.T) {
-		testConcurrently(t, rt, func() bool {
-			response := rt.SendRequest("POST", "/{{.db}}/_graphql",
-				`{"query": "query($number:Int!){ square(n:$number) }",
-				  "variables": {"number": 13}}`)
-			return AssertStatus(t, response, http.StatusOK) && assert.Equal(t, "{\"data\":{\"square\":169}}", response.BodyString())
-		})
-	})
-}
-
 func TestFunctionsConcurrently(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kFunctionsTestConfig})
 	defer rt.Close()
 
 	t.Run("Function", func(t *testing.T) {
 		testConcurrently(t, rt, func() bool {
 			response := rt.SendRequest("GET", "/{{.db}}/_function/square?n=13", "")
 			return AssertStatus(t, response, http.StatusOK) && assert.Equal(t, "169", response.BodyString())
-		})
-	})
-
-	t.Run("GraphQL", func(t *testing.T) {
-		testConcurrently(t, rt, func() bool {
-			response := rt.SendRequest("POST", "/{{.db}}/_graphql", `{"query":"query{ square(n:13) }"}`)
-			return AssertStatus(t, response, http.StatusOK) &&
-				assert.Equal(t, "{\"data\":{\"square\":169}}", string(response.BodyBytes()))
 		})
 	})
 

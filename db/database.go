@@ -122,7 +122,7 @@ type DatabaseContext struct {
 	ServeInsecureAttachmentTypes bool                           // Attachment content type will bypass the content-disposition handling, default false
 	NoX509HTTPClient             *http.Client                   // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}                  // Closed via PostStartup once the server has fully started
-	UserFunctionTimeout          time.Duration                  // Default timeout for N1QL, JavaScript and GraphQL queries. (Applies to REST and BLIP requests.)
+	UserFunctionTimeout          time.Duration                  // Default timeout for N1QL & JavaScript queries. (Applies to REST and BLIP requests.)
 	Scopes                       map[string]Scope               // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
@@ -151,7 +151,6 @@ type DatabaseContextOptions struct {
 	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
 	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
 	UserFunctions                 *UserFunctions   // JS/N1QL functions clients can call
-	GraphQL                       GraphQL          // GraphQL query interface
 	AllowConflicts                *bool            // False forbids creating conflicts
 	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
 	DisablePasswordAuthentication bool             // True enforces OIDC/guest only
@@ -1986,9 +1985,6 @@ func initDatabaseStats(ctx context.Context, dbName string, autoImport bool, opti
 				queryNames = append(queryNames, queryName)
 			}
 		}
-	}
-	if options.GraphQL != nil {
-		queryNames = append(queryNames, options.GraphQL.N1QLQueryNames()...)
 	}
 
 	var collections []string

@@ -1263,9 +1263,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		JavascriptTimeout:         javascriptTimeout,
 		Serverless:                sc.Config.IsServerless(),
 		ChangesRequestPlus:        base.BoolDefault(config.ChangesRequestPlus, false),
-		// UserQueries:               config.UserQueries,   // behind feature flag (see below)
 		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
-		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)
 		MaxConcurrentChangesBatches: sc.Config.Replicator.MaxConcurrentChangesBatches,
 		MaxConcurrentRevs:           sc.Config.Replicator.MaxConcurrentRevs,
 	}
@@ -1281,14 +1279,8 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 				return contextOptions, err
 			}
 		}
-		if config.GraphQL != nil {
-			contextOptions.GraphQL, err = functions.CompileGraphQL(ctx, config.GraphQL)
-			if err != nil {
-				return contextOptions, err
-			}
-		}
-	} else if config.UserFunctions != nil || config.GraphQL != nil {
-		base.WarnfCtx(ctx, `Database config options "functions" and "graphql" ignored because unsupported.user_queries feature flag is not enabled`)
+	} else if config.UserFunctions != nil {
+		base.WarnfCtx(ctx, `Database config option "functions" ignored because unsupported.user_queries feature flag is not enabled`)
 	}
 
 	return contextOptions, nil
