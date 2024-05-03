@@ -218,26 +218,18 @@ func (s *SkippedSequenceSlice) removeSeqRange(startSeq, endSeq uint64) error {
 	defer s.lock.Unlock()
 
 	startIndex, found := s._findSequence(startSeq)
-	if !found {
-		return fmt.Errorf("sequence %d not found in the skipped list", startSeq)
-	}
-	endIndex, found := s._findSequence(endSeq)
-	if !found {
-		return fmt.Errorf("sequence %d not found in the skipped list", startSeq)
-	}
-
 	// if both sequence x and y aren't in the same element, the range contains sequences that are not present in
 	// skipped sequence list. This is due to any contiguous sequences in the list will be in the same element. So
 	// if startSeq and endSeq are in different elements there is at least one sequence between these values not in the list
-	if startIndex != endIndex {
+	rangeElem := s.list[startIndex]
+	if !found || endSeq > rangeElem.getLastSeq() {
 		return fmt.Errorf("sequence range %d to %d specified has sequences in that are not present in skipped list", startSeq, endSeq)
 	}
 
 	// handle sequence range removal
-	rangeElem := s.list[startIndex]
 	// update number of sequences currently in slice stat
-	rangeRemoved := SkippedSequenceListEntry{start: startSeq, end: endSeq}
-	s.NumCurrentSkippedSequences -= rangeRemoved.getNumSequencesInEntry()
+	numCurrSkippedSequences := (endSeq - startSeq) + 1
+	s.NumCurrentSkippedSequences -= int64(numCurrSkippedSequences)
 
 	// if single sequence element
 	if rangeElem.getStartSeq() == startSeq && rangeElem.getLastSeq() == endSeq {
