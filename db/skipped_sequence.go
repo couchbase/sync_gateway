@@ -212,6 +212,48 @@ func binarySearchFunc(a *SkippedSequenceListEntry, seq uint64) int {
 	return -1
 }
 
+// removeSeqRange will remove sequence between x and y from the skipped sequence slice
+func (s *SkippedSequenceSlice) removeSeqRange(startSeq, endSeq uint64) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	startIndex, found := s._findSequence(startSeq)
+	// if both sequence x and y aren't in the same element, the range contains sequences that are not present in
+	// skipped sequence list. This is due to any contiguous sequences in the list will be in the same element. So
+	// if startSeq and endSeq are in different elements there is at least one sequence between these values not in the list
+	rangeElem := s.list[startIndex]
+	if !found || endSeq > rangeElem.getLastSeq() {
+		return fmt.Errorf("sequence range %d to %d specified has sequences in that are not present in skipped list", startSeq, endSeq)
+	}
+
+	// handle sequence range removal
+	// update number of sequences currently in slice stat
+	numCurrSkippedSequences := (endSeq - startSeq) + 1
+	s.NumCurrentSkippedSequences -= int64(numCurrSkippedSequences)
+
+	// if single sequence element
+	if rangeElem.getStartSeq() == startSeq && rangeElem.getLastSeq() == endSeq {
+		// simply remove the element
+		s.list = slices.Delete(s.list, startIndex, startIndex+1)
+		return nil
+	}
+	// check if one of x or y is equal to start or end seq
+	if rangeElem.getStartSeq() == startSeq {
+		rangeElem.setStartSeq(endSeq + 1)
+		return nil
+	}
+	if rangeElem.getLastSeq() == endSeq {
+		rangeElem.setLastSeq(startSeq - 1)
+		return nil
+	}
+	// assume we are removing from middle of the range
+	newElem := NewSkippedSequenceRangeEntryAt(endSeq+1, rangeElem.getLastSeq(), rangeElem.getTimestamp())
+	s._insert(startIndex+1, newElem)
+	rangeElem.setLastSeq(startSeq - 1)
+	return nil
+
+}
+
 // removeSeq will remove a given sequence from the slice if it exists
 func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 	s.lock.Lock()
