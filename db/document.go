@@ -1210,8 +1210,10 @@ func (s *SyncData) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	*s = SyncData(*sdj.SyncDataAlias)
-	s.CurrentRev = sdj.RevAndVersion.RevTreeID
+	if sdj.SyncDataAlias != nil {
+		*s = SyncData(*sdj.SyncDataAlias)
+		s.CurrentRev = sdj.RevAndVersion.RevTreeID
+	}
 	return nil
 }
 
