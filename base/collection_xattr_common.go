@@ -199,9 +199,9 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
 		deleteBody := value != nil
 		if updatedDoc.IsTombstone {
-			_, writeErr = c.WriteTombstoneWithXattrs(ctx, k, exp, cas, updatedDoc.Xattrs, deleteBody, opts)
+			casOut, writeErr = c.WriteTombstoneWithXattrs(ctx, k, exp, cas, updatedDoc.Xattrs, deleteBody, opts)
 		} else {
-			_, writeErr = c.WriteWithXattrs(ctx, k, exp, cas, updatedDoc.Doc, updatedDoc.Xattrs, opts)
+			casOut, writeErr = c.WriteWithXattrs(ctx, k, exp, cas, updatedDoc.Doc, updatedDoc.Xattrs, opts)
 		}
 
 		if writeErr == nil {
