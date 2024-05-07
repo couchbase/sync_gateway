@@ -2941,7 +2941,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 		localDocCV.SourceID, localDocCV.Value = doc.HLV.GetCurrentVersion()
 	}
 	if err != nil {
-		if !base.IsDocNotFoundError(err) && err != base.ErrXattrNotFound {
+		if !base.IsDocNotFoundError(err) && !errors.Is(err, base.ErrXattrNotFound) {
 			base.WarnfCtx(ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
 			return ProposedRev_Error, ""
 		}
