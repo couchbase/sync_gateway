@@ -16,6 +16,7 @@ import (
 	"log"
 	"testing"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -190,42 +191,6 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 	}
 }
 
-func TestParseXattr(t *testing.T) {
-	zeroByte := byte(0)
-	// Build payload for single xattr pair and body
-	xattrValue := `{"seq":1}`
-	xattrPairLength := 4 + len(base.SyncXattrName) + len(xattrValue) + 2
-	xattrTotalLength := xattrPairLength
-	body := `{"value":"ABC"}`
-
-	// Build up the dcp Body
-	dcpBody := make([]byte, 8)
-	binary.BigEndian.PutUint32(dcpBody[0:4], uint32(xattrTotalLength))
-	binary.BigEndian.PutUint32(dcpBody[4:8], uint32(xattrPairLength))
-	dcpBody = append(dcpBody, base.SyncXattrName...)
-	dcpBody = append(dcpBody, zeroByte)
-	dcpBody = append(dcpBody, xattrValue...)
-	dcpBody = append(dcpBody, zeroByte)
-	dcpBody = append(dcpBody, body...)
-
-	resultBody, resultXattr, _, err := parseXattrStreamData(base.SyncXattrName, "", dcpBody)
-	assert.NoError(t, err, "Unexpected error parsing dcp body")
-	assert.Equal(t, body, string(resultBody))
-	assert.Equal(t, xattrValue, string(resultXattr))
-
-	// Attempt to retrieve non-existent xattr
-	resultBody, resultXattr, _, err = parseXattrStreamData("nonexistent", "", dcpBody)
-	assert.NoError(t, err, "Unexpected error parsing dcp body")
-	assert.Equal(t, body, string(resultBody))
-	assert.Equal(t, "", string(resultXattr))
-
-	// Attempt to retrieve xattr from empty dcp body
-	emptyBody, emptyXattr, _, emptyErr := parseXattrStreamData(base.SyncXattrName, "", []byte{})
-	assert.Equal(t, base.ErrEmptyMetadata, emptyErr)
-	assert.True(t, emptyBody == nil, "Nil body expected")
-	assert.True(t, emptyXattr == nil, "Nil xattr expected")
-}
-
 func TestParseDocumentCas(t *testing.T) {
 	syncData := &SyncData{}
 	syncData.Cas = "0x00002ade734fb714"
@@ -293,55 +258,77 @@ func TestGetDeepMutableBody(t *testing.T) {
 	}
 }
 
-func TestInvalidXattrStreamDataLen(t *testing.T) {
+func TestDCPDecodeValue(t *testing.T) {
 	testCases := []struct {
-		name        string
-		body        []byte
-		expectedErr error
+		name              string
+		body              []byte
+		expectedErr       error
+		expectedBody      []byte
+		expectedSyncXattr []byte
 	}{
 		{
 			name:        "bad value",
 			body:        []byte("abcde"),
-			expectedErr: base.ErrXattrInvalidLen,
+			expectedErr: sgbucket.ErrXattrInvalidLen,
 		},
 		{
 			name:        "xattr length 4, overflow",
 			body:        []byte{0x00, 0x00, 0x00, 0x04, 0x01},
-			expectedErr: base.ErrXattrInvalidLen,
+			expectedErr: sgbucket.ErrXattrInvalidLen,
+		},
+		{
+			name:        "empty",
+			body:        nil,
+			expectedErr: sgbucket.ErrEmptyMetadata,
+		},
+		{
+			name:              "single xattr pair and body",
+			body:              getSingleXattrDCPBytes(),
+			expectedBody:      []byte(`{"value":"ABC"}`),
+			expectedSyncXattr: []byte(`{"seq":1}`),
 		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			// parseXattrStreamData is the underlying function
-			body, xattr, userXattr, err := parseXattrStreamData(base.SyncXattrName, "", test.body)
-			require.Error(t, err)
+			// DecodeValueWithXattrs is the underlying function
+			body, xattrs, err := sgbucket.DecodeValueWithXattrs(test.body)
 			require.ErrorIs(t, err, test.expectedErr)
-			require.Nil(t, body)
-			require.Nil(t, xattr)
-			require.Nil(t, userXattr)
-			// UnmarshalDocumentSyncData wraps parseXattrStreamData
+			require.Equal(t, test.expectedBody, body)
+			if test.expectedSyncXattr != nil {
+				require.Len(t, xattrs, 1)
+				require.Equal(t, base.SyncXattrName, xattrs[0].Name)
+				require.Equal(t, test.expectedSyncXattr, xattrs[0].Value)
+			} else {
+				require.Nil(t, xattrs)
+			}
+			// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
 			result, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(test.body, base.MemcachedDataTypeXattr, "", false)
-			require.ErrorIs(t, err, base.ErrXattrInvalidLen)
-			require.Nil(t, result)
-			require.Nil(t, rawBody)
-			require.Nil(t, rawXattr)
+			require.ErrorIs(t, err, test.expectedErr)
+			if test.expectedSyncXattr != nil {
+				require.NotNil(t, result)
+			} else {
+				require.Nil(t, result)
+			}
+			require.Equal(t, test.expectedBody, rawBody)
+			require.Equal(t, test.expectedSyncXattr, rawXattr)
 			require.Nil(t, rawUserXattr)
 
 		})
 	}
 }
 
+// TestInvalidXattrStreamEmptyBody tests is a bit different than cases in TestDCPDecodeValue since DecodeValueWithXattrs will pass but UnmarshalDocumentSyncDataFromFeed will fail due to invalid json.
 func TestInvalidXattrStreamEmptyBody(t *testing.T) {
 	inputStream := []byte{0x00, 0x00, 0x00, 0x01, 0x01}
 	emptyBody := []byte{}
-	// parseXattrStreamData is the underlying function
-	body, xattr, userXattr, err := parseXattrStreamData(base.SyncXattrName, "", inputStream)
+
+	// DecodeValueWithXattrs is the underlying function
+	body, xattrs, err := sgbucket.DecodeValueWithXattrs(inputStream)
 	require.NoError(t, err)
 	require.Equal(t, emptyBody, body)
-	require.Nil(t, xattr)
-	require.Nil(t, userXattr)
+	require.Empty(t, xattrs)
 
-	// UnmarshalDocumentSyncData wraps parseXattrStreamData
+	// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
 	result, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(inputStream, base.MemcachedDataTypeXattr, "", false)
 	require.Error(t, err) // unexpected end of JSON input
 	require.Nil(t, result)
@@ -349,4 +336,25 @@ func TestInvalidXattrStreamEmptyBody(t *testing.T) {
 	require.Nil(t, rawXattr)
 	require.Nil(t, rawUserXattr)
 
+}
+
+// getSingleXattrDCPBytes returns a DCP body with a single xattr pair and body
+func getSingleXattrDCPBytes() []byte {
+	zeroByte := byte(0)
+	// Build payload for single xattr pair and body
+	xattrValue := `{"seq":1}`
+	xattrPairLength := 4 + len(base.SyncXattrName) + len(xattrValue) + 2
+	xattrTotalLength := xattrPairLength
+	body := `{"value":"ABC"}`
+
+	// Build up the dcp Body
+	dcpBody := make([]byte, 8)
+	binary.BigEndian.PutUint32(dcpBody[0:4], uint32(xattrTotalLength))
+	binary.BigEndian.PutUint32(dcpBody[4:8], uint32(xattrPairLength))
+	dcpBody = append(dcpBody, base.SyncXattrName...)
+	dcpBody = append(dcpBody, zeroByte)
+	dcpBody = append(dcpBody, xattrValue...)
+	dcpBody = append(dcpBody, zeroByte)
+	dcpBody = append(dcpBody, body...)
+	return dcpBody
 }

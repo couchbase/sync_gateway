@@ -211,15 +211,18 @@ func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionDa
 	var documentBody []byte
 
 	if dataType&base.MemcachedDataTypeXattr != 0 {
-		body, xattr, _, err := parseXattrStreamData(base.SyncXattrName, "", data)
+		body, xattrs, err := sgbucket.DecodeValueWithXattrs(data)
 		if err != nil {
-			if errors.Is(err, base.ErrXattrNotFound) || errors.Is(err, base.ErrXattrInvalidLen) {
-				return nil, nil
+			return nil, fmt.Errorf("Could not parse DCP attachment sync data: %w", err)
+		}
+		var syncXattr []byte
+		for _, xattr := range xattrs {
+			if xattr.Name == base.SyncXattrName {
+				syncXattr = xattr.Value
 			}
-			return nil, err
 		}
 
-		err = base.JSONUnmarshal(xattr, &attachmentData)
+		err = base.JSONUnmarshal(syncXattr, &attachmentData)
 		if err != nil {
 			return nil, err
 		}
@@ -312,8 +315,9 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 
 		// If the data contains an xattr then the attachment likely has a compaction ID, need to check this value
 		if event.DataType&base.MemcachedDataTypeXattr != 0 {
-			_, xattr, _, err := parseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
-			if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
+
+			xattr, err := getAttachmentCompactionXattr(event.Value)
+			if err != nil {
 				base.WarnfCtx(ctx, "[%s] Unexpected error occurred attempting to parse attachment xattr: %v", compactionLoggingID, err)
 				return true
 			}
@@ -424,8 +428,8 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 			return true
 		}
 
-		_, xattr, _, err := parseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
-		if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
+		xattr, err := getAttachmentCompactionXattr(event.Value)
+		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Unexpected error occurred attempting to parse attachment xattr: %v", compactionLoggingID, err)
 			return true
 		}
@@ -574,4 +578,18 @@ func GenerateCompactionDCPStreamName(compactionID, compactionAction string) stri
 		compactionID,
 		compactionAction,
 	)
+}
+
+// getAttachmentCompactionXattr returns the value of the attachment compaction xattr from a DCP stream. The value will be nil if the xattr is not found.
+func getAttachmentCompactionXattr(data []byte) ([]byte, error) {
+	_, xattrs, err := sgbucket.DecodeValueWithXattrs(data)
+	if err != nil {
+		return nil, err
+	}
+	for _, xattr := range xattrs {
+		if xattr.Name == base.AttachmentCompactionXattrName {
+			return xattr.Value, nil
+		}
+	}
+	return nil, nil
 }
