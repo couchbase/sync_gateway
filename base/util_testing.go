@@ -767,16 +767,6 @@ func SkipImportTestsIfNotEnabled(t *testing.T) {
 	}
 }
 
-// SkipInvalidAuthForCouchbaseServer76 temporarily skips test on Couchbase Server 7.6 until invalid credentials return ErrAuthenticationFailure.
-func SkipInvalidAuthForCouchbaseServer76(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		return
-	}
-	if GTestBucketPool.cluster.majorVersion == 7 && GTestBucketPool.cluster.minorVersion == 6 {
-		t.Skip("Skipping test for invalid credentials with Couchbase Server 7.6 due to GOCBC-1615")
-	}
-}
-
 // CreateBucketScopesAndCollections will create the given scopes and collections within the given BucketSpec.
 func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec, scopes map[string][]string) error {
 	atLeastOneScope := false

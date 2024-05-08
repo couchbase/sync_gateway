@@ -1875,7 +1875,6 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 			defer testBucket.Close(ctx)
 
 			// Override test bucket spec with invalid creds
-			fmt.Println("testBucket.BucketSpec: ", testBucket.BucketSpec)
 			testBucket.BucketSpec.Auth = TestAuthenticator{
 				Username:   "invalid_username",
 				Password:   "invalid_password",
@@ -1885,7 +1884,6 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 				testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbase://", "couchbases://")
 			} else {
 				testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbases://", "couchbase://")
-				SkipInvalidAuthForCouchbaseServer76(t)
 			}
 
 			// Attempt to open the bucket again using invalid creds. We should expect an error.
