@@ -72,7 +72,7 @@ func GetGoCBv2Bucket(ctx context.Context, spec BucketSpec) (*GocbV2Bucket, error
 		return nil, err
 	}
 
-	err = cluster.WaitUntilReady(time.Second*5, &gocb.WaitUntilReadyOptions{
+	err = cluster.WaitUntilReady(time.Second*30, &gocb.WaitUntilReadyOptions{
 		DesiredState:  gocb.ClusterStateOnline,
 		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeManagement},
 		RetryStrategy: &goCBv2FailFastRetryStrategy{},
