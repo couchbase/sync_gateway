@@ -759,6 +759,11 @@ func RequireDocNotFoundError(t testing.TB, e error) {
 	require.True(t, IsDocNotFoundError(e), fmt.Sprintf("Expected error to be a doc not found error, but was: %v", e))
 }
 
+func requireCasMismatchError(t testing.TB, err error) {
+	require.Error(t, err, "Expected an error of type IsCasMismatch %+v\n", err)
+	require.True(t, IsCasMismatch(err), "Expected error of type IsCasMismatch but got %+v\n", err)
+}
+
 // SkipImportTestsIfNotEnabled skips test that exercise import features
 func SkipImportTestsIfNotEnabled(t *testing.T) {
 

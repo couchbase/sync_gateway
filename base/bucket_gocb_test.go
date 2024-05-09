@@ -1988,30 +1988,13 @@ EKTcWGekdmdDPsHloRNtsiCa697B2O9IFA==
 func createTombstonedDoc(t *testing.T, dataStore sgbucket.DataStore, key, xattrName string) {
 
 	// Create document with XATTR
-
-	val := make(map[string]interface{})
-	val["body_field"] = "1234"
-
 	xattrVal := make(map[string]interface{})
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"
 
 	ctx := TestCtx(t)
-	// Create w/ doc and XATTR
-	cas := uint64(0)
-	cas, err := dataStore.WriteWithXattrs(ctx, key, 0, cas, MustJSONMarshal(t, val), map[string][]byte{xattrName: MustJSONMarshal(t, xattrVal)}, nil)
-	require.NoError(t, err)
 
-	// Create tombstone revision which deletes doc body but preserves XATTR
-	_, mutateErr := dataStore.WriteTombstoneWithXattrs(ctx, key, 0, cas, nil, true, nil)
-	/*
-		flags := gocb.SubdocDocFlagAccessDeleted
-		_, mutateErr := dataStore.dataStore.MutateInEx(key, flags, gocb.Cas(cas), uint32(0)).
-			UpsertEx(xattrName, xattrVal, gocb.SubdocFlagXattr).                                              // Update the xattr
-			UpsertEx(SyncXattrName+".cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
-			RemoveEx("", gocb.SubdocFlagNone).                                                                // Delete the document body
-			Execute()
-	*/
+	_, mutateErr := dataStore.WriteTombstoneWithXattrs(ctx, key, 0, 0, map[string][]byte{xattrName: MustJSONMarshal(t, xattrVal)}, false, nil)
 	require.NoError(t, mutateErr)
 
 	// Verify delete of body and XATTR
