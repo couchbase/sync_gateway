@@ -223,6 +223,7 @@ func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *ba
 	purgedDocCount := 0
 	purgeTimeout := 60 * time.Second
 	purgeBody := Body{"_purged": true}
+	processedDocCount := 0
 
 	var purgeErrors *base.MultiError
 	collection, err := base.AsCollection(dataStore)
@@ -245,6 +246,7 @@ func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *ba
 	purgeCallback := func(event sgbucket.FeedEvent) bool {
 		var purgeErr error
 
+		processedDocCount++
 		// We only need to purge mutations/deletions
 		if event.Opcode != sgbucket.FeedOpMutation && event.Opcode != sgbucket.FeedOpDeletion {
 			return false
@@ -301,8 +303,13 @@ func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *ba
 	case <-timeout:
 		return 0, fmt.Errorf("timeout waiting for purge DCP feed to complete")
 	}
+	closeErr := dcpClient.Close()
+	if closeErr != nil {
+		tbp.Logf(ctx, "error closing purge DCP feed: %v", closeErr)
+	}
 
 	tbp.Logf(ctx, "Finished purge DCP feed ... Total docs purged: %d", purgedDocCount)
+	tbp.Logf(ctx, "Finished purge DCP feed ... Total docs processed: %d", processedDocCount)
 	return purgedDocCount, nil
 }
 
