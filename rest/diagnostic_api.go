@@ -9,12 +9,13 @@
 package rest
 
 import (
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/gorilla/mux"
 )
 
 type allChannels struct {
-	Channels base.Set `json:"all_channels,omitempty"`
+	Channels map[string]map[string]auth.GrantHistory `json:"all_channels,omitempty"`
 }
 
 func (h *handler) handleGetAllChannels() error {
@@ -26,21 +27,34 @@ func (h *handler) handleGetAllChannels() error {
 	if user == nil {
 		return kNotFoundError
 	}
-	info := marshalChannels(h.db, user, true)
 
-	channels := allChannels{Channels: info.Channels}
-	if !h.db.OnlyDefaultCollection() {
-		allCollectionChannels := make(map[string]map[string]allChannels)
-		for scope, collectionConfig := range info.CollectionAccess {
-			for collectionName, CAConfig := range collectionConfig {
-				allCollectionChannels[scope] = make(map[string]allChannels)
-				allCollectionChannels[scope][collectionName] = allChannels{Channels: CAConfig.Channels_}
-			}
+	resp := make(map[string]map[string]auth.GrantHistory)
+
+	// handles deleted collections, default/ single named collection
+	for _, dsName := range h.db.DataStoreNames() {
+		keyspace := dsName.ScopeName() + "." + dsName.CollectionName()
+
+		resp[keyspace] = make(map[string]auth.GrantHistory)
+		channels := user.CollectionChannels(dsName.ScopeName(), dsName.CollectionName())
+		chanHistory := user.CollectionChannelHistory(dsName.ScopeName(), dsName.CollectionName())
+		for chanName, chanEntry := range channels {
+			resp[keyspace][chanName] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.Sequence, EndSeq: 0}}}
 		}
-		bytes, err := base.JSONMarshal(info.CollectionAccess)
-		h.writeRawJSON(bytes)
-		return err
+		for chanName, chanEntry := range chanHistory {
+			chanHistoryEntry := auth.GrantHistory{Entries: chanEntry.Entries, UpdatedAt: chanEntry.UpdatedAt}
+			// if channel is also in history, append current entry to history entries
+			if _, chanCurrentlyAssigned := resp[chanName]; chanCurrentlyAssigned {
+				var newEntries []auth.GrantHistorySequencePair
+				copy(newEntries, chanHistory[chanName].Entries)
+				newEntries = append(newEntries, chanEntry.Entries...)
+				chanHistoryEntry.Entries = newEntries
+			}
+			resp[keyspace][chanName] = chanHistoryEntry
+		}
+
 	}
+	channels := allChannels{Channels: resp}
+
 	bytes, err := base.JSONMarshal(channels)
 	h.writeRawJSON(bytes)
 	return err

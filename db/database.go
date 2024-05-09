@@ -2438,3 +2438,19 @@ func (dbc *DatabaseContext) InstallPrincipals(ctx context.Context, spec map[stri
 	}
 	return nil
 }
+
+// DataStoreNames returns the names of all datastore connected to this database
+func (db *Database) DataStoreNames() base.ScopeAndCollectionNames {
+	if db.Scopes == nil {
+		return base.ScopeAndCollectionNames{
+			base.DefaultScopeAndCollectionName(),
+		}
+	}
+	var names base.ScopeAndCollectionNames
+	for scopeName, scope := range db.Scopes {
+		for collectionName := range scope.Collections {
+			names = append(names, base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+		}
+	}
+	return names
+}
