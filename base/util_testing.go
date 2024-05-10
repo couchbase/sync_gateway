@@ -754,6 +754,13 @@ func TestRequiresDCPResync(t testing.TB) {
 	}
 }
 
+// TestRequiresGocbDCPClient will skip the current test if using rosmar.
+func TestRequiresGocbDCPClient(t testing.TB) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("rosmar doesn't support base.DCPClient")
+	}
+}
+
 // RequireDocNotFoundError asserts that the given error represents a document not found error.
 func RequireDocNotFoundError(t testing.TB, e error) {
 	require.True(t, IsDocNotFoundError(e), fmt.Sprintf("Expected error to be a doc not found error, but was: %v", e))

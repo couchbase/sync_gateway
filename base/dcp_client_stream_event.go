@@ -45,6 +45,7 @@ type mutationEvent struct {
 	value      []byte
 	seq        uint64
 	cas        uint64
+	revNo      uint64
 	flags      uint32
 	expiry     uint32
 	collection uint32
@@ -63,6 +64,7 @@ func (e mutationEvent) asFeedEvent() sgbucket.FeedEvent {
 		Value:        e.value,
 		DataType:     e.datatype,
 		Cas:          e.cas,
+		RevNo:        e.revNo,
 		VbNo:         e.vbID,
 		TimeReceived: time.Now(),
 	}
@@ -74,6 +76,7 @@ type deletionEvent struct {
 	value      []byte
 	seq        uint64
 	cas        uint64
+	revNo      uint64
 	collection uint32
 	datatype   uint8
 	streamEventCommon
@@ -88,6 +91,7 @@ func (e deletionEvent) asFeedEvent() sgbucket.FeedEvent {
 		Value:        e.value,
 		DataType:     e.datatype,
 		Cas:          e.cas,
+		RevNo:        e.revNo,
 		VbNo:         e.vbID,
 		TimeReceived: time.Now(),
 	}
