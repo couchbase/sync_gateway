@@ -291,13 +291,12 @@ func TestDCPDecodeValue(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			// DecodeValueWithXattrs is the underlying function
-			body, xattrs, err := sgbucket.DecodeValueWithXattrs(test.body)
+			body, xattrs, err := sgbucket.DecodeValueWithXattrs([]string{"_sync"}, test.body)
 			require.ErrorIs(t, err, test.expectedErr)
 			require.Equal(t, test.expectedBody, body)
 			if test.expectedSyncXattr != nil {
 				require.Len(t, xattrs, 1)
-				require.Equal(t, base.SyncXattrName, xattrs[0].Name)
-				require.Equal(t, test.expectedSyncXattr, xattrs[0].Value)
+				require.Equal(t, test.expectedSyncXattr, xattrs["_sync"])
 			} else {
 				require.Nil(t, xattrs)
 			}
@@ -323,7 +322,7 @@ func TestInvalidXattrStreamEmptyBody(t *testing.T) {
 	emptyBody := []byte{}
 
 	// DecodeValueWithXattrs is the underlying function
-	body, xattrs, err := sgbucket.DecodeValueWithXattrs(inputStream)
+	body, xattrs, err := sgbucket.DecodeValueWithXattrs([]string{"_sync"}, inputStream)
 	require.NoError(t, err)
 	require.Equal(t, emptyBody, body)
 	require.Empty(t, xattrs)

@@ -211,18 +211,11 @@ func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionDa
 	var documentBody []byte
 
 	if dataType&base.MemcachedDataTypeXattr != 0 {
-		body, xattrs, err := sgbucket.DecodeValueWithXattrs(data)
+		body, xattrs, err := sgbucket.DecodeValueWithXattrs([]string{base.SyncXattrName}, data)
 		if err != nil {
 			return nil, fmt.Errorf("Could not parse DCP attachment sync data: %w", err)
 		}
-		var syncXattr []byte
-		for _, xattr := range xattrs {
-			if xattr.Name == base.SyncXattrName {
-				syncXattr = xattr.Value
-			}
-		}
-
-		err = base.JSONUnmarshal(syncXattr, &attachmentData)
+		err = base.JSONUnmarshal(xattrs[base.SyncXattrName], &attachmentData)
 		if err != nil {
 			return nil, err
 		}
@@ -582,14 +575,9 @@ func GenerateCompactionDCPStreamName(compactionID, compactionAction string) stri
 
 // getAttachmentCompactionXattr returns the value of the attachment compaction xattr from a DCP stream. The value will be nil if the xattr is not found.
 func getAttachmentCompactionXattr(data []byte) ([]byte, error) {
-	_, xattrs, err := sgbucket.DecodeValueWithXattrs(data)
+	_, xattrs, err := sgbucket.DecodeValueWithXattrs([]string{base.AttachmentCompactionXattrName}, data)
 	if err != nil {
 		return nil, err
 	}
-	for _, xattr := range xattrs {
-		if xattr.Name == base.AttachmentCompactionXattrName {
-			return xattr.Value, nil
-		}
-	}
-	return nil, nil
+	return xattrs[base.AttachmentCompactionXattrName], nil
 }

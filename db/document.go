@@ -439,19 +439,17 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 	// If xattr datatype flag is set, data includes both xattrs and document body.  Check for presence of sync xattr.
 	// Note that there could be a non-sync xattr present
 	if dataType&base.MemcachedDataTypeXattr != 0 {
-		var xattrs []sgbucket.Xattr
-		body, xattrs, err = sgbucket.DecodeValueWithXattrs(data)
+		var xattrs map[string][]byte
+		xattrKeys := []string{base.SyncXattrName}
+		if userXattrKey != "" {
+			xattrKeys = append(xattrKeys, userXattrKey)
+		}
+		body, xattrs, err = sgbucket.DecodeValueWithXattrs(xattrKeys, data)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
-		for _, xattr := range xattrs {
-			switch xattr.Name {
-			case base.SyncXattrName:
-				rawSyncXattr = xattr.Value
-			case userXattrKey:
-				rawUserXattr = xattr.Value
-			}
-		}
+		rawSyncXattr = xattrs[base.SyncXattrName]
+		rawUserXattr = xattrs[userXattrKey]
 
 		// If the sync xattr is present, use that to build SyncData
 		if len(rawSyncXattr) > 0 {
@@ -479,23 +477,15 @@ func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, da
 	if dataType&base.MemcachedDataTypeXattr == 0 {
 		return unmarshalDocument(docid, data)
 	}
-	var xattrs []sgbucket.Xattr
-	var syncXattr []byte
-	var userXattr []byte
-
-	body, xattrs, err := sgbucket.DecodeValueWithXattrs(data)
+	xattrKeys := []string{base.SyncXattrName}
+	if userXattrKey != "" {
+		xattrKeys = append(xattrKeys, userXattrKey)
+	}
+	body, xattrs, err := sgbucket.DecodeValueWithXattrs(xattrKeys, data)
 	if err != nil {
 		return nil, err
 	}
-	for _, xattr := range xattrs {
-		switch xattr.Name {
-		case base.SyncXattrName:
-			syncXattr = xattr.Value
-		case userXattrKey:
-			userXattr = xattr.Value
-		}
-	}
-	return unmarshalDocumentWithXattr(ctx, docid, body, syncXattr, userXattr, cas, DocUnmarshalAll)
+	return unmarshalDocumentWithXattr(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[userXattrKey], cas, DocUnmarshalAll)
 }
 
 func (doc *SyncData) HasValidSyncData() bool {
