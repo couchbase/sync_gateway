@@ -213,6 +213,9 @@ func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionDa
 	if dataType&base.MemcachedDataTypeXattr != 0 {
 		body, xattrs, err := sgbucket.DecodeValueWithXattrs([]string{base.SyncXattrName}, data)
 		if err != nil {
+			if errors.Is(err, sgbucket.ErrXattrInvalidLen) {
+				return nil, nil
+			}
 			return nil, fmt.Errorf("Could not parse DCP attachment sync data: %w", err)
 		}
 		err = base.JSONUnmarshal(xattrs[base.SyncXattrName], &attachmentData)
