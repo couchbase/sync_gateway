@@ -249,6 +249,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		docID := msg.Properties[db.RevMessageID]
 		revID := msg.Properties[db.RevMessageRev]
 		deltaSrc := msg.Properties[db.RevMessageDeltaSrc]
+		replacedRev := msg.Properties[db.RevMessageReplacedRev]
 
 		body, err := msg.Body()
 		require.NoError(btr.TB(), err)
@@ -259,9 +260,16 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			if _, ok := btcr.docs[docID]; ok {
 				bodyMessagePair := &BodyMessagePair{body: body, message: msg}
 				btcr.docs[docID][revID] = bodyMessagePair
+				if replacedRev != "" {
+					// store a pointer to the message from the replaced rev for tests waiting for this specific rev
+					btcr.docs[docID][replacedRev] = bodyMessagePair
+				}
 			} else {
 				bodyMessagePair := &BodyMessagePair{body: body, message: msg}
 				btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
+				if replacedRev != "" {
+					btcr.docs[docID][replacedRev] = bodyMessagePair
+				}
 			}
 			btcr.updateLastReplicatedRev(docID, revID)
 
@@ -423,9 +431,15 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		if _, ok := btcr.docs[docID]; ok {
 			bodyMessagePair := &BodyMessagePair{body: body, message: msg}
 			btcr.docs[docID][revID] = bodyMessagePair
+			if replacedRev != "" {
+				btcr.docs[docID][replacedRev] = bodyMessagePair
+			}
 		} else {
 			bodyMessagePair := &BodyMessagePair{body: body, message: msg}
 			btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
+			if replacedRev != "" {
+				btcr.docs[docID][replacedRev] = bodyMessagePair
+			}
 		}
 		btcr.updateLastReplicatedRev(docID, revID)
 
@@ -456,8 +470,30 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	}
 
 	btr.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
-		// TODO: Support norev messages
 		btr.storeMessage(msg)
+
+		btcr := btc.getCollectionClientFromMessage(msg)
+
+		docID := msg.Properties[db.NorevMessageId]
+		revID := msg.Properties[db.NorevMessageRev]
+		replacedRev := msg.Properties[db.NorevMessageReplacedRev]
+
+		btcr.docsLock.Lock()
+		defer btcr.docsLock.Unlock()
+
+		if _, ok := btcr.docs[docID]; ok {
+			bodyMessagePair := &BodyMessagePair{message: msg}
+			btcr.docs[docID][revID] = bodyMessagePair
+			if replacedRev != "" {
+				btcr.docs[docID][replacedRev] = bodyMessagePair
+			}
+		} else {
+			bodyMessagePair := &BodyMessagePair{message: msg}
+			btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
+			if replacedRev != "" {
+				btcr.docs[docID][replacedRev] = bodyMessagePair
+			}
+		}
 	}
 
 	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
