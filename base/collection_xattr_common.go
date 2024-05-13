@@ -66,8 +66,7 @@ func (c *Collection) WriteWithXattrs(ctx context.Context, k string, exp uint32, 
 
 // WriteTombstoneWithXattrs will create a a tombtonse with xattrs. This is a cas safe operation. If deleteBody is true, will create a tombstone from an existing live document.
 // Caveats:
-//   - Calling deleteBody=false on an alive document does not produce valid output.
-//   - If the document exists put but is not a tombstone, all xattrs will be replaced. If the document is already a tombstone, the xattrs will be an upsert on the existing xattrs.
+//   - Calling deleteBody=false on an alive document with valid cas will not create a tombstone, but be equivalent to calling UpdateXattrs
 func (c *Collection) WriteTombstoneWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, xattrs map[string][]byte, deleteBody bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 
 	if len(xattrs) == 0 {
