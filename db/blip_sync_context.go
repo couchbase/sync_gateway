@@ -624,6 +624,16 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	rev, err := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, revID, true, nil)
 
 	var replacedRevID string
+	if bsc.sendReplacementRevs && base.IsDocNotFoundError(err) {
+		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Unavailable revision for %q %s - finding replacement: %v", base.UD(docID), revID, err)
+
+		// try the active rev instead as a replacement
+		replacementRev, replacementRevErr := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, "", true, nil)
+		// set replacement and continue as normal
+		replacedRevID = revID
+		revID = replacementRev.RevID
+		rev, err = replacementRev, replacementRevErr
+	}
 	if base.IsDocNotFoundError(err) {
 		return bsc.sendNoRev(sender, docID, revID, replacedRevID, collectionIdx, seq, err)
 	} else if err != nil {
@@ -665,7 +675,11 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	history := toHistory(rev.History, knownRevs, maxHistory)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq, replacedRevID)
 	if base.LogDebugEnabled(bsc.loggingCtx, base.KeySync) {
-		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), digests(attachmentStorageMeta))
+		originalRevMsg := ""
+		if replacedRevID != "" {
+			originalRevMsg = fmt.Sprintf(" (replaced %s)", replacedRevID)
+		}
+		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s%s based on %d known, digests: %v", base.UD(docID), revID, originalRevMsg, len(knownRevs), digests(attachmentStorageMeta))
 	}
 
 	return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, bodyBytes, attachmentStorageMeta, properties, seq, nil)
