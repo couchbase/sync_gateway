@@ -129,8 +129,6 @@ type BlipSyncContext struct {
 
 	// when readOnly is true, handleRev requests are rejected
 	readOnly bool
-	// if we encounter a situation where a requested revision is not available, should we try sending an alternative as a replacement revision?
-	sendReplacementRevs bool
 
 	collections *blipCollections // all collections handled by blipSyncContext, implicit or via GetCollections
 
@@ -624,7 +622,13 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	rev, err := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, revID, true, nil)
 
 	var replacedRevID string
-	if bsc.sendReplacementRevs && base.IsDocNotFoundError(err) {
+
+	collectionCtx, collectionErr := bsc.collections.get(collectionIdx)
+	if collectionErr != nil {
+		return collectionErr
+	}
+
+	if collectionCtx.sendReplacementRevs && base.IsDocNotFoundError(err) {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Unavailable revision for %q %s - finding replacement: %v", base.UD(docID), revID, err)
 
 		// try the active rev instead as a replacement

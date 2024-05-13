@@ -34,6 +34,8 @@ type blipSyncCollectionContext struct {
 	sgr2PushAlreadyKnownSeqsCallback func(alreadyKnownSeqs ...SequenceID)           // sgr2PushAlreadyKnownSeqsCallback is called to mark the sequence as being immediately processed
 	emptyChangesMessageCallback      func()                                         // emptyChangesMessageCallback is called when an empty changes message is received
 
+	// if we encounter a situation where a requested revision is not available, should we try sending an alternative as a replacement revision?
+	sendReplacementRevs bool
 }
 
 // blipCollections is a container for all collections blip is aware of.

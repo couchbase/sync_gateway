@@ -326,7 +326,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		}
 	}
 
-	bh.sendReplacementRevs = subChangesParams.sendReplacementRevs()
+	bh.collectionCtx.sendReplacementRevs = subChangesParams.sendReplacementRevs()
 
 	// Start asynchronous changes goroutine
 	go func() {
