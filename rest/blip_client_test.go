@@ -42,6 +42,9 @@ type BlipTesterClientOpts struct {
 	// a deltaSrc rev ID for which to reject a delta
 	rejectDeltasForSrcRev string
 
+	// changesEntryCallback is a callback function invoked for each changes entry being received (pull)
+	changesEntryCallback func(docID, revID string)
+
 	// optional Origin header
 	origin *string
 
@@ -172,6 +175,10 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			for i, changesReq := range changesReqs {
 				docID := changesReq[1].(string)
 				revID := changesReq[2].(string)
+
+				if btc.changesEntryCallback != nil {
+					btc.changesEntryCallback(docID, revID)
+				}
 
 				deletedInt := 0
 				if len(changesReq) > 3 {
