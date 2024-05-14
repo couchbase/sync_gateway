@@ -2318,6 +2318,9 @@ func TestImportRollback(t *testing.T) {
 			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 				CustomTestBucket: bucket.NoCloseClone(),
 				PersistentConfig: false,
+				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+					AutoImport: true,
+				}},
 			})
 
 			key := "importRollbackTest"
@@ -2370,6 +2373,9 @@ func TestImportRollback(t *testing.T) {
 			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 				CustomTestBucket: bucket.NoCloseClone(),
 				PersistentConfig: false,
+				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+					AutoImport: true,
+				}},
 			})
 			defer rt2.Close()
 
