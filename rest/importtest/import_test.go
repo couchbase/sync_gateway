@@ -2300,6 +2300,10 @@ func TestImportFilterTimeout(t *testing.T) {
 
 func TestImportRollback(t *testing.T) {
 
+	if !base.IsEnterpriseEdition() {
+		t.Skip("This test only works against EE")
+	}
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server - needs cbgt and import checkpointing")
 	}
