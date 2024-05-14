@@ -1882,6 +1882,7 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 			}
 			if tls {
 				testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbase://", "couchbases://")
+				testBucket.BucketSpec.TLSSkipVerify = true // test env isn't always using valid certs
 			} else {
 				testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbases://", "couchbase://")
 			}
