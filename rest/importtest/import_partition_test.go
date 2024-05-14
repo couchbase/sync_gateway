@@ -22,6 +22,9 @@ func TestImportPartitionsOnConcurrentStart(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if !base.IsEnterpriseEdition() {
+		t.Skip("This test only works against EE")
+	}
 	// Start multiple rest testers concurrently
 	numNodes := 4
 	numImportPartitions := uint16(16)

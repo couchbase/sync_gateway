@@ -13,7 +13,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -433,30 +432,36 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*SyncData, error)
 // Returns the raw body, in case it's needed for import.
 
 // TODO: Using a pool of unmarshal workers may help prevent memory spikes under load
-func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey string, needHistory bool) (result *SyncData, rawBody []byte, rawXattr []byte, rawUserXattr []byte, err error) {
+func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey string, needHistory bool) (result *SyncData, rawBody []byte, rawSyncXattr []byte, rawUserXattr []byte, err error) {
 
 	var body []byte
 
-	// If attr datatype flag is set, data includes both xattrs and document body.  Check for presence of sync xattr.
+	// If xattr datatype flag is set, data includes both xattrs and document body.  Check for presence of sync xattr.
 	// Note that there could be a non-sync xattr present
 	if dataType&base.MemcachedDataTypeXattr != 0 {
-		var syncXattr []byte
-		body, syncXattr, rawUserXattr, err = parseXattrStreamData(base.SyncXattrName, userXattrKey, data)
+		var xattrs map[string][]byte
+		xattrKeys := []string{base.SyncXattrName}
+		if userXattrKey != "" {
+			xattrKeys = append(xattrKeys, userXattrKey)
+		}
+		body, xattrs, err = sgbucket.DecodeValueWithXattrs(xattrKeys, data)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
+		rawSyncXattr = xattrs[base.SyncXattrName]
+		rawUserXattr = xattrs[userXattrKey]
 
 		// If the sync xattr is present, use that to build SyncData
-		if syncXattr != nil && len(syncXattr) > 0 {
+		if len(rawSyncXattr) > 0 {
 			result = &SyncData{}
 			if needHistory {
 				result.History = make(RevTree)
 			}
-			err = base.JSONUnmarshal(syncXattr, result)
+			err = base.JSONUnmarshal(rawSyncXattr, result)
 			if err != nil {
-				return nil, nil, nil, nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", string(syncXattr), err)
+				return nil, nil, nil, nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", syncXattr, err)
 			}
-			return result, body, syncXattr, rawUserXattr, nil
+			return result, body, rawSyncXattr, rawUserXattr, nil
 		}
 	} else {
 		// Xattr flag not set - data is just the document body
@@ -469,93 +474,18 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 }
 
 func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, data []byte, dataType uint8, userXattrKey string) (doc *Document, err error) {
-	var body []byte
-
-	if dataType&base.MemcachedDataTypeXattr != 0 {
-		var syncXattr []byte
-		var userXattr []byte
-		body, syncXattr, userXattr, err = parseXattrStreamData(base.SyncXattrName, userXattrKey, data)
-		if err != nil {
-			return nil, err
-		}
-		return unmarshalDocumentWithXattr(ctx, docid, body, syncXattr, userXattr, cas, DocUnmarshalAll)
+	if dataType&base.MemcachedDataTypeXattr == 0 {
+		return unmarshalDocument(docid, data)
 	}
-
-	return unmarshalDocument(docid, data)
-}
-
-// parseXattrStreamData returns the raw bytes of the body and the requested xattr (when present) from the raw DCP data bytes.
-// Details on format (taken from https://docs.google.com/document/d/18UVa5j8KyufnLLy29VObbWRtoBn9vs8pcxttuMt6rz8/edit#heading=h.caqiui1pmmmb.):
-/*
-	When the XATTR bit is set the first uint32_t in the body contains the size of the entire XATTR section.
-
-
-	      Byte/     0       |       1       |       2       |       3       |
-	         /              |               |               |               |
-	        |0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|
-	        +---------------+---------------+---------------+---------------+
-	       0| Total xattr length in network byte order                      |
-	        +---------------+---------------+---------------+---------------+
-
-	Following the length you'll find an iovector-style encoding of all of the XATTR key-value pairs with the following encoding:
-
-	uint32_t length of next xattr pair (network order)
-	xattr key in modified UTF-8
-	0x00
-	xattr value in modified UTF-8
-	0x00
-
-	The 0x00 byte after the key saves us from storing a key length, and the trailing 0x00 is just for convenience to allow us to use string functions to search in them.
-*/
-
-func parseXattrStreamData(xattrName string, userXattrName string, data []byte) (body []byte, xattr []byte, userXattr []byte, err error) {
-
-	if len(data) < 4 {
-		return nil, nil, nil, base.ErrEmptyMetadata
+	xattrKeys := []string{base.SyncXattrName}
+	if userXattrKey != "" {
+		xattrKeys = append(xattrKeys, userXattrKey)
 	}
-
-	xattrsLen := binary.BigEndian.Uint32(data[0:4])
-	if int(xattrsLen+4) > len(data) {
-		return nil, nil, nil, fmt.Errorf("%w (%d) from bytes %+v", base.ErrXattrInvalidLen, xattrsLen, data[0:4])
+	body, xattrs, err := sgbucket.DecodeValueWithXattrs(xattrKeys, data)
+	if err != nil {
+		return nil, err
 	}
-	body = data[xattrsLen+4:]
-	if xattrsLen == 0 {
-		return body, nil, nil, nil
-	}
-
-	// In the xattr key/value pairs, key and value are both terminated by 0x00 (byte(0)).  Use this as a separator to split the byte slice
-	separator := []byte("\x00")
-
-	// Iterate over xattr key/value pairs
-	pos := uint32(4)
-	for pos < xattrsLen {
-		pairLen := binary.BigEndian.Uint32(data[pos : pos+4])
-		if pairLen == 0 || int(pos+pairLen) > len(data) {
-			return nil, nil, nil, fmt.Errorf("Unexpected xattr pair length (%d) - unable to parse xattrs", pairLen)
-		}
-		pos += 4
-		pairBytes := data[pos : pos+pairLen]
-		components := bytes.Split(pairBytes, separator)
-		// xattr pair has the format [key]0x00[value]0x00, and so should split into three components
-		if len(components) != 3 {
-			return nil, nil, nil, fmt.Errorf("Unexpected number of components found in xattr pair: %s", pairBytes)
-		}
-		xattrKey := string(components[0])
-		if xattrName == xattrKey {
-			xattr = components[1]
-		} else if userXattrName != "" && userXattrName == xattrKey {
-			userXattr = components[1]
-		}
-
-		// Exit if we have xattrs we want (either both or one if the latter is disabled)
-		if len(xattr) > 0 && (len(userXattr) > 0 || userXattrName == "") {
-			return body, xattr, userXattr, nil
-		}
-
-		pos += pairLen
-	}
-
-	return body, xattr, userXattr, nil
+	return unmarshalDocumentWithXattr(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[userXattrKey], cas, DocUnmarshalAll)
 }
 
 func (doc *SyncData) HasValidSyncData() bool {
