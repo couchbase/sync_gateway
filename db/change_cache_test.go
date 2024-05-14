@@ -10,7 +10,6 @@ package db
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
@@ -1952,42 +1951,6 @@ func (f *testDocChangedFeed) reset() {
 	}
 }
 
-// makeFeedBytes creates a DCP mutation message w/ xattr (reverse of parseXattrStreamData)
-func makeFeedBytes(xattrKey, xattrValue, docValue string) []byte {
-	xattrKeyBytes := []byte(xattrKey)
-	xattrValueBytes := []byte(xattrValue)
-	docValueBytes := []byte(docValue)
-	separator := []byte("\x00")
-
-	xattrBytes := xattrKeyBytes
-	xattrBytes = append(xattrBytes, separator...)
-	xattrBytes = append(xattrBytes, xattrValueBytes...)
-	xattrBytes = append(xattrBytes, separator...)
-	xattrLength := len(xattrBytes) + 4 // +4, to include storage for the length bytes
-
-	totalXattrLengthBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(totalXattrLengthBytes, uint32(xattrLength))
-	syncXattrLengthBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(syncXattrLengthBytes, uint32(xattrLength))
-
-	feedBytes := totalXattrLengthBytes
-	feedBytes = append(feedBytes, syncXattrLengthBytes...)
-	feedBytes = append(feedBytes, xattrBytes...)
-	feedBytes = append(feedBytes, docValueBytes...)
-	return feedBytes
-}
-
-func TestMakeFeedBytes(t *testing.T) {
-
-	rawBytes := makeFeedBytes(base.SyncPropertyName, `{"rev":"foo"}`, `{"k":"val"}`)
-
-	body, xattr, _, err := parseXattrStreamData(base.SyncXattrName, "", rawBytes)
-	assert.NoError(t, err)
-	require.Len(t, body, 11)
-	require.Len(t, xattr, 13)
-
-}
-
 func (f *testDocChangedFeed) Next() sgbucket.FeedEvent {
 
 	// Select the next sequence from a source at random.  Simulates unordered global sequences arriving over DCP
@@ -2005,8 +1968,7 @@ func (f *testDocChangedFeed) Next() sgbucket.FeedEvent {
 		channelName,
 	)
 	docBody := fmt.Sprintf(`{"channels":["%s"]}`, channelName)
-	// docBody := fmt.Sprintf(feedDoc1kFormat, channelName)
-	value := makeFeedBytes(base.SyncXattrName, xattrValue, docBody)
+	value := sgbucket.EncodeValueWithXattrs([]byte(docBody), sgbucket.Xattr{Name: base.SyncXattrName, Value: []byte(xattrValue)})
 
 	return sgbucket.FeedEvent{
 		Opcode:       sgbucket.FeedOpMutation,
@@ -2119,15 +2081,6 @@ func BenchmarkDocChanged(b *testing.B) {
 			// log.Printf("cachingCount: %v", changeCache.context.DbStats.StatsDatabase().Get(base.StatKeyDcpCachingCount))
 		})
 	}
-}
-
-func TestInvalidXattrStream(t *testing.T) {
-
-	body, xattr, userXattr, err := parseXattrStreamData(base.SyncXattrName, "", []byte("abcde"))
-	require.Error(t, err)
-	require.Nil(t, body)
-	require.Nil(t, xattr)
-	require.Nil(t, userXattr)
 }
 
 // TestProcessSkippedEntry:
