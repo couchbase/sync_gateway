@@ -264,7 +264,7 @@ func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *ba
 		} else {
 			purgeErr = dataStore.Delete(key)
 		}
-		if base.IsKeyNotFoundError(dataStore, purgeErr) {
+		if base.IsDocNotFoundError(purgeErr) {
 			// If key no longer exists, need to add and remove to trigger removal from view
 			_, addErr := dataStore.Add(key, 0, purgeBody)
 			if addErr != nil {
