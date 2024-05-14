@@ -54,10 +54,8 @@ github.com/couchbase/goprotostellar v1.0.2 h1:yoPbAL9sCtcyZ5e/DcU5PRMOEFaJrF9awX
 github.com/couchbase/goprotostellar v1.0.2/go.mod h1:5/yqVnZlW2/NSbAWu1hPJCFBEwjxgpe0PFFOlRixnp4=
 github.com/couchbase/goutils v0.1.2 h1:gWr8B6XNWPIhfalHNog3qQKfGiYyh4K4VhO3P2o9BCs=
 github.com/couchbase/goutils v0.1.2/go.mod h1:h89Ek/tiOxxqjz30nPPlwZdQbdB8BwgnuBxeoUe/ViE=
-github.com/couchbase/sg-bucket v0.0.0-20240514135815-5f5e7aa8625c h1:ftZeu97TaEWxBAINW2AaGNk3Icyg+/6XHs7OHnR23qQ=
-github.com/couchbase/sg-bucket v0.0.0-20240514135815-5f5e7aa8625c/go.mod h1:IQisEdcLRfS/pjSgmqG/8gerVm0Q7GrvpQtMIZ7oYt4=
-github.com/couchbase/sg-bucket v0.0.0-20240514223028-c60b57e39e26 h1:+3NTyrdEKxDQPycYPlfLxife5n7fMWWqSLvHH137+44=
-github.com/couchbase/sg-bucket v0.0.0-20240514223028-c60b57e39e26/go.mod h1:IQisEdcLRfS/pjSgmqG/8gerVm0Q7GrvpQtMIZ7oYt4=
+github.com/couchbase/sg-bucket v0.0.0-20240514232448-927889ef9624 h1:0vkmiPDRCNiJIv570e9DW1v0tqCQ4RHs3KiqGCB0X/4=
+github.com/couchbase/sg-bucket v0.0.0-20240514232448-927889ef9624/go.mod h1:IQisEdcLRfS/pjSgmqG/8gerVm0Q7GrvpQtMIZ7oYt4=
 github.com/couchbase/tools-common/cloud v1.0.0 h1:SQZIccXoedbrThehc/r9BJbpi/JhwJ8X00PDjZ2gEBE=
 github.com/couchbase/tools-common/cloud v1.0.0/go.mod h1:6KVlRpbcnDWrvickUJ+xpqCWx1vgYYlEli/zL4xmZAg=
 github.com/couchbase/tools-common/fs v1.0.0 h1:HFA4xCF/r3BtZShFJUxzVvGuXtDkqGnaPzYJP3Kp1mw=
