@@ -42,6 +42,7 @@ func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
 			streamID: mutation.StreamID,
 		},
 		seq:        mutation.SeqNo,
+		revNo:      mutation.RevNo,
 		flags:      mutation.Flags,
 		expiry:     mutation.Expiry,
 		cas:        mutation.Cas,
@@ -58,7 +59,6 @@ func (dc *DCPClient) Deletion(deletion gocbcore.DcpDeletion) {
 	if dc.filteredKey(deletion.Key) {
 		return
 	}
-
 	e := deletionEvent{
 		streamEventCommon: streamEventCommon{
 			vbID:     deletion.VbID,
@@ -66,6 +66,7 @@ func (dc *DCPClient) Deletion(deletion gocbcore.DcpDeletion) {
 		},
 		seq:        deletion.SeqNo,
 		cas:        deletion.Cas,
+		revNo:      deletion.RevNo,
 		datatype:   deletion.Datatype,
 		collection: deletion.CollectionID,
 		key:        deletion.Key,

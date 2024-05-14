@@ -666,3 +666,93 @@ func getCollectionIDs(t *testing.T, bucket *TestBucket) []uint32 {
 	return collectionIDs
 
 }
+
+func TestDCPFeedEventTypes(t *testing.T) {
+	TestRequiresGocbDCPClient(t)
+
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	collection := bucket.GetSingleDataStore()
+
+	// start one shot feed
+	var collectionIDs []uint32
+	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		collectionIDs = append(collectionIDs, collection.GetCollectionID())
+	}
+
+	clientOptions := DCPClientOptions{
+		CollectionIDs:    collectionIDs,
+		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+	}
+
+	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
+	require.NoError(t, err)
+
+	testOver := make(chan struct{})
+	docID := t.Name()
+	var dcpMutationCas uint64
+	var dcpMutationRevNo uint64
+	var dcpDeletionCas uint64
+	var dcpDeletionRevNo uint64
+	// create callback
+	callback := func(event sgbucket.FeedEvent) bool {
+		fmt.Printf("!! event: %+v\n", event)
+		// other doc events can happen from previous tests
+		if docID != string(event.Key) {
+			return true
+		}
+		switch event.Opcode {
+		case sgbucket.FeedOpMutation:
+			dcpMutationCas = event.Cas
+			dcpMutationRevNo = event.RevNo
+			require.NotEqual(t, uint64(0), dcpMutationCas)
+			require.NotEqual(t, uint64(0), dcpMutationRevNo)
+		case sgbucket.FeedOpDeletion:
+			defer close(testOver)
+
+			dcpDeletionCas = event.Cas
+			dcpDeletionRevNo = event.RevNo
+			// FIXME: I am surprised these values are zero
+			require.NotEqual(t, uint64(0), dcpDeletionCas)
+			require.NotEqual(t, uint64(0), dcpDeletionRevNo)
+		}
+		return true
+	}
+
+	dcpClient, err := NewDCPClient(ctx, t.Name(), callback, clientOptions, gocbv2Bucket)
+	require.NoError(t, err)
+
+	doneChan, startErr := dcpClient.Start()
+	require.NoError(t, startErr)
+
+	defer func() {
+		_ = dcpClient.Close() // extra close in case of early exit
+	}()
+	xattrName := "_xattr1"
+	xattrBody := []byte(`{"an": "xattr"}`)
+	writeMutationCas, err := collection.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{xattrName: xattrBody}, nil)
+	require.NoError(t, err)
+
+	deleteMutationCas, err := collection.Remove(docID, writeMutationCas)
+	require.NoError(t, err)
+
+	timeout := time.After(time.Second * 5)
+	select {
+	case <-testOver:
+		require.NoError(t, dcpClient.Close())
+	case <-timeout:
+		t.Fatalf("timeout waiting for doc write/deletion to complete")
+	}
+	require.NoError(t, <-doneChan)
+
+	xattrs, _, err := collection.GetXattrs(ctx, docID, []string{"_xattr1"})
+	require.NoError(t, err)
+	require.JSONEq(t, string(xattrBody), string(xattrs[xattrName]))
+
+	require.Equal(t, writeMutationCas, dcpMutationCas)
+	require.Equal(t, deleteMutationCas, dcpDeletionCas)
+	require.NotEqual(t, dcpMutationRevNo, dcpDeletionRevNo)
+
+}
