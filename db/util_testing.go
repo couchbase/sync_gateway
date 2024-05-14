@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -261,23 +260,19 @@ func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *ba
 		key := string(event.Key)
 
 		if base.TestUseXattrs() {
-			_, xattrsMap, decodeErr := sgbucket.DecodeValueWithAllXattrs(event.Value)
+			systemXattrNames, decodeErr := sgbucket.DecodeXattrNames(event.Value, true)
 			if decodeErr != nil {
 				purgeErrors = purgeErrors.Append(decodeErr)
-				tbp.Logf(ctx, "Error adding key %s to force deletion. %v", key, decodeErr)
+				tbp.Logf(ctx, "Error decoding DCP event xattrs for key %s.  %v", key, decodeErr)
+				return false
 			}
-			systemXattrs := make([]string, 0)
-			for xattrName, _ := range xattrsMap {
-				if strings.HasPrefix(xattrName, "_") {
-					systemXattrs = append(systemXattrs, xattrName)
-				}
-			}
-			if len(systemXattrs) > 0 {
-				purgeErr = dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName, base.VvXattrName})
+			if len(systemXattrNames) > 0 {
+				purgeErr = dataStore.DeleteWithXattrs(ctx, key, systemXattrNames)
 			} else {
 				purgeErr = dataStore.Delete(key)
 			}
 		} else {
+			purgeErr = dataStore.Delete(key)
 		}
 		if base.IsDocNotFoundError(purgeErr) {
 			// If key no longer exists, need to add and remove to trigger removal from view
