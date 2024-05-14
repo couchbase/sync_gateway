@@ -245,7 +245,7 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get the existing bucket doc
-		_, existingBucketDoc, err := collection.GetDocWithXattr(ctx, docID, DocUnmarshalAll)
+		_, existingBucketDoc, err := collection.GetDocWithXattrs(ctx, docID, DocUnmarshalAll)
 		require.NoError(t, err)
 
 		// Migrate document metadata from document body to system xattr.

@@ -924,7 +924,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	// Write another doc
 	_ = rt.PutDoc("mix-1", `{"channel":["ABC", "PBS", "HBO"]}`)
 
-	fetchedDoc, _, err := collection.GetDocWithXattr(ctx, "mix-1", db.DocUnmarshalSync)
+	fetchedDoc, _, err := collection.GetDocWithXattrs(ctx, "mix-1", db.DocUnmarshalSync)
 	require.NoError(t, err)
 	mixSource, mixVersion := fetchedDoc.HLV.GetCurrentVersion()
 

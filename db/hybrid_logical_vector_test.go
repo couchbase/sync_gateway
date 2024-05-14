@@ -279,10 +279,10 @@ func TestHLVImport(t *testing.T) {
 	standardImportBody := []byte(`{"prop":"value"}`)
 	cas, err := collection.dataStore.WriteCas(standardImportKey, 0, 0, standardImportBody, sgbucket.Raw)
 	require.NoError(t, err, "write error")
-	_, err = collection.ImportDocRaw(ctx, standardImportKey, standardImportBody, nil, nil, false, cas, nil, ImportFromFeed)
+	_, err = collection.ImportDocRaw(ctx, standardImportKey, standardImportBody, nil, false, cas, nil, ImportFromFeed)
 	require.NoError(t, err, "import error")
 
-	importedDoc, _, err := collection.GetDocWithXattr(ctx, standardImportKey, DocUnmarshalAll)
+	importedDoc, _, err := collection.GetDocWithXattrs(ctx, standardImportKey, DocUnmarshalAll)
 	require.NoError(t, err)
 	importedHLV := importedDoc.HLV
 	encodedCAS := string(base.Uint64CASToLittleEndianHex(cas))
@@ -293,19 +293,18 @@ func TestHLVImport(t *testing.T) {
 
 	// 2. Test import of write by HLV-aware peer (HLV is already updated, sync metadata is not).
 	otherSource := "otherSource"
-	hlvHelper := NewHLVAgent(t, collection.dataStore, otherSource, "_sync")
+	hlvHelper := NewHLVAgent(t, collection.dataStore, otherSource, "_vv")
 	existingHLVKey := "existingHLV_" + t.Name()
 	_ = hlvHelper.InsertWithHLV(ctx, existingHLVKey)
 
-	existingBody, existingXattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, existingHLVKey, []string{base.SyncXattrName})
+	existingBody, existingXattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, existingHLVKey, []string{base.SyncXattrName, base.VvXattrName})
 	require.NoError(t, err)
-	existingXattr := existingXattrs[base.SyncXattrName]
 	encodedCAS = EncodeValue(cas)
 
-	_, err = collection.ImportDocRaw(ctx, existingHLVKey, existingBody, existingXattr, nil, false, cas, nil, ImportFromFeed)
+	_, err = collection.ImportDocRaw(ctx, existingHLVKey, existingBody, existingXattrs, false, cas, nil, ImportFromFeed)
 	require.NoError(t, err, "import error")
 
-	importedDoc, _, err = collection.GetDocWithXattr(ctx, existingHLVKey, DocUnmarshalAll)
+	importedDoc, _, err = collection.GetDocWithXattrs(ctx, existingHLVKey, DocUnmarshalAll)
 	require.NoError(t, err)
 	importedHLV = importedDoc.HLV
 	// cas in the HLV's current version and cvCAS should not have changed, and should match importCAS

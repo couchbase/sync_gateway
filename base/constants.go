@@ -136,6 +136,7 @@ const (
 	SyncPropertyName = "_sync"
 	// SyncXattrName is used when storing sync data in a document's xattrs.
 	SyncXattrName = "_sync"
+	VvXattrName   = "_vv"
 
 	// Intended to be used in Meta Map and related tests
 	MetaMapXattrsKey = "xattrs"

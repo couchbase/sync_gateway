@@ -260,7 +260,7 @@ func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *ba
 		key := string(event.Key)
 
 		if base.TestUseXattrs() {
-			purgeErr = dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName})
+			purgeErr = dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName, base.VvXattrName})
 		} else {
 			purgeErr = dataStore.Delete(key)
 		}
