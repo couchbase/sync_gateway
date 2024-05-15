@@ -444,6 +444,90 @@ function sync(doc, oldDoc){
 	return db, ctx
 }
 
+// TestResyncMou ensures that resync updates create mou, and preserve pcas in mou in the case where resync is reprocessing an import
+func TestResyncMou(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
+	defer db.Close(ctx)
+	db.Options.QueryPaginationLimit = 100 // Required for principal ID query to not deadlock
+
+	initialImportCount := db.DbStats.SharedBucketImport().ImportCount.Value()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	docBody := Body{"foo": "bar"}
+
+	// Create a document via SGW.  mou should not be updated
+	_, doc, err := collection.Put(ctx, "sgWrite", docBody)
+	require.NoError(t, err)
+	sgWriteCas := doc.Cas
+
+	syncData, mou, _ := getSyncAndMou(t, collection, "sgWrite")
+	require.NotNil(t, syncData)
+	require.Nil(t, mou)
+
+	// 2. Create via the SDK
+	_, err = collection.dataStore.WriteCas("sdkWrite", 0, 0, docBody, 0)
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, initialImportCount+1)
+
+	syncData, initialSDKMou, _ := getSyncAndMou(t, collection, "sdkWrite")
+	require.NotNil(t, syncData)
+	require.NotNil(t, initialSDKMou)
+
+	// Update sync function
+	syncFn := `
+function sync(doc, oldDoc){
+	channel("resync_channel");
+}`
+	_, err = collection.UpdateSyncFun(ctx, syncFn)
+	require.NoError(t, err)
+
+	resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
+	require.NotNil(t, resyncMgr)
+
+	initialStats := getResyncStats(resyncMgr.Process)
+	log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
+
+	options := map[string]interface{}{
+		"database":            db,
+		"regenerateSequences": false,
+		"collections":         ResyncCollections{},
+	}
+
+	err = resyncMgr.Start(ctx, options)
+	require.NoError(t, err)
+
+	err = WaitForConditionWithOptions(t, func() bool {
+		var status BackgroundManagerStatus
+		rawStatus, _ := resyncMgr.GetStatus(ctx)
+		_ = json.Unmarshal(rawStatus, &status)
+		return status.State == BackgroundProcessStateCompleted
+	}, 200, 200)
+	require.NoError(t, err)
+
+	stats := getResyncStats(resyncMgr.Process)
+	// If there are tombstones from older docs which have been deleted from the bucket, processed docs will
+	// be greater than DocsChanged
+	assert.Equal(t, int64(2), stats.DocsChanged)
+
+	syncData, mou, _ = getSyncAndMou(t, collection, "sgWrite")
+	require.NotNil(t, syncData)
+	require.NotNil(t, mou)
+	require.Equal(t, base.CasToString(sgWriteCas), mou.PreviousCAS)
+
+	syncData, mou, _ = getSyncAndMou(t, collection, "sdkWrite")
+	require.NotNil(t, syncData)
+	require.NotNil(t, mou)
+	require.Equal(t, initialSDKMou.PreviousCAS, mou.PreviousCAS)
+	require.NotEqual(t, initialSDKMou.CAS, mou.CAS)
+}
+
 // helper function to Unmarshal BackgroundProcess state into ResyncManagerResponseDCP
 func getResyncStats(resyncManager BackgroundManagerProcessI) ResyncManagerResponseDCP {
 	var resp ResyncManagerResponseDCP

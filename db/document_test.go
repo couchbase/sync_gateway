@@ -136,7 +136,7 @@ func BenchmarkDocUnmarshal(b *testing.B) {
 		b.Run(bm.name, func(b *testing.B) {
 			ctx := base.TestCtx(b)
 			for i := 0; i < b.N; i++ {
-				_, _ = unmarshalDocumentWithXattr(ctx, "doc_1k", doc1k_body, doc1k_meta, nil, 1, bm.unmarshalLevel)
+				_, _ = unmarshalDocumentWithXattrs(ctx, "doc_1k", doc1k_body, doc1k_meta, nil, nil, 1, bm.unmarshalLevel)
 			}
 		})
 	}
@@ -301,17 +301,15 @@ func TestDCPDecodeValue(t *testing.T) {
 				require.Nil(t, xattrs)
 			}
 			// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
-			result, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(test.body, base.MemcachedDataTypeXattr, "", false)
+			result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(test.body, base.MemcachedDataTypeXattr, "", false)
 			require.ErrorIs(t, err, test.expectedErr)
 			if test.expectedSyncXattr != nil {
 				require.NotNil(t, result)
+				require.Equal(t, test.expectedSyncXattr, rawXattrs[base.SyncXattrName])
 			} else {
 				require.Nil(t, result)
 			}
 			require.Equal(t, test.expectedBody, rawBody)
-			require.Equal(t, test.expectedSyncXattr, rawXattr)
-			require.Nil(t, rawUserXattr)
-
 		})
 	}
 }
@@ -328,12 +326,11 @@ func TestInvalidXattrStreamEmptyBody(t *testing.T) {
 	require.Empty(t, xattrs)
 
 	// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
-	result, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(inputStream, base.MemcachedDataTypeXattr, "", false)
+	result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(inputStream, base.MemcachedDataTypeXattr, "", false)
 	require.Error(t, err) // unexpected end of JSON input
 	require.Nil(t, result)
 	require.Equal(t, emptyBody, rawBody)
-	require.Nil(t, rawXattr)
-	require.Nil(t, rawUserXattr)
+	require.Nil(t, rawXattrs[base.SyncXattrName])
 
 }
 

@@ -1004,6 +1004,10 @@ func HexCasToUint64(cas string) uint64 {
 	return binary.LittleEndian.Uint64(casBytes[0:8])
 }
 
+func CasToString(cas uint64) string {
+	return string(Uint64CASToLittleEndianHex(cas))
+}
+
 func Uint64CASToLittleEndianHex(cas uint64) []byte {
 	littleEndian := make([]byte, 8)
 	binary.LittleEndian.PutUint64(littleEndian, cas)

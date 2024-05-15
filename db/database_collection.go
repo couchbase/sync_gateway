@@ -261,6 +261,16 @@ func (c *DatabaseCollection) syncAndUserXattrKeys() []string {
 	return xattrKeys
 }
 
+// syncMouAndUserXattrKeys returns the xattr keys for the user, mou and sync xattrs.
+func (c *DatabaseCollection) syncMouAndUserXattrKeys() []string {
+	xattrKeys := []string{base.SyncXattrName, base.MouXattrName}
+	userXattrKey := c.userXattrKey()
+	if userXattrKey != "" {
+		xattrKeys = append(xattrKeys, userXattrKey)
+	}
+	return xattrKeys
+}
+
 // Returns the xattr key that will be accessible from the sync function. This is controlled at a database level.
 func (c *DatabaseCollection) userXattrKey() string {
 	return c.dbCtx.Options.UserXattrKey
