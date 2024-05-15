@@ -205,15 +205,12 @@ func CouchHTTPErrorName(status int) string {
 	return fmt.Sprintf("%d", status)
 }
 
-// Returns true if an error is a doc-not-found error
+// IsDocNotFoundError returns true if an error is a doc-not-found error
 func IsDocNotFoundError(err error) bool {
-
-	unwrappedErr := pkgerrors.Cause(err)
-	if unwrappedErr == nil {
+	if err == nil {
 		return false
 	}
-
-	if unwrappedErr == ErrNotFound {
+	if errors.Is(err, ErrNotFound) {
 		return true
 	}
 
@@ -221,11 +218,15 @@ func IsDocNotFoundError(err error) bool {
 		return true
 	}
 
+	var missingError sgbucket.MissingError
+	if errors.As(err, &missingError) {
+		return true
+	}
+	unwrappedErr := pkgerrors.Cause(err)
+
 	switch unwrappedErr := unwrappedErr.(type) {
 	case *gomemcached.MCResponse:
 		return unwrappedErr.Status == gomemcached.KEY_ENOENT || unwrappedErr.Status == gomemcached.NOT_STORED
-	case sgbucket.MissingError:
-		return true
 	case *HTTPError:
 		return unwrappedErr.Status == http.StatusNotFound
 	default:

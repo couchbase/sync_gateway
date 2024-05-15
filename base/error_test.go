@@ -154,27 +154,71 @@ func TestCouchHTTPErrorName(t *testing.T) {
 }
 
 func TestIsDocNotFoundError(t *testing.T) {
-
-	fakeMCResponse := &gomemcached.MCResponse{Status: gomemcached.KEY_ENOENT}
-	assert.True(t, IsDocNotFoundError(fakeMCResponse))
-
-	fakeMCResponse = &gomemcached.MCResponse{Status: gomemcached.NOT_STORED}
-	assert.True(t, IsDocNotFoundError(fakeMCResponse))
-
-	fakeMCResponse = &gomemcached.MCResponse{Status: gomemcached.ROLLBACK}
-	assert.False(t, IsDocNotFoundError(fakeMCResponse))
-
-	fakeMissingError := sgbucket.MissingError{}
-	assert.True(t, IsDocNotFoundError(fakeMissingError))
-
-	fakeHTTPError := &HTTPError{Status: http.StatusNotFound}
-	assert.True(t, IsDocNotFoundError(fakeHTTPError))
-
-	fakeHTTPError = &HTTPError{Status: http.StatusForbidden}
-	assert.False(t, IsDocNotFoundError(fakeHTTPError))
-
-	fakeSyntaxError := &json.SyntaxError{}
-	assert.False(t, IsDocNotFoundError(fakeSyntaxError))
+	testCases := []struct {
+		name          string
+		err           error
+		isDocNotFound bool
+	}{
+		{
+			name:          "gomemcached.MCResponse KEY_ENOENT",
+			err:           &gomemcached.MCResponse{Status: gomemcached.KEY_ENOENT},
+			isDocNotFound: true,
+		},
+		{
+			name:          "gomemcached.MCResponse NOT_STORED",
+			err:           &gomemcached.MCResponse{Status: gomemcached.NOT_STORED},
+			isDocNotFound: true,
+		},
+		{
+			name:          "gomemcached.MCResponse ROLLBACK",
+			err:           &gomemcached.MCResponse{Status: gomemcached.ROLLBACK},
+			isDocNotFound: false,
+		},
+		{
+			name:          "sgbucket.MissingError",
+			err:           sgbucket.MissingError{},
+			isDocNotFound: true,
+		},
+		{
+			name:          "HTTPError StatusNotFound",
+			err:           &HTTPError{Status: http.StatusNotFound},
+			isDocNotFound: true,
+		},
+		{
+			name:          "HTTPError StatusForbidden",
+			err:           &HTTPError{Status: http.StatusForbidden},
+			isDocNotFound: false,
+		},
+		{
+			name:          "json.SyntaxError",
+			err:           &json.SyntaxError{},
+			isDocNotFound: false,
+		},
+		{
+			name:          "nil",
+			err:           nil,
+			isDocNotFound: false,
+		},
+		{
+			name:          "other error",
+			err:           fmt.Errorf("some error"),
+			isDocNotFound: false,
+		},
+		{
+			name:          "sgbucket.MissingError with values",
+			err:           sgbucket.MissingError{Key: "key"},
+			isDocNotFound: true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			if test.isDocNotFound {
+				assert.True(t, IsDocNotFoundError(test.err))
+			} else {
+				assert.False(t, IsDocNotFoundError(test.err))
+			}
+		})
+	}
 }
 
 func TestMultiError(t *testing.T) {

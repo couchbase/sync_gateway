@@ -459,10 +459,6 @@ func (c *Collection) Exists(k string) (exists bool, err error) {
 	return res.Exists(), nil
 }
 
-func (c *Collection) IsError(err error, errorType sgbucket.DataStoreErrorType) bool {
-	return c.Bucket.IsError(err, errorType)
-}
-
 // SGJsonTranscoder reads and writes JSON, with relaxed datatype restrictions on decode, and
 // embedded support for writing raw JSON on encode
 type SGJSONTranscoder struct {

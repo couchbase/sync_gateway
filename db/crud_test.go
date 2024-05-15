@@ -410,7 +410,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Ensure previous revision body backup has been removed
 	_, _, err = db.MetadataStore.GetRaw(base.RevBodyPrefix + "4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
-	assert.True(t, base.IsKeyNotFoundError(collection.dataStore, err), "Revision should be not found")
+	base.RequireDocNotFoundError(t, err)
 
 	// Validate the tombstone is stored inline (due to small size)
 	revTree, err = getRevTreeList(ctx, collection.dataStore, "doc1", db.UseXattrs())
@@ -644,7 +644,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	// Ensure previous tombstone body backup has been removed
 	log.Printf("Verify revision body doc has been removed from bucket")
 	_, _, err = collection.dataStore.GetRaw(base.SyncDocPrefix + "rb:ULDLuEgDoKFJeET2hojeFANXM8SrHdVfAGONki+kPxM=")
-	assert.True(t, base.IsKeyNotFoundError(collection.dataStore, err), "Revision should be not found")
+	base.RequireDocNotFoundError(t, err)
 
 }
 

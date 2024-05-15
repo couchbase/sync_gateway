@@ -85,7 +85,7 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 
 		var value any
 		_, err = toDs.Get(syncDoc, &value)
-		require.True(t, base.IsKeyNotFoundError(toDs, err))
+		base.RequireDocNotFoundError(t, err)
 
 		// stats are not updated in real time, so we need to wait a bit
 		require.EventuallyWithT(t, func(c *assert.CollectT) {

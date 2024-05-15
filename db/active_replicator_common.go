@@ -389,7 +389,7 @@ func (arc *activeReplicatorCommon) startStatusReporter() error {
 func getLocalStatusDoc(ctx context.Context, metadataStore base.DataStore, statusKey string) (*ReplicationStatusDoc, error) {
 	statusDocBytes, err := getWithTouch(metadataStore, statusKey, 0)
 	if err != nil {
-		if !base.IsKeyNotFoundError(metadataStore, err) {
+		if !base.IsDocNotFoundError(err) {
 			return nil, err
 		}
 		base.DebugfCtx(ctx, base.KeyReplicate, "couldn't find existing local checkpoint for ID %q", statusKey)

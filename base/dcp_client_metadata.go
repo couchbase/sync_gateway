@@ -245,7 +245,7 @@ func (m *DCPMetadataCS) load(ctx context.Context, workerID int) {
 	var meta WorkerMetadata
 	_, err := m.dataStore.Get(m.getMetadataKey(workerID), &meta)
 	if err != nil {
-		if IsKeyNotFoundError(m.dataStore, err) {
+		if IsDocNotFoundError(err) {
 			return
 		}
 		InfofCtx(ctx, KeyDCP, "Error loading persisted metadata - metadata will be reset for worker %d: %s", workerID, err)
@@ -260,7 +260,7 @@ func (m *DCPMetadataCS) load(ctx context.Context, workerID int) {
 func (m *DCPMetadataCS) Purge(ctx context.Context, numWorkers int) {
 	for i := 0; i < numWorkers; i++ {
 		err := m.dataStore.Delete(m.getMetadataKey(i))
-		if err != nil && !IsKeyNotFoundError(m.dataStore, err) {
+		if err != nil && !IsDocNotFoundError(err) {
 			InfofCtx(ctx, KeyDCP, "Unable to remove DCP checkpoint for key %s: %v", m.getMetadataKey(i), err)
 		}
 	}

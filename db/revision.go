@@ -316,7 +316,7 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, do
 func (db *DatabaseCollectionWithUser) refreshPreviousRevisionBackup(ctx context.Context, docid string, revid string, body []byte, expiry uint32) error {
 
 	_, err := db.dataStore.Touch(oldRevisionKey(docid, revid), expiry)
-	if base.IsKeyNotFoundError(db.dataStore, err) && len(body) > 0 {
+	if base.IsDocNotFoundError(err) && len(body) > 0 {
 		return db.setOldRevisionJSON(ctx, docid, revid, body, expiry)
 	}
 	return err

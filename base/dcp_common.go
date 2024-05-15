@@ -189,7 +189,7 @@ func (c *DCPCommon) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStar
 	rawValue, _, err := c.metaStore.GetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo))
 	if err != nil {
 		// On a key not found error, metadata hasn't been persisted for this vbucket
-		if IsKeyNotFoundError(c.metaStore, err) {
+		if IsDocNotFoundError(err) {
 			return []byte{}, 0, 0, nil
 		} else {
 			return []byte{}, 0, 0, err

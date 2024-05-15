@@ -75,7 +75,7 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 	bucketKey := c.sgCfgBucketKey(cfgKey)
 	var value []byte
 	casOut, err := c.datastore.Get(bucketKey, &value)
-	if err != nil && !IsKeyNotFoundError(c.datastore, err) {
+	if err != nil && !IsDocNotFoundError(err) {
 		InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Get, key: %s, cas: %d, err: %v", cfgKey, cas, err)
 		return nil, 0, err
 	}
@@ -116,7 +116,7 @@ func (c *CfgSG) Del(cfgKey string, cas uint64) error {
 	_, err := c.datastore.Remove(bucketKey, cas)
 	if IsCasMismatch(err) {
 		return ErrCfgCasError
-	} else if err != nil && !IsKeyNotFoundError(c.datastore, err) {
+	} else if err != nil && !IsDocNotFoundError(err) {
 		return err
 	}
 

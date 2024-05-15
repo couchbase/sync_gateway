@@ -363,18 +363,6 @@ func (b *GocbV2Bucket) getConfigSnapshot() (*gocbcore.ConfigSnapshot, error) {
 	return config, nil
 }
 
-func (b *GocbV2Bucket) IsError(err error, errorType sgbucket.DataStoreErrorType) bool {
-	if err == nil {
-		return false
-	}
-	switch errorType {
-	case sgbucket.KeyNotFoundError:
-		return errors.Is(err, gocb.ErrDocumentNotFound)
-	default:
-		return false
-	}
-}
-
 func (b *GocbV2Bucket) GetSpec() BucketSpec {
 	return b.Spec
 }

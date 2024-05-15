@@ -374,7 +374,7 @@ func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, err err
 
 	var syncInfo SyncInfo
 	_, fetchErr := ds.Get(SGSyncInfo, &syncInfo)
-	if IsKeyNotFoundError(ds, fetchErr) {
+	if IsDocNotFoundError(fetchErr) {
 		if metadataID == "" {
 			return false, nil
 		}

@@ -320,20 +320,10 @@ func GetBucket(ctx context.Context, spec BucketSpec) (bucket Bucket, err error) 
 // If the given key is not found in the bucket, this function returns a result of zero.
 func GetCounter(datastore DataStore, k string) (result uint64, err error) {
 	_, err = datastore.Get(k, &result)
-	if datastore.IsError(err, sgbucket.KeyNotFoundError) {
+	if IsDocNotFoundError(err) {
 		return 0, nil
 	}
 	return result, err
-}
-
-func IsKeyNotFoundError(datastore DataStore, err error) bool {
-
-	if err == nil {
-		return false
-	}
-
-	unwrappedErr := pkgerrors.Cause(err)
-	return datastore.IsError(unwrappedErr, sgbucket.KeyNotFoundError)
 }
 
 func IsCasMismatch(err error) bool {

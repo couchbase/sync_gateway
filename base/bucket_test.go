@@ -532,8 +532,8 @@ func TestKeyNotFound(t *testing.T) {
 	ds := bucket.GetSingleDataStore()
 	var body []byte
 	_, getErr := ds.Get("nonexistentKey", &body)
-	require.True(t, IsKeyNotFoundError(ds, getErr))
+	RequireDocNotFoundError(t, getErr)
 
 	_, _, getRawErr := ds.GetRaw("nonexistentKey")
-	require.True(t, IsKeyNotFoundError(ds, getRawErr))
+	RequireDocNotFoundError(t, getRawErr)
 }
