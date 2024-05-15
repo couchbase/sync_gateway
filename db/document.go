@@ -38,7 +38,7 @@ const (
 	DocUnmarshalSync                                     // Unmarshals metadata
 	DocUnmarshalNoHistory                                // Unmarshals metadata excluding revtree history
 	DocUnmarshalHistory                                  // Unmarshals revtree history + rev + CAS only
-	DocUnmarshalRev                                      // Unmarshals rev + CAS only
+	DocUnmarshalRev                                      // Unmarshals revTreeID + CAS only (no HLV)
 	DocUnmarshalCAS                                      // Unmarshals CAS (for import check) only
 	DocUnmarshalNone                                     // No unmarshalling (skips import/upgrade check)
 )
