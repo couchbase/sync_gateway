@@ -137,7 +137,7 @@ func BenchmarkDocUnmarshal(b *testing.B) {
 		b.Run(bm.name, func(b *testing.B) {
 			ctx := base.TestCtx(b)
 			for i := 0; i < b.N; i++ {
-				_, _ = unmarshalDocumentWithXattr(ctx, "doc_1k", doc1k_body, doc1k_meta, nil, 1, bm.unmarshalLevel)
+				_, _ = unmarshalDocumentWithXattrs(ctx, "doc_1k", doc1k_body, doc1k_meta, nil, nil, 1, bm.unmarshalLevel)
 			}
 		})
 	}
@@ -192,7 +192,7 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 	}
 }
 
-const doc_meta_with_vv = `{
+const doc_meta_no_vv = `{
     "rev": "3-89758294abc63157354c2b08547c2d21",
     "sequence": 7,
     "recent_sequences": [
@@ -235,20 +235,21 @@ const doc_meta_with_vv = `{
       },
       "GHI": null
     },
-	"_vv":{
-   		"cvCas":"0x40e2010000000000",
-   		"src":"cb06dc003846116d9b66d2ab23887a96",
-   		"ver":"0x40e2010000000000",
-   		"mv":{
-      		"s_LhRPsa7CpjEvP5zeXTXEBA":"c0ff05d7ac059a16",
-      		"s_NqiIe0LekFPLeX4JvTO6Iw":"1c008cd6ac059a16"
-		},
-		"pv":{
-      		"s_YZvBpEaztom9z5V/hDoeIw":"f0ff44d6ac059a16"
-   		}
-	},
     "cas": "",
     "time_saved": "2017-10-25T12:45:29.622450174-07:00"
+  }`
+
+const doc_meta_vv = `{
+	"cvCas":"0x40e2010000000000",
+	"src":"cb06dc003846116d9b66d2ab23887a96",
+	"ver":"0x40e2010000000000",
+	"mv":{
+		"s_LhRPsa7CpjEvP5zeXTXEBA":"c0ff05d7ac059a16",
+		"s_NqiIe0LekFPLeX4JvTO6Iw":"1c008cd6ac059a16"
+	},
+	"pv":{
+		"s_YZvBpEaztom9z5V/hDoeIw":"f0ff44d6ac059a16"
+	}
   }`
 
 func TestParseVersionVectorSyncData(t *testing.T) {
@@ -260,8 +261,9 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 
-	doc_meta := []byte(doc_meta_with_vv)
-	doc, err := unmarshalDocumentWithXattr(ctx, "doc_1k", nil, doc_meta, nil, 1, DocUnmarshalNoHistory)
+	sync_meta := []byte(doc_meta_no_vv)
+	vv_meta := []byte(doc_meta_vv)
+	doc, err := unmarshalDocumentWithXattrs(ctx, "doc_1k", nil, sync_meta, vv_meta, nil, 1, DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
 	strCAS := string(base.Uint64CASToLittleEndianHex(123456))
@@ -272,7 +274,7 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
 
-	doc, err = unmarshalDocumentWithXattr(ctx, "doc1", nil, doc_meta, nil, 1, DocUnmarshalAll)
+	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, 1, DocUnmarshalAll)
 	require.NoError(t, err)
 
 	// assert on doc version vector values
@@ -282,7 +284,7 @@ func TestParseVersionVectorSyncData(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(mv, doc.SyncData.HLV.MergeVersions))
 	assert.True(t, reflect.DeepEqual(pv, doc.SyncData.HLV.PreviousVersions))
 
-	doc, err = unmarshalDocumentWithXattr(ctx, "doc1", nil, doc_meta, nil, 1, DocUnmarshalNoHistory)
+	doc, err = unmarshalDocumentWithXattrs(ctx, "doc1", nil, sync_meta, vv_meta, nil, 1, DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
 	// assert on doc version vector values
@@ -347,32 +349,22 @@ func TestRevAndVersion(t *testing.T) {
 			require.NoError(t, err)
 			log.Printf("marshalled:%s", marshalledSyncData)
 
-			var newSyncData SyncData
-			err = base.JSONUnmarshal(marshalledSyncData, &newSyncData)
-			require.NoError(t, err)
-			require.Equal(t, test.revTreeID, newSyncData.CurrentRev)
-			require.Equal(t, expectedSequence, newSyncData.Sequence)
-			if test.source != "" {
-				require.NotNil(t, newSyncData.HLV)
-				require.Equal(t, test.source, newSyncData.HLV.SourceID)
-				require.Equal(t, test.version, newSyncData.HLV.Version)
-			}
-
 			// Document test
 			document := NewDocument("docID")
 			document.SyncData.CurrentRev = test.revTreeID
+			document.SyncData.Sequence = expectedSequence
 			document.SyncData.HLV = &HybridLogicalVector{
 				SourceID: test.source,
 				Version:  test.version,
 			}
-			marshalledDoc, marshalledXattr, err := document.MarshalWithXattr()
+			marshalledDoc, marshalledXattr, marshalledVvXattr, err := document.MarshalWithXattrs()
 			require.NoError(t, err)
 
 			newDocument := NewDocument("docID")
-			err = newDocument.UnmarshalWithXattr(ctx, marshalledDoc, marshalledXattr, DocUnmarshalAll)
+			err = newDocument.UnmarshalWithXattrs(ctx, marshalledDoc, marshalledXattr, marshalledVvXattr, DocUnmarshalAll)
 			require.NoError(t, err)
 			require.Equal(t, test.revTreeID, newDocument.CurrentRev)
-			require.Equal(t, expectedSequence, newSyncData.Sequence)
+			require.Equal(t, expectedSequence, newDocument.Sequence)
 			if test.source != "" {
 				require.NotNil(t, newDocument.HLV)
 				require.Equal(t, test.source, newDocument.HLV.SourceID)
@@ -493,17 +485,15 @@ func TestDCPDecodeValue(t *testing.T) {
 				require.Nil(t, xattrs)
 			}
 			// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
-			result, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(test.body, base.MemcachedDataTypeXattr, "", false)
+			result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(test.body, base.MemcachedDataTypeXattr, "", false)
 			require.ErrorIs(t, err, test.expectedErr)
 			if test.expectedSyncXattr != nil {
 				require.NotNil(t, result)
+				require.Equal(t, test.expectedSyncXattr, rawXattrs[base.SyncXattrName])
 			} else {
 				require.Nil(t, result)
 			}
 			require.Equal(t, test.expectedBody, rawBody)
-			require.Equal(t, test.expectedSyncXattr, rawXattr)
-			require.Nil(t, rawUserXattr)
-
 		})
 	}
 }
@@ -514,19 +504,17 @@ func TestInvalidXattrStreamEmptyBody(t *testing.T) {
 	emptyBody := []byte{}
 
 	// DecodeValueWithXattrs is the underlying function
-	body, xattrs, err := sgbucket.DecodeValueWithXattrs([]string{"_sync"}, inputStream)
+	body, xattrs, err := sgbucket.DecodeValueWithXattrs([]string{base.SyncXattrName}, inputStream)
 	require.NoError(t, err)
 	require.Equal(t, emptyBody, body)
 	require.Empty(t, xattrs)
 
 	// UnmarshalDocumentSyncData wraps DecodeValueWithXattrs
-	result, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(inputStream, base.MemcachedDataTypeXattr, "", false)
+	result, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(inputStream, base.MemcachedDataTypeXattr, "", false)
 	require.Error(t, err) // unexpected end of JSON input
 	require.Nil(t, result)
 	require.Equal(t, emptyBody, rawBody)
-	require.Nil(t, rawXattr)
-	require.Nil(t, rawUserXattr)
-
+	require.Nil(t, rawXattrs[base.SyncXattrName])
 }
 
 // getSingleXattrDCPBytes returns a DCP body with a single xattr pair and body

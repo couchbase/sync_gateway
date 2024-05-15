@@ -260,7 +260,17 @@ func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *ba
 		key := string(event.Key)
 
 		if base.TestUseXattrs() {
-			purgeErr = dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName})
+			systemXattrNames, decodeErr := sgbucket.DecodeXattrNames(event.Value, true)
+			if decodeErr != nil {
+				purgeErrors = purgeErrors.Append(decodeErr)
+				tbp.Logf(ctx, "Error decoding DCP event xattrs for key %s.  %v", key, decodeErr)
+				return false
+			}
+			if len(systemXattrNames) > 0 {
+				purgeErr = dataStore.DeleteWithXattrs(ctx, key, systemXattrNames)
+			} else {
+				purgeErr = dataStore.Delete(key)
+			}
 		} else {
 			purgeErr = dataStore.Delete(key)
 		}

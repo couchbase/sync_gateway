@@ -1739,15 +1739,17 @@ func TestPutRevV4(t *testing.T) {
 	defer bt.Close()
 	collection := bt.restTester.GetSingleTestDatabaseCollection()
 
+	docID := t.Name()
+
 	// 1. Send rev with history
 	history := "1@def, 2@abc"
-	sent, _, resp, err := bt.SendRev("foo", db.EncodeTestVersion("3@efg"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(history)})
+	sent, _, resp, err := bt.SendRev(docID, db.EncodeTestVersion("3@efg"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(history)})
 	assert.True(t, sent)
 	require.NoError(t, err)
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Validate against the bucket doc's HLV
-	doc, _, err := collection.GetDocWithXattr(base.TestCtx(t), "foo", db.DocUnmarshalNoHistory)
+	doc, _, err := collection.GetDocWithXattrs(base.TestCtx(t), docID, db.DocUnmarshalNoHistory)
 	require.NoError(t, err)
 	pv, _ := db.ParseTestHistory(t, history)
 	db.RequireCVEqual(t, doc.HLV, "3@efg")
@@ -1755,13 +1757,13 @@ func TestPutRevV4(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
 
 	// 2. Update the document with a non-conflicting revision, where only cv is updated
-	sent, _, resp, err = bt.SendRev("foo", db.EncodeTestVersion("4@efg"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(history)})
+	sent, _, resp, err = bt.SendRev(docID, db.EncodeTestVersion("4@efg"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(history)})
 	assert.True(t, sent)
 	require.NoError(t, err)
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Validate against the bucket doc's HLV
-	doc, _, err = collection.GetDocWithXattr(base.TestCtx(t), "foo", db.DocUnmarshalNoHistory)
+	doc, _, err = collection.GetDocWithXattrs(base.TestCtx(t), docID, db.DocUnmarshalNoHistory)
 	require.NoError(t, err)
 	db.RequireCVEqual(t, doc.HLV, "4@efg")
 	assert.Equal(t, db.EncodeValue(doc.Cas), doc.HLV.CurrentVersionCAS)
@@ -1769,13 +1771,13 @@ func TestPutRevV4(t *testing.T) {
 
 	// 3. Update the document again with a non-conflicting revision from a different source (previous cv moved to pv)
 	updatedHistory := "1@def, 2@abc, 4@efg"
-	sent, _, resp, err = bt.SendRev("foo", db.EncodeTestVersion("1@jkl"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(updatedHistory)})
+	sent, _, resp, err = bt.SendRev(docID, db.EncodeTestVersion("1@jkl"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(updatedHistory)})
 	assert.True(t, sent)
 	require.NoError(t, err)
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Validate against the bucket doc's HLV
-	doc, _, err = collection.GetDocWithXattr(base.TestCtx(t), "foo", db.DocUnmarshalNoHistory)
+	doc, _, err = collection.GetDocWithXattrs(base.TestCtx(t), docID, db.DocUnmarshalNoHistory)
 	require.NoError(t, err)
 	pv, _ = db.ParseTestHistory(t, updatedHistory)
 	db.RequireCVEqual(t, doc.HLV, "1@jkl")
@@ -1784,13 +1786,13 @@ func TestPutRevV4(t *testing.T) {
 
 	// 4. Update the document again with a non-conflicting revision from a different source, and additional sources in history (previous cv moved to pv, and pv expanded)
 	updatedHistory = "1@def, 2@abc, 4@efg, 1@jkl, 1@mmm"
-	sent, _, resp, err = bt.SendRev("foo", db.EncodeTestVersion("1@nnn"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(updatedHistory)})
+	sent, _, resp, err = bt.SendRev(docID, db.EncodeTestVersion("1@nnn"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(updatedHistory)})
 	assert.True(t, sent)
 	require.NoError(t, err)
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Validate against the bucket doc's HLV
-	doc, _, err = collection.GetDocWithXattr(base.TestCtx(t), "foo", db.DocUnmarshalNoHistory)
+	doc, _, err = collection.GetDocWithXattrs(base.TestCtx(t), docID, db.DocUnmarshalNoHistory)
 	require.NoError(t, err)
 	pv, _ = db.ParseTestHistory(t, updatedHistory)
 	db.RequireCVEqual(t, doc.HLV, "1@nnn")
@@ -1798,20 +1800,21 @@ func TestPutRevV4(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(pv, doc.HLV.PreviousVersions))
 
 	// 5. Attempt to update the document again with a conflicting revision from a different source (previous cv not in pv), expect conflict
-	sent, _, resp, err = bt.SendRev("foo", db.EncodeTestVersion("1@pqr"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(updatedHistory)})
+	sent, _, resp, err = bt.SendRev(docID, db.EncodeTestVersion("1@pqr"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(updatedHistory)})
 	assert.True(t, sent)
 	require.Error(t, err)
 	assert.Equal(t, "409", resp.Properties["Error-Code"])
 
 	// 6. Test sending rev with merge versions included in history (note new key)
+	newDocID := t.Name() + "_2"
 	mvHistory := "3@def, 3@abc; 1@def, 2@abc"
-	sent, _, resp, err = bt.SendRev("boo", db.EncodeTestVersion("3@efg"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(mvHistory)})
+	sent, _, resp, err = bt.SendRev(newDocID, db.EncodeTestVersion("3@efg"), []byte(`{"key": "val"}`), blip.Properties{"history": db.EncodeTestHistory(mvHistory)})
 	assert.True(t, sent)
 	require.NoError(t, err)
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// assert on bucket doc
-	doc, _, err = collection.GetDocWithXattr(base.TestCtx(t), "boo", db.DocUnmarshalNoHistory)
+	doc, _, err = collection.GetDocWithXattrs(base.TestCtx(t), newDocID, db.DocUnmarshalNoHistory)
 	require.NoError(t, err)
 
 	pv, mv := db.ParseTestHistory(t, mvHistory)
@@ -2043,13 +2046,13 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 
 		const docID = "doc1"
 		otherSource := "otherSource"
-		hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_sync")
+		hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv")
 		existingHLVKey := "doc1"
 		cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey)
 
 		// force import of this write
 		_, _ = rt.GetDoc(docID)
-		bucketDoc, _, err := collection.GetDocWithXattr(ctx, docID, db.DocUnmarshalAll)
+		bucketDoc, _, err := collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalAll)
 		require.NoError(t, err)
 
 		// create doc version of the above doc write

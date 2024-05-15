@@ -60,7 +60,7 @@ func TestMigrateMetadata(t *testing.T) {
 	assert.NoError(t, err, "Error writing doc w/ expiry")
 
 	// Get the existing bucket doc
-	_, existingBucketDoc, err := collection.GetDocWithXattr(ctx, key, DocUnmarshalAll)
+	_, existingBucketDoc, err := collection.GetDocWithXattrs(ctx, key, DocUnmarshalAll)
 	require.NoError(t, err)
 	// Set the expiry value to a stale value (it's about to be stale, since below it will get updated to a later value)
 	existingBucketDoc.Expiry = uint32(syncMetaExpiry.Unix())
@@ -91,6 +91,70 @@ func TestMigrateMetadata(t *testing.T) {
 	)
 	assert.True(t, err != nil)
 	assert.True(t, err == base.ErrCasFailureShouldRetry)
+
+}
+
+// Tests metadata migration where a document with inline sync data has been replicated by XDCR, so also has an
+// existing HLV.  Migration should preserve the existing HLV while moving doc._sync to sync xattr
+func TestMigrateMetadataWithHLV(t *testing.T) {
+
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+
+	key := "TestMigrateMetadata"
+	bodyBytes := rawDocWithSyncMeta()
+	body := Body{}
+	err := body.Unmarshal(bodyBytes)
+	assert.NoError(t, err, "Error unmarshalling body")
+
+	hlv := &HybridLogicalVector{}
+	require.NoError(t, hlv.AddVersion(CreateVersion("source123", base.CasToString(100))))
+	hlv.CurrentVersionCAS = base.CasToString(100)
+	hlvBytes := base.MustJSONMarshal(t, hlv)
+	xattrBytes := map[string][]byte{
+		base.VvXattrName: hlvBytes,
+	}
+
+	// Create via the SDK with inline sync metadata and an existing _vv xattr
+	_, err = collection.dataStore.WriteWithXattrs(ctx, key, 0, 0, bodyBytes, xattrBytes, nil)
+	require.NoError(t, err)
+
+	// Get the existing bucket doc
+	_, existingBucketDoc, err := collection.GetDocWithXattrs(ctx, key, DocUnmarshalAll)
+	require.NoError(t, err)
+
+	// Migrate metadata
+	_, _, err = collection.migrateMetadata(
+		ctx,
+		key,
+		body,
+		existingBucketDoc,
+		&sgbucket.MutateInOptions{PreserveExpiry: false},
+	)
+	require.NoError(t, err)
+
+	// Fetch the existing doc, ensure _vv is preserved
+	var migratedHLV *HybridLogicalVector
+	_, migratedBucketDoc, err := collection.GetDocWithXattrs(ctx, key, DocUnmarshalAll)
+	require.NoError(t, err)
+	migratedHLVBytes, ok := migratedBucketDoc.Xattrs[base.VvXattrName]
+	require.True(t, ok)
+	require.NoError(t, base.JSONUnmarshal(migratedHLVBytes, &migratedHLV))
+	require.Equal(t, hlv.Version, migratedHLV.Version)
+	require.Equal(t, hlv.SourceID, migratedHLV.SourceID)
+	require.Equal(t, hlv.CurrentVersionCAS, migratedHLV.CurrentVersionCAS)
+
+	migratedSyncXattrBytes, ok := migratedBucketDoc.Xattrs[base.SyncXattrName]
+	require.True(t, ok)
+	require.NotZero(t, len(migratedSyncXattrBytes))
 
 }
 
@@ -153,7 +217,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			assert.NoError(t, err, "Error writing doc w/ expiry")
 
 			// Get the existing bucket doc
-			_, existingBucketDoc, err := collection.GetDocWithXattr(ctx, key, DocUnmarshalAll)
+			_, existingBucketDoc, err := collection.GetDocWithXattrs(ctx, key, DocUnmarshalAll)
 			assert.NoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
 
 			body = Body{}
@@ -321,7 +385,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Get the existing bucket doc
-			_, existingBucketDoc, err = collection.GetDocWithXattr(ctx, testcase.docname, DocUnmarshalAll)
+			_, existingBucketDoc, err = collection.GetDocWithXattrs(ctx, testcase.docname, DocUnmarshalAll)
 			assert.NoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
 
 			importD := `{"new":"Val"}`
@@ -418,8 +482,10 @@ func TestImportNullDocRaw(t *testing.T) {
 
 	// Feed import of null doc
 	exp := uint32(0)
-
-	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), []byte("{}"), nil, false, 1, &exp, ImportFromFeed)
+	xattrs := map[string][]byte{
+		base.SyncXattrName: []byte("{}"),
+	}
+	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, false, 1, &exp, ImportFromFeed)
 	assert.Equal(t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
