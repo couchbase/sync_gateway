@@ -2255,6 +2255,9 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 			var rawSyncXattr, rawVvXattr, rawDocBody []byte
 			rawDocBody, rawSyncXattr, rawVvXattr, err = doc.MarshalWithXattrs()
+			if err != nil {
+				return updatedDoc, err
+			}
 			if !isImport {
 				updatedDoc.Doc = rawDocBody
 				docBytes = len(updatedDoc.Doc)

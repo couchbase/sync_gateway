@@ -403,7 +403,7 @@ func unmarshalDocument(docid string, data []byte) (*Document, error) {
 
 func unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte, syncXattrData []byte, hlvXattrData []byte, userXattrData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 
-	if (syncXattrData == nil || len(syncXattrData) == 0) && hlvXattrData == nil {
+	if len(syncXattrData) == 0 && len(hlvXattrData) == 0 {
 		// If no xattr data, unmarshal as standard doc
 		doc, err = unmarshalDocument(docid, data)
 	} else {
