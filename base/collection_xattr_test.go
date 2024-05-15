@@ -1116,7 +1116,7 @@ func TestWriteWithXattrs(t *testing.T) {
 
 	col := bucket.DefaultDataStore()
 
-	tests := []struct {
+	type testCase struct {
 		name           string
 		body           []byte
 		cas            uint64
@@ -1124,7 +1124,9 @@ func TestWriteWithXattrs(t *testing.T) {
 		xattrsToDelete []string
 		errorIs        error
 		errorFunc      func(testing.TB, error)
-	}{
+	}
+
+	tests := []testCase{
 		{
 			name: "body=true,xattrs=nil,xattrsToDelete=nil,cas=0",
 			body: []byte(`{"foo": "bar"}`),
@@ -1133,7 +1135,7 @@ func TestWriteWithXattrs(t *testing.T) {
 			name:      "body=true,xattrs=nil,xattrsToDelete=nil,cas=1",
 			body:      []byte(`{"foo": "bar"}`),
 			cas:       uint64(1),
-			errorFunc: requireCasMismatchError,
+			errorFunc: requireDocNotFoundOrCasMismatchError,
 		},
 		{
 			name:           "body=true,xattrs=nil,xattrsToDelete=xattr1,cas=0",
@@ -1146,20 +1148,7 @@ func TestWriteWithXattrs(t *testing.T) {
 			body:           []byte(`{"foo": "bar"}`),
 			xattrsToDelete: []string{"xattr1"},
 			cas:            uint64(1),
-			errorFunc:      requireCasMismatchError,
-		},
-		{
-			name:           "body=true,xattrs=nil,xattrsToDelete=xattr1,xattr2,cas=0",
-			body:           []byte(`{"foo": "bar"}`),
-			xattrsToDelete: []string{"xattr1", "xattr2"},
-			errorIs:        sgbucket.ErrDeleteXattrOnDocumentInsert,
-		},
-		{
-			name:           "body=true,xattrs=nil,xattrsToDelete=xattr1,xattr2,cas=1",
-			body:           []byte(`{"foo": "bar"}`),
-			xattrsToDelete: []string{"xattr1", "xattr2"},
-			cas:            uint64(1),
-			errorFunc:      requireCasMismatchError,
+			errorFunc:      requireDocNotFoundOrCasMismatchError,
 		},
 		{
 			name:           "body=true,xattrs=xattr1,xattrsToDelete=xattr1,cas=0",
@@ -1177,21 +1166,6 @@ func TestWriteWithXattrs(t *testing.T) {
 			errorIs:        sgbucket.ErrUpsertAndDeleteSameXattr,
 		},
 		{
-			name:           "body=true,xattrs=xattr1,xattrsToDelete=xattr1,xattr2,cas=0",
-			body:           []byte(`{"foo": "bar"}`),
-			xattrs:         map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
-			xattrsToDelete: []string{"xattr1", "xattr2"},
-			errorIs:        sgbucket.ErrDeleteXattrOnDocumentInsert,
-		},
-		{
-			name:           "body=true,xattrs=xattr1,xattrsToDelete=xattr1,xattr2,cas=1",
-			body:           []byte(`{"foo": "bar"}`),
-			xattrs:         map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
-			xattrsToDelete: []string{"xattr1", "xattr2"},
-			cas:            uint64(1),
-			errorIs:        sgbucket.ErrUpsertAndDeleteSameXattr,
-		},
-		{
 			name:   "body=true,xattrs=xattr1,xattrsToDelete=nil,cas=0",
 			body:   []byte(`{"foo": "bar"}`),
 			xattrs: map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
@@ -1201,7 +1175,7 @@ func TestWriteWithXattrs(t *testing.T) {
 			body:      []byte(`{"foo": "bar"}`),
 			xattrs:    map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
 			cas:       uint64(1),
-			errorFunc: requireCasMismatchError,
+			errorFunc: requireDocNotFoundOrCasMismatchError,
 		},
 		{
 			name:    "xattr_nil_value",
@@ -1210,10 +1184,43 @@ func TestWriteWithXattrs(t *testing.T) {
 			errorIs: sgbucket.ErrNilXattrValue,
 		},
 	}
+	if bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		tests = append(tests, []testCase{
+			{
+				name:           "body=true,xattrs=nil,xattrsToDelete=xattr1,xattr2,cas=0",
+				body:           []byte(`{"foo": "bar"}`),
+				xattrsToDelete: []string{"xattr1", "xattr2"},
+				errorIs:        sgbucket.ErrDeleteXattrOnDocumentInsert,
+			},
+			{
+				name:           "body=true,xattrs=nil,xattrsToDelete=xattr1,xattr2,cas=1",
+				body:           []byte(`{"foo": "bar"}`),
+				xattrsToDelete: []string{"xattr1", "xattr2"},
+				cas:            uint64(1),
+				errorFunc:      requireDocNotFoundOrCasMismatchError,
+			},
+			{
+				name:           "body=true,xattrs=xattr1,xattrsToDelete=xattr1,xattr2,cas=0",
+				body:           []byte(`{"foo": "bar"}`),
+				xattrs:         map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
+				xattrsToDelete: []string{"xattr1", "xattr2"},
+				errorIs:        sgbucket.ErrDeleteXattrOnDocumentInsert,
+			},
+
+			{
+				name:           "body=true,xattrs=xattr1,xattrsToDelete=xattr1,xattr2,cas=1",
+				body:           []byte(`{"foo": "bar"}`),
+				xattrs:         map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
+				xattrsToDelete: []string{"xattr1", "xattr2"},
+				cas:            uint64(1),
+				errorIs:        sgbucket.ErrUpsertAndDeleteSameXattr,
+			},
+		}...)
+	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if test.errorFunc != nil && test.errorIs != nil {
-				require.FailNow(t, "test case should specify errFunc xor errorIs")
+				require.FailNow(t, "test case should specify errFunc  xor errorIs")
 			}
 			docID := t.Name()
 			cas, err := col.WriteWithXattrs(ctx, docID, 0, test.cas, test.body, test.xattrs, test.xattrsToDelete, nil)

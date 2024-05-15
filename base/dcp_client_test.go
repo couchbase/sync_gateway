@@ -714,7 +714,6 @@ func TestDCPFeedEventTypes(t *testing.T) {
 
 			dcpDeletionCas = event.Cas
 			dcpDeletionRevNo = event.RevNo
-			// FIXME: I am surprised these values are zero
 			require.NotEqual(t, uint64(0), dcpDeletionCas)
 			require.NotEqual(t, uint64(0), dcpDeletionRevNo)
 		}
@@ -732,7 +731,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 	}()
 	xattrName := "_xattr1"
 	xattrBody := []byte(`{"an": "xattr"}`)
-	writeMutationCas, err := collection.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{xattrName: xattrBody}, nil)
+	writeMutationCas, err := collection.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{xattrName: xattrBody}, nil, nil)
 	require.NoError(t, err)
 
 	deleteMutationCas, err := collection.Remove(docID, writeMutationCas)

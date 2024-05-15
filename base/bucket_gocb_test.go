@@ -2583,7 +2583,7 @@ func requireXattrNotFoundError(t *testing.T, err error) {
 	assert.True(t, IsXattrNotFoundError(err), "Expected an XattrMissingError but got %v", err)
 }
 
-func TestWriteUpdateWithXattrsDeleteXattrsOnTombstoneRessurection(t *testing.T) {
+func TestWriteUpdateWithXattrsDeleteXattrsOnTombstoneResurrection(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 
 	ctx := TestCtx(t)

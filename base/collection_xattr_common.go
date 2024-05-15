@@ -61,9 +61,9 @@ func (c *Collection) WriteWithXattrs(ctx context.Context, k string, exp uint32, 
 	}
 
 	// Kick off retry loop
-	err, cas = RetryLoopCas(ctx, "WriteCasWithXattr", worker, DefaultRetrySleeper())
+	err, cas = RetryLoopCas(ctx, "WriteWithXattrs", worker, DefaultRetrySleeper())
 	if err != nil {
-		err = pkgerrors.Wrapf(err, "WriteCasWithXattr with key %v", UD(k).Redact())
+		err = pkgerrors.Wrapf(err, "WriteWithXattrs with key %v", UD(k).Redact())
 	}
 
 	return cas, err
@@ -259,7 +259,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 			err := RedactErrorf("Stopping an infinite loop trying to update doc with xattr for key=%s, xattrKeys=%s", UD(k), UD(xattrKeys))
 			WarnfCtx(ctx, "%s", err)
 			return 0, err
-		} else if IsCasMismatch(writeErr) {
+		} else if IsDocNotFoundError(writeErr) || IsCasMismatch(writeErr) {
 			// Retry on cas failure.  ErrNotStored is returned in some concurrent insert races that appear to be related
 			// to the timing of concurrent xattr subdoc operations.  Treating as CAS failure as these will get the usual
 			// conflict/duplicate handling on retry.
