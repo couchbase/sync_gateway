@@ -35,7 +35,7 @@ func (h *handler) handleGetAllChannels() error {
 		keyspace := dsName.ScopeName() + "." + dsName.CollectionName()
 
 		resp[keyspace] = make(map[string]auth.GrantHistory)
-		channels := user.CollectionChannels(dsName.ScopeName(), dsName.CollectionName())
+		channels := user.InheritedCollectionChannels(dsName.ScopeName(), dsName.CollectionName())
 		chanHistory := user.CollectionChannelHistory(dsName.ScopeName(), dsName.CollectionName())
 		for chanName, chanEntry := range channels {
 			resp[keyspace][chanName] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.Sequence, EndSeq: 0}}}
@@ -43,10 +43,9 @@ func (h *handler) handleGetAllChannels() error {
 		for chanName, chanEntry := range chanHistory {
 			chanHistoryEntry := auth.GrantHistory{Entries: chanEntry.Entries, UpdatedAt: chanEntry.UpdatedAt}
 			// if channel is also in history, append current entry to history entries
-			if _, chanCurrentlyAssigned := resp[chanName]; chanCurrentlyAssigned {
+			if _, chanCurrentlyAssigned := resp[keyspace][chanName]; chanCurrentlyAssigned {
 				var newEntries []auth.GrantHistorySequencePair
-				copy(newEntries, chanHistory[chanName].Entries)
-				newEntries = append(newEntries, chanEntry.Entries...)
+				newEntries = append(chanEntry.Entries, resp[keyspace][chanName].Entries...)
 				chanHistoryEntry.Entries = newEntries
 			}
 			resp[keyspace][chanName] = chanHistoryEntry
