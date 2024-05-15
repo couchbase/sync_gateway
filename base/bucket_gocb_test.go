@@ -2583,61 +2583,15 @@ func requireXattrNotFoundError(t *testing.T, err error) {
 	assert.True(t, IsXattrNotFoundError(err), "Expected an XattrMissingError but got %v", err)
 }
 
-func TestWriteUpdateWithXattrsDeleteXattrsOnTombstoneResurrection(t *testing.T) {
-	SkipXattrTestsIfNotEnabled(t)
-
-	ctx := TestCtx(t)
-	bucket := GetTestBucket(t)
-	defer bucket.Close(ctx)
-	dataStore := bucket.GetSingleDataStore()
-	key := t.Name()
-
-	tests := []struct {
-		name       string
-		body       []byte
-		xattrs     map[string][]byte
-		updatedDoc sgbucket.UpdatedDoc
-		errorIs    error
-	}{
-		{
-			name: "delete xattr on tombstone resurection",
-			body: []byte(`{"foo": "bar"}`),
-			xattrs: map[string][]byte{
-				"xattr1": []byte(`{"foo": "bar"}`),
-				"xattr2": []byte(`{"foo": "bar"}`),
-			},
-			updatedDoc: sgbucket.UpdatedDoc{
-				XattrsToDelete: []string{"xattr1"},
-			},
-			errorIs: sgbucket.ErrDeleteXattrOnTombstone,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			_, err := dataStore.WriteTombstoneWithXattrs(ctx, key, 0, 0, test.xattrs, nil, false, nil)
-			require.NoError(t, err)
-
-			writeUpdateFunc := func(doc []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
-				return test.updatedDoc, nil
-			}
-
-			xattrKeys := make([]string, 0, len(test.xattrs))
-			for k := range test.xattrs {
-				xattrKeys = append(xattrKeys, k)
-			}
-			cas, err := dataStore.WriteUpdateWithXattrs(ctx, key, xattrKeys, 0, nil, nil, writeUpdateFunc)
-			require.ErrorIs(t, err, test.errorIs)
-			require.Equal(t, uint64(0), cas)
-		})
-	}
-
-}
 func TestWriteUpdateWithXattrsDocumentTombstone(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
+	if !bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		t.Skip("this test writes multiple xattrs")
+	}
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 

@@ -1043,6 +1043,19 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 					"_xattr2": []byte(`{"e" : "f"}`),
 				},
 			},
+			{
+				name: "delete xattr on tombstone resurection",
+				previousDoc: &sgbucket.BucketDocument{
+					Xattrs: map[string][]byte{
+						"_xattr1": []byte(`{"foo": "bar"}`),
+					},
+				},
+				updatedDoc: sgbucket.UpdatedDoc{
+					Doc:            []byte(`{"foo": "bar"}`),
+					XattrsToDelete: []string{"xattr1"},
+				},
+				errorsIs: sgbucket.ErrDeleteXattrOnTombstone,
+			},
 		}...)
 	}
 	for _, test := range tests {
