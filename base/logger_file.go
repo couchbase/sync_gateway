@@ -205,16 +205,16 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 		lfc.CollationBufferSize = &bufferSize
 	}
 
-	ticker := time.NewTicker(time.Hour)
+	logDeletionTicker := time.NewTicker(defaultLogDeletionInterval)
 	go func() {
 		defer func() {
 			if panicked := recover(); panicked != nil {
-				WarnfCtx(ctx, "Panic when deleting rotated log files: \n %s", panicked, debug.Stack())
+				WarnfCtx(ctx, "Panic when deleting rotated log files: %s\n%s", panicked, debug.Stack())
 			}
 		}()
 		for {
 			select {
-			case <-ticker.C:
+			case <-logDeletionTicker.C:
 				err := runLogDeletion(ctx, logFilePath, level.String(), int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
 				if err != nil {
 					WarnfCtx(ctx, "%s", err)

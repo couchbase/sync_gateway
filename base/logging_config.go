@@ -37,6 +37,8 @@ const (
 	// we flush to the output if we don't fill the buffer.
 	consoleLoggerCollateFlushTimeout = 1 * time.Millisecond
 	fileLoggerCollateFlushTimeout    = 10 * time.Millisecond
+
+	defaultLogDeletionInterval = time.Hour // not configurable
 )
 
 // ErrUnsetLogFilePath is returned when no log_file_path, or --defaultLogFilePath fallback can be used.
