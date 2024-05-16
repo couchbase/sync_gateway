@@ -5855,23 +5855,25 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 	require.NoError(t, err)
 
+	defer func() {
+		assert.NoError(t, ar.Stop())
+	}()
+
 	assert.Equal(t, int64(0), ar.Pull.GetStats().NumConnectAttempts.Value())
 
 	err = ar.Start(ctx1)
 	assert.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "unexpected status code 401 from target database"))
+	assert.ErrorContains(t, err, "unexpected status code 401 from target database")
 
 	// wait for an arbitrary number of reconnect attempts
-	err = rt1.WaitForCondition(func() bool {
-		return ar.Pull.GetStats().NumConnectAttempts.Value() > 3
-	})
-	assert.NoError(t, err, "Expecting NumConnectAttempts > 3")
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Greater(c, ar.Pull.GetStats().NumConnectAttempts.Value(), int64(3))
+	}, time.Second*20, time.Millisecond*100)
 
 	assert.NoError(t, ar.Stop())
-	err = rt1.WaitForCondition(func() bool {
-		return ar.GetStatus(ctx1).Status == db.ReplicationStateStopped
-	})
-	require.NoError(t, err)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, db.ReplicationStateStopped, ar.GetStatus(ctx1).Status)
+	}, time.Second*20, time.Millisecond*100)
 
 	// wait for a bit to see if the reconnect loop has stopped
 	reconnectAttempts := ar.Pull.GetStats().NumConnectAttempts.Value()
@@ -5879,18 +5881,16 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	assert.Equal(t, reconnectAttempts, ar.Pull.GetStats().NumConnectAttempts.Value())
 
 	assert.NoError(t, ar.Reset())
+	assert.Equal(t, reconnectAttempts, ar.Pull.GetStats().NumConnectAttempts.Value())
 
 	err = ar.Start(ctx1)
-	assert.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "unexpected status code 401 from target database"))
+	assert.ErrorContains(t, err, "unexpected status code 401 from target database")
 
 	// wait for another set of reconnect attempts
-	err = rt1.WaitForCondition(func() bool {
-		return ar.Pull.GetStats().NumConnectAttempts.Value() > 3
-	})
-	assert.NoError(t, err, "Expecting NumConnectAttempts > 3")
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Greater(c, ar.Pull.GetStats().NumConnectAttempts.Value(), reconnectAttempts+int64(3))
+	}, time.Second*20, time.Millisecond*100)
 
-	require.NoError(t, ar.Stop())
 }
 
 // TestActiveReplicatorPullConflictReadWriteIntlProps:
