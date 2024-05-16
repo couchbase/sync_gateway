@@ -11,13 +11,14 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
+	"testing"
+
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"net/http"
-	"strings"
-	"testing"
 )
 
 type grant interface {

@@ -10,6 +10,7 @@ package rest
 
 import (
 	"fmt"
+
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	channels "github.com/couchbase/sync_gateway/channels"
