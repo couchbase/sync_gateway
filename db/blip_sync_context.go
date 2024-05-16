@@ -578,15 +578,12 @@ func (bsc *BlipSyncContext) sendBLIPMessage(sender *blip.Sender, msg *blip.Messa
 	return ok
 }
 
-func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID, replacedRevID string, collectionIdx *int, seq SequenceID, err error) error {
-	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
+func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, collectionIdx *int, seq SequenceID, err error) error {
+	base.TracefCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
 
 	noRevRq := NewNoRevMessage()
 	noRevRq.SetId(docID)
 	noRevRq.SetRev(revID)
-	if replacedRevID != "" {
-		noRevRq.SetReplacedRev(replacedRevID)
-	}
 	noRevRq.SetCollection(collectionIdx)
 	if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV2 && bsc.clientType == BLIPClientTypeSGR2 {
 		noRevRq.SetSeq(seq)
@@ -639,7 +636,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 		rev, err = replacementRev, replacementRevErr
 	}
 	if base.IsDocNotFoundError(err) {
-		return bsc.sendNoRev(sender, docID, revID, replacedRevID, collectionIdx, seq, err)
+		return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 	} else if err != nil {
 		return fmt.Errorf("failed to GetRev for doc %s with rev %s: %w", base.UD(docID).Redact(), base.MD(revID).Redact(), err)
 	}
@@ -661,7 +658,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	} else {
 		body, err := rev.Body()
 		if err != nil {
-			return bsc.sendNoRev(sender, docID, revID, replacedRevID, collectionIdx, seq, err)
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 		}
 
 		// Still need to stamp _attachments into BLIP messages
@@ -672,7 +669,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 		bodyBytes, err = base.JSONMarshalCanonical(body)
 		if err != nil {
-			return bsc.sendNoRev(sender, docID, revID, replacedRevID, collectionIdx, seq, err)
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 		}
 	}
 

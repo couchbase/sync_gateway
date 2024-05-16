@@ -82,13 +82,12 @@ const (
 	RevMessageReplacedRev = "replacedRev"
 
 	// norev message properties
-	NorevMessageId          = "id"
-	NorevMessageRev         = "rev"
-	NorevMessageSeq         = "seq" // Use when protocol version 2 with client type ISGR
-	NorevMessageSequence    = "sequence"
-	NorevMessageError       = "error"
-	NorevMessageReason      = "reason"
-	NorevMessageReplacedRev = "replacedRev"
+	NorevMessageId       = "id"
+	NorevMessageRev      = "rev"
+	NorevMessageSeq      = "seq" // Use when protocol version 2 with client type ISGR
+	NorevMessageSequence = "sequence"
+	NorevMessageError    = "error"
+	NorevMessageReason   = "reason"
 
 	// getRev (Connected Client) message properties
 	GetRevMessageId = "id"
@@ -489,10 +488,6 @@ func (nrm *noRevMessage) SetId(id string) {
 
 func (nrm *noRevMessage) SetRev(rev string) {
 	nrm.Properties[NorevMessageRev] = rev
-}
-
-func (nrm *noRevMessage) SetReplacedRev(replacedRev string) {
-	nrm.Properties[NorevMessageReplacedRev] = replacedRev
 }
 
 func (nrm *noRevMessage) SetSeq(seq SequenceID) {

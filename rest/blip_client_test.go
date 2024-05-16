@@ -476,7 +476,6 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		docID := msg.Properties[db.NorevMessageId]
 		revID := msg.Properties[db.NorevMessageRev]
-		replacedRev := msg.Properties[db.NorevMessageReplacedRev]
 
 		btcr.docsLock.Lock()
 		defer btcr.docsLock.Unlock()
@@ -484,15 +483,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		if _, ok := btcr.docs[docID]; ok {
 			bodyMessagePair := &BodyMessagePair{message: msg}
 			btcr.docs[docID][revID] = bodyMessagePair
-			if replacedRev != "" {
-				btcr.docs[docID][replacedRev] = bodyMessagePair
-			}
 		} else {
 			bodyMessagePair := &BodyMessagePair{message: msg}
 			btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
-			if replacedRev != "" {
-				btcr.docs[docID][replacedRev] = bodyMessagePair
-			}
 		}
 	}
 
