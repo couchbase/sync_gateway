@@ -616,8 +616,9 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 
 // Pushes a revision body to the client
 func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
-	rev, err := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, revID, true, nil)
+	rev, originalErr := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, revID, true, nil)
 
+	// set if we find an alternative revision to send in the event the originally requested rev is unavailable
 	var replacedRevID string
 
 	collectionCtx, collectionErr := bsc.collections.get(collectionIdx)
@@ -625,20 +626,32 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 		return collectionErr
 	}
 
-	if collectionCtx.sendReplacementRevs && base.IsDocNotFoundError(err) {
-		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Unavailable revision for %q %s - finding replacement: %v", base.UD(docID), revID, err)
+	if base.IsDocNotFoundError(originalErr) {
+		if !collectionCtx.sendReplacementRevs {
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, originalErr)
+		}
+
+		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Unavailable revision for %q %s - finding replacement: %v", base.UD(docID), revID, originalErr)
 
 		// try the active rev instead as a replacement
 		replacementRev, replacementRevErr := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, "", true, nil)
-		// set replacement and continue as normal
+		if replacementRevErr != nil {
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Active revision unavailable for %q - sending original norev for %q: %v", base.UD(docID), revID, replacementRevErr)
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, originalErr)
+		}
+
+		// if this is a filtered replication, ensure the replacement rev is in one of the filtered channels
+		// normal channel access checks are already applied in GetRev above
+		if collectionCtx.channels != nil && replacementRev.Channels.NumMatches(collectionCtx.channels) == 0 {
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Active revision channels (%s) not in filtered channels (%s) for %q - sending original norev for %q", base.UD(replacementRev.Channels), base.UD(collectionCtx.channels), base.UD(docID), revID)
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, originalErr)
+		}
+
 		replacedRevID = revID
 		revID = replacementRev.RevID
-		rev, err = replacementRev, replacementRevErr
-	}
-	if base.IsDocNotFoundError(err) {
-		return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
-	} else if err != nil {
-		return fmt.Errorf("failed to GetRev for doc %s with rev %s: %w", base.UD(docID).Redact(), base.MD(revID).Redact(), err)
+		rev = replacementRev
+	} else if originalErr != nil {
+		return fmt.Errorf("failed to GetRev for doc %s with rev %s: %w", base.UD(docID).Redact(), base.MD(revID).Redact(), originalErr)
 	}
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
@@ -648,6 +661,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
 			DeleteAttachmentVersion(rev.Attachments)
+			var err error
 			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: rev.Attachments})
 			if err != nil {
 				return err

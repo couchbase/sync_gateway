@@ -36,6 +36,8 @@ type blipSyncCollectionContext struct {
 
 	// if we encounter a situation where a requested revision is not available, should we try sending an alternative as a replacement revision?
 	sendReplacementRevs bool
+	// set if the client has requested a filtered set of channels
+	channels base.Set
 }
 
 // blipCollections is a container for all collections blip is aware of.

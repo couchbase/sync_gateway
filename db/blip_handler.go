@@ -300,11 +300,12 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			return base.HTTPErrorf(http.StatusBadRequest, "%s", err)
 		} else if len(channels) == 0 {
 			return base.HTTPErrorf(http.StatusBadRequest, "Empty channel list")
-
 		}
 	} else if filter != "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
 	}
+
+	collectionCtx.channels = channels
 
 	clientType := clientTypeCBL2
 	if rq.Properties["client_sgr2"] == trueProperty {
@@ -353,7 +354,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			continuous:        continuous,
 			activeOnly:        subChangesParams.activeOnly(),
 			batchSize:         subChangesParams.batchSize(),
-			channels:          channels,
+			channels:          collectionCtx.channels,
 			revocations:       subChangesParams.revocations(),
 			clientType:        clientType,
 			ignoreNoConflicts: clientType == clientTypeSGR2, // force this side to accept a "changes" message, even in no conflicts mode for SGR2.

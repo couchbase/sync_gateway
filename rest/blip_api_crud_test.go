@@ -1874,39 +1874,60 @@ func TestMissingNoRev(t *testing.T) {
 func TestSendReplacementRevision(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeyHTTPResp, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
 
+	userChannels := []string{"ABC", "DEF"}
+	rev1Channel := "ABC"
+	replicationChannels := "ABC,XYZ"
+
 	tests := []struct {
+		name                      string
+		expectReplacementRev      bool
 		clientSendReplacementRevs bool
-		expectedMessageProfile    string
+		replacementRevChannel     string
 	}{
 		{
-			clientSendReplacementRevs: true,
-			expectedMessageProfile:    db.MessageRev,
+			name:                      "no replacements",
+			expectReplacementRev:      false,
+			clientSendReplacementRevs: false,
+			replacementRevChannel:     "ABC",
 		},
 		{
-			clientSendReplacementRevs: false,
-			expectedMessageProfile:    db.MessageNoRev,
+			name:                      "opt-in",
+			expectReplacementRev:      true,
+			clientSendReplacementRevs: true,
+			replacementRevChannel:     "ABC",
+		},
+		{
+			name:                      "opt-in filtered channel",
+			expectReplacementRev:      false,
+			clientSendReplacementRevs: true,
+			replacementRevChannel:     "DEF", // accessible but filtered out
+		},
+		{
+			name:                      "opt-in inaccessible channel",
+			expectReplacementRev:      false,
+			clientSendReplacementRevs: true,
+			replacementRevChannel:     "XYZ", // inaccessible
 		},
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		for _, test := range tests {
-			testName := fmt.Sprintf("clientSendReplacementRevs:%v", test.clientSendReplacementRevs)
-			t.Run(testName, func(t *testing.T) {
+			t.Run(test.name, func(t *testing.T) {
 				rt := NewRestTester(t,
 					&RestTesterConfig{
-						GuestEnabled: true,
+						SyncFn: channels.DocChannelsSyncFunction,
 					})
 				defer rt.Close()
 
-				docID := testName
-				version1 := rt.PutDoc(docID, `{"foo":"bar"}`)
+				docID := test.name
+				version1 := rt.PutDoc(docID, fmt.Sprintf(`{"foo":"bar","channels":["%s"]}`, rev1Channel))
 				updatedVersion := make(chan DocVersion)
 
 				// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 				changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
 					if changeEntryDocID == docID && changeEntryRevID == version1.RevID {
-						updatedVersion <- rt.UpdateDoc(docID, version1, `{"foo":"buzz"}`)
+						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
 						err := rt.GetSingleTestDatabaseCollection().PurgeOldRevisionJSON(base.TestCtx(t), docID, version1.RevID)
@@ -1915,25 +1936,31 @@ func TestSendReplacementRevision(t *testing.T) {
 					}
 				}
 
-				opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols, sendReplacementRevs: test.clientSendReplacementRevs, changesEntryCallback: changesEntryCallbackFn}
+				opts := &BlipTesterClientOpts{
+					Username:               "alice",
+					SupportedBLIPProtocols: SupportedBLIPProtocols,
+					sendReplacementRevs:    test.clientSendReplacementRevs,
+					changesEntryCallback:   changesEntryCallbackFn,
+					Channels:               userChannels,
+				}
 				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 				defer btc.Close()
 
 				// one shot or else we'll carry on to send rev 2-... normally, and we can't assert correctly on the final state of the client
-				err := btcRunner.StartOneshotPull(btc.id)
+				err := btcRunner.StartOneshotPullFiltered(btc.id, replicationChannels)
 				require.NoError(t, err)
 
 				// block until we've written the update and got the new version to use in assertions
 				version2 := <-updatedVersion
 
-				if test.clientSendReplacementRevs {
-					// replacement rev was sent instead
+				if test.expectReplacementRev {
+					// version 2 was sent instead
 					_ = btcRunner.SingleCollection(btc.id).WaitForVersion(docID, version2)
 
 					// rev message with a replacedRev property referring to the originally requested rev
 					msg2, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version2.RevID)
 					require.True(t, ok)
-					assert.Equal(t, test.expectedMessageProfile, msg2.Profile())
+					assert.Equal(t, db.MessageRev, msg2.Profile())
 					assert.Equal(t, version2.RevID, msg2.Properties[db.RevMessageRev])
 					assert.Equal(t, version1.RevID, msg2.Properties[db.RevMessageReplacedRev])
 
@@ -1943,7 +1970,7 @@ func TestSendReplacementRevision(t *testing.T) {
 					require.True(t, ok)
 					assert.Equal(t, msg1, msg2)
 				} else {
-					// Make sure requested revision (or any alternative) did not get replicated
+					// requested revision (or any alternative) did not get replicated
 					data := btcRunner.SingleCollection(btc.id).WaitForVersion(docID, version1)
 					assert.Nil(t, data)
 
@@ -1954,7 +1981,7 @@ func TestSendReplacementRevision(t *testing.T) {
 					// norev message for the requested rev
 					msg, ok := btcRunner.SingleCollection(btc.id).GetBlipRevMessage(docID, version1.RevID)
 					require.True(t, ok)
-					assert.Equal(t, test.expectedMessageProfile, msg.Profile())
+					assert.Equal(t, db.MessageNoRev, msg.Profile())
 				}
 			})
 		}
