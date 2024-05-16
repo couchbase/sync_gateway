@@ -180,3 +180,9 @@ DB-config-precondition-failed:
       example:
         error: Precondition Failed
         reason: Provided If-Match header does not match current config version
+All_user_channels_response:
+  description: Map of all keyspaces to all channels that the user has access to in the, and their properties.
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas.yaml#/All_user_channels_response

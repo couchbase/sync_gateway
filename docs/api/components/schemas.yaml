@@ -2512,3 +2512,28 @@ CollectionNames:
           - Starting
           - Stopping
           - Resyncing
+All_user_channels_response:
+  description: |-
+    All user channels split by how they were assigned to the user and by keyspace.
+  type: object
+  properties:
+    all_channels:
+      description: |-
+        All channels that the user has access to.
+      type: object
+      properties:
+        keyspace:
+          type: object
+          properties:
+            channel:
+              $ref: '#/channelEntry'
+channelEntry:
+  description: Channel name
+  type: object
+  properties:
+    entries:
+      type: array
+      description: Start sequence to end sequence
+    updated_at:
+      type: integer
+      description: Unix timestamp of last update
