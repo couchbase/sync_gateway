@@ -56,10 +56,14 @@ func (set Set) copy() Set {
 	return result
 }
 
-// Returns true if the set includes the channel.
-func (set Set) Contains(ch string) bool {
-	_, exists := set[ch]
-	return exists
+// Contains returns true if the set includes any of the given channels.
+func (set Set) Contains(ch ...string) bool {
+	for _, c := range ch {
+		if _, exists := set[c]; exists {
+			return true
+		}
+	}
+	return false
 }
 
 func (set Set) Equals(other Set) bool {

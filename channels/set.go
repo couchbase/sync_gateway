@@ -152,10 +152,14 @@ func (s Set) UpdateWithSlice(slice []ID) Set {
 	return s
 }
 
-// Contains returns true if the set includes the channel.
-func (s Set) Contains(ch ID) bool {
-	_, exists := s[ch]
-	return exists
+// Contains returns true if the set includes any of the given channels.
+func (s Set) Contains(ch ...ID) bool {
+	for _, c := range ch {
+		if _, exists := s[c]; exists {
+			return true
+		}
+	}
+	return false
 }
 
 // Convert to String(), necessary for logging.

@@ -53,6 +53,19 @@ func TestSet(t *testing.T) {
 	assert.Equal(t, set, set2)
 }
 
+func TestSetContains(t *testing.T) {
+	set := SetFromArray([]string{"foo", "bar"})
+
+	assert.True(t, set.Contains("foo"))
+	assert.True(t, set.Contains("bar"))
+	assert.False(t, set.Contains("baz"))
+
+	// variadic params
+	assert.True(t, set.Contains("foo", "bar"))
+	assert.True(t, set.Contains("baz", "foo"))
+	assert.False(t, set.Contains("baz", "buzz"))
+}
+
 func TestUnion(t *testing.T) {
 	var nilSet Set
 	empty := Set{}
