@@ -50,11 +50,12 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	rev1ID, _, err := collection.Put(ctx, docID, rev1Body)
+	rev1ID, docRev1, err := collection.Put(ctx, docID, rev1Body)
 	require.NoError(t, err)
 	assert.Equal(t, "1-12ff9ce1dd501524378fe092ce9aee8f", rev1ID)
 
-	rev1OldBody, err := collection.getOldRevisionJSON(ctx, docID, rev1ID)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility)
+	rev1OldBody, err := collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	if deltasEnabled && xattrsEnabled {
 		require.NoError(t, err)
 		assert.Contains(t, string(rev1OldBody), "hello.txt")
@@ -68,17 +69,18 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	var rev2Body Body
 	rev2Data := `{"test": true, "updated": true, "_attachments": {"hello.txt": {"stub": true, "revpos": 1}}}`
 	require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
-	_, _, err = collection.PutExistingRevWithBody(ctx, docID, rev2Body, []string{"2-abc", rev1ID}, true, ExistingVersionWithUpdateToHLV)
+	docRev2, _, err := collection.PutExistingRevWithBody(ctx, docID, rev2Body, []string{"2-abc", rev1ID}, true, ExistingVersionWithUpdateToHLV)
 	require.NoError(t, err)
-	rev2ID := "2-abc"
 
 	// now in any case - we'll have rev 1 backed up
-	rev1OldBody, err = collection.getOldRevisionJSON(ctx, docID, rev1ID)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility)
+	rev1OldBody, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	require.NoError(t, err)
 	assert.Contains(t, string(rev1OldBody), "hello.txt")
 
 	// and rev 2 should be present only for the xattrs and deltas case
-	rev2OldBody, err := collection.getOldRevisionJSON(ctx, docID, rev2ID)
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility)
+	rev2OldBody, err := collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 	if deltasEnabled && xattrsEnabled {
 		require.NoError(t, err)
 		assert.Contains(t, string(rev2OldBody), "hello.txt")
@@ -103,7 +105,7 @@ func TestAttachments(t *testing.T) {
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	revid, _, err := collection.Put(ctx, "doc1", body)
+	revid, docRev1, err := collection.Put(ctx, "doc1", body)
 	rev1id := revid
 	assert.NoError(t, err, "Couldn't create document")
 
@@ -191,7 +193,8 @@ func TestAttachments(t *testing.T) {
 	assert.Equal(t, float64(2), bye["revpos"])
 
 	log.Printf("Expire body of rev 1, then add a child...") // test fix of #498
-	err = collection.dataStore.Delete(oldRevisionKey("doc1", rev1id))
+	// Revs are backed up by hash of CV now, switch to fetch by this till CBG-3748 (backwards compatibility)
+	err = collection.dataStore.Delete(oldRevisionKey("doc1", base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString()))))
 	assert.NoError(t, err, "Couldn't compact old revision")
 	rev2Bstr := `{"_attachments": {"bye.txt": {"stub":true,"revpos":1,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}, "_rev": "2-f000"}`
 	var body2B Body

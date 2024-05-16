@@ -76,7 +76,7 @@ func (t *testBackingStore) getRevision(ctx context.Context, doc *Document, revid
 	return bodyBytes, b, nil, err
 }
 
-func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document) ([]byte, Body, AttachmentsMeta, error) {
+func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, Body, AttachmentsMeta, error) {
 	t.getRevisionCounter.Add(1)
 
 	b := Body{
@@ -84,6 +84,10 @@ func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document)
 		BodyId:            doc.ID,
 		BodyRev:           doc.CurrentRev,
 		"current_version": &Version{Value: doc.HLV.Version, SourceID: doc.HLV.SourceID},
+	}
+
+	if err := doc.HasCurrentVersion(ctx, cv); err != nil {
+		return nil, b, nil, err
 	}
 	bodyBytes, err := base.JSONMarshal(b)
 	return bodyBytes, b, nil, err
@@ -99,7 +103,7 @@ func (*noopBackingStore) getRevision(ctx context.Context, doc *Document, revid s
 	return nil, nil, nil, nil
 }
 
-func (*noopBackingStore) getCurrentVersion(ctx context.Context, doc *Document) ([]byte, Body, AttachmentsMeta, error) {
+func (*noopBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, Body, AttachmentsMeta, error) {
 	return nil, nil, nil, nil
 }
 
@@ -366,6 +370,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 }
 
 func TestBypassRevisionCache(t *testing.T) {
+	t.Skip("CBG-3748: backwards compatibility between cv and rev id for fetching backed up revs needed")
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 

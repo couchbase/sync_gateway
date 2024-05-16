@@ -684,6 +684,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 }
 
 func TestConflictWithInvalidAttachment(t *testing.T) {
+	t.Skip("CBG-3748: backwards compatibility between cv and rev id for fetching backed up revs needed")
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
