@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"fmt"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	channels "github.com/couchbase/sync_gateway/channels"
@@ -23,7 +24,7 @@ func (h *handler) handleGetAllChannels() error {
 	h.assertAdminOnly()
 	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
 	if err != nil {
-		return err
+		return fmt.Errorf("could not get user %s: %w", user.Name(), err)
 	}
 	if user == nil {
 		return kNotFoundError
