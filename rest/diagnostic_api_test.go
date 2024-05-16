@@ -102,7 +102,6 @@ type roleGrant struct {
 
 func (g roleGrant) getPayload(t testing.TB) string {
 	config := auth.PrincipalConfig{
-		//Name:     base.StringPtr(g.role),
 		Password: base.StringPtr(RestTesterDefaultUserPassword),
 	}
 	for keyspace, chans := range g.adminChannels {
@@ -126,22 +125,22 @@ func (g roleGrant) request(rt *RestTester) {
 }
 
 type docGrant struct {
-	userName        string
-	dynamicRoles    string
-	dynamicChannels string
-	output          string
+	userName       string
+	dynamicRole    string
+	dynamicChannel string
+	output         string
 }
 
 func (g docGrant) getPayload(t testing.TB) string {
-	role := fmt.Sprintf(`"role":"role:%s",`, g.dynamicRoles)
-	if g.dynamicRoles == "" {
+	role := fmt.Sprintf(`"role":"role:%s",`, g.dynamicRole)
+	if g.dynamicRole == "" {
 		role = ""
 	}
 	user := fmt.Sprintf(`"user":["%s"],`, g.userName)
 	if g.userName == "" {
 		user = ""
 	}
-	payload := fmt.Sprintf(`{%s %s "channel":"%s"}`, user, role, g.dynamicChannels)
+	payload := fmt.Sprintf(`{%s %s "channel":"%s"}`, user, role, g.dynamicChannel)
 
 	return payload
 }
@@ -364,8 +363,8 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					user: "alice",
 				},
 				docGrant{
-					userName:        "alice",
-					dynamicChannels: "A",
+					userName:       "alice",
+					dynamicChannel: "A",
 					output: `
 					{"all_channels":{"_default._default": {
 						"A": { "entries" : ["2-0"], "updated_at":0}
@@ -376,17 +375,20 @@ func TestGetAllChannelsByUser(t *testing.T) {
 		{
 			name: "dynamic role grant channels",
 			grants: []grant{
+				// create user
 				userGrant{
 					user: "alice",
 				},
+				// create role with channels
 				roleGrant{
 					role:          "role1",
 					adminChannels: map[string][]string{defaultKeyspace: {"A", "B"}},
 				},
+				// assign role through the sync fn and check output
 				docGrant{
-					userName:        "alice",
-					dynamicRoles:    "role1",
-					dynamicChannels: "chan1",
+					userName:       "alice",
+					dynamicRole:    "role1",
+					dynamicChannel: "chan1",
 					output: `
 					{"all_channels":{"_default._default": {
 						"A": { "entries" : ["3-0"], "updated_at":0},
@@ -399,13 +401,15 @@ func TestGetAllChannelsByUser(t *testing.T) {
 		{
 			name: "channel assigned through both dynamic and admin grants, assert earlier sequence (admin) is used",
 			grants: []grant{
+				// create user and assign channels through admin_channels
 				userGrant{
 					user:          "alice",
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 				},
+				// assign channels through sync fn and assert on sequences
 				docGrant{
-					userName:        "alice",
-					dynamicChannels: "A",
+					userName:       "alice",
+					dynamicChannel: "A",
 					output: `
 					{"all_channels":{"_default._default": {
 						"A": { "entries" : ["1-0"], "updated_at":0}
@@ -416,13 +420,16 @@ func TestGetAllChannelsByUser(t *testing.T) {
 		{
 			name: "channel assigned through both dynamic and admin grants, assert earlier sequence (dynamic) is used",
 			grants: []grant{
+				// create user with no channels
 				userGrant{
 					user: "alice",
 				},
+				// create doc and assign dynamic chan through sync fn
 				docGrant{
-					userName:        "alice",
-					dynamicChannels: "A",
+					userName:       "alice",
+					dynamicChannel: "A",
 				},
+				// assign same channels through admin_channels and assert on sequences
 				userGrant{
 					user:          "alice",
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
@@ -436,14 +443,17 @@ func TestGetAllChannelsByUser(t *testing.T) {
 		{
 			name: "channel assigned through both admin and admin role grants, assert earlier sequence (admin) is used",
 			grants: []grant{
+				// create user and assign channel through admin_channels
 				userGrant{
 					user:          "alice",
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 				},
+				// create role with same channel
 				roleGrant{
 					role:          "role1",
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 				},
+				// assign role through admin_roles and assert on sequences
 				userGrant{
 					user:  "alice",
 					roles: []string{"role1"},
@@ -457,17 +467,21 @@ func TestGetAllChannelsByUser(t *testing.T) {
 		{
 			name: "channel assigned through both admin and admin role grants, assert earlier sequence (admin role) is used",
 			grants: []grant{
+				// create user with no channels
 				userGrant{
 					user: "alice",
 				},
+				// create role with channel
 				roleGrant{
 					role:          "role1",
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 				},
+				// assign role through admin_roles
 				userGrant{
 					user:  "alice",
 					roles: []string{"role1"},
 				},
+				// assign role channel through admin_channels and assert on sequences
 				userGrant{
 					user:          "alice",
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
@@ -481,18 +495,22 @@ func TestGetAllChannelsByUser(t *testing.T) {
 		{
 			name: "channel assigned through both dynamic role and admin grants, assert earlier sequence (dynamic role) is used",
 			grants: []grant{
+				// create user with no channels
 				userGrant{
 					user: "alice",
 				},
+				// create role with channel
 				roleGrant{
 					role:          "role1",
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 				},
+				// create doc and assign role through sync fn
 				docGrant{
-					userName:        "alice",
-					dynamicRoles:    "role1",
-					dynamicChannels: "docChan",
+					userName:       "alice",
+					dynamicRole:    "role1",
+					dynamicChannel: "docChan",
 				},
+				// assign role cahnnel to user through admin_channels and assert on sequences
 				userGrant{
 					user:          "alice",
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
@@ -507,22 +525,21 @@ func TestGetAllChannelsByUser(t *testing.T) {
 		{
 			name: "channel assigned through both dynamic role and admin grants, assert earlier sequence (admin) is used",
 			grants: []grant{
+				// create user with channel
 				userGrant{
 					user:          "alice",
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 				},
+				// create role with same channel
 				roleGrant{
 					role:          "role1",
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 				},
+				// assign role to user through sync fn and assert channel sequence is from admin_channels
 				docGrant{
-					userName:        "alice",
-					dynamicRoles:    "role1",
-					dynamicChannels: "docChan",
-				},
-				userGrant{
-					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					userName:       "alice",
+					dynamicRole:    "role1",
+					dynamicChannel: "docChan",
 					output: `
 					{"all_channels":{"_default._default": {
 						"A": { "entries" : ["1-0"], "updated_at":0},
@@ -534,22 +551,27 @@ func TestGetAllChannelsByUser(t *testing.T) {
 		{
 			name: "channel assigned through both dynamic role and admin role grants, assert earlier sequence (dynamic role) is used",
 			grants: []grant{
+				// create user with no channels
 				userGrant{
 					user: "alice",
 				},
+				// create role with channel
 				roleGrant{
 					role:          "role1",
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 				},
+				// create another role with same channel
 				roleGrant{
 					role:          "role2",
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 				},
+				// assign first role through sync fn
 				docGrant{
-					userName:        "alice",
-					dynamicRoles:    "role1",
-					dynamicChannels: "docChan",
+					userName:       "alice",
+					dynamicRole:    "role1",
+					dynamicChannel: "docChan",
 				},
+				// assign second role through admin_roles and assert sequence is from dynamic (first) role
 				userGrant{
 					user:  "alice",
 					roles: []string{"role2"},
@@ -564,25 +586,30 @@ func TestGetAllChannelsByUser(t *testing.T) {
 		{
 			name: "channel assigned through both dynamic role and admin role grants, assert earlier sequence (admin role) is used",
 			grants: []grant{
+				// create user with no channels
 				userGrant{
 					user: "alice",
 				},
+				// create role with channel
 				roleGrant{
 					role:          "role1",
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 				},
+				// create another role with same channel
 				roleGrant{
 					role:          "role2",
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 				},
+				// assign role through admin_roles
 				userGrant{
 					user:  "alice",
-					roles: []string{"role2"},
+					roles: []string{"role1"},
 				},
+				// assign other role through sync fn and assert earlier sequences are returned
 				docGrant{
-					userName:        "alice",
-					dynamicRoles:    "role1",
-					dynamicChannels: "docChan",
+					userName:       "alice",
+					dynamicRole:    "role2",
+					dynamicChannel: "docChan",
 					output: `
 					{"all_channels":{"_default._default": {
 						"A": { "entries" : ["4-0"], "updated_at":0},
@@ -604,7 +631,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 			dbConfig.Sync = base.StringPtr(`function(doc) {channel(doc.channel); access(doc.user, doc.channel); role(doc.user, doc.role);}`)
 			rt.CreateDatabase("db", dbConfig)
 
-			// create user with adminChannels1
+			// iterate and execute grants in each test case
 			for i, grant := range test.grants {
 				t.Logf("Processing grant %d", i+1)
 				grant.request(rt)
@@ -633,6 +660,7 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 	}
 	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
 
+	// add single named collection
 	newCollection := base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: t.Name()}
 	require.NoError(t, rt.TestBucket.CreateDataStore(base.TestCtx(t), newCollection))
 	defer func() {
@@ -664,7 +692,7 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 	}
 	grant.request(rt)
 
-	// check single named collection is handled
+	// add channel to single named collection and assert its handled
 	grant = userGrant{
 		user:          "alice",
 		adminChannels: map[string][]string{defaultKeyspace: {"A"}, newCollection.String(): {"D"}},
@@ -730,7 +758,7 @@ func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
 	}
 	grant.request(rt)
 
-	// check single named collection is handled
+	// add channel to collection with no channels and assert multi collection is handled
 	grant = userGrant{
 		user:          "alice",
 		adminChannels: map[string][]string{keyspace2: {"A"}, keyspace1: {"D"}},
@@ -836,10 +864,10 @@ func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
 	roleGrant.request(rt)
 	userGrant.request(rt)
 
+	// Delete role and assert its channels no longer appear in response
 	resp := rt.SendAdminRequest("DELETE", "/db/_role/role1", ``)
 	RequireStatus(t, resp, http.StatusOK)
 
-	// Delete role and assert its channels no longer appear in response
 	userGrant.output = `{}`
 	userGrant.roles = []string{}
 	userGrant.request(rt)
@@ -856,6 +884,7 @@ func TestGetAllChannelsByUserNonexistentAndDeletedUser(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Scopes = nil
 	rt.CreateDatabase("db", dbConfig)
+
 	// assert the endpoint returns 404 when user is not found
 	resp := rt.SendDiagnosticRequest("GET", "/db/_user/user1/_all_channels", ``)
 	RequireStatus(t, resp, http.StatusNotFound)
