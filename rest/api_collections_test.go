@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocb/v2"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -621,24 +620,19 @@ func TestCollectionsPutDBInexistentCollection(t *testing.T) {
 func TestCollectionsPutDocInDefaultCollectionWithNamedCollections(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
 	// create named collection in the default scope
 	const customCollectionName = "new_collection"
-	dBucket := tb.GetUnderlyingBucket().(sgbucket.DynamicDataStoreBucket)
-	require.NoError(t, dBucket.CreateDataStore(base.TestCtx(t), base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
+	require.NoError(t, tb.CreateDataStore(base.TestCtx(t), base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
 	defer func() {
-		assert.NoError(t, dBucket.DropDataStore(base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
+		assert.NoError(t, tb.DropDataStore(base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
 	}()
 
 	rtConfig := &RestTesterConfig{
-		CustomTestBucket: tb,
+		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 	}
 
@@ -732,7 +726,18 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 func TestCollectionsAddNamedCollectionToImplicitDefaultScope(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 1)
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	var newCollection *base.ScopeAndCollectionName
+	defer func() {
+		if newCollection != nil {
+			assert.NoError(t, bucket.DropDataStore(*newCollection))
+		}
+	}()
+
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true, CustomTestBucket: bucket.NoCloseClone()}, 1)
 	defer rt.Close()
 
 	const dbName = "db"
@@ -748,11 +753,8 @@ func TestCollectionsAddNamedCollectionToImplicitDefaultScope(t *testing.T) {
 	}
 	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
 
-	newCollection := base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: t.Name()}
+	newCollection = &base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: t.Name()}
 	require.NoError(t, rt.TestBucket.CreateDataStore(base.TestCtx(t), newCollection))
-	defer func() {
-		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
-	}()
 
 	resp = rt.UpsertDbConfig(dbName, DbConfig{Scopes: ScopesConfig{
 		base.DefaultScope: {Collections: CollectionsConfig{
@@ -772,7 +774,16 @@ func TestCollectionsAddNamedCollectionToImplicitDefaultScope(t *testing.T) {
 func TestCollectionsChangeConfigScopeFromImplicitDefault(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 1)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(base.TestCtx(t))
+
+	var newCollection *base.ScopeAndCollectionName
+	defer func() {
+		if newCollection != nil {
+			assert.NoError(t, bucket.DropDataStore(*newCollection))
+		}
+	}()
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true, CustomTestBucket: bucket.NoCloseClone()}, 1)
 	defer rt.Close()
 
 	const dbName = "db"
@@ -788,11 +799,8 @@ func TestCollectionsChangeConfigScopeFromImplicitDefault(t *testing.T) {
 	}
 	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
 
-	newCollection := base.ScopeAndCollectionName{Scope: t.Name(), Collection: t.Name()}
-	require.NoError(t, rt.TestBucket.CreateDataStore(base.TestCtx(t), newCollection))
-	defer func() {
-		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
-	}()
+	newCollection = &base.ScopeAndCollectionName{Scope: t.Name(), Collection: t.Name()}
+	require.NoError(t, bucket.CreateDataStore(base.TestCtx(t), newCollection))
 
 	resp = rt.UpsertDbConfig(dbName, DbConfig{Scopes: ScopesConfig{
 		newCollection.ScopeName(): {Collections: CollectionsConfig{

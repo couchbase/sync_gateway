@@ -90,36 +90,3 @@ func (h *handler) handlePutDbConfigFunction() error {
 		})
 	}
 }
-
-//////// GRAPHQL:
-
-// GET database GraphQL config.
-func (h *handler) handleGetDbConfigGraphQL() error {
-	if config, etagVersion, err := h.getDBConfig(); err != nil {
-		return err
-	} else if config.GraphQL == nil {
-		return base.HTTPErrorf(http.StatusNotFound, "")
-	} else {
-		h.writeJSON(config.GraphQL)
-		h.setEtag(etagVersion)
-		return nil
-	}
-}
-
-// PUT/DELETE database GraphQL config.
-func (h *handler) handlePutDbConfigGraphQL() error {
-	var newConfig *functions.GraphQLConfig
-	if h.rq.Method != "DELETE" {
-		if err := h.readJSONInto(&newConfig); err != nil {
-			return err
-		}
-	}
-	err := h.mutateDbConfig(func(dbConfig *DbConfig) error {
-		if newConfig == nil && dbConfig.GraphQL == nil {
-			return base.HTTPErrorf(http.StatusNotFound, "")
-		}
-		dbConfig.GraphQL = newConfig
-		return nil
-	})
-	return err
-}

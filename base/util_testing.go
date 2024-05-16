@@ -754,9 +754,21 @@ func TestRequiresDCPResync(t testing.TB) {
 	}
 }
 
+// TestRequiresGocbDCPClient will skip the current test if using rosmar.
+func TestRequiresGocbDCPClient(t testing.TB) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("rosmar doesn't support base.DCPClient")
+	}
+}
+
 // RequireDocNotFoundError asserts that the given error represents a document not found error.
 func RequireDocNotFoundError(t testing.TB, e error) {
 	require.True(t, IsDocNotFoundError(e), fmt.Sprintf("Expected error to be a doc not found error, but was: %v", e))
+}
+
+func requireCasMismatchError(t testing.TB, err error) {
+	require.Error(t, err, "Expected an error of type IsCasMismatch %+v\n", err)
+	require.True(t, IsCasMismatch(err), "Expected error of type IsCasMismatch but got %+v\n", err)
 }
 
 // SkipImportTestsIfNotEnabled skips test that exercise import features
@@ -764,16 +776,6 @@ func SkipImportTestsIfNotEnabled(t *testing.T) {
 
 	if !TestUseXattrs() {
 		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
-	}
-}
-
-// SkipInvalidAuthForCouchbaseServer76 temporarily skips test on Couchbase Server 7.6 until invalid credentials return ErrAuthenticationFailure.
-func SkipInvalidAuthForCouchbaseServer76(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		return
-	}
-	if GTestBucketPool.cluster.majorVersion == 7 && GTestBucketPool.cluster.minorVersion == 6 {
-		t.Skip("Skipping test for invalid credentials with Couchbase Server 7.6 due to GOCBC-1615")
 	}
 }
 

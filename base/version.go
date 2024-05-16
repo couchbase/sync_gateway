@@ -20,7 +20,7 @@ const (
 	ProductName = "Couchbase Sync Gateway"
 
 	ProductAPIVersionMajor = "3"
-	ProductAPIVersionMinor = "3"
+	ProductAPIVersionMinor = "2"
 	ProductAPIVersion      = ProductAPIVersionMajor + "." + ProductAPIVersionMinor
 )
 
@@ -56,30 +56,10 @@ func init() {
 
 	// Use build info if available, otherwise use git info to populate instead.
 	if buildPlaceholderVersionBuildNumberString[0] != '@' {
-		// Split version number and build number (optional)
-		versionAndBuild := strings.Split(buildPlaceholderVersionBuildNumberString, "-")
-
-		versionString := versionAndBuild[0]
-		versions := strings.Split(versionString, ".")
-		if len(versions) == 0 || len(versions) > 4 {
-			PanicfCtx(context.Background(), "unknown version format (expected major.minor.patch[.other]) got %v", versionString)
-		}
-		if len(versions) > 0 {
-			majorStr = versions[0]
-		}
-		if len(versions) > 1 {
-			minorStr = versions[1]
-		}
-		if len(versions) > 2 {
-			patchStr = versions[2]
-		}
-		if len(versions) > 3 {
-			otherStr = versions[3]
-		}
-
+		var versionString string
+		versionString, majorStr, minorStr, patchStr, otherStr, buildStr = parseBuildPlaceholderVersionBuildNumberString(buildPlaceholderVersionBuildNumberString)
 		var formattedBuildStr string
-		if len(versionAndBuild) > 1 {
-			buildStr = versionAndBuild[1]
+		if buildStr != "" {
 			formattedBuildStr = buildStr + ";"
 		}
 
@@ -113,6 +93,36 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func parseBuildPlaceholderVersionBuildNumberString(s string) (rawVersion, major, minor, patch, other, build string) {
+	// Split version number and build number (optional)
+	versionAndBuild := strings.Split(s, "-")
+
+	rawVersion = versionAndBuild[0]
+	versions := strings.Split(rawVersion, ".")
+	if len(versions) == 0 || len(versions) > 4 {
+		PanicfCtx(context.Background(), "unknown version format (expected major.minor.patch[.other]) got %v", rawVersion)
+	}
+
+	if len(versions) > 0 {
+		major = versions[0]
+	}
+	if len(versions) > 1 {
+		minor = versions[1]
+	}
+	if len(versions) > 2 {
+		patch = versions[2]
+	}
+	if len(versions) > 3 {
+		other = versions[3]
+	}
+
+	if len(versionAndBuild) > 1 {
+		build = versionAndBuild[1]
+	}
+
+	return rawVersion, major, minor, patch, other, build
 }
 
 // IsEnterpriseEdition returns true if this Sync Gateway node is enterprise edition.

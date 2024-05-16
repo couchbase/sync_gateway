@@ -22,14 +22,24 @@ import (
 // TestRemoveCollection tests when a collection has been removed from CBS, and the server is restarted. We should be able to modify or delete the database.
 func TestRemoveCollection(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("test relies on bootstrap connection and needs CBS")
+		t.Skip("test relies on CBS management API")
 	}
 	base.TestRequiresCollections(t)
-	base.RequireNumTestBuckets(t, 2)
 	numCollections := 2
-	bucket := base.GetTestBucket(t)
-	defer bucket.Close(base.TestCtx(t))
+	base.RequireNumTestBuckets(t, 2)
 	base.RequireNumTestDataStores(t, numCollections)
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	dataStores := bucket.GetNonDefaultDatastoreNames()
+	deletedDataStore := dataStores[1]
+
+	defer func() {
+		assert.NoError(t, bucket.CreateDataStore(base.TestCtx(t), deletedDataStore))
+
+	}()
+
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket:             bucket.NoCloseClone(),
 		PersistentConfig:             true,
@@ -48,13 +58,6 @@ func TestRemoveCollection(t *testing.T) {
 	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/"+dbName+"/", string(dbcJSON), base.TestClusterUsername(), base.TestClusterPassword())
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	dataStores := rt.TestBucket.GetNonDefaultDatastoreNames()
-	deletedDataStore := dataStores[1]
-
-	defer func() {
-		assert.NoError(t, bucket.CreateDataStore(base.TestCtx(t), deletedDataStore))
-
-	}()
 	// drop a data store
 	require.NoError(t, rt.TestBucket.DropDataStore(deletedDataStore))
 	require.Len(t, rt.TestBucket.GetNonDefaultDatastoreNames(), len(dataStores)-1)

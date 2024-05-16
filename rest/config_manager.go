@@ -345,7 +345,12 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 
 	var attempt int
 	for attempt = 1; attempt <= configFetchMaxRetryAttempts; attempt++ {
-		base.InfofCtx(ctx, base.KeyConfig, "GetDatabaseConfigs starting (attempt %d/%d)", attempt, configFetchMaxRetryAttempts)
+		msg := fmt.Sprintf("Checking for database config (attempt %d/%d)", attempt, configFetchMaxRetryAttempts)
+		if attempt == 1 {
+			base.DebugfCtx(ctx, base.KeyConfig, msg)
+		} else {
+			base.InfofCtx(ctx, base.KeyConfig, msg)
+		}
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
 			return nil, err
@@ -399,7 +404,7 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 		}
 	}
 
-	base.WarnfCtx(ctx, "Unable to successfully retrieve GetDatabaseConfigs for groupID: %s after %d attempts", base.MD(groupID), attempt)
+	base.WarnfCtx(ctx, "Unable to successfully retrieve GetDatabaseConfigs in %q for groupID: %s after %d attempts", base.MD(bucketName), base.MD(groupID), attempt)
 	return nil, base.ErrConfigRegistryReloadRequired
 }
 

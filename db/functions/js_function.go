@@ -18,11 +18,10 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/graphql-go/graphql"
 	_ "github.com/robertkrimen/otto/underscore"
 )
 
-// implements UserFunctionInvocation and resolver
+// implements UserFunctionInvocation
 type jsInvocation struct {
 	*functionImpl
 	db   *db.Database
@@ -30,28 +29,12 @@ type jsInvocation struct {
 	args map[string]any
 }
 
-var _ resolver = &jsInvocation{}
-
 func (fn *jsInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 	return nil, nil
 }
 
 func (fn *jsInvocation) Run(ctx context.Context) (any, error) {
 	return fn.call(ctx, db.MakeUserCtx(fn.db.User(), base.DefaultScope, base.DefaultCollection), fn.args)
-}
-
-func (fn *jsInvocation) Resolve(ctx context.Context, params graphql.ResolveParams) (any, error) {
-	return fn.call(
-		ctx,
-		params.Source, // parent
-		params.Args,   // args
-		db.MakeUserCtx(fn.db.User(), base.DefaultScope, base.DefaultCollection), // context
-		resolverInfo(params)) // info
-}
-
-func (fn *jsInvocation) ResolveType(ctx context.Context, params graphql.ResolveTypeParams) (any, error) {
-	info := map[string]any{}
-	return fn.call(ctx, db.MakeUserCtx(fn.db.User(), base.DefaultScope, base.DefaultCollection), params.Value, info)
 }
 
 func (fn *jsInvocation) call(ctx context.Context, jsArgs ...any) (any, error) {

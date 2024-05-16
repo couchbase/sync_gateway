@@ -1056,19 +1056,6 @@ func (h *handler) readJSON() (db.Body, error) {
 	return body, h.readJSONInto(&body)
 }
 
-// Parses a JSON request body, returning it as a Body map, leaving numbers as float64.
-func (h *handler) readJSONWithoutNumber() (db.Body, error) {
-	var body db.Body
-	input, err := processContentEncoding(h.rq.Header, h.requestBody, "application/json")
-	if err != nil {
-		return body, err
-	}
-	decoder := base.JSONDecoder(input)
-	err = decoder.Decode(&body)
-	_ = input.Close()
-	return body, err
-}
-
 // Parses a JSON request body into a custom structure.
 func (h *handler) readJSONInto(into interface{}) error {
 	return ReadJSONFromMIME(h.rq.Header, h.requestBody, into)

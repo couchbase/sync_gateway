@@ -64,9 +64,14 @@ func (c *Collection) WriteWithXattrs(ctx context.Context, k string, exp uint32, 
 	return cas, err
 }
 
-// CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
+// WriteTombstoneWithXattrs will create a a tombtonse with xattrs. This is a cas safe operation. If deleteBody is true, will create a tombstone from an existing live document.
+// Caveats:
+//   - Calling deleteBody=false on an alive document with valid cas will not create a tombstone, but be equivalent to calling UpdateXattrs
 func (c *Collection) WriteTombstoneWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, xattrs map[string][]byte, deleteBody bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 
+	if len(xattrs) == 0 {
+		return 0, fmt.Errorf("WriteTombstoneWithXattrs called with empty xattrs")
+	}
 	requiresBodyRemoval := false
 	worker := func() (shouldRetry bool, err error, value uint64) {
 
@@ -199,9 +204,9 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
 		deleteBody := value != nil
 		if updatedDoc.IsTombstone {
-			_, writeErr = c.WriteTombstoneWithXattrs(ctx, k, exp, cas, updatedDoc.Xattrs, deleteBody, opts)
+			casOut, writeErr = c.WriteTombstoneWithXattrs(ctx, k, exp, cas, updatedDoc.Xattrs, deleteBody, opts)
 		} else {
-			_, writeErr = c.WriteWithXattrs(ctx, k, exp, cas, updatedDoc.Doc, updatedDoc.Xattrs, opts)
+			casOut, writeErr = c.WriteWithXattrs(ctx, k, exp, cas, updatedDoc.Doc, updatedDoc.Xattrs, opts)
 		}
 
 		if writeErr == nil {

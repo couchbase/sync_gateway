@@ -22,7 +22,7 @@ var firstServerVersionToSupportMobileXDCR = &ComparableBuildVersion{
 	epoch: 0,
 	major: 7,
 	minor: 6,
-	patch: 1,
+	patch: 2,
 }
 
 type clusterLogFunc func(ctx context.Context, format string, args ...interface{})

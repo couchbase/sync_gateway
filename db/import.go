@@ -40,6 +40,7 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 	} else {
 		err := body.Unmarshal(value)
 		if err != nil {
+			db.dbStats().SharedBucketImport().ImportErrorCount.Add(1)
 			base.InfofCtx(ctx, base.KeyImport, "Unmarshal error during importDoc %v", err)
 			return nil, base.HTTPErrorf(http.StatusNotFound, "Error unmarshalling %s: %s", base.UD(docid).Redact(), err)
 		}
@@ -147,7 +148,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		existingDoc.Expiry = *expiry
 	}
 
-	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, expiry, mutationOptions, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	docOut, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, true, expiry, mutationOptions, existingDoc, true, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
 		if doc.Cas != existingDoc.Cas {

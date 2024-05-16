@@ -41,7 +41,7 @@ var kUserFunctionMaxCallDepth = 20
 //go:embed js_wrapper.js
 var kJavaScriptWrapper string
 
-// Creates a JSServer instance wrapping a userJSRunner, for user JS functions and GraphQL resolvers.
+// Creates a JSServer instance wrapping a userJSRunner, for user JS functions.
 func newFunctionJSServer(ctx context.Context, name string, what string, sourceCode string) (*sgbucket.JSServer, error) {
 	js := fmt.Sprintf(kJavaScriptWrapper, sourceCode)
 	jsServer := sgbucket.NewJSServer(ctx, js, 0, kUserFunctionCacheSize,
@@ -56,11 +56,11 @@ func newFunctionJSServer(ctx context.Context, name string, what string, sourceCo
 	return jsServer, err
 }
 
-// An object that runs a user JavaScript function or a GraphQL resolver.
+// An object that runs a user JavaScript function.
 // Not thread-safe! Owned by an sgbucket.JSServer, which arbitrates access to it.
 type jsRunner struct {
 	sgbucket.JSRunner                 // "Superclass"
-	kind              string          // "user function", "GraphQL resolver", etc
+	kind              string          // "user function", etc
 	name              string          // Name of this function or resolver
 	currentDB         *db.Database    // db.Database instance (updated before every call)
 	ctx               context.Context // Context (updated before every call)

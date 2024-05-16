@@ -90,7 +90,7 @@ func TestLogFormat(t *testing.T) {
 		},
 		{
 			name:   "test and bucket only no database",
-			ctx:    bucketNameCtx(TestCtx(t), "testBucket"),
+			ctx:    BucketNameCtx(TestCtx(t), "testBucket"),
 			output: "[INF] t:TestLogFormat b:testBucket foobar\n",
 		},
 
@@ -206,7 +206,7 @@ func TestTestCtx(t *testing.T) {
 }
 
 func TestBucketNameCtx(t *testing.T) {
-	RequireLogMessage(t, bucketNameCtx(TestCtx(t), "fooBucket"), "[INF] t:TestBucketNameCtx b:fooBucket foobar\n", standardMessage)
+	RequireLogMessage(t, BucketNameCtx(TestCtx(t), "fooBucket"), "[INF] t:TestBucketNameCtx b:fooBucket foobar\n", standardMessage)
 }
 
 // Tests the typical request workflow for a database request. Makes sure each level of context does not modify earlier levels.
@@ -224,7 +224,7 @@ func TestCtxWorkflow(t *testing.T) {
 	RequireLogMessage(t, correlationCtx, "[INF] t:TestCtxWorkflow c:correlationID foobar\n", standardMessage)
 	RequireLogMessage(t, ctx, "[INF] t:TestCtxWorkflow foobar\n", standardMessage)
 
-	bucketCtx := bucketNameCtx(correlationCtx, "fooBucket")
+	bucketCtx := BucketNameCtx(correlationCtx, "fooBucket")
 	RequireLogMessage(t, bucketCtx, "[INF] t:TestCtxWorkflow c:correlationID b:fooBucket foobar\n", standardMessage)
 	RequireLogMessage(t, correlationCtx, "[INF] t:TestCtxWorkflow c:correlationID foobar\n", standardMessage)
 	RequireLogMessage(t, ctx, "[INF] t:TestCtxWorkflow foobar\n", standardMessage)

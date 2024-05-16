@@ -557,6 +557,46 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 
 }
 
+func TestMultiXattrRoundtrip(t *testing.T) {
+	SkipXattrTestsIfNotEnabled(t)
+
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	dataStore := bucket.GetSingleDataStore()
+
+	const docID = "doc1"
+	xattrKeys := []string{"xattr1", "xattr2", "xattr3"}
+	inputXattrs := map[string][]byte{
+		xattrKeys[0]: []byte(`{"key1": "value1"}`),
+		xattrKeys[1]: []byte(`{"key2": "value2"}`),
+		xattrKeys[2]: []byte(`{"key3": "value3"}`),
+	}
+	_, err := dataStore.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"key": "value"}`), inputXattrs, nil)
+	if dataStore.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		require.NoError(t, err)
+	} else {
+		require.ErrorContains(t, err, "invalid xattr key combination")
+		inputXattrs = map[string][]byte{
+			xattrKeys[0]: inputXattrs[xattrKeys[0]],
+		}
+		// write a document an xattrs, because subsequent GetXattrs needs a document to produce an error without multi-xattr support
+		_, err := dataStore.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"key": "value"}`), inputXattrs, nil)
+		require.NoError(t, err)
+	}
+
+	xattrs, _, err := dataStore.GetXattrs(ctx, docID, xattrKeys)
+	if dataStore.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		require.NoError(t, err)
+		for _, key := range xattrKeys {
+			require.Contains(t, xattrs, key)
+			require.JSONEq(t, string(inputXattrs[key]), string(xattrs[key]))
+		}
+	} else {
+		require.ErrorContains(t, err, "not supported")
+	}
+}
+
 // TestWriteCasXATTRRaw.  Validates basic write of document and xattr as raw bytes.
 func TestXattrWriteCasRaw(t *testing.T) {
 
@@ -1835,7 +1875,6 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 			defer testBucket.Close(ctx)
 
 			// Override test bucket spec with invalid creds
-			fmt.Println("testBucket.BucketSpec: ", testBucket.BucketSpec)
 			testBucket.BucketSpec.Auth = TestAuthenticator{
 				Username:   "invalid_username",
 				Password:   "invalid_password",
@@ -1843,9 +1882,9 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 			}
 			if tls {
 				testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbase://", "couchbases://")
+				testBucket.BucketSpec.TLSSkipVerify = true // test env isn't always using valid certs
 			} else {
 				testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbases://", "couchbase://")
-				SkipInvalidAuthForCouchbaseServer76(t)
 			}
 
 			// Attempt to open the bucket again using invalid creds. We should expect an error.
@@ -1950,30 +1989,13 @@ EKTcWGekdmdDPsHloRNtsiCa697B2O9IFA==
 func createTombstonedDoc(t *testing.T, dataStore sgbucket.DataStore, key, xattrName string) {
 
 	// Create document with XATTR
-
-	val := make(map[string]interface{})
-	val["body_field"] = "1234"
-
 	xattrVal := make(map[string]interface{})
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"
 
 	ctx := TestCtx(t)
-	// Create w/ doc and XATTR
-	cas := uint64(0)
-	cas, err := dataStore.WriteWithXattrs(ctx, key, 0, cas, MustJSONMarshal(t, val), map[string][]byte{xattrName: MustJSONMarshal(t, xattrVal)}, nil)
-	require.NoError(t, err)
 
-	// Create tombstone revision which deletes doc body but preserves XATTR
-	_, mutateErr := dataStore.WriteTombstoneWithXattrs(ctx, key, 0, cas, nil, true, nil)
-	/*
-		flags := gocb.SubdocDocFlagAccessDeleted
-		_, mutateErr := dataStore.dataStore.MutateInEx(key, flags, gocb.Cas(cas), uint32(0)).
-			UpsertEx(xattrName, xattrVal, gocb.SubdocFlagXattr).                                              // Update the xattr
-			UpsertEx(SyncXattrName+".cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
-			RemoveEx("", gocb.SubdocFlagNone).                                                                // Delete the document body
-			Execute()
-	*/
+	_, mutateErr := dataStore.WriteTombstoneWithXattrs(ctx, key, 0, 0, map[string][]byte{xattrName: MustJSONMarshal(t, xattrVal)}, false, nil)
 	require.NoError(t, mutateErr)
 
 	// Verify delete of body and XATTR

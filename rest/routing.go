@@ -113,8 +113,6 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (root, db, keyspa
 	// User queries & functions
 	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {
 		dbr.Handle("/_function/{name}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleFunctionCall)).Methods("GET", "POST")
-		dbr.Handle("/_graphql", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGraphQL)).Methods("GET")
-		dbr.Handle("/_graphql", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleGraphQL)).Methods("POST")
 	}
 
 	return root, dbr, keyspace
@@ -315,11 +313,6 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigFunctions)).Methods("PUT", "DELETE")
 		dbr.Handle("/_config/functions/{function}",
 			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigFunction)).Methods("PUT", "DELETE")
-
-		dbr.Handle("/_config/graphql",
-			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigGraphQL)).Methods("GET")
-		dbr.Handle("/_config/graphql",
-			makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigGraphQL)).Methods("PUT", "DELETE")
 	}
 
 	// The routes below are part of the CouchDB REST API but should only be available to admins,

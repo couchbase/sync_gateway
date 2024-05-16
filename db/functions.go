@@ -20,12 +20,11 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/graphql-go/graphql"
 )
 
-/* This is the interface to the functions and GraphQL APIs implemented in the functions package. */
+/* This is the interface to the JS functions API implemented in the functions package. */
 
-// Timeout for N1QL, JavaScript and GraphQL queries. (Applies to REST and BLIP requests.)
+// Timeout for N1QL and JavaScript queries. (Applies to REST and BLIP requests.)
 const defaultUserFunctionTimeout = 60 * time.Second
 
 //////// USER FUNCTIONS
@@ -60,21 +59,6 @@ type UserFunctionInvocation interface {
 	Run(context.Context) (interface{}, error)
 }
 
-//////// GRAPHQL
-
-// Represents a compiled GraphQL schema and its resolver functions.
-// Created by functions.CompileGraphQL.
-type GraphQL interface {
-	// The configuration's maximum request size (in bytes); or nil if none.
-	MaxRequestSize() *int
-
-	// Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
-	Query(db *Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*graphql.Result, error)
-
-	// Returns the names of all N1QL queries used.
-	N1QLQueryNames() []string
-}
-
 //////// DATABASE API FOR USER FUNCTIONS:
 
 // Looks up a UserFunction by name and returns an Invocation.
@@ -94,15 +78,6 @@ func (db *Database) CallUserFunction(ctx context.Context, name string, args map[
 		return nil, err
 	}
 	return invocation.Run(ctx)
-}
-
-// Top-level public method to run a GraphQL query on a db.Database.
-func (db *Database) UserGraphQLQuery(ctx context.Context, query string, operationName string, variables map[string]interface{}, mutationAllowed bool) (*graphql.Result, error) {
-	if graphql := db.Options.GraphQL; graphql == nil {
-		return nil, base.HTTPErrorf(http.StatusServiceUnavailable, "GraphQL is not configured")
-	} else {
-		return graphql.Query(db, query, operationName, variables, mutationAllowed, ctx)
-	}
 }
 
 //////// UTILITIES

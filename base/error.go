@@ -35,7 +35,6 @@ var (
 	ErrDocumentMigrated      = &sgError{"Document migrated"}
 	ErrFatalBucketConnection = &sgError{"Fatal error connecting to bucket"}
 	ErrAuthError             = &sgError{"Authentication failure"}
-	ErrEmptyMetadata         = &sgError{"Empty Sync Gateway metadata"}
 	ErrCasFailureShouldRetry = sgbucket.ErrCasFailureShouldRetry
 	ErrIndexerError          = &sgError{"Indexer error"}
 	ErrAlreadyExists         = &sgError{"Already exists"}
@@ -52,9 +51,6 @@ var (
 
 	// ErrXattrPartialFound is returned if only a subset of requested xattrs are found
 	ErrXattrPartialFound = &sgError{"Some Requested Xattrs Not Found"}
-
-	// ErrXattrInvalidLen is returned if the xattr is corrupt.
-	ErrXattrInvalidLen = &sgError{"Xattr stream length"}
 
 	// ErrPartialViewErrors is returned if the view call contains any partial errors.
 	// This is more of a warning, and inspecting ViewResult.Errors is required for detail.

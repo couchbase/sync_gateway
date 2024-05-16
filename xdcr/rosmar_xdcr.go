@@ -192,8 +192,8 @@ func opWithMeta(ctx context.Context, collection *rosmar.Collection, originalCas 
 	var body []byte
 	if event.DataType&sgbucket.FeedDataTypeXattr != 0 {
 		var err error
-		var dcpXattrs []sgbucket.Xattr
-		body, dcpXattrs, err = sgbucket.DecodeValueWithXattrs(event.Value)
+		var dcpXattrs map[string][]byte
+		body, dcpXattrs, err = sgbucket.DecodeValueWithAllXattrs(event.Value)
 		if err != nil {
 			return err
 		}
@@ -224,11 +224,11 @@ func (r *rosmarManager) Stats(context.Context) (*Stats, error) {
 	}, nil
 }
 
-// xattrToBytes converts a slice of Xattrs to a byte slice of marshalled json.
-func xattrToBytes(xattrs []sgbucket.Xattr) ([]byte, error) {
+// xattrToBytes converts a map of xattrs of marshalled json.
+func xattrToBytes(xattrs map[string][]byte) ([]byte, error) {
 	xattrMap := make(map[string]json.RawMessage)
-	for _, xattr := range xattrs {
-		xattrMap[xattr.Name] = xattr.Value
+	for k, v := range xattrs {
+		xattrMap[k] = v
 	}
 	return json.Marshal(xattrMap)
 }

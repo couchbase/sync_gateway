@@ -72,7 +72,7 @@ func GetGoCBv2Bucket(ctx context.Context, spec BucketSpec) (*GocbV2Bucket, error
 		return nil, err
 	}
 
-	err = cluster.WaitUntilReady(time.Second*5, &gocb.WaitUntilReadyOptions{
+	err = cluster.WaitUntilReady(time.Second*30, &gocb.WaitUntilReadyOptions{
 		DesiredState:  gocb.ClusterStateOnline,
 		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeManagement},
 		RetryStrategy: &goCBv2FailFastRetryStrategy{},
@@ -225,10 +225,12 @@ func (b *GocbV2Bucket) GetCluster() *gocb.Cluster {
 	return b.cluster
 }
 
+// Close closes the cluster connections and all underlying bucket connections.
 func (b *GocbV2Bucket) Close(ctx context.Context) {
 	if err := b.cluster.Close(nil); err != nil {
 		WarnfCtx(ctx, "Error closing cluster for bucket %s: %v", MD(b.BucketName()), err)
 	}
+	b.cluster = nil
 }
 
 func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
@@ -252,7 +254,7 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 	case sgbucket.BucketStoreFeaturePreserveExpiry, sgbucket.BucketStoreFeatureCollections:
 		// TODO: Change to capability check when GOCBC-1218 merged
 		return isMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 0)
-	case sgbucket.BucketStoreFeatureSystemCollections:
+	case sgbucket.BucketStoreFeatureSystemCollections, sgbucket.BucketStoreFeatureMultiXattrSubdocOperations:
 		return isMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 6)
 	case sgbucket.BucketStoreFeatureMobileXDCR:
 		return b.supportsHLV
@@ -380,6 +382,9 @@ func (b *GocbV2Bucket) GetSpec() BucketSpec {
 // This flushes the *entire* bucket associated with the collection (not just the collection).  Intended for test usage only.
 func (b *GocbV2Bucket) Flush(ctx context.Context) error {
 
+	if b.cluster == nil {
+		return fmt.Errorf("bucket %s has been closed", MD(b.GetName()))
+	}
 	bucketManager := b.cluster.Buckets()
 
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
@@ -639,11 +644,19 @@ func (b *GocbV2Bucket) ListDataStores() ([]sgbucket.DataStoreName, error) {
 	return collections, nil
 }
 
+// DropDataStore removes a collection from the bucket. This function will return immediately but the collection may take some time to delete.
 func (b *GocbV2Bucket) DropDataStore(name sgbucket.DataStoreName) error {
+	if b.cluster == nil {
+		return fmt.Errorf("bucket %s has been closed", MD(b.GetName()))
+	}
 	return b.bucket.Collections().DropCollection(gocb.CollectionSpec{Name: name.CollectionName(), ScopeName: name.ScopeName()}, nil)
 }
 
+// CreateDataStore adds a collection from the bucket, and creates a scope if it does not exist. This code is synchronous and waits for the collection to be created.
 func (b *GocbV2Bucket) CreateDataStore(ctx context.Context, name sgbucket.DataStoreName) error {
+	if b.cluster == nil {
+		return fmt.Errorf("bucket %s has been closed", MD(b.GetName()))
+	}
 	// create scope first (if it doesn't already exist)
 	if name.ScopeName() != DefaultScope {
 		err := b.bucket.Collections().CreateScope(name.ScopeName(), nil)

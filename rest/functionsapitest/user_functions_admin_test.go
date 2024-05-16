@@ -21,6 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var allowAll = &functions.Allow{Channels: []string{"*"}}
+
 //////// ALL ADMIN USER QUERY APIS:
 
 // When feature flag is not enabled, all API calls return 404:
@@ -42,7 +44,50 @@ func TestFunctionsConfigGetWithoutFeatureFlag(t *testing.T) {
 	})
 }
 
-// Test use of "Etag" and "If-Match" headers to safely update function/query/graphql config.
+func runTestFunctionsConfigMVCC(t *testing.T, rt *rest.RestTester, uri string, newValue string) {
+	// Get initial etag:
+	response := rt.SendAdminRequest("GET", uri, "")
+	rest.RequireStatus(t, response, http.StatusOK)
+	etag := response.HeaderMap.Get("Etag")
+	assert.Regexp(t, `"[^"]+"`, etag)
+
+	// Update config, just to change its etag:
+	response = rt.SendAdminRequest("PUT", uri, newValue)
+	rest.RequireStatus(t, response, http.StatusOK)
+	newEtag := response.HeaderMap.Get("Etag")
+	assert.Regexp(t, `"[^"]+"`, newEtag)
+	assert.NotEqual(t, etag, newEtag)
+
+	// A GET should also return the new etag:
+	response = rt.SendAdminRequest("GET", uri, "")
+	rest.RequireStatus(t, response, http.StatusOK)
+	assert.Equal(t, newEtag, response.HeaderMap.Get("Etag"))
+
+	// Try to update using If-Match with the old etag:
+	headers := map[string]string{"If-Match": etag}
+	response = rt.SendAdminRequestWithHeaders("PUT", uri, newValue, headers)
+	rest.RequireStatus(t, response, http.StatusPreconditionFailed)
+
+	// Now update successfully using the current etag:
+	headers["If-Match"] = newEtag
+	response = rt.SendAdminRequestWithHeaders("PUT", uri, newValue, headers)
+	rest.RequireStatus(t, response, http.StatusOK)
+	newestEtag := response.HeaderMap.Get("Etag")
+	assert.Regexp(t, `"[^"]+"`, newestEtag)
+	assert.NotEqual(t, etag, newestEtag)
+	assert.NotEqual(t, newEtag, newestEtag)
+
+	// Try to delete using If-Match with the previous etag:
+	response = rt.SendAdminRequestWithHeaders("DELETE", uri, newValue, headers)
+	rest.RequireStatus(t, response, http.StatusPreconditionFailed)
+
+	// Now delete successfully using the current etag:
+	headers["If-Match"] = newestEtag
+	response = rt.SendAdminRequestWithHeaders("DELETE", uri, newValue, headers)
+	rest.RequireStatus(t, response, http.StatusOK)
+}
+
+// Test use of "Etag" and "If-Match" headers to safely update function/query config.
 func TestFunctionsConfigMVCC(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
 		UserFunctions: &functions.FunctionsConfig{

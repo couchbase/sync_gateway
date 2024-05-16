@@ -402,7 +402,7 @@ func (tbp *TestBucketPool) removeOldTestBuckets(ctx context.Context) error {
 
 	for _, b := range buckets {
 		if strings.HasPrefix(b, tbpBucketNamePrefix) {
-			ctx := bucketNameCtx(ctx, b)
+			ctx := BucketNameCtx(ctx, b)
 			tbp.Logf(ctx, "Removing old test bucket")
 			wg.Add(1)
 
@@ -513,12 +513,12 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, buck
 	// create required number of buckets (skipping any already existing ones)
 	for i := 0; i < numBuckets; i++ {
 		testBucketName := fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp)
-		ctx := bucketNameCtx(context.Background(), testBucketName)
+		ctx := BucketNameCtx(context.Background(), testBucketName)
 
 		// Bucket creation takes a few seconds for each bucket,
 		// so create and wait for readiness concurrently.
 		go func(bucketName string) {
-			ctx := bucketNameCtx(ctx, bucketName)
+			ctx := BucketNameCtx(ctx, bucketName)
 
 			tbp.Logf(ctx, "Creating new test bucket")
 			err := tbp.cluster.insertBucket(ctx, bucketName, bucketQuotaMB)
@@ -555,7 +555,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, buck
 	// All the buckets are created and opened, so now we can perform some synchronous setup (e.g. Creating GSI indexes)
 	for i := 0; i < numBuckets; i++ {
 		testBucketName := fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp)
-		ctx := bucketNameCtx(context.Background(), testBucketName)
+		ctx := BucketNameCtx(context.Background(), testBucketName)
 
 		tbp.Logf(ctx, "running bucketInitFunc")
 		b := openBuckets[testBucketName]
@@ -596,7 +596,7 @@ loop:
 
 		case dirtyBucket := <-tbp.bucketReadierQueue:
 			atomic.AddInt32(&tbp.stats.TotalBucketReadierCount, 1)
-			ctx := bucketNameCtx(ctx, string(dirtyBucket))
+			ctx := BucketNameCtx(ctx, string(dirtyBucket))
 			tbp.Logf(ctx, "bucketReadier got bucket")
 
 			go func(testBucketName tbpBucketName) {
@@ -729,9 +729,9 @@ func TestBucketPoolMain(ctx context.Context, m *testing.M, bucketReadierFunc TBP
 	teardownFuncs = append(teardownFuncs, SetUpTestGoroutineDump(m))
 
 	if options.RequireXDCR && GTestBucketPool.cluster != nil && GTestBucketPool.cluster.majorVersion < 7 {
-		fmt.Println("Test requires XDCR, but the cluster version is less than 7. Skipping test.")
-		return
+		SkipTestMain(m, "Test requires XDCR, but the cluster version is less than 7. Skipping test.")
 	}
+
 	// Run the test suite
 	status := m.Run()
 

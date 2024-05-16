@@ -25,7 +25,8 @@ import (
 )
 
 const (
-	kMaxRecentSequences = 20 // Maximum number of sequences stored in RecentSequences before pruning is triggered
+	kMaxRecentSequences            = 20    // Maximum number of sequences stored in RecentSequences before pruning is triggered
+	unusedSequenceWarningThreshold = 10000 // Warn when releasing more than this many sequences due to existing sequence on the document
 )
 
 // ErrForbidden is returned when the user requests a document without a revision that they do not have access to.
@@ -886,7 +887,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	}
 
 	allowImport := db.UseXattrs()
-	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, nil, false, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		var isSgWrite bool
 		var crc32Match bool
 
@@ -1011,7 +1012,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 	}
 
 	allowImport := db.UseXattrs()
-	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, existingDoc, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, existingDoc, false, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -1673,6 +1674,7 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 		if docSequence, err = db.sequences.nextSequence(ctx); err != nil {
 			return unusedSequences, err
 		}
+		firstAllocatedSequence := docSequence
 
 		// If the assigned sequence is less than or equal to the previous sequence on the document, release
 		// the assigned sequence and acquire one using nextSequenceGreaterThan
@@ -1680,10 +1682,15 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 			if err = db.sequences.releaseSequence(ctx, docSequence); err != nil {
 				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
 			}
-			docSequence, err = db.sequences.nextSequenceGreaterThan(ctx, doc.Sequence)
+			var releasedSequenceCount uint64
+			docSequence, releasedSequenceCount, err = db.sequences.nextSequenceGreaterThan(ctx, doc.Sequence)
 			if err != nil {
 				return unusedSequences, err
 			}
+			if releasedSequenceCount > unusedSequenceWarningThreshold {
+				base.WarnfCtx(ctx, "Doc %s / %s had an existing sequence %d that is higher than the next db sequence value %d, resulting in the release of %d unused sequences. This may indicate documents being migrated between databases by an external process.", base.UD(doc.ID), doc.CurrentRev, doc.Sequence, firstAllocatedSequence, releasedSequenceCount)
+			}
+
 		}
 	}
 
@@ -1899,7 +1906,8 @@ type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAtta
 //  1. Receive the updated document body in the response
 //  2. Specify the existing document body/xattr/cas, to avoid initial retrieval of the doc in cases that the current contents are already known (e.g. import).
 //     On cas failure, the document will still be reloaded from the bucket as usual.
-func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry *uint32, opts *sgbucket.MutateInOptions, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
+//  3. If isImport=true, document body will not be updated - only metadata xattr(s)
+func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry *uint32, opts *sgbucket.MutateInOptions, existingDoc *sgbucket.BucketDocument, isImport bool, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
 	key := realDocID(docid)
 	if key == "" {
 		return nil, "", base.HTTPErrorf(400, "Invalid doc ID")
@@ -2015,9 +2023,12 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 			// Return the new raw document value for the bucket to store.
 			doc.SetCrc32cUserXattrHash()
-			var rawXattr []byte
-			updatedDoc.Doc, rawXattr, err = doc.MarshalWithXattr()
-			docBytes = len(updatedDoc.Doc)
+			var rawXattr, rawDocBody []byte
+			rawDocBody, rawXattr, err = doc.MarshalWithXattr()
+			if !isImport {
+				updatedDoc.Doc = rawDocBody
+				docBytes = len(updatedDoc.Doc)
+			}
 			updatedDoc.Xattrs = map[string][]byte{base.SyncXattrName: rawXattr}
 
 			// Warn when sync data is larger than a configured threshold
