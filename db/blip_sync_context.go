@@ -690,11 +690,11 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	history := toHistory(rev.History, knownRevs, maxHistory)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq, replacedRevID)
 	if base.LogDebugEnabled(bsc.loggingCtx, base.KeySync) {
-		originalRevMsg := ""
+		replacedRevMsg := ""
 		if replacedRevID != "" {
-			originalRevMsg = fmt.Sprintf(" (replaced %s)", replacedRevID)
+			replacedRevMsg = fmt.Sprintf(" (replaced %s)", replacedRevID)
 		}
-		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s%s based on %d known, digests: %v", base.UD(docID), revID, originalRevMsg, len(knownRevs), digests(attachmentStorageMeta))
+		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s%s based on %d known, digests: %v", base.UD(docID), revID, replacedRevMsg, len(knownRevs), digests(attachmentStorageMeta))
 	}
 
 	return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, bodyBytes, attachmentStorageMeta, properties, seq, nil)
