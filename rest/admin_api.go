@@ -1329,54 +1329,6 @@ func marshalPrincipal(database *db.Database, princ auth.Principal, includeDynami
 	return info
 }
 
-// marshalChannels outputs a list of channels in a format for REST API endpoints.
-func marshalChannels(database *db.Database, princ auth.Principal, includeDynamicGrantInfo bool) auth.PrincipalConfig {
-	name := externalUserName(princ.Name())
-	info := auth.PrincipalConfig{
-		Name:             &name,
-		ExplicitChannels: princ.ExplicitChannels().AsSet(),
-	}
-
-	collectionAccess := princ.GetCollectionsAccess()
-	if collectionAccess != nil && !database.OnlyDefaultCollection() {
-		info.CollectionAccess = make(map[string]map[string]*auth.CollectionAccessConfig)
-		for scopeName, scope := range collectionAccess {
-			scopeAccessConfig := make(map[string]*auth.CollectionAccessConfig)
-			for collectionName, collection := range scope {
-				_, err := database.GetDatabaseCollection(scopeName, collectionName)
-				// collection doesn't exist anymore, but did at some point
-				if err != nil {
-					continue
-				}
-				collectionAccessConfig := &auth.CollectionAccessConfig{
-					ExplicitChannels_: collection.ExplicitChannels().AsSet(),
-				}
-				if includeDynamicGrantInfo {
-					if user, ok := princ.(auth.User); ok {
-						collectionAccessConfig.Channels_ = user.InheritedCollectionChannels(scopeName, collectionName).AsSet()
-					} else {
-						collectionAccessConfig.Channels_ = princ.CollectionChannels(scopeName, collectionName).AsSet()
-					}
-				}
-				scopeAccessConfig[collectionName] = collectionAccessConfig
-			}
-			info.CollectionAccess[scopeName] = scopeAccessConfig
-		}
-	}
-
-	if user, ok := princ.(auth.User); ok {
-		if includeDynamicGrantInfo {
-			info.Channels = user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection).AsSet()
-		}
-	} else {
-		if includeDynamicGrantInfo {
-			info.Channels = princ.Channels().AsSet()
-		}
-	}
-	return info
-
-}
-
 // Handles PUT and POST for a user or a role.
 func (h *handler) updatePrincipal(name string, isUser bool) error {
 	h.assertAdminOnly()

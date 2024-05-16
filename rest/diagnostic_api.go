@@ -11,6 +11,7 @@ package rest
 import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	channels "github.com/couchbase/sync_gateway/channels"
 	"github.com/gorilla/mux"
 )
 
@@ -34,10 +35,16 @@ func (h *handler) handleGetAllChannels() error {
 	for _, dsName := range h.db.DataStoreNames() {
 		keyspace := dsName.ScopeName() + "." + dsName.CollectionName()
 
-		resp[keyspace] = make(map[string]auth.GrantHistory)
-		channels := user.InheritedCollectionChannels(dsName.ScopeName(), dsName.CollectionName())
+		currentChannels := user.InheritedCollectionChannels(dsName.ScopeName(), dsName.CollectionName())
 		chanHistory := user.CollectionChannelHistory(dsName.ScopeName(), dsName.CollectionName())
-		for chanName, chanEntry := range channels {
+		// If no channels aside from public and no channels in history, don't make a key for this keyspace
+		if len(currentChannels) > 1 || len(chanHistory) != 0 {
+			resp[keyspace] = make(map[string]auth.GrantHistory)
+		}
+		for chanName, chanEntry := range currentChannels {
+			if chanName == channels.DocumentStarChannel {
+				continue
+			}
 			resp[keyspace][chanName] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.Sequence, EndSeq: 0}}}
 		}
 		for chanName, chanEntry := range chanHistory {
@@ -52,9 +59,9 @@ func (h *handler) handleGetAllChannels() error {
 		}
 
 	}
-	channels := allChannels{Channels: resp}
+	allChannels := allChannels{Channels: resp}
 
-	bytes, err := base.JSONMarshal(channels)
+	bytes, err := base.JSONMarshal(allChannels)
 	h.writeRawJSON(bytes)
 	return err
 }

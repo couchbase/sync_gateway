@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"strings"
@@ -23,6 +24,7 @@ type grant interface {
 	request(rt *RestTester)
 }
 
+const defaultKeyspace = "_default._default"
 const fakeUpdatedTime = 1234
 
 // convertUpdatedTimeToConstant replaces the updated_at field in the response with a constant value to be able to diff
@@ -156,8 +158,7 @@ func (g docGrant) request(rt *RestTester) {
 	}
 }
 
-func TestGetAllChannelsExample(t *testing.T) {
-	defaultKeyspace := "_default._default"
+func TestGetAllChannelsByUser(t *testing.T) {
 	tests := []struct {
 		name          string
 		adminChannels []string
@@ -176,8 +177,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 {"all_channels":{"_default._default": {
 		"A": { "entries" : ["1-0"], "updated_at":0},
 		"B": { "entries" : ["1-0"], "updated_at":0},
-		"C": { "entries" : ["1-0"], "updated_at":0},
-		"!": { "entries" : ["1-0"], "updated_at":0}
+		"C": { "entries" : ["1-0"], "updated_at":0}
 	}}}`,
 				}}},
 		{
@@ -191,8 +191,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					},
 					output: `
 {"all_channels":{"_default._default": {
-		"A": { "entries" : ["1-0"], "updated_at":0},
-		"!": { "entries" : ["1-0"], "updated_at":0}
+		"A": { "entries" : ["1-0"], "updated_at":0}
 	}}}`,
 				},
 				// grant 2
@@ -201,8 +200,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					adminChannels: map[string][]string{defaultKeyspace: {"!"}},
 					output: `
 {"all_channels":{"_default._default": {
-		"A": { "entries" : ["1-2"], "updated_at":1234},
-		"!": { "entries" : ["1-0"], "updated_at":0}
+		"A": { "entries" : ["1-2"], "updated_at":1234}
 	}}}`,
 				},
 				// grant 2
@@ -211,8 +209,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 					output: `
 {"all_channels":{"_default._default": {
-		"A": { "entries" : ["1-2", "3-0"], "updated_at":1234},
-		"!": { "entries" : ["1-0"], "updated_at":0}
+		"A": { "entries" : ["1-2", "3-0"], "updated_at":1234}
 	}}}`,
 				},
 			},
@@ -336,8 +333,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 					output: `
 				{"all_channels":{"_default._default": {
-						"A": { "entries" : ["1-4", "5-6", "7-8", "9-10", "11-12","13-14","15-16","17-18","19-20","21-22","23-0"], "updated_at":1234},
-						"!": { "entries" : ["1-0"], "updated_at":0}
+						"A": { "entries" : ["1-4", "5-6", "7-8", "9-10", "11-12","13-14","15-16","17-18","19-20","21-22","23-0"], "updated_at":1234}
 					}}}`,
 				},
 			},
@@ -356,8 +352,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					output: `
 				{"all_channels":{"_default._default": {
 						"A": { "entries" : ["2-0"], "updated_at":0},
-						"B": { "entries" : ["2-0"], "updated_at":0},
-						"!": { "entries" : ["1-0"], "updated_at":0}
+						"B": { "entries" : ["2-0"], "updated_at":0}
 					}}}`,
 				},
 			},
@@ -373,8 +368,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					dynamicChannels: "A",
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["2-0"], "updated_at":0},
-						"!": { "entries" : ["1-0"], "updated_at":0}
+						"A": { "entries" : ["2-0"], "updated_at":0}
 					}}}`,
 				},
 			},
@@ -397,8 +391,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					{"all_channels":{"_default._default": {
 						"A": { "entries" : ["3-0"], "updated_at":0},
 						"B": { "entries" : ["3-0"], "updated_at":0},
-						"chan1": { "entries" : ["3-0"], "updated_at":0},
-						"!": { "entries" : ["1-0"], "updated_at":0}
+						"chan1": { "entries" : ["3-0"], "updated_at":0}
 					}}}`,
 				},
 			},
@@ -415,8 +408,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					dynamicChannels: "A",
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["1-0"], "updated_at":0},
-						"!": { "entries" : ["1-0"], "updated_at":0}
+						"A": { "entries" : ["1-0"], "updated_at":0}
 					}}}`,
 				},
 			},
@@ -436,8 +428,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["2-0"], "updated_at":0},
-						"!": { "entries" : ["1-0"], "updated_at":0}
+						"A": { "entries" : ["2-0"], "updated_at":0}
 					}}}`,
 				},
 			},
@@ -458,8 +449,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					roles: []string{"role1"},
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["1-0"], "updated_at":0},
-						"!": { "entries" : ["1-0"], "updated_at":0}
+						"A": { "entries" : ["1-0"], "updated_at":0}
 					}}}`,
 				},
 			},
@@ -483,8 +473,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["3-0"], "updated_at":0}, 
-						"!": { "entries" : ["1-0"], "updated_at":0}
+						"A": { "entries" : ["3-0"], "updated_at":0}
 					}}}`, // A start sequence would be 4 if its broken
 				},
 			},
@@ -510,8 +499,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					output: `
 					{"all_channels":{"_default._default": {
 						"A": { "entries" : ["3-0"], "updated_at":0},
-						"docChan": { "entries" : ["3-0"], "updated_at":0},
-						"!": { "entries" : ["1-0"], "updated_at":0}
+						"docChan": { "entries" : ["3-0"], "updated_at":0}
 					}}}`,
 				},
 			},
@@ -538,8 +526,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					output: `
 					{"all_channels":{"_default._default": {
 						"A": { "entries" : ["1-0"], "updated_at":0},
-						"docChan": { "entries" : ["3-0"], "updated_at":0},
-						"!": { "entries" : ["1-0"], "updated_at":0}
+						"docChan": { "entries" : ["3-0"], "updated_at":0}
 					}}}`,
 				},
 			},
@@ -569,8 +556,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					output: `
 					{"all_channels":{"_default._default": {
 						"A": { "entries" : ["4-0"], "updated_at":0},
-						"docChan": { "entries" : ["4-0"], "updated_at":0},
-						"!": { "entries" : ["1-0"], "updated_at":0}
+						"docChan": { "entries" : ["4-0"], "updated_at":0}
 					}}}`,
 				},
 			},
@@ -600,8 +586,7 @@ func TestGetAllChannelsExample(t *testing.T) {
 					output: `
 					{"all_channels":{"_default._default": {
 						"A": { "entries" : ["4-0"], "updated_at":0},
-						"docChan": { "entries" : ["5-0"], "updated_at":0},
-						"!": { "entries" : ["1-0"], "updated_at":0}
+						"docChan": { "entries" : ["5-0"], "updated_at":0}
 					}}}`,
 				},
 			},
@@ -627,5 +612,276 @@ func TestGetAllChannelsExample(t *testing.T) {
 
 		})
 	}
+}
 
+func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 1)
+	defer rt.Close()
+
+	const dbName = "db"
+
+	// implicit default scope/collection
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = nil
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	expectedKeyspaces := []string{
+		dbName,
+	}
+	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
+
+	newCollection := base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: t.Name()}
+	require.NoError(t, rt.TestBucket.CreateDataStore(base.TestCtx(t), newCollection))
+	defer func() {
+		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
+	}()
+
+	resp = rt.UpsertDbConfig(dbName, DbConfig{Scopes: ScopesConfig{
+		base.DefaultScope: {Collections: CollectionsConfig{
+			base.DefaultCollection:         {},
+			newCollection.CollectionName(): {},
+		}},
+	}})
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// Test that the keyspace with no channels assigned does not have a key in the response
+	grant := userGrant{
+		user:          "alice",
+		adminChannels: map[string][]string{defaultKeyspace: {}, newCollection.String(): {"D"}},
+		output: fmt.Sprintf(`
+		{
+			"all_channels":{
+				"%s":{
+					"D":{
+						"entries":["1-0"],
+						"updated_at":0
+					}
+				}
+			}}`, newCollection.String()),
+	}
+	grant.request(rt)
+
+	// check single named collection is handled
+	grant = userGrant{
+		user:          "alice",
+		adminChannels: map[string][]string{defaultKeyspace: {"A"}, newCollection.String(): {"D"}},
+		output: fmt.Sprintf(`
+{
+   "all_channels":{
+      "_default._default":{
+         "A":{
+            "entries":["2-0"],
+            "updated_at":0
+         }
+      },
+      "%s":{
+         "D":{
+            "entries":[
+               "1-0"
+            ],
+            "updated_at":0
+         }
+      }
+   }
+}`, newCollection.String()),
+	}
+	grant.request(rt)
+
+}
+
+func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 2)
+	defer rt.Close()
+
+	dbName := "db"
+	tb := base.GetTestBucket(t)
+	defer tb.Close(rt.Context())
+	scopesConfig := GetCollectionsConfig(t, tb, 2)
+
+	dbConfig := makeDbConfig(tb.GetName(), dbName, scopesConfig)
+	rt.CreateDatabase("db", dbConfig)
+
+	scopeName := rt.GetDbCollections()[0].ScopeName
+	collection1Name := rt.GetDbCollections()[0].Name
+	collection2Name := rt.GetDbCollections()[1].Name
+	scopesConfig[scopeName].Collections[collection1Name] = &CollectionConfig{}
+	keyspace1 := scopeName + "." + collection1Name
+	keyspace2 := scopeName + "." + collection2Name
+
+	// Test that the keyspace with no channels assigned does not have a key in the response
+	grant := userGrant{
+		user:          "alice",
+		adminChannels: map[string][]string{keyspace1: {"D"}},
+		output: fmt.Sprintf(`
+		{
+			"all_channels":{
+				"%s":{
+					"D":{
+						"entries":["1-0"],
+						"updated_at":0
+					}
+				}
+			}}`, keyspace1),
+	}
+	grant.request(rt)
+
+	// check single named collection is handled
+	grant = userGrant{
+		user:          "alice",
+		adminChannels: map[string][]string{keyspace2: {"A"}, keyspace1: {"D"}},
+		output: fmt.Sprintf(`
+		{
+		   "all_channels":{
+			  "%s":{
+				 "A":{
+					"entries":["2-0"],
+					"updated_at":0
+				 }
+			  },
+			  "%s":{
+				 "D":{
+					"entries":[
+					   "1-0"
+					],
+					"updated_at":0
+				 }
+			  }
+		   }
+		}`, keyspace2, keyspace1),
+	}
+	grant.request(rt)
+
+	// check removed channel in keyspace2 is in history before deleting collection 2
+	grant = userGrant{
+		user:          "alice",
+		adminChannels: map[string][]string{keyspace1: {"D"}, keyspace2: {"!"}},
+		output: fmt.Sprintf(`
+		{
+		   "all_channels":{
+			  "%s":{
+				 "A":{
+					"entries":["2-3"],
+					"updated_at":1234
+				 }
+			  },
+			  "%s":{
+				 "D":{
+					"entries":["1-0"],
+					"updated_at":0
+				 }
+			  }
+		   }
+		}`, keyspace2, keyspace1),
+	}
+	grant.request(rt)
+
+	// delete collection 2
+	scopesConfig = GetCollectionsConfig(t, tb, 1)
+	dbConfig = makeDbConfig(tb.GetName(), dbName, scopesConfig)
+	rt.UpsertDbConfig("db", dbConfig)
+
+	// check deleted collection is not there
+	grant = userGrant{
+		user:          "alice",
+		adminChannels: map[string][]string{keyspace1: {"D"}},
+		output: fmt.Sprintf(`
+		{
+		   "all_channels":{
+			  "%s":{
+				 "D":{
+					"entries":[
+					   "1-0"
+					],
+					"updated_at":0
+				 }
+			  }
+		   }
+		}`, keyspace1),
+	}
+	grant.request(rt)
+}
+
+func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = nil
+	rt.CreateDatabase("db", dbConfig)
+
+	// Create role with 1 channel and assign it to user
+	roleGrant := roleGrant{role: "role1", adminChannels: map[string][]string{defaultKeyspace: {"role1Chan"}}}
+	userGrant := userGrant{
+		user:  "alice",
+		roles: []string{"role1"},
+		output: `
+		{
+			"all_channels":{
+				"_default._default":{
+					"role1Chan":{
+						"entries":["2-0"],
+						"updated_at":0
+					}
+				}
+			}}`,
+	}
+	roleGrant.request(rt)
+	userGrant.request(rt)
+
+	resp := rt.SendAdminRequest("DELETE", "/db/_role/role1", ``)
+	RequireStatus(t, resp, http.StatusOK)
+
+	// Delete role and assert its channels no longer appear in response
+	userGrant.output = `{}`
+	userGrant.roles = []string{}
+	userGrant.request(rt)
+
+}
+
+func TestGetAllChannelsByUserNonexistentAndDeletedUser(t *testing.T) {
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = nil
+	rt.CreateDatabase("db", dbConfig)
+	// assert the endpoint returns 404 when user is not found
+	resp := rt.SendDiagnosticRequest("GET", "/db/_user/user1/_all_channels", ``)
+	RequireStatus(t, resp, http.StatusNotFound)
+
+	// Create user and assert on response
+	userGrant := userGrant{
+		user:          "user1",
+		adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+		output: `
+		{
+			"all_channels":{
+				"_default._default":{
+					"A":{
+						"entries":["1-0"],
+						"updated_at":0
+					}
+				}
+			}}`,
+	}
+	userGrant.request(rt)
+
+	// delete user
+	resp = rt.SendAdminRequest("DELETE", "/db/_user/user1", ``)
+	RequireStatus(t, resp, http.StatusOK)
+
+	// Get deleted user all channels, expect 404
+	resp = rt.SendDiagnosticRequest("GET", "/db/_user/user1/_all_channels", ``)
+	RequireStatus(t, resp, http.StatusNotFound)
 }
