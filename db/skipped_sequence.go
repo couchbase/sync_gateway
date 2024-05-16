@@ -218,6 +218,10 @@ func (s *SkippedSequenceSlice) removeSeqRange(startSeq, endSeq uint64) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
+	if len(s.list) == 0 {
+		return fmt.Errorf("skipped sequence list is empty, unable to remove sequence range %d to %d", startSeq, endSeq)
+	}
+
 	startIndex, found := s._findSequence(startSeq)
 	// if both sequence x and y aren't in the same element, the range contains sequences that are not present in
 	// skipped sequence list. This is due to any contiguous sequences in the list will be in the same element. So
@@ -259,6 +263,11 @@ func (s *SkippedSequenceSlice) removeSeqRange(startSeq, endSeq uint64) error {
 func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+
+	if len(s.list) == 0 {
+		return fmt.Errorf("skipped sequence list is empty, unable to remove sequence %d", x)
+	}
+
 	index, found := s._findSequence(x)
 	if !found {
 		return fmt.Errorf("sequence %d not found in the skipped list", x)

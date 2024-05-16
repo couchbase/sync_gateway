@@ -781,6 +781,20 @@ func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
 	}
 }
 
+func (cr ChangesResults) RequireRevID(t testing.TB, revIDs []string) {
+	require.Equal(t, len(revIDs), len(cr.Results))
+	for _, rev := range revIDs {
+		var found bool
+		for _, changeEntry := range cr.Results {
+			if changeEntry.Changes[0]["rev"] == rev {
+				found = true
+				break
+			}
+		}
+		require.True(t, found, "RevID %q missing from results %v", rev, cr.Results)
+	}
+}
+
 // RequireChangeRevVersion asserts that the given ChangeRev has the expected version for a given entry returned by _changes feed
 func RequireChangeRevVersion(t *testing.T, expected DocVersion, changeRev db.ChangeRev) {
 	RequireDocVersionEqual(t, expected, DocVersion{RevID: changeRev["rev"]})

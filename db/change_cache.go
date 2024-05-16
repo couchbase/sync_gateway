@@ -578,25 +578,102 @@ func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64
 	}
 }
 
-// releaseUnusedSequenceRange calls processEntry for each sequence in the range, but only issues a single notify.
+// releaseUnusedSequenceRange will handle unused sequence range arriving over DCP. It will batch remove from skipped or
+// push a range to pending sequences, or both.
 func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequence uint64, toSequence uint64, timeReceived time.Time) {
 
 	base.InfofCtx(ctx, base.KeyCache, "Received #%d-#%d (unused sequence range)", fromSequence, toSequence)
 
 	unusedSeq := channels.NewID(unusedSeqKey, unusedSeqCollectionID)
 	allChangedChannels := channels.SetOfNoValidate(unusedSeq)
-	for sequence := fromSequence; sequence <= toSequence; sequence++ {
+
+	// if range is single value, just run sequence through process entry and return early
+	if fromSequence == toSequence {
 		change := &LogEntry{
-			Sequence:     sequence,
+			Sequence:     toSequence,
 			TimeReceived: timeReceived,
 		}
-
-		// Since processEntry may unblock pending sequences, if there were any changed channels we need
-		// to notify any change listeners that are working changes feeds for these channels
 		changedChannels := c.processEntry(ctx, change)
 		allChangedChannels = allChangedChannels.Update(changedChannels)
 		c.channelCache.AddUnusedSequence(change)
+		if c.notifyChange != nil {
+			c.notifyChange(ctx, allChangedChannels)
+		}
+		return
 	}
+
+	// acquire mutex on cache for reading/writing to pending + reading next sequence value
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if toSequence < c.nextSequence {
+		// batch remove from skipped
+		err := c.RemoveSkippedSequences(ctx, fromSequence, toSequence-1)
+		if err != nil {
+			base.DebugfCtx(ctx, base.KeyCache, err.Error())
+		}
+		// remove end seq on range, protecting against duplicate sequence scenarios
+		err = c.RemoveSkipped(toSequence)
+		if err != nil {
+			// end seq on range not present in skipped, so duplicate sequence
+			base.DebugfCtx(ctx, base.KeyCache, "  Ignoring duplicate of #%d (unusedSequence)", toSequence)
+		}
+	} else if fromSequence < c.nextSequence && toSequence > c.nextSequence {
+		// mixed scenario, remove from skipped and push to rest pending
+		err := c.RemoveSkippedSequences(ctx, fromSequence, c.nextSequence-1)
+		if err != nil {
+			base.DebugfCtx(ctx, base.KeyCache, err.Error())
+		}
+		// push next seq and above to pending
+		seqRange := &channels.UnusedSequenceRange{
+			StartSeq: c.nextSequence,
+			EndSeq:   toSequence,
+		}
+		change := &LogEntry{
+			TimeReceived:  timeReceived,
+			SequenceRange: seqRange,
+			Sequence:      fromSequence,
+		}
+		// push to pending list
+		heap.Push(&c.pendingLogs, change)
+		c.internalStats.pendingSeqLen = len(c.pendingLogs)
+	} else if fromSequence >= c.nextSequence {
+		// whole range to pending
+		seqRange := &channels.UnusedSequenceRange{
+			StartSeq: fromSequence,
+			EndSeq:   toSequence - 1,
+		}
+		change := &LogEntry{
+			TimeReceived:  timeReceived,
+			SequenceRange: seqRange,
+			Sequence:      fromSequence,
+		}
+		// push to pending list
+		heap.Push(&c.pendingLogs, change)
+
+		// unblock any pending sequences
+		changedChannels := c._addPendingLogs(ctx)
+		allChangedChannels = allChangedChannels.Update(changedChannels)
+
+		// if above didn't unblock pending sequences we still need to add end seq on range to pending
+		if c.nextSequence <= toSequence {
+			change = &LogEntry{
+				TimeReceived: timeReceived,
+				Sequence:     toSequence,
+			}
+			// push to pending list
+			heap.Push(&c.pendingLogs, change)
+			// unblock any pending sequences again after adding above sequence to pending
+			changedChannels = c._addPendingLogs(ctx)
+			allChangedChannels = allChangedChannels.Update(changedChannels)
+		} else {
+			// end seq is duplicate sequence
+			base.DebugfCtx(ctx, base.KeyCache, "  Ignoring duplicate of #%d (unusedSequence)", toSequence)
+		}
+		c.internalStats.pendingSeqLen = len(c.pendingLogs)
+	}
+	// update high seq cached
+	c.channelCache.AddUnusedSequence(&LogEntry{Sequence: toSequence})
 
 	if c.notifyChange != nil {
 		c.notifyChange(ctx, allChangedChannels)
@@ -745,6 +822,10 @@ func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) []chann
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
 	}
+	// check if change is unused sequence range
+	if change.SequenceRange != nil {
+		c.nextSequence = change.SequenceRange.EndSeq + 1
+	}
 	delete(c.receivedSeqs, change.Sequence)
 
 	// If unused sequence or principal, we're done after updating sequence
@@ -777,17 +858,26 @@ func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) []chann
 // Returns the channels that changed.
 func (c *changeCache) _addPendingLogs(ctx context.Context) channels.Set {
 	var changedChannels channels.Set
+	var isNext bool
 
 	for len(c.pendingLogs) > 0 {
 		oldestPending := c.pendingLogs[0]
-		isNext := oldestPending.Sequence == c.nextSequence
+		if oldestPending.SequenceRange != nil {
+			isNext = oldestPending.SequenceRange.StartSeq == c.nextSequence
+		} else {
+			isNext = oldestPending.Sequence == c.nextSequence
+		}
+
 		if isNext {
 			heap.Pop(&c.pendingLogs)
 			changedChannels = changedChannels.UpdateWithSlice(c._addToCache(ctx, oldestPending))
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
 			//  Skip all sequences up to the oldest Pending
 			c.PushSkipped(ctx, c.nextSequence, oldestPending.Sequence-1)
-			c.nextSequence = oldestPending.Sequence
+			// disallow c.nextSequence decreasing
+			if c.nextSequence < oldestPending.Sequence {
+				c.nextSequence = oldestPending.Sequence
+			}
 		} else {
 			break
 		}
@@ -891,6 +981,10 @@ func (c *changeCache) WasSkipped(x uint64) bool {
 }
 
 func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq uint64) {
+	if startSeq > endSeq {
+		base.InfofCtx(ctx, base.KeyCache, "cannot push negative skipped sequence range to skipped list: %d %d", startSeq, endSeq)
+		return
+	}
 	c.skippedSeqs.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq, endSeq))
 }
 
