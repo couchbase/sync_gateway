@@ -191,12 +191,14 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 		return err
 	}
 
+	var rotateableLogger *lumberjack.Logger
 	if lfc.Output == nil {
-		lfc.Output = newLumberjackOutput(
+		rotateableLogger = newLumberjackOutput(
 			filepath.Join(filepath.FromSlash(logFilePath), logFilePrefix+name+".log"),
 			*lfc.Rotation.MaxSize,
 			*lfc.Rotation.MaxAge,
 		)
+		lfc.Output = rotateableLogger
 	}
 
 	if lfc.CollationBufferSize == nil {
@@ -206,6 +208,11 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 			bufferSize = defaultFileLoggerCollateBufferSize
 		}
 		lfc.CollationBufferSize = &bufferSize
+	}
+
+	var rotationTickerCh <-chan time.Time
+	if i := lfc.Rotation.RotationInterval.Value(); i > 0 && rotateableLogger != nil {
+		rotationTickerCh = time.NewTicker(i).C
 	}
 
 	logDeletionTicker := time.NewTicker(defaultLogDeletionInterval)
@@ -221,6 +228,12 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 				err := runLogDeletion(ctx, logFilePath, level.String(), int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
 				if err != nil {
 					WarnfCtx(ctx, "%s", err)
+				}
+			case <-rotationTickerCh:
+				DebugfCtx(ctx, KeyAll, "Rotating log file %s based on interval %q", name, lfc.Rotation.RotationInterval.Value())
+				err := rotateableLogger.Rotate()
+				if err != nil {
+					WarnfCtx(ctx, "Error rotating log file: %v", err)
 				}
 			}
 		}
