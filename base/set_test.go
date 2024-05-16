@@ -9,6 +9,7 @@
 package base
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 
@@ -145,4 +146,57 @@ func TestSetUnmarshal(t *testing.T) {
 	assert.NoError(t, err, "Unmarshal")
 	assert.Equal(t, []string{"foo"}, str.Channels.ToArray())
 
+}
+
+func TestSetNumMatches(t *testing.T) {
+	tests := []struct {
+		a, b     Set
+		expected int
+	}{
+		{
+			a:        nil,
+			b:        nil,
+			expected: 0,
+		},
+		{
+			a:        SetOf("a", "b", "c"),
+			b:        nil,
+			expected: 0,
+		},
+		{
+			a:        nil,
+			b:        SetOf("a", "b", "c"),
+			expected: 0,
+		},
+		{
+			a:        SetOf("a", "b", "c"),
+			b:        SetOf("a", "b", "c"),
+			expected: 3,
+		},
+		{
+			a:        SetOf("a", "b", "c"),
+			b:        SetOf("a", "c"),
+			expected: 2,
+		},
+		{
+			a:        SetOf("a", "c"),
+			b:        SetOf("a", "b", "c"),
+			expected: 2,
+		},
+		{
+			a:        SetOf("a", "b", "c"),
+			b:        SetOf("a", "y", "c"),
+			expected: 2,
+		},
+		{
+			a:        SetOf("a", "b", "c"),
+			b:        SetOf("x", "y", "z"),
+			expected: 0,
+		},
+	}
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("%v %v=%v", test.a, test.b, test.expected), func(t *testing.T) {
+			assert.Equal(t, test.expected, test.a.NumMatches(test.b))
+		})
+	}
 }
