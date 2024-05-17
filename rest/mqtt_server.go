@@ -53,6 +53,6 @@ func (sc *ServerContext) StartMQTTServer(ctx context.Context, config *mqtt.Serve
 		return err
 	}
 	sc.mqttServer = server
-	go server.Start()
+	go func() { _ = server.Start() }()
 	return nil
 }

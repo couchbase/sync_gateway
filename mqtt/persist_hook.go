@@ -149,7 +149,9 @@ func (h *persistHook) OnUnsubscribed(cl *mochi.Client, pk packets.Packet) {
 func (h *persistHook) OnPublished(cl *mochi.Client, pk packets.Packet) {
 	defer base.FatalPanicHandler()
 	if pk.FixedHeader.Qos >= 1 {
-		h.persist.persistPublishedMessage(cl, pk)
+		if err := h.persist.persistPublishedMessage(cl, pk); err != nil {
+			h.Log.Error("failed to save published message", "error", err, "session", cl.ID)
+		}
 	}
 }
 
@@ -162,7 +164,7 @@ func (h *persistHook) OnRetainMessage(cl *mochi.Client, pk packets.Packet, resul
 			h.Log.Error("failed to save retained message data", "error", err)
 		}
 	} else if result < 0 {
-		h.persist.deleteRetainedMessage(pk)
+		_ = h.persist.deleteRetainedMessage(pk)
 	}
 }
 

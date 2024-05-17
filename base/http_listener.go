@@ -52,6 +52,9 @@ func ListenAndServeHTTP(ctx context.Context, addr string, connLimit uint, certFi
 	readTimeout, writeTimeout, readHeaderTimeout, idleTimeout time.Duration, http2Enabled bool,
 	tlsMinVersion uint16) (serveFn func() error, listenerAddr net.Addr, server *http.Server, err error) {
 	config, err := MakeTLSConfig(certFile, keyFile, tlsMinVersion)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	if config != nil {
 		protocolsEnabled := []string{"http/1.1"}
 		if http2Enabled {

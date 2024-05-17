@@ -107,7 +107,7 @@ func (p *persister) disconnectClient(cl *mochi.Client) error {
 
 // Deletes a client's session data.
 func (p *persister) deleteClient(cl *mochi.Client) {
-	p.deleteDoc(clientKey(cl), "expired client data")
+	_ = p.deleteDoc(clientKey(cl), "expired client data")
 }
 
 // Finds a stored session by ID & username, returning the relevant data.
@@ -135,7 +135,7 @@ func (p *persister) getStoredClient(id string, username []byte) (oldRemote strin
 		filters := NewTopicMap[bool](len(subs))
 		for _, sub := range subs {
 			if sub.Qos > 0 {
-				filters.AddFilter(sub.Filter, true)
+				_ = filters.AddFilter(sub.Filter, true)
 			}
 		}
 
@@ -216,8 +216,8 @@ func (p *persister) persistRetainedMessage(pk packets.Packet) error {
 }
 
 // Deletes the 'retained' message of a topic.
-func (p *persister) deleteRetainedMessage(pk packets.Packet) {
-	p.deleteDoc(retainedMessageKey(pk.TopicName), "retained message data")
+func (p *persister) deleteRetainedMessage(pk packets.Packet) error {
+	return p.deleteDoc(retainedMessageKey(pk.TopicName), "retained message data")
 }
 
 //======== QUERIES:

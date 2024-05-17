@@ -68,7 +68,10 @@ func (h *publishHook) OnPublish(client *mochi.Client, packet packets.Packet) (pa
 		}
 
 		if agent := h.server.clusterAgent; agent != nil {
-			agent.broadcastPublish(&packet)
+			if err := agent.broadcastPublish(&packet); err != nil {
+				base.ErrorfCtx(h.ctx, "MQTT: Failed to broadcast published message to cluster: %v",
+					err)
+			}
 		}
 
 	} else {

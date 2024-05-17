@@ -114,8 +114,8 @@ func startClusterAgent(server *Server) (agent *clusterAgent, err error) {
 func (agent *clusterAgent) stop() {
 	if agent.peers != nil {
 		base.InfofCtx(agent.ctx, base.KeyMQTT, "Cluster agent is saying goodbye...")
-		agent.peers.Leave(5 * time.Second)
-		agent.peers.Shutdown()
+		_ = agent.peers.Leave(5 * time.Second)
+		_ = agent.peers.Shutdown()
 		agent.peers = nil
 	}
 	if agent.heartbeater != nil {
@@ -231,7 +231,10 @@ func (agent *clusterAgent) NotifyMsg(message []byte) {
 		// This is a Publish packet
 		if packet, err := decodePacket(message[2:], message[1]); err == nil {
 			base.InfofCtx(agent.ctx, base.KeyMQTT, "Relaying PUBLISH packet from peer for topic %q (%d bytes)", packet.TopicName, len(packet.Payload))
-			agent.broker.Publish(packet.TopicName, packet.Payload, packet.FixedHeader.Retain, packet.FixedHeader.Qos)
+			err = agent.broker.Publish(packet.TopicName, packet.Payload, packet.FixedHeader.Retain, packet.FixedHeader.Qos)
+			if err != nil {
+				base.ErrorfCtx(agent.ctx, "MQTT cluster error publishing message forwarded from peer: %v", err)
+			}
 		} else {
 			base.ErrorfCtx(agent.ctx, "MQTT cluster error decoding packet: %v", err)
 		}

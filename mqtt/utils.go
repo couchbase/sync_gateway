@@ -47,7 +47,6 @@ func getIPAddress(ipv6 bool) (string, error) {
 func makeRealIPAddress(addrStr string, keepPort bool) (string, error) {
 	host, port, err := net.SplitHostPort(addrStr)
 	if err != nil {
-		err = nil
 		host = addrStr
 	}
 

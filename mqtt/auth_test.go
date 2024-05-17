@@ -18,7 +18,7 @@ import (
 
 //======== MOCK USER
 
-// Mock implementatin of User
+// Mock implementation of User
 type MockUser struct {
 	name      string
 	roleNames channels.TimedSet

@@ -191,7 +191,7 @@ func (server *Server) Start() error {
 	}
 	if err := server.broker.Serve(); err != nil {
 		base.ErrorfCtx(server.ctx, "MQTT: starting MQTT broker: %v", err)
-		server.Stop()
+		_ = server.Stop()
 		return fmt.Errorf("error starting MQTT broker: %w", err)
 	}
 	return nil

@@ -595,7 +595,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	defer context.BucketLock.Unlock()
 
 	for _, client := range context.MQTTClients {
-		client.Stop()
+		_ = client.Stop()
 	}
 
 	context.OIDCProviders.Stop()
