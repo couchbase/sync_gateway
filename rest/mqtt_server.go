@@ -33,7 +33,7 @@ func (sc *ServerContext) StartMQTTServer(ctx context.Context, config *mqtt.Serve
 
 	// Metadata store:
 	var metadataStore sgbucket.DataStore
-	if config.MetadataDB != nil {
+	if config.MetadataDB != "" {
 		dbName, dsName, err := config.ParseMetadataStore()
 		if err != nil {
 			return err

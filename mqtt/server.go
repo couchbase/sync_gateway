@@ -30,7 +30,7 @@ const kDefaultMaximumSessionExpiryInterval = 60 * 60 * 24
 type ServerConfig struct {
 	Enabled                      *bool          `json:"enabled,omitempty"`
 	PublicInterface              string         `json:"public_interface,omitempty"  help:"Network interface to bind MQTT server to"`
-	MetadataDB                   *string        `json:"metadata_db,omitempty" help:"Name of database to persist MQTT state to"`
+	MetadataDB                   string         `json:"metadata_db,omitempty" help:"Name of database to persist MQTT state to"`
 	Cluster                      *ClusterConfig `json:"cluster,omitempty" help:"Cluster configuration (omit for no clustering)"`
 	MaximumMessageExpiryInterval int64          `json:"maximum_message_expiry_interval,omitempty" help:"Maximum message lifetime, in seconds; 0 means default"`
 	MaximumSessionExpiryInterval uint32         `json:"maximum_session_expiry_interval,omitempty" help:"Maximum disconnected session lifetime, in seconds; 0 means default"`
@@ -50,8 +50,8 @@ func (config *ServerConfig) IsEnabled() bool {
 }
 
 func (config *ServerConfig) ParseMetadataStore() (db string, ds sgbucket.DataStoreName, err error) {
-	if config.MetadataDB != nil {
-		pieces := strings.Split(*config.MetadataDB, sgbucket.ScopeCollectionSeparator)
+	if config.MetadataDB != "" {
+		pieces := strings.Split(config.MetadataDB, sgbucket.ScopeCollectionSeparator)
 		db = pieces[0]
 		scope := sgbucket.DefaultScope
 		collection := sgbucket.DefaultCollection

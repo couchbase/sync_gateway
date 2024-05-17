@@ -230,7 +230,9 @@ func NewEmptyStartupConfig() StartupConfig {
 	return StartupConfig{
 		API: APIConfig{
 			CORS: &auth.CORSConfig{},
-			MQTT: &mqtt.ServerConfig{},
+			MQTT: &mqtt.ServerConfig{
+				Cluster: &mqtt.ClusterConfig{Enabled: base.BoolPtr(false)},
+			},
 		},
 		Logging: base.LoggingConfig{
 			Console: &base.ConsoleLoggerConfig{},

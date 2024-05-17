@@ -64,6 +64,15 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"api.cors.headers":      {&config.API.CORS.Headers, fs.String("api.cors.headers", "", "List of comma separated allowed headers")},
 		"api.cors.max_age":      {&config.API.CORS.MaxAge, fs.Int("api.cors.max_age", 0, "Maximum age of the CORS Options request")},
 
+		"api.mqtt.enabled":                         {&config.API.MQTT.Enabled, fs.Bool("api.mqtt.enabled", true, "Set to false to disable MQTT")},
+		"api.mqtt.public_interface":                {&config.API.MQTT.PublicInterface, fs.String("api.mqtt.public_interface", "", "Network interface to listen for MQTT connections")},
+		"api.mqtt.metadata_db":                     {&config.API.MQTT.MetadataDB, fs.String("api.mqtt.metadata_db", "", "Name of database to persist MQTT state to")},
+		"api.mqtt.maximum_message_expiry_interval": {&config.API.MQTT.MaximumMessageExpiryInterval, fs.Int64("api.mqtt.maximum_message_expiry_interval", 0, "Maximum message lifetime, in seconds; 0 means default")},
+		"api.mqtt.maximum_session_expiry_interval": {&config.API.MQTT.MaximumSessionExpiryInterval, fs.Int64("api.mqtt.maximum_session_expiry_interval", 0, "Maximum disconnected session lifetime, in seconds; 0 means default")},
+
+		"api.mqtt.cluster.enabled":           {&config.API.MQTT.Cluster.Enabled, fs.Bool("api.mqtt.cluster.enabled", true, "Set to false to disable MQTT clustering")},
+		"api.mqtt.cluster.discovery_address": {&config.API.MQTT.Cluster.DiscoveryAddr, fs.String("api.mqtt.cluster.discovery_address", "", "Address+port for peer discovery and gossip")},
+
 		"logging.log_file_path":   {&config.Logging.LogFilePath, fs.String("logging.log_file_path", "", "Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file")},
 		"logging.redaction_level": {&config.Logging.RedactionLevel, fs.String("logging.redaction_level", "", "Redaction level to apply to log output. Options: none, partial, full, unset")},
 
@@ -138,6 +147,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"unsupported.allow_dbconfig_env_vars":              {&config.Unsupported.AllowDbConfigEnvVars, fs.Bool("unsupported.allow_dbconfig_env_vars", true, "Can be set to false to skip environment variable expansion in database configs")},
 
 		"unsupported.user_queries": {&config.Unsupported.UserQueries, fs.Bool("unsupported.user_queries", false, "Whether user-query APIs are enabled")},
+		"unsupported.mqtt":         {&config.Unsupported.MQTT, fs.Bool("unsupported.mqtt", false, "Whether MQTT is enabled")},
 
 		"database_credentials": {&config.DatabaseCredentials, fs.String("database_credentials", "null", "JSON-encoded per-database credentials, that can be used instead of the bootstrap ones. This will override bucket_credentials that target the bucket that the database is in.")},
 		"bucket_credentials":   {&config.BucketCredentials, fs.String("bucket_credentials", "null", "JSON-encoded per-bucket credentials, that can be used instead of the bootstrap ones.")},
