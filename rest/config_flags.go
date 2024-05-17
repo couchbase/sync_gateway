@@ -67,8 +67,8 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"api.mqtt.enabled":                         {&config.API.MQTT.Enabled, fs.Bool("api.mqtt.enabled", true, "Set to false to disable MQTT")},
 		"api.mqtt.public_interface":                {&config.API.MQTT.PublicInterface, fs.String("api.mqtt.public_interface", "", "Network interface to listen for MQTT connections")},
 		"api.mqtt.metadata_db":                     {&config.API.MQTT.MetadataDB, fs.String("api.mqtt.metadata_db", "", "Name of database to persist MQTT state to")},
-		"api.mqtt.maximum_message_expiry_interval": {&config.API.MQTT.MaximumMessageExpiryInterval, fs.Int64("api.mqtt.maximum_message_expiry_interval", 0, "Maximum message lifetime, in seconds; 0 means default")},
-		"api.mqtt.maximum_session_expiry_interval": {&config.API.MQTT.MaximumSessionExpiryInterval, fs.Int64("api.mqtt.maximum_session_expiry_interval", 0, "Maximum disconnected session lifetime, in seconds; 0 means default")},
+		"api.mqtt.maximum_message_expiry_interval": {&config.API.MQTT.MaximumMessageExpiryInterval, fs.Uint("api.mqtt.maximum_message_expiry_interval", 0, "Maximum message lifetime, in seconds; 0 means default")},
+		"api.mqtt.maximum_session_expiry_interval": {&config.API.MQTT.MaximumSessionExpiryInterval, fs.Uint("api.mqtt.maximum_session_expiry_interval", 0, "Maximum disconnected session lifetime, in seconds; 0 means default")},
 
 		"api.mqtt.cluster.enabled":           {&config.API.MQTT.Cluster.Enabled, fs.Bool("api.mqtt.cluster.enabled", true, "Set to false to disable MQTT clustering")},
 		"api.mqtt.cluster.discovery_address": {&config.API.MQTT.Cluster.DiscoveryAddr, fs.String("api.mqtt.cluster.discovery_address", "", "Address+port for peer discovery and gossip")},

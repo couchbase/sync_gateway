@@ -32,8 +32,8 @@ type ServerConfig struct {
 	PublicInterface              string         `json:"public_interface,omitempty"  help:"Network interface to bind MQTT server to"`
 	MetadataDB                   string         `json:"metadata_db,omitempty" help:"Name of database to persist MQTT state to"`
 	Cluster                      *ClusterConfig `json:"cluster,omitempty" help:"Cluster configuration (omit for no clustering)"`
-	MaximumMessageExpiryInterval int64          `json:"maximum_message_expiry_interval,omitempty" help:"Maximum message lifetime, in seconds; 0 means default"`
-	MaximumSessionExpiryInterval uint32         `json:"maximum_session_expiry_interval,omitempty" help:"Maximum disconnected session lifetime, in seconds; 0 means default"`
+	MaximumMessageExpiryInterval uint           `json:"maximum_message_expiry_interval,omitempty" help:"Maximum message lifetime, in seconds; 0 means default"`
+	MaximumSessionExpiryInterval uint           `json:"maximum_session_expiry_interval,omitempty" help:"Maximum disconnected session lifetime, in seconds; 0 means default"`
 }
 
 type ClusterConfig struct {
@@ -121,12 +121,12 @@ func NewServer(
 	if config.MaximumMessageExpiryInterval <= 0 {
 		config.MaximumMessageExpiryInterval = kDefaultMaximumMessageExpiryInterval
 	}
-	opts.Capabilities.MaximumMessageExpiryInterval = config.MaximumMessageExpiryInterval
+	opts.Capabilities.MaximumMessageExpiryInterval = int64(config.MaximumMessageExpiryInterval)
 
 	if config.MaximumSessionExpiryInterval <= 0 {
 		config.MaximumSessionExpiryInterval = kDefaultMaximumSessionExpiryInterval
 	}
-	opts.Capabilities.MaximumSessionExpiryInterval = config.MaximumSessionExpiryInterval
+	opts.Capabilities.MaximumSessionExpiryInterval = uint32(config.MaximumSessionExpiryInterval)
 
 	persister := &persister{
 		ctx:           ctx,

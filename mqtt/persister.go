@@ -194,7 +194,7 @@ func (p *persister) clientInflights(cl *mochi.Client) (inflights []storage.Messa
 
 // Computes expiration time of session document:
 func (p *persister) clientExpiry(cl *mochi.Client, online bool) uint32 {
-	exp := base.Min(cl.Properties.Props.SessionExpiryInterval, p.config.MaximumSessionExpiryInterval)
+	exp := base.Min(uint(cl.Properties.Props.SessionExpiryInterval), p.config.MaximumSessionExpiryInterval)
 	if online {
 		exp = base.Max(exp, 2*kClientDocRefreshInterval)
 	}
@@ -305,7 +305,7 @@ func (p *persister) messageExpiry(pk *packets.Packet) uint32 {
 	if exp == 0 {
 		exp = uint32(p.config.MaximumMessageExpiryInterval)
 	}
-	if sessexp := p.config.MaximumSessionExpiryInterval; sessexp < exp {
+	if sessexp := uint32(p.config.MaximumSessionExpiryInterval); sessexp < exp {
 		// No point keeping a message past the expiration of any session that wants it
 		exp = sessexp
 	}
