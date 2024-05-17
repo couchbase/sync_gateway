@@ -14,6 +14,8 @@ import (
 )
 
 // Returns a real IPv4 or IPv6 address for this computer.
+// If none can be found, returns an empty string; an error is only returned if it was unable to
+// get the list of network interfaces.
 func getIPAddress(ipv6 bool) (string, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
