@@ -44,6 +44,9 @@ require (
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
+// Temporarily substitute our own vendored fork of mochi-mqtt/server until PRs are merged --jens
+replace github.com/mochi-mqtt/server/v2 => github.com/couchbasedeps/mochi-mqtt-server/v2 v2.0.0-20240515222400-b57f42aef8ae
+
 require (
 	github.com/BurntSushi/toml v1.3.2 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
