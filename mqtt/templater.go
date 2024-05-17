@@ -25,10 +25,6 @@ const (
 	maxValidTimestamp = int64(9999999999)
 )
 
-//TODO: Substitute `$` anywhere in a value, not just the entire value! 4/12/24
-//TODO: Support `[n]` for array indexing
-//TODO: Support some type of transformer/filter, i.e. to format date from int->ISO8601
-
 // Applies a template to a message
 type templater struct {
 	payload                any        // The message payload; any parsed JSON type

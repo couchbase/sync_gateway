@@ -16,7 +16,7 @@ import (
 )
 
 func TestStateTemplate(t *testing.T) {
-	template := Body{"temp": "${message.payload.temperature}", "time": "${date}", "foo": "bar"}
+	template := Body{"temp": "${message.payload.temperature}", "time": "${now.iso8601}", "foo": "bar"}
 	topic := TopicMatch{Name: "temp"}
 
 	payload := Body{"temperature": 98.5}
