@@ -2512,7 +2512,7 @@ CollectionNames:
           - Starting
           - Stopping
           - Resyncing
-All_user_channels_response:
+all_user_channels:
   description: |-
     All user channels split by how they were assigned to the user and by keyspace.
   type: object
@@ -2533,7 +2533,7 @@ channelEntry:
   properties:
     entries:
       type: array
-      description: Start sequence to end sequence
+      description: Start sequence to end sequence. If the channel is currently granted, the end sequence will be zero.
     updated_at:
       type: integer
       description: Unix timestamp of last update

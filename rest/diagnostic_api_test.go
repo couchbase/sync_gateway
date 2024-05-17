@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -26,33 +25,13 @@ type grant interface {
 }
 
 const defaultKeyspace = "_default._default"
-const fakeUpdatedTime = 1234
-
-// convertUpdatedTimeToConstant replaces the updated_at field in the response with a constant value to be able to diff
-func convertUpdatedTimeToConstant(t testing.TB, output []byte) string {
-	var channelMap allChannels
-	err := json.Unmarshal(output, &channelMap)
-	require.NoError(t, err)
-	for keyspace, channels := range channelMap.Channels {
-		for channelName, grant := range channels {
-			if grant.UpdatedAt == 0 {
-				continue
-			}
-			grant.UpdatedAt = fakeUpdatedTime
-			channelMap.Channels[keyspace][channelName] = grant
-		}
-	}
-
-	fmt.Printf("Converted response: %s\n", string(base.MustJSONMarshal(t, channelMap)))
-	return string(base.MustJSONMarshal(t, channelMap))
-}
 
 func compareAllChannelsOutput(rt *RestTester, username string, expectedOutput string) {
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.db}}/_user/"+username+"/_all_channels", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	rt.TB.Logf("All channels response: %s", response.BodyString())
-	require.JSONEq(rt.TB, expectedOutput, convertUpdatedTimeToConstant(rt.TB, response.BodyBytes()))
+	require.JSONEq(rt.TB, expectedOutput, response.BodyString())
 
 }
 
@@ -175,9 +154,9 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					},
 					output: `
 {"all_channels":{"_default._default": {
-		"A": { "entries" : ["1-0"], "updated_at":0},
-		"B": { "entries" : ["1-0"], "updated_at":0},
-		"C": { "entries" : ["1-0"], "updated_at":0}
+		"A": { "entries" : ["1-0"]},
+		"B": { "entries" : ["1-0"]},
+		"C": { "entries" : ["1-0"]}
 	}}}`,
 				}}},
 		{
@@ -191,7 +170,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					},
 					output: `
 {"all_channels":{"_default._default": {
-		"A": { "entries" : ["1-0"], "updated_at":0}
+		"A": { "entries" : ["1-0"]}
 	}}}`,
 				},
 				// grant 2
@@ -200,7 +179,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					adminChannels: map[string][]string{defaultKeyspace: {"!"}},
 					output: `
 {"all_channels":{"_default._default": {
-		"A": { "entries" : ["1-2"], "updated_at":1234}
+		"A": { "entries" : ["1-2"]}
 	}}}`,
 				},
 				// grant 2
@@ -209,7 +188,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 					output: `
 {"all_channels":{"_default._default": {
-		"A": { "entries" : ["1-2", "3-0"], "updated_at":1234}
+		"A": { "entries" : ["1-2", "3-0"]}
 	}}}`,
 				},
 			},
@@ -333,7 +312,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 					output: `
 				{"all_channels":{"_default._default": {
-						"A": { "entries" : ["1-4", "5-6", "7-8", "9-10", "11-12","13-14","15-16","17-18","19-20","21-22","23-0"], "updated_at":1234}
+						"A": { "entries" : ["1-4", "5-6", "7-8", "9-10", "11-12","13-14","15-16","17-18","19-20","21-22","23-0"]}
 					}}}`,
 				},
 			},
@@ -351,8 +330,8 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					roles: []string{"role1"},
 					output: `
 				{"all_channels":{"_default._default": {
-						"A": { "entries" : ["2-0"], "updated_at":0},
-						"B": { "entries" : ["2-0"], "updated_at":0}
+						"A": { "entries" : ["2-0"]},
+						"B": { "entries" : ["2-0"]}
 					}}}`,
 				},
 			},
@@ -368,7 +347,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					dynamicChannel: "A",
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["2-0"], "updated_at":0}
+						"A": { "entries" : ["2-0"]}
 					}}}`,
 				},
 			},
@@ -392,9 +371,9 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					dynamicChannel: "chan1",
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["3-0"], "updated_at":0},
-						"B": { "entries" : ["3-0"], "updated_at":0},
-						"chan1": { "entries" : ["3-0"], "updated_at":0}
+						"A": { "entries" : ["3-0"]},
+						"B": { "entries" : ["3-0"]},
+						"chan1": { "entries" : ["3-0"]}
 					}}}`,
 				},
 			},
@@ -413,7 +392,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					dynamicChannel: "A",
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["1-0"], "updated_at":0}
+						"A": { "entries" : ["1-0"]}
 					}}}`,
 				},
 			},
@@ -436,7 +415,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["2-0"], "updated_at":0}
+						"A": { "entries" : ["2-0"]}
 					}}}`,
 				},
 			},
@@ -460,7 +439,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					roles: []string{"role1"},
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["1-0"], "updated_at":0}
+						"A": { "entries" : ["1-0"]}
 					}}}`,
 				},
 			},
@@ -488,7 +467,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["3-0"], "updated_at":0}
+						"A": { "entries" : ["3-0"]}
 					}}}`, // A start sequence would be 4 if its broken
 				},
 			},
@@ -517,8 +496,8 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["3-0"], "updated_at":0},
-						"docChan": { "entries" : ["3-0"], "updated_at":0}
+						"A": { "entries" : ["3-0"]},
+						"docChan": { "entries" : ["3-0"]}
 					}}}`,
 				},
 			},
@@ -543,8 +522,8 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					dynamicChannel: "docChan",
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["1-0"], "updated_at":0},
-						"docChan": { "entries" : ["3-0"], "updated_at":0}
+						"A": { "entries" : ["1-0"]},
+						"docChan": { "entries" : ["3-0"]}
 					}}}`,
 				},
 			},
@@ -578,8 +557,8 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					roles: []string{"role2"},
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["4-0"], "updated_at":0},
-						"docChan": { "entries" : ["4-0"], "updated_at":0}
+						"A": { "entries" : ["4-0"]},
+						"docChan": { "entries" : ["4-0"]}
 					}}}`,
 				},
 			},
@@ -613,8 +592,8 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					dynamicChannel: "docChan",
 					output: `
 					{"all_channels":{"_default._default": {
-						"A": { "entries" : ["4-0"], "updated_at":0},
-						"docChan": { "entries" : ["5-0"], "updated_at":0}
+						"A": { "entries" : ["4-0"]},
+						"docChan": { "entries" : ["5-0"]}
 					}}}`,
 				},
 			},
@@ -685,8 +664,7 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 			"all_channels":{
 				"%s":{
 					"D":{
-						"entries":["1-0"],
-						"updated_at":0
+						"entries":["1-0"]
 					}
 				}
 			}}`, newCollection.String()),
@@ -702,16 +680,14 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
    "all_channels":{
       "_default._default":{
          "A":{
-            "entries":["2-0"],
-            "updated_at":0
+            "entries":["2-0"]
          }
       },
       "%s":{
          "D":{
             "entries":[
                "1-0"
-            ],
-            "updated_at":0
+            ]
          }
       }
    }
@@ -751,8 +727,7 @@ func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
 			"all_channels":{
 				"%s":{
 					"D":{
-						"entries":["1-0"],
-						"updated_at":0
+						"entries":["1-0"]
 					}
 				}
 			}}`, keyspace1),
@@ -768,16 +743,14 @@ func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
 		   "all_channels":{
 			  "%s":{
 				 "A":{
-					"entries":["2-0"],
-					"updated_at":0
+					"entries":["2-0"]
 				 }
 			  },
 			  "%s":{
 				 "D":{
 					"entries":[
 					   "1-0"
-					],
-					"updated_at":0
+					]
 				 }
 			  }
 		   }
@@ -794,14 +767,12 @@ func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
 		   "all_channels":{
 			  "%s":{
 				 "A":{
-					"entries":["2-3"],
-					"updated_at":1234
+					"entries":["2-3"]
 				 }
 			  },
 			  "%s":{
 				 "D":{
-					"entries":["1-0"],
-					"updated_at":0
+					"entries":["1-0"]
 				 }
 			  }
 		   }
@@ -825,8 +796,7 @@ func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
 				 "D":{
 					"entries":[
 					   "1-0"
-					],
-					"updated_at":0
+					]
 				 }
 			  }
 		   }
@@ -856,8 +826,7 @@ func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
 			"all_channels":{
 				"_default._default":{
 					"role1Chan":{
-						"entries":["2-0"],
-						"updated_at":0
+						"entries":["2-0"]
 					}
 				}
 			}}`,
@@ -899,8 +868,7 @@ func TestGetAllChannelsByUserNonexistentAndDeletedUser(t *testing.T) {
 			"all_channels":{
 				"_default._default":{
 					"A":{
-						"entries":["1-0"],
-						"updated_at":0
+						"entries":["1-0"]
 					}
 				}
 			}}`,

@@ -185,4 +185,4 @@ All_user_channels_response:
   content:
     application/json:
       schema:
-        $ref: ./schemas.yaml#/All_user_channels_response
+        $ref: ./schemas.yaml#/all_user_channels

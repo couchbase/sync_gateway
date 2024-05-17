@@ -18,7 +18,10 @@ import (
 )
 
 type allChannels struct {
-	Channels map[string]map[string]auth.GrantHistory `json:"all_channels,omitempty"`
+	Channels map[string]map[string]channelHistory `json:"all_channels,omitempty"`
+}
+type channelHistory struct {
+	Entries []auth.GrantHistorySequencePair `json:"entries"` // Entry for a specific grant period
 }
 
 func (h *handler) handleGetAllChannels() error {
@@ -31,7 +34,7 @@ func (h *handler) handleGetAllChannels() error {
 		return kNotFoundError
 	}
 
-	resp := make(map[string]map[string]auth.GrantHistory)
+	resp := make(map[string]map[string]channelHistory)
 
 	// handles deleted collections, default/ single named collection
 	for _, dsName := range h.db.DataStoreNames() {
@@ -40,17 +43,18 @@ func (h *handler) handleGetAllChannels() error {
 		currentChannels := user.InheritedCollectionChannels(dsName.ScopeName(), dsName.CollectionName())
 		chanHistory := user.CollectionChannelHistory(dsName.ScopeName(), dsName.CollectionName())
 		// If no channels aside from public and no channels in history, don't make a key for this keyspace
-		if len(currentChannels) > 1 || len(chanHistory) != 0 {
-			resp[keyspace] = make(map[string]auth.GrantHistory)
+		if len(currentChannels) == 1 && len(chanHistory) == 0 {
+			continue
 		}
+		resp[keyspace] = make(map[string]channelHistory)
 		for chanName, chanEntry := range currentChannels {
 			if chanName == channels.DocumentStarChannel {
 				continue
 			}
-			resp[keyspace][chanName] = auth.GrantHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.Sequence, EndSeq: 0}}}
+			resp[keyspace][chanName] = channelHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.Sequence, EndSeq: 0}}}
 		}
 		for chanName, chanEntry := range chanHistory {
-			chanHistoryEntry := auth.GrantHistory{Entries: chanEntry.Entries, UpdatedAt: chanEntry.UpdatedAt}
+			chanHistoryEntry := channelHistory{Entries: chanEntry.Entries}
 			// if channel is also in history, append current entry to history entries
 			if _, chanCurrentlyAssigned := resp[keyspace][chanName]; chanCurrentlyAssigned {
 				var newEntries []auth.GrantHistorySequencePair
@@ -64,6 +68,9 @@ func (h *handler) handleGetAllChannels() error {
 	allChannels := allChannels{Channels: resp}
 
 	bytes, err := base.JSONMarshal(allChannels)
+	if err != nil {
+		return err
+	}
 	h.writeRawJSON(bytes)
 	return err
 }
