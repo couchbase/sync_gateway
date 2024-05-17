@@ -63,11 +63,13 @@ func TestFeedImport(t *testing.T) {
 	require.NotZero(t, syncData.Sequence, "Sequence should not be zero for imported doc")
 
 	// verify mou contents
-	mouXattr, ok := xattrs[base.MouXattrName]
-	require.True(t, ok)
-	require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
-	require.Equal(t, base.CasToString(writeCas), mou.PreviousCAS)
-	require.Equal(t, base.CasToString(importCas), mou.CAS)
+	if db.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		mouXattr, ok := xattrs[base.MouXattrName]
+		require.True(t, ok)
+		require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
+		require.Equal(t, base.CasToString(writeCas), mou.PreviousCAS)
+		require.Equal(t, base.CasToString(importCas), mou.CAS)
+	}
 
 }
 
@@ -761,6 +763,10 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
+
+	if !db.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		t.Skip("Test requires multi-xattr subdoc operations, CBS 7.6 or higher")
+	}
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 

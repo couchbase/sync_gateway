@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -263,7 +264,10 @@ func (c *DatabaseCollection) syncAndUserXattrKeys() []string {
 
 // syncMouAndUserXattrKeys returns the xattr keys for the user, mou and sync xattrs.
 func (c *DatabaseCollection) syncMouAndUserXattrKeys() []string {
-	xattrKeys := []string{base.SyncXattrName, base.MouXattrName}
+	xattrKeys := []string{base.SyncXattrName}
+	if c.useMou() {
+		xattrKeys = append(xattrKeys, base.MouXattrName)
+	}
 	userXattrKey := c.userXattrKey()
 	if userXattrKey != "" {
 		xattrKeys = append(xattrKeys, userXattrKey)
@@ -334,4 +338,8 @@ func (c *DatabaseCollection) UpdateSyncFun(ctx context.Context, syncFun string) 
 		err = nil
 	}
 	return
+}
+
+func (c *DatabaseCollection) useMou() bool {
+	return c.dbCtx.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations)
 }

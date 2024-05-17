@@ -2030,7 +2030,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				docBytes = len(updatedDoc.Doc)
 			}
 			updatedDoc.Xattrs = map[string][]byte{base.SyncXattrName: rawSyncXattr}
-			if rawMouXattr != nil {
+			if rawMouXattr != nil && db.useMou() {
 				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
 			}
 

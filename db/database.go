@@ -1791,17 +1791,22 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			doc.SetCrc32cUserXattrHash()
 
 			// Update metadataOnlyUpdate based on previous Cas, metadataOnlyUpdate
-			doc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.metadataOnlyUpdate)
+			if db.useMou() {
+				doc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.metadataOnlyUpdate)
+			}
 
 			_, rawXattr, rawMouXattr, err := updatedDoc.MarshalWithXattrs()
-			return sgbucket.UpdatedDoc{
+			updatedDoc := sgbucket.UpdatedDoc{
 				Doc: nil, // Resync does not require document body update
 				Xattrs: map[string][]byte{
 					base.SyncXattrName: rawXattr,
-					base.MouXattrName:  rawMouXattr,
 				},
 				Expiry: updatedExpiry,
-			}, err
+			}
+			if db.useMou() {
+				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
+			}
+			return updatedDoc, err
 		}
 		opts := &sgbucket.MutateInOptions{
 			MacroExpansion: macroExpandSpec(base.SyncXattrName),

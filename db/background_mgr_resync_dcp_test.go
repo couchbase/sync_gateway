@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -453,6 +454,11 @@ func TestResyncMou(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
+
+	if !db.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		t.Skip("Test requires multi-xattr subdoc operations, CBS 7.6 or higher")
+	}
+
 	db.Options.QueryPaginationLimit = 100 // Required for principal ID query to not deadlock
 
 	initialImportCount := db.DbStats.SharedBucketImport().ImportCount.Value()
