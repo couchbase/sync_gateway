@@ -512,8 +512,6 @@ function sync(doc, oldDoc){
 	require.NoError(t, err)
 
 	stats := getResyncStats(resyncMgr.Process)
-	// If there are tombstones from older docs which have been deleted from the bucket, processed docs will
-	// be greater than DocsChanged
 	assert.Equal(t, int64(2), stats.DocsChanged)
 
 	syncData, mou, _ = getSyncAndMou(t, collection, "sgWrite")

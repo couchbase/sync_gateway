@@ -455,7 +455,6 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 
 	var body []byte
 	var xattrValues map[string][]byte
-	var mou *MetadataOnlyUpdate
 
 	// If xattr datatype flag is set, data includes both xattrs and document body.  Check for presence of sync xattr.
 	// Note that there could be a non-sync xattr present
@@ -479,8 +478,6 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 			err = base.JSONUnmarshal(rawSyncXattr, result)
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", syncXattr, err)
-			}
-			if mou != nil {
 			}
 			return result, body, xattrValues, nil
 		}
@@ -1180,7 +1177,7 @@ func computeMetadataOnlyUpdate(currentCas uint64, currentMou *MetadataOnlyUpdate
 	var prevCas string
 	currentCasString := string(base.Uint64CASToLittleEndianHex(currentCas))
 	if currentMou != nil && currentCasString == currentMou.CAS {
-		prevCas = currentMou.CAS
+		prevCas = currentMou.PreviousCAS
 	} else {
 		prevCas = currentCasString
 	}
