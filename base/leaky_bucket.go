@@ -71,10 +71,6 @@ func (b *LeakyBucket) GetMaxVbno() (uint16, error) {
 	return b.bucket.GetMaxVbno()
 }
 
-func (b *LeakyBucket) IsError(err error, errorType sgbucket.DataStoreErrorType) bool {
-	return b.bucket.IsError(err, errorType)
-}
-
 func (b *LeakyBucket) DefaultDataStore() sgbucket.DataStore {
 	return NewLeakyDataStore(b, b.bucket.DefaultDataStore(), b.config)
 }

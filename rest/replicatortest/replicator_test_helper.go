@@ -83,10 +83,8 @@ func requireVersion(rt *rest.RestTester, docID string, version rest.DocVersion) 
 }
 
 func requireErrorKeyNotFound(t *testing.T, rt *rest.RestTester, docID string) {
-	var body []byte
-	_, err := rt.Bucket().DefaultDataStore().Get(docID, &body)
-	require.Error(t, err)
-	require.True(t, base.IsKeyNotFoundError(rt.Bucket().DefaultDataStore(), err))
+	_, err := rt.Bucket().DefaultDataStore().Get(docID, nil)
+	base.RequireDocNotFoundError(t, err)
 }
 
 // waitForTombstone waits until the specified tombstone revision is available

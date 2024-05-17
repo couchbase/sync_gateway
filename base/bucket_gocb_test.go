@@ -2275,7 +2275,7 @@ func TestGetExpiry(t *testing.T) {
 	// ensure expiry retrieval on non-existent doc returns key not found
 	_, nonExistentExpiryErr := dataStore.GetExpiry(ctx, "nonExistentKey")
 	assert.Error(t, nonExistentExpiryErr)
-	assert.True(t, IsKeyNotFoundError(dataStore, nonExistentExpiryErr))
+	RequireDocNotFoundError(t, nonExistentExpiryErr)
 }
 
 func TestGetStatsVbSeqNo(t *testing.T) {

@@ -344,7 +344,7 @@ FROM ` + base.KeyspaceQueryToken + ` AS ks USE INDEX (sg_allDocs_x1)`
 		} else {
 			purgeErr = dataStore.Delete(row.Id)
 		}
-		if base.IsKeyNotFoundError(dataStore, purgeErr) {
+		if base.IsDocNotFoundError(purgeErr) {
 			// If key no longer exists, need to add and remove to trigger removal from view
 			_, addErr := dataStore.Add(row.Id, 0, purgeBody)
 			if addErr != nil {
