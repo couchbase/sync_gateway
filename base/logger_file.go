@@ -111,7 +111,7 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 		logger.collateBufferWg = &sync.WaitGroup{}
 
 		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
+		go logCollationWorker(ctx, logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
 	}
 
 	return logger, nil
@@ -140,6 +140,13 @@ func (l *FileLogger) Rotate() error {
 	}
 
 	return errors.New("can't rotate non-lumberjack log output")
+}
+
+func (l *FileLogger) Close() error {
+	if c, ok := l.output.(io.Closer); ok {
+		return c.Close()
+	}
+	return nil
 }
 
 func (l *FileLogger) String() string {
@@ -210,9 +217,11 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 		lfc.CollationBufferSize = &bufferSize
 	}
 
+	var rotationTicker *time.Ticker
 	var rotationTickerCh <-chan time.Time
 	if i := lfc.Rotation.RotationInterval.Value(); i > 0 && rotateableLogger != nil {
-		rotationTickerCh = time.NewTicker(i).C
+		rotationTicker = time.NewTicker(i)
+		rotationTickerCh = rotationTicker.C
 	}
 
 	logDeletionTicker := time.NewTicker(defaultLogDeletionInterval)
@@ -222,8 +231,12 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 				WarnfCtx(ctx, "Panic when deleting rotated log files: %s\n%s", panicked, debug.Stack())
 			}
 		}()
+		defer rotationTicker.Stop()
+		defer logDeletionTicker.Stop()
 		for {
 			select {
+			case <-ctx.Done():
+				return
 			case <-logDeletionTicker.C:
 				err := runLogDeletion(ctx, logFilePath, level.String(), int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
 				if err != nil {

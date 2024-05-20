@@ -10,11 +10,13 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/natefinch/lumberjack"
 	"github.com/stretchr/testify/assert"
@@ -55,6 +57,53 @@ func Benchmark_LoggingPerformance(b *testing.B) {
 		WarnfCtx(ctx, "some crud'y message")
 		ErrorfCtx(ctx, "some crud'y message")
 	}
+}
+
+func TestLogRotationInterval(t *testing.T) {
+	// override min rotation interval for testing
+	originalMinRotationInterval := minLogRotationInterval
+	minLogRotationInterval = time.Millisecond * 10
+	defer func() { minLogRotationInterval = originalMinRotationInterval }()
+
+	rotationInterval := time.Millisecond * 100
+	config := &FileLoggerConfig{
+		Enabled:             BoolPtr(true),
+		CollationBufferSize: IntPtr(0),
+		Rotation: logRotationConfig{
+			RotationInterval: NewConfigDuration(rotationInterval),
+		},
+	}
+
+	logPath := t.TempDir()
+	countBefore := numFilesInDir(t, logPath, false)
+	t.Logf("countBefore: %d", countBefore)
+
+	ctx, ctxCancel := context.WithCancel(TestCtx(t))
+
+	fl, err := NewFileLogger(ctx, config, LevelTrace, "test", logPath, 0, nil)
+	require.NoError(t, err)
+
+	fl.logf("test 1")
+	countAfter1 := numFilesInDir(t, logPath, false)
+	t.Logf("countAfter1: %d", countAfter1)
+	assert.Greater(t, countAfter1, countBefore)
+
+	time.Sleep(rotationInterval * 5)
+	countAfterSleep := numFilesInDir(t, logPath, false)
+	t.Logf("countAfterSleep: %d", countAfterSleep)
+	assert.Greater(t, countAfterSleep, countAfter1)
+
+	fl.logf("test 2")
+	countAfter2 := numFilesInDir(t, logPath, false)
+	t.Logf("countAfter2: %d", countAfter2)
+	assert.GreaterOrEqual(t, countAfter2, countAfterSleep)
+
+	// Stop the FileLogger goroutines and close the logger
+	ctxCancel()
+	require.NoError(t, fl.Close())
+
+	// we have to wait for lumberjack to finish its async log rotation work - we don't have a reliable way to do this.
+	time.Sleep(time.Millisecond * 100)
 }
 
 // Benchmark the time it takes to write x bytes of data to a logger, and optionally rotate and compress it.
