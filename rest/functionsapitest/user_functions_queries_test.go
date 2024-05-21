@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/couchbase/sync_gateway/rest"
@@ -79,6 +80,7 @@ func TestJSFunctionAsGuest(t *testing.T) {
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
 				UserFunctions: &kUserFunctionAuthTestConfig,
+				Guest:         &auth.PrincipalConfig{Disabled: base.BoolPtr(false)},
 			},
 		},
 	})
@@ -99,10 +101,9 @@ func TestJSFunctionAsGuest(t *testing.T) {
 	})
 
 	t.Run("user required", func(t *testing.T) {
-		t.Skip("Does not work with SG_TEST_USE_DEFAULT_COLLECTION=true CBG-2702")
 		response := sendReqFn("POST", "/db/_function/square", `{"numero": 42}`)
 		rest.AssertStatus(t, response, http.StatusUnauthorized)
-		assert.Contains(t, "login required", response.BodyString())
+		assert.Contains(t, response.BodyString(), "login required")
 	})
 
 	t.Run("admin-only", func(t *testing.T) {
@@ -209,14 +210,17 @@ func TestUserN1QLQueries(t *testing.T) {
 func TestN1QLFunctionAsGuest(t *testing.T) {
 	TestRequireN1QLSupport(t)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
-	defer rt.Close()
-
-	rt.DatabaseConfig = &rest.DatabaseConfig{
-		DbConfig: rest.DbConfig{
-			UserFunctions: &kUserN1QLFunctionsAuthTestConfig,
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		GuestEnabled:      true,
+		EnableUserQueries: true,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Guest:         &auth.PrincipalConfig{Disabled: base.BoolPtr(false)},
+				UserFunctions: &kUserN1QLFunctionsAuthTestConfig,
+			},
 		},
-	}
+	})
+	defer rt.Close()
 
 	sendReqFn := rt.SendRequest
 
@@ -231,7 +235,6 @@ func TestN1QLFunctionAsGuest(t *testing.T) {
 	})
 
 	t.Run("user required", func(t *testing.T) {
-		t.Skip("Does not work with SG_TEST_USE_DEFAULT_COLLECTION=true CBG-2702")
 		response := sendReqFn("POST", "/db/_function/square", `{"numero": 16}`)
 		rest.RequireStatus(t, response, http.StatusUnauthorized)
 		assert.Contains(t, response.BodyString(), "login required")

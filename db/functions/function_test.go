@@ -173,9 +173,6 @@ func addUserAlice(t *testing.T, db *db.Database) auth.User {
 
 // Unit test for JS user functions.
 func TestUserFunctions(t *testing.T) {
-	// FIXME : this test doesn't work because the access view does not exist on the collection ???
-	t.Skip("Skipping test until access view is available with collections")
-
 	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig)
 	defer db.Close(ctx)
@@ -333,7 +330,6 @@ func testUserFunctionsAsUser(t *testing.T, ctx context.Context, db *db.Database)
 
 // Test CRUD operations
 func TestUserFunctionsCRUD(t *testing.T) {
-	t.Skip("not collection aware")
 	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig)
 	defer db.Close(ctx)
@@ -478,9 +474,6 @@ func TestUserFunctionsMaxCodeSize(t *testing.T) {
 
 // Low-level test of channel-name parameter expansion for user query/function auth
 func TestUserFunctionAllow(t *testing.T) {
-	// FIXME : this test doesn't work because the access view does not exist on the collection ???
-	t.Skip("Skipping test until access view is available with collections")
-
 	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig)
 	defer db.Close(ctx)
