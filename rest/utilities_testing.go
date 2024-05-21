@@ -656,13 +656,16 @@ func (rt *RestTester) templateResource(resource string) (string, error) {
 				if multipleDatabases {
 					data[fmt.Sprintf("db%dkeyspace", i+1)] = getKeyspaces(rt.TB, database)[0]
 				} else {
-					data["keyspace"] = rt.GetSingleKeyspace()
+					keyspace := rt.GetSingleKeyspace()
+					data["keyspace"] = keyspace
+					data["scopeAndCollection"] = getScopeAndCollectionFromKeyspace(rt.TB, keyspace)
 				}
 				continue
 			}
 			for j, keyspace := range getKeyspaces(rt.TB, database) {
 				if !multipleDatabases {
 					data[fmt.Sprintf("keyspace%d", j+1)] = keyspace
+					data[fmt.Sprintf("scopeAndCollection%d", j+1)] = getScopeAndCollectionFromKeyspace(rt.TB, keyspace)
 				} else {
 					data[fmt.Sprintf("db%dkeyspace%d", i+1, j+1)] = keyspace
 				}
@@ -2454,6 +2457,18 @@ func getRESTKeyspace(_ testing.TB, dbName string, collection *db.DatabaseCollect
 		return dbName
 	}
 	return strings.Join([]string{dbName, collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator)
+}
+
+// getScopeAndCollectionFromKeyspace returns the scope and collection from a keyspace, e.g. /db/ -> _default._default , or /db.scope1.collection1 -> scope1.collection1
+func getScopeAndCollectionFromKeyspace(t testing.TB, keyspace string) string {
+	_, scope, collection, err := ParseKeyspace(keyspace)
+	require.NoError(t, err)
+	if scope == nil && collection == nil {
+		return strings.Join([]string{base.DefaultScope, base.DefaultCollection}, base.ScopeCollectionSeparator)
+	}
+	require.NotNil(t, scope, "Expected scope to be non-nil for %s", keyspace)
+	require.NotNil(t, collection, "Expected collection to be non-nil for %s", keyspace)
+	return strings.Join([]string{*scope, *collection}, base.ScopeCollectionSeparator)
 }
 
 // getKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.

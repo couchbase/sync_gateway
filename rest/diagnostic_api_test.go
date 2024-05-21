@@ -11,12 +11,10 @@ package rest
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,14 +22,12 @@ type grant interface {
 	request(rt *RestTester)
 }
 
-const defaultKeyspace = "_default._default"
-
 func compareAllChannelsOutput(rt *RestTester, username string, expectedOutput string) {
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.db}}/_user/"+username+"/_all_channels", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	rt.TB.Logf("All channels response: %s", response.BodyString())
-	require.JSONEq(rt.TB, expectedOutput, response.BodyString())
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
 
 }
 
@@ -42,7 +38,7 @@ type userGrant struct {
 	output        string
 }
 
-func (g *userGrant) getUserPayload(t testing.TB) string {
+func (g *userGrant) getUserPayload(rt *RestTester) string {
 	config := auth.PrincipalConfig{
 		Name:     base.StringPtr(g.user),
 		Password: base.StringPtr(RestTesterDefaultUserPassword),
@@ -52,19 +48,26 @@ func (g *userGrant) getUserPayload(t testing.TB) string {
 	}
 
 	for keyspace, chans := range g.adminChannels {
-		scopeName, collectionName := strings.Split(keyspace, ".")[0], strings.Split(keyspace, ".")[1]
-		if base.IsDefaultCollection(scopeName, collectionName) {
+		_, scope, collection, err := ParseKeyspace(rt.mustTemplateResource(keyspace))
+		require.NoError(rt.TB, err)
+		if scope == nil && collection == nil {
+			config.ExplicitChannels = base.SetFromArray(chans)
+			continue
+		}
+		require.NotNil(rt.TB, scope, "Could not find scope from keyspace %s", keyspace)
+		require.NotNil(rt.TB, collection, "Could not find collection from keyspace %s", keyspace)
+		if base.IsDefaultCollection(*scope, *collection) {
 			config.ExplicitChannels = base.SetFromArray(chans)
 		} else {
-			config.SetExplicitChannels(scopeName, collectionName, chans...)
+			config.SetExplicitChannels(*scope, *collection, chans...)
 		}
 	}
 
-	return string(base.MustJSONMarshal(t, config))
+	return string(base.MustJSONMarshal(rt.TB, config))
 }
 
 func (g userGrant) request(rt *RestTester) {
-	payload := g.getUserPayload(rt.TB)
+	payload := g.getUserPayload(rt)
 	rt.TB.Logf("Issuing admin grant: %+v", payload)
 	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+g.user, payload)
 	if response.Code != http.StatusCreated && response.Code != http.StatusOK {
@@ -80,23 +83,30 @@ type roleGrant struct {
 	adminChannels map[string][]string
 }
 
-func (g roleGrant) getPayload(t testing.TB) string {
+func (g roleGrant) getPayload(rt *RestTester) string {
 	config := auth.PrincipalConfig{
 		Password: base.StringPtr(RestTesterDefaultUserPassword),
 	}
 	for keyspace, chans := range g.adminChannels {
-		scopeName, collectionName := strings.Split(keyspace, ".")[0], strings.Split(keyspace, ".")[1]
-		if base.IsDefaultCollection(scopeName, collectionName) {
+		_, scope, collection, err := ParseKeyspace(rt.mustTemplateResource(keyspace))
+		require.NoError(rt.TB, err)
+		if scope == nil && collection == nil {
+			config.ExplicitChannels = base.SetFromArray(chans)
+			continue
+		}
+		require.NotNil(rt.TB, scope, "Could not find scope from keyspace %s", keyspace)
+		require.NotNil(rt.TB, collection, "Could not find collection from keyspace %s", keyspace)
+		if base.IsDefaultCollection(*scope, *collection) {
 			config.ExplicitChannels = base.SetFromArray(chans)
 		} else {
-			config.SetExplicitChannels(scopeName, collectionName, chans...)
+			config.SetExplicitChannels(*scope, *collection, chans...)
 		}
 	}
-	return string(base.MustJSONMarshal(t, config))
+	return string(base.MustJSONMarshal(rt.TB, config))
 }
 
 func (g roleGrant) request(rt *RestTester) {
-	payload := g.getPayload(rt.TB)
+	payload := g.getPayload(rt)
 	rt.TB.Logf("Issuing admin grant: %+v", payload)
 	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+g.role, payload)
 	if response.Code != http.StatusCreated && response.Code != http.StatusOK {
@@ -111,7 +121,7 @@ type docGrant struct {
 	output         string
 }
 
-func (g docGrant) getPayload(t testing.TB) string {
+func (g docGrant) getPayload() string {
 	role := fmt.Sprintf(`"role":"role:%s",`, g.dynamicRole)
 	if g.dynamicRole == "" {
 		role = ""
@@ -126,11 +136,11 @@ func (g docGrant) getPayload(t testing.TB) string {
 }
 
 func (g docGrant) request(rt *RestTester) {
-	payload := g.getPayload(rt.TB)
+	payload := g.getPayload()
 	rt.TB.Logf("Issuing dynamic grant: %+v", payload)
-	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/doc", payload)
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc", payload)
 	if response.Code != http.StatusCreated && response.Code != http.StatusOK {
-		rt.TB.Fatalf("Expected 200 or 201 exit code")
+		rt.TB.Fatalf("Expected 200 or 201 exit code, got %d, output: %s", response.Code, response.Body.String())
 	}
 	if g.output != "" {
 		compareAllChannelsOutput(rt, g.userName, g.output)
@@ -150,10 +160,10 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				userGrant{
 					user: "alice",
 					adminChannels: map[string][]string{
-						defaultKeyspace: {"A", "B", "C"},
+						"{{.keyspace}}": {"A", "B", "C"},
 					},
 					output: `
-{"all_channels":{"_default._default": {
+{"all_channels":{"{{.scopeAndCollection}}": {
 		"A": { "entries" : ["1-0"]},
 		"B": { "entries" : ["1-0"]},
 		"C": { "entries" : ["1-0"]}
@@ -166,28 +176,28 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				userGrant{
 					user: "alice",
 					adminChannels: map[string][]string{
-						defaultKeyspace: {"A"},
+						"{{.keyspace}}": {"A"},
 					},
 					output: `
-{"all_channels":{"_default._default": {
+{"all_channels":{"{{.scopeAndCollection}}": {
 		"A": { "entries" : ["1-0"]}
 	}}}`,
 				},
 				// grant 2
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"!"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
 					output: `
-{"all_channels":{"_default._default": {
+{"all_channels":{"{{.scopeAndCollection}}": {
 		"A": { "entries" : ["1-2"]}
 	}}}`,
 				},
 				// grant 2
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 					output: `
-{"all_channels":{"_default._default": {
+{"all_channels":{"{{.scopeAndCollection}}": {
 		"A": { "entries" : ["1-2", "3-0"]}
 	}}}`,
 				},
@@ -199,119 +209,119 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				// grant 1
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// grant 2
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"!"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
 				},
 				// grant 3
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// grant 4
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"!"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
 				},
 				// grant 5
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// grant 6
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"!"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
 				},
 				// grant 7
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// grant 8
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"!"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
 				},
 				// grant 9
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// grant 10
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"!"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
 				},
 				// grant 11
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// grant 12
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"!"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
 				},
 				// grant 13
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// grant 14
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"!"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
 				},
 				// grant 15
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// grant 16
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"!"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
 				},
 				// grant 17
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// grant 18
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"!"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
 				},
 				// grant 19
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// grant 20
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"!"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
 				},
 				// grant 19
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// grant 20
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"!"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
 				},
 				// grant 23
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 					output: `
-				{"all_channels":{"_default._default": {
+				{"all_channels":{"{{.scopeAndCollection}}": {
 						"A": { "entries" : ["1-4", "5-6", "7-8", "9-10", "11-12","13-14","15-16","17-18","19-20","21-22","23-0"]}
 					}}}`,
 				},
@@ -323,13 +333,13 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				// grant 1
 				roleGrant{
 					role:          "role1",
-					adminChannels: map[string][]string{defaultKeyspace: {"A", "B"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A", "B"}},
 				},
 				userGrant{
 					user:  "alice",
 					roles: []string{"role1"},
 					output: `
-				{"all_channels":{"_default._default": {
+				{"all_channels":{"{{.scopeAndCollection}}": {
 						"A": { "entries" : ["2-0"]},
 						"B": { "entries" : ["2-0"]}
 					}}}`,
@@ -346,7 +356,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					userName:       "alice",
 					dynamicChannel: "A",
 					output: `
-					{"all_channels":{"_default._default": {
+					{"all_channels":{"{{.scopeAndCollection}}": {
 						"A": { "entries" : ["2-0"]}
 					}}}`,
 				},
@@ -362,7 +372,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				// create role with channels
 				roleGrant{
 					role:          "role1",
-					adminChannels: map[string][]string{defaultKeyspace: {"A", "B"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A", "B"}},
 				},
 				// assign role through the sync fn and check output
 				docGrant{
@@ -370,7 +380,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					dynamicRole:    "role1",
 					dynamicChannel: "chan1",
 					output: `
-					{"all_channels":{"_default._default": {
+					{"all_channels":{"{{.scopeAndCollection}}": {
 						"A": { "entries" : ["3-0"]},
 						"B": { "entries" : ["3-0"]},
 						"chan1": { "entries" : ["3-0"]}
@@ -384,14 +394,14 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				// create user and assign channels through admin_channels
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// assign channels through sync fn and assert on sequences
 				docGrant{
 					userName:       "alice",
 					dynamicChannel: "A",
 					output: `
-					{"all_channels":{"_default._default": {
+					{"all_channels":{"{{.scopeAndCollection}}": {
 						"A": { "entries" : ["1-0"]}
 					}}}`,
 				},
@@ -412,9 +422,9 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				// assign same channels through admin_channels and assert on sequences
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 					output: `
-					{"all_channels":{"_default._default": {
+					{"all_channels":{"{{.scopeAndCollection}}": {
 						"A": { "entries" : ["2-0"]}
 					}}}`,
 				},
@@ -426,19 +436,19 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				// create user and assign channel through admin_channels
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// create role with same channel
 				roleGrant{
 					role:          "role1",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// assign role through admin_roles and assert on sequences
 				userGrant{
 					user:  "alice",
 					roles: []string{"role1"},
 					output: `
-					{"all_channels":{"_default._default": {
+					{"all_channels":{"{{.scopeAndCollection}}": {
 						"A": { "entries" : ["1-0"]}
 					}}}`,
 				},
@@ -454,7 +464,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				// create role with channel
 				roleGrant{
 					role:          "role1",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// assign role through admin_roles
 				userGrant{
@@ -464,9 +474,9 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				// assign role channel through admin_channels and assert on sequences
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 					output: `
-					{"all_channels":{"_default._default": {
+					{"all_channels":{"{{.scopeAndCollection}}": {
 						"A": { "entries" : ["3-0"]}
 					}}}`, // A start sequence would be 4 if its broken
 				},
@@ -482,7 +492,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				// create role with channel
 				roleGrant{
 					role:          "role1",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// create doc and assign role through sync fn
 				docGrant{
@@ -493,9 +503,9 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				// assign role cahnnel to user through admin_channels and assert on sequences
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 					output: `
-					{"all_channels":{"_default._default": {
+					{"all_channels":{"{{.scopeAndCollection}}": {
 						"A": { "entries" : ["3-0"]},
 						"docChan": { "entries" : ["3-0"]}
 					}}}`,
@@ -508,12 +518,12 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				// create user with channel
 				userGrant{
 					user:          "alice",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// create role with same channel
 				roleGrant{
 					role:          "role1",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// assign role to user through sync fn and assert channel sequence is from admin_channels
 				docGrant{
@@ -521,7 +531,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					dynamicRole:    "role1",
 					dynamicChannel: "docChan",
 					output: `
-					{"all_channels":{"_default._default": {
+					{"all_channels":{"{{.scopeAndCollection}}": {
 						"A": { "entries" : ["1-0"]},
 						"docChan": { "entries" : ["3-0"]}
 					}}}`,
@@ -538,12 +548,12 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				// create role with channel
 				roleGrant{
 					role:          "role1",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// create another role with same channel
 				roleGrant{
 					role:          "role2",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// assign first role through sync fn
 				docGrant{
@@ -556,7 +566,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					user:  "alice",
 					roles: []string{"role2"},
 					output: `
-					{"all_channels":{"_default._default": {
+					{"all_channels":{"{{.scopeAndCollection}}": {
 						"A": { "entries" : ["4-0"]},
 						"docChan": { "entries" : ["4-0"]}
 					}}}`,
@@ -573,12 +583,12 @@ func TestGetAllChannelsByUser(t *testing.T) {
 				// create role with channel
 				roleGrant{
 					role:          "role1",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// create another role with same channel
 				roleGrant{
 					role:          "role2",
-					adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 				},
 				// assign role through admin_roles
 				userGrant{
@@ -591,7 +601,7 @@ func TestGetAllChannelsByUser(t *testing.T) {
 					dynamicRole:    "role2",
 					dynamicChannel: "docChan",
 					output: `
-					{"all_channels":{"_default._default": {
+					{"all_channels":{"{{.scopeAndCollection}}": {
 						"A": { "entries" : ["4-0"]},
 						"docChan": { "entries" : ["5-0"]}
 					}}}`,
@@ -603,13 +613,11 @@ func TestGetAllChannelsByUser(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			rt := NewRestTester(t, &RestTesterConfig{
 				PersistentConfig: true,
+				SyncFn:           `function(doc) {channel(doc.channel); access(doc.user, doc.channel); role(doc.user, doc.role);}`,
 			})
 			defer rt.Close()
 
-			dbConfig := rt.NewDbConfig()
-			dbConfig.Scopes = nil
-			dbConfig.Sync = base.StringPtr(`function(doc) {channel(doc.channel); access(doc.user, doc.channel); role(doc.user, doc.role);}`)
-			rt.CreateDatabase("db", dbConfig)
+			RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 			// iterate and execute grants in each test case
 			for i, grant := range test.grants {
@@ -624,66 +632,59 @@ func TestGetAllChannelsByUser(t *testing.T) {
 func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 1)
+	bucket := base.GetTestBucket(t)
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true, CustomTestBucket: bucket}, 1)
 	defer rt.Close()
-
-	const dbName = "db"
-
-	// implicit default scope/collection
-	dbConfig := rt.NewDbConfig()
-	dbConfig.Scopes = nil
-	resp := rt.CreateDatabase(dbName, dbConfig)
-	RequireStatus(t, resp, http.StatusCreated)
-
-	expectedKeyspaces := []string{
-		dbName,
-	}
-	assert.Equal(t, expectedKeyspaces, rt.GetKeyspaces())
 
 	// add single named collection
 	newCollection := base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: t.Name()}
-	require.NoError(t, rt.TestBucket.CreateDataStore(base.TestCtx(t), newCollection))
+	require.NoError(t, bucket.CreateDataStore(base.TestCtx(t), newCollection))
 	defer func() {
 		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
 	}()
 
-	resp = rt.UpsertDbConfig(dbName, DbConfig{Scopes: ScopesConfig{
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = ScopesConfig{
 		base.DefaultScope: {Collections: CollectionsConfig{
 			base.DefaultCollection:         {},
 			newCollection.CollectionName(): {},
 		}},
-	}})
-	RequireStatus(t, resp, http.StatusCreated)
+	}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	// Test that the keyspace with no channels assigned does not have a key in the response
 	grant := userGrant{
-		user:          "alice",
-		adminChannels: map[string][]string{defaultKeyspace: {}, newCollection.String(): {"D"}},
-		output: fmt.Sprintf(`
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace1}}": {},
+			"{{.keyspace2}}": {"D"}},
+		output: `
 		{
 			"all_channels":{
-				"%s":{
+				"{{.scopeAndCollection2}}":{
 					"D":{
 						"entries":["1-0"]
 					}
 				}
-			}}`, newCollection.String()),
+			}}`,
 	}
 	grant.request(rt)
 
 	// add channel to single named collection and assert its handled
 	grant = userGrant{
-		user:          "alice",
-		adminChannels: map[string][]string{defaultKeyspace: {"A"}, newCollection.String(): {"D"}},
-		output: fmt.Sprintf(`
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace1}}": {"A"},
+		},
+		output: `
 {
    "all_channels":{
-      "_default._default":{
+      "{{.scopeAndCollection1}}":{
          "A":{
             "entries":["2-0"]
          }
       },
-      "%s":{
+      "{{.scopeAndCollection2}}":{
          "D":{
             "entries":[
                "1-0"
@@ -691,7 +692,7 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
          }
       }
    }
-}`, newCollection.String()),
+}`,
 	}
 	grant.request(rt)
 
@@ -703,50 +704,39 @@ func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
 	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 2)
 	defer rt.Close()
 
-	dbName := "db"
-	tb := base.GetTestBucket(t)
-	defer tb.Close(rt.Context())
-	scopesConfig := GetCollectionsConfig(t, tb, 2)
-
-	dbConfig := makeDbConfig(tb.GetName(), dbName, scopesConfig)
-	rt.CreateDatabase("db", dbConfig)
-
-	scopeName := rt.GetDbCollections()[0].ScopeName
-	collection1Name := rt.GetDbCollections()[0].Name
-	collection2Name := rt.GetDbCollections()[1].Name
-	scopesConfig[scopeName].Collections[collection1Name] = &CollectionConfig{}
-	keyspace1 := scopeName + "." + collection1Name
-	keyspace2 := scopeName + "." + collection2Name
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 	// Test that the keyspace with no channels assigned does not have a key in the response
 	grant := userGrant{
 		user:          "alice",
-		adminChannels: map[string][]string{keyspace1: {"D"}},
-		output: fmt.Sprintf(`
+		adminChannels: map[string][]string{"{{.keyspace1}}": {"D"}},
+		output: `
 		{
 			"all_channels":{
-				"%s":{
+				"{{.scopeAndCollection1}}":{
 					"D":{
 						"entries":["1-0"]
 					}
 				}
-			}}`, keyspace1),
+			}}`,
 	}
 	grant.request(rt)
 
 	// add channel to collection with no channels and assert multi collection is handled
 	grant = userGrant{
-		user:          "alice",
-		adminChannels: map[string][]string{keyspace2: {"A"}, keyspace1: {"D"}},
-		output: fmt.Sprintf(`
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace2}}": {"A"},
+		},
+		output: `
 		{
 		   "all_channels":{
-			  "%s":{
+			  "{{.scopeAndCollection2}}":{
 				 "A":{
 					"entries":["2-0"]
 				 }
 			  },
-			  "%s":{
+			  "{{.scopeAndCollection1}}":{
 				 "D":{
 					"entries":[
 					   "1-0"
@@ -754,45 +744,48 @@ func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
 				 }
 			  }
 		   }
-		}`, keyspace2, keyspace1),
+		}`,
 	}
 	grant.request(rt)
 
 	// check removed channel in keyspace2 is in history before deleting collection 2
 	grant = userGrant{
-		user:          "alice",
-		adminChannels: map[string][]string{keyspace1: {"D"}, keyspace2: {"!"}},
-		output: fmt.Sprintf(`
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace1}}": {"D"},
+			"{{.keyspace2}}": {"!"},
+		},
+		output: `
 		{
 		   "all_channels":{
-			  "%s":{
+			  "{{.scopeAndCollection2}}":{
 				 "A":{
 					"entries":["2-3"]
 				 }
 			  },
-			  "%s":{
+			  "{{.scopeAndCollection1}}":{
 				 "D":{
 					"entries":["1-0"]
 				 }
 			  }
 		   }
-		}`, keyspace2, keyspace1),
+		}`,
 	}
 	grant.request(rt)
 
 	// delete collection 2
-	scopesConfig = GetCollectionsConfig(t, tb, 1)
-	dbConfig = makeDbConfig(tb.GetName(), dbName, scopesConfig)
-	rt.UpsertDbConfig("db", dbConfig)
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(t, rt.TestBucket, 1)
+	RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
 
 	// check deleted collection is not there
 	grant = userGrant{
 		user:          "alice",
-		adminChannels: map[string][]string{keyspace1: {"D"}},
-		output: fmt.Sprintf(`
+		adminChannels: map[string][]string{"{{.keyspace}}": {"D"}},
+		output: `
 		{
 		   "all_channels":{
-			  "%s":{
+			  "{{.scopeAndCollection}}":{
 				 "D":{
 					"entries":[
 					   "1-0"
@@ -800,38 +793,32 @@ func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
 				 }
 			  }
 		   }
-		}`, keyspace1),
+		}`,
 	}
 	grant.request(rt)
 }
 
 func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
 
-	rt := NewRestTester(t, &RestTesterConfig{
-		PersistentConfig: true,
-	})
+	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
-	dbConfig := rt.NewDbConfig()
-	dbConfig.Scopes = nil
-	rt.CreateDatabase("db", dbConfig)
-
 	// Create role with 1 channel and assign it to user
-	roleGrant := roleGrant{role: "role1", adminChannels: map[string][]string{defaultKeyspace: {"role1Chan"}}}
+	roleGrant := roleGrant{role: "role1", adminChannels: map[string][]string{"{{.keyspace}}": {"role1Chan"}}}
+	roleGrant.request(rt)
 	userGrant := userGrant{
 		user:  "alice",
 		roles: []string{"role1"},
 		output: `
 		{
 			"all_channels":{
-				"_default._default":{
+				"{{.scopeAndCollection}}":{
 					"role1Chan":{
 						"entries":["2-0"]
 					}
 				}
 			}}`,
 	}
-	roleGrant.request(rt)
 	userGrant.request(rt)
 
 	// Delete role and assert its channels no longer appear in response
@@ -846,14 +833,8 @@ func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
 
 func TestGetAllChannelsByUserNonexistentAndDeletedUser(t *testing.T) {
 
-	rt := NewRestTester(t, &RestTesterConfig{
-		PersistentConfig: true,
-	})
+	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
-
-	dbConfig := rt.NewDbConfig()
-	dbConfig.Scopes = nil
-	rt.CreateDatabase("db", dbConfig)
 
 	// assert the endpoint returns 404 when user is not found
 	resp := rt.SendDiagnosticRequest("GET", "/db/_user/user1/_all_channels", ``)
@@ -862,11 +843,11 @@ func TestGetAllChannelsByUserNonexistentAndDeletedUser(t *testing.T) {
 	// Create user and assert on response
 	userGrant := userGrant{
 		user:          "user1",
-		adminChannels: map[string][]string{defaultKeyspace: {"A"}},
+		adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
 		output: `
 		{
 			"all_channels":{
-				"_default._default":{
+				"{{.scopeAndCollection}}":{
 					"A":{
 						"entries":["1-0"]
 					}
