@@ -44,8 +44,6 @@ func (h *topicRenameHook) OnPacketRead(client *mochi.Client, packet packets.Pack
 		prefix += "/"
 		fix := func(name *string) {
 			if *name != "" && (*name)[0] != '$' {
-				base.DebugfCtx(h.ctx, base.KeyMQTT, "Incoming packet: renamed %q -> %q",
-					*name, prefix+*name)
 				*name = prefix + *name
 			}
 		}
@@ -68,11 +66,9 @@ func (h *topicRenameHook) OnPacketEncode(client *mochi.Client, packet packets.Pa
 		prefix += "/"
 		fix := func(name *string) {
 			if strings.HasPrefix(*name, prefix) {
-				base.DebugfCtx(h.ctx, base.KeyMQTT, "Outgoing packet: renamed %q -> %q",
-					*name, (*name)[len(prefix):])
 				*name = (*name)[len(prefix):]
 			} else if *name != "" && (*name)[0] != '$' {
-				base.WarnfCtx(h.ctx, "Unprefixed topic in outgoing packet: %q", *name)
+				base.WarnfCtx(h.ctx, "Unprefixed topic in outgoing packet: %q", base.UD(*name))
 			}
 		}
 

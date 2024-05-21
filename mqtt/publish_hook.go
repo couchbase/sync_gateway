@@ -53,18 +53,18 @@ func (h *publishHook) OnPublish(client *mochi.Client, packet packets.Packet) (pa
 		topicName, ok := stripDbNameFromTopic(dbc, packet.TopicName)
 		if !ok {
 			base.ErrorfCtx(h.ctx, "MQTT: OnPublish received mismatched topic %q for client %q",
-				topicName, client.Properties.Username)
+				base.UD(topicName), base.UD(client.Properties.Username))
 			return packet, nil
 		}
 
-		if config, topic := dbcSettings(dbc).MatchIngest(topicName); config != nil {
-			base.InfofCtx(h.ctx, base.KeyMQTT, "Ingesting message from client %q for db %q, topic %q", username, dbc.Name, topicName)
-			err := IngestMessage(h.ctx, *topic, packet.Payload, config, dbc, packet.Properties.MessageExpiryInterval)
+		if config, topic := dbcSettings(dbc).matchIngest(topicName); config != nil {
+			base.InfofCtx(h.ctx, base.KeyMQTT, "Ingesting message from client %q for db %q, topic %q", base.UD(username), base.UD(dbc.Name), base.UD(topicName))
+			err := ingestMessage(h.ctx, *topic, packet.Payload, config, dbc, packet.Properties.MessageExpiryInterval)
 			if err != nil {
-				base.WarnfCtx(h.ctx, "MQTT broker failed to save message in db %q from topic %q: %v", dbc.Name, topicName, err)
+				base.WarnfCtx(h.ctx, "MQTT broker failed to save message in db %q from topic %q: %v", base.UD(dbc.Name), base.UD(topicName), err)
 			}
 		} else {
-			base.DebugfCtx(h.ctx, base.KeyMQTT, "Client %q published non-persistent message in db %q, topic %q", username, dbc.Name, topicName)
+			base.DebugfCtx(h.ctx, base.KeyMQTT, "Client %q published non-persistent message in db %q, topic %q", base.UD(username), base.UD(dbc.Name), base.UD(topicName))
 		}
 
 		if agent := h.server.clusterAgent; agent != nil {
@@ -75,7 +75,7 @@ func (h *publishHook) OnPublish(client *mochi.Client, packet packets.Packet) (pa
 		}
 
 	} else {
-		base.DebugfCtx(h.ctx, base.KeyMQTT, "Relayed peer message to topic %q", packet.TopicName)
+		base.DebugfCtx(h.ctx, base.KeyMQTT, "Relayed peer message to topic %q", base.UD(packet.TopicName))
 	}
 
 	return packet, nil

@@ -147,9 +147,9 @@ func (client *Client) onPublishReceived(pub paho.PublishReceived) (bool, error) 
 		exp = base.SecondsToCbsExpiry(int(*msgExp))
 	}
 
-	err := IngestMessage(client.ctx, *match, pub.Packet.Payload, sub, client.database, exp)
+	err := ingestMessage(client.ctx, *match, pub.Packet.Payload, sub, client.database, exp)
 	if err != nil {
-		base.WarnfCtx(client.ctx, "MQTT Client %q failed to save message from topic %q: %v", client.config.Broker.ClientID, pub.Packet.Topic, err)
+		base.WarnfCtx(client.ctx, "MQTT Client %q failed to save message from topic %q: %v", client.config.Broker.ClientID, base.UD(pub.Packet.Topic), err)
 	}
 	return (err == nil), err
 }

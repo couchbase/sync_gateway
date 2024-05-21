@@ -184,7 +184,7 @@ func (agent *clusterAgent) broadcastPublish(packet *packets.Packet) error {
 			return err
 		}
 		b := &packetBroadcast{data: buf.Bytes()}
-		base.InfofCtx(agent.ctx, base.KeyMQTT, "Broadcasting Publish packet for topic %q", packet.TopicName)
+		base.InfofCtx(agent.ctx, base.KeyMQTT, "Broadcasting Publish packet for topic %q", base.UD(packet.TopicName))
 		agent.broadcastQueue.QueueBroadcast(b)
 	}
 	return nil
@@ -230,7 +230,7 @@ func (agent *clusterAgent) NotifyMsg(message []byte) {
 	case 'P':
 		// This is a Publish packet
 		if packet, err := decodePacket(message[2:], message[1]); err == nil {
-			base.InfofCtx(agent.ctx, base.KeyMQTT, "Relaying PUBLISH packet from peer for topic %q (%d bytes)", packet.TopicName, len(packet.Payload))
+			base.InfofCtx(agent.ctx, base.KeyMQTT, "Relaying PUBLISH packet from peer for topic %q (%d bytes)", base.UD(packet.TopicName), len(packet.Payload))
 			err = agent.broker.Publish(packet.TopicName, packet.Payload, packet.FixedHeader.Retain, packet.FixedHeader.Qos)
 			if err != nil {
 				base.ErrorfCtx(agent.ctx, "MQTT cluster error publishing message forwarded from peer: %v", err)

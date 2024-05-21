@@ -11,7 +11,6 @@ package mqtt
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"slices"
@@ -23,20 +22,27 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
+// Instead of using `sgbucket.DataStore`, define a smaller interface covering what we need.
+// This makes it easier to mock out in tests; see `mockDataStore`.
+type iDataStore interface {
+	sgbucket.KVStore
+	GetName() string
+}
+
+// Internal struct used by `ingestMessage()`
 type ingester struct {
 	ctx       context.Context
 	topic     TopicMatch
 	payload   any
 	sub       *IngestConfig
-	model     string
-	dataStore sgbucket.DataStore
+	dataStore iDataStore
 	docID     string
 	exp       uint32
 	timestamp time.Time
 }
 
 // Finds an IngestConfig that matches the given topic name.
-func (bc *BrokerConfig) MatchIngest(topic string) (*IngestConfig, *TopicMatch) {
+func (bc *BrokerConfig) matchIngest(topic string) (*IngestConfig, *TopicMatch) {
 	bc.mutex.Lock()
 	defer func() { bc.mutex.Unlock() }()
 
@@ -50,8 +56,8 @@ func (bc *BrokerConfig) MatchIngest(topic string) (*IngestConfig, *TopicMatch) {
 	return bc.ingestFilters.Match(topic)
 }
 
-// Saves an incoming MQTT message to a document in a DataStore. Returns the docID.
-func IngestMessage(
+// Saves an incoming MQTT message to a document in a database. Returns the docID.
+func ingestMessage(
 	ctx context.Context,
 	topic TopicMatch,
 	rawPayload []byte,
@@ -63,7 +69,18 @@ func IngestMessage(
 	if err != nil {
 		return err
 	}
+	return ingestMessageToDataStore(ctx, topic, rawPayload, sub, dataStore, exp)
+}
 
+// Same as `ingestMessage` but takes a (i)DataStore.
+func ingestMessageToDataStore(
+	ctx context.Context,
+	topic TopicMatch,
+	rawPayload []byte,
+	sub *IngestConfig,
+	dataStore iDataStore,
+	exp uint32,
+) error {
 	ing := ingester{
 		ctx:       ctx,
 		topic:     topic,
@@ -75,7 +92,7 @@ func IngestMessage(
 	}
 
 	// Parse the payload per the `encoding` config:
-	err = ing.decodePayload(rawPayload)
+	err := ing.decodePayload(rawPayload)
 	if err != nil {
 		return fmt.Errorf("failed to parse message from topic %q: %w", topic, err)
 	}
@@ -95,22 +112,11 @@ func IngestMessage(
 		}
 	}
 
-	// Infer model:
-	if sub.Model != nil {
-		ing.model = *sub.Model
-	} else if sub.StateTemplate != nil {
-		ing.model = ModelState
-	} else if sub.TimeSeries != nil {
-		ing.model = ModelTimeSeries
-	} else if sub.SpaceTimeSeries != nil {
-		ing.model = ModelSpaceTimeSeries
-	}
-
-	switch ing.model {
+	switch *ing.sub.Model {
 	case ModelState:
 		err = ing.saveState()
 		if err == nil {
-			base.InfofCtx(ing.ctx, base.KeyMQTT, "Saved msg as doc %q in db %s", ing.docID, ing.dataStore.GetName())
+			base.InfofCtx(ing.ctx, base.KeyMQTT, "Saved msg as doc %q in db %s", base.UD(ing.docID), base.UD(ing.dataStore.GetName()))
 		}
 	case ModelTimeSeries:
 		var entry []any
@@ -169,7 +175,7 @@ func (ing *ingester) saveState() error {
 	} else if err = ing.dataStore.Set(ing.docID, ing.exp, nil, body); err != nil {
 		return err
 	}
-	base.InfofCtx(ing.ctx, base.KeyMQTT, "Saved msg to doc %q in db %s", ing.docID, ing.dataStore.GetName())
+	base.InfofCtx(ing.ctx, base.KeyMQTT, "Saved msg to doc %q in db %s", base.UD(ing.docID), base.UD(ing.dataStore.GetName()))
 	return nil
 }
 
@@ -177,22 +183,40 @@ func (ing *ingester) saveState() error {
 func (ing *ingester) saveTimeSeries(entry []any, seriesKey string, timeStampIndex int) error {
 	_, err := ing.dataStore.Update(ing.docID, ing.exp, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
 		var body Body
-		if err := base.JSONUnmarshal(current, &body); err != nil {
+		if err := base.JSONUnmarshal(current, &body); err != nil || body == nil {
+			// Ignore error (or empty doc); just clear the body to recover
 			body = Body{}
+		}
+
+		ts_new, _ := decodeTimestamp(entry[timeStampIndex])
+		tsStart, hasStart := decodeTimestamp(body["ts_start"])
+		if ing.shouldRotate(len(current), tsStart, ts_new) {
+			// Time to roll over the document -- save to a new key, and clear the contents
+			var added bool
+			added, err = ing.rotateTimeSeries(body)
+			if err == nil && !added {
+				// Race condition: someone else rotated the doc already. Reload and retry.
+				err = sgbucket.ErrCasFailureShouldRetry
+			}
+			if err != nil {
+				return
+			}
+			// Now that we've saved the time series, clear the doc and restart:
+			body = map[string]any{}
+			hasStart = false
 		}
 
 		body[seriesKey] = addToTimeSeries(body[seriesKey], entry, timeStampIndex)
 
 		// Update start/end timestamps:
-		ts_new := entry[timeStampIndex].(int64)
-		if tsStart, ok := base.ToInt64(body["ts_start"]); !ok || ts_new < tsStart {
+		if !hasStart || ts_new < tsStart {
 			body["ts_start"] = ts_new
 		}
-		if tsEnd, ok := base.ToInt64(body["ts_end"]); !ok || ts_new > tsEnd {
+		if tsEnd, ok := decodeTimestamp(body["ts_end"]); !ok || ts_new > tsEnd {
 			body["ts_end"] = ts_new
 		}
 
-		if ing.model == ModelSpaceTimeSeries {
+		if *ing.sub.Model == ModelSpaceTimeSeries {
 			// Update low/high geohashes:
 			sp_new := entry[0].(string)
 			if sp_low, ok := body["sp_low"].(string); !ok || sp_new < sp_low {
@@ -220,18 +244,18 @@ func (ing *ingester) saveTimeSeries(entry []any, seriesKey string, timeStampInde
 		return
 	})
 	if err == nil {
-		base.InfofCtx(ing.ctx, base.KeyMQTT, "Appended msg to %s doc %q in db %s", ing.model, ing.docID, ing.dataStore.GetName())
+		base.InfofCtx(ing.ctx, base.KeyMQTT, "Appended msg to %s doc %q in db %s", *ing.sub.Model, base.UD(ing.docID), base.UD(ing.dataStore.GetName()))
 	}
 	return err
 }
 
 // Adds an entry to a (space-)time-series array, in chronological order, unless it's a dup.
 func addToTimeSeries(seriesProp any, entry []any, timeStampIndex int) []any {
-	newTimeStamp := decodeTimestamp(entry[timeStampIndex])
+	newTimeStamp, _ := decodeTimestamp(entry[timeStampIndex])
 	series, _ := seriesProp.([]any)
 	for i, item := range series {
 		if oldEntry, ok := item.([]any); ok && len(oldEntry) > timeStampIndex {
-			oldTimeStamp := decodeTimestamp(oldEntry[timeStampIndex])
+			oldTimeStamp, _ := decodeTimestamp(oldEntry[timeStampIndex])
 			if newTimeStamp < oldTimeStamp {
 				// New item comes before this one:
 				return slices.Insert(series, i, any(entry))
@@ -244,16 +268,34 @@ func addToTimeSeries(seriesProp any, entry []any, timeStampIndex int) []any {
 	return append(series, entry)
 }
 
-func decodeTimestamp(n any) int64 {
-	switch n := n.(type) {
-	case int64:
-		return n
-	case float64:
-		return int64(n)
-	case json.Number:
-		if i, err := n.Int64(); err == nil {
-			return i
-		}
+// Returns true if it's time to rotate a time-series doc, given its size and earliest timestamp.
+func (ing *ingester) shouldRotate(docSize int, startTime float64, curTime float64) bool {
+	var rotationMaxSize int
+	var rotationInterval time.Duration
+	if ing.sub.TimeSeries != nil {
+		rotationMaxSize = ing.sub.TimeSeries.RotationMaxSize
+		rotationInterval = ing.sub.TimeSeries.rotationInterval
+	} else if ing.sub.SpaceTimeSeries != nil {
+		rotationMaxSize = ing.sub.SpaceTimeSeries.RotationMaxSize
+		rotationInterval = ing.sub.SpaceTimeSeries.rotationInterval
 	}
-	return 0
+
+	if rotationMaxSize > 0 && docSize >= rotationMaxSize {
+		return true
+	} else if rotationInterval > 0 && startTime > 0 && curTime-startTime >= rotationInterval.Seconds() {
+		return true
+	}
+	return false
+}
+
+// Called when a (parsed) time series doc is too large to add to.
+// Copies the existing data to a new doc whose key has the first timestamp appended.
+func (ing *ingester) rotateTimeSeries(body Body) (added bool, err error) {
+	var startStr string
+	if start, ok := decodeTimestamp(body["ts_start"]); ok {
+		m, _ := timeFromTimestamp(start).MarshalText()
+		startStr = string(m)
+	}
+	docID := fmt.Sprintf("%s @ %s", ing.docID, startStr)
+	return ing.dataStore.Add(docID, ing.exp, body)
 }

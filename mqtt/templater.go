@@ -117,7 +117,7 @@ func (tmpl *templater) expandMatch(param string) (any, error) {
 	if len(matches) == 1 {
 		switch matches[0] {
 		case "now":
-			// $now defaults to numeric timestamp (Unix epoch):
+			// $now defaults to numeric timestamp (Unix epoch, 1-second precision):
 			return tmpl.timestamp.Unix(), nil
 		default:
 			// Is it a number? In that case, subsitute from the TopicMatch:
@@ -140,7 +140,7 @@ func (tmpl *templater) expandMatch(param string) (any, error) {
 				return "", err
 			}
 		case "unix":
-			// Insert numeric timestamp (Unix epoch):
+			// Insert numeric timestamp (Unix epoch, 1-second precision):
 			return tmpl.timestamp.Unix(), nil
 		}
 

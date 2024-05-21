@@ -9,9 +9,14 @@
 package mqtt
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
 	"net"
+	"time"
 )
+
+//======== IP ADDRESSES
 
 // Returns a real IPv4 or IPv6 address for this computer.
 // If none can be found, returns an empty string; an error is only returned if it was unable to
@@ -29,7 +34,6 @@ func getIPAddress(ipv6 bool) (string, error) {
 					if ip, _, err := net.ParseCIDR(addr.String()); err == nil {
 						// The address must not be loopback, multicast, nor link-local:
 						if !ip.IsLoopback() && !ip.IsLinkLocalMulticast() && !ip.IsLinkLocalUnicast() && !ip.IsMulticast() && !ip.IsUnspecified() {
-							//log.Printf("%s: [%s]  %v", i.Name, i.Flags.String(), ip)
 							// If it matches the IP version, return it:
 							if (ip.To4() == nil) == ipv6 {
 								return ip.String(), nil
@@ -73,5 +77,27 @@ func makeRealIPAddress(addrStr string, keepPort bool) (string, error) {
 	} else {
 		return host, nil
 	}
+}
 
+//======== TIMESTAMPS
+
+// simply coerces int64, float64 or json.Number to float64.
+func decodeTimestamp(n any) (float64, bool) {
+	switch n := n.(type) {
+	case int64:
+		return float64(n), true
+	case float64:
+		return n, true
+	case json.Number:
+		if i, err := n.Float64(); err == nil {
+			return i, true
+		}
+	}
+	return 0.0, false
+}
+
+// Converts a float64 timestamp to a Time value.
+func timeFromTimestamp(ts float64) time.Time {
+	secs := math.Floor(ts)
+	return time.Unix(int64(secs), int64((ts-secs)*1.0e9))
 }

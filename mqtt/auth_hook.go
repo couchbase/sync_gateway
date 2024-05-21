@@ -43,13 +43,13 @@ func (h *authHook) OnConnectAuthenticate(client *mochi.Client, pk packets.Packet
 	defer base.FatalPanicHandler()
 	dbc, username := h.server.clientDatabaseContext(client)
 	if dbc == nil {
-		base.WarnfCtx(h.ctx, "MQTT connection attempt failed with username %q -- does not begin with a database name", client.Properties.Username)
+		base.WarnfCtx(h.ctx, "MQTT connection attempt failed with username %q -- does not begin with a database name", base.UD(client.Properties.Username))
 		return false
 	}
 
 	user, _ := dbc.Authenticator(h.ctx).AuthenticateUser(username, string(pk.Connect.Password))
 	if user == nil {
-		base.WarnfCtx(h.ctx, "MQTT auth failure for username %q", client.Properties.Username)
+		base.WarnfCtx(h.ctx, "MQTT auth failure for username %q", base.UD(client.Properties.Username))
 		return false
 	}
 
@@ -59,11 +59,11 @@ func (h *authHook) OnConnectAuthenticate(client *mochi.Client, pk packets.Packet
 		// If we continue, the broker will take over that session, which is a possible
 		// security issue: this client would inherit its topic subscriptions.
 		base.WarnfCtx(h.ctx, "MQTT auth failure for username %q: reusing session ID %q already belonging to user %q",
-			client.Properties.Username, pk.Connect.ClientIdentifier, existing.Properties.Username)
+			base.UD(client.Properties.Username), pk.Connect.ClientIdentifier, base.UD(existing.Properties.Username))
 		return false
 	}
 
-	base.InfofCtx(h.ctx, base.KeyMQTT, "Client connection by user %q to db %q (session ID %q)", username, dbc.Name, client.ID)
+	base.InfofCtx(h.ctx, base.KeyMQTT, "Client connection by user %q to db %q (session ID %q)", base.UD(username), base.UD(dbc.Name), client.ID)
 	return true
 }
 
@@ -74,21 +74,21 @@ func (h *authHook) OnACLCheck(client *mochi.Client, topic string, write bool) (a
 	dbc, username := h.server.clientDatabaseContext(client)
 	topic, ok := stripDbNameFromTopic(dbc, topic)
 	if !ok {
-		base.WarnfCtx(h.ctx, "MQTT: DB %s user %q tried to access topic %q not in that DB", dbc.Name, username, topic)
+		base.WarnfCtx(h.ctx, "MQTT: DB %s user %q tried to access topic %q not in that DB", base.UD(dbc.Name), base.UD(username), base.UD(topic))
 		return false
 	}
 
 	user, err := dbc.Authenticator(h.ctx).GetUser(username)
 	if err != nil {
-		base.WarnfCtx(h.ctx, "MQTT: OnACLCheck: Can't find DB user for MQTT client username %q", username)
+		base.WarnfCtx(h.ctx, "MQTT: OnACLCheck: Can't find DB user for MQTT client username %q", base.UD(username))
 		return false
 	}
 
 	allowed = dbcSettings(dbc).Authorize(user, topic, write)
 	if allowed {
-		base.InfofCtx(h.ctx, base.KeyMQTT, "DB %s user %q accessing topic %q, write=%v", dbc.Name, username, topic, write)
+		base.InfofCtx(h.ctx, base.KeyMQTT, "DB %s user %q accessing topic %q, write=%v", base.UD(dbc.Name), base.UD(username), base.UD(topic), write)
 	} else {
-		base.InfofCtx(h.ctx, base.KeyMQTT, "DB %s user %q blocked from accessing topic %q, write=%v", dbc.Name, username, topic, write)
+		base.InfofCtx(h.ctx, base.KeyMQTT, "DB %s user %q blocked from accessing topic %q, write=%v", base.UD(dbc.Name), base.UD(username), base.UD(topic), write)
 	}
 	return
 }

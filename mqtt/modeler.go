@@ -32,21 +32,6 @@ func applyStateTemplate(template Body, payload any, timestamp time.Time, topic T
 	}
 }
 
-// Validates a map as a template for the "state" model.
-func validateStateTemplate(template Body) error {
-	if template != nil {
-		tmpl := templater{
-			payload:                Body{},
-			timestamp:              time.Now(),
-			allowMissingProperties: true}
-		tmpl.apply(template)
-		if tmpl.err != nil {
-			return tmpl.err
-		}
-	}
-	return nil
-}
-
 // Applies a template to a message using the "time_series" model.
 // The first item of the result array will be a timestamp.
 func applyTimeSeriesTemplate(config *TimeSeriesConfig, payload any, timestamp time.Time, allowMissingProperties bool) ([]any, error) {
