@@ -646,27 +646,5 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig) (*db.Data
 		options.UserFunctions, err = CompileFunctions(base.TestCtx(t), *fnConfig)
 		assert.NoError(t, err)
 	}
-	return setupTestDBWithOptions(t, options)
-}
-
-func setupTestDBWithOptions(t testing.TB, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
-
-	tBucket := base.GetTestBucket(t)
-	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
-}
-
-func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
-	ctx := base.TestCtx(t)
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	dbCtx, err := db.NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
-	require.NoError(t, err, "Couldn't create context for database 'db'")
-
-	err = dbCtx.StartOnlineProcesses(ctx)
-	require.NoError(t, err)
-
-	db, err := db.CreateDatabase(dbCtx)
-	require.NoError(t, err, "Couldn't create database 'db'")
-
-	ctx = db.AddDatabaseLogContext(ctx)
-	return db, ctx
+	return db.SetupTestDBWithOptions(t, options)
 }
