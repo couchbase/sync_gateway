@@ -138,7 +138,6 @@ func (s *sequenceAllocator) releaseUnusedSequences(ctx context.Context) {
 		s.sequenceBatchSize = s.sequenceBatchSize - unusedAmount
 	}
 
-	fmt.Println("setting last to", s.max, "release")
 	s.last = s.max
 	s.mutex.Unlock()
 }
@@ -149,7 +148,6 @@ func (s *sequenceAllocator) lastSequence(ctx context.Context) (uint64, error) {
 	s.mutex.Lock()
 	lastSeq := s.last
 	s.mutex.Unlock()
-	fmt.Println("lastsequ34ecne")
 
 	if lastSeq > 0 {
 		return lastSeq, nil
