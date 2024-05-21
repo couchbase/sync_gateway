@@ -138,6 +138,7 @@ func (s *sequenceAllocator) releaseUnusedSequences(ctx context.Context) {
 		s.sequenceBatchSize = s.sequenceBatchSize - unusedAmount
 	}
 
+	fmt.Println("setting last to", s.max, "release")
 	s.last = s.max
 	s.mutex.Unlock()
 }
@@ -148,6 +149,7 @@ func (s *sequenceAllocator) lastSequence(ctx context.Context) (uint64, error) {
 	s.mutex.Lock()
 	lastSeq := s.last
 	s.mutex.Unlock()
+	fmt.Println("lastsequ34ecne")
 
 	if lastSeq > 0 {
 		return lastSeq, nil
@@ -235,11 +237,24 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 
 	numberToRelease := existingSequence - s.max
 	numberToAllocate := s.sequenceBatchSize
-	allocatedToSeq, err := s.incrementSequence(numberToRelease + numberToAllocate)
+	incrVal := numberToRelease + numberToAllocate
+	allocatedToSeq, err := s.incrementSequence(incrVal)
 	if err != nil {
 		base.WarnfCtx(ctx, "Error from incrementSequence in nextSequenceGreaterThan(%d): %v", existingSequence, err)
 		s.mutex.Unlock()
 		return 0, 0, err
+	}
+
+	// check for rollback of _sync:seq before continuing
+	if allocatedToSeq < (incrVal + prevAllocReleaseTo) {
+		// rollback of _sync:seq detected
+		base.WarnfCtx(ctx, "rollback of _sync:seq document detected")
+		// find diff between current _sync:seq value and what we expected it to be
+		correctionIncrValue := (incrVal + prevAllocReleaseTo) - allocatedToSeq
+		allocatedToSeq, err = s._fixSyncSeqRollback(ctx, correctionIncrValue)
+		if err != nil {
+			return 0, 0, err
+		}
 	}
 
 	s.max = allocatedToSeq
@@ -304,6 +319,19 @@ func (s *sequenceAllocator) _reserveSequenceBatch(ctx context.Context) error {
 	if err != nil {
 		base.WarnfCtx(ctx, "Error from incrementSequence in _reserveSequences(%d): %v", s.sequenceBatchSize, err)
 		return err
+	}
+
+	// check for rollback of _sync:seq document
+	if max < (s.max + s.sequenceBatchSize) {
+		// rollback of _sync:seq detected
+		base.WarnfCtx(ctx, "rollback of _sync:seq document detected")
+		// find diff between current _sync:seq value and what we expected it to be
+		correctionIncrValue := (s.max + s.sequenceBatchSize) - max
+		// we must have correction value of at least the sequence batch size else we risk overlapping batches between nodes
+		max, err = s._fixSyncSeqRollback(ctx, correctionIncrValue)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Update max and last used sequences.  Last is updated here to account for sequences allocated/used by other
@@ -380,4 +408,21 @@ func (s *sequenceAllocator) waitForReleasedSequences(ctx context.Context, startT
 	base.InfofCtx(ctx, base.KeyCache, "Waiting %v for sequence allocation...", requiredWait)
 	time.Sleep(requiredWait)
 	return requiredWait
+}
+
+// _fixSyncSeqRollback will correct a rolled back _sync:seq document in the bucket
+func (s *sequenceAllocator) _fixSyncSeqRollback(ctx context.Context, incrValue uint64) (allocatedToSeq uint64, err error) {
+	// we must have correction value of at least the sequence batch size else we risk overlapping batches between nodes
+	if incrValue < s.sequenceBatchSize {
+		// take correction value up to minimum value of the sequence batch
+		incrValue += s.sequenceBatchSize - incrValue
+	}
+	base.DebugfCtx(ctx, base.KeyCRUD, "correcting _sync:seq document. Calling increment by the value of %d", incrValue)
+
+	// incr the _sync:seq doc by the calculated correction amount
+	allocatedToSeq, err = s.incrementSequence(incrValue)
+	if err != nil {
+		return allocatedToSeq, fmt.Errorf("Error from incrementSequence in _fixSyncSeqRollback: %v", err)
+	}
+	return allocatedToSeq, err
 }
