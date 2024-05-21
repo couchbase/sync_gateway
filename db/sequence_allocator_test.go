@@ -610,13 +610,13 @@ func TestSyncSeqRollbackMultiNode(t *testing.T) {
 	wg.Add(2)
 
 	go func() {
-		nextSequence, _, err = b.nextSequenceGreaterThan(ctx, 20)
+		_, _, err := b.nextSequenceGreaterThan(ctx, 20)
 		assert.NoError(t, err)
 		wg.Done()
 	}()
 
 	go func() {
-		nextSequence, _, err = a.nextSequenceGreaterThan(ctx, 10)
+		_, _, err := a.nextSequenceGreaterThan(ctx, 10)
 		assert.NoError(t, err)
 		wg.Done()
 	}()
