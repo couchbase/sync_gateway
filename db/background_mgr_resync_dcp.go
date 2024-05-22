@@ -25,12 +25,13 @@ import (
 // =====================================================================
 
 type ResyncManagerDCP struct {
-	DocsProcessed base.AtomicInt
-	DocsChanged   base.AtomicInt
-	ResyncID      string
-	VBUUIDs       []uint64
-	useXattrs     bool
-	lock          sync.RWMutex
+	DocsProcessed       base.AtomicInt
+	DocsChanged         base.AtomicInt
+	ResyncID            string
+	VBUUIDs             []uint64
+	useXattrs           bool
+	ResyncedCollections []string
+	lock                sync.RWMutex
 }
 
 // ResyncCollections contains map of scope names with collection names against which resync needs to run
@@ -147,10 +148,12 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	}
 
 	// Get collectionIds
-	collectionIDs, hasAllCollections, err := getCollectionIds(db, resyncCollections)
+	collectionIDs, hasAllCollections, collectionNames, err := getCollectionIdsAndNames(db, resyncCollections)
 	if err != nil {
 		return err
 	}
+	// add collection list to manager for use in status call
+	r.ResyncedCollections = collectionNames
 	if hasAllCollections {
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against all collections", resyncLoggingID)
 	} else {
@@ -242,14 +245,20 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	return nil
 }
 
-func getCollectionIds(db *Database, resyncCollections ResyncCollections) ([]uint32, bool, error) {
+func getCollectionIdsAndNames(db *Database, resyncCollections ResyncCollections) ([]uint32, bool, []string, error) {
 	collectionIDs := make([]uint32, 0)
 	var hasAllCollections bool
+	var resyncCollectionNames []string
 
 	if len(resyncCollections) == 0 {
 		hasAllCollections = true
 		for collectionID := range db.CollectionByID {
 			collectionIDs = append(collectionIDs, collectionID)
+		}
+		for _, collectionNames := range db.CollectionNames {
+			for collName := range collectionNames {
+				resyncCollectionNames = append(resyncCollectionNames, collName)
+			}
 		}
 	} else {
 		hasAllCollections = false
@@ -258,13 +267,14 @@ func getCollectionIds(db *Database, resyncCollections ResyncCollections) ([]uint
 			for _, collectionName := range collectionsName {
 				collection, err := db.GetDatabaseCollection(scopeName, collectionName)
 				if err != nil {
-					return nil, hasAllCollections, fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collectionName).Redact())
+					return nil, hasAllCollections, nil, fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collectionName).Redact())
 				}
 				collectionIDs = append(collectionIDs, collection.GetCollectionID())
+				resyncCollectionNames = append(resyncCollectionNames, collectionName)
 			}
 		}
 	}
-	return collectionIDs, hasAllCollections, nil
+	return collectionIDs, hasAllCollections, resyncCollectionNames, nil
 }
 
 func (r *ResyncManagerDCP) ResetStatus() {
@@ -285,9 +295,10 @@ func (r *ResyncManagerDCP) SetStatus(docChanged, docProcessed int64) {
 
 type ResyncManagerResponseDCP struct {
 	BackgroundManagerStatus
-	ResyncID      string `json:"resync_id"`
-	DocsChanged   int64  `json:"docs_changed"`
-	DocsProcessed int64  `json:"docs_processed"`
+	ResyncID              string   `json:"resync_id"`
+	DocsChanged           int64    `json:"docs_changed"`
+	DocsProcessed         int64    `json:"docs_processed"`
+	CollectionsProcessing []string `json:"collections_processing,omitempty"`
 }
 
 func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus) ([]byte, []byte, error) {
@@ -299,6 +310,7 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus) ([]b
 		ResyncID:                r.ResyncID,
 		DocsChanged:             r.DocsChanged.Value(),
 		DocsProcessed:           r.DocsProcessed.Value(),
+		CollectionsProcessing:   r.ResyncedCollections,
 	}
 
 	meta := AttachmentManagerMeta{

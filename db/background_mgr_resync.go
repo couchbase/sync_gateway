@@ -21,9 +21,10 @@ import (
 // ======================================================
 
 type ResyncManager struct {
-	DocsProcessed int
-	DocsChanged   int
-	lock          sync.Mutex
+	DocsProcessed       int
+	DocsChanged         int
+	ResyncedCollections []string
+	lock                sync.Mutex
 }
 
 var _ BackgroundManagerProcessI = &ResyncManager{}
@@ -64,10 +65,12 @@ func (r *ResyncManager) Run(ctx context.Context, options map[string]interface{},
 		persistClusterStatus()
 	}
 
-	collectionIDs, hasAllCollections, err := getCollectionIds(database, resyncCollections)
+	collectionIDs, hasAllCollections, collectionNames, err := getCollectionIdsAndNames(database, resyncCollections)
 	if err != nil {
 		return err
 	}
+	// add collection list to manager for use in status call
+	r.ResyncedCollections = collectionNames
 	if hasAllCollections {
 		base.InfofCtx(ctx, base.KeyAll, "running resync against all collections")
 	} else {
@@ -111,8 +114,9 @@ func (r *ResyncManager) SetStats(docsProcessed, docsChanged int) {
 
 type ResyncManagerResponse struct {
 	BackgroundManagerStatus
-	DocsChanged   int `json:"docs_changed"`
-	DocsProcessed int `json:"docs_processed"`
+	DocsChanged           int      `json:"docs_changed"`
+	DocsProcessed         int      `json:"docs_processed"`
+	CollectionsProcessing []string `json:"collections_processing,omitempty"`
 }
 
 func (r *ResyncManager) GetProcessStatus(backgroundManagerStatus BackgroundManagerStatus) ([]byte, []byte, error) {
@@ -123,6 +127,7 @@ func (r *ResyncManager) GetProcessStatus(backgroundManagerStatus BackgroundManag
 		BackgroundManagerStatus: backgroundManagerStatus,
 		DocsChanged:             r.DocsChanged,
 		DocsProcessed:           r.DocsProcessed,
+		CollectionsProcessing:   r.ResyncedCollections,
 	}
 
 	statusJSON, err := base.JSONMarshal(retStatus)

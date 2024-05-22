@@ -2670,3 +2670,18 @@ func RequireGocbDCPResync(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server since rosmar has no support for DCP resync")
 	}
 }
+
+// RequireCollections Iterates through two lists of collections and asserts they both contain the same collections
+func RequireCollections(t testing.TB, collectionNamesFromStatus, collectionSpecified []string) {
+	require.Equal(t, len(collectionSpecified), len(collectionNamesFromStatus))
+	for _, collName := range collectionNamesFromStatus {
+		var found bool
+		for _, name := range collectionSpecified {
+			if name == collName {
+				found = true
+				break
+			}
+		}
+		require.True(t, found)
+	}
+}
