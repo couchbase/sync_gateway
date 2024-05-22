@@ -509,13 +509,13 @@ function sync(doc, oldDoc){
 	err = resyncMgr.Start(ctx, options)
 	require.NoError(t, err)
 
-	err = WaitForConditionWithOptions(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		var status BackgroundManagerStatus
-		rawStatus, _ := resyncMgr.GetStatus(ctx)
-		_ = json.Unmarshal(rawStatus, &status)
-		return status.State == BackgroundProcessStateCompleted
-	}, 200, 200)
-	require.NoError(t, err)
+		rawStatus, err := resyncMgr.GetStatus(ctx)
+		assert.NoError(c, err)
+		assert.NoError(c, json.Unmarshal(rawStatus, &status))
+		assert.Equal(c, BackgroundProcessStateCompleted, status.State)
+	}, 40*time.Second, 200*time.Millisecond)
 
 	stats := getResyncStats(resyncMgr.Process)
 	assert.Equal(t, int64(2), stats.DocsChanged)

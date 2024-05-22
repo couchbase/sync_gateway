@@ -2060,7 +2060,11 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				base.DebugfCtx(ctx, base.KeyCRUD, "Did not update document %q w/ xattr: %v", base.UD(key), err)
 			}
 		} else if doc != nil {
+			// Update the in-memory CAS values to match macro-expanded values
 			doc.Cas = casOut
+			if doc.metadataOnlyUpdate != nil && doc.metadataOnlyUpdate.CAS == expandMacroCASValue {
+				doc.metadataOnlyUpdate.CAS = base.CasToString(casOut)
+			}
 		}
 	}
 
@@ -2675,8 +2679,10 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 }
 
 const (
-	xattrMacroCas         = "cas"
-	xattrMacroValueCrc32c = "value_crc32c"
+	xattrMacroCas         = "cas"          // standard _sync property name for CAS
+	xattrMacroValueCrc32c = "value_crc32c" // standard _sync property name for crc32c
+
+	expandMacroCASValue = "expand" // static value that indicates that a CAS macro expansion should be applied to a property
 )
 
 func macroExpandSpec(xattrName string) []sgbucket.MacroExpansionSpec {

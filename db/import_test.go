@@ -54,22 +54,97 @@ func TestFeedImport(t *testing.T) {
 
 	// fetch the xattrs directly doc to confirm import (to avoid triggering on-demand import)
 	var syncData SyncData
-	var mou *MetadataOnlyUpdate
-	xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.MouXattrName})
+	xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName})
 	require.NoError(t, err)
 	syncXattr, ok := xattrs[base.SyncXattrName]
 	require.True(t, ok)
 	require.NoError(t, base.JSONUnmarshal(syncXattr, &syncData))
 	require.NotZero(t, syncData.Sequence, "Sequence should not be zero for imported doc")
 
-	// verify mou contents
-	if db.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		mouXattr, ok := xattrs[base.MouXattrName]
-		require.True(t, ok)
+	// verify mou
+	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.MouXattrName})
+	require.NoError(t, err)
+	mouXattr, mouOk := xattrs[base.MouXattrName]
+	if db.UseMou() {
+		var mou *MetadataOnlyUpdate
+		require.True(t, mouOk)
 		require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
 		require.Equal(t, base.CasToString(writeCas), mou.PreviousCAS)
 		require.Equal(t, base.CasToString(importCas), mou.CAS)
+	} else {
+		require.False(t, mouOk)
 	}
+}
+
+// TestOnDemandImportMou ensures that _mou is written correctly during an on-demand import
+func TestOnDemandImportMou(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
+	base.SkipImportTestsIfNotEnabled(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(base.TestCtx(t))
+
+	// SetupTestDBWithOptions sets autoImport=false
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	// On-demand get
+	// Create via the SDK
+	baseKey := t.Name()
+	t.Run("on-demand get", func(t *testing.T) {
+		getKey := baseKey + "get"
+		bodyBytes := []byte(`{"foo":"bar"}`)
+		body := Body{}
+		err := body.Unmarshal(bodyBytes)
+		assert.NoError(t, err, "Error unmarshalling body")
+		collection := GetSingleDatabaseCollectionWithUser(t, db)
+		writeCas, err := collection.dataStore.WriteCas(getKey, 0, 0, bodyBytes, 0)
+		require.NoError(t, err)
+
+		// fetch the document to trigger on-demand import
+		doc, err := collection.GetDocument(ctx, getKey, DocUnmarshalAll)
+		require.NoError(t, err)
+
+		if db.UseMou() {
+			require.NotNil(t, doc.metadataOnlyUpdate)
+			require.Equal(t, base.CasToString(writeCas), doc.metadataOnlyUpdate.PreviousCAS)
+			require.Equal(t, base.CasToString(doc.Cas), doc.metadataOnlyUpdate.CAS)
+		} else {
+			require.Nil(t, doc.metadataOnlyUpdate)
+		}
+	})
+
+	// On-demand write
+	// Create via the SDK
+	t.Run("on-demand write", func(t *testing.T) {
+		writeKey := baseKey + "write"
+		bodyBytes := []byte(`{"foo":"bar"}`)
+		body := Body{}
+		err := body.Unmarshal(bodyBytes)
+		assert.NoError(t, err, "Error unmarshalling body")
+		collection := GetSingleDatabaseCollectionWithUser(t, db)
+		writeCas, err := collection.dataStore.WriteCas(writeKey, 0, 0, bodyBytes, 0)
+		require.NoError(t, err)
+
+		// Update the document to trigger on-demand import.  Write will be a conflict, but import should be performed
+		_, doc, err := collection.Put(ctx, writeKey, Body{"foo": "baz"})
+		require.Nil(t, doc)
+		assertHTTPError(t, err, 409)
+
+		// fetch the mou xattr directly doc to confirm import (to avoid triggering on-demand get import)
+		// verify mou
+		xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, writeKey, []string{base.MouXattrName})
+		require.NoError(t, err)
+		mouXattr, mouOk := xattrs[base.MouXattrName]
+		if db.UseMou() {
+			var mou *MetadataOnlyUpdate
+			require.True(t, mouOk)
+			require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
+			require.Equal(t, base.CasToString(writeCas), mou.PreviousCAS)
+			require.Equal(t, base.CasToString(importCas), mou.CAS)
+		} else {
+			require.False(t, mouOk)
+		}
+	})
 
 }
 

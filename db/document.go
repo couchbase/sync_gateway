@@ -416,9 +416,7 @@ func unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte,
 
 	if len(mouXattrData) > 0 {
 		if err := base.JSONUnmarshal(mouXattrData, &doc.metadataOnlyUpdate); err != nil {
-			if err != nil {
-				base.WarnfCtx(ctx, "Failed to unmarshal mouXattr for key %v, will be ignored. Err: %v mou:%s", base.UD(docid), err, mouXattrData)
-			}
+			base.WarnfCtx(ctx, "Failed to unmarshal mouXattr for key %v, mou will be ignored. Err: %v mou:%s", base.UD(docid), err, mouXattrData)
 		}
 	}
 	if len(userXattrData) > 0 {
@@ -468,9 +466,9 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 			return nil, nil, nil, err
 		}
 
-		rawSyncXattr, ok := xattrValues[base.SyncXattrName]
+		rawSyncXattr, _ := xattrValues[base.SyncXattrName]
 		// If the sync xattr is present, use that to build SyncData
-		if ok && len(rawSyncXattr) > 0 {
+		if len(rawSyncXattr) > 0 {
 			result = &SyncData{}
 			if needHistory {
 				result.History = make(RevTree)
@@ -1175,7 +1173,7 @@ func (doc *Document) MarshalWithXattrs() (data []byte, syncXattr []byte, mouXatt
 // computeMetadataOnlyUpdate computes a new metadataOnlyUpdate based on the existing document's CAS and metadataOnlyUpdate
 func computeMetadataOnlyUpdate(currentCas uint64, currentMou *MetadataOnlyUpdate) *MetadataOnlyUpdate {
 	var prevCas string
-	currentCasString := string(base.Uint64CASToLittleEndianHex(currentCas))
+	currentCasString := base.CasToString(currentCas)
 	if currentMou != nil && currentCasString == currentMou.CAS {
 		prevCas = currentMou.PreviousCAS
 	} else {
@@ -1183,7 +1181,7 @@ func computeMetadataOnlyUpdate(currentCas uint64, currentMou *MetadataOnlyUpdate
 	}
 
 	metadataOnlyUpdate := &MetadataOnlyUpdate{
-		CAS:         "macro", // when non-empty, this is replaced with cas macro expansion
+		CAS:         expandMacroCASValue, // when non-empty, this is replaced with cas macro expansion
 		PreviousCAS: prevCas,
 	}
 	return metadataOnlyUpdate

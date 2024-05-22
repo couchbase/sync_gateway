@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -341,5 +340,5 @@ func (c *DatabaseCollection) UpdateSyncFun(ctx context.Context, syncFun string) 
 }
 
 func (c *DatabaseCollection) useMou() bool {
-	return c.dbCtx.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations)
+	return c.dbCtx.UseMou()
 }

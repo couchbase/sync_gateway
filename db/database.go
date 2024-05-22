@@ -1919,6 +1919,10 @@ func (context *DatabaseContext) UseViews() bool {
 	return context.Options.UseViews
 }
 
+func (context *DatabaseContext) UseMou() bool {
+	return context.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations)
+}
+
 // UseQueryBasedResyncManager returns if query bases resync manager should be used for Resync operation
 func (context *DatabaseContext) UseQueryBasedResyncManager() bool {
 	if context.Options.UnsupportedOptions != nil {
