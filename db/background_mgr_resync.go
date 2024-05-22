@@ -70,7 +70,7 @@ func (r *ResyncManager) Run(ctx context.Context, options map[string]interface{},
 		return err
 	}
 	// add collection list to manager for use in status call
-	r.ResyncedCollections = collectionNames
+	r.SetCollectionStatus(collectionNames)
 	if hasAllCollections {
 		base.InfofCtx(ctx, base.KeyAll, "running resync against all collections")
 	} else {
@@ -102,6 +102,7 @@ func (r *ResyncManager) ResetStatus() {
 
 	r.DocsProcessed = 0
 	r.DocsChanged = 0
+	r.ResyncedCollections = nil
 }
 
 func (r *ResyncManager) SetStats(docsProcessed, docsChanged int) {
@@ -110,6 +111,13 @@ func (r *ResyncManager) SetStats(docsProcessed, docsChanged int) {
 
 	r.DocsProcessed = docsProcessed
 	r.DocsChanged = docsChanged
+}
+
+func (r *ResyncManager) SetCollectionStatus(collectionNames []string) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	r.ResyncedCollections = collectionNames
 }
 
 type ResyncManagerResponse struct {
