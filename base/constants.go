@@ -137,6 +137,9 @@ const (
 	// SyncXattrName is used when storing sync data in a document's xattrs.
 	SyncXattrName = "_sync"
 
+	// MouXattrName is used when storing metadata-only update information in a document's xattrs.
+	MouXattrName = "_mou"
+
 	// Intended to be used in Meta Map and related tests
 	MetaMapXattrsKey = "xattrs"
 

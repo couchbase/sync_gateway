@@ -1773,7 +1773,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			if currentValue == nil || len(currentValue) == 0 {
 				return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
 			}
-			doc, err := unmarshalDocumentWithXattr(ctx, docid, currentValue, currentXattrs[base.SyncXattrName], currentXattrs[db.userXattrKey()], cas, DocUnmarshalAll)
+			doc, err := db.unmarshalDocumentWithXattrs(ctx, docid, currentValue, currentXattrs, cas, DocUnmarshalAll)
 			if err != nil {
 				return sgbucket.UpdatedDoc{}, err
 			}
@@ -1789,19 +1789,29 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 				updatedDoc.UpdateExpiry(*updatedExpiry)
 			}
 			doc.SetCrc32cUserXattrHash()
-			_, rawXattr, err := updatedDoc.MarshalWithXattr()
-			return sgbucket.UpdatedDoc{
+
+			// Update metadataOnlyUpdate based on previous Cas, metadataOnlyUpdate
+			if db.useMou() {
+				doc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.metadataOnlyUpdate)
+			}
+
+			_, rawXattr, rawMouXattr, err := updatedDoc.MarshalWithXattrs()
+			updatedDoc := sgbucket.UpdatedDoc{
 				Doc: nil, // Resync does not require document body update
 				Xattrs: map[string][]byte{
 					base.SyncXattrName: rawXattr,
 				},
 				Expiry: updatedExpiry,
-			}, err
+			}
+			if db.useMou() {
+				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
+			}
+			return updatedDoc, err
 		}
 		opts := &sgbucket.MutateInOptions{
 			MacroExpansion: macroExpandSpec(base.SyncXattrName),
 		}
-		_, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncAndUserXattrKeys(), 0, nil, opts, writeUpdateFunc)
+		_, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncMouAndUserXattrKeys(), 0, nil, opts, writeUpdateFunc)
 	} else {
 		_, err = db.dataStore.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 			// Be careful: this block can be invoked multiple times if there are races!
@@ -1907,6 +1917,10 @@ func (context *DatabaseContext) UseXattrs() bool {
 
 func (context *DatabaseContext) UseViews() bool {
 	return context.Options.UseViews
+}
+
+func (context *DatabaseContext) UseMou() bool {
+	return context.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations)
 }
 
 // UseQueryBasedResyncManager returns if query bases resync manager should be used for Resync operation
