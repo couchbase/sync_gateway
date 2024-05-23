@@ -233,7 +233,9 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 				WarnfCtx(ctx, "Panic when deleting rotated log files: %s\n%s", panicked, debug.Stack())
 			}
 		}()
-		defer rotationTicker.Stop()
+		if rotationTicker != nil {
+			defer rotationTicker.Stop()
+		}
 		defer logDeletionTicker.Stop()
 		for {
 			select {
