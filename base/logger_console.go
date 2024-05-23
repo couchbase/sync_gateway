@@ -197,7 +197,7 @@ func (lcc *ConsoleLoggerConfig) init() error {
 			Filename: filepath.FromSlash(lcc.FileOutput),
 			MaxSize:  *lcc.Rotation.MaxSize,
 			MaxAge:   *lcc.Rotation.MaxAge,
-			Compress: false,
+			Compress: BoolDefault(lcc.Rotation.Compress, false),
 		}
 	}
 

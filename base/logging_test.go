@@ -71,6 +71,7 @@ func TestLogRotationInterval(t *testing.T) {
 		CollationBufferSize: IntPtr(0),
 		Rotation: logRotationConfig{
 			RotationInterval: NewConfigDuration(rotationInterval),
+			Compress:         BoolPtr(false),
 		},
 	}
 

@@ -76,6 +76,7 @@ type logRotationConfig struct {
 	LocalTime            *bool           `json:"localtime,omitempty"`               // If true, it uses the computer's local time to format the backup timestamp.
 	RotatedLogsSizeLimit *int            `json:"rotated_logs_size_limit,omitempty"` // Max Size of log files before deletion
 	RotationInterval     *ConfigDuration `json:"rotation_interval,omitempty"`       // Interval at which logs are rotated
+	Compress             *bool           `json:"-"`                                 // Enable log compression
 }
 
 // NewFileLogger returns a new FileLogger from a config.
@@ -204,6 +205,7 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 			filepath.Join(filepath.FromSlash(logFilePath), logFilePrefix+name+".log"),
 			*lfc.Rotation.MaxSize,
 			*lfc.Rotation.MaxAge,
+			BoolDefault(lfc.Rotation.Compress, true),
 		)
 		lfc.Output = rotateableLogger
 	}
@@ -292,12 +294,12 @@ func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, min
 	return nil
 }
 
-func newLumberjackOutput(filename string, maxSize, maxAge int) *lumberjack.Logger {
+func newLumberjackOutput(filename string, maxSize, maxAge int, compress bool) *lumberjack.Logger {
 	return &lumberjack.Logger{
 		Filename: filename,
 		MaxSize:  maxSize,
 		MaxAge:   maxAge,
-		Compress: true,
+		Compress: compress,
 	}
 }
 
