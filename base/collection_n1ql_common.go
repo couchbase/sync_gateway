@@ -541,7 +541,7 @@ func IndexMetaKeyspaceID(bucketName, scopeName, collectionName string) string {
 }
 
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
-func WaitForIndexesOnline(ctx context.Context, mgr *indexManager, indexNames []string, failfast bool) error {
+func WaitForIndexesOnline(ctx context.Context, keyspace string, mgr *indexManager, indexNames []string, failfast bool) error {
 	maxNumAttempts := 180
 	if failfast {
 		maxNumAttempts = 1
@@ -551,6 +551,7 @@ func WaitForIndexesOnline(ctx context.Context, mgr *indexManager, indexNames []s
 
 	onlineIndexes := make(map[string]bool)
 
+	startTime := time.Now()
 	for {
 		watchedOnlineIndexCount := 0
 		currIndexes, err := mgr.GetAllIndexes()
@@ -584,7 +585,7 @@ func WaitForIndexesOnline(ctx context.Context, mgr *indexManager, indexNames []s
 		retryCount++
 		shouldContinue, sleepMs := retrySleeper(retryCount)
 		if !shouldContinue {
-			return fmt.Errorf("error waiting for indexes %s ...", strings.Join(offlineIndexes, ", "))
+			return fmt.Errorf("Waiting for indexes in %q timed out after %s minutes. The following indexes are still offline: %s ...", MD(keyspace), time.Since(startTime)*time.Minute, strings.Join(offlineIndexes, ", "))
 		}
 		InfofCtx(ctx, KeyAll, "Indexes %s not ready - retrying...", strings.Join(offlineIndexes, ", "))
 		time.Sleep(time.Millisecond * time.Duration(sleepMs))
