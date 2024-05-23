@@ -50,7 +50,7 @@ func FlushLogBuffers() {
 
 // logCollationWorker will take log lines over the given channel, and buffer them until either the buffer is full, or the flushTimeout is exceeded.
 // This is to reduce the number of writes to the log files, in order to batch them up as larger collated chunks, whilst maintaining a low-level of latency with the flush timeout.
-func logCollationWorker(ctx context.Context, collateBuffer chan string, flushChan chan struct{}, collateBufferWg *sync.WaitGroup, logger *log.Logger, maxBufferSize int, collateFlushTimeout time.Duration) {
+func logCollationWorker(_ context.Context, collateBuffer chan string, flushChan chan struct{}, collateBufferWg *sync.WaitGroup, logger *log.Logger, maxBufferSize int, collateFlushTimeout time.Duration) {
 
 	// The initial duration of the timeout timer doesn't matter,
 	// because we reset it whenever we buffer a log without flushing it.
@@ -59,8 +59,6 @@ func logCollationWorker(ctx context.Context, collateBuffer chan string, flushCha
 
 	for {
 		select {
-		case <-ctx.Done():
-			return
 		case l := <-collateBuffer:
 			logBuffer = append(logBuffer, l)
 			collateBufferWg.Done()
