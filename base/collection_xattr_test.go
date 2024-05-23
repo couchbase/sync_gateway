@@ -943,6 +943,17 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 			},
 			errorsIs: sgbucket.ErrNeedXattrs,
 		},
+		{
+			name: "previousDoc=null,updatedDoc=body",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`null`),
+			},
+			updatedDoc: sgbucket.UpdatedDoc{
+				Doc: []byte(`{"foo": "bar"}`),
+			},
+			finalBody: []byte(`{"foo": "bar"}`),
+		},
+
 		/* This should fail, and does under rosmar but not CBS
 		{
 			name: "previousDoc=_xattr1,updatedDoc=nil",
@@ -1468,6 +1479,139 @@ func TestWriteResurrectionWithXattrs(t *testing.T) {
 	}
 }
 
+func TestUpdateXattrs(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	col := bucket.DefaultDataStore()
+
+	type testCase struct {
+		name           string
+		previousDoc    *sgbucket.BucketDocument
+		updatedXattrs  map[string][]byte
+		finalXattrs    map[string][]byte
+		writeErrorFunc func(testing.TB, error)
+	}
+	tests := []testCase{
+		/* passes on CBS but not rosmar
+		{
+			name: "previousDoc=nil,updatedXattrs=_xattr1",
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"a": "b"}`),
+			},
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"a": "b"}`),
+			},
+			writeErrorFunc: RequireDocNotFoundError,
+		},
+		*/
+		{
+			name: "previousDoc=body,updatedXattrs=_xattr1",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+			},
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"a": "b"}`),
+			},
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"a": "b"}`),
+			},
+		},
+		{
+			name: "previousDoc=body,_xattr1,updatedXattrs=_xattr2",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a": "b"}`),
+				},
+			},
+			updatedXattrs: map[string][]byte{
+				"_xattr2": []byte(`{"c": "d"}`),
+			},
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"a": "b"}`),
+				"_xattr2": []byte(`{"c": "d"}`),
+			},
+		},
+		{
+			name: "previousDoc=tombstone,_xattr1,updatedXattrs=_xattr1",
+			previousDoc: &sgbucket.BucketDocument{
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a": "b"}`),
+				},
+			},
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+			},
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+			},
+		},
+		{
+			name: "previousDoc=tombstone,_xattr1,updatedXattrs=_xattr2",
+			previousDoc: &sgbucket.BucketDocument{
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a": "b"}`),
+				},
+			},
+			updatedXattrs: map[string][]byte{
+				"_xattr2": []byte(`{"c": "d"}`),
+			},
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"a": "b"}`),
+				"_xattr2": []byte(`{"c": "d"}`),
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var exp uint32
+			docID := t.Name()
+			cas := uint64(0)
+			if test.previousDoc != nil {
+				if test.previousDoc.Body == nil {
+					var err error
+					cas, err = col.WriteTombstoneWithXattrs(ctx, docID, exp, 0, test.previousDoc.Xattrs, nil, false, nil)
+					require.NoError(t, err)
+				} else {
+					var err error
+					cas, err = col.WriteWithXattrs(ctx, docID, exp, 0, test.previousDoc.Body, test.previousDoc.Xattrs, nil, nil)
+					require.NoError(t, err)
+				}
+			}
+
+			updatedCas, err := col.UpdateXattrs(ctx, docID, exp, cas, test.updatedXattrs, nil)
+			if test.writeErrorFunc != nil {
+				test.writeErrorFunc(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.NotEqual(t, cas, updatedCas)
+
+			xattrKeys := make([]string, 0, len(test.updatedXattrs))
+			for k := range test.updatedXattrs {
+				xattrKeys = append(xattrKeys, k)
+			}
+			if test.previousDoc != nil {
+				for xattrKey := range test.previousDoc.Xattrs {
+					_, ok := test.updatedXattrs[xattrKey]
+					if !ok {
+						xattrKeys = append(xattrKeys, xattrKey)
+					}
+				}
+			}
+			body, xattrs, _, err := col.GetWithXattrs(ctx, docID, xattrKeys)
+			require.NoError(t, err)
+			if test.previousDoc.Body == nil {
+				require.Nil(t, body)
+			} else {
+				require.JSONEq(t, string(test.previousDoc.Body), string(body))
+			}
+			requireXattrsEqual(t, test.finalXattrs, xattrs)
+
+		})
+	}
+}
 func requireDocNotFoundOrCasMismatchError(t testing.TB, err error) {
 	require.Error(t, err)
 	if !IsDocNotFoundError(err) && !IsCasMismatch(err) {

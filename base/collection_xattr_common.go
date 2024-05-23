@@ -156,7 +156,7 @@ func (c *Collection) WriteResurrectionWithXattrs(ctx context.Context, k string, 
 		return 0, sgbucket.ErrNeedBody
 	}
 	worker := func() (shouldRetry bool, err error, value uint64) {
-		casOut, err = c.resurrectWithBodyAndXattrs(ctx, k, exp, v, xattrs, opts)
+		casOut, err = c.insertBodyAndXattrs(ctx, k, exp, v, xattrs, opts)
 		if err != nil {
 			shouldRetry = c.isRecoverableWriteError(err)
 			return shouldRetry, err, uint64(0)
@@ -190,7 +190,6 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 	var previousLoopCas *uint64
 	for {
 		var err error
-		var wasTombstone bool
 		if previous != nil {
 			// If an existing value has been provided, use that as the initial value.
 			// A zero CAS is interpreted as no document existing.
@@ -203,7 +202,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 		} else {
 			// If no existing value has been provided, or on a retry,
 			// retrieve the current value from the bucket
-			wasTombstone, value, xattrs, cas, err = c.subdocGetBodyAndXattrs(ctx, k, xattrKeys, true)
+			value, xattrs, cas, err = c.subdocGetBodyAndXattrs(ctx, k, xattrKeys, true)
 			if err != nil {
 				if pkgerrors.Cause(err) != ErrNotFound {
 					// Unexpected error, cancel writeupdate
@@ -241,7 +240,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 		if updatedDoc.IsTombstone {
 			casOut, writeErr = c.WriteTombstoneWithXattrs(ctx, k, exp, cas, updatedDoc.Xattrs, updatedDoc.XattrsToDelete, deleteBody, opts)
 		} else {
-			if wasTombstone {
+			if !deleteBody {
 				if len(updatedDoc.XattrsToDelete) > 0 {
 					return 0, sgbucket.ErrDeleteXattrOnTombstone
 				}
@@ -256,7 +255,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 		}
 
 		if previousLoopCas != nil && *previousLoopCas == cas {
-			err := RedactErrorf("Stopping an infinite loop trying to update doc with xattr for key=%s, xattrKeys=%s", UD(k), UD(xattrKeys))
+			err := RedactErrorf("CAS retry triggered, but no change in document CAS detected for key=%s, xattrKeys=%s", UD(k), UD(xattrKeys))
 			WarnfCtx(ctx, "%s", err)
 			return 0, err
 		} else if IsDocNotFoundError(writeErr) || IsCasMismatch(writeErr) {
