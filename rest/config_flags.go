@@ -72,6 +72,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"logging.console.rotation.max_age":                 {&config.Logging.Console.Rotation.MaxAge, fs.Int("logging.console.rotation.max_age", 0, "")},
 		"logging.console.rotation.localtime":               {&config.Logging.Console.Rotation.LocalTime, fs.Bool("logging.console.rotation.localtime", false, "")},
 		"logging.console.rotation.rotated_logs_size_limit": {&config.Logging.Console.Rotation.RotatedLogsSizeLimit, fs.Int("logging.console.rotation.rotated_logs_size_limit", 0, "")},
+		"logging.console.rotation.rotation_interval":       {&config.Logging.Console.Rotation.RotationInterval, fs.Duration("logging.console.rotation.rotation_interval", 0, "")},
 		"logging.console.collation_buffer_size":            {&config.Logging.Console.CollationBufferSize, fs.Int("logging.console.collation_buffer_size", 0, "")},
 		"logging.console.log_level":                        {&config.Logging.Console.LogLevel, fs.String("logging.console.log_level", "", "Options: none, error, warn, info, debug, trace")},
 		"logging.console.log_keys":                         {&config.Logging.Console.LogKeys, fs.String("logging.console.log_keys", "", "Comma separated log keys")},
@@ -83,6 +84,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"logging.error.rotation.max_age":                 {&config.Logging.Error.Rotation.MaxAge, fs.Int("logging.error.rotation.max_age", 0, "")},
 		"logging.error.rotation.localtime":               {&config.Logging.Error.Rotation.LocalTime, fs.Bool("logging.error.rotation.localtime", false, "")},
 		"logging.error.rotation.rotated_logs_size_limit": {&config.Logging.Error.Rotation.RotatedLogsSizeLimit, fs.Int("logging.error.rotation.rotated_logs_size_limit", 0, "")},
+		"logging.error.rotation.rotation_interval":       {&config.Logging.Error.Rotation.RotationInterval, fs.Duration("logging.error.rotation.rotation_interval", 0, "")},
 		"logging.error.collation_buffer_size":            {&config.Logging.Error.CollationBufferSize, fs.Int("logging.error.collation_buffer_size", 0, "")},
 
 		"logging.warn.enabled":                          {&config.Logging.Warn.Enabled, fs.Bool("logging.warn.enabled", false, "")},
@@ -90,6 +92,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"logging.warn.rotation.max_age":                 {&config.Logging.Warn.Rotation.MaxAge, fs.Int("logging.warn.rotation.max_age", 0, "")},
 		"logging.warn.rotation.localtime":               {&config.Logging.Warn.Rotation.LocalTime, fs.Bool("logging.warn.rotation.localtime", false, "")},
 		"logging.warn.rotation.rotated_logs_size_limit": {&config.Logging.Warn.Rotation.RotatedLogsSizeLimit, fs.Int("logging.warn.rotation.rotated_logs_size_limit", 0, "")},
+		"logging.warn.rotation.rotation_interval":       {&config.Logging.Warn.Rotation.RotationInterval, fs.Duration("logging.warn.rotation.rotation_interval", 0, "")},
 		"logging.warn.collation_buffer_size":            {&config.Logging.Warn.CollationBufferSize, fs.Int("logging.warn.collation_buffer_size", 0, "")},
 
 		"logging.info.enabled":                          {&config.Logging.Info.Enabled, fs.Bool("logging.info.enabled", false, "")},
@@ -97,6 +100,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"logging.info.rotation.max_age":                 {&config.Logging.Info.Rotation.MaxAge, fs.Int("logging.info.rotation.max_age", 0, "")},
 		"logging.info.rotation.localtime":               {&config.Logging.Info.Rotation.LocalTime, fs.Bool("logging.info.rotation.localtime", false, "")},
 		"logging.info.rotation.rotated_logs_size_limit": {&config.Logging.Info.Rotation.RotatedLogsSizeLimit, fs.Int("logging.info.rotation.rotated_logs_size_limit", 0, "")},
+		"logging.info.rotation.rotation_interval":       {&config.Logging.Info.Rotation.RotationInterval, fs.Duration("logging.info.rotation.rotation_interval", 0, "")},
 		"logging.info.collation_buffer_size":            {&config.Logging.Info.CollationBufferSize, fs.Int("logging.info.collation_buffer_size", 0, "")},
 
 		"logging.debug.enabled":                          {&config.Logging.Debug.Enabled, fs.Bool("logging.debug.enabled", false, "")},
@@ -104,6 +108,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"logging.debug.rotation.max_age":                 {&config.Logging.Debug.Rotation.MaxAge, fs.Int("logging.debug.rotation.max_age", 0, "")},
 		"logging.debug.rotation.localtime":               {&config.Logging.Debug.Rotation.LocalTime, fs.Bool("logging.debug.rotation.localtime", false, "")},
 		"logging.debug.rotation.rotated_logs_size_limit": {&config.Logging.Debug.Rotation.RotatedLogsSizeLimit, fs.Int("logging.debug.rotation.rotated_logs_size_limit", 0, "")},
+		"logging.debug.rotation.rotation_interval":       {&config.Logging.Debug.Rotation.RotationInterval, fs.Duration("logging.debug.rotation.rotation_interval", 0, "")},
 		"logging.debug.collation_buffer_size":            {&config.Logging.Debug.CollationBufferSize, fs.Int("logging.debug.collation_buffer_size", 0, "")},
 
 		"logging.trace.enabled":                          {&config.Logging.Trace.Enabled, fs.Bool("logging.trace.enabled", false, "")},
@@ -111,6 +116,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"logging.trace.rotation.max_age":                 {&config.Logging.Trace.Rotation.MaxAge, fs.Int("logging.trace.rotation.max_age", 0, "")},
 		"logging.trace.rotation.localtime":               {&config.Logging.Trace.Rotation.LocalTime, fs.Bool("logging.trace.rotation.localtime", false, "")},
 		"logging.trace.rotation.rotated_logs_size_limit": {&config.Logging.Trace.Rotation.RotatedLogsSizeLimit, fs.Int("logging.trace.rotation.rotated_logs_size_limit", 0, "")},
+		"logging.trace.rotation.rotation_interval":       {&config.Logging.Trace.Rotation.RotationInterval, fs.Duration("logging.trace.rotation.rotation_interval", 0, "")},
 		"logging.trace.collation_buffer_size":            {&config.Logging.Trace.CollationBufferSize, fs.Int("logging.trace.collation_buffer_size", 0, "")},
 
 		"logging.stats.enabled":                          {&config.Logging.Stats.Enabled, fs.Bool("logging.stats.enabled", false, "")},
@@ -118,6 +124,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"logging.stats.rotation.max_age":                 {&config.Logging.Stats.Rotation.MaxAge, fs.Int("logging.stats.rotation.max_age", 0, "")},
 		"logging.stats.rotation.localtime":               {&config.Logging.Stats.Rotation.LocalTime, fs.Bool("logging.stats.rotation.localtime", false, "")},
 		"logging.stats.rotation.rotated_logs_size_limit": {&config.Logging.Stats.Rotation.RotatedLogsSizeLimit, fs.Int("logging.stats.rotation.rotated_logs_size_limit", 0, "")},
+		"logging.stats.rotation.rotation_interval":       {&config.Logging.Stats.Rotation.RotationInterval, fs.Duration("logging.stats.rotation.rotation_interval", 0, "")},
 		"logging.stats.collation_buffer_size":            {&config.Logging.Stats.CollationBufferSize, fs.Int("logging.stats.collation_buffer_size", 0, "")},
 
 		"auth.bcrypt_cost": {&config.Auth.BcryptCost, fs.Int("auth.bcrypt_cost", 0, "Cost to use for bcrypt password hashes")},
