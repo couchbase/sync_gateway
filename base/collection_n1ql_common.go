@@ -535,6 +535,7 @@ func WaitForIndexesOnline(ctx context.Context, cluster *gocb.Cluster, bucketName
 		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
 	}
 
+	startTime := time.Now()
 	for {
 		watchedOnlineIndexCount := 0
 		currIndexes, err := mgr.GetAllIndexes(bucketName, &indexOption)
@@ -568,7 +569,8 @@ func WaitForIndexesOnline(ctx context.Context, cluster *gocb.Cluster, bucketName
 		retryCount++
 		shouldContinue, sleepMs := retrySleeper(retryCount)
 		if !shouldContinue {
-			return fmt.Errorf("error waiting for indexes %s ...", strings.Join(offlineIndexes, ", "))
+			keyspace := strings.Join([]string{bucketName, scopeName, collectionName}, ".")
+			return fmt.Errorf("Waiting for indexes in %q timed out after %s minutes. The following indexes are still offline: %s ...", MD(keyspace), time.Since(startTime)*time.Minute, strings.Join(offlineIndexes, ", "))
 		}
 		InfofCtx(ctx, KeyAll, "Indexes %s not ready - retrying...", strings.Join(offlineIndexes, ", "))
 		time.Sleep(time.Millisecond * time.Duration(sleepMs))
