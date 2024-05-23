@@ -10,11 +10,12 @@ package rest
 
 import (
 	"fmt"
-
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	channels "github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/gorilla/mux"
+	"strings"
 )
 
 type allChannels struct {
@@ -24,16 +25,7 @@ type channelHistory struct {
 	Entries []auth.GrantHistorySequencePair `json:"entries"` // Entry for a specific grant period
 }
 
-func (h *handler) handleGetAllChannels() error {
-	h.assertAdminOnly()
-	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
-	if err != nil {
-		return fmt.Errorf("could not get user %s: %w", user.Name(), err)
-	}
-	if user == nil {
-		return kNotFoundError
-	}
-
+func (h *handler) getAllUserChannelsResponse(user auth.User) map[string]map[string]channelHistory {
 	resp := make(map[string]map[string]channelHistory)
 
 	// handles deleted collections, default/ single named collection
@@ -63,11 +55,97 @@ func (h *handler) handleGetAllChannels() error {
 			}
 			resp[keyspace][chanName] = chanHistoryEntry
 		}
-
 	}
+
+	return resp
+}
+
+func (h *handler) handleGetAllChannels() error {
+	h.assertAdminOnly()
+	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	if err != nil {
+		return fmt.Errorf("could not get user %s: %w", user.Name(), err)
+	}
+	if user == nil {
+		return kNotFoundError
+	}
+
+	resp := h.getAllUserChannelsResponse(user)
 	allChannels := allChannels{Channels: resp}
 
 	bytes, err := base.JSONMarshal(allChannels)
+	if err != nil {
+		return err
+	}
+	h.writeRawJSON(bytes)
+	return err
+}
+
+func (h *handler) handleGetUserDocAccessSpan() error {
+	h.assertAdminOnly()
+	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	if err != nil {
+		return fmt.Errorf("could not get user %s: %w", user.Name(), err)
+	}
+	if user == nil {
+		return kNotFoundError
+	}
+
+	docids := h.getQuery("docid")
+	docidsList := strings.Split(docids, ",")
+	var docList []*db.Document
+
+	for _, docID := range docidsList {
+		doc, err := h.collection.GetDocument(h.ctx(), docID, db.DocUnmarshalSync)
+		if err != nil {
+			return err
+		}
+		if doc == nil {
+			return kNotFoundError
+		}
+		docList = append(docList, doc)
+	}
+
+	resp := make(map[string]map[string]channelHistory)
+	for _, doc := range docList {
+
+		docChannelToSeqs := populateDocChannelInfo(*doc)
+		userChannels := h.getAllUserChannelsResponse(user)
+
+		channelsToSeqs := userChannels[h.collection.Name]
+		for chanName, userChanHistory := range channelsToSeqs {
+			// if doc was in this channel
+			resp[doc.ID] = make(map[string]channelHistory)
+			var chanIntersection []auth.GrantHistorySequencePair
+			if seqs, ok := docChannelToSeqs[chanName]; ok {
+				resp[doc.ID][chanName] = channelHistory{}
+				for _, userSeqPair := range userChanHistory.Entries {
+					for _, docSeqPair := range seqs {
+						if docSeqPair.StartSeq > userSeqPair.EndSeq {
+							continue
+						}
+						startSeq := docSeqPair.StartSeq
+						endSeq := docSeqPair.EndSeq
+
+						if userSeqPair.StartSeq > docSeqPair.StartSeq {
+							startSeq = docSeqPair.StartSeq
+						}
+						if userSeqPair.EndSeq < docSeqPair.EndSeq {
+							startSeq = docSeqPair.EndSeq
+						}
+
+						chanIntersection = append(resp[doc.ID][chanName].Entries, auth.GrantHistorySequencePair{
+							StartSeq: startSeq,
+							EndSeq:   endSeq,
+						})
+					}
+				}
+			}
+			resp[doc.ID][chanName] = channelHistory{chanIntersection}
+		}
+	}
+
+	bytes, err := base.JSONMarshal(resp)
 	if err != nil {
 		return err
 	}

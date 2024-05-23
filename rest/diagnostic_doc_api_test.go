@@ -210,3 +210,56 @@ func TestGetDocDryRuns(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, newrespMap.Channels.ToArray(), []string{"chanOld"})
 }
+
+func TestGetAllChannelsUserDocIntersection(t *testing.T) {
+	tests := []struct {
+		name          string
+		adminChannels []string
+		grants        []grant
+	}{
+		{
+			name: "admin channels once",
+			grants: []grant{
+				// grant 1
+				userGrant{
+					user: "alice",
+					adminChannels: map[string][]string{
+						"{{.keyspace}}": {"A", "B", "C"},
+					},
+					output: `
+					{"all_channels":{"{{.scopeAndCollection}}": {
+							"A": { "entries" : ["1-0"]},
+							"B": { "entries" : ["1-0"]},
+							"C": { "entries" : ["1-0"]}
+						}}}`,
+				},
+				docGrant{
+					userName:       "alice",
+					dynamicChannel: "A",
+					output: `
+					{"all_channels":{"{{.scopeAndCollection}}": {
+						"A": { "entries" : ["1-0"]}
+					}}}`,
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{
+				PersistentConfig: true,
+				SyncFn:           `function(doc) {channel(doc.channel); access(doc.user, doc.channel); role(doc.user, doc.role);}`,
+			})
+			defer rt.Close()
+
+			RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+			// iterate and execute grants in each test case
+			for i, grant := range test.grants {
+				t.Logf("Processing grant %d", i+1)
+				grant.request(rt)
+			}
+
+		})
+	}
+}
