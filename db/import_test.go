@@ -63,16 +63,17 @@ func TestFeedImport(t *testing.T) {
 
 	// verify mou
 	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.MouXattrName})
-	require.NoError(t, err)
-	mouXattr, mouOk := xattrs[base.MouXattrName]
 	if db.UseMou() {
 		var mou *MetadataOnlyUpdate
+		require.NoError(t, err)
+		mouXattr, mouOk := xattrs[base.MouXattrName]
 		require.True(t, mouOk)
 		require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
 		require.Equal(t, base.CasToString(writeCas), mou.PreviousCAS)
 		require.Equal(t, base.CasToString(importCas), mou.CAS)
 	} else {
-		require.False(t, mouOk)
+		// Expect not found fetching mou xattr
+		require.Error(t, err)
 	}
 }
 
@@ -133,16 +134,17 @@ func TestOnDemandImportMou(t *testing.T) {
 		// fetch the mou xattr directly doc to confirm import (to avoid triggering on-demand get import)
 		// verify mou
 		xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, writeKey, []string{base.MouXattrName})
-		require.NoError(t, err)
-		mouXattr, mouOk := xattrs[base.MouXattrName]
 		if db.UseMou() {
+			require.NoError(t, err)
+			mouXattr, mouOk := xattrs[base.MouXattrName]
 			var mou *MetadataOnlyUpdate
 			require.True(t, mouOk)
 			require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
 			require.Equal(t, base.CasToString(writeCas), mou.PreviousCAS)
 			require.Equal(t, base.CasToString(importCas), mou.CAS)
 		} else {
-			require.False(t, mouOk)
+			// expect not found fetching mou xattr
+			require.Error(t, err)
 		}
 	})
 
