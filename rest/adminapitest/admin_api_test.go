@@ -736,7 +736,7 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 
 			statusResponse := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
-			rest.RequireCollections(t, statusResponse.CollectionsProcessing, testCase.expectedResult)
+			assert.ElementsMatch(t, statusResponse.CollectionsProcessing, testCase.expectedResult)
 		})
 	}
 }
@@ -793,7 +793,7 @@ func TestQueryResyncCollectionsStatus(t *testing.T) {
 
 			statusResponse := rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
 
-			rest.RequireCollections(t, statusResponse.CollectionsProcessing, testCase.expectedResult)
+			assert.ElementsMatch(t, statusResponse.CollectionsProcessing, testCase.expectedResult)
 		})
 	}
 }
