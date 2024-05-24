@@ -21,9 +21,10 @@ import (
 // ======================================================
 
 type ResyncManager struct {
-	DocsProcessed int
-	DocsChanged   int
-	lock          sync.Mutex
+	DocsProcessed       int
+	DocsChanged         int
+	ResyncedCollections []string
+	lock                sync.Mutex
 }
 
 var _ BackgroundManagerProcessI = &ResyncManager{}
@@ -64,10 +65,12 @@ func (r *ResyncManager) Run(ctx context.Context, options map[string]interface{},
 		persistClusterStatus()
 	}
 
-	collectionIDs, hasAllCollections, err := getCollectionIds(database, resyncCollections)
+	collectionIDs, hasAllCollections, collectionNames, err := getCollectionIdsAndNames(database, resyncCollections)
 	if err != nil {
 		return err
 	}
+	// add collection list to manager for use in status call
+	r.SetCollectionStatus(collectionNames)
 	if hasAllCollections {
 		base.InfofCtx(ctx, base.KeyAll, "running resync against all collections")
 	} else {
@@ -99,6 +102,7 @@ func (r *ResyncManager) ResetStatus() {
 
 	r.DocsProcessed = 0
 	r.DocsChanged = 0
+	r.ResyncedCollections = nil
 }
 
 func (r *ResyncManager) SetStats(docsProcessed, docsChanged int) {
@@ -109,10 +113,18 @@ func (r *ResyncManager) SetStats(docsProcessed, docsChanged int) {
 	r.DocsChanged = docsChanged
 }
 
+func (r *ResyncManager) SetCollectionStatus(collectionNames []string) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	r.ResyncedCollections = collectionNames
+}
+
 type ResyncManagerResponse struct {
 	BackgroundManagerStatus
-	DocsChanged   int `json:"docs_changed"`
-	DocsProcessed int `json:"docs_processed"`
+	DocsChanged           int      `json:"docs_changed"`
+	DocsProcessed         int      `json:"docs_processed"`
+	CollectionsProcessing []string `json:"collections_processing,omitempty"`
 }
 
 func (r *ResyncManager) GetProcessStatus(backgroundManagerStatus BackgroundManagerStatus) ([]byte, []byte, error) {
@@ -123,6 +135,7 @@ func (r *ResyncManager) GetProcessStatus(backgroundManagerStatus BackgroundManag
 		BackgroundManagerStatus: backgroundManagerStatus,
 		DocsChanged:             r.DocsChanged,
 		DocsProcessed:           r.DocsProcessed,
+		CollectionsProcessing:   r.ResyncedCollections,
 	}
 
 	statusJSON, err := base.JSONMarshal(retStatus)
