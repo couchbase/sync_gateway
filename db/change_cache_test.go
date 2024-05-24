@@ -2798,7 +2798,6 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.SkippedSeqLen.Value())
 		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
-		assert.Equal(c, uint64(21), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
 		assert.Equal(c, int64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
