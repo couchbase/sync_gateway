@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -230,6 +231,26 @@ func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.
 	return statuses
 }
 
+func (rt *RestTester) WaitForResyncStatus(status db.BackgroundProcessState) db.ResyncManagerResponse {
+	var resyncStatus db.ResyncManagerResponse
+	successFunc := func() bool {
+		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
+		err := json.Unmarshal(response.BodyBytes(), &resyncStatus)
+		require.NoError(rt.TB, err)
+
+		var val interface{}
+		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(rt.TB), &val)
+
+		if status == db.BackgroundProcessStateCompleted {
+			return resyncStatus.State == status && base.IsDocNotFoundError(err)
+		} else {
+			return resyncStatus.State == status
+		}
+	}
+	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", status, resyncStatus.State)
+	return resyncStatus
+}
+
 func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) db.ResyncManagerResponseDCP {
 	var resyncStatus db.ResyncManagerResponseDCP
 	successFunc := func() bool {
@@ -341,4 +362,11 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 		passiveTestBucket.Close(ctx)
 	}
 	return activeRT, passiveRT, passiveDBURL.String(), teardown
+}
+
+// TakeDbOffline takes the database offline.
+func (rt *RestTester) TakeDbOffline() {
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
+	RequireStatus(rt.TB, resp, http.StatusOK)
+	require.Equal(rt.TB, db.DBOffline, atomic.LoadUint32(&rt.GetDatabase().State))
 }
