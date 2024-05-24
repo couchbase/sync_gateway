@@ -608,19 +608,19 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 
 	if toSequence < c.nextSequence {
 		// batch remove from skipped
-		err := c.RemoveSkippedSequences(ctx, fromSequence, toSequence-1)
+		err := c.RemoveSkippedSequences(ctx, fromSequence, toSequence)
 		if err != nil {
 			base.DebugfCtx(ctx, base.KeyCache, err.Error())
-		}
-		// we have sequences (possibly duplicate sequences) in the unused range that don't exist in skipped list
-		seqRange := &channels.UnusedSequenceRange{
-			StartSeq: fromSequence,
-			EndSeq:   toSequence,
-		}
-		// handle any potential duplicate sequences between the unused range and the skipped list
-		err = c.skippedSeqs._removeSubsetOfRangeFromSkipped(ctx, seqRange)
-		if err != nil {
-			base.DebugfCtx(ctx, base.KeyCache, "error processing subset of unused sequences in skipped list: %v", err)
+			// we have sequences (possibly duplicate sequences) in the unused range that don't exist in skipped list
+			seqRange := &channels.UnusedSequenceRange{
+				StartSeq: fromSequence,
+				EndSeq:   toSequence,
+			}
+			// handle any potential duplicate sequences between the unused range and the skipped list
+			err = c.skippedSeqs._removeSubsetOfRangeFromSkipped(ctx, seqRange)
+			if err != nil {
+				base.DebugfCtx(ctx, base.KeyCache, "error processing subset of unused sequences in skipped list: %v", err)
+			}
 		}
 	} else if fromSequence >= c.nextSequence {
 		// whole range to pending
