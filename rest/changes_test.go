@@ -298,7 +298,7 @@ func TestCVPopulationOnChangesViaAPI(t *testing.T) {
 	changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 
-	fetchedDoc, _, err := collection.GetDocWithXattr(ctx, DocID, db.DocUnmarshalCAS)
+	fetchedDoc, _, err := collection.GetDocWithXattrs(ctx, DocID, db.DocUnmarshalCAS)
 	require.NoError(t, err)
 
 	assert.Equal(t, "doc1", changes.Results[0].ID)
@@ -330,7 +330,7 @@ func TestCVPopulationOnDocIDChanges(t *testing.T) {
 	changes, err := rt.WaitForChanges(1, fmt.Sprintf(`/{{.keyspace}}/_changes?filter=_doc_ids&doc_ids=%s`, DocID), "", true)
 	require.NoError(t, err)
 
-	fetchedDoc, _, err := collection.GetDocWithXattr(ctx, DocID, db.DocUnmarshalCAS)
+	fetchedDoc, _, err := collection.GetDocWithXattrs(ctx, DocID, db.DocUnmarshalCAS)
 	require.NoError(t, err)
 
 	assert.Equal(t, "doc1", changes.Results[0].ID)
