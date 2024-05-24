@@ -434,7 +434,7 @@ func BenchmarkRemoveSeqFromSkippedList(b *testing.B) {
 func BenchmarkRemoveSeqRangeFromSkippedList(b *testing.B) {
 	skipedSlice := setupBenchmark(true, true, DefaultClipCapacityHeadroom)
 	for i := 0; i < b.N; i++ {
-		_ = skipedSlice.removeSeqRange(uint64(i*2), uint64(i*2)+5)
+		_ = skipedSlice._removeSeqRange(uint64(i*2), uint64(i*2)+5)
 	}
 }
 
@@ -713,7 +713,7 @@ func TestGetOldestSkippedSequence(t *testing.T) {
 // TestRemoveSequenceRange:
 //   - Setup skipped list
 //   - Remove the range specified in the test case
-//   - Assert on error returned from removeSeqRange depending on whether testcase is a error case
+//   - Assert on error returned from _removeSeqRange depending on whether testcase is a error case
 //   - Assert on expected resulting skipped list
 //   - Assert on number of skipped sequences in the list after removal
 func TestRemoveSequenceRange(t *testing.T) {
@@ -818,7 +818,7 @@ func TestRemoveSequenceRange(t *testing.T) {
 				}
 			}
 
-			err := skippedSlice.removeSeqRange(testCase.rangeToRemove[0], testCase.rangeToRemove[1])
+			err := skippedSlice._removeSeqRange(testCase.rangeToRemove[0], testCase.rangeToRemove[1])
 			if testCase.errorCase {
 				require.Error(t, err)
 			} else {

@@ -612,71 +612,81 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 		if err != nil {
 			base.DebugfCtx(ctx, base.KeyCache, err.Error())
 		}
-		// remove end seq on range, protecting against duplicate sequence scenarios
-		err = c.RemoveSkipped(toSequence)
-		if err != nil {
-			// end seq on range not present in skipped, so duplicate sequence
-			base.DebugfCtx(ctx, base.KeyCache, "  Ignoring duplicate of #%d (unusedSequence)", toSequence)
-		}
-	} else if fromSequence < c.nextSequence && toSequence > c.nextSequence {
-		// mixed scenario, remove from skipped and push to rest pending
-		err := c.RemoveSkippedSequences(ctx, fromSequence, c.nextSequence-1)
-		if err != nil {
-			base.DebugfCtx(ctx, base.KeyCache, err.Error())
-		}
-		// push next seq and above to pending
+		// we have sequences (possibly duplicate sequences) in the unused range that don't exist in skipped list
 		seqRange := &channels.UnusedSequenceRange{
-			StartSeq: c.nextSequence,
+			StartSeq: fromSequence,
 			EndSeq:   toSequence,
 		}
-		change := &LogEntry{
-			TimeReceived:  timeReceived,
-			SequenceRange: seqRange,
-			Sequence:      fromSequence,
+		// handle any potential duplicate sequences between the unused range and the skipped list
+		err = c.skippedSeqs._removeSubsetOfRangeFromSkipped(ctx, seqRange)
+		if err != nil {
+			base.DebugfCtx(ctx, base.KeyCache, "error processing subset of unused sequences in skipped list: %v", err)
 		}
-		// push to pending list
-		heap.Push(&c.pendingLogs, change)
-		c.internalStats.pendingSeqLen = len(c.pendingLogs)
 	} else if fromSequence >= c.nextSequence {
 		// whole range to pending
 		seqRange := &channels.UnusedSequenceRange{
 			StartSeq: fromSequence,
-			EndSeq:   toSequence - 1,
+			EndSeq:   toSequence,
 		}
-		change := &LogEntry{
-			TimeReceived:  timeReceived,
-			SequenceRange: seqRange,
-			Sequence:      fromSequence,
-		}
-		// push to pending list
-		heap.Push(&c.pendingLogs, change)
-
-		// unblock any pending sequences
+		c._pushRangeToPending(ctx, seqRange, timeReceived)
+		// unblock any pending sequences we can after new range(s) have been pushed to pending
 		changedChannels := c._addPendingLogs(ctx)
 		allChangedChannels = allChangedChannels.Update(changedChannels)
-
-		// if above didn't unblock pending sequences we still need to add end seq on range to pending
-		if c.nextSequence <= toSequence {
-			change = &LogEntry{
-				TimeReceived: timeReceived,
-				Sequence:     toSequence,
-			}
-			// push to pending list
-			heap.Push(&c.pendingLogs, change)
-			// unblock any pending sequences again after adding above sequence to pending
-			changedChannels = c._addPendingLogs(ctx)
-			allChangedChannels = allChangedChannels.Update(changedChannels)
-		} else {
-			// end seq is duplicate sequence
-			base.DebugfCtx(ctx, base.KeyCache, "  Ignoring duplicate of #%d (unusedSequence)", toSequence)
-		}
 		c.internalStats.pendingSeqLen = len(c.pendingLogs)
+	} else {
+		base.DebugfCtx(ctx, base.KeyCache, "unused sequence range of #%d to %d contains duplicate sequences", fromSequence, toSequence)
 	}
 	// update high seq cached
 	c.channelCache.AddUnusedSequence(&LogEntry{Sequence: toSequence})
 
 	if c.notifyChange != nil {
 		c.notifyChange(ctx, allChangedChannels)
+	}
+}
+
+// _pushRangeToPending will push a sequence range to pending logs. If pending has entries in it, we will check if
+// those entries are in the range and handle it, so we don't push duplicate sequences to pending
+func (c *changeCache) _pushRangeToPending(ctx context.Context, seqRange *channels.UnusedSequenceRange, timeReceived time.Time) {
+	if c.pendingLogs.Len() == 0 {
+		// push whole range & return early to avoid duplicate checks
+		entry := &LogEntry{
+			TimeReceived:  timeReceived,
+			Sequence:      seqRange.StartSeq,
+			SequenceRange: seqRange,
+		}
+		heap.Push(&c.pendingLogs, entry)
+		return
+	}
+
+	// check for duplicate sequences between range and pending logs
+	for _, v := range c.pendingLogs {
+		if v.Sequence > seqRange.EndSeq {
+			// exit loop, range and pending have no common elements
+			break
+		}
+		if seqRange.StartSeq <= v.Sequence && seqRange.EndSeq >= v.Sequence {
+			base.DebugfCtx(ctx, base.KeyCache, "Ignoring duplicate of #%d (unusedSequence)", v.Sequence)
+			newSeqRange := &channels.UnusedSequenceRange{
+				StartSeq: seqRange.StartSeq,
+				EndSeq:   v.Sequence - 1,
+			}
+			entry := &LogEntry{
+				TimeReceived:  timeReceived,
+				Sequence:      seqRange.StartSeq,
+				SequenceRange: newSeqRange,
+			}
+			heap.Push(&c.pendingLogs, entry)
+			seqRange.StartSeq = v.Sequence + 1
+		}
+	}
+	if seqRange.StartSeq <= seqRange.EndSeq {
+		// push what's left of seq range
+		entry := &LogEntry{
+			TimeReceived:  timeReceived,
+			Sequence:      seqRange.StartSeq,
+			SequenceRange: seqRange,
+		}
+		heap.Push(&c.pendingLogs, entry)
 	}
 }
 
@@ -972,7 +982,9 @@ func (c *changeCache) RemoveSkipped(x uint64) error {
 
 // Removes a set of sequences.  Logs warning on removal error, returns count of successfully removed.
 func (c *changeCache) RemoveSkippedSequences(ctx context.Context, startSeq, endSeq uint64) error {
-	err := c.skippedSeqs.removeSeqRange(startSeq, endSeq)
+	c.skippedSeqs.lock.Lock()
+	defer c.skippedSeqs.lock.Unlock()
+	err := c.skippedSeqs._removeSeqRange(startSeq, endSeq)
 	return err
 }
 

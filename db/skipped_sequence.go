@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 )
 
 const (
@@ -213,11 +214,8 @@ func binarySearchFunc(a *SkippedSequenceListEntry, seq uint64) int {
 	return -1
 }
 
-// removeSeqRange will remove sequence between x and y from the skipped sequence slice
-func (s *SkippedSequenceSlice) removeSeqRange(startSeq, endSeq uint64) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
+// _removeSeqRange will remove sequence between x and y from the skipped sequence slice
+func (s *SkippedSequenceSlice) _removeSeqRange(startSeq, endSeq uint64) error {
 	if len(s.list) == 0 {
 		return fmt.Errorf("skipped sequence list is empty, unable to remove sequence range %d to %d", startSeq, endSeq)
 	}
@@ -373,4 +371,52 @@ func (s *SkippedSequenceSlice) getStats() SkippedSequenceStats {
 		ListCapacityStat:                  int64(cap(s.list)),
 		ListLengthStat:                    int64(len(s.list)),
 	}
+}
+
+// _removeSubsetOfRangeFromSkipped will be called if we get error removing the unused sequence range indicating we have duplicate sequence in the unused sequence range
+// in the unused sequence range. This function will iterate through each skipped list element and remove any sequences within the unused sequence range
+func (s *SkippedSequenceSlice) _removeSubsetOfRangeFromSkipped(ctx context.Context, seqRange *channels.UnusedSequenceRange) error {
+	if len(s.list) == 0 {
+		base.DebugfCtx(ctx, base.KeyCache, "unused sequence range of #%d to %d is a duplicate sequence range", seqRange.StartSeq, seqRange.EndSeq)
+		return nil
+	}
+
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	for _, v := range s.list {
+		var startSequence, endSequence uint64
+		if seqRange.EndSeq < v.getStartSeq() {
+			// exit loop, range and skipped have no common elements
+			break
+		}
+		if v.getLastSeq() < seqRange.StartSeq {
+			// skipped list is ordered by sequence range so if this elements last seq is less than unused range start sequence
+			// then continue to next skipped element
+			continue
+		}
+
+		if v.getStartSeq() >= seqRange.StartSeq {
+			startSequence = v.getStartSeq()
+		} else if v.getLastSeq() >= seqRange.StartSeq {
+			startSequence = seqRange.StartSeq
+		}
+
+		if v.getLastSeq() <= seqRange.EndSeq {
+			endSequence = v.getLastSeq()
+		} else if v.getLastSeq() >= seqRange.EndSeq {
+			endSequence = seqRange.EndSeq
+		}
+		err := s._removeSeqRange(startSequence, endSequence)
+		if err != nil {
+			return err
+		}
+
+		seqRange.StartSeq = endSequence + 1
+		if seqRange.StartSeq > seqRange.EndSeq {
+			// exit if we have processed all our unused sequence range
+			break
+		}
+	}
+	return nil
 }
