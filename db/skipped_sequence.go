@@ -186,10 +186,11 @@ func (s *SkippedSequenceSlice) _clip(ctx context.Context) {
 	threshold := 2.5 * float64(len(s.list))
 
 	if cap(s.list) > int(threshold) {
+		newCap := len(s.list) + s.ClipCapacityHeadroom
 		// check if we can safely clip without an out of bound errors
-		if (len(s.list) + s.ClipCapacityHeadroom) < cap(s.list) {
+		if newCap < cap(s.list) {
 			base.DebugfCtx(ctx, base.KeyCache, "clipping skipped list capacity")
-			s.list = s.list[:len(s.list):s.ClipCapacityHeadroom]
+			s.list = s.list[:len(s.list):newCap]
 		}
 	}
 }
