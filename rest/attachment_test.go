@@ -2371,6 +2371,8 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
+
 	const docID = "doc"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -2430,6 +2432,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -2610,6 +2613,7 @@ func TestCBLRevposHandling(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
 	const (
 		doc1ID = "doc1"
 		doc2ID = "doc2"
