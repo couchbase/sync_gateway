@@ -1792,7 +1792,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			if currentValue == nil || len(currentValue) == 0 {
 				return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
 			}
-			doc, err := unmarshalDocumentWithXattr(ctx, docid, currentValue, currentXattrs[base.SyncXattrName], currentXattrs[db.userXattrKey()], cas, DocUnmarshalAll)
+			doc, err := db.unmarshalDocumentWithXattrs(ctx, docid, currentValue, currentXattrs, cas, DocUnmarshalAll)
 			if err != nil {
 				return sgbucket.UpdatedDoc{}, err
 			}
@@ -1808,11 +1808,12 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 				updatedDoc.UpdateExpiry(*updatedExpiry)
 			}
 			doc.SetCrc32cUserXattrHash()
-			_, rawXattr, err := updatedDoc.MarshalWithXattr()
+			_, rawSyncXattr, rawVvXattr, err := updatedDoc.MarshalWithXattrs()
 			return sgbucket.UpdatedDoc{
 				Doc: nil, // Resync does not require document body update
 				Xattrs: map[string][]byte{
-					base.SyncXattrName: rawXattr,
+					base.SyncXattrName: rawSyncXattr,
+					base.VvXattrName:   rawVvXattr,
 				},
 				Expiry: updatedExpiry,
 			}, err

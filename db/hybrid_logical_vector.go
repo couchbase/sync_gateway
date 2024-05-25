@@ -377,14 +377,14 @@ func (hlv *HybridLogicalVector) AddNewerVersions(otherVector HybridLogicalVector
 func (hlv *HybridLogicalVector) computeMacroExpansions() []sgbucket.MacroExpansionSpec {
 	var outputSpec []sgbucket.MacroExpansionSpec
 	if hlv.Version == hlvExpandMacroCASValue {
-		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionPath(base.SyncXattrName), sgbucket.MacroCas)
+		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionPath(base.VvXattrName), sgbucket.MacroCas)
 		outputSpec = append(outputSpec, spec)
 		// If version is being expanded, we need to also specify the macro expansion for the expanded rev property
 		currentRevSpec := sgbucket.NewMacroExpansionSpec(xattrCurrentRevVersionPath(base.SyncXattrName), sgbucket.MacroCas)
 		outputSpec = append(outputSpec, currentRevSpec)
 	}
 	if hlv.CurrentVersionCAS == hlvExpandMacroCASValue {
-		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(base.SyncXattrName), sgbucket.MacroCas)
+		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(base.VvXattrName), sgbucket.MacroCas)
 		outputSpec = append(outputSpec, spec)
 	}
 	return outputSpec

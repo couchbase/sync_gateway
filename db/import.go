@@ -32,7 +32,7 @@ const (
 )
 
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
-func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid string, value []byte, xattrValue []byte, userXattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
+func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid string, value []byte, xattrs map[string][]byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
 
 	var body Body
 	if isDelete {
@@ -53,14 +53,9 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 	}
 
 	existingBucketDoc := &sgbucket.BucketDocument{
-		Body: value,
-		Xattrs: map[string][]byte{
-			base.SyncXattrName: xattrValue,
-		},
-		Cas: cas,
-	}
-	if db.userXattrKey() != "" {
-		existingBucketDoc.Xattrs[db.userXattrKey()] = userXattrValue
+		Body:   value,
+		Xattrs: xattrs,
+		Cas:    cas,
 	}
 
 	return db.importDoc(ctx, docid, body, expiry, isDelete, existingBucketDoc, mode)
@@ -92,7 +87,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 		if existingDoc.Deleted {
 			existingBucketDoc.Xattrs[base.SyncXattrName], err = base.JSONMarshal(existingDoc.SyncData)
 		} else {
-			existingBucketDoc.Body, existingBucketDoc.Xattrs[base.SyncXattrName], err = existingDoc.MarshalWithXattr()
+			existingBucketDoc.Body, existingBucketDoc.Xattrs[base.SyncXattrName], existingBucketDoc.Xattrs[base.VvXattrName], err = existingDoc.MarshalWithXattrs()
 		}
 	}
 
@@ -389,15 +384,18 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	}
 
 	// Persist the document in xattr format
-	value, xattrValue, marshalErr := doc.MarshalWithXattr()
+	value, syncXattr, vvXattr, marshalErr := doc.MarshalWithXattrs()
 	if marshalErr != nil {
 		return nil, false, marshalErr
 	}
 
-	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
 	xattrs := map[string][]byte{
-		base.SyncXattrName: xattrValue,
+		base.SyncXattrName: syncXattr,
 	}
+	if vvXattr != nil {
+		xattrs[base.VvXattrName] = vvXattr
+	}
+
 	var casOut uint64
 	var writeErr error
 	if doc.hasFlag(channels.Deleted) {
