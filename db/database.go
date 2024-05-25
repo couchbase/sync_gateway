@@ -1856,11 +1856,12 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 				doc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.metadataOnlyUpdate)
 			}
 
-			_, rawXattr, rawMouXattr, err := updatedDoc.MarshalWithXattrs()
+			_, rawSyncXattr, rawVvXattr, rawMouXattr, err := updatedDoc.MarshalWithXattrs()
 			updatedDoc := sgbucket.UpdatedDoc{
 				Doc: nil, // Resync does not require document body update
 				Xattrs: map[string][]byte{
-					base.SyncXattrName: rawXattr,
+					base.SyncXattrName: rawSyncXattr,
+					base.VvXattrName:   rawVvXattr,
 				},
 				Expiry: updatedExpiry,
 			}
