@@ -34,11 +34,11 @@ const DocumentHistoryMaxEntriesPerChannel = 5
 type DocumentUnmarshalLevel uint8
 
 const (
-	DocUnmarshalAll       = DocumentUnmarshalLevel(iota) // Unmarshals sync metadata and body
-	DocUnmarshalSync                                     // Unmarshals all sync metadata
-	DocUnmarshalNoHistory                                // Unmarshals sync metadata excluding revtree history
+	DocUnmarshalAll       = DocumentUnmarshalLevel(iota) // Unmarshals metadata and body
+	DocUnmarshalSync                                     // Unmarshals metadata
+	DocUnmarshalNoHistory                                // Unmarshals metadata excluding revtree history
 	DocUnmarshalHistory                                  // Unmarshals revtree history + rev + CAS only
-	DocUnmarshalRev                                      // Unmarshals rev + CAS only
+	DocUnmarshalRev                                      // Unmarshals revTreeID + CAS only (no HLV)
 	DocUnmarshalCAS                                      // Unmarshals CAS (for import check) only
 	DocUnmarshalNone                                     // No unmarshalling (skips import/upgrade check)
 )
@@ -86,7 +86,7 @@ type SyncData struct {
 	Attachments       AttachmentsMeta      `json:"attachments,omitempty"`
 	ChannelSet        []ChannelSetEntry    `json:"channel_set"`
 	ChannelSetHistory []ChannelSetEntry    `json:"channel_set_history"`
-	HLV               *HybridLogicalVector `json:"_vv,omitempty"`
+	HLV               *HybridLogicalVector `json:"-"` // Marshalled/Unmarshalled separately from SyncData for storage in _vv, see MarshalWithXattrs/UnmarshalWithXattrs
 
 	// Only used for performance metrics:
 	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
@@ -407,20 +407,14 @@ func unmarshalDocument(docid string, data []byte) (*Document, error) {
 	return doc, nil
 }
 
-// unmarshalDocumentWithXattrs populates individual xattrs on unmarshalDocumentWithXattrs from a provided xattrs map
-func (db *DatabaseCollection) unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte, xattrs map[string][]byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
-	return unmarshalDocumentWithXattrs(ctx, docid, data, xattrs[base.SyncXattrName], xattrs[base.MouXattrName], xattrs[db.userXattrKey()], cas, unmarshalLevel)
+func unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte, syncXattrData, hlvXattrData, mouXattrData, userXattrData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 
-}
-
-func unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte, syncXattrData, mouXattrData, userXattrData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
-
-	if syncXattrData == nil || len(syncXattrData) == 0 {
+	if len(syncXattrData) == 0 && len(hlvXattrData) == 0 {
 		// If no xattr data, unmarshal as standard doc
 		doc, err = unmarshalDocument(docid, data)
 	} else {
 		doc = NewDocument(docid)
-		err = doc.UnmarshalWithXattr(ctx, data, syncXattrData, unmarshalLevel)
+		err = doc.UnmarshalWithXattrs(ctx, data, syncXattrData, hlvXattrData, unmarshalLevel)
 	}
 	if err != nil {
 		return nil, err
@@ -462,14 +456,14 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*SyncData, error)
 
 // TODO: Using a pool of unmarshal workers may help prevent memory spikes under load
 func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey string, needHistory bool) (result *SyncData, rawBody []byte, rawXattrs map[string][]byte, err error) {
-
 	var body []byte
-	var xattrValues map[string][]byte
 
 	// If xattr datatype flag is set, data includes both xattrs and document body.  Check for presence of sync xattr.
 	// Note that there could be a non-sync xattr present
+	var xattrValues map[string][]byte
+	var hlv *HybridLogicalVector
 	if dataType&base.MemcachedDataTypeXattr != 0 {
-		xattrKeys := []string{base.SyncXattrName, base.MouXattrName}
+		xattrKeys := []string{base.SyncXattrName, base.MouXattrName, base.VvXattrName}
 		if userXattrKey != "" {
 			xattrKeys = append(xattrKeys, userXattrKey)
 		}
@@ -478,19 +472,32 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 			return nil, nil, nil, err
 		}
 
-		rawSyncXattr, _ := xattrValues[base.SyncXattrName]
 		// If the sync xattr is present, use that to build SyncData
-		if len(rawSyncXattr) > 0 {
+		syncXattr, ok := xattrValues[base.SyncXattrName]
+
+		if vvXattr, ok := xattrValues[base.VvXattrName]; ok {
+			err = base.JSONUnmarshal(vvXattr, &hlv)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("error unmarshalling HLV: %w", err)
+			}
+		}
+
+		if ok && len(syncXattr) > 0 {
 			result = &SyncData{}
 			if needHistory {
 				result.History = make(RevTree)
 			}
-			err = base.JSONUnmarshal(rawSyncXattr, result)
+			err = base.JSONUnmarshal(syncXattr, result)
 			if err != nil {
-				return nil, nil, nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", syncXattr, err)
+				return nil, nil, nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", string(syncXattr), err)
+			}
+
+			if hlv != nil {
+				result.HLV = hlv
 			}
 			return result, body, xattrValues, nil
 		}
+
 	} else {
 		// Xattr flag not set - data is just the document body
 		body = data
@@ -498,6 +505,15 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 
 	// Non-xattr data, or sync xattr not present.  Attempt to retrieve sync metadata from document body
 	result, err = UnmarshalDocumentSyncData(body, needHistory)
+
+	// If no sync data was found but HLV was present, initialize empty sync data
+	if result == nil && hlv != nil {
+		result = &SyncData{}
+	}
+	// If HLV was found, add to sync data
+	if hlv != nil {
+		result.HLV = hlv
+	}
 	return result, body, xattrValues, err
 }
 
@@ -513,7 +529,7 @@ func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, da
 	if err != nil {
 		return nil, err
 	}
-	return unmarshalDocumentWithXattrs(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], cas, DocUnmarshalAll)
+	return unmarshalDocumentWithXattrs(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], cas, DocUnmarshalAll)
 }
 
 func (doc *SyncData) HasValidSyncData() bool {
@@ -916,7 +932,7 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 				doc.updateChannelHistory(channel, curSequence, false)
 				changed = append(changed, channel)
 				// If the current version requires macro expansion, new removal in channel map will also require macro expansion
-				if doc.HLV.Version == hlvExpandMacroCASValue {
+				if doc.HLV != nil && doc.HLV.Version == hlvExpandMacroCASValue {
 					revokedChannelsRequiringExpansion = append(revokedChannelsRequiringExpansion, channel)
 				}
 			}
@@ -1071,11 +1087,12 @@ func (doc *Document) MarshalJSON() (data []byte, err error) {
 	return data, err
 }
 
-// UnmarshalWithXattr unmarshals the provided raw document and xattr bytes.  The provided DocumentUnmarshalLevel
+// UnmarshalWithXattrs unmarshals the provided raw document and xattr bytes when present.  The provided DocumentUnmarshalLevel
 // (unmarshalLevel) specifies how much of the provided document/xattr needs to be initially unmarshalled.  If
 // unmarshalLevel is anything less than the full document + metadata, the raw data is retained for subsequent
 // lazy unmarshalling as needed.
-func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata []byte, unmarshalLevel DocumentUnmarshalLevel) error {
+// Must handle cases where document body and hlvXattrData are present without syncXattrData for all DocumentUnmarshalLevel
+func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrData, hlvXattrData []byte, unmarshalLevel DocumentUnmarshalLevel) error {
 	if doc.ID == "" {
 		base.WarnfCtx(ctx, "Attempted to unmarshal document without ID set")
 		return errors.New("Document was unmarshalled without ID set")
@@ -1083,11 +1100,19 @@ func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata 
 
 	switch unmarshalLevel {
 	case DocUnmarshalAll, DocUnmarshalSync:
-		// Unmarshal full document and/or sync metadata
+		// Unmarshal full document and/or sync metadata. Documents written by XDCR may have HLV but no sync data
 		doc.SyncData = SyncData{History: make(RevTree)}
-		unmarshalErr := base.JSONUnmarshal(xdata, &doc.SyncData)
-		if unmarshalErr != nil {
-			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), unmarshalErr))
+		if syncXattrData != nil {
+			unmarshalErr := base.JSONUnmarshal(syncXattrData, &doc.SyncData)
+			if unmarshalErr != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), unmarshalErr))
+			}
+		}
+		if hlvXattrData != nil {
+			err := base.JSONUnmarshal(hlvXattrData, &doc.SyncData.HLV)
+			if err != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), err))
+			}
 		}
 		doc._rawBody = data
 		// Unmarshal body if requested and present
@@ -1097,50 +1122,70 @@ func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata 
 	case DocUnmarshalNoHistory:
 		// Unmarshal sync metadata only, excluding history
 		doc.SyncData = SyncData{}
-		unmarshalErr := base.JSONUnmarshal(xdata, &doc.SyncData)
-		if unmarshalErr != nil {
-			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
+		if syncXattrData != nil {
+			unmarshalErr := base.JSONUnmarshal(syncXattrData, &doc.SyncData)
+			if unmarshalErr != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattrs() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
+			}
+		}
+		if hlvXattrData != nil {
+			err := base.JSONUnmarshal(hlvXattrData, &doc.SyncData.HLV)
+			if err != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to unmarshal HLV during UnmarshalWithXattrs() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), err))
+			}
 		}
 		doc._rawBody = data
 	case DocUnmarshalHistory:
-		historyOnlyMeta := historyOnlySyncData{History: make(RevTree)}
-		unmarshalErr := base.JSONUnmarshal(xdata, &historyOnlyMeta)
-		if unmarshalErr != nil {
-			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
-		}
-		doc.SyncData = SyncData{
-			CurrentRev: historyOnlyMeta.CurrentRev.RevTreeID,
-			History:    historyOnlyMeta.History,
-			Cas:        historyOnlyMeta.Cas,
+		if syncXattrData != nil {
+			historyOnlyMeta := historyOnlySyncData{History: make(RevTree)}
+			unmarshalErr := base.JSONUnmarshal(syncXattrData, &historyOnlyMeta)
+			if unmarshalErr != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattrs() doc with id: %s (DocUnmarshalHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
+			}
+			doc.SyncData = SyncData{
+				CurrentRev: historyOnlyMeta.CurrentRev.RevTreeID,
+				History:    historyOnlyMeta.History,
+				Cas:        historyOnlyMeta.Cas,
+			}
+		} else {
+			doc.SyncData = SyncData{}
 		}
 		doc._rawBody = data
 	case DocUnmarshalRev:
 		// Unmarshal only rev and cas from sync metadata
-		var revOnlyMeta revOnlySyncData
-		unmarshalErr := base.JSONUnmarshal(xdata, &revOnlyMeta)
-		if unmarshalErr != nil {
-			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalRev).  Error: %v", base.UD(doc.ID), unmarshalErr))
-		}
-		doc.SyncData = SyncData{
-			CurrentRev: revOnlyMeta.CurrentRev.RevTreeID,
-			Cas:        revOnlyMeta.Cas,
+		if syncXattrData != nil {
+			var revOnlyMeta revOnlySyncData
+			unmarshalErr := base.JSONUnmarshal(syncXattrData, &revOnlyMeta)
+			if unmarshalErr != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattrs() doc with id: %s (DocUnmarshalRev).  Error: %v", base.UD(doc.ID), unmarshalErr))
+			}
+			doc.SyncData = SyncData{
+				CurrentRev: revOnlyMeta.CurrentRev.RevTreeID,
+				Cas:        revOnlyMeta.Cas,
+			}
+		} else {
+			doc.SyncData = SyncData{}
 		}
 		doc._rawBody = data
 	case DocUnmarshalCAS:
 		// Unmarshal only cas from sync metadata
-		var casOnlyMeta casOnlySyncData
-		unmarshalErr := base.JSONUnmarshal(xdata, &casOnlyMeta)
-		if unmarshalErr != nil {
-			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalCAS).  Error: %v", base.UD(doc.ID), unmarshalErr))
-		}
-		doc.SyncData = SyncData{
-			Cas: casOnlyMeta.Cas,
+		if syncXattrData != nil {
+			var casOnlyMeta casOnlySyncData
+			unmarshalErr := base.JSONUnmarshal(syncXattrData, &casOnlyMeta)
+			if unmarshalErr != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattrs() doc with id: %s (DocUnmarshalCAS).  Error: %v", base.UD(doc.ID), unmarshalErr))
+			}
+			doc.SyncData = SyncData{
+				Cas: casOnlyMeta.Cas,
+			}
+		} else {
+			doc.SyncData = SyncData{}
 		}
 		doc._rawBody = data
 	}
 
 	// If there's no body, but there is an xattr, set deleted flag and initialize an empty body
-	if len(data) == 0 && len(xdata) > 0 {
+	if len(data) == 0 && len(syncXattrData) > 0 {
 		doc._body = Body{}
 		doc._rawBody = []byte(base.EmptyDocument)
 		doc.Deleted = true
@@ -1148,7 +1193,8 @@ func (doc *Document) UnmarshalWithXattr(ctx context.Context, data []byte, xdata 
 	return nil
 }
 
-func (doc *Document) MarshalWithXattrs() (data []byte, syncXattr []byte, mouXattr []byte, err error) {
+// MarshalWithXattrs marshals the Document into body, and sync, vv and mou xattrs for persistence.
+func (doc *Document) MarshalWithXattrs() (data []byte, syncXattr, vvXattr, mouXattr []byte, err error) {
 	// Grab the rawBody if it's already marshalled, otherwise unmarshal the body
 	if doc._rawBody != nil {
 		if !doc.IsDeleted() {
@@ -1165,25 +1211,31 @@ func (doc *Document) MarshalWithXattrs() (data []byte, syncXattr []byte, mouXatt
 			if !deleted {
 				data, err = base.JSONMarshal(body)
 				if err != nil {
-					return nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
+					return nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
 				}
 			}
+		}
+	}
+	if doc.SyncData.HLV != nil {
+		vvXattr, err = base.JSONMarshal(&doc.SyncData.HLV)
+		if err != nil {
+			return nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc vv with id: %s.  Error: %v", base.UD(doc.ID), err))
 		}
 	}
 
 	syncXattr, err = base.JSONMarshal(doc.SyncData)
 	if err != nil {
-		return nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc SyncData with id: %s.  Error: %v", base.UD(doc.ID), err))
+		return nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc SyncData with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
 
 	if doc.metadataOnlyUpdate != nil {
 		mouXattr, err = base.JSONMarshal(doc.metadataOnlyUpdate)
 		if err != nil {
-			return nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc MouData with id: %s.  Error: %v", base.UD(doc.ID), err))
+			return nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc MouData with id: %s.  Error: %v", base.UD(doc.ID), err))
 		}
 	}
 
-	return data, syncXattr, mouXattr, nil
+	return data, syncXattr, vvXattr, mouXattr, nil
 }
 
 // computeMetadataOnlyUpdate computes a new metadataOnlyUpdate based on the existing document's CAS and metadataOnlyUpdate

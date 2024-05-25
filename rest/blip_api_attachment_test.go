@@ -287,10 +287,9 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	const docID = "doc1"
-	ctx := base.TestCtx(t)
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		docID := t.Name()
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
 
@@ -318,7 +317,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 		// Wait for the documents to be replicated at SG
 		btc.pushReplication.WaitForMessage(2)
 
-		collection := rt.GetSingleTestDatabaseCollection()
+		collection, ctx := rt.GetSingleTestDatabaseCollection()
 		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalNoHistory)
 		require.NoError(t, err)
 
@@ -369,10 +368,9 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		GuestEnabled: true,
 	}
 
-	const docID = "doc1"
 	btcRunner := NewBlipTesterClientRunner(t)
-	ctx := base.TestCtx(t)
 
+	const docID = "doc1"
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &rtConfig)
 		defer rt.Close()
@@ -406,7 +404,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		// Wait for the document to be replicated at SG
 		btc.pushReplication.WaitForMessage(2)
 
-		collection := rt.GetSingleTestDatabaseCollection()
+		collection, ctx := rt.GetSingleTestDatabaseCollection()
 		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalNoHistory)
 		require.NoError(t, err)
 
@@ -552,6 +550,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
+		docID := "doc"
 		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
 		client1 := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer client1.Close()
@@ -561,20 +560,20 @@ func TestBlipAttachNameChange(t *testing.T) {
 		digest := db.Sha1DigestKey(attachmentA)
 
 		// Push initial attachment data
-		version, err := btcRunner.PushRev(client1.id, "doc", EmptyDocVersion(), []byte(`{"key":"val","_attachments":{"attachment": {"data":"`+attachmentAData+`"}}}`))
+		version, err := btcRunner.PushRev(client1.id, docID, EmptyDocVersion(), []byte(`{"key":"val","_attachments":{"attachment": {"data":"`+attachmentAData+`"}}}`))
 		require.NoError(t, err)
 
 		// Confirm attachment is in the bucket
-		attachmentAKey := db.MakeAttachmentKey(2, "doc", digest)
+		attachmentAKey := db.MakeAttachmentKey(2, docID, digest)
 		bucketAttachmentA, _, err := client1.rt.GetSingleDataStore().GetRaw(attachmentAKey)
 		require.NoError(t, err)
 		require.EqualValues(t, bucketAttachmentA, attachmentA)
 
 		// Simulate changing only the attachment name over CBL
 		// Use revpos 2 to simulate revpos bug in CBL 2.8 - 3.0.0
-		version, err = btcRunner.PushRev(client1.id, "doc", version, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"","length":11,"stub":true,"digest":"`+digest+`"}}}`))
+		version, err = btcRunner.PushRev(client1.id, docID, version, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"","length":11,"stub":true,"digest":"`+digest+`"}}}`))
 		require.NoError(t, err)
-		err = client1.rt.WaitForVersion("doc", version)
+		err = client1.rt.WaitForVersion(docID, version)
 		require.NoError(t, err)
 
 		// Check if attachment is still in bucket
@@ -582,7 +581,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, bucketAttachmentA, attachmentA)
 
-		resp := client1.rt.SendAdminRequest("GET", "/{{.keyspace}}/doc/attach", "")
+		resp := client1.rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"/attach", "")
 		RequireStatus(t, resp, http.StatusOK)
 		assert.Equal(t, attachmentA, resp.BodyBytes())
 	})
