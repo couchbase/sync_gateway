@@ -2366,6 +2366,8 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
+
 	const docID = "doc"
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
@@ -2406,6 +2408,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
 
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
@@ -2432,7 +2435,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 		btcRunner.AttachmentsLock(btc.id).Unlock()
 
 		// Put doc with an erroneous revpos 1 but with a different digest, referring to the above attachment
-		_, err = btcRunner.PushRevWithHistory(btc.id, docID, version.GetRev(btc.UseHLV()), []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`), 1, 0)
+		_, err := btcRunner.PushRevWithHistory(btc.id, docID, version.GetRev(btc.UseHLV()), []byte(`{"_attachments": {"hello.txt": {"revpos":1,"stub":true,"length": 19,"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc="}}}`), 1, 0)
 		require.NoError(t, err)
 
 		// Ensure message and attachment is pushed up
@@ -2586,6 +2589,7 @@ func TestCBLRevposHandling(t *testing.T) {
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // CBG-4166
 	const (
 		doc1ID = "doc1"
 		doc2ID = "doc2"
