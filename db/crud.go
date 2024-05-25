@@ -60,7 +60,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 		return nil, nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 	if c.UseXattrs() {
-		doc, rawBucketDoc, err = c.GetDocWithXattr(ctx, key, unmarshalLevel)
+		doc, rawBucketDoc, err = c.GetDocWithXattrs(ctx, key, unmarshalLevel)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -114,7 +114,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 	return doc, rawBucketDoc, nil
 }
 
-func (c *DatabaseCollection) GetDocWithXattr(ctx context.Context, key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+func (c *DatabaseCollection) GetDocWithXattrs(ctx context.Context, key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
 	rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas, getErr = c.dataStore.GetWithXattrs(ctx, key, c.syncAndUserXattrKeys())
@@ -190,6 +190,12 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 }
 
+// unmarshalDocumentWithXattrs populates individual xattrs on unmarshalDocumentWithXattrs from a provided xattrs map
+func (db *DatabaseCollection) unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte, xattrs map[string][]byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+	return unmarshalDocumentWithXattrs(ctx, docid, data, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[db.userXattrKey()], cas, unmarshalLevel)
+
+}
+
 // This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency
 // reasons. Unlike GetDocSyncData it does not check for on-demand import; this means it does not
 // need to read the doc body from the bucket.
@@ -197,7 +203,7 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 	if db.UseXattrs() {
 		var xattrs map[string][]byte
 		var cas uint64
-		xattrs, cas, err = db.dataStore.GetXattrs(ctx, docid, []string{base.SyncXattrName})
+		xattrs, cas, err = db.dataStore.GetXattrs(ctx, docid, []string{base.SyncXattrName, base.VvXattrName})
 		if err == nil {
 			var doc *Document
 			doc, err = db.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, level)
@@ -232,7 +238,7 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 	return
 }
 
-// OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
+// OnDemandImportForGet. Attempts to import the doc based on the provided id, contents and cas. ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
 func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, xattrs map[string][]byte, cas uint64) (docOut *Document, err error) {
 	isDelete := rawDoc == nil
@@ -2249,13 +2255,19 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 			// Return the new raw document value for the bucket to store.
 			doc.SetCrc32cUserXattrHash()
-			var rawSyncXattr, rawMouXattr, rawDocBody []byte
-			rawDocBody, rawSyncXattr, rawMouXattr, err = doc.MarshalWithXattrs()
+
+			var rawSyncXattr, rawMouXattr, rawVvXattr, rawDocBody []byte
+			rawDocBody, rawSyncXattr, rawVvXattr, rawMouXattr, err = doc.MarshalWithXattrs()
+			if err != nil {
+				return updatedDoc, err
+			}
+
 			if !isImport {
 				updatedDoc.Doc = rawDocBody
 				docBytes = len(updatedDoc.Doc)
 			}
-			updatedDoc.Xattrs = map[string][]byte{base.SyncXattrName: rawSyncXattr}
+
+			updatedDoc.Xattrs = map[string][]byte{base.SyncXattrName: rawSyncXattr, base.VvXattrName: rawVvXattr}
 			if rawMouXattr != nil && db.useMou() {
 				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
 			}
@@ -2822,7 +2834,7 @@ func (c *DatabaseCollection) checkForUpgrade(ctx context.Context, key string, un
 		return nil, nil
 	}
 
-	doc, rawDocument, err := c.GetDocWithXattr(ctx, key, unmarshalLevel)
+	doc, rawDocument, err := c.GetDocWithXattrs(ctx, key, unmarshalLevel)
 	if err != nil || doc == nil || !doc.HasValidSyncData() {
 		return nil, nil
 	}
@@ -2975,8 +2987,8 @@ const (
 	xattrMacroCas               = "cas"          // SyncData.Cas
 	xattrMacroValueCrc32c       = "value_crc32c" // SyncData.Crc32c
 	xattrMacroCurrentRevVersion = "rev.ver"      // SyncDataJSON.RevAndVersion.CurrentVersion
-	versionVectorVrsMacro       = "_vv.ver"      // PersistedHybridLogicalVector.Version
-	versionVectorCVCASMacro     = "_vv.cvCas"    // PersistedHybridLogicalVector.CurrentVersionCAS
+	versionVectorVrsMacro       = "ver"          // PersistedHybridLogicalVector.Version
+	versionVectorCVCASMacro     = "cvCas"        // PersistedHybridLogicalVector.CurrentVersionCAS
 
 	expandMacroCASValue = "expand" // static value that indicates that a CAS macro expansion should be applied to a property
 )

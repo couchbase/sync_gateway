@@ -90,7 +90,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 				existingBucketDoc.Xattrs[base.MouXattrName], err = base.JSONMarshal(existingDoc.metadataOnlyUpdate)
 			}
 		} else {
-			existingBucketDoc.Body, existingBucketDoc.Xattrs[base.SyncXattrName], existingBucketDoc.Xattrs[base.MouXattrName], err = existingDoc.MarshalWithXattrs()
+			existingBucketDoc.Body, existingBucketDoc.Xattrs[base.SyncXattrName], existingBucketDoc.Xattrs[base.VvXattrName], existingBucketDoc.Xattrs[base.MouXattrName], err = existingDoc.MarshalWithXattrs()
 		}
 	}
 
@@ -393,15 +393,18 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	}
 
 	// Persist the document in xattr format
-	value, syncXattrValue, _, marshalErr := doc.MarshalWithXattrs()
+	value, syncXattr, vvXattr, _, marshalErr := doc.MarshalWithXattrs()
 	if marshalErr != nil {
 		return nil, false, marshalErr
 	}
 
-	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
 	xattrs := map[string][]byte{
-		base.SyncXattrName: syncXattrValue,
+		base.SyncXattrName: syncXattr,
 	}
+	if vvXattr != nil {
+		xattrs[base.VvXattrName] = vvXattr
+	}
+
 	var casOut uint64
 	var writeErr error
 	if doc.hasFlag(channels.Deleted) {

@@ -41,24 +41,21 @@ func NewHLVAgent(t *testing.T, datastore base.DataStore, source string, xattrNam
 }
 
 // InsertWithHLV inserts a new document into the bucket with a populated HLV (matching a write from
-// a different HLV-aware peer)
+// a different, non-SGW HLV-aware peer)
 func (h *HLVAgent) InsertWithHLV(ctx context.Context, key string) (casOut uint64) {
 	hlv := &HybridLogicalVector{}
 	err := hlv.AddVersion(CreateVersion(h.Source, hlvExpandMacroCASValue))
 	require.NoError(h.t, err)
 	hlv.CurrentVersionCAS = hlvExpandMacroCASValue
 
-	syncData := &SyncData{HLV: hlv}
-	syncDataBytes, err := base.JSONMarshal(syncData)
-	require.NoError(h.t, err)
-
+	vvDataBytes := base.MustJSONMarshal(h.t, hlv)
 	mutateInOpts := &sgbucket.MutateInOptions{
 		MacroExpansion: hlv.computeMacroExpansions(),
 	}
 
 	docBody := base.MustJSONMarshal(h.t, defaultHelperBody)
 	xattrData := map[string][]byte{
-		h.xattrName: syncDataBytes,
+		h.xattrName: vvDataBytes,
 	}
 
 	cas, err := h.datastore.WriteWithXattrs(ctx, key, 0, 0, docBody, xattrData, mutateInOpts)
