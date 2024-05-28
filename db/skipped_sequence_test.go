@@ -890,6 +890,89 @@ func TestClipSafety(t *testing.T) {
 	}
 }
 
+func TestProcessUnusedSequenceRangeAtSkipped(t *testing.T) {
+	testCases := []struct {
+		name        string
+		expected    [][]uint64
+		removalSeqs []uint64
+	}{
+		{
+			name:        "test_case_1",
+			expected:    [][]uint64{{10, 30}, {71, 100}, {120, 150}},
+			removalSeqs: []uint64{50, 70},
+		},
+		{
+			name:        "test_case_2",
+			expected:    [][]uint64{{71, 100}, {120, 150}},
+			removalSeqs: []uint64{5, 70},
+		},
+		{
+			name:        "test_case_3",
+			expected:    [][]uint64{{10, 30}, {60, 64}, {120, 150}},
+			removalSeqs: []uint64{65, 110},
+		},
+		{
+			name:        "test_case_4",
+			expected:    [][]uint64{{10, 30}, {120, 150}},
+			removalSeqs: []uint64{50, 115},
+		},
+		{
+			name:        "test_case_5",
+			expected:    [][]uint64{{10, 30}, {126, 150}},
+			removalSeqs: []uint64{50, 125},
+		},
+		{
+			name:        "test_case_6",
+			expected:    [][]uint64{{10, 30}, {60, 100}, {120, 129}},
+			removalSeqs: []uint64{130, 200},
+		},
+		{
+			name:        "test_case_7",
+			expected:    [][]uint64{{10, 14}, {120, 150}},
+			removalSeqs: []uint64{15, 100},
+		},
+		{
+			name:        "test_case_8",
+			expected:    [][]uint64{{10, 30}, {60, 64}},
+			removalSeqs: []uint64{65, 200},
+		},
+		{
+			name:        "test_case_9",
+			expected:    [][]uint64{{10, 30}, {60, 100}, {120, 150}},
+			removalSeqs: []uint64{160, 200},
+		},
+		{
+			name:        "test_case_10",
+			expected:    [][]uint64{{10, 30}, {60, 100}, {120, 150}},
+			removalSeqs: []uint64{2, 5},
+		},
+		{
+			name:        "test_case_11",
+			expected:    [][]uint64{{10, 30}, {60, 100}, {120, 150}},
+			removalSeqs: []uint64{35, 50},
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
+			ctx := base.TestCtx(t)
+
+			// fill list with some ranges
+			skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(10, 30))
+			skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(60, 100))
+			skippedSlice.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(120, 150))
+
+			// run processUnusedSequenceRangeAtSkipped and assert that sequences are removed as expected
+			skippedSlice.processUnusedSequenceRangeAtSkipped(ctx, testCase.removalSeqs[0], testCase.removalSeqs[1])
+
+			for i := 0; i < len(skippedSlice.list); i++ {
+				assert.Equal(t, testCase.expected[i][0], skippedSlice.list[i].getStartSeq())
+				assert.Equal(t, testCase.expected[i][1], skippedSlice.list[i].getLastSeq())
+			}
+		})
+	}
+}
+
 // setupBenchmark sets up a skipped sequence slice for benchmark tests
 func setupBenchmark(largeSlice bool, rangeEntries bool, clipHeadroom int) *SkippedSequenceSlice {
 	skippedSlice := NewSkippedSequenceSlice(clipHeadroom)
