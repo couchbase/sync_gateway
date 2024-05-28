@@ -604,11 +604,11 @@ func TestCompactSkippedListClipHandling(t *testing.T) {
 	}{
 		{
 			name:        "single_items",
-			expectedCap: 100,
+			expectedCap: 101,
 		},
 		{
 			name:        "range_items",
-			expectedCap: 100,
+			expectedCap: 101,
 		},
 	}
 	for _, testCase := range testCases {
@@ -842,6 +842,52 @@ func TestRemoveSequenceRange(t *testing.T) {
 		})
 	}
 
+}
+
+// TestClipSafety:
+//   - Test case 1: (CBG-3945) calling clip on slice that should be clipped, asserting that the new capacity doesn't cause
+//     out of bounds error. CBG-3945 was hit due to clip attempting to clip capacity to a value below the
+//     current length of the slice
+//   - Test case 2: calling clip on a slice that meets the threshold to be clipped but shouldn't as it would cause out of
+//     bounds error (length of list + headroom > the current capacity)
+//   - Test case 3: calling clip on slice that doesn't meet clip threshold, assert that it doesn't get clipped
+func TestClipSafety(t *testing.T) {
+	testCases := []struct {
+		name        string
+		inputList   []*SkippedSequenceListEntry
+		expectedLen int
+		expectedCap int
+	}{
+		{
+			name:        "larger_length_than_headroom",
+			inputList:   make([]*SkippedSequenceListEntry, 66291, 10000000),
+			expectedCap: 67291,
+			expectedLen: 66291,
+		},
+		{
+			name:        "above_threshold_capacity_new_cap_out_of_bounds",
+			inputList:   make([]*SkippedSequenceListEntry, 1, 100),
+			expectedCap: 100,
+			expectedLen: 1,
+		},
+		{
+			name:        "threshold_not_met_for_clip",
+			inputList:   make([]*SkippedSequenceListEntry, 100, 101),
+			expectedCap: 101,
+			expectedLen: 100,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
+			ctx := base.TestCtx(t)
+			skippedSlice.list = testCase.inputList
+
+			skippedSlice._clip(ctx)
+			assert.Equal(t, testCase.expectedLen, len(skippedSlice.list))
+			assert.Equal(t, testCase.expectedCap, cap(skippedSlice.list))
+		})
+	}
 }
 
 func TestProcessUnusedSequenceRangeAtSkipped(t *testing.T) {
