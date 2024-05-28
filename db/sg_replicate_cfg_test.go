@@ -748,3 +748,29 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	require.True(t, exists, "Replicator not found")
 	assert.Equal(t, "nodeGroupB", cfg.AssignedNode)
 }
+
+func TestRecoverReplicationID(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	const replicationID = "repl"
+	err := db.SGReplicateMgr.AddReplication(&ReplicationCfg{
+		ReplicationConfig: ReplicationConfig{
+			ID:           replicationID,
+			InitialState: ReplicationStateStopped,
+		},
+	})
+	require.NoError(t, err)
+
+	sgrCluster, cas, err := db.SGReplicateMgr.loadSGRCluster()
+	require.NoError(t, err)
+	require.NotEqual(t, 0, uint64(cas)) // make sure we are loading from disk
+	sgrCluster.Replications[replicationID].ID = ""
+
+	_, err = db.SGReplicateMgr.cfg.Set(cfgKeySGRCluster, base.MustJSONMarshal(t, sgrCluster), cas)
+	require.NoError(t, err)
+
+	replication, err := db.SGReplicateMgr.GetReplication(replicationID)
+	require.NoError(t, err)
+	require.Equal(t, replicationID, replication.ID)
+}

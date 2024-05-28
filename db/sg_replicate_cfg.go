@@ -881,6 +881,11 @@ func (m *sgReplicateManager) loadSGRCluster() (sgrCluster *SGRCluster, cas uint6
 		sgrCluster.ClusterUUID = uuid.NewString()
 	}
 
+	for replicationID, replication := range sgrCluster.Replications {
+		if replication.ID == "" && replicationID != "" {
+			replication.ID = replicationID
+		}
+	}
 	sgrCluster.loggingCtx = m.loggingCtx
 	return sgrCluster, cas, nil
 }
