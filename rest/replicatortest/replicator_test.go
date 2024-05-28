@@ -8304,6 +8304,15 @@ func TestReplicatorWithCollectionsFailWithoutCollectionsEnabled(t *testing.T) {
 
 }
 
+func TestBanEmptyReplicationID(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("POST", "/{{.db}}/_replication/", `{"remote": "fakeremote", "direction": "pull", "initial_state": "stopped"}`)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	require.Contains(t, string(resp.Body.Bytes()), "Replication ID is required")
+}
+
 func requireBodyEqual(t *testing.T, expected string, doc *db.Document) {
 	var expectedBody db.Body
 	require.NoError(t, base.JSONUnmarshal([]byte(expected), &expectedBody))

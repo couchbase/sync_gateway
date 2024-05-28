@@ -807,7 +807,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg(ctx context.Context) error {
 			if !exists {
 				replicator, initError := m.InitializeReplication(replicationCfg)
 				if initError != nil {
-					base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", initError)
+					base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", replicationID, initError)
 					continue
 				}
 				m.activeReplicators[replicationID] = replicator
@@ -1071,7 +1071,9 @@ func (m *sgReplicateManager) PutReplications(replications map[string]*Replicatio
 
 // PUT _replication/replicationID
 func (m *sgReplicateManager) UpsertReplication(ctx context.Context, replication *ReplicationUpsertConfig) (created bool, err error) {
-
+	if replication.ID == "" {
+		return false, base.HTTPErrorf(http.StatusBadRequest, "Replication ID is required")
+	}
 	created = true
 	addReplicationCallback := func(cluster *SGRCluster) (cancel bool, err error) {
 		_, exists := cluster.Replications[replication.ID]
