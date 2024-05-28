@@ -2321,7 +2321,7 @@ func TestReleasedSequenceRangeHandlingEverythingSkipped(t *testing.T) {
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
-		CacheSkippedSeqMaxWait: 2 * time.Minute,
+		CacheSkippedSeqMaxWait: 20 * time.Minute,
 	}, dbContext.MetadataKeys); err != nil {
 		log.Printf("Init failed for testChangeCache: %v", err)
 		t.Fail()
@@ -2386,8 +2386,8 @@ func TestReleasedSequenceRangeHandlingEverythingPending(t *testing.T) {
 	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 2 * time.Minute,
-		CacheSkippedSeqMaxWait: 2 * time.Minute,
+		CachePendingSeqMaxWait: 20 * time.Minute,
+		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  5,
 	}, dbContext.MetadataKeys); err != nil {
 		log.Printf("Init failed for testChangeCache: %v", err)
@@ -2446,8 +2446,8 @@ func TestReleasedSequenceRangeHandlingEverythingPendingAndProcessPending(t *test
 	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 2 * time.Minute,
-		CacheSkippedSeqMaxWait: 2 * time.Minute,
+		CachePendingSeqMaxWait: 20 * time.Minute,
+		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  5,
 	}, dbContext.MetadataKeys); err != nil {
 		log.Printf("Init failed for testChangeCache: %v", err)
@@ -2513,8 +2513,8 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 2 * time.Minute,
-		CacheSkippedSeqMaxWait: 2 * time.Minute,
+		CachePendingSeqMaxWait: 20 * time.Minute,
+		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  1,
 	}, dbContext.MetadataKeys); err != nil {
 		log.Printf("Init failed for testChangeCache: %v", err)
@@ -2613,8 +2613,8 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 2 * time.Minute,
-		CacheSkippedSeqMaxWait: 2 * time.Minute,
+		CachePendingSeqMaxWait: 20 * time.Minute,
+		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  1,
 	}, dbContext.MetadataKeys); err != nil {
 		log.Printf("Init failed for testChangeCache: %v", err)
@@ -2697,8 +2697,8 @@ func TestReleasedSequenceRangeHandlingEdgeCase1(t *testing.T) {
 	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 2 * time.Minute,
-		CacheSkippedSeqMaxWait: 2 * time.Minute,
+		CachePendingSeqMaxWait: 20 * time.Minute,
+		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  1,
 	}, dbContext.MetadataKeys); err != nil {
 		log.Printf("Init failed for testChangeCache: %v", err)
@@ -2768,7 +2768,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 100 * time.Millisecond,
-		CacheSkippedSeqMaxWait: 2 * time.Minute,
+		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  1,
 	}, dbContext.MetadataKeys); err != nil {
 		log.Printf("Init failed for testChangeCache: %v", err)
@@ -2839,8 +2839,8 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInPending(t *testing.T) 
 	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 2 * time.Minute,
-		CacheSkippedSeqMaxWait: 2 * time.Minute,
+		CachePendingSeqMaxWait: 20 * time.Minute,
+		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  20,
 	}, dbContext.MetadataKeys); err != nil {
 		log.Printf("Init failed for testChangeCache: %v", err)
@@ -2925,8 +2925,8 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
-		CachePendingSeqMaxWait: 2 * time.Minute,
-		CacheSkippedSeqMaxWait: 2 * time.Minute,
+		CachePendingSeqMaxWait: 20 * time.Minute,
+		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  0,
 	}, dbContext.MetadataKeys); err != nil {
 		log.Printf("Init failed for testChangeCache: %v", err)
@@ -2940,7 +2940,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	defer testChangeCache.Stop(ctx)
 	require.NoError(t, err)
 
-	// push two entries that will be pushed to pending and subsequently skipped
+	// push two entries that will be pushed to pending and subsequently skipped will be filled with sequence gaps
 	entry := &LogEntry{
 		Sequence:     14,
 		DocID:        fmt.Sprintf("doc_%d", 50),

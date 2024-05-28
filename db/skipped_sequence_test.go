@@ -432,9 +432,10 @@ func BenchmarkRemoveSeqFromSkippedList(b *testing.B) {
 }
 
 func BenchmarkRemoveSeqRangeFromSkippedList(b *testing.B) {
+	ctx := base.TestCtx(b)
 	skipedSlice := setupBenchmark(true, true, DefaultClipCapacityHeadroom)
 	for i := 0; i < b.N; i++ {
-		_ = skipedSlice._removeSeqRange(uint64(i*2), uint64(i*2)+5)
+		_ = skipedSlice._removeSeqRange(ctx, uint64(i*2), uint64(i*2)+5)
 	}
 }
 
@@ -810,6 +811,7 @@ func TestRemoveSequenceRange(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			skippedSlice := NewSkippedSequenceSlice(DefaultClipCapacityHeadroom)
+			ctx := base.TestCtx(t)
 			for _, input := range testCase.inputList {
 				if len(input) == 1 {
 					skippedSlice.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input[0]))
@@ -818,7 +820,7 @@ func TestRemoveSequenceRange(t *testing.T) {
 				}
 			}
 
-			err := skippedSlice._removeSeqRange(testCase.rangeToRemove[0], testCase.rangeToRemove[1])
+			err := skippedSlice._removeSeqRange(ctx, testCase.rangeToRemove[0], testCase.rangeToRemove[1])
 			if testCase.errorCase {
 				require.Error(t, err)
 			} else {
