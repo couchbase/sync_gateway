@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/natefinch/lumberjack"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // ConsoleLogger is a file logger with a default output of stderr, and tunable log level/keys.

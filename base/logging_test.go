@@ -18,9 +18,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/natefinch/lumberjack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 func TestRedactedLogFuncs(t *testing.T) {

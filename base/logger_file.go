@@ -22,8 +22,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/natefinch/lumberjack"
 	"github.com/pkg/errors"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
