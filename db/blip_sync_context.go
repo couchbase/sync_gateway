@@ -579,8 +579,6 @@ func (bsc *BlipSyncContext) sendBLIPMessage(sender *blip.Sender, msg *blip.Messa
 }
 
 func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, collectionIdx *int, seq SequenceID, err error) error {
-	base.TracefCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
-
 	noRevRq := NewNoRevMessage()
 	noRevRq.SetId(docID)
 	noRevRq.SetRev(revID)
@@ -628,6 +626,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 	if base.IsDocNotFoundError(originalErr) {
 		if !collectionCtx.sendReplacementRevs {
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, originalErr)
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, originalErr)
 		}
 
@@ -636,14 +635,14 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 		// try the active rev instead as a replacement
 		replacementRev, replacementRevErr := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, "", true, nil)
 		if replacementRevErr != nil {
-			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Active revision unavailable for %q - sending original norev for %q: %v", base.UD(docID), revID, replacementRevErr)
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable active replacement revision: %v", base.UD(docID), revID, replacementRevErr)
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, originalErr)
 		}
 
 		// if this is a filtered replication, ensure the replacement rev is in one of the filtered channels
 		// normal channel access checks are already applied in GetRev above
 		if collectionCtx.channels != nil && replacementRev.Channels.NumMatches(collectionCtx.channels) == 0 {
-			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Active revision channels (%s) not in filtered channels (%s) for %q - sending original norev for %q", base.UD(replacementRev.Channels), base.UD(collectionCtx.channels), base.UD(docID), revID)
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to filtered channels (%s) excluding active revision channels (%s)", base.UD(docID), revID, base.UD(collectionCtx.channels), base.UD(replacementRev.Channels))
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, originalErr)
 		}
 
@@ -672,6 +671,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	} else {
 		body, err := rev.Body()
 		if err != nil {
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision body: %v", base.UD(docID), revID, err)
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 		}
 
@@ -683,6 +683,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 		bodyBytes, err = base.JSONMarshalCanonical(body)
 		if err != nil {
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unmarshallable revision body: %v", base.UD(docID), revID, err)
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 		}
 	}
