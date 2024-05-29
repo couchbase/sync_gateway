@@ -104,7 +104,7 @@ func TestLogRotationInterval(t *testing.T) {
 	require.NoError(t, fl.Close())
 
 	// we have to wait for lumberjack to finish its async log rotation work - we don't have a reliable way to do this.
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 500)
 }
 
 // Benchmark the time it takes to write x bytes of data to a logger, and optionally rotate and compress it.
