@@ -60,6 +60,8 @@ func Benchmark_LoggingPerformance(b *testing.B) {
 }
 
 func TestLogRotationInterval(t *testing.T) {
+	LongRunningTest(t)
+
 	// override min rotation interval for testing
 	originalMinRotationInterval := minLogRotationInterval
 	minLogRotationInterval = time.Millisecond * 10
@@ -116,6 +118,10 @@ func TestLogRotationInterval(t *testing.T) {
 	countAfter2 := numFilesInDir(t, logPath, false)
 	t.Logf("countAfter2: %d", countAfter2)
 	assert.GreaterOrEqual(t, countAfter2, countAfterSleep)
+
+	// Wait for Lumberjack to finish its async log compression work
+	// we have no way of waiting for this to finish, or even stopping the millRun() process inside Lumberjack.
+	time.Sleep(time.Millisecond * 500)
 }
 
 // Benchmark the time it takes to write x bytes of data to a logger, and optionally rotate and compress it.
