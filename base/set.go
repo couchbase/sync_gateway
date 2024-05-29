@@ -66,6 +66,21 @@ func (set Set) Contains(ch ...string) bool {
 	return false
 }
 
+// HasMatch returns the true if there is at least one matching element between both sets.
+func (a Set) HasMatch(b Set) bool {
+	shortest, longest := a, b
+	// iterate over shortest
+	if len(longest) < len(shortest) {
+		shortest, longest = longest, shortest
+	}
+	for name := range shortest {
+		if _, exists := longest[name]; exists {
+			return true
+		}
+	}
+	return false
+}
+
 // NumMatches returns the number of matching elements between both sets.
 func (a Set) NumMatches(b Set) (count int) {
 	shortest, longest := a, b
