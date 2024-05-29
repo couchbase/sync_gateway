@@ -75,14 +75,32 @@ func TestLogRotationInterval(t *testing.T) {
 		},
 	}
 
-	logPath := t.TempDir()
+	// On Windows, cleanup of t.TempDir() fails due to open log file handle from Lumberjack. Cannot be fixed from SG.
+	// https://github.com/natefinch/lumberjack/issues/185
+	var logPath string
+	if runtime.GOOS == "windows" {
+		var err error
+		logPath, err = os.MkdirTemp("", t.Name())
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			if err := os.RemoveAll(logPath); err != nil {
+				// log instead of error because it's likely this is going to fail on Windows for this test.
+				t.Logf("couldn't remove temp dir: %v", err)
+			}
+		})
+	} else {
+		logPath = t.TempDir()
+	}
+
 	countBefore := numFilesInDir(t, logPath, false)
 	t.Logf("countBefore: %d", countBefore)
 
 	ctx, ctxCancel := context.WithCancel(TestCtx(t))
+	defer ctxCancel()
 
 	fl, err := NewFileLogger(ctx, config, LevelTrace, "test", logPath, 0, nil)
 	require.NoError(t, err)
+	defer func() { require.NoError(t, fl.Close()) }()
 
 	fl.logf("test 1")
 	countAfter1 := numFilesInDir(t, logPath, false)
@@ -98,13 +116,6 @@ func TestLogRotationInterval(t *testing.T) {
 	countAfter2 := numFilesInDir(t, logPath, false)
 	t.Logf("countAfter2: %d", countAfter2)
 	assert.GreaterOrEqual(t, countAfter2, countAfterSleep)
-
-	// Stop the FileLogger goroutines and close the logger
-	ctxCancel()
-	require.NoError(t, fl.Close())
-
-	// we have to wait for lumberjack to finish its async log rotation work - we don't have a reliable way to do this.
-	time.Sleep(time.Millisecond * 500)
 }
 
 // Benchmark the time it takes to write x bytes of data to a logger, and optionally rotate and compress it.
