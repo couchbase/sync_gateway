@@ -226,13 +226,13 @@ func (s *SkippedSequenceSlice) _removeSeqRange(ctx context.Context, startSeq, en
 	// if startSeq and endSeq are in different elements there is at least one sequence between these values not in the list
 	if !found {
 		base.DebugfCtx(ctx, base.KeyCache, "sequence range %d to %d specified has sequences in that are not present in skipped list", startSeq, endSeq)
-		return base.ErrSequencesMissing
+		return base.ErrSkippedSequencesMissing
 	}
 	// put this below a check for !found to avoid out of bound error
 	rangeElem := s.list[startIndex]
 	if endSeq > rangeElem.getLastSeq() {
 		base.DebugfCtx(ctx, base.KeyCache, "sequence range %d to %d specified has sequences in that are not present in skipped list", startSeq, endSeq)
-		return base.ErrSequencesMissing
+		return base.ErrSkippedSequencesMissing
 	}
 
 	// handle sequence range removal
@@ -387,7 +387,7 @@ func (s *SkippedSequenceSlice) processUnusedSequenceRangeAtSkipped(ctx context.C
 
 	// batch remove from skipped
 	err := s._removeSeqRange(ctx, fromSequence, toSequence)
-	if err != nil && err == base.ErrSequencesMissing {
+	if err != nil && err == base.ErrSkippedSequencesMissing {
 		base.DebugfCtx(ctx, base.KeyCache, err.Error())
 		// we have sequences (possibly duplicate sequences) in the unused range that don't exist in skipped list
 		// handle any potential duplicate sequences between the unused range and the skipped list
