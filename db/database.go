@@ -1046,6 +1046,7 @@ func (db *DatabaseContext) GetUserNames(ctx context.Context) (users []string, er
 	startKey := dbUserPrefix
 	limit := db.Options.QueryPaginationLimit
 
+	userRe := regexp.MustCompile(`^` + dbUserPrefix + `[^:]*$`)
 	users = []string{}
 
 outerLoop:
@@ -1078,8 +1079,11 @@ outerLoop:
 
 			principalName = queryRow.Name
 			startKey = queryRow.ID
-
 			resultCount++
+
+			if !userRe.MatchString(queryRow.ID) {
+				continue
+			}
 
 			if principalName != "" && !skipAddition {
 				users = append(users, principalName)
@@ -1109,6 +1113,9 @@ func (db *DatabaseContext) getAllPrincipalIDsSyncDocs(ctx context.Context) (user
 	dbRolePrefix := db.MetadataKeys.RoleKeyPrefix()
 	lenDbUserPrefix := len(dbUserPrefix)
 	lenDbRolePrefix := len(dbRolePrefix)
+
+	userRe := regexp.MustCompile(`^` + dbUserPrefix + `[^:]*$`)
+	roleRe := regexp.MustCompile(`^` + dbRolePrefix + `[^:]*$`)
 
 	users = []string{}
 	roles = []string{}
@@ -1155,9 +1162,8 @@ outerLoop:
 			if len(rowID) < lenDbUserPrefix && len(rowID) < lenDbRolePrefix {
 				continue
 			}
-
-			isDbUser = strings.HasPrefix(rowID, dbUserPrefix)
-			isDbRole = strings.HasPrefix(rowID, dbRolePrefix)
+			isDbUser = userRe.MatchString(rowID)
+			isDbRole = roleRe.MatchString(rowID)
 			if !isDbUser && !isDbRole {
 				continue
 			}
@@ -1170,7 +1176,6 @@ outerLoop:
 
 			}
 			resultCount++
-
 			if principalName != "" && !skipAddition {
 				if isDbUser {
 					users = append(users, principalName)
@@ -1206,6 +1211,7 @@ func (db *DatabaseContext) GetUsers(ctx context.Context, limit int) (users []aut
 	// This doesn't happen for AllPrincipalIDs, I believe because the role check forces query to not assume
 	// a contiguous set of results
 	dbUserKeyPrefix := db.MetadataKeys.UserKeyPrefix()
+	userRe := regexp.MustCompile(`^` + dbUserKeyPrefix + `[^:]*$`)
 	startKey := dbUserKeyPrefix
 	paginationLimit := db.Options.QueryPaginationLimit
 	if paginationLimit == 0 {
@@ -1247,6 +1253,9 @@ outerLoop:
 
 			startKey = queryRow.ID
 			resultCount++
+			if !userRe.MatchString(queryRow.ID) {
+				continue
+			}
 			if queryRow.Name != "" && !skipAddition {
 				principal := auth.PrincipalConfig{
 					Name:     &queryRow.Name,
@@ -1282,6 +1291,8 @@ outerLoop:
 func (db *DatabaseContext) getRoleIDsUsingIndex(ctx context.Context, includeDeleted bool) (roles []string, err error) {
 
 	dbRoleIDPrefix := db.MetadataKeys.RoleKeyPrefix()
+
+	roleRe := regexp.MustCompile(`^` + dbRoleIDPrefix + `[^:]*$`)
 	startKey := dbRoleIDPrefix
 	limit := db.Options.QueryPaginationLimit
 
@@ -1333,6 +1344,9 @@ outerLoop:
 
 			resultCount++
 
+			if !roleRe.MatchString(queryRow.Id) {
+				continue
+			}
 			if roleName != "" && !skipAddition {
 				roles = append(roles, roleName)
 			}
