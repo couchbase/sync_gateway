@@ -619,12 +619,12 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	// set if we find an alternative revision to send in the event the originally requested rev is unavailable
 	var replacedRevID string
 
-	collectionCtx, collectionErr := bsc.collections.get(collectionIdx)
-	if collectionErr != nil {
-		return collectionErr
-	}
-
 	if base.IsDocNotFoundError(originalErr) {
+		collectionCtx, collectionErr := bsc.collections.get(collectionIdx)
+		if collectionErr != nil {
+			return collectionErr
+		}
+
 		if !collectionCtx.sendReplacementRevs {
 			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, originalErr)
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, originalErr)
