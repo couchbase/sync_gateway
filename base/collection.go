@@ -578,7 +578,7 @@ func (b *GocbV2Bucket) ListDataStores() ([]sgbucket.DataStoreName, error) {
 		return []sgbucket.DataStoreName{ScopeAndCollectionName{DefaultScope, DefaultCollection}}, nil
 	}
 
-	// ListDataStores is used only by integration test harness, so call mgmt API directly as a workaround ING-747, fixed in newer gocb, see CBG-3711
+	// ListDataStores is used only by integration test harness, so call mgmt API directly as a workaround for GOCBC-1586, fixed in newer gocb, see CBG-3711
 	uri := fmt.Sprintf("/pools/default/buckets/%s/scopes", b.GetName())
 	resp, err := b.mgmtRequest(context.Background(), http.MethodGet, uri, "application/json", nil)
 	if err != nil {
