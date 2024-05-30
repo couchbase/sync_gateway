@@ -226,7 +226,7 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 		rotationTickerCh = rotationTicker.C
 	}
 
-	logDeletionTicker := time.NewTicker(defaultLogDeletionInterval)
+	logDeletionTicker := time.NewTicker(rotatedLogDeletionInterval)
 	go func() {
 		defer func() {
 			if panicked := recover(); panicked != nil {
