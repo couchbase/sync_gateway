@@ -943,3 +943,108 @@ func TestCollectionStats(t *testing.T) {
 		assert.Equal(t, int64(2), collection2Stats.NumDocWrites.Value())
 	}
 }
+
+func TestSwitch(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	scopesConfig := GetCollectionsConfig(t, tb, 1)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
+
+	scope := dataStoreNames[0].ScopeName()
+	collection1 := dataStoreNames[0].CollectionName()
+
+	scopesConfig[scope].Collections[collection1] = &CollectionConfig{}
+	scopesConfigString, err := json.Marshal(scopesConfig)
+	require.NoError(t, err)
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb,
+		PersistentConfig: true,
+	}
+
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 3)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "offline": true, "scopes":%s}`,
+		tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	scopesConfig = GetCollectionsConfig(t, tb, 2)
+	dataStoreNames = GetDataStoreNamesFromScopesConfig(scopesConfig)
+
+	scope = dataStoreNames[0].ScopeName()
+	collection2 := dataStoreNames[1].CollectionName()
+
+	delete(scopesConfig[scope].Collections, collection1)
+	scopesConfig[scope].Collections[collection2] = &CollectionConfig{}
+	scopesConfigString, err = json.Marshal(scopesConfig)
+	require.NoError(t, err)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/db1/", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "offline": true, "scopes":%s}`,
+		tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config?include_runtime=true", "")
+	fmt.Println(resp.Code, resp.Body.String())
+
+	scopesConfig = GetCollectionsConfig(t, tb, 2)
+	dataStoreNames = GetDataStoreNamesFromScopesConfig(scopesConfig)
+
+	scope = dataStoreNames[0].ScopeName()
+	collection1 = dataStoreNames[0].CollectionName()
+	collection2 = dataStoreNames[1].CollectionName()
+
+	scopesConfig[scope].Collections[collection1] = &CollectionConfig{}
+	scopesConfig[scope].Collections[collection2] = &CollectionConfig{}
+	scopesConfigString, err = json.Marshal(scopesConfig)
+	require.NoError(t, err)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/db1/_config", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "offline": true, "scopes":%s}`,
+		tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+	//RequireStatus(t, resp, http.StatusCreated)
+	fmt.Println("update", resp.Code, resp.Body.String())
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config?include_runtime=true", "")
+	fmt.Println(resp.Code, resp.Body.String())
+
+	//var runTimeCfg *RuntimeDatabaseConfig
+	var runTimeCfg DbConfig
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &runTimeCfg))
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
+	fmt.Println(resp.Code, resp.Body.String())
+
+	delete(scopesConfig[scope].Collections, collection1)
+
+	assert.Equal(t, scopesConfig, runTimeCfg.Scopes)
+
+	//scopesConfig = GetCollectionsConfig(t, tb, 2)
+	//dataStoreNames = GetDataStoreNamesFromScopesConfig(scopesConfig)
+	////c1SyncFunction := `function(doc) {channel(doc.chan);}`
+	//
+	//scope = dataStoreNames[0].ScopeName()
+	//collection1 = dataStoreNames[0].CollectionName()
+	//collection2 := dataStoreNames[1].CollectionName()
+	//
+	//scopesConfig[scope].Collections[collection1] = &CollectionConfig{}
+	//scopesConfig[scope].Collections[collection2] = &CollectionConfig{}
+	//scopesConfigString, err = json.Marshal(scopesConfig)
+	//require.NoError(t, err)
+	//
+	//resp = rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(
+	//	`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "offline": true, "scopes":%s}`,
+	//	tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+	////RequireStatus(t, resp, http.StatusCreated)
+	//fmt.Println("update", resp.Code, resp.Body.String())
+	//
+	//resp = rt.SendAdminRequest(http.MethodGet, "/db/_config?include_runtime=true", "")
+	//fmt.Println(resp.Code, resp.Body.String())
+	//
+	//resp = rt.SendAdminRequest(http.MethodGet, "/db/_config", "")
+	//fmt.Println(resp.Code, resp.Body.String())
+}
