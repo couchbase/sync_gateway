@@ -577,12 +577,44 @@ func (b *GocbV2Bucket) ListDataStores() ([]sgbucket.DataStoreName, error) {
 	if !b.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		return []sgbucket.DataStoreName{ScopeAndCollectionName{DefaultScope, DefaultCollection}}, nil
 	}
-	scopes, err := b.bucket.Collections().GetAllScopes(nil)
+
+	// ListDataStores is used only by integration test harness, so call mgmt API directly as a workaround ING-747, fixed in newer gocb, see CBG-3711
+	uri := fmt.Sprintf("/pools/default/buckets/%s/scopes", b.GetName())
+	resp, err := b.mgmtRequest(context.Background(), http.MethodGet, uri, "application/json", nil)
+	if err != nil {
+		return nil, fmt.Errorf("Could not get bucket listing %w", err)
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
+
+	type collectionResponse struct {
+		Name string `json:"name"`
+	}
+	type scopeResponse struct {
+		Name        string               `json:"name"`
+		Collections []collectionResponse `json:"collections"`
+	}
+	type allScopesResponse struct {
+		Scopes []scopeResponse `json:"scopes"`
+	}
+
+	var scopes allScopesResponse
+	err = JSONUnmarshal(respBytes, &scopes)
+	if err != nil {
+		return nil, err
+	}
+
 	collections := make([]sgbucket.DataStoreName, 0)
-	for _, s := range scopes {
+	for _, s := range scopes.Scopes {
+		// skip the _system scope to match GetAllScopes(nil) behavior
+		if s.Name == "_system" {
+			continue
+		}
 		for _, c := range s.Collections {
 			collections = append(collections, ScopeAndCollectionName{s.Name, c.Name})
 		}
