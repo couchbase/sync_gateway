@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,7 +50,9 @@ func BootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("EE-ONLY: Skipping test %s due to requiring non-default Config Group ID", t.Name())
 	}
-	config.Bootstrap.ConfigGroupID = t.Name()
+	uniqueUUID, err := uuid.NewRandom()
+	require.NoError(t, err)
+	config.Bootstrap.ConfigGroupID = uniqueUUID.String()
 
 	return config
 }
