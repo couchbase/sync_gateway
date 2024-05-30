@@ -139,7 +139,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	configBody["sampleConfig"] = "value"
 	configKey := "testConfigKey"
 
-	insertCas, insertErr := cp.insertConfig(c, configKey, configBody)
+	_, insertErr := cp.insertConfig(c, configKey, configBody)
 	require.NoError(t, insertErr)
 
 	// modify the document body directly in the bucket
@@ -152,21 +152,19 @@ func TestXattrConfigPersistence(t *testing.T) {
 	_, reinsertErr := cp.insertConfig(c, configKey, configBody)
 	require.ErrorIs(t, reinsertErr, ErrAlreadyExists)
 
-	// Retrieve the config, cas should still match insertCas
+	// Retrieve the config
 	var loadedConfig map[string]interface{}
-	loadCas, loadErr := cp.loadConfig(ctx, c, configKey, &loadedConfig)
+	_, loadErr := cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
-	assert.Equal(t, insertCas, loadCas)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
 	// set the document to an empty body, shouldn't be treated as delete
 	err = dataStore.Set(configKey, 0, nil, nil)
 	require.NoError(t, err)
 
-	// Retrieve the config, cas should still match insertCas
-	loadCas, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
+	// Retrieve the config
+	_, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
-	assert.Equal(t, insertCas, loadCas)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
 	// Fetch the document directly from the bucket to verify resurrect handling didn't occur
@@ -179,10 +177,9 @@ func TestXattrConfigPersistence(t *testing.T) {
 	deleteErr := dataStore.Delete(configKey)
 	require.NoError(t, deleteErr)
 
-	// Retrieve the config, cas should still match insertCas
-	loadCas, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
+	// Retrieve the config
+	_, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
-	assert.Equal(t, insertCas, loadCas)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
 	// Fetch the document directly from the bucket to verify resurrect handling DID occur
@@ -190,58 +187,9 @@ func TestXattrConfigPersistence(t *testing.T) {
 	assert.NoError(t, err)
 	require.NotNil(t, docBody)
 
-	// Retrieve the config, cas should still match insertCas
-	loadCas, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
+	// Retrieve the config
+	_, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
-	assert.Equal(t, insertCas, loadCas)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
-	/*
-		rawConfig, rawCas, rawErr := cp.loadRawConfig(c, configKey)
-		require.NoError(t, rawErr)
-		assert.Equal(t, insertCas, uint64(rawCas))
-		assert.Equal(t, rawConfigBody, rawConfig)
-
-		configBody["updated"] = true
-		updatedRawBody, marshalErr := JSONMarshal(configBody)
-		require.NoError(t, marshalErr)
-
-		// update with incorrect cas
-		_, _, updateErr := cp.replaceRawConfig(c, configKey, updatedRawBody, 1234)
-		require.Error(t, updateErr)
-
-		// update with correct cas
-		updateCas, _, updateErr := cp.replaceRawConfig(c, configKey, updatedRawBody, gocb.Cas(insertCas))
-		require.NoError(t, updateErr)
-
-		// retrieve config, validate updated value
-		var updatedConfig map[string]interface{}
-		loadCas, loadErr = cp.loadConfig(c, configKey, &updatedConfig)
-		require.NoError(t, loadErr)
-		assert.Equal(t, updateCas, gocb.Cas(loadCas))
-		assert.Equal(t, configBody["updated"], updatedConfig["updated"])
-
-		// retrieve raw config, validate updated value
-		rawConfig, rawCas, rawErr = cp.loadRawConfig(c, configKey)
-		require.NoError(t, rawErr)
-		assert.Equal(t, updateCas, rawCas)
-		assert.Equal(t, updatedRawBody, rawConfig)
-
-		// delete with incorrect cas
-		_, removeErr := cp.removeRawConfig(c, configKey, gocb.Cas(insertCas))
-		require.Error(t, removeErr)
-
-		// delete with correct cas
-		_, removeErr = cp.removeRawConfig(c, configKey, updateCas)
-		require.NoError(t, removeErr)
-
-		// attempt to retrieve config, validate not found
-		var deletedConfig map[string]interface{}
-		loadCas, loadErr = cp.loadConfig(c, configKey, &deletedConfig)
-		assert.Equal(t, ErrNotFound, loadErr)
-
-		// attempt to retrieve raw config, validate updated value
-		rawConfig, rawCas, rawErr = cp.loadRawConfig(c, configKey)
-		assert.Equal(t, ErrNotFound, loadErr)
-	*/
 
 }

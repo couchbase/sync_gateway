@@ -89,7 +89,7 @@ func (xbp *XattrBootstrapPersistence) touchConfigRollback(c *gocb.Collection, ke
 	return result.Cas(), nil
 }
 
-// loadRawConfig returns the config and document cas (not cfgCas).  Does not restore deleted documents,
+// loadRawConfig returns the config and document cas.  Does not restore deleted documents,
 // to avoid cas collisions with concurrent updates
 func (xbp *XattrBootstrapPersistence) loadRawConfig(ctx context.Context, c *gocb.Collection, key string) ([]byte, gocb.Cas, error) {
 
@@ -213,7 +213,6 @@ func (xbp *XattrBootstrapPersistence) restoreDocumentBody(c *gocb.Collection, ke
 	}
 	options := &gocb.MutateInOptions{
 		StoreSemantic: gocb.StoreSemanticsInsert,
-		Cas:           cas,
 	}
 	result, mutateErr := c.MutateIn(key, mutateOps, options)
 	if isKVError(mutateErr, memd.StatusKeyExists) {
