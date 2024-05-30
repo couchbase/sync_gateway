@@ -3,8 +3,10 @@
     "server": "rosmar:/?mode=memory"
   },
   "api": {
-    "public_interface": ":4984",
-    "admin_interface": ":4985"
+    "public_interface": "0.0.0.0:4984",
+    "admin_interface": ":4985",
+    "admin_interface_authentication": false,
+    "metrics_interface_authentication": false
   },
   "logging": {
     "console": {
