@@ -190,10 +190,11 @@ func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Co
 		var body map[string]interface{}
 		bodyErr := res.ContentAt(1, &body)
 		if bodyErr != nil {
-			var restoreErr error
-			casOut, restoreErr = xbp.restoreDocumentBody(c, key, valuePtr, res.Cas())
+			restoreCas, restoreErr := xbp.restoreDocumentBody(c, key, valuePtr)
 			if restoreErr != nil {
 				WarnfCtx(ctx, "Error attempting to restore unexpected deletion of config: %v", restoreErr)
+			} else {
+				casOut = restoreCas
 			}
 		}
 		return uint64(casOut), nil
@@ -206,7 +207,7 @@ func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Co
 }
 
 // Restore a deleted document's body.  Rewrites metadata
-func (xbp *XattrBootstrapPersistence) restoreDocumentBody(c *gocb.Collection, key string, value interface{}, cas gocb.Cas) (casOut gocb.Cas, err error) {
+func (xbp *XattrBootstrapPersistence) restoreDocumentBody(c *gocb.Collection, key string, value interface{}) (casOut gocb.Cas, err error) {
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(cfgXattrConfigPath, value, UpsertSpecXattr),
 		gocb.ReplaceSpec("", json.RawMessage(cfgXattrBody), nil),
