@@ -196,7 +196,7 @@ func NewCouchbaseCluster(ctx context.Context, server, username, password,
 		cbCluster.cachedBucketConnections = cachedBucketConnections{buckets: make(map[string]*cachedBucket)}
 	}
 
-	cbCluster.configPersistence = &DocumentBootstrapPersistence{}
+	cbCluster.configPersistence = &XattrBootstrapPersistence{}
 	if useXattrConfig != nil && *useXattrConfig == true {
 		cbCluster.configPersistence = &XattrBootstrapPersistence{}
 	}
