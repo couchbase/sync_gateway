@@ -8,8 +8,11 @@
 
 package audit
 
-import (
-	"fmt"
+const (
+	// auditdSyncGatewayStartID is the start of an ID range allocated for Sync Gateway by auditd
+	auditdSyncGatewayStartID ID = 53248
+
+	IDPlaceholder ID = 54000
 )
 
 var sgAuditEvents = events{
@@ -29,21 +32,4 @@ var sgAuditEvents = events{
 		filteringPermitted: false,
 		eventType:          eventTypeAdmin,
 	},
-}
-
-func init() {
-	// Ensures that the above audit event IDs are within the allocated range and are valid.
-	if err := validateAuditEvents(sgAuditEvents); err != nil {
-		panic(err)
-	}
-}
-
-func validateAuditEvents(e events) error {
-	for id, descriptor := range e {
-		if id < auditdSyncGatewayStartID || id > auditdSyncGatewayEndID {
-			return fmt.Errorf("invalid audit event ID: %d %q (allowed range: %d-%d)",
-				id, descriptor.name, auditdSyncGatewayStartID, auditdSyncGatewayEndID)
-		}
-	}
-	return nil
 }

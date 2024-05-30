@@ -8,9 +8,14 @@
 
 package audit
 
+import (
+	"fmt"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
 const (
-	// auditdSyncGatewayStartID is the start of an ID range allocated for Sync Gateway by auditd
-	auditdSyncGatewayStartID ID = 53248
 	// auditdSyncGatewayEndID is the maximum ID that can be allocated to a Sync Gateway audit descriptor.
 	auditdSyncGatewayEndID = auditdSyncGatewayStartID + auditdIDBlockSize // 57343
 
@@ -18,6 +23,17 @@ const (
 	auditdIDBlockSize = 0xFFF
 )
 
-const (
-	IDPlaceholder ID = 54000
-)
+func TestValidateAuditEvents(t *testing.T) {
+	// Ensures that the above audit event IDs are within the allocated range and are valid.
+	require.NoError(t, validateAuditEvents(sgAuditEvents))
+}
+
+func validateAuditEvents(e events) error {
+	for id, descriptor := range e {
+		if id < auditdSyncGatewayStartID || id > auditdSyncGatewayEndID {
+			return fmt.Errorf("invalid audit event ID: %d %q (allowed range: %d-%d)",
+				id, descriptor.name, auditdSyncGatewayStartID, auditdSyncGatewayEndID)
+		}
+	}
+	return nil
+}

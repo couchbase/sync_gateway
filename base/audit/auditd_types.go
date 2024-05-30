@@ -8,31 +8,6 @@
 
 package audit
 
-import (
-	"encoding/json"
-)
-
-const (
-	// moduleDescriptorName is the name of the module. Must match the name used in the module descriptor file.
-	moduleDescriptorName = "sync_gateway"
-	// auditdFormatVersion is the version of the auditd format to be used. Only version 2 is supported.
-	auditdFormatVersion = 2
-)
-
-// generateAuditdModuleDescriptor returns an auditd-compatible module descriptor for the given events.
-func generateAuditdModuleDescriptor(e events) ([]byte, error) {
-	auditEvents := make([]auditdEventDescriptor, 0, len(e))
-	for id, event := range e {
-		auditEvents = append(auditEvents, toAuditdEventDescriptor(id, event))
-	}
-	m := auditdModuleDescriptor{
-		Version: auditdFormatVersion,
-		Module:  moduleDescriptorName,
-		Events:  auditEvents,
-	}
-	return json.Marshal(m)
-}
-
 // auditdModuleDescriptor describes an audit module descriptor in the auditd JSON format.
 type auditdModuleDescriptor struct {
 	Version uint                    `json:"version"`
@@ -66,6 +41,7 @@ func toAuditdEventDescriptor(id ID, e eventDescriptor) auditdEventDescriptor {
 	}
 }
 
+// auditd values that represent each type of field
 const (
 	auditFieldTypeNumber = 1
 	auditFieldTypeString = ""
