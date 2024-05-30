@@ -76,7 +76,7 @@ type logRotationConfig struct {
 	LocalTime            *bool           `json:"localtime,omitempty"`               // If true, it uses the computer's local time to format the backup timestamp.
 	RotatedLogsSizeLimit *int            `json:"rotated_logs_size_limit,omitempty"` // Max Size of log files before deletion
 	RotationInterval     *ConfigDuration `json:"rotation_interval,omitempty"`       // Interval at which logs are rotated
-	Compress             *bool           `json:"-"`                                 // Enable log compression
+	Compress             *bool           `json:"-"`                                 // Enable log compression - not exposed in config
 }
 
 // NewFileLogger returns a new FileLogger from a config.
