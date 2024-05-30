@@ -215,6 +215,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 
 		// If we regenerated sequences, update syncInfo for all collections affected
 		if regenerateSequences {
+			updatedDsNames := make(map[base.ScopeAndCollectionName]struct{}, len(collectionIDs))
 			for _, collectionID := range collectionIDs {
 				dbc, ok := db.CollectionByID[collectionID]
 				if !ok {
@@ -223,8 +224,16 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 				if err := base.SetSyncInfo(dbc.dataStore, db.DatabaseContext.Options.MetadataID); err != nil {
 					base.WarnfCtx(ctx, "[%s] Completed resync, but unable to update syncInfo for collection %v: %v", resyncLoggingID, collectionID, err)
 				}
-
+				updatedDsNames[base.ScopeAndCollectionName{Scope: dbc.ScopeName, Collection: dbc.Name}] = struct{}{}
 			}
+			collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
+			for _, dsName := range db.RequireResync {
+				_, ok := updatedDsNames[dsName]
+				if !ok {
+					collectionsRequiringResync = append(collectionsRequiringResync, dsName)
+				}
+			}
+			db.RequireResync = collectionsRequiringResync
 		}
 	case <-terminator.Done():
 		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending Resync process.", resyncLoggingID)
