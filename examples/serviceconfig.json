@@ -1,15 +1,16 @@
 {
-  "disable_persistent_config": true,
-  "adminInterface": "127.0.0.1:4985",
-  "interface": "0.0.0.0:4984",
-  "databases": {
-    "db": {
-      "server": "walrus:data",
-      "users": {
-        "GUEST": {"disabled": false, "admin_channels": ["*"] }
-      },
-      "allow_conflicts": false,
-      "revs_limit": 20
+  "bootstrap": {
+    "server": "rosmar:/?mode=memory"
+  },
+  "api": {
+    "public_interface": ":4984",
+    "admin_interface": ":4985"
+  },
+  "logging": {
+    "console": {
+      "enabled": true,
+      "log_level": "info",
+      "log_keys": ["*"]
     }
   }
 }
