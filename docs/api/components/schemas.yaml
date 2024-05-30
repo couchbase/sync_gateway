@@ -2512,8 +2512,8 @@ CollectionNames:
           - Starting
           - Stopping
           - Resyncing
-      offline_reason:
-        description: If the database state is offline, this field might be populated with reason `require_resync`.
+      reason:
+        description: Optional reason a database is in a particular state.
         enum:
           - require_resync
           - ""

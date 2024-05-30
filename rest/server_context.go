@@ -363,7 +363,7 @@ func (sc *ServerContext) allDatabaseSummaries() []DbSummary {
 		}
 		if state == db.RunStateString[db.DBOffline] {
 			if len(dbctx.RequireResync.ScopeAndCollectionNames()) > 0 {
-				summary.OfflineReason = OfflineReasonRequireResync
+				summary.Reason = OfflineReasonRequireResync
 			}
 		}
 		dbs = append(dbs, summary)

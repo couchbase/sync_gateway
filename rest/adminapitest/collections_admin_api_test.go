@@ -265,10 +265,10 @@ func TestRequireResync(t *testing.T) {
 	// databases sorted alphabetically
 	require.Equal(t, db1Name, allDBsSummary[0].DBName)
 	require.Equal(t, db.RunStateString[db.DBOnline], allDBsSummary[0].State)
-	require.Equal(t, "", allDBsSummary[0].OfflineReason)
+	require.Equal(t, "", allDBsSummary[0].Reason)
 	require.Equal(t, db2Name, allDBsSummary[1].DBName)
 	require.Equal(t, db.RunStateString[db.DBOffline], allDBsSummary[1].State)
-	require.Equal(t, rest.OfflineReasonRequireResync, allDBsSummary[1].OfflineReason)
+	require.Equal(t, rest.OfflineReasonRequireResync, allDBsSummary[1].Reason)
 
 	// Run resync for collection
 	resyncCollections := make(db.ResyncCollections, 0)
@@ -296,10 +296,10 @@ func TestRequireResync(t *testing.T) {
 	// databases sorted alphabetically
 	require.Equal(t, db1Name, allDBsSummary[0].DBName)
 	require.Equal(t, db.RunStateString[db.DBOnline], allDBsSummary[0].State)
-	require.Equal(t, "", allDBsSummary[0].OfflineReason)
+	require.Equal(t, "", allDBsSummary[0].Reason)
 	require.Equal(t, db2Name, allDBsSummary[1].DBName)
 	require.Equal(t, db.RunStateString[db.DBOffline], allDBsSummary[1].State)
-	require.Equal(t, "", allDBsSummary[1].OfflineReason)
+	require.Equal(t, "", allDBsSummary[1].Reason)
 
 	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
