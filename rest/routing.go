@@ -43,7 +43,7 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (root, db, keyspa
 	root.Handle("/", makeHandler(sc, privs, nil, nil, (*handler).handleRoot)).Methods("GET", "HEAD")
 
 	// Operations on databases:
-	root.Handle("/{db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, []Permission{PermDevOps}, nil, (*handler).handleGetDB)).Methods("GET", "HEAD")
+	root.Handle("/{db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, []Permission{PermDevOps, PermGetDb}, nil, (*handler).handleGetDB)).Methods("GET", "HEAD")
 	root.Handle("/{keyspace:"+dbRegex+"}/", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePostDoc)).Methods("POST")
 
 	// Keyspace operations (i.e. collection-specific):
