@@ -291,11 +291,11 @@ func makeDatabaseConfig(dbName string, scopeName string, collectionNames []strin
 	var scopesConfig ScopesConfig
 	scopesConfig = ScopesConfig{
 		scopeName: ScopeConfig{
-			map[string]CollectionConfig{},
+			map[string]*CollectionConfig{},
 		},
 	}
 	for _, collectionName := range collectionNames {
-		scopesConfig[scopeName].Collections[collectionName] = CollectionConfig{}
+		scopesConfig[scopeName].Collections[collectionName] = &CollectionConfig{}
 	}
 
 	return &DatabaseConfig{

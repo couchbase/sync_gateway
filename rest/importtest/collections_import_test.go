@@ -38,8 +38,8 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	importFilter2 := `function (doc) { return doc.type == "onprem"}`
 	importFilter3 := `function (doc) { return doc.type == "private"}`
 
-	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter1}
-	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter2}
+	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = &rest.CollectionConfig{ImportFilter: &importFilter1}
+	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = &rest.CollectionConfig{ImportFilter: &importFilter2}
 
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: testBucket.NoCloseClone(),
@@ -153,9 +153,9 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	scopesConfig = rest.GetCollectionsConfig(t, testBucket, 3)
 	dataStoreNames = rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
 
-	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter1}
-	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter2}
-	scopesConfig[dataStoreNames[2].ScopeName()].Collections[dataStoreNames[2].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter3}
+	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = &rest.CollectionConfig{ImportFilter: &importFilter1}
+	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = &rest.CollectionConfig{ImportFilter: &importFilter2}
+	scopesConfig[dataStoreNames[2].ScopeName()].Collections[dataStoreNames[2].CollectionName()] = &rest.CollectionConfig{ImportFilter: &importFilter3}
 
 	scopesConfigString, err := json.Marshal(scopesConfig)
 	require.NoError(t, err)
@@ -200,8 +200,8 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	scopesConfig = rest.GetCollectionsConfig(t, testBucket, 2)
 	dataStoreNames = rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
 
-	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter1}
-	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter2}
+	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = &rest.CollectionConfig{ImportFilter: &importFilter1}
+	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = &rest.CollectionConfig{ImportFilter: &importFilter2}
 	scopesConfigString, err = json.Marshal(scopesConfig)
 	require.NoError(t, err)
 

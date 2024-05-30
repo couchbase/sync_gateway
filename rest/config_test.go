@@ -2669,7 +2669,7 @@ func TestCollectionsValidation(t *testing.T) {
 				UseViews: base.BoolPtr(true),
 				Scopes: ScopesConfig{
 					"fooScope": ScopeConfig{
-						map[string]CollectionConfig{
+						map[string]*CollectionConfig{
 							"fooCollection:": {},
 						},
 					},
@@ -2692,7 +2692,7 @@ func TestCollectionsValidation(t *testing.T) {
 				UseViews: base.BoolPtr(false),
 				Scopes: ScopesConfig{
 					"fooScope": ScopeConfig{
-						map[string]CollectionConfig{
+						map[string]*CollectionConfig{
 							"fooCollection:": {},
 						},
 					},
@@ -2713,7 +2713,7 @@ func TestCollectionsValidation(t *testing.T) {
 				Name: "db",
 				Scopes: ScopesConfig{
 					"fooScope": ScopeConfig{
-						map[string]CollectionConfig{
+						map[string]*CollectionConfig{
 							"fooCollection:": {},
 						},
 					},
