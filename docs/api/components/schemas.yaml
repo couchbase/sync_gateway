@@ -2432,3 +2432,8 @@ CollectionNames:
           - Starting
           - Stopping
           - Resyncing
+      reason:
+        description: Optional reason a database is in a particular state.
+        enum:
+          - require_resync
+          - ""

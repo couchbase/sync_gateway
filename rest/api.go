@@ -407,10 +407,11 @@ type DatabaseRoot struct {
 	Scopes                        map[string]databaseRootScope `json:"scopes,omitempty"` // stats for each scope/collection
 }
 
-type dbSummary struct {
+type DbSummary struct {
 	DBName string `json:"db_name"`
 	Bucket string `json:"bucket"`
 	State  string `json:"state"`
+	Reason string `json:"reason,omitempty"`
 }
 
 type databaseRootScope struct {
