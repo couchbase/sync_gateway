@@ -406,10 +406,11 @@ type DatabaseRoot struct {
 	RequireResync                 []string `json:"require_resync,omitempty"`
 }
 
-type dbSummary struct {
-	DBName string `json:"db_name"`
-	Bucket string `json:"bucket"`
-	State  string `json:"state"`
+type DbSummary struct {
+	DBName        string `json:"db_name"`
+	Bucket        string `json:"bucket"`
+	State         string `json:"state"`
+	OfflineReason string `json:"offline_reason"`
 }
 
 func (h *handler) handleGetDB() error {

@@ -242,6 +242,22 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		base.InfofCtx(ctx, base.KeyAll, "[%s] resync was terminated. Docs changed: %d Docs Processed: %d", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
 	}
 
+	collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
+	for _, collection := range db.CollectionByID {
+		dataStore := collection.dataStore
+		resyncRequired, err := base.InitSyncInfo(dataStore, db.DatabaseContext.Options.MetadataID)
+		// if we can't write this document but made it here, the resync completed fine, and DatabaseContext.RequireResync will be reset when the database is recreated when it goes online.
+		if err != nil {
+			base.WarnfCtx(ctx, "[%s] error updated sync info for collection %v", resyncLoggingID, err)
+			return nil
+		}
+		if !resyncRequired {
+			continue
+		}
+		dsName := base.ScopeAndCollectionName{Scope: dataStore.ScopeName(), Collection: dataStore.CollectionName()}
+		collectionsRequiringResync = append(collectionsRequiringResync, dsName)
+	}
+	db.RequireResync = collectionsRequiringResync
 	return nil
 }
 

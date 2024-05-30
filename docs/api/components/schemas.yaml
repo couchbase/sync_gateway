@@ -2512,6 +2512,11 @@ CollectionNames:
           - Starting
           - Stopping
           - Resyncing
+      offline_reason:
+        description: If the database state is offline, this field might be populated with reason `require_resync`.
+        enum:
+          - require_resync
+          - ""
 all_user_channels:
   description: |-
     All user channels split by how they were assigned to the user and by keyspace.
