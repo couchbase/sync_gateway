@@ -2317,6 +2317,10 @@ Log-rotation-config-readonly:
       description: Max Size (in mb) of log files before deletion
       type: integer
       default: 1024
+    rotation_interval:
+      description: If set, the interval at which log files are rotated, even if max_size is not reached.
+      type: string
+      default: 0
   readOnly: true
   title: Log-rotation-config
 Console-logging-config:
