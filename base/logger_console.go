@@ -83,7 +83,7 @@ func NewConsoleLogger(ctx context.Context, shouldLogLocation bool, config *Conso
 		logger.collateBufferWg = &sync.WaitGroup{}
 
 		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(ctx, logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
+		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
 	}
 
 	// We can only log the console log location itself when logging has previously been set up and is being re-initialized from a config.
