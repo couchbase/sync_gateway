@@ -601,9 +601,9 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 	}
 }
 
-// TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback simulates a vbucket rollback for the dbconfig,
+// TestCollectionConflictAfterDbConfigRollback simulates a vbucket rollback for the dbconfig,
 // leaving the registry version ahead of the config - but also with a collection conflict occurring in the subsequent rollback.
-func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback(t *testing.T) {
+func TestCollectionConflictAfterDbConfigRollback(t *testing.T) {
 	base.TestsRequireBootstrapConnection(t)
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 3)
