@@ -1527,47 +1527,55 @@ func TestUserMultipleDBs(t *testing.T) {
 	dbConfig.Scopes = GetCollectionsConfig(t, rt.TestBucket, 1)
 	RequireStatus(t, rt.CreateDatabase(namedCollectionDB, dbConfig), http.StatusCreated)
 
-	// create matching named user and roles in both databases
+	// create matching named user and roles in both databases. Use multiple since there is some alphabetical sensitivity.
+	// alice
+	// defaultcollectiondb
+	// john
+	// namedcollectiondb
+	// sam
 	for _, dbName := range []string{defaultCollectionDB, namedCollectionDB} {
-		username := "alice"
-		userConfig := string(base.MustJSONMarshal(t,
-			auth.PrincipalConfig{
-				Name:     &username,
-				Password: base.StringPtr(RestTesterDefaultUserPassword),
-			}))
-		resp := rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/_user/"+username, userConfig)
-		RequireStatus(t, resp, http.StatusCreated)
-
-		rolename := "role1"
-		roleConfig := string(base.MustJSONMarshal(t,
-			auth.PrincipalConfig{
-				Name: &rolename,
-			}))
-		resp = rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/_role/"+rolename, roleConfig)
-		RequireStatus(t, resp, http.StatusCreated)
+		for _, username := range []string{"alice", "john", "sam"} {
+			userConfig := string(base.MustJSONMarshal(t,
+				auth.PrincipalConfig{
+					Name:     &username,
+					Password: base.StringPtr(RestTesterDefaultUserPassword),
+				}))
+			resp := rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/_user/"+username, userConfig)
+			RequireStatus(t, resp, http.StatusCreated)
+		}
+		for _, rolename := range []string{"arole1", "jrole2", "srole3"} {
+			roleConfig := string(base.MustJSONMarshal(t,
+				auth.PrincipalConfig{
+					Name: &rolename,
+				}))
+			resp := rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/_role/"+rolename, roleConfig)
+			RequireStatus(t, resp, http.StatusCreated)
+		}
 	}
 
 	for _, dbName := range []string{defaultCollectionDB, namedCollectionDB} {
 		t.Run(dbName, func(t *testing.T) {
+			numUsers := 3
+			numRoles := 3
 			// /db/_user?name_only=false only works with GSI
 			if !base.TestsDisableGSI() {
 				resp := rt.SendAdminRequest(http.MethodGet, "/"+dbName+"/_user/?name_only=false", "")
 				RequireStatus(t, resp, http.StatusOK)
 				var users []auth.PrincipalConfig
 				require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &users))
-				require.Len(t, users, 1)
+				require.Len(t, users, numUsers)
 			}
 			resp := rt.SendAdminRequest(http.MethodGet, "/"+dbName+"/_user/?name_only=true", "")
 			RequireStatus(t, resp, http.StatusOK)
 			var usernames []string
 			require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &usernames))
-			require.Len(t, usernames, 1)
+			require.Len(t, usernames, numUsers)
 
 			resp = rt.SendAdminRequest(http.MethodGet, "/"+dbName+"/_role/", "")
 			RequireStatus(t, resp, http.StatusOK)
 			var roles []string
 			require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &roles))
-			require.Len(t, roles, 1)
+			require.Len(t, roles, numRoles)
 
 		})
 	}
