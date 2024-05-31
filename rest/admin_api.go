@@ -619,7 +619,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		if err = base.DeepCopyInefficient(&tmpConfig, bucketDbConfig); err != nil {
 			return nil, err
 		}
-		tmpConfig.cfgCas = bucketDbConfig.cfgCas
+
 		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 		bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
 		if err := tmpConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
@@ -636,13 +636,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 	if err != nil {
 		base.WarnfCtx(h.ctx(), "Couldn't update config for database - rolling back: %v", err)
 		// failed to start the new database config - rollback and return the original error for the user
-		_, oldCnf, reloadErr := h.server.fetchDatabase(h.ctx(), dbName)
-		if reloadErr != nil {
+		if _, err := h.server.fetchAndLoadDatabase(contextNoCancel, dbName); err != nil {
 			base.WarnfCtx(h.ctx(), "got error rolling back database %q after failed update: %v", base.UD(dbName), err)
-		}
-		// update in memory db config to match rolled back one
-		if reloadErr = h.server.ReloadDatabaseWithConfig(contextNoCancel, *oldCnf, true); reloadErr != nil {
-			base.WarnfCtx(h.ctx(), "got error reloading rolled back database %q after failed update: %v", base.UD(dbName), err)
 		}
 		return err
 	}
