@@ -600,6 +600,8 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 		return ErrClosedBLIPSender
 	}
 
+	bsc.replicationStats.SendNoRevCount.Add(1)
+
 	collectionCtx, err := bsc.collections.get(collectionIdx)
 	if err != nil {
 		return err

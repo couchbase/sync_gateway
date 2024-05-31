@@ -170,6 +170,8 @@ const (
 	RevSendCountDesc = "The total number of rev messages processed during replication. This metric can be used with rev_processing_time to calculate the average processing time per revision: " +
 		"average processing time per revision = rev_processing_time / rev_send_count"
 
+	NoRevSendCountDesc = "The total number of norev messages sent during replication."
+
 	RevSendLatencyDesc = "The total amount of time between Sync Gateway receiving a request for a revision and that revision being sent. In a pull replication, Sync Gateway sends a /_changes request to " +
 		"the client and the client responds with the list of revisions it wants to receive. So, rev_send_latency measures the time between the client asking for those revisions and Sync Gateway sending them to the client. " +
 		"Note: Measuring time from the /_changes response means that this stat will vary significantly depending on the changes batch size A larger batch size will result in a spike of this stat, even if the processing time per revision is unchanged. " +
