@@ -636,13 +636,14 @@ func (h *handler) handlePutDbConfig() (err error) {
 	if err != nil {
 		base.WarnfCtx(h.ctx(), "Couldn't update config for database - rolling back: %v", err)
 		// failed to start the new database config - rollback and return the original error for the user
-		_, oldCnf, err := h.server.fetchDatabase(h.ctx(), dbName)
-		if err != nil {
+		_, oldCnf, reloadErr := h.server.fetchDatabase(h.ctx(), dbName)
+		if reloadErr != nil {
 			base.WarnfCtx(h.ctx(), "got error rolling back database %q after failed update: %v", base.UD(dbName), err)
-			return err
 		}
 		// update in memory db config to match rolled back one
-		err = h.server.ReloadDatabaseWithConfig(contextNoCancel, *oldCnf, true)
+		if reloadErr = h.server.ReloadDatabaseWithConfig(contextNoCancel, *oldCnf, true); reloadErr != nil {
+			base.WarnfCtx(h.ctx(), "got error reloading rolled back database %q after failed update: %v", base.UD(dbName), err)
+		}
 		return err
 	}
 	// store the cas in the loaded config after a successful update
