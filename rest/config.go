@@ -1635,6 +1635,9 @@ func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (fou
 			cnf.CertPath = sc.Config.Bootstrap.X509CertPath
 			cnf.KeyPath = sc.Config.Bootstrap.X509KeyPath
 		}
+		if cnf.Server == nil || *cnf.Server == "" {
+			cnf.Server = &sc.Config.Bootstrap.Server
+		}
 		base.TracefCtx(ctx, base.KeyConfig, "Got database config %s for bucket %q with cas %d and groupID %q", base.MD(dbName), base.MD(bucket), cas, base.MD(sc.Config.Bootstrap.ConfigGroupID))
 		return true, nil
 	}

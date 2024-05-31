@@ -1000,9 +1000,6 @@ func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
 
 	delete(scopesConfig[scope].Collections, collection1)
 	assert.Equal(t, scopesConfig, dbCfg.Scopes)
-	// nil original server config as we don't persist this (and the new runtime config is reloaded from the bucket after
-	// the update error)
-	originalDBCfg.Server = nil
 	assert.Equal(t, originalDBCfg, dbCfg)
 
 	// now assert that _config shows the same
