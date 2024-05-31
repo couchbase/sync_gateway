@@ -42,8 +42,14 @@ type BlipTesterClientOpts struct {
 	// a deltaSrc rev ID for which to reject a delta
 	rejectDeltasForSrcRev string
 
+	// changesEntryCallback is a callback function invoked for each changes entry being received (pull)
+	changesEntryCallback func(docID, revID string)
+
 	// optional Origin header
 	origin *string
+
+	// sendReplacementRevs opts into the replacement rev behaviour in the event that we do not find the requested one.
+	sendReplacementRevs bool
 }
 
 // BlipTesterClient is a fully fledged client to emulate CBL behaviour on both push and pull replications through methods on this type.
@@ -170,6 +176,10 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				docID := changesReq[1].(string)
 				revID := changesReq[2].(string)
 
+				if btc.changesEntryCallback != nil {
+					btc.changesEntryCallback(docID, revID)
+				}
+
 				deletedInt := 0
 				if len(changesReq) > 3 {
 					castedDeleted, ok := changesReq[3].(float64)
@@ -239,6 +249,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		docID := msg.Properties[db.RevMessageID]
 		revID := msg.Properties[db.RevMessageRev]
 		deltaSrc := msg.Properties[db.RevMessageDeltaSrc]
+		replacedRev := msg.Properties[db.RevMessageReplacedRev]
 
 		body, err := msg.Body()
 		require.NoError(btr.TB(), err)
@@ -249,9 +260,16 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			if _, ok := btcr.docs[docID]; ok {
 				bodyMessagePair := &BodyMessagePair{body: body, message: msg}
 				btcr.docs[docID][revID] = bodyMessagePair
+				if replacedRev != "" {
+					// store a pointer to the message from the replaced rev for tests waiting for this specific rev
+					btcr.docs[docID][replacedRev] = bodyMessagePair
+				}
 			} else {
 				bodyMessagePair := &BodyMessagePair{body: body, message: msg}
 				btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
+				if replacedRev != "" {
+					btcr.docs[docID][replacedRev] = bodyMessagePair
+				}
 			}
 			btcr.updateLastReplicatedRev(docID, revID)
 
@@ -413,9 +431,15 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		if _, ok := btcr.docs[docID]; ok {
 			bodyMessagePair := &BodyMessagePair{body: body, message: msg}
 			btcr.docs[docID][revID] = bodyMessagePair
+			if replacedRev != "" {
+				btcr.docs[docID][replacedRev] = bodyMessagePair
+			}
 		} else {
 			bodyMessagePair := &BodyMessagePair{body: body, message: msg}
 			btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
+			if replacedRev != "" {
+				btcr.docs[docID][replacedRev] = bodyMessagePair
+			}
 		}
 		btcr.updateLastReplicatedRev(docID, revID)
 
@@ -446,8 +470,23 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	}
 
 	btr.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
-		// TODO: Support norev messages
 		btr.storeMessage(msg)
+
+		btcr := btc.getCollectionClientFromMessage(msg)
+
+		docID := msg.Properties[db.NorevMessageId]
+		revID := msg.Properties[db.NorevMessageRev]
+
+		btcr.docsLock.Lock()
+		defer btcr.docsLock.Unlock()
+
+		if _, ok := btcr.docs[docID]; ok {
+			bodyMessagePair := &BodyMessagePair{message: msg}
+			btcr.docs[docID][revID] = bodyMessagePair
+		} else {
+			bodyMessagePair := &BodyMessagePair{message: msg}
+			btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
+		}
 	}
 
 	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
@@ -746,6 +785,10 @@ func (btc *BlipTesterCollectionClient) StartPullSince(continuous, since, activeO
 
 	if btc.parent.BlipTesterClientOpts.SendRevocations {
 		subChangesRequest.Properties[db.SubChangesRevocations] = "true"
+	}
+
+	if btc.parent.BlipTesterClientOpts.sendReplacementRevs {
+		subChangesRequest.Properties[db.SubChangesSendReplacementRevs] = "true"
 	}
 
 	if err := btc.sendPullMsg(subChangesRequest); err != nil {

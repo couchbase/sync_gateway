@@ -560,7 +560,7 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 
 func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
 
-	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
+	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq, "")
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
@@ -579,8 +579,6 @@ func (bsc *BlipSyncContext) sendBLIPMessage(sender *blip.Sender, msg *blip.Messa
 }
 
 func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, collectionIdx *int, seq SequenceID, err error) error {
-	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
-
 	noRevRq := NewNoRevMessage()
 	noRevRq.SetId(docID)
 	noRevRq.SetRev(revID)
@@ -616,11 +614,43 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 
 // Pushes a revision body to the client
 func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
-	rev, err := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, revID, true, nil)
-	if base.IsDocNotFoundError(err) {
-		return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
-	} else if err != nil {
-		return fmt.Errorf("failed to GetRev for doc %s with rev %s: %w", base.UD(docID).Redact(), base.MD(revID).Redact(), err)
+	rev, originalErr := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, revID, true, nil)
+
+	// set if we find an alternative revision to send in the event the originally requested rev is unavailable
+	var replacedRevID string
+
+	if base.IsDocNotFoundError(originalErr) {
+		collectionCtx, collectionErr := bsc.collections.get(collectionIdx)
+		if collectionErr != nil {
+			return collectionErr
+		}
+
+		if !collectionCtx.sendReplacementRevs {
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, originalErr)
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, originalErr)
+		}
+
+		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Unavailable revision for %q %s - finding replacement: %v", base.UD(docID), revID, originalErr)
+
+		// try the active rev instead as a replacement
+		replacementRev, replacementRevErr := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, "", true, nil)
+		if replacementRevErr != nil {
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable active replacement revision: %v", base.UD(docID), revID, replacementRevErr)
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, originalErr)
+		}
+
+		// if this is a filtered replication, ensure the replacement rev is in one of the filtered channels
+		// normal channel access checks are already applied in GetRev above
+		if !replacementRev.Channels.HasMatch(collectionCtx.channels) {
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to filtered channels (%s) excluding active revision channels (%s)", base.UD(docID), revID, base.UD(collectionCtx.channels), base.UD(replacementRev.Channels))
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, originalErr)
+		}
+
+		replacedRevID = revID
+		revID = replacementRev.RevID
+		rev = replacementRev
+	} else if originalErr != nil {
+		return fmt.Errorf("failed to GetRev for doc %s with rev %s: %w", base.UD(docID).Redact(), base.MD(revID).Redact(), originalErr)
 	}
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
@@ -630,6 +660,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
 			DeleteAttachmentVersion(rev.Attachments)
+			var err error
 			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: rev.Attachments})
 			if err != nil {
 				return err
@@ -640,6 +671,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	} else {
 		body, err := rev.Body()
 		if err != nil {
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision body: %v", base.UD(docID), revID, err)
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 		}
 
@@ -651,15 +683,21 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 		bodyBytes, err = base.JSONMarshalCanonical(body)
 		if err != nil {
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unmarshallable revision body: %v", base.UD(docID), revID, err)
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 		}
 	}
 
 	history := toHistory(rev.History, knownRevs, maxHistory)
-	properties := blipRevMessageProperties(history, rev.Deleted, seq)
+	properties := blipRevMessageProperties(history, rev.Deleted, seq, replacedRevID)
 	if base.LogDebugEnabled(bsc.loggingCtx, base.KeySync) {
-		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), digests(attachmentStorageMeta))
+		replacedRevMsg := ""
+		if replacedRevID != "" {
+			replacedRevMsg = fmt.Sprintf(" (replaced %s)", replacedRevID)
+		}
+		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s%s based on %d known, digests: %v", base.UD(docID), revID, replacedRevMsg, len(knownRevs), digests(attachmentStorageMeta))
 	}
+
 	return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, bodyBytes, attachmentStorageMeta, properties, seq, nil)
 }
 

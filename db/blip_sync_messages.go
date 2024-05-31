@@ -60,15 +60,16 @@ const (
 	GetCheckpointClient      = "client"
 
 	// subChanges message properties
-	SubChangesActiveOnly  = "activeOnly"
-	SubChangesFilter      = "filter"
-	SubChangesChannels    = "channels"
-	SubChangesSince       = "since"
-	SubChangesContinuous  = "continuous"
-	SubChangesBatch       = "batch"
-	SubChangesRevocations = "revocations"
-	SubChangesRequestPlus = "requestPlus"
-	SubChangesFuture      = "future"
+	SubChangesActiveOnly          = "activeOnly"
+	SubChangesFilter              = "filter"
+	SubChangesChannels            = "channels"
+	SubChangesSince               = "since"
+	SubChangesContinuous          = "continuous"
+	SubChangesBatch               = "batch"
+	SubChangesRevocations         = "revocations"
+	SubChangesRequestPlus         = "requestPlus"
+	SubChangesFuture              = "future"
+	SubChangesSendReplacementRevs = "sendReplacementRevs"
 
 	// rev message properties
 	RevMessageID          = "id"
@@ -78,6 +79,7 @@ const (
 	RevMessageHistory     = "history"
 	RevMessageNoConflicts = "noconflicts"
 	RevMessageDeltaSrc    = "deltaSrc"
+	RevMessageReplacedRev = "replacedRev"
 
 	// norev message properties
 	NorevMessageId       = "id"
@@ -141,9 +143,10 @@ type LatestSequenceFunc func() (SequenceID, error)
 
 // SubChangesParams is a helper for handling BLIP subChanges requests.  Supports Stringer() interface to log aspects of the request.
 type SubChangesParams struct {
-	rq      *blip.Message // The underlying BLIP message
-	_since  SequenceID    // Since value on the incoming request
-	_docIDs []string      // Document ID filter specified on the incoming request
+	rq                   *blip.Message // The underlying BLIP message
+	_since               SequenceID    // Since value on the incoming request
+	_docIDs              []string      // Document ID filter specified on the incoming request
+	_sendReplacementRevs bool          // Whether to send a replacement rev in the event that we do not find the requested one.
 }
 
 type SubChangesBody struct {
@@ -180,6 +183,8 @@ func NewSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq Seque
 	}
 	params._docIDs = docIDs
 
+	params._sendReplacementRevs = rq.Properties[SubChangesSendReplacementRevs] == trueProperty
+
 	return params, nil
 }
 
@@ -189,6 +194,10 @@ func (s *SubChangesParams) Since() SequenceID {
 
 func (s *SubChangesParams) docIDs() []string {
 	return s._docIDs
+}
+
+func (s *SubChangesParams) sendReplacementRevs() bool {
+	return s._sendReplacementRevs
 }
 
 func readDocIDsFromRequest(rq *blip.Message) (docIDs []string, err error) {
