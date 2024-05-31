@@ -956,10 +956,6 @@ func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
-	scopesConfig := GetCollectionsConfig(t, tb, 1)
-	scopesConfigString, err := json.Marshal(scopesConfig)
-	require.NoError(t, err)
-
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: tb,
 		PersistentConfig: true,
@@ -968,39 +964,33 @@ func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
 	defer rt.Close()
 
 	// create db with collection 1
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "offline": true, "scopes":%s}`,
-		tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
-	RequireStatus(t, resp, http.StatusCreated)
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(t, tb, 1)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	// rebuild scopes config with collection 2
-	scopesConfig = GetCollectionsConfig(t, tb, 2)
+	dbConfig = rt.NewDbConfig()
+	scopesConfig := GetCollectionsConfig(t, tb, 2)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
 	scope := dataStoreNames[0].ScopeName()
 	collection1 := dataStoreNames[0].CollectionName()
-
 	delete(scopesConfig[scope].Collections, collection1)
-	scopesConfigString, err = json.Marshal(scopesConfig)
-	require.NoError(t, err)
-
+	dbConfig.Scopes = scopesConfig
 	// create db1 with collection 2
-	resp = rt.SendAdminRequest(http.MethodPut, "/db1/", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "offline": true, "scopes":%s}`,
-		tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
-	RequireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/db1/_config?include_runtime=true", "")
+	RequireStatus(t, resp, http.StatusOK)
+	var originalDBCfg DbConfig
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &originalDBCfg))
 
 	// rebuild scope config for both collections to attempt to update db1 config to that
-	scopesConfig = GetCollectionsConfig(t, tb, 2)
-	scopesConfigString, err = json.Marshal(scopesConfig)
-	require.NoError(t, err)
-
+	dbConfig = rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(t, tb, 2)
 	// create conflicting update
-	resp = rt.SendAdminRequest(http.MethodPut, "/db1/_config", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "offline": true, "scopes":%s}`,
-		tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
-	RequireStatus(t, resp, http.StatusConflict)
+	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusConflict)
 
-	// assert on runtime config
+	// grab runtime config again after failed update
 	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config?include_runtime=true", "")
 	RequireStatus(t, resp, http.StatusOK)
 
@@ -1010,6 +1000,10 @@ func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
 
 	delete(scopesConfig[scope].Collections, collection1)
 	assert.Equal(t, scopesConfig, dbCfg.Scopes)
+	// nil original server config as we don't persist this (and the new runtime config is reloaded from the bucket after
+	// the update error)
+	originalDBCfg.Server = nil
+	assert.Equal(t, originalDBCfg, dbCfg)
 
 	// now assert that _config shows the same
 	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
@@ -1017,4 +1011,5 @@ func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
 
 	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &dbCfg))
 	assert.Equal(t, scopesConfig, dbCfg.Scopes)
+	assert.Equal(t, originalDBCfg.Scopes, dbCfg.Scopes)
 }
