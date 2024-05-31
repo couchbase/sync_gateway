@@ -690,6 +690,10 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 		}
 	}
 
+	if replacedRevID != "" {
+		bsc.replicationStats.SendReplacementRevCount.Add(1)
+	}
+
 	history := toHistory(rev.History, knownRevs, maxHistory)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq, replacedRevID)
 	if base.LogDebugEnabled(bsc.loggingCtx, base.KeySync) {

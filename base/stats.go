@@ -472,6 +472,8 @@ type CBLReplicationPullStats struct {
 	RevSendCount *SgwIntStat `json:"rev_send_count"`
 	// The total number of norev messages sent during replication.
 	NoRevSendCount *SgwIntStat `json:"norev_send_count"`
+	// The total number of replacement revs sent during replication.
+	ReplacementRevSendCount *SgwIntStat `json:"replacement_rev_send_count"`
 	// The total number of errors in response to sending a rev message.
 	RevErrorCount *SgwIntStat `json:"rev_error_count"`
 	// The total amount of time between Sync Gateway receiving a request for a revision and that revision being sent.
@@ -1456,6 +1458,10 @@ func (d *DbStats) initCBLReplicationPullStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.ReplacementRevSendCount, err = NewIntStat(SubsystemReplicationPull, "replacement_rev_send_count", StatUnitNoUnits, ReplacementRevSendCountDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.RevErrorCount, err = NewIntStat(SubsystemReplicationPull, "rev_error_count", StatUnitNoUnits, RevErrorCountDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1486,6 +1492,7 @@ func (d *DbStats) unregisterCBLReplicationPullStats() {
 	prometheus.Unregister(d.CBLReplicationPullStats.RevProcessingTime)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevSendCount)
 	prometheus.Unregister(d.CBLReplicationPullStats.NoRevSendCount)
+	prometheus.Unregister(d.CBLReplicationPullStats.ReplacementRevSendCount)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevErrorCount)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevSendLatency)
 }
