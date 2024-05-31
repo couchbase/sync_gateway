@@ -1511,6 +1511,9 @@ func TestUnauthorizedAccessForDB(t *testing.T) {
 }
 
 func TestUserMultipleDBs(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires CBS/bootstrap")
+	}
 	base.RequireNumTestDataStores(t, 2)
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
