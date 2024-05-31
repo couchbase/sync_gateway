@@ -70,6 +70,7 @@ func TestResyncRollback(t *testing.T) {
 }
 
 func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
+	base.TestRequiresDCPResync(t)
 	testCases := []struct {
 		name                  string
 		defaultCollectionOnly bool
