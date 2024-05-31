@@ -34,6 +34,9 @@ const (
 
 	// Idle batch size.  Initial batch size if SG is in an idle state (with respect to writes)
 	idleBatchSize = 1
+
+	//minimum number that _sync:seq will be corrected by in event of a rollback
+	syncSeqCorrectionValue = 500
 )
 
 // MaxSequenceIncrFrequency is the maximum frequency we want to perform incr operations.
@@ -53,6 +56,7 @@ type sequenceAllocator struct {
 	lastSequenceReserveTime time.Time           // Time of most recent sequence reserve
 	releaseSequenceWait     time.Duration       // Supports test customization
 	metaKeys                *base.MetadataKeys  // Key generator for sequence and unused sequence documents
+	nodes                   map[string]*SGNode
 }
 
 func newSequenceAllocator(ctx context.Context, datastore base.DataStore, dbStatsMap *base.DatabaseStats, metaKeys *base.MetadataKeys) (*sequenceAllocator, error) {
@@ -244,13 +248,15 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 	}
 
 	// check for rollback of _sync:seq before continuing
-	if allocatedToSeq < (incrVal + prevAllocReleaseTo) {
+	expectedValue := incrVal + prevAllocReleaseTo
+	if allocatedToSeq < expectedValue {
 		// rollback of _sync:seq detected
-		base.WarnfCtx(ctx, "rollback of _sync:seq document detected")
-		// find diff between current _sync:seq value and what we expected it to be
-		correctionIncrValue := (incrVal + prevAllocReleaseTo) - allocatedToSeq
-		allocatedToSeq, err = s._fixSyncSeqRollback(ctx, correctionIncrValue)
+		base.ErrorfCtx(ctx, "rollback of _sync:seq document detected. Allocated to %d but expected value of at least %d", allocatedToSeq, expectedValue)
+		// find diff between current _sync:seq value and what we expected it to be + correction value
+		correctionIncrValue := (expectedValue - allocatedToSeq) + syncSeqCorrectionValue
+		allocatedToSeq, err = s._fixSyncSeqRollback(ctx, correctionIncrValue, expectedValue)
 		if err != nil {
+			s.mutex.Unlock()
 			return 0, 0, err
 		}
 	}
@@ -320,13 +326,14 @@ func (s *sequenceAllocator) _reserveSequenceBatch(ctx context.Context) error {
 	}
 
 	// check for rollback of _sync:seq document
-	if max < (s.max + s.sequenceBatchSize) {
+	expectedValue := s.max + s.sequenceBatchSize
+	if max < expectedValue {
 		// rollback of _sync:seq detected
-		base.WarnfCtx(ctx, "rollback of _sync:seq document detected")
-		// find diff between current _sync:seq value and what we expected it to be
-		correctionIncrValue := (s.max + s.sequenceBatchSize) - max
+		base.ErrorfCtx(ctx, "rollback of _sync:seq document detected. Allocated to %d but expected value of at least %d", max, expectedValue)
+		// find diff between current _sync:seq value and what we expected it to be + correction value
+		correctionIncrValue := (expectedValue - max) + syncSeqCorrectionValue
 		// we must have correction value of at least the sequence batch size else we risk overlapping batches between nodes
-		max, err = s._fixSyncSeqRollback(ctx, correctionIncrValue)
+		max, err = s._fixSyncSeqRollback(ctx, correctionIncrValue, expectedValue)
 		if err != nil {
 			return err
 		}
@@ -409,18 +416,67 @@ func (s *sequenceAllocator) waitForReleasedSequences(ctx context.Context, startT
 }
 
 // _fixSyncSeqRollback will correct a rolled back _sync:seq document in the bucket
-func (s *sequenceAllocator) _fixSyncSeqRollback(ctx context.Context, incrValue uint64) (allocatedToSeq uint64, err error) {
-	// we must have correction value of at least the sequence batch size else we risk overlapping batches between nodes
-	if incrValue < s.sequenceBatchSize {
-		// take correction value up to minimum value of the sequence batch
-		incrValue += s.sequenceBatchSize - incrValue
-	}
-	base.DebugfCtx(ctx, base.KeyCRUD, "correcting _sync:seq document. Calling increment by the value of %d", incrValue)
-
-	// incr the _sync:seq doc by the calculated correction amount
-	allocatedToSeq, err = s.incrementSequence(incrValue)
+func (s *sequenceAllocator) _fixSyncSeqRollback(ctx context.Context, incrValue, expectedValue uint64) (allocatedToSeq uint64, err error) {
+	// grab _sync:seq value + its current cas value
+	var result uint64
+	cas, err := s.datastore.Get(s.metaKeys.SyncSeqKey(), &result)
 	if err != nil {
-		return allocatedToSeq, fmt.Errorf("Error from incrementSequence in _fixSyncSeqRollback: %v", err)
+		return 0, err
 	}
+	base.DebugfCtx(ctx, base.KeyCRUD, "correcting _sync:seq document. Incrementing _sync:seq document from %d by the value of %d", result, incrValue)
+
+	worker := func() (bool, error, interface{}) {
+		// set the value to _sync:seq current value + incr value
+		setVal := result + incrValue
+		_, err = s.datastore.WriteCas(s.metaKeys.SyncSeqKey(), 0, cas, setVal, 0)
+		if err == nil {
+			return false, nil, setVal
+		}
+		// bail out if we don't get CAS error
+		if !base.IsCasMismatch(err) {
+			return false, err, 0
+		}
+		// fetch _sync:seq doc to update cas + check if it has already been fixed by another process
+		var newResult uint64
+		cas, err = s.datastore.Get(s.metaKeys.SyncSeqKey(), &newResult)
+		if err != nil {
+			return false, err, nil
+		}
+		shouldRetry := shouldRetrySyncSeqCorrection(setVal, newResult)
+		if shouldRetry {
+			// update result value of the new value fetched above before retrying
+			result = newResult
+			return true, err, nil
+		}
+		// if no retry is needed (_sync:seq has potentially been corrected by another node),
+		// we still need to increment by batch size to get unique batch for this node
+		newResult, err = s.incrementSequence(s.sequenceBatchSize)
+		if err != nil {
+			return false, err, 0
+		}
+		return false, err, newResult
+	}
+
+	// in case _sync:seq was fixed in the time between detecting rollback and fetching cas from the doc
+	if result < expectedValue {
+		err, currSeq := base.RetryLoop(ctx, "Fix _sync:seq Value", worker, base.CreateDoublingSleeperFunc(1000, 5))
+		if err != nil {
+			return 0, err
+		}
+		allocatedToSeq = currSeq.(uint64)
+	} else {
+		// if _sync:seq has been fixed just increment by batch size to gte new batch for this node
+		base.DebugfCtx(ctx, base.KeyCRUD, "_sync:seq document fixed by another process, continuing with sequence batch allocation")
+		allocatedToSeq, err = s.incrementSequence(s.sequenceBatchSize)
+		if err != nil {
+			return 0, err
+		}
+	}
+
 	return allocatedToSeq, err
+}
+
+// shouldRetrySyncSeqCorrection returns true if value of _sync:seq is less than the expected value, else returns false
+func shouldRetrySyncSeqCorrection(expectedVal, actualVal uint64) bool {
+	return actualVal <= expectedVal
 }
