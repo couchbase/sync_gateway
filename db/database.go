@@ -1071,6 +1071,10 @@ func (db *DatabaseContext) GetUserNames(ctx context.Context) (users []string, er
 	startKey := dbUserPrefix
 	limit := db.Options.QueryPaginationLimit
 
+	userRe, err := regexp.Compile(`^` + dbUserPrefix + `[^:]*$`)
+	if err != nil {
+		return nil, err
+	}
 	users = []string{}
 
 outerLoop:
@@ -1103,8 +1107,11 @@ outerLoop:
 
 			principalName = queryRow.Name
 			startKey = queryRow.ID
-
 			resultCount++
+
+			if !userRe.MatchString(queryRow.ID) {
+				continue
+			}
 
 			if principalName != "" && !skipAddition {
 				users = append(users, principalName)
@@ -1135,6 +1142,18 @@ func (db *DatabaseContext) getAllPrincipalIDsSyncDocs(ctx context.Context) (user
 	lenDbUserPrefix := len(dbUserPrefix)
 	lenDbRolePrefix := len(dbRolePrefix)
 
+	userRe, err := regexp.Compile(`^` + dbUserPrefix + `[^:]*$`)
+	if err != nil {
+		return nil, nil, err
+	}
+	roleRe, err := regexp.Compile(`^` + dbRolePrefix + `[^:]*$`)
+	if err != nil {
+		return nil, nil, err
+	}
+	anyPrincipalRe, err := regexp.Compile(fmt.Sprintf(`^(%s|%s).*$`, base.DefaultMetadataKeys.UserKeyPrefix(), base.DefaultMetadataKeys.RoleKeyPrefix()))
+	if err != nil {
+		return nil, nil, err
+	}
 	users = []string{}
 	roles = []string{}
 
@@ -1178,11 +1197,15 @@ outerLoop:
 				startKey = queryRow.Name
 			}
 			if len(rowID) < lenDbUserPrefix && len(rowID) < lenDbRolePrefix {
+				// make sure to increment the resultCount to not skip the next row if the results are
+				// _sync:user:alice and we are looking for _sync:user:verylongdbname:alice
+				if resultCount == 0 && anyPrincipalRe.MatchString(rowID) {
+					resultCount++
+				}
 				continue
 			}
-
-			isDbUser = strings.HasPrefix(rowID, dbUserPrefix)
-			isDbRole = strings.HasPrefix(rowID, dbRolePrefix)
+			isDbUser = userRe.MatchString(rowID)
+			isDbRole = roleRe.MatchString(rowID)
 			if !isDbUser && !isDbRole {
 				continue
 			}
@@ -1195,7 +1218,6 @@ outerLoop:
 
 			}
 			resultCount++
-
 			if principalName != "" && !skipAddition {
 				if isDbUser {
 					users = append(users, principalName)
@@ -1231,6 +1253,10 @@ func (db *DatabaseContext) GetUsers(ctx context.Context, limit int) (users []aut
 	// This doesn't happen for AllPrincipalIDs, I believe because the role check forces query to not assume
 	// a contiguous set of results
 	dbUserKeyPrefix := db.MetadataKeys.UserKeyPrefix()
+	userRe, err := regexp.Compile(`^` + dbUserKeyPrefix + `[^:]*$`)
+	if err != nil {
+		return nil, err
+	}
 	startKey := dbUserKeyPrefix
 	paginationLimit := db.Options.QueryPaginationLimit
 	if paginationLimit == 0 {
@@ -1272,6 +1298,9 @@ outerLoop:
 
 			startKey = queryRow.ID
 			resultCount++
+			if !userRe.MatchString(queryRow.ID) {
+				continue
+			}
 			if queryRow.Name != "" && !skipAddition {
 				principal := auth.PrincipalConfig{
 					Name:     &queryRow.Name,
@@ -1307,6 +1336,11 @@ outerLoop:
 func (db *DatabaseContext) getRoleIDsUsingIndex(ctx context.Context, includeDeleted bool) (roles []string, err error) {
 
 	dbRoleIDPrefix := db.MetadataKeys.RoleKeyPrefix()
+
+	roleRe, err := regexp.Compile(`^` + dbRoleIDPrefix + `[^:]*$`)
+	if err != nil {
+		return nil, err
+	}
 	startKey := dbRoleIDPrefix
 	limit := db.Options.QueryPaginationLimit
 
@@ -1358,6 +1392,9 @@ outerLoop:
 
 			resultCount++
 
+			if !roleRe.MatchString(queryRow.Id) {
+				continue
+			}
 			if roleName != "" && !skipAddition {
 				roles = append(roles, roleName)
 			}
