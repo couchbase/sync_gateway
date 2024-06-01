@@ -600,6 +600,8 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 		return ErrClosedBLIPSender
 	}
 
+	bsc.replicationStats.SendNoRevCount.Add(1)
+
 	collectionCtx, err := bsc.collections.get(collectionIdx)
 	if err != nil {
 		return err
@@ -686,6 +688,10 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unmarshallable revision body: %v", base.UD(docID), revID, err)
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 		}
+	}
+
+	if replacedRevID != "" {
+		bsc.replicationStats.SendReplacementRevCount.Add(1)
 	}
 
 	history := toHistory(rev.History, knownRevs, maxHistory)

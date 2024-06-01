@@ -36,6 +36,8 @@ type BlipSyncStats struct {
 	HandlePutRevThrottledCount       *base.SgwIntStat // Connected Client API
 	HandlePutRevThrottledTime        *base.SgwIntStat // Connected Client API
 	SendRevCount                     *base.SgwIntStat // sendRev
+	SendNoRevCount                   *base.SgwIntStat // sendNoRev
+	SendReplacementRevCount          *base.SgwIntStat // sendReplacementRev
 	SendRevDeltaRequestedCount       *base.SgwIntStat
 	SendRevDeltaSentCount            *base.SgwIntStat
 	SendRevBytes                     *base.SgwIntStat
@@ -86,7 +88,9 @@ func NewBlipSyncStats() *BlipSyncStats {
 		HandlePutRevProcessingTime:       &base.SgwIntStat{},
 		HandlePutRevDocsPurgedCount:      &base.SgwIntStat{},
 		SendRevCount:                     &base.SgwIntStat{}, // sendRev
+		SendNoRevCount:                   &base.SgwIntStat{}, // sendNoRev
 		SendRevDeltaRequestedCount:       &base.SgwIntStat{},
+		SendReplacementRevCount:          &base.SgwIntStat{}, // sendReplacementRev
 		SendRevDeltaSentCount:            &base.SgwIntStat{},
 		SendRevBytes:                     &base.SgwIntStat{},
 		SendRevErrorTotal:                &base.SgwIntStat{},
@@ -135,6 +139,8 @@ func BlipSyncStatsForCBL(dbStats *base.DbStats) *BlipSyncStats {
 
 	blipStats.SendRevBytes = dbStats.Database().DocReadsBytesBlip
 	blipStats.SendRevCount = dbStats.Database().NumDocReadsBlip
+	blipStats.SendNoRevCount = dbStats.CBLReplicationPull().NoRevSendCount
+	blipStats.SendReplacementRevCount = dbStats.CBLReplicationPull().ReplacementRevSendCount
 	blipStats.SendRevErrorTotal = dbStats.CBLReplicationPull().RevErrorCount
 
 	blipStats.HandleRevBytes = dbStats.Database().DocWritesBytesBlip
