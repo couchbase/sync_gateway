@@ -11,7 +11,6 @@ package adminapitest
 import (
 	"fmt"
 	"net/http"
-	"slices"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -255,7 +254,7 @@ func TestRequireResync(t *testing.T) {
 		rest.RequireStatus(t, resp, http.StatusOK)
 		dbRootResponse = rest.DatabaseRoot{}
 		require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
-		return slices.Equal(needsResync, dbRootResponse.RequireResync)
+		return len(dbRootResponse.RequireResync) == 1 && dbRootResponse.RequireResync[0] == scope+"."+collection1
 	}, "expected %+v but got %+v for requireResync", needsResync, dbRootResponse.RequireResync)
 
 	// Run resync for collection
