@@ -659,6 +659,8 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
+	defer teardownSystemXattrDoc(t, dataStore, mobileKey, "_nonmobile")
+
 	// Attempt to get the document again via Sync Gateway.  Should not trigger import.
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
@@ -666,6 +668,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	newRevId := body[db.BodyRev].(string)
 	log.Printf("Retrieved via Sync Gateway after non-mobile update, revId:%v", newRevId)
 	assert.Equal(t, revId, newRevId)
+
 }
 
 // Test scenario where another actor updates a different xattr on a document.  Sync Gateway
@@ -713,6 +716,8 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
 	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
+
+	defer teardownSystemXattrDoc(t, dataStore, mobileKey, "_nonmobile")
 
 	// Attempt to update the document again via Sync Gateway.  Should not trigger import, PUT should be successful,
 	// rev should have generation 2.
@@ -775,6 +780,8 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
 	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
+
+	defer teardownSystemXattrDoc(t, dataStore, mobileKey, "_nonmobile")
 
 	// Wait until crc match count changes
 	var crcMatchesAfter int64
@@ -2130,6 +2137,8 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
+	defer teardownSystemXattrDoc(t, dataStore, mobileKey, "_nonmobile")
+
 	// Attempt to get the document again via Sync Gateway.  Should not trigger import.
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
@@ -2706,5 +2715,15 @@ func TestImportUpdateExpiry(t *testing.T) {
 				test.assertion(t, int(expiry), int(preImportExp))
 			}
 		})
+	}
+}
+
+// Cleanup for non-standard system xattr usage - required on 3.1.x when using DCP purge
+func teardownSystemXattrDoc(t *testing.T, dataStore base.DataStore, key string, xattrKey string) {
+
+	ctx := base.TestCtx(t)
+	purgeErr := dataStore.DeleteWithXattr(base.TestCtx(t), key, xattrKey)
+	if purgeErr != nil {
+		base.WarnfCtx(ctx, "Unable to purge document %s with non-standard system xattr %s: %v", key, xattrKey, purgeErr)
 	}
 }
