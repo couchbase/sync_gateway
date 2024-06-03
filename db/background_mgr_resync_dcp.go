@@ -257,8 +257,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 func getCollectionIdsAndNames(db *Database, resyncCollections ResyncCollections) ([]uint32, bool, map[string][]string, error) {
 	collectionIDs := make([]uint32, 0)
 	var hasAllCollections bool
-	var resyncCollectionNames []string
-	//var scopeAndCollection map[string][]string
 	scopeAndCollection := make(map[string][]string)
 
 	if len(resyncCollections) == 0 {
@@ -267,6 +265,7 @@ func getCollectionIdsAndNames(db *Database, resyncCollections ResyncCollections)
 			collectionIDs = append(collectionIDs, collectionID)
 		}
 		for scopeName, collectionNames := range db.CollectionNames {
+			var resyncCollectionNames []string
 			for collName := range collectionNames {
 				resyncCollectionNames = append(resyncCollectionNames, collName)
 			}
@@ -276,6 +275,7 @@ func getCollectionIdsAndNames(db *Database, resyncCollections ResyncCollections)
 		hasAllCollections = false
 
 		for scopeName, collectionsName := range resyncCollections {
+			var resyncCollectionNames []string
 			for _, collectionName := range collectionsName {
 				collection, err := db.GetDatabaseCollection(scopeName, collectionName)
 				if err != nil {
