@@ -19,6 +19,9 @@ import (
 )
 
 func TestResyncWithoutIndexes(t *testing.T) {
+	if !base.TestsDisableGSI() {
+		t.Skip("this test is only for GSI")
+	}
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true})
 	defer rt.Close()
