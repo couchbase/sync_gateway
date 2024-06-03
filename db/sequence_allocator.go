@@ -58,7 +58,6 @@ type sequenceAllocator struct {
 	lastSequenceReserveTime time.Time           // Time of most recent sequence reserve
 	releaseSequenceWait     time.Duration       // Supports test customization
 	metaKeys                *base.MetadataKeys  // Key generator for sequence and unused sequence documents
-	nodes                   map[string]*SGNode
 }
 
 func newSequenceAllocator(ctx context.Context, datastore base.DataStore, dbStatsMap *base.DatabaseStats, metaKeys *base.MetadataKeys) (*sequenceAllocator, error) {
