@@ -1884,6 +1884,11 @@ Resync-status:
     docs_processed:
       description: The amount of docs that have been processed so far in the resync operation.
       type: integer
+    collections_processing:
+      description: The collections that the resync operation is running on.
+      type: array
+      items:
+        type: string
   required:
     - status
     - start_time
