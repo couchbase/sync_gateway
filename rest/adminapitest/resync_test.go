@@ -107,8 +107,10 @@ func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
 			dbConfig := rt.NewDbConfig()
 			ds, err := rt.TestBucket.GetNamedDataStore(0)
 			require.NoError(t, err)
-			scopeName := ds.ScopeName()
-			collectionName := ds.CollectionName()
+			dsName, ok := base.AsDataStoreName(ds)
+			require.True(t, ok)
+			scopeName := dsName.ScopeName()
+			collectionName := dsName.CollectionName()
 			if test.defaultCollectionOnly {
 				dbConfig.Scopes = nil
 				scopeName = base.DefaultScope
@@ -126,7 +128,7 @@ func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
 			originalUserSeq := user.Sequence()
 			require.NotEqual(t, 0, originalUserSeq)
 
-			rt.CreateTestDoc(standardDoc)
+			rt.CreateDoc(t, standardDoc)
 			doc, err := rt.GetSingleTestDatabaseCollection().GetDocument(ctx, standardDoc, db.DocUnmarshalSync)
 			require.NoError(t, err)
 			oldDocSeq := doc.Sequence
