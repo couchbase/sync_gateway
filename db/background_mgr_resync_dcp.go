@@ -190,8 +190,10 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 			return err
 		}
 
+		// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
+		// In the case that a database is created with "start_offline": true, it is possible the index needed to create this is not yet ready, so make sure it is ready for use.
 		if (regenerateSequences && resyncCollections == nil) || r.DocsChanged.Value() > 0 {
-			err := initializeMetadataIndexes(ctx, db)
+			err := initializePrincipalDocsIndex(ctx, db)
 			if err != nil {
 				return err
 			}
@@ -362,8 +364,8 @@ type ResyncManagerStatusDocDCP struct {
 	ResyncManagerMeta        `json:"meta"`
 }
 
-// initializeMetadataIndexes creates the metadata indexes required for resync
-func initializeMetadataIndexes(ctx context.Context, db *Database) error {
+// initializePrincipalDocsIndex creates the metadata indexes required for resync
+func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 	n1qlStore, ok := base.AsN1QLStore(db.MetadataStore)
 	if !ok {
 		return errors.New("Cannot create indexes on non-Couchbase data store.")
