@@ -2732,7 +2732,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Greater(t, endSeq, uint64(0))
 
-	collection.invalidateAllPrincipalsCache(ctx, endSeq)
+	require.NoError(t, collection.invalidateAllPrincipalsCache(ctx, endSeq))
 	err = collection.WaitForPendingChanges(ctx)
 	assert.NoError(t, err)
 

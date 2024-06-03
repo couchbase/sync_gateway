@@ -2180,7 +2180,10 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	doc.deleteRemovedRevisionBodies(ctx, db.dataStore)
 
 	// Mark affected users/roles as needing to recompute their channel access:
-	db.MarkPrincipalsChanged(ctx, docid, newRevID, changedAccessPrincipals, changedRoleAccessUsers, doc.Sequence)
+	err = db.MarkPrincipalsChanged(ctx, docid, newRevID, changedAccessPrincipals, changedRoleAccessUsers, doc.Sequence)
+	if err != nil {
+		return nil, "", err
+	}
 	return doc, newRevID, nil
 }
 
@@ -2258,7 +2261,7 @@ func (db *DatabaseCollectionWithUser) checkDocChannelsAndGrantsLimits(ctx contex
 	}
 }
 
-func (db *DatabaseCollectionWithUser) MarkPrincipalsChanged(ctx context.Context, docid string, newRevID string, changedPrincipals, changedRoleUsers []string, invalSeq uint64) {
+func (db *DatabaseCollectionWithUser) MarkPrincipalsChanged(ctx context.Context, docid string, newRevID string, changedPrincipals, changedRoleUsers []string, invalSeq uint64) error {
 
 	reloadActiveUser := false
 
@@ -2266,7 +2269,10 @@ func (db *DatabaseCollectionWithUser) MarkPrincipalsChanged(ctx context.Context,
 	if len(changedPrincipals) > 0 {
 		base.InfofCtx(ctx, base.KeyAccess, "Rev %q / %q invalidates channels of %s", base.UD(docid), newRevID, changedPrincipals)
 		for _, changedAccessPrincipalName := range changedPrincipals {
-			db.invalUserOrRoleChannels(ctx, changedAccessPrincipalName, invalSeq)
+			err := db.invalUserOrRoleChannels(ctx, changedAccessPrincipalName, invalSeq)
+			if err != nil {
+				return err
+			}
 			// Check whether the active user needs to be recalculated.  Skip check if reload has already been identified
 			// as required for a previous changedPrincipal
 			if db.user != nil && reloadActiveUser == false {
@@ -2293,7 +2299,10 @@ func (db *DatabaseCollectionWithUser) MarkPrincipalsChanged(ctx context.Context,
 	if len(changedRoleUsers) > 0 {
 		base.InfofCtx(ctx, base.KeyAccess, "Rev %q / %q invalidates roles of %s", base.UD(docid), newRevID, base.UD(changedRoleUsers))
 		for _, name := range changedRoleUsers {
-			db.invalUserRoles(ctx, name, invalSeq)
+			err := db.invalUserRoles(ctx, name, invalSeq)
+			if err != nil {
+				return err
+			}
 			// If this is the current in memory db.user, reload to generate updated roles
 			if db.user != nil && db.user.Name() == name {
 				base.DebugfCtx(ctx, base.KeyAccess, "Role set for active user has been modified - user %q will be reloaded.", base.UD(db.user.Name()))
@@ -2311,7 +2320,7 @@ func (db *DatabaseCollectionWithUser) MarkPrincipalsChanged(ctx context.Context,
 			db.user = user
 		}
 	}
-
+	return nil
 }
 
 // Creates a new document, assigning it a random doc ID.
