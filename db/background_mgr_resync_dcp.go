@@ -214,15 +214,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 			if err != nil {
 				return err
 			}
-			var multiError *base.MultiError
 			for _, databaseCollection := range db.CollectionByID {
-				err := databaseCollection.invalidateAllPrincipalsCache(ctx, endSeq)
-				if err != nil {
-					multiError = multiError.Append(err)
-				}
-			}
-			if multiError.Len() > 0 {
-				return fmt.Errorf("Error invalidating principals cache: %s", multiError.Error())
+				databaseCollection.invalidateAllPrincipalsCache(ctx, endSeq)
 			}
 
 		}
@@ -378,7 +371,7 @@ func initializeMetadataIndexes(ctx context.Context, db *Database) error {
 	options := InitializeIndexOptions{
 		FailFast:        false,
 		NumReplicas:     db.Options.NumIndexReplicas,
-		MetadataIndexes: IndexesMetadataOnly,
+		MetadataIndexes: IndexesPrincipalOnly,
 		UseXattrs:       db.UseXattrs(),
 	}
 

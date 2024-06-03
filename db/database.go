@@ -1666,32 +1666,21 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 	base.InfofCtx(ctx, base.KeyAll, "Finished re-running sync function; %d/%d docs changed", docsChanged, docsProcessed)
 
 	if docsChanged > 0 {
-		return docsChanged, db.invalidateAllPrincipalsCache(ctx, endSeq)
+		db.invalidateAllPrincipalsCache(ctx, endSeq)
 	}
 	return docsChanged, nil
 }
 
 // invalidate channel cache of all users/roles:
-func (c *DatabaseCollection) invalidateAllPrincipalsCache(ctx context.Context, endSeq uint64) error {
+func (c *DatabaseCollection) invalidateAllPrincipalsCache(ctx context.Context, endSeq uint64) {
 	base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
-	users, roles, err := c.allPrincipalIDs(ctx)
-	if err != nil {
-		return err
-	}
-	var multiErr *base.MultiError
+	users, roles, _ := c.allPrincipalIDs(ctx)
 	for _, name := range users {
-		err := c.invalUserChannels(ctx, name, endSeq)
-		if err != nil {
-			multiErr = multiErr.Append(err)
-		}
+		c.invalUserChannels(ctx, name, endSeq)
 	}
 	for _, name := range roles {
-		err := c.invalRoleChannels(ctx, name, endSeq)
-		if err != nil {
-			multiErr = multiErr.Append(err)
-		}
+		c.invalRoleChannels(ctx, name, endSeq)
 	}
-	return multiErr.ErrorOrNil()
 }
 
 func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {
@@ -1891,40 +1880,35 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 	return updatedHighSeq, unusedSequences, err
 }
 
-func (c *DatabaseCollection) invalUserRoles(ctx context.Context, username string, invalSeq uint64) error {
+func (c *DatabaseCollection) invalUserRoles(ctx context.Context, username string, invalSeq uint64) {
 	authr := c.Authenticator(ctx)
-	err := authr.InvalidateRoles(username, invalSeq)
-	if err != nil {
+	if err := authr.InvalidateRoles(username, invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating roles for user %s: %v", base.UD(username), err)
 	}
-	return err
 }
 
-func (c *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) error {
+func (c *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
 	authr := c.Authenticator(ctx)
-	err := authr.InvalidateChannels(username, true, c.ScopeName, c.Name, invalSeq)
-	if err != nil {
+	if err := authr.InvalidateChannels(username, true, c.ScopeName, c.Name, invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating channels for user %s: %v", base.UD(username), err)
 	}
-	return err
 }
 
-func (c *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) error {
+func (c *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
 	authr := c.Authenticator(ctx)
-	err := authr.InvalidateChannels(rolename, false, c.ScopeName, c.Name, invalSeq)
-	if err != nil {
+	if err := authr.InvalidateChannels(rolename, false, c.ScopeName, c.Name, invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
 	}
-	return err
 }
 
-func (c *DatabaseCollection) invalUserOrRoleChannels(ctx context.Context, name string, invalSeq uint64) error {
+func (c *DatabaseCollection) invalUserOrRoleChannels(ctx context.Context, name string, invalSeq uint64) {
 
 	principalName, isRole := channels.AccessNameToPrincipalName(name)
 	if isRole {
-		return c.invalRoleChannels(ctx, principalName, invalSeq)
+		c.invalRoleChannels(ctx, principalName, invalSeq)
+	} else {
+		c.invalUserChannels(ctx, principalName, invalSeq)
 	}
-	return c.invalUserChannels(ctx, principalName, invalSeq)
 }
 
 func (dbCtx *DatabaseContext) ObtainManagementEndpoints(ctx context.Context) ([]string, error) {

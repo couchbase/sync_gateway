@@ -37,12 +37,36 @@ func TestResyncWithoutIndexes(t *testing.T) {
 
 	rt.TakeDbOffline()
 
-	n1qlStore, ok := base.AsN1QLStore(rt.Bucket().DefaultDataStore())
-	require.True(t, ok)
-	require.NoError(t, base.DropAllIndexes(rt.Context(), n1qlStore))
+	for _, collection := range rt.GetDatabase().CollectionByID {
+		n1qlStore, ok := base.AsN1QLStore(collection.GetCollectionDatastore())
+		require.True(t, ok)
+		require.NoError(t, base.DropAllIndexes(rt.Context(), n1qlStore))
+	}
 
 	rt.TakeDbOffline()
+	// gocb pipeline boostrap errors can occur before this stage
+	warningsBeforeResync := base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value()
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", ""), http.StatusOK)
 	resyncStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 	require.Equal(t, int64(1), resyncStatus.DocsChanged)
+	require.Equal(t, int64(0), base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value()-warningsBeforeResync)
+
+	defaultDataStore, ok := base.AsN1QLStore(rt.Bucket().DefaultDataStore())
+	require.True(t, ok)
+
+	// the sync docs index)
+	numIndexes, err := defaultDataStore.GetIndexes()
+	require.NoError(t, err)
+	require.Len(t, numIndexes, 1)
+
+	for _, collection := range rt.GetDatabase().CollectionByID {
+		n1qlStore, ok := base.AsN1QLStore(collection.GetCollectionDatastore())
+		require.True(t, ok)
+		numIndexes, err := n1qlStore.GetIndexes()
+		require.NoError(t, err)
+		if collection.IsDefaultCollection() {
+			require.Len(t, numIndexes, 1, "Expected 1 index for default collection")
+		}
+		require.Len(t, numIndexes, 0, "Expected 0 indexes for non-default collection")
+	}
 }
