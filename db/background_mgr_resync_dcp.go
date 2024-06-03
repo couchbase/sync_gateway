@@ -31,7 +31,7 @@ type ResyncManagerDCP struct {
 	ResyncID            string
 	VBUUIDs             []uint64
 	useXattrs           bool
-	ResyncedCollections []string
+	ResyncedCollections map[string][]string
 	lock                sync.RWMutex
 }
 
@@ -263,25 +263,28 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	return nil
 }
 
-func getCollectionIdsAndNames(db *Database, resyncCollections ResyncCollections) ([]uint32, bool, []string, error) {
+func getCollectionIdsAndNames(db *Database, resyncCollections ResyncCollections) ([]uint32, bool, map[string][]string, error) {
 	collectionIDs := make([]uint32, 0)
 	var hasAllCollections bool
-	var resyncCollectionNames []string
+	scopeAndCollection := make(map[string][]string)
 
 	if len(resyncCollections) == 0 {
 		hasAllCollections = true
 		for collectionID := range db.CollectionByID {
 			collectionIDs = append(collectionIDs, collectionID)
 		}
-		for _, collectionNames := range db.CollectionNames {
+		for scopeName, collectionNames := range db.CollectionNames {
+			var resyncCollectionNames []string
 			for collName := range collectionNames {
 				resyncCollectionNames = append(resyncCollectionNames, collName)
 			}
+			scopeAndCollection[scopeName] = resyncCollectionNames
 		}
 	} else {
 		hasAllCollections = false
 
 		for scopeName, collectionsName := range resyncCollections {
+			var resyncCollectionNames []string
 			for _, collectionName := range collectionsName {
 				collection, err := db.GetDatabaseCollection(scopeName, collectionName)
 				if err != nil {
@@ -290,9 +293,10 @@ func getCollectionIdsAndNames(db *Database, resyncCollections ResyncCollections)
 				collectionIDs = append(collectionIDs, collection.GetCollectionID())
 				resyncCollectionNames = append(resyncCollectionNames, collectionName)
 			}
+			scopeAndCollection[scopeName] = resyncCollectionNames
 		}
 	}
-	return collectionIDs, hasAllCollections, resyncCollectionNames, nil
+	return collectionIDs, hasAllCollections, scopeAndCollection, nil
 }
 
 func (r *ResyncManagerDCP) ResetStatus() {
@@ -312,7 +316,7 @@ func (r *ResyncManagerDCP) SetStatus(docChanged, docProcessed int64) {
 	r.DocsProcessed.Set(docProcessed)
 }
 
-func (r *ResyncManagerDCP) SetCollectionStatus(collectionNames []string) {
+func (r *ResyncManagerDCP) SetCollectionStatus(collectionNames map[string][]string) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -321,10 +325,10 @@ func (r *ResyncManagerDCP) SetCollectionStatus(collectionNames []string) {
 
 type ResyncManagerResponseDCP struct {
 	BackgroundManagerStatus
-	ResyncID              string   `json:"resync_id"`
-	DocsChanged           int64    `json:"docs_changed"`
-	DocsProcessed         int64    `json:"docs_processed"`
-	CollectionsProcessing []string `json:"collections_processing,omitempty"`
+	ResyncID              string              `json:"resync_id"`
+	DocsChanged           int64               `json:"docs_changed"`
+	DocsProcessed         int64               `json:"docs_processed"`
+	CollectionsProcessing map[string][]string `json:"collections_processing,omitempty"`
 }
 
 func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus) ([]byte, []byte, error) {
