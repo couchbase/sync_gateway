@@ -176,6 +176,7 @@ type DatabaseContextOptions struct {
 	LoggingConfig                 DbLogConfig    // Per-database log configuration
 	MaxConcurrentChangesBatches   *int           // Maximum number of changes batches to process concurrently per replication
 	MaxConcurrentRevs             *int           // Maximum number of revs to process concurrently per replication
+	NumIndexReplicas              uint           // Number of replicas for GSI indexes
 }
 
 // DbLogConfig can be used to customise the logging for logs associated with this database.
