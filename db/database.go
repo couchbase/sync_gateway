@@ -176,6 +176,7 @@ type DatabaseContextOptions struct {
 	LoggingConfig                 DbLogConfig    // Per-database log configuration
 	MaxConcurrentChangesBatches   *int           // Maximum number of changes batches to process concurrently per replication
 	MaxConcurrentRevs             *int           // Maximum number of revs to process concurrently per replication
+	NumIndexReplicas              uint           // Number of replicas for GSI indexes
 }
 
 // DbLogConfig can be used to customise the logging for logs associated with this database.
@@ -1665,21 +1666,32 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 	base.InfofCtx(ctx, base.KeyAll, "Finished re-running sync function; %d/%d docs changed", docsChanged, docsProcessed)
 
 	if docsChanged > 0 {
-		db.invalidateAllPrincipalsCache(ctx, endSeq)
+		return docsChanged, db.invalidateAllPrincipalsCache(ctx, endSeq)
 	}
 	return docsChanged, nil
 }
 
 // invalidate channel cache of all users/roles:
-func (c *DatabaseCollection) invalidateAllPrincipalsCache(ctx context.Context, endSeq uint64) {
+func (c *DatabaseCollection) invalidateAllPrincipalsCache(ctx context.Context, endSeq uint64) error {
 	base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
-	users, roles, _ := c.allPrincipalIDs(ctx)
+	users, roles, err := c.allPrincipalIDs(ctx)
+	if err != nil {
+		return err
+	}
+	var multiErr *base.MultiError
 	for _, name := range users {
-		c.invalUserChannels(ctx, name, endSeq)
+		err := c.invalUserChannels(ctx, name, endSeq)
+		if err != nil {
+			multiErr = multiErr.Append(err)
+		}
 	}
 	for _, name := range roles {
-		c.invalRoleChannels(ctx, name, endSeq)
+		err := c.invalRoleChannels(ctx, name, endSeq)
+		if err != nil {
+			multiErr = multiErr.Append(err)
+		}
 	}
+	return multiErr.ErrorOrNil()
 }
 
 func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {
@@ -1879,35 +1891,40 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 	return updatedHighSeq, unusedSequences, err
 }
 
-func (c *DatabaseCollection) invalUserRoles(ctx context.Context, username string, invalSeq uint64) {
+func (c *DatabaseCollection) invalUserRoles(ctx context.Context, username string, invalSeq uint64) error {
 	authr := c.Authenticator(ctx)
-	if err := authr.InvalidateRoles(username, invalSeq); err != nil {
+	err := authr.InvalidateRoles(username, invalSeq)
+	if err != nil {
 		base.WarnfCtx(ctx, "Error invalidating roles for user %s: %v", base.UD(username), err)
 	}
+	return err
 }
 
-func (c *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
+func (c *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) error {
 	authr := c.Authenticator(ctx)
-	if err := authr.InvalidateChannels(username, true, c.ScopeName, c.Name, invalSeq); err != nil {
+	err := authr.InvalidateChannels(username, true, c.ScopeName, c.Name, invalSeq)
+	if err != nil {
 		base.WarnfCtx(ctx, "Error invalidating channels for user %s: %v", base.UD(username), err)
 	}
+	return err
 }
 
-func (c *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
+func (c *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) error {
 	authr := c.Authenticator(ctx)
-	if err := authr.InvalidateChannels(rolename, false, c.ScopeName, c.Name, invalSeq); err != nil {
+	err := authr.InvalidateChannels(rolename, false, c.ScopeName, c.Name, invalSeq)
+	if err != nil {
 		base.WarnfCtx(ctx, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
 	}
+	return err
 }
 
-func (c *DatabaseCollection) invalUserOrRoleChannels(ctx context.Context, name string, invalSeq uint64) {
+func (c *DatabaseCollection) invalUserOrRoleChannels(ctx context.Context, name string, invalSeq uint64) error {
 
 	principalName, isRole := channels.AccessNameToPrincipalName(name)
 	if isRole {
-		c.invalRoleChannels(ctx, principalName, invalSeq)
-	} else {
-		c.invalUserChannels(ctx, principalName, invalSeq)
+		return c.invalRoleChannels(ctx, principalName, invalSeq)
 	}
+	return c.invalUserChannels(ctx, principalName, invalSeq)
 }
 
 func (dbCtx *DatabaseContext) ObtainManagementEndpoints(ctx context.Context) ([]string, error) {

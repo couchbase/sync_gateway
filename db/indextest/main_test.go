@@ -56,12 +56,6 @@ var primaryIndexInit base.TBPBucketInitFunc = func(ctx context.Context, b base.B
 			tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
 			return err
 		}
-
-		err = n1qlStore.CreatePrimaryIndex(ctx, base.PrimaryIndexName, nil)
-		if err != nil {
-			return err
-		}
-		tbp.Logf(ctx, "finished creating SG bucket indexes")
 	}
 	return nil
 }
@@ -84,28 +78,19 @@ var primaryIndexReadier base.TBPBucketReadierFunc = func(ctx context.Context, b 
 		}
 		tbp.Logf(ctx, "dropping existing bucket indexes")
 
-		if err := db.EmptyPrimaryIndex(ctx, dataStore); err != nil {
+		_, err = db.PurgeWithDCPFeed(ctx, dataStore, tbp)
+		if err != nil {
 			return err
 		}
-		n1qlStore, ok := base.AsN1QLStore(dataStore)
-		if !ok {
-			return errors.New("attempting to empty indexes with non-N1QL store")
 		}
 		// assert no lost indexes
 		indexes, err := n1qlStore.GetIndexes()
 		if err != nil {
 			return err
 		}
-		if len(indexes) != 1 && indexes[0] != base.PrimaryIndexName {
-			return fmt.Errorf("expected only primary index to be present, found: %v", indexes)
+		if len(indexes) == 0 {
+			return fmt.Errorf("expected no indexes to be present, found: %v", indexes)
 		}
-		tbp.Logf(ctx, "waiting for empty bucket indexes %s.%s.%s", b.GetName(), dataStore.ScopeName(), dataStore.CollectionName())
-		// wait for primary index to be empty
-		if err := db.WaitForPrimaryIndexEmpty(ctx, n1qlStore); err != nil {
-			tbp.Logf(ctx, "waitForPrimaryIndexEmpty returned an error: %v", err)
-			return err
-		}
-		tbp.Logf(ctx, "bucket primary index empty")
 	}
 	return nil
 }

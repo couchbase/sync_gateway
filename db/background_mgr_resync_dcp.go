@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -189,16 +190,22 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 			return err
 		}
 
+		if (regenerateSequences && resyncCollections == nil) || r.DocsChanged.Value() > 0 {
+			err := initializeMetadataIndexes(ctx, db)
+			if err != nil {
+				return err
+			}
+		}
 		if regenerateSequences && resyncCollections == nil {
-			var err error
+			var multiError *base.MultiError
 			for _, databaseCollection := range db.CollectionByID {
 				if updateErr := databaseCollection.updateAllPrincipalsSequences(ctx); updateErr != nil {
-					err = updateErr
+					multiError = multiError.Append(updateErr)
 				}
 			}
 
-			if err != nil {
-				return err
+			if multiError.Len() > 0 {
+				return fmt.Errorf("Error updating principal sequences: %s", multiError.Error())
 			}
 		}
 
@@ -207,8 +214,15 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 			if err != nil {
 				return err
 			}
+			var multiError *base.MultiError
 			for _, databaseCollection := range db.CollectionByID {
-				databaseCollection.invalidateAllPrincipalsCache(ctx, endSeq)
+				err := databaseCollection.invalidateAllPrincipalsCache(ctx, endSeq)
+				if err != nil {
+					multiError = multiError.Append(err)
+				}
+			}
+			if multiError.Len() > 0 {
+				return fmt.Errorf("Error invalidating principals cache: %s", multiError.Error())
 			}
 
 		}
@@ -353,6 +367,22 @@ type ResyncManagerMeta struct {
 type ResyncManagerStatusDocDCP struct {
 	ResyncManagerResponseDCP `json:"status"`
 	ResyncManagerMeta        `json:"meta"`
+}
+
+// initializeMetadataIndexes creates the metadata indexes required for resync
+func initializeMetadataIndexes(ctx context.Context, db *Database) error {
+	n1qlStore, ok := base.AsN1QLStore(db.MetadataStore)
+	if !ok {
+		return errors.New("Cannot create indexes on non-Couchbase data store.")
+	}
+	options := InitializeIndexOptions{
+		FailFast:        false,
+		NumReplicas:     db.Options.NumIndexReplicas,
+		MetadataIndexes: IndexesMetadataOnly,
+		UseXattrs:       db.UseXattrs(),
+	}
+
+	return InitializeIndexes(ctx, n1qlStore, options)
 }
 
 // getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync

@@ -219,8 +219,8 @@ func EmptyPrimaryIndex(ctx context.Context, dataStore sgbucket.DataStore) error 
 	return results.Close()
 }
 
-// purgeWithDCPFeed purges all documents seen on a DCP feed with system xattrs, including tombstones which aren't found when emptying the primary index.
-func purgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *base.TestBucketPool) (numCompacted int, err error) {
+// PurgeWithDCPFeed purges all documents seen on a DCP feed with system xattrs, including tombstones which aren't found when emptying the primary index.
+func PurgeWithDCPFeed(ctx context.Context, dataStore sgbucket.DataStore, tbp *base.TestBucketPool) (numCompacted int, err error) {
 	purgeTimeout := 60 * time.Second
 	purgeBody := Body{"_purged": true}
 	var processedDocCount atomic.Int64
@@ -398,7 +398,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		if err != nil {
 			return err
 		}
-		if _, err := purgeWithDCPFeed(ctx, dataStore, tbp); err != nil {
+		if _, err := PurgeWithDCPFeed(ctx, dataStore, tbp); err != nil {
 			return err
 		}
 		if err := EmptyPrimaryIndex(ctx, dataStore); err != nil {
