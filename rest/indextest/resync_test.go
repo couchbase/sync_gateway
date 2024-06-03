@@ -19,6 +19,7 @@ import (
 )
 
 func TestResyncWithoutIndexes(t *testing.T) {
+	base.TestRequiresDCPResync(t)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true})
 	defer rt.Close()
