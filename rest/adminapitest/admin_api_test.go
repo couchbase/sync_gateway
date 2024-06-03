@@ -700,18 +700,22 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 	testCases := []struct {
 		name              string
 		collectionNames   []string
-		expectedResult    []string
+		expectedResult    map[string][]string
 		specifyCollection bool
 	}{
 		{
-			name:              "collections_specified",
-			collectionNames:   []string{"sg_test_0"},
-			expectedResult:    []string{"sg_test_0"},
+			name:            "collections_specified",
+			collectionNames: []string{"sg_test_0"},
+			expectedResult: map[string][]string{
+				"sg_test_0": {"sg_test_0"},
+			},
 			specifyCollection: true,
 		},
 		{
-			name:            "collections_not_specified",
-			expectedResult:  []string{"sg_test_0", "sg_test_1", "sg_test_2"},
+			name: "collections_not_specified",
+			expectedResult: map[string][]string{
+				"sg_test_0": {"sg_test_0", "sg_test_1", "sg_test_2"},
+			},
 			collectionNames: nil,
 		},
 	}
@@ -719,6 +723,7 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			rt := rest.NewRestTesterMultipleCollections(t, nil, 3)
 			defer rt.Close()
+			scopeName := "sg_test_0"
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 			require.True(t, ok)
@@ -736,7 +741,7 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 
 			statusResponse := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
-			assert.ElementsMatch(t, statusResponse.CollectionsProcessing, testCase.expectedResult)
+			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
 		})
 	}
 }
@@ -750,18 +755,22 @@ func TestQueryResyncCollectionsStatus(t *testing.T) {
 	testCases := []struct {
 		name              string
 		collectionNames   []string
-		expectedResult    []string
+		expectedResult    map[string][]string
 		specifyCollection bool
 	}{
 		{
-			name:              "collections_specified",
-			collectionNames:   []string{"sg_test_0"},
-			expectedResult:    []string{"sg_test_0"},
+			name:            "collections_specified",
+			collectionNames: []string{"sg_test_0"},
+			expectedResult: map[string][]string{
+				"sg_test_0": {"sg_test_0"},
+			},
 			specifyCollection: true,
 		},
 		{
-			name:            "collections_not_specified",
-			expectedResult:  []string{"sg_test_0", "sg_test_1", "sg_test_2"},
+			name: "collections_not_specified",
+			expectedResult: map[string][]string{
+				"sg_test_0": {"sg_test_0", "sg_test_1", "sg_test_2"},
+			},
 			collectionNames: nil,
 		},
 	}
@@ -776,6 +785,7 @@ func TestQueryResyncCollectionsStatus(t *testing.T) {
 				},
 			}, 3)
 			defer rt.Close()
+			scopeName := "sg_test_0"
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 			require.True(t, ok)
@@ -793,7 +803,7 @@ func TestQueryResyncCollectionsStatus(t *testing.T) {
 
 			statusResponse := rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
 
-			assert.ElementsMatch(t, statusResponse.CollectionsProcessing, testCase.expectedResult)
+			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
 		})
 	}
 }
