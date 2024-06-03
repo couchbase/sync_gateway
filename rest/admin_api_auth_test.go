@@ -1042,7 +1042,7 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 		{
 			Method:   "GET",
 			Endpoint: "/db/",
-			Users:    []string{syncGatewayDevOps},
+			Users:    []string{syncGatewayDevOps, syncGatewayConfigurator},
 		},
 		{
 			Method:   "POST",
