@@ -266,12 +266,20 @@ type ChannelCacheConfig struct {
 // DbLoggingConfig allows per-database logging overrides
 type DbLoggingConfig struct {
 	Console *DbConsoleLoggingConfig `json:"console,omitempty"`
+	Audit   *DbAuditLoggingConfig   `json:"audit,omitempty"`
 }
 
 // DbConsoleLoggingConfig are per-db options configurable for console logging
 type DbConsoleLoggingConfig struct {
 	LogLevel *base.LogLevel `json:"log_level,omitempty"`
 	LogKeys  []string       `json:"log_keys,omitempty"`
+}
+
+// DbAuditLoggingConfig are per-db options configurable for audit logging
+type DbAuditLoggingConfig struct {
+	Enabled        *bool    `json:"enabled,omitempty"`         // Whether audit logging is enabled for this database
+	DisabledEvents []uint   `json:"disabled_events,omitempty"` // List of audit event IDs to disable
+	DisabledRoles  []string `json:"disabled_roles,omitempty"`  // List of roles to disable audit logging for
 }
 
 func GetTLSVersionFromString(stringV *string) uint16 {
