@@ -19,9 +19,7 @@ import (
 )
 
 func TestResyncWithoutIndexes(t *testing.T) {
-	if base.TestsDisableGSI() {
-		t.Skip("this test is only for GSI")
-	}
+	base.TestRequiresDCPResync(t)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true})
 	defer rt.Close()
@@ -37,10 +35,12 @@ func TestResyncWithoutIndexes(t *testing.T) {
 
 	rt.TakeDbOffline()
 
-	for _, collection := range rt.GetDatabase().CollectionByID {
-		n1qlStore, ok := base.AsN1QLStore(collection.GetCollectionDatastore())
-		require.True(t, ok)
-		require.NoError(t, base.DropAllIndexes(rt.Context(), n1qlStore))
+	if !base.TestsDisableGSI() {
+		for _, collection := range rt.GetDatabase().CollectionByID {
+			n1qlStore, ok := base.AsN1QLStore(collection.GetCollectionDatastore())
+			require.True(t, ok)
+			require.NoError(t, base.DropAllIndexes(rt.Context(), n1qlStore))
+		}
 	}
 
 	rt.TakeDbOffline()
@@ -54,19 +54,21 @@ func TestResyncWithoutIndexes(t *testing.T) {
 	defaultDataStore, ok := base.AsN1QLStore(rt.Bucket().DefaultDataStore())
 	require.True(t, ok)
 
-	// the sync docs index)
-	numIndexes, err := defaultDataStore.GetIndexes()
-	require.NoError(t, err)
-	require.Len(t, numIndexes, 1)
-
-	for _, collection := range rt.GetDatabase().CollectionByID {
-		n1qlStore, ok := base.AsN1QLStore(collection.GetCollectionDatastore())
-		require.True(t, ok)
-		numIndexes, err := n1qlStore.GetIndexes()
+	if !base.TestsDisableGSI() {
+		// the sync docs index)
+		numIndexes, err := defaultDataStore.GetIndexes()
 		require.NoError(t, err)
-		if collection.IsDefaultCollection() {
-			require.Len(t, numIndexes, 1, "Expected 1 index for default collection")
+		require.Len(t, numIndexes, 1)
+
+		for _, collection := range rt.GetDatabase().CollectionByID {
+			n1qlStore, ok := base.AsN1QLStore(collection.GetCollectionDatastore())
+			require.True(t, ok)
+			numIndexes, err := n1qlStore.GetIndexes()
+			require.NoError(t, err)
+			if collection.IsDefaultCollection() {
+				require.Len(t, numIndexes, 1, "Expected 1 index for default collection")
+			}
+			require.Len(t, numIndexes, 0, "Expected 0 indexes for non-default collection")
 		}
-		require.Len(t, numIndexes, 0, "Expected 0 indexes for non-default collection")
 	}
 }

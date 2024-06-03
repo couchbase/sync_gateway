@@ -192,7 +192,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 
 		// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
 		// In the case that a database is created with "start_offline": true, it is possible the index needed to create this is not yet ready, so make sure it is ready for use.
-		if (regenerateSequences && resyncCollections == nil) || r.DocsChanged.Value() > 0 {
+		if !db.UseViews() && ((regenerateSequences && resyncCollections == nil) || r.DocsChanged.Value() > 0) {
 			err := initializePrincipalDocsIndex(ctx, db)
 			if err != nil {
 				return err
