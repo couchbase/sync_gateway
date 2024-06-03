@@ -1255,6 +1255,11 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		MaxConcurrentChangesBatches: sc.Config.Replicator.MaxConcurrentChangesBatches,
 		MaxConcurrentRevs:           sc.Config.Replicator.MaxConcurrentRevs,
 	}
+	if config.NumIndexReplicas != nil {
+		contextOptions.NumIndexReplicas = *config.NumIndexReplicas
+	} else {
+		contextOptions.NumIndexReplicas = DefaultNumIndexReplicas
+	}
 
 	// Per-database console logging config overrides
 	contextOptions.LoggingConfig.Console = config.toDbConsoleLogConfig(ctx)
