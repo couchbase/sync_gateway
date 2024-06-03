@@ -1886,9 +1886,7 @@ Resync-status:
       type: integer
     collections_processing:
       description: The collections that the resync operation is running on.
-      type: array
-      items:
-        type: string
+      $ref: '#/ResyncScopesMap'
   required:
     - status
     - start_time
@@ -2486,6 +2484,7 @@ ResyncScopesMap:
   type: object
   additionalProperties:
     $ref: '#/CollectionNames'
+  example: {"scopeName": {"collection1", "collection2"}}
 CollectionNames:
   description: 'List of collection names'
   type: array
