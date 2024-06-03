@@ -189,7 +189,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 			return err
 		}
 
-		if regenerateSequences {
+		if regenerateSequences && resyncCollections == nil {
 			var err error
 			for _, databaseCollection := range db.CollectionByID {
 				if updateErr := databaseCollection.updateAllPrincipalsSequences(ctx); updateErr != nil {
