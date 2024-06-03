@@ -23,7 +23,7 @@ import (
 type ResyncManager struct {
 	DocsProcessed       int
 	DocsChanged         int
-	ResyncedCollections []string
+	ResyncedCollections map[string][]string
 	lock                sync.Mutex
 }
 
@@ -113,7 +113,7 @@ func (r *ResyncManager) SetStats(docsProcessed, docsChanged int) {
 	r.DocsChanged = docsChanged
 }
 
-func (r *ResyncManager) SetCollectionStatus(collectionNames []string) {
+func (r *ResyncManager) SetCollectionStatus(collectionNames map[string][]string) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -122,9 +122,9 @@ func (r *ResyncManager) SetCollectionStatus(collectionNames []string) {
 
 type ResyncManagerResponse struct {
 	BackgroundManagerStatus
-	DocsChanged           int      `json:"docs_changed"`
-	DocsProcessed         int      `json:"docs_processed"`
-	CollectionsProcessing []string `json:"collections_processing,omitempty"`
+	DocsChanged           int                 `json:"docs_changed"`
+	DocsProcessed         int                 `json:"docs_processed"`
+	CollectionsProcessing map[string][]string `json:"collections_processing,omitempty"`
 }
 
 func (r *ResyncManager) GetProcessStatus(backgroundManagerStatus BackgroundManagerStatus) ([]byte, []byte, error) {
