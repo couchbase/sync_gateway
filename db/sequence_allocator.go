@@ -35,7 +35,9 @@ const (
 	// Idle batch size.  Initial batch size if SG is in an idle state (with respect to writes)
 	idleBatchSize = 1
 
-	//minimum number that _sync:seq will be corrected by in event of a rollback
+	// minimum number that _sync:seq will be corrected by in event of a rollback
+	// assumes a SG cluster size of 50 nodes each allocating a full batch size of 10
+	// if this value is too low and this correction has potential to allocate sequences that other nodes have already reserved a batch for
 	syncSeqCorrectionValue = 500
 )
 
@@ -478,5 +480,5 @@ func (s *sequenceAllocator) _fixSyncSeqRollback(ctx context.Context, incrValue, 
 
 // shouldRetrySyncSeqCorrection returns true if value of _sync:seq is less than the expected value, else returns false
 func shouldRetrySyncSeqCorrection(expectedVal, actualVal uint64) bool {
-	return actualVal <= expectedVal
+	return actualVal < expectedVal
 }

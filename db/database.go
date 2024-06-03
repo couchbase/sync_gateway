@@ -542,11 +542,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	if err != nil {
 		return nil, err
 	}
-	clust, err := dbContext.SGReplicateMgr.GetSGRCluster()
-	if err != nil {
-		return nil, err
-	}
-	dbContext.sequences.nodes = clust.Nodes
 
 	if dbContext.UseQueryBasedResyncManager() {
 		dbContext.ResyncManager = NewResyncManager(metadataStore, metaKeys)
