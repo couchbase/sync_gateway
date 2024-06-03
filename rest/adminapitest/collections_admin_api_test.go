@@ -175,7 +175,6 @@ func TestRequireResync(t *testing.T) {
 	base.RequireNumTestDataStores(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: base.GetPersistentTestBucket(t),
 		PersistentConfig: true,
 	}
 
@@ -215,7 +214,9 @@ func TestRequireResync(t *testing.T) {
 	ks_db2_c1 := db2Name + "." + scope + "." + collection1
 
 	resp = rt.SendAdminRequest("PUT", "/"+ks_db1_c1+"/testDoc1", `{"foo":"bar"}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendAdminRequest("PUT", "/"+ks_db1_c2+"/testDoc2", `{"foo":"bar"}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Update db1 to remove collection1
 	dbConfig.Scopes = scopesConfigC2Only
@@ -247,11 +248,14 @@ func TestRequireResync(t *testing.T) {
 	rest.RequireStatus(t, onlineResponse, http.StatusOK)
 	require.NoError(t, rt.WaitForDatabaseState(db2Name, db.DBOffline))
 
-	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	dbRootResponse = rest.DatabaseRoot{}
-	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
-	require.Equal(t, db.RunStateString[db.DBOffline], dbRootResponse.State)
+	needsResync := []string{scope + "." + collection1}
+	rest.WaitAndAssertCondition(t, func() bool {
+		resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+		dbRootResponse = rest.DatabaseRoot{}
+		require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
+		return len(dbRootResponse.RequireResync) == 1 && dbRootResponse.RequireResync[0] == scope+"."+collection1
+	}, "expected %+v but got %+v for requireResync", needsResync, dbRootResponse.RequireResync)
 
 	// Run resync for collection
 	resyncCollections := make(db.ResyncCollections, 0)
@@ -259,21 +263,17 @@ func TestRequireResync(t *testing.T) {
 	resyncPayload, marshalErr := base.JSONMarshal(resyncCollections)
 	require.NoError(t, marshalErr)
 
+	require.NoError(t, rt.WaitForDatabaseState(db2Name, db.DBOffline))
+
 	resp = rt.SendAdminRequest("POST", "/"+db2Name+"/_resync?action=start&regenerate_sequences=true", string(resyncPayload))
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	err := rt.WaitForConditionWithOptions(func() bool {
-		resyncStatus := db.BackgroundManagerStatus{}
-		response := rt.SendAdminRequest("GET", "/"+db2Name+"/_resync", "")
-		err := base.JSONUnmarshal(response.BodyBytes(), &resyncStatus)
-		assert.NoError(t, err)
-		if resyncStatus.State == db.BackgroundProcessStateCompleted {
-			return true
-		} else {
-			return false
-		}
-	}, 200, 200)
+	db2, err := rt.ServerContext().GetDatabase(rt.Context(), db2Name)
 	require.NoError(t, err)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
+		func(t testing.TB) db.BackgroundProcessState {
+			return db2.ResyncManager.GetRunState()
+		})
 
 	// Attempt online again, should now succeed
 	onlineResponse = rt.SendAdminRequest("POST", "/"+db2Name+"/_online", "")
