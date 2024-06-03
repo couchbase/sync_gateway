@@ -58,7 +58,7 @@ post:
           - stop
     - name: regenerate_sequences
       in: query
-      description: '**Use this only when requested to do so by the Couchbase support team** This request will regenerate the sequence numbers for each document processed.'
+      description: '**Use this only when requested to do so by the Couchbase support team** This request will regenerate the sequence numbers for each document processed. If scopes parameter is specified, the principal sequence documents will not have their sequences updated.'
       schema:
         type: boolean
     - name: reset

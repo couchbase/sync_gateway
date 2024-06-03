@@ -68,3 +68,99 @@ func TestResyncRollback(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusOK)
 	status = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 }
+
+func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
+	base.TestRequiresDCPResync(t)
+	testCases := []struct {
+		name                  string
+		defaultCollectionOnly bool
+		specifyCollections    bool
+	}{
+		{
+			name:                  "defaultCollectionOnly=true, specifyCollections=false",
+			defaultCollectionOnly: true,
+			specifyCollections:    false,
+		},
+		{
+			name:                  "defaultCollectionOnly=true, specifyCollections=true",
+			defaultCollectionOnly: true,
+			specifyCollections:    true,
+		},
+		{
+			name:                  "defaultCollectionOnly=false, specifyCollections=true",
+			defaultCollectionOnly: false,
+			specifyCollections:    true,
+		},
+		{
+			name:                  "defaultCollectionOnly=false, specifyCollections=false",
+			defaultCollectionOnly: false,
+			specifyCollections:    false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				PersistentConfig: true,
+			})
+			defer rt.Close()
+
+			dbConfig := rt.NewDbConfig()
+			ds, err := rt.TestBucket.GetNamedDataStore(0)
+			require.NoError(t, err)
+			scopeName := ds.ScopeName()
+			collectionName := ds.CollectionName()
+			if test.defaultCollectionOnly {
+				dbConfig.Scopes = nil
+				scopeName = base.DefaultScope
+				collectionName = base.DefaultCollection
+			}
+			rest.RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+			username := "alice"
+			standardDoc := "doc"
+			rt.CreateUser(username, nil)
+
+			ctx := rt.Context()
+			user, err := rt.GetDatabase().Authenticator(ctx).GetUser(username)
+			require.NoError(t, err)
+			originalUserSeq := user.Sequence()
+			require.NotEqual(t, 0, originalUserSeq)
+
+			rt.CreateTestDoc(standardDoc)
+			doc, err := rt.GetSingleTestDatabaseCollection().GetDocument(ctx, standardDoc, db.DocUnmarshalSync)
+			require.NoError(t, err)
+			oldDocSeq := doc.Sequence
+			require.NotEqual(t, 0, oldDocSeq)
+
+			rt.TakeDbOffline()
+
+			body := ""
+			if test.specifyCollections {
+				// regenerate_sequences=true with collections will not regenerate sequences of principals
+				collectionsToResync := map[string][]string{
+					scopeName: []string{collectionName},
+				}
+				body = fmt.Sprintf(`{"scopes": %s}`, base.MustJSONMarshal(t, collectionsToResync))
+			}
+			rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start&regenerate_sequences=true", body), http.StatusOK)
+			_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+
+			// validate if user doc has changed sequence
+			user, err = rt.GetDatabase().Authenticator(ctx).GetUser(username)
+			require.NoError(t, err)
+
+			require.NotEqual(t, 0, user.Sequence())
+			if test.specifyCollections {
+				require.Equal(t, originalUserSeq, user.Sequence())
+			} else {
+				require.NotEqual(t, originalUserSeq, user.Sequence())
+			}
+
+			// regular doc will always change sequence
+			doc, err = rt.GetSingleTestDatabaseCollection().GetDocument(ctx, standardDoc, db.DocUnmarshalSync)
+			require.NoError(t, err)
+			require.NotEqual(t, 0, doc.Sequence)
+			require.NotEqual(t, oldDocSeq, doc.Sequence)
+		})
+	}
+}
