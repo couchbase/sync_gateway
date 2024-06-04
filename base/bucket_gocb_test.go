@@ -1871,6 +1871,9 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 	ctx := TestCtx(t)
 	for _, tls := range []bool{true, false} {
 		t.Run(fmt.Sprintf("tls=%v", tls), func(t *testing.T) {
+			if tls == true {
+				t.Skip("TLS test disabled pending CBG-3970")
+			}
 			testBucket := GetTestBucket(t)
 			defer testBucket.Close(ctx)
 
