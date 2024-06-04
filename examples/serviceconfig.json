@@ -1,16 +1,5 @@
 {
   "bootstrap": {
     "server": "rosmar:/?mode=memory"
-  },
-  "api": {
-    "public_interface": ":4984",
-    "admin_interface": "127.0.0.1:4985"
-  },
-  "logging": {
-    "console": {
-      "enabled": true,
-      "log_level": "info",
-      "log_keys": ["*"]
-    }
   }
 }
