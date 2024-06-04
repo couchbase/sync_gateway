@@ -4,9 +4,7 @@
   },
   "api": {
     "public_interface": ":4984",
-    "admin_interface": "127.0.0.1:4985",
-    "admin_interface_authentication": false,
-    "metrics_interface_authentication": false
+    "admin_interface": "127.0.0.1:4985"
   },
   "logging": {
     "console": {
