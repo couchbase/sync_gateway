@@ -627,7 +627,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		if err = base.DeepCopyInefficient(&tmpConfig, bucketDbConfig); err != nil {
 			return nil, err
 		}
-		tmpConfig.cfgCas = bucketDbConfig.cfgCas
+
 		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 		bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
 		if err := tmpConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {

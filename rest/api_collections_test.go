@@ -981,3 +981,71 @@ func TestCollectionStats(t *testing.T) {
 		assert.Equal(t, int64(2), collection2Stats.NumDocWrites.Value())
 	}
 }
+
+// TestRuntimeConfigUpdateAfterConfigUpdateConflict:
+//   - Creates two db's both linked to different collections under same scope
+//   - Attempt to change db1 config to have the same collection that is assigned to database db
+//   - Get conflict error on collection update and assert that the runtime config rolls back to the old config for
+//     database db1
+func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb,
+		PersistentConfig: true,
+	}
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 3)
+	defer rt.Close()
+
+	// create db with collection 1
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(t, tb, 1)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	// rebuild scopes config with collection 2
+	dbConfig = rt.NewDbConfig()
+	scopesConfig := GetCollectionsConfig(t, tb, 2)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
+	scope := dataStoreNames[0].ScopeName()
+	collection1 := dataStoreNames[0].CollectionName()
+	delete(scopesConfig[scope].Collections, collection1)
+	dbConfig.Scopes = scopesConfig
+	// create db1 with collection 2
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/db1/_config?include_runtime=true", "")
+	RequireStatus(t, resp, http.StatusOK)
+	var originalDBCfg DbConfig
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &originalDBCfg))
+
+	// rebuild scope config for both collections to attempt to update db1 config to that
+	dbConfig = rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(t, tb, 2)
+	// create conflicting update
+	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusConflict)
+
+	// grab runtime config again after failed update
+	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config?include_runtime=true", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	// unmarshal runtime response and assert that the correct collection is shown in config after update error
+	var dbCfg DbConfig
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &dbCfg))
+
+	delete(scopesConfig[scope].Collections, collection1)
+	assert.Equal(t, scopesConfig, dbCfg.Scopes)
+	originalDBCfg.Server = nil
+	assert.Equal(t, originalDBCfg, dbCfg)
+
+	// now assert that _config shows the same
+	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &dbCfg))
+	assert.Equal(t, scopesConfig, dbCfg.Scopes)
+	assert.Equal(t, originalDBCfg.Scopes, dbCfg.Scopes)
+}
