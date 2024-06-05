@@ -42,14 +42,15 @@ func toAuditdEventDescriptor(id ID, e eventDescriptor) auditdEventDescriptor {
 }
 
 // auditd values that represent each type of field
+// ref: https://github.com/couchbase/kv_engine/blob/master/auditd/README.md#defining-the-format-for-mandatory-and-optional-fields
 const (
-	auditFieldTypeNumber = 1
-	auditFieldTypeString = ""
-	auditFieldTypeBool   = true
+	auditdFieldTypeValueNumber = 1
+	auditdFieldTypeValueString = ""
+	auditdFieldTypeValueBool   = true
 )
 
 var (
-	auditFieldTypeArray = []any{}
+	auditdFieldTypeValueArray = []any{}
 )
 
 // toAuditdFieldType converts a map of fields to an auditd-compatible field type (where the value is a fixed representative value of the type)
@@ -68,13 +69,13 @@ func toAuditdFieldType(m1 map[string]any) (m2 map[string]any) {
 		case map[string]any:
 			m2[k] = toAuditdFieldType(val)
 		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-			m2[k] = auditFieldTypeNumber
+			m2[k] = auditdFieldTypeValueNumber
 		case string:
-			m2[k] = auditFieldTypeString
+			m2[k] = auditdFieldTypeValueString
 		case bool:
-			m2[k] = auditFieldTypeBool
+			m2[k] = auditdFieldTypeValueBool
 		case []any:
-			m2[k] = auditFieldTypeArray
+			m2[k] = auditdFieldTypeValueArray
 		}
 	}
 
