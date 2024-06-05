@@ -101,6 +101,12 @@ func TestFillConfigWithFlagsValidVals(t *testing.T) {
 	assert.Equal(t, "warn", config.Logging.Console.LogLevel.String())
 	assert.Equal(t, base.NewConfigDuration(time.Hour*5+time.Minute*2+time.Second*33), config.Replicator.MaxHeartbeat)
 	assert.Equal(t, uint64(12345), config.MaxFileDescriptors)
+
+	// unset values
+	assert.Equal(t, "", config.Bootstrap.X509CertPath)           // String
+	assert.Nil(t, config.API.CORS.Headers)                       // []string
+	assert.Nil(t, config.API.AdminInterfaceAuthentication)       // *bool
+	assert.Nil(t, config.Logging.Warn.Rotation.RotationInterval) // *base.ConfigDuration
 }
 
 // Manually test different types of flags with invalid values
