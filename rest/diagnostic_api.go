@@ -90,10 +90,17 @@ func (h *handler) handleGetUserDocAccessSpan() error {
 	if user == nil {
 		return kNotFoundError
 	}
+	ks := h.PathVar("keyspace")
 
-	docids := h.getQuery("docid")
+	docids := h.getQuery("docids")
 	docidsList := strings.Split(docids, ",")
 	var docList []*db.Document
+	_, scope, coll, err := ParseKeyspace(ks)
+	if err != nil {
+		return err
+	}
+
+	keyspace := *scope + "." + *coll
 
 	for _, docID := range docidsList {
 		doc, err := h.collection.GetDocument(h.ctx(), docID, db.DocUnmarshalSync)
@@ -107,44 +114,51 @@ func (h *handler) handleGetUserDocAccessSpan() error {
 	}
 
 	resp := make(map[string]map[string]channelHistory)
+	// TODO: refactor loops
 	for _, doc := range docList {
 
 		docChannelToSeqs := populateDocChannelInfo(*doc)
 		userChannels := h.getAllUserChannelsResponse(user)
+		base.InfofCtx(h.ctx(), base.KeyDiagnostic, "doc chans %s, user chans %s", docChannelToSeqs, userChannels)
+		base.InfofCtx(h.ctx(), base.KeyDiagnostic, "coll name %s", keyspace)
 
-		channelsToSeqs := userChannels[h.collection.Name]
-		for chanName, userChanHistory := range channelsToSeqs {
-			// if doc was in this channel
-			resp[doc.ID] = make(map[string]channelHistory)
-			var chanIntersection []auth.GrantHistorySequencePair
-			if seqs, ok := docChannelToSeqs[chanName]; ok {
-				resp[doc.ID][chanName] = channelHistory{}
-				for _, userSeqPair := range userChanHistory.Entries {
-					for _, docSeqPair := range seqs {
-						if docSeqPair.StartSeq > userSeqPair.EndSeq {
-							continue
-						}
-						startSeq := docSeqPair.StartSeq
-						endSeq := docSeqPair.EndSeq
+		// Only keep current keyspace
+		channelsToSeqs := userChannels[keyspace]
+		// loop through all chans in keyspace
+		docResponse := make(map[string]channelHistory)
+		for channelName, userChanHistory := range channelsToSeqs {
+			if docSeqs, ok := docChannelToSeqs[channelName]; ok {
+				var chanIntersection []auth.GrantHistorySequencePair
 
-						if userSeqPair.StartSeq > docSeqPair.StartSeq {
-							startSeq = docSeqPair.StartSeq
+				for _, userSeq := range userChanHistory.Entries {
+					for _, docSeq := range docSeqs {
+						startSeq := max(userSeq.StartSeq, docSeq.StartSeq)
+						endSeq := min(userSeq.EndSeq, docSeq.EndSeq)
+						if userSeq.EndSeq != 0 {
+							endSeq = userSeq.EndSeq
 						}
-						if userSeqPair.EndSeq < docSeqPair.EndSeq {
-							startSeq = docSeqPair.EndSeq
+						base.InfofCtx(h.ctx(), base.KeyDiagnostic, "endSeq %s startSeq %s", endSeq, startSeq)
+						if endSeq == 0 || startSeq < endSeq {
+							chanIntersection = append(chanIntersection, auth.GrantHistorySequencePair{
+								StartSeq: startSeq,
+								EndSeq:   endSeq,
+							})
 						}
+					}
+				}
 
-						chanIntersection = append(resp[doc.ID][chanName].Entries, auth.GrantHistorySequencePair{
-							StartSeq: startSeq,
-							EndSeq:   endSeq,
-						})
+				if len(chanIntersection) > 0 {
+					docResponse[channelName] = channelHistory{
+						Entries: chanIntersection,
 					}
 				}
 			}
-			resp[doc.ID][chanName] = channelHistory{chanIntersection}
+		}
+
+		if len(docResponse) > 0 {
+			resp[doc.ID] = docResponse
 		}
 	}
-
 	bytes, err := base.JSONMarshal(resp)
 	if err != nil {
 		return err

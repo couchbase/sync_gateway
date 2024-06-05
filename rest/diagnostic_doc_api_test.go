@@ -263,3 +263,252 @@ func TestGetAllChannelsUserDocIntersection(t *testing.T) {
 		})
 	}
 }
+
+func TestGetUserDocAccessSpan(t *testing.T) {
+	tests := []struct {
+		name          string
+		adminChannels []string
+		grants        []grant
+	}{
+		{
+			name: "admin channels once",
+			grants: []grant{
+				docGrant{dynamicChannel: "A"},
+				userGrant{
+					user: "alice",
+					adminChannels: map[string][]string{
+						"{{.keyspace}}": {"A", "B", "C"},
+					},
+					docIDs:      []string{"doc"},
+					docUserTest: true,
+					output:      `{"doc": {"A": { "entries" : ["2-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "multiple history entries",
+			grants: []grant{
+				// grant 1
+				userGrant{
+					user: "alice",
+					adminChannels: map[string][]string{
+						"{{.keyspace}}": {"A"},
+					},
+				},
+				docGrant{dynamicChannel: "A"},
+				// grant 2
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 2
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+					docIDs:        []string{"doc"},
+					docUserTest:   true,
+					output:        `{"doc": {"A": { "entries" : ["2-3", "4-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "limit history entries to 10",
+			grants: []grant{
+				// grant 1
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// create doc
+				docGrant{dynamicChannel: "A"},
+				// grant 2
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 3
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 4
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 5
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 6
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 7
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 8
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 9
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 10
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 11
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 12
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 13
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 14
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 15
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 16
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 17
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 18
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 19
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 20
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 19
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// grant 20
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"!"}},
+				},
+				// grant 23
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+					docIDs:        []string{"doc"},
+					docUserTest:   true,
+					output:        `{"doc": {"A": { "entries" : ["2-5","6-7","8-9","10-11","12-13","14-15","16-17","18-19","20-21","22-23","24-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "admin role grant channels",
+			grants: []grant{
+				// grant 1
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A", "B"}},
+				},
+				docGrant{dynamicChannel: "A"},
+				userGrant{
+					user:        "alice",
+					roles:       []string{"role1"},
+					docIDs:      []string{"doc"},
+					docUserTest: true,
+					output:      `{"doc": {"A": { "entries" : ["3-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "dynamic grant channels",
+			grants: []grant{
+				userGrant{
+					user: "alice",
+				},
+				docGrant{
+					userName:       "alice",
+					dynamicChannel: "A",
+					docIDs:         []string{"doc"},
+					docUserTest:    true,
+					output:         `{"doc": {"A": { "entries" : ["2-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "dynamic role grant channels",
+			grants: []grant{
+				// create user
+				userGrant{
+					user: "alice",
+				},
+				// create role with channels
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A", "B"}},
+				},
+				// assign role through the sync fn and check output
+				docGrant{
+					userName:       "alice",
+					dynamicRole:    "role1",
+					dynamicChannel: "A",
+					docIDs:         []string{"doc"},
+					docUserTest:    true,
+					output:         `{"doc": {"A": { "entries" : ["3-0"]}}}`,
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{
+				PersistentConfig: true,
+				SyncFn:           `function(doc) {channel(doc.channel); access(doc.user, doc.channel); role(doc.user, doc.role);}`,
+			})
+			defer rt.Close()
+
+			RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+			// iterate and execute grants in each test case
+			for i, grant := range test.grants {
+				t.Logf("Processing grant %d", i+1)
+				grant.request(rt)
+			}
+
+		})
+	}
+}
