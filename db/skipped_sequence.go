@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sort"
 	"sync"
 	"time"
 
@@ -213,18 +214,25 @@ func binarySearchFunc(a *SkippedSequenceListEntry, seq uint64) int {
 	return -1
 }
 
-// removeSeqRange will remove sequence between x and y from the skipped sequence slice
-func (s *SkippedSequenceSlice) removeSeqRange(startSeq, endSeq uint64) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+// _removeSeqRange will remove sequence between x and y from the skipped sequence slice
+func (s *SkippedSequenceSlice) _removeSeqRange(ctx context.Context, startSeq, endSeq uint64) error {
+	if len(s.list) == 0 {
+		return fmt.Errorf("skipped sequence list is empty, unable to remove sequence range %d to %d", startSeq, endSeq)
+	}
 
 	startIndex, found := s._findSequence(startSeq)
 	// if both sequence x and y aren't in the same element, the range contains sequences that are not present in
 	// skipped sequence list. This is due to any contiguous sequences in the list will be in the same element. So
 	// if startSeq and endSeq are in different elements there is at least one sequence between these values not in the list
+	if !found {
+		base.DebugfCtx(ctx, base.KeyCache, "sequence range %d to %d specified has sequences in that are not present in skipped list", startSeq, endSeq)
+		return base.ErrSkippedSequencesMissing
+	}
+	// put this below a check for !found to avoid out of bound error
 	rangeElem := s.list[startIndex]
-	if !found || endSeq > rangeElem.getLastSeq() {
-		return fmt.Errorf("sequence range %d to %d specified has sequences in that are not present in skipped list", startSeq, endSeq)
+	if endSeq > rangeElem.getLastSeq() {
+		base.DebugfCtx(ctx, base.KeyCache, "sequence range %d to %d specified has sequences in that are not present in skipped list", startSeq, endSeq)
+		return base.ErrSkippedSequencesMissing
 	}
 
 	// handle sequence range removal
@@ -259,6 +267,11 @@ func (s *SkippedSequenceSlice) removeSeqRange(startSeq, endSeq uint64) error {
 func (s *SkippedSequenceSlice) removeSeq(x uint64) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+
+	if len(s.list) == 0 {
+		return fmt.Errorf("skipped sequence list is empty, unable to remove sequence %d", x)
+	}
+
 	index, found := s._findSequence(x)
 	if !found {
 		return fmt.Errorf("sequence %d not found in the skipped list", x)
@@ -364,4 +377,105 @@ func (s *SkippedSequenceSlice) getStats() SkippedSequenceStats {
 		ListCapacityStat:                  int64(cap(s.list)),
 		ListLengthStat:                    int64(len(s.list)),
 	}
+}
+
+// processUnusedSequenceRangeAtSkipped will batch remove unused sequence range form skipped sequences, if duplicate
+// sequences are present, we will iterate through skipped list removing the non-duplicate sequences
+func (s *SkippedSequenceSlice) processUnusedSequenceRangeAtSkipped(ctx context.Context, fromSequence, toSequence uint64) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	// batch remove from skipped
+	err := s._removeSeqRange(ctx, fromSequence, toSequence)
+	if err != nil && err == base.ErrSkippedSequencesMissing {
+		base.DebugfCtx(ctx, base.KeyCache, err.Error())
+		// we have sequences (possibly duplicate sequences) in the unused range that don't exist in skipped list
+		// handle any potential duplicate sequences between the unused range and the skipped list
+		err = s._removeSubsetOfRangeFromSkipped(ctx, fromSequence, toSequence)
+		if err != nil {
+			base.WarnfCtx(ctx, "error processing subset of unused sequences in skipped list: %v", err)
+		}
+	} else if err != nil {
+		// if we get here then the skipped list must be empty
+		base.InfofCtx(ctx, base.KeyCache, "error attempting to remove unused sequence range form skipped: %v", err)
+	}
+}
+
+// _removeSubsetOfRangeFromSkipped will be called if we get error removing the unused sequence range indicating we have duplicate sequence in the unused sequence range
+// in the unused sequence range. This function will iterate through each skipped list element from the minimum index that has overlap with unused range
+// and remove any sequences within the unused sequence range
+func (s *SkippedSequenceSlice) _removeSubsetOfRangeFromSkipped(ctx context.Context, startSeq, endSeq uint64) error {
+	if len(s.list) == 0 {
+		base.DebugfCtx(ctx, base.KeyCache, "unused sequence range of #%d to %d is a duplicate sequence range", startSeq, endSeq)
+		return nil
+	}
+	var indexStart *int // the minimum index that has overlap from unused sequence range (thus index to start iterating from)
+
+	// find first element that has common elements
+	_, _ = sort.Find(len(s.list), func(i int) int {
+		value := s.list[i]
+		if value.getStartSeq() > endSeq {
+			// range is less than current skipped entry
+			return -1
+		}
+		if startSeq >= value.getStartSeq() && startSeq <= value.getLastSeq() {
+			indexStart = base.IntPtr(i)
+			// return 0 as there can't be any elems lower in skipped list with overlap with the range
+			// if the above is true
+			return 0
+		}
+		if value.getStartSeq() > startSeq {
+			if endSeq > value.getStartSeq() {
+				indexStart = base.IntPtr(i)
+			}
+			return -1
+		}
+		// range is larger then current element
+		return 1
+	})
+
+	skippedLen := len(s.list)
+	if indexStart != nil {
+		// We have found the lowest elem in skipped list with overlap with unused range
+		// iterate through from this index removing any duplicate sequences.
+		for j := *indexStart; j < skippedLen; j++ {
+			skippedElem := s.list[j]
+			var removeStartSequence, removeEndSequence uint64
+			if endSeq < skippedElem.getStartSeq() {
+				// exit loop, range and skipped have no common elements
+				break
+			}
+
+			if skippedElem.getStartSeq() >= startSeq {
+				removeStartSequence = skippedElem.getStartSeq()
+			} else if skippedElem.getLastSeq() >= startSeq {
+				removeStartSequence = startSeq
+			}
+
+			if skippedElem.getLastSeq() <= endSeq {
+				removeEndSequence = skippedElem.getLastSeq()
+			} else if skippedElem.getLastSeq() >= endSeq {
+				removeEndSequence = endSeq
+			}
+			err := s._removeSeqRange(ctx, removeStartSequence, removeEndSequence)
+			if err != nil {
+				return err
+			}
+			// if above operation removes an entire element, list length wil need updating and index
+			// needs to be reprocessed
+			if len(s.list) == skippedLen-1 {
+				j--
+				skippedLen--
+			}
+
+			startSeq = removeEndSequence + 1
+			// after potentially removing an element from the skipped list we need to re-process
+			// the same index again on the loop
+			if startSeq > endSeq {
+				// exit if we have processed all our unused sequence range
+				break
+			}
+		}
+	}
+	return nil
 }
