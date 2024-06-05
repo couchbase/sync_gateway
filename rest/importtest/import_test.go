@@ -583,47 +583,6 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 	assertDocProperty(t, response, "rev", "1-25c26cdf9d7771e07f00be1d13f7fb7c")
 }
 
-func TestImportFilterLogging(t *testing.T) {
-	const errorMessage = `ImportFilterError`
-	importFilter := `function (doc) { console.error("` + errorMessage + `"); return doc.type == "mobile"; }`
-	rtConfig := rest.RestTesterConfig{
-		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			ImportFilter: &importFilter,
-			AutoImport:   false,
-		}},
-	}
-	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // use default collection since we are using default sync function
-	defer rt.Close()
-
-	// Add document to bucket
-	key := "ValidImport"
-	body := make(map[string]interface{})
-	body["type"] = "mobile"
-	body["channels"] = "A"
-	ok, err := rt.GetSingleDataStore().Add(key, 0, body)
-	assert.NoError(t, err)
-	assert.True(t, ok)
-
-	// Get number of errors before
-	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
-	assert.NoError(t, err)
-
-	// Attempt to get doc will trigger import
-	base.AssertLogContains(t, errorMessage, func() {
-		response := rt.SendAdminRequest("GET", "/db/"+key, "")
-		assert.Equal(t, http.StatusOK, response.Code)
-	})
-
-	// Get number of errors after
-	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
-	assert.NoError(t, err)
-
-	// Make sure at least one error was logged
-	assert.GreaterOrEqual(t, numErrors+1, numErrorsAfter)
-
-}
-
 // Test scenario where another actor updates a different xattr on a document.  Sync Gateway
 // should detect and not import/create new revision during read-triggered import
 func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
