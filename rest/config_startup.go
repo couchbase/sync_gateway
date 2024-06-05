@@ -163,8 +163,8 @@ type UnsupportedConfig struct {
 }
 
 type AuditInfoProviderConfig struct {
-	GlobalInfoEnvVarName  string `json:"global_info_env_var_name,omitempty" help:"Environment variable name to get global audit event info from"`
-	RequestInfoHeaderName string `json:"request_info_header_name,omitempty" help:"HTTP header name to get request audit event info from"`
+	GlobalInfoEnvVarName  *string `json:"global_info_env_var_name,omitempty" help:"Environment variable name to get global audit event info from"`
+	RequestInfoHeaderName *string `json:"request_info_header_name,omitempty" help:"HTTP header name to get request audit event info from"`
 }
 
 type ServerlessConfig struct {
@@ -241,9 +241,11 @@ func NewEmptyStartupConfig() StartupConfig {
 			Debug:   &base.FileLoggerConfig{},
 			Trace:   &base.FileLoggerConfig{},
 			Stats:   &base.FileLoggerConfig{},
+			Audit:   &base.AuditLoggerConfig{},
 		},
 		Unsupported: UnsupportedConfig{
-			HTTP2: &HTTP2Config{},
+			HTTP2:             &HTTP2Config{},
+			AuditInfoProvider: &AuditInfoProviderConfig{},
 		},
 	}
 }

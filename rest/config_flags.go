@@ -180,23 +180,51 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) error {
 			}
 
 			switch rval.Interface().(type) {
-			case *string:
-				*val.config.(*string) = *val.flagValue.(*string)
-			case *[]string:
-				list := strings.Split(*val.flagValue.(*string), ",")
-				*val.config.(*[]string) = list
-			case *uint:
-				*val.config.(*uint) = *val.flagValue.(*uint)
-			case *uint64:
-				*val.config.(*uint64) = *val.flagValue.(*uint64)
+			case *bool:
+				if pointer {
+					rval.Set(reflect.ValueOf(val.flagValue))
+				} else {
+					*val.config.(*bool) = *val.flagValue.(*bool)
+				}
 			case *int:
 				if pointer {
 					rval.Set(reflect.ValueOf(val.flagValue))
 				} else {
 					*val.config.(*int) = *val.flagValue.(*int)
 				}
-			case *bool:
-				rval.Set(reflect.ValueOf(val.flagValue))
+			case *int64:
+				if pointer {
+					rval.Set(reflect.ValueOf(val.flagValue))
+				} else {
+					*val.config.(*int64) = *val.flagValue.(*int64)
+				}
+			case *uint:
+				if pointer {
+					rval.Set(reflect.ValueOf(val.flagValue))
+				} else {
+					*val.config.(*uint) = *val.flagValue.(*uint)
+				}
+			case *uint64:
+				if pointer {
+					rval.Set(reflect.ValueOf(val.flagValue))
+				} else {
+					*val.config.(*uint64) = *val.flagValue.(*uint64)
+				}
+			case *string:
+				if pointer {
+					rval.Set(reflect.ValueOf(val.flagValue))
+				} else {
+					*val.config.(*string) = *val.flagValue.(*string)
+				}
+			case *float64:
+				if pointer {
+					rval.Set(reflect.ValueOf(val.flagValue))
+				} else {
+					*val.config.(*float64) = *val.flagValue.(*float64)
+				}
+			case *[]string:
+				list := strings.Split(*val.flagValue.(*string), ",")
+				*val.config.(*[]string) = list
 			case *base.ConfigDuration:
 				duration, err := time.ParseDuration(*val.flagValue.(*string))
 				if err != nil {

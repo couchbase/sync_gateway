@@ -54,8 +54,10 @@ func TestAllConfigFlags(t *testing.T) {
 			flags = append(flags, "-"+name+"=true")
 		case uint, uint64:
 			flags = append(flags, "-"+name, "1234")
-		case int:
+		case int, int64:
 			flags = append(flags, "-"+name, "-5678")
+		case float64:
+			flags = append(flags, "-"+name, "123.456")
 		default:
 			assert.Failf(t, "Unknown flag type", "value type %v for flag %v", rFlagVal.Interface(), name)
 		}
