@@ -246,7 +246,7 @@ type LoggingConfig struct {
 
 type AuditLoggerConfig struct {
 	FileLoggerConfig
-	AuditLogFilePath *string `json:"audit_log_file_path,omitempty"` // Path to the audit log files
+	AuditLogFilePath *string `json:"audit_log_file_path,omitempty"` // If set, overrides the output path for the audit log files
 }
 
 func BuildLoggingConfigFromLoggers(redactionLevel RedactionLevel, LogFilePath string) *LoggingConfig {
