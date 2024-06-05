@@ -2318,7 +2318,10 @@ Log-rotation-config-readonly:
       type: integer
       default: 1024
     rotation_interval:
-      description: If set, the interval at which log files are rotated, even if max_size is not reached.
+      description: |-
+        If set, the interval at which log files are rotated, even if max_size is not reached.
+
+        This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
       type: string
       default: 0
   readOnly: true
