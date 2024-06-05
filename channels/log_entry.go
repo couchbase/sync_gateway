@@ -17,17 +17,6 @@ import (
 	"time"
 )
 
-// LogEntry
-type LogEntryType uint8
-
-const (
-	LogEntryDocument = LogEntryType(iota)
-	LogEntryPrincipal
-	LogEntryCheckpoint
-	LogEntryRollback
-	LogEntryPurge
-)
-
 // Bits in LogEntry.Flags
 const (
 	Deleted  = 1 << iota // This rev is a deletion
@@ -41,30 +30,26 @@ const (
 )
 
 type LogEntry struct {
-	Sequence     uint64       // Sequence number
-	DocID        string       // Document ID
-	RevID        string       // Revision ID
-	Flags        uint8        // Deleted/Removed/Hidden flags
-	VbNo         uint16       // vbucket number
-	TimeSaved    time.Time    // Time doc revision was saved (just used for perf metrics)
-	TimeReceived time.Time    // Time received from tap feed
-	Channels     ChannelMap   // Channels this entry is in or was removed from
-	Skipped      bool         // Late arriving entry
-	Type         LogEntryType // Log entry type
-	Value        []byte       // Snapshot metadata (when Type=LogEntryCheckpoint)
-	PrevSequence uint64       // Sequence of previous active revision
-	IsPrincipal  bool         // Whether the log-entry is a tracking entry for a principal doc
-	CollectionID uint32       // Collection ID
+	Sequence     uint64     // Sequence number
+	EndSequence  uint64     // End sequence on range of sequences that have been released by the sequence allocator (0 if entry is single sequence)
+	DocID        string     // Document ID
+	RevID        string     // Revision ID
+	Flags        uint8      // Deleted/Removed/Hidden flags
+	TimeSaved    time.Time  // Time doc revision was saved (just used for perf metrics)
+	TimeReceived time.Time  // Time received from tap feed
+	Channels     ChannelMap // Channels this entry is in or was removed from
+	Skipped      bool       // Late arriving entry
+	PrevSequence uint64     // Sequence of previous active revision
+	IsPrincipal  bool       // Whether the log-entry is a tracking entry for a principal doc
+	CollectionID uint32     // Collection ID
 }
 
 func (l LogEntry) String() string {
 	return fmt.Sprintf(
-		"seq: %d docid: %s revid: %s vbno: %d type: %v collectionID: %d",
+		"seq: %d docid: %s revid: %s collectionID: %d",
 		l.Sequence,
 		l.DocID,
 		l.RevID,
-		l.VbNo,
-		l.Type,
 		l.CollectionID,
 	)
 }
