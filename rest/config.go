@@ -37,6 +37,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/db/functions"
+	"github.com/couchbase/sync_gateway/mqtt"
 	"github.com/couchbaselabs/rosmar"
 )
 
@@ -188,6 +189,7 @@ type DbConfig struct {
 	Guest                            *auth.PrincipalConfig            `json:"guest,omitempty"`                                // Guest user settings
 	JavascriptTimeoutSecs            *uint32                          `json:"javascript_timeout_secs,omitempty"`              // The amount of seconds a Javascript function can run for. Set to 0 for no timeout.
 	UserFunctions                    *functions.FunctionsConfig       `json:"functions,omitempty"`                            // Named JS fns for clients to call
+	MQTT                             *mqtt.PerDBConfig                `json:"mqtt,omitempty"`                                 // MQTT client connection & subscriptions
 	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
 	ChangesRequestPlus               *bool                            `json:"changes_request_plus,omitempty"`                 // If set, is used as the default value of request_plus for non-continuous replications
 	CORS                             *auth.CORSConfig                 `json:"cors,omitempty"`                                 // Per-database CORS config
@@ -997,6 +999,19 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 	}
 
+	if dbConfig.MQTT != nil {
+		for _, client := range dbConfig.MQTT.Clients {
+			if err := client.Validate(); err != nil {
+				multiError = multiError.Append(fmt.Errorf("invalid MQTT client config: %w", err))
+			}
+		}
+		if dbConfig.MQTT.Broker != nil {
+			if err := dbConfig.MQTT.Broker.Validate(); err != nil {
+				multiError = multiError.Append(fmt.Errorf("invalid MQTT broker config: %w", err))
+			}
+		}
+	}
+
 	if dbConfig.CORS != nil {
 		// these values will likely to be ignored by the CORS handler unless browser sends abornmal Origin headers
 		_, err := hostOnlyCORS(dbConfig.CORS.Origin)
@@ -1384,6 +1399,12 @@ func (sc *StartupConfig) Validate(ctx context.Context, isEnterpriseEdition bool)
 	if val := sc.Replicator.MaxConcurrentRevs; val != nil {
 		if *val < minConcurrentRevs || *val > maxConcurrentRevs {
 			multiError = multiError.Append(fmt.Errorf("max_concurrent_revs: %d outside allowed range: %d-%d", *val, minConcurrentRevs, maxConcurrentRevs))
+		}
+	}
+
+	if config := sc.API.MQTT; config != nil {
+		if err := config.Validate(); err != nil {
+			multiError = multiError.Append(err)
 		}
 	}
 
@@ -1955,6 +1976,17 @@ func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) 
 	} else {
 		base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Diagnostic API not enabled - skipping.")
 	}
+
+	if config.API.MQTT != nil {
+		if sc.Config.Unsupported.MQTT != nil && *sc.Config.Unsupported.MQTT {
+			if err := sc.StartMQTTServer(ctx, config.API.MQTT, &config.API.HTTPS); err != nil {
+				base.ErrorfCtx(ctx, "Error serving MQTT: %v", err)
+			}
+		} else {
+			base.WarnfCtx(ctx, `Server config option "api.mqtt_broker" ignored because unsupported.mqtt feature flag is not enabled`)
+		}
+	}
+
 	base.ConsolefCtx(ctx, base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
 	go func() {
 		if err := sc.Serve(ctx, config, metricsServer, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
