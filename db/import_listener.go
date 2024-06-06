@@ -168,7 +168,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 }
 
 func (il *importListener) ImportFeedEvent(ctx context.Context, collection *DatabaseCollectionWithUser, event sgbucket.FeedEvent) {
-	syncData, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.userXattrKey(), false)
+	syncData, rawBody, rawXattrs, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.userXattrKey(), false)
 	if err != nil {
 		if errors.Is(err, sgbucket.ErrEmptyMetadata) {
 			base.WarnfCtx(ctx, "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
@@ -182,7 +182,7 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 	var isSGWrite bool
 	var crc32Match bool
 	if syncData != nil {
-		isSGWrite, crc32Match, _ = syncData.IsSGWrite(event.Cas, rawBody, rawUserXattr)
+		isSGWrite, crc32Match, _ = syncData.IsSGWrite(event.Cas, rawBody, rawXattrs[collection.userXattrKey()])
 		if crc32Match {
 			il.dbStats.Crc32MatchCount.Add(1)
 		}
@@ -204,7 +204,7 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 		default:
 		}
 
-		_, err := collection.ImportDocRaw(ctx, docID, rawBody, rawXattr, rawUserXattr, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
+		_, err := collection.ImportDocRaw(ctx, docID, rawBody, rawXattrs, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
 		if err != nil {
 			if err == base.ErrImportCasFailure {
 				base.DebugfCtx(ctx, base.KeyImport, "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", base.UD(docID))

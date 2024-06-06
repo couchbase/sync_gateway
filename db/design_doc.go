@@ -750,7 +750,7 @@ func removeObsoleteDesignDocs(ctx context.Context, viewStore sgbucket.ViewStore,
 	return removedDesignDocs, nil
 }
 
-// Similar to IsKeyNotFoundError(), but for the specific error returned by GetDDoc/DeleteDDoc
+// Similar to IsDocNotFoundError(), but for the specific error returned by GetDDoc/DeleteDDoc
 func IsMissingDDocError(err error) bool {
 	if err == nil {
 		return false

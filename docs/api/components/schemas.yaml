@@ -1884,6 +1884,9 @@ Resync-status:
     docs_processed:
       description: The amount of docs that have been processed so far in the resync operation.
       type: integer
+    collections_processing:
+      description: The collections that the resync operation is running on.
+      $ref: '#/ResyncScopesMap'
   required:
     - status
     - start_time
@@ -2317,6 +2320,13 @@ Log-rotation-config-readonly:
       description: Max Size (in mb) of log files before deletion
       type: integer
       default: 1024
+    rotation_interval:
+      description: |-
+        If set, the interval at which log files are rotated, even if max_size is not reached.
+
+        This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+      type: string
+      default: 0
   readOnly: true
   title: Log-rotation-config
 Console-logging-config:
@@ -2481,6 +2491,7 @@ ResyncScopesMap:
   type: object
   additionalProperties:
     $ref: '#/CollectionNames'
+  example: {"scopeName": {"collection1", "collection2"}}
 CollectionNames:
   description: 'List of collection names'
   type: array
@@ -2512,3 +2523,33 @@ CollectionNames:
           - Starting
           - Stopping
           - Resyncing
+      reason:
+        description: Optional reason a database is in a particular state.
+        enum:
+          - require_resync
+          - ""
+all_user_channels:
+  description: |-
+    All user channels split by how they were assigned to the user and by keyspace.
+  type: object
+  properties:
+    all_channels:
+      description: |-
+        All channels that the user has access to.
+      type: object
+      properties:
+        keyspace:
+          type: object
+          properties:
+            channel:
+              $ref: '#/channelEntry'
+channelEntry:
+  description: Channel name
+  type: object
+  properties:
+    entries:
+      type: array
+      description: Start sequence to end sequence. If the channel is currently granted, the end sequence will be zero.
+    updated_at:
+      type: integer
+      description: Unix timestamp of last update

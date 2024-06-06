@@ -72,7 +72,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 		}
 
 		toCas, err := col.Get(docID, nil)
-		if err != nil && !col.IsError(err, sgbucket.KeyNotFoundError) {
+		if err != nil && !base.IsDocNotFoundError(err) {
 			base.WarnfCtx(ctx, "Skipping replicating doc %s, could not perform a kv op get doc in toBucket: %s", event.Key, err)
 			r.errorCount.Add(1)
 			return false

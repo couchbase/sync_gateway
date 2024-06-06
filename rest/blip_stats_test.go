@@ -16,7 +16,7 @@ import (
 )
 
 func sendGetCheckpointRequest(bt *BlipTester) {
-	t := bt.restTester.TB
+	t := bt.restTester.TB()
 	rq := bt.newRequest()
 	rq.SetProfile("getCheckpoint")
 	require.True(t, bt.sender.Send(rq))

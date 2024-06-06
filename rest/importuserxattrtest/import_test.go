@@ -410,11 +410,11 @@ func TestUnmarshalDocFromImportFeed(t *testing.T) {
 	}
 	value := sgbucket.EncodeValueWithXattrs(body, xattrs...)
 
-	syncData, rawBody, rawXattr, rawUserXattr, err := db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
+	syncData, rawBody, rawXattrs, err := db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
 	require.NoError(t, err)
-	assert.Equal(t, syncXattr, string(rawXattr))
+	assert.Equal(t, syncXattr, string(rawXattrs[base.SyncXattrName]))
 	assert.Equal(t, uint64(200), syncData.Sequence)
-	assert.Equal(t, channelName, string(rawUserXattr))
+	assert.Equal(t, channelName, string(rawXattrs[userXattrKey]))
 	assert.Equal(t, body, rawBody)
 
 	// construct data into dcp format with just user xattr defined
@@ -423,21 +423,21 @@ func TestUnmarshalDocFromImportFeed(t *testing.T) {
 	}
 	value = sgbucket.EncodeValueWithXattrs(body, xattrs...)
 
-	syncData, rawBody, rawXattr, rawUserXattr, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
+	syncData, rawBody, rawXattrs, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
 	require.NoError(t, err)
 	assert.Nil(t, syncData)
-	assert.Nil(t, rawXattr)
-	assert.Equal(t, channelName, string(rawUserXattr))
+	assert.Nil(t, rawXattrs[base.SyncXattrName])
+	assert.Equal(t, channelName, string(rawXattrs[userXattrKey]))
 	assert.Equal(t, body, rawBody)
 
 	// construct data into dcp format with no xattr defined
 	xattrs = []sgbucket.Xattr{}
 	value = sgbucket.EncodeValueWithXattrs(body, xattrs...)
 
-	syncData, rawBody, rawXattr, rawUserXattr, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
+	syncData, rawBody, rawXattrs, err = db.UnmarshalDocumentSyncDataFromFeed(value, 5, userXattrKey, false)
 	require.NoError(t, err)
 	assert.Nil(t, syncData)
-	assert.Nil(t, rawXattr)
-	assert.Nil(t, rawUserXattr)
+	assert.Nil(t, rawXattrs[base.SyncXattrName])
+	assert.Nil(t, rawXattrs[userXattrKey])
 	assert.Equal(t, body, rawBody)
 }

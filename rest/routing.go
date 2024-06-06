@@ -43,7 +43,7 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (root, db, keyspa
 	root.Handle("/", makeHandler(sc, privs, nil, nil, (*handler).handleRoot)).Methods("GET", "HEAD")
 
 	// Operations on databases:
-	root.Handle("/{db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, []Permission{PermDevOps}, nil, (*handler).handleGetDB)).Methods("GET", "HEAD")
+	root.Handle("/{db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, []Permission{PermDevOps, PermGetDb}, nil, (*handler).handleGetDB)).Methods("GET", "HEAD")
 	root.Handle("/{keyspace:"+dbRegex+"}/", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePostDoc)).Methods("POST")
 
 	// Keyspace operations (i.e. collection-specific):
@@ -368,6 +368,8 @@ func createDiagnosticRouter(sc *ServerContext) *mux.Router {
 	keyspace.Handle("/{docid:"+docRegex+"}/_all_channels", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetDocChannels)).Methods("GET")
 	keyspace.Handle("/_sync", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleSyncFnDryRun)).Methods("GET")
 	keyspace.Handle("/_import_filter", makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleImportFilterDryRun)).Methods("GET")
+	dbr.Handle("/_user/{name}/_all_channels",
+		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal}, nil, (*handler).handleGetAllChannels)).Methods("GET")
 
 	return r
 }

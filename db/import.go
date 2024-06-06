@@ -32,7 +32,7 @@ const (
 )
 
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
-func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid string, value []byte, xattrValue []byte, userXattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
+func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid string, value []byte, xattrs map[string][]byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
 
 	var body Body
 	if isDelete {
@@ -53,14 +53,9 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 	}
 
 	existingBucketDoc := &sgbucket.BucketDocument{
-		Body: value,
-		Xattrs: map[string][]byte{
-			base.SyncXattrName: xattrValue,
-		},
-		Cas: cas,
-	}
-	if db.userXattrKey() != "" {
-		existingBucketDoc.Xattrs[db.userXattrKey()] = userXattrValue
+		Body:   value,
+		Xattrs: xattrs,
+		Cas:    cas,
 	}
 
 	return db.importDoc(ctx, docid, body, expiry, isDelete, existingBucketDoc, mode)
@@ -91,8 +86,11 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 	} else {
 		if existingDoc.Deleted {
 			existingBucketDoc.Xattrs[base.SyncXattrName], err = base.JSONMarshal(existingDoc.SyncData)
+			if err == nil && existingDoc.metadataOnlyUpdate != nil && db.useMou() {
+				existingBucketDoc.Xattrs[base.MouXattrName], err = base.JSONMarshal(existingDoc.metadataOnlyUpdate)
+			}
 		} else {
-			existingBucketDoc.Body, existingBucketDoc.Xattrs[base.SyncXattrName], err = existingDoc.MarshalWithXattr()
+			existingBucketDoc.Body, existingBucketDoc.Xattrs[base.SyncXattrName], existingBucketDoc.Xattrs[base.MouXattrName], err = existingDoc.MarshalWithXattrs()
 		}
 	}
 
@@ -190,6 +188,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			}
 		}
 
+		metadataOnlyUpdate := true
 		// If the existing doc is a legacy SG write (_sync in body), check for migrate instead of import.
 		_, ok := body[base.SyncPropertyName]
 		if ok || doc.inlineSyncData {
@@ -202,7 +201,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 				alreadyImportedDoc = migratedDoc
 				return nil, nil, false, updatedExpiry, base.ErrDocumentMigrated
 			}
-
+			metadataOnlyUpdate = false
 			// If document still requires import post-migration attempt, continue with import processing based on the body returned by migrate
 			doc = migratedDoc
 			body = migratedDoc.Body(ctx)
@@ -328,6 +327,11 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			newDoc.DocAttachments = doc.SyncData.Attachments
 		}
 
+		// If this is a metadata-only update, set metadataOnlyUpdate based on old doc's cas and mou
+		if metadataOnlyUpdate && db.useMou() {
+			newDoc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.metadataOnlyUpdate)
+		}
+
 		return newDoc, nil, !shouldGenerateNewRev, updatedExpiry, nil
 	})
 
@@ -388,13 +392,13 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	}
 
 	// Persist the document in xattr format
-	value, xattrValue, marshalErr := doc.MarshalWithXattr()
+	value, syncXattrValue, _, marshalErr := doc.MarshalWithXattrs()
 	if marshalErr != nil {
 		return nil, false, marshalErr
 	}
 
 	xattrs := map[string][]byte{
-		base.SyncXattrName: xattrValue,
+		base.SyncXattrName: syncXattrValue,
 	}
 	var casOut uint64
 	var writeErr error

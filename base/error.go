@@ -74,6 +74,9 @@ var (
 
 	// ErrReplicationLimitExceeded is returned when then replication connection threshold is exceeded
 	ErrReplicationLimitExceeded = &sgError{"Replication limit exceeded. Try again later."}
+
+	// ErrSkippedSequencesMissing is returned when attempting to remove a sequence range form the skipped sequence list and at least one sequence in that range is not present
+	ErrSkippedSequencesMissing = &sgError{"Sequence range has sequences that aren't present in skipped list"}
 )
 
 func (e *sgError) Error() string {
@@ -205,15 +208,12 @@ func CouchHTTPErrorName(status int) string {
 	return fmt.Sprintf("%d", status)
 }
 
-// Returns true if an error is a doc-not-found error
+// IsDocNotFoundError returns true if an error is a doc-not-found error
 func IsDocNotFoundError(err error) bool {
-
-	unwrappedErr := pkgerrors.Cause(err)
-	if unwrappedErr == nil {
+	if err == nil {
 		return false
 	}
-
-	if unwrappedErr == ErrNotFound {
+	if errors.Is(err, ErrNotFound) {
 		return true
 	}
 
@@ -225,6 +225,8 @@ func IsDocNotFoundError(err error) bool {
 	if errors.As(err, &missingError) {
 		return true
 	}
+	unwrappedErr := pkgerrors.Cause(err)
+
 	switch unwrappedErr := unwrappedErr.(type) {
 	case *gomemcached.MCResponse:
 		return unwrappedErr.Status == gomemcached.KEY_ENOENT || unwrappedErr.Status == gomemcached.NOT_STORED

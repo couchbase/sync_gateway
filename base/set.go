@@ -56,10 +56,44 @@ func (set Set) copy() Set {
 	return result
 }
 
-// Returns true if the set includes the channel.
-func (set Set) Contains(ch string) bool {
-	_, exists := set[ch]
-	return exists
+// Contains returns true if the set includes any of the given channels.
+func (set Set) Contains(ch ...string) bool {
+	for _, c := range ch {
+		if _, exists := set[c]; exists {
+			return true
+		}
+	}
+	return false
+}
+
+// HasMatch returns the true if there is at least one matching element between both sets.
+func (a Set) HasMatch(b Set) bool {
+	shortest, longest := a, b
+	// iterate over shortest
+	if len(longest) < len(shortest) {
+		shortest, longest = longest, shortest
+	}
+	for name := range shortest {
+		if _, exists := longest[name]; exists {
+			return true
+		}
+	}
+	return false
+}
+
+// NumMatches returns the number of matching elements between both sets.
+func (a Set) NumMatches(b Set) (count int) {
+	shortest, longest := a, b
+	// iterate over shortest
+	if len(longest) < len(shortest) {
+		shortest, longest = longest, shortest
+	}
+	for name := range shortest {
+		if _, exists := longest[name]; exists {
+			count++
+		}
+	}
+	return count
 }
 
 func (set Set) Equals(other Set) bool {

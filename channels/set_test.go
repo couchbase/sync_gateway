@@ -274,19 +274,25 @@ func TestSetContains(t *testing.T) {
 	testCases := []struct {
 		name     string
 		inputSet Set
-		inputID  ID
+		input    []ID
 		contains bool
 	}{
 		{
+			name:     "empty,nilID",
+			inputSet: Set{},
+			input:    nil,
+			contains: false,
+		},
+		{
 			name:     "empty,emptyID",
 			inputSet: Set{},
-			inputID:  ID{},
+			input:    []ID{{}},
 			contains: false,
 		},
 		{
 			name:     "inputSetempty,realID",
 			inputSet: Set{},
-			inputID:  NewID("A", 1),
+			input:    []ID{NewID("A", 1)},
 			contains: false,
 		},
 		{
@@ -296,7 +302,7 @@ func TestSetContains(t *testing.T) {
 				NewID("B", 2): present{},
 				NewID("C", 1): present{},
 			},
-			inputID:  ID{},
+			input:    []ID{{}},
 			contains: false,
 		},
 		{
@@ -306,23 +312,43 @@ func TestSetContains(t *testing.T) {
 				NewID("B", 2): present{},
 				NewID("C", 1): present{},
 			},
-			inputID:  NewID("A", 1),
+			input:    []ID{NewID("A", 1)},
 			contains: true,
 		},
 		{
-			name: "somedatanotpresent",
+			name: "somedataabsent",
 			inputSet: Set{
 				NewID("A", 1): present{},
 				NewID("B", 2): present{},
 				NewID("C", 1): present{},
 			},
-			inputID:  NewID("D", 1),
+			input:    []ID{NewID("D", 1)},
+			contains: false,
+		},
+		{
+			name: "variadicpresent",
+			inputSet: Set{
+				NewID("A", 1): present{},
+				NewID("B", 2): present{},
+				NewID("C", 1): present{},
+			},
+			input:    []ID{NewID("A", 3), NewID("C", 1)},
+			contains: true,
+		},
+		{
+			name: "variadicabsent",
+			inputSet: Set{
+				NewID("A", 1): present{},
+				NewID("B", 2): present{},
+				NewID("C", 1): present{},
+			},
+			input:    []ID{NewID("A", 2), NewID("Z", 1)},
 			contains: false,
 		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			require.Equal(t, test.contains, test.inputSet.Contains(test.inputID))
+			require.Equal(t, test.contains, test.inputSet.Contains(test.input...))
 		})
 	}
 }

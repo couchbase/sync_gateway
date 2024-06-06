@@ -176,6 +176,7 @@ type DatabaseContextOptions struct {
 	LoggingConfig                 DbLogConfig    // Per-database log configuration
 	MaxConcurrentChangesBatches   *int           // Maximum number of changes batches to process concurrently per replication
 	MaxConcurrentRevs             *int           // Maximum number of revs to process concurrently per replication
+	NumIndexReplicas              uint           // Number of replicas for GSI indexes
 }
 
 // DbLogConfig can be used to customise the logging for logs associated with this database.
@@ -1046,6 +1047,10 @@ func (db *DatabaseContext) GetUserNames(ctx context.Context) (users []string, er
 	startKey := dbUserPrefix
 	limit := db.Options.QueryPaginationLimit
 
+	userRe, err := regexp.Compile(`^` + dbUserPrefix + `[^:]*$`)
+	if err != nil {
+		return nil, err
+	}
 	users = []string{}
 
 outerLoop:
@@ -1078,8 +1083,11 @@ outerLoop:
 
 			principalName = queryRow.Name
 			startKey = queryRow.ID
-
 			resultCount++
+
+			if !userRe.MatchString(queryRow.ID) {
+				continue
+			}
 
 			if principalName != "" && !skipAddition {
 				users = append(users, principalName)
@@ -1110,6 +1118,18 @@ func (db *DatabaseContext) getAllPrincipalIDsSyncDocs(ctx context.Context) (user
 	lenDbUserPrefix := len(dbUserPrefix)
 	lenDbRolePrefix := len(dbRolePrefix)
 
+	userRe, err := regexp.Compile(`^` + dbUserPrefix + `[^:]*$`)
+	if err != nil {
+		return nil, nil, err
+	}
+	roleRe, err := regexp.Compile(`^` + dbRolePrefix + `[^:]*$`)
+	if err != nil {
+		return nil, nil, err
+	}
+	anyPrincipalRe, err := regexp.Compile(fmt.Sprintf(`^(%s|%s).*$`, base.DefaultMetadataKeys.UserKeyPrefix(), base.DefaultMetadataKeys.RoleKeyPrefix()))
+	if err != nil {
+		return nil, nil, err
+	}
 	users = []string{}
 	roles = []string{}
 
@@ -1153,11 +1173,15 @@ outerLoop:
 				startKey = queryRow.Name
 			}
 			if len(rowID) < lenDbUserPrefix && len(rowID) < lenDbRolePrefix {
+				// make sure to increment the resultCount to not skip the next row if the results are
+				// _sync:user:alice and we are looking for _sync:user:verylongdbname:alice
+				if resultCount == 0 && anyPrincipalRe.MatchString(rowID) {
+					resultCount++
+				}
 				continue
 			}
-
-			isDbUser = strings.HasPrefix(rowID, dbUserPrefix)
-			isDbRole = strings.HasPrefix(rowID, dbRolePrefix)
+			isDbUser = userRe.MatchString(rowID)
+			isDbRole = roleRe.MatchString(rowID)
 			if !isDbUser && !isDbRole {
 				continue
 			}
@@ -1170,7 +1194,6 @@ outerLoop:
 
 			}
 			resultCount++
-
 			if principalName != "" && !skipAddition {
 				if isDbUser {
 					users = append(users, principalName)
@@ -1206,6 +1229,10 @@ func (db *DatabaseContext) GetUsers(ctx context.Context, limit int) (users []aut
 	// This doesn't happen for AllPrincipalIDs, I believe because the role check forces query to not assume
 	// a contiguous set of results
 	dbUserKeyPrefix := db.MetadataKeys.UserKeyPrefix()
+	userRe, err := regexp.Compile(`^` + dbUserKeyPrefix + `[^:]*$`)
+	if err != nil {
+		return nil, err
+	}
 	startKey := dbUserKeyPrefix
 	paginationLimit := db.Options.QueryPaginationLimit
 	if paginationLimit == 0 {
@@ -1247,6 +1274,9 @@ outerLoop:
 
 			startKey = queryRow.ID
 			resultCount++
+			if !userRe.MatchString(queryRow.ID) {
+				continue
+			}
 			if queryRow.Name != "" && !skipAddition {
 				principal := auth.PrincipalConfig{
 					Name:     &queryRow.Name,
@@ -1282,6 +1312,11 @@ outerLoop:
 func (db *DatabaseContext) getRoleIDsUsingIndex(ctx context.Context, includeDeleted bool) (roles []string, err error) {
 
 	dbRoleIDPrefix := db.MetadataKeys.RoleKeyPrefix()
+
+	roleRe, err := regexp.Compile(`^` + dbRoleIDPrefix + `[^:]*$`)
+	if err != nil {
+		return nil, err
+	}
 	startKey := dbRoleIDPrefix
 	limit := db.Options.QueryPaginationLimit
 
@@ -1333,6 +1368,9 @@ outerLoop:
 
 			resultCount++
 
+			if !roleRe.MatchString(queryRow.Id) {
+				continue
+			}
 			if roleName != "" && !skipAddition {
 				roles = append(roles, roleName)
 			}
@@ -1773,7 +1811,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			if currentValue == nil || len(currentValue) == 0 {
 				return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
 			}
-			doc, err := unmarshalDocumentWithXattr(ctx, docid, currentValue, currentXattrs[base.SyncXattrName], currentXattrs[db.userXattrKey()], cas, DocUnmarshalAll)
+			doc, err := db.unmarshalDocumentWithXattrs(ctx, docid, currentValue, currentXattrs, cas, DocUnmarshalAll)
 			if err != nil {
 				return sgbucket.UpdatedDoc{}, err
 			}
@@ -1789,19 +1827,29 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 				updatedDoc.UpdateExpiry(*updatedExpiry)
 			}
 			doc.SetCrc32cUserXattrHash()
-			_, rawXattr, err := updatedDoc.MarshalWithXattr()
-			return sgbucket.UpdatedDoc{
+
+			// Update metadataOnlyUpdate based on previous Cas, metadataOnlyUpdate
+			if db.useMou() {
+				doc.metadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.metadataOnlyUpdate)
+			}
+
+			_, rawXattr, rawMouXattr, err := updatedDoc.MarshalWithXattrs()
+			updatedDoc := sgbucket.UpdatedDoc{
 				Doc: nil, // Resync does not require document body update
 				Xattrs: map[string][]byte{
 					base.SyncXattrName: rawXattr,
 				},
 				Expiry: updatedExpiry,
-			}, err
+			}
+			if db.useMou() {
+				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
+			}
+			return updatedDoc, err
 		}
 		opts := &sgbucket.MutateInOptions{
 			MacroExpansion: macroExpandSpec(base.SyncXattrName),
 		}
-		_, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncAndUserXattrKeys(), 0, nil, opts, writeUpdateFunc)
+		_, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncMouAndUserXattrKeys(), 0, nil, opts, writeUpdateFunc)
 	} else {
 		_, err = db.dataStore.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 			// Be careful: this block can be invoked multiple times if there are races!
@@ -1907,6 +1955,10 @@ func (context *DatabaseContext) UseXattrs() bool {
 
 func (context *DatabaseContext) UseViews() bool {
 	return context.Options.UseViews
+}
+
+func (context *DatabaseContext) UseMou() bool {
+	return context.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations)
 }
 
 // UseQueryBasedResyncManager returns if query bases resync manager should be used for Resync operation
@@ -2252,6 +2304,8 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	}
 	initialSequenceTime := time.Now()
 
+	base.InfofCtx(ctx, base.KeyCRUD, "Database has _sync:seq value on startup of %d", initialSequence)
+
 	// Unlock change cache.  Validate that any allocated sequences on other nodes have either been assigned or released
 	// before starting
 	if initialSequence > 0 {
@@ -2433,4 +2487,20 @@ func (dbc *DatabaseContext) InstallPrincipals(ctx context.Context, spec map[stri
 
 	}
 	return nil
+}
+
+// DataStoreNames returns the names of all datastores connected to this database
+func (db *Database) DataStoreNames() base.ScopeAndCollectionNames {
+	if db.Scopes == nil {
+		return base.ScopeAndCollectionNames{
+			base.DefaultScopeAndCollectionName(),
+		}
+	}
+	var names base.ScopeAndCollectionNames
+	for scopeName, scope := range db.Scopes {
+		for collectionName := range scope.Collections {
+			names = append(names, base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+		}
+	}
+	return names
 }

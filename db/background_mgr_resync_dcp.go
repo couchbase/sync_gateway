@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -25,12 +26,13 @@ import (
 // =====================================================================
 
 type ResyncManagerDCP struct {
-	DocsProcessed base.AtomicInt
-	DocsChanged   base.AtomicInt
-	ResyncID      string
-	VBUUIDs       []uint64
-	useXattrs     bool
-	lock          sync.RWMutex
+	DocsProcessed       base.AtomicInt
+	DocsChanged         base.AtomicInt
+	ResyncID            string
+	VBUUIDs             []uint64
+	useXattrs           bool
+	ResyncedCollections map[string][]string
+	lock                sync.RWMutex
 }
 
 // ResyncCollections contains map of scope names with collection names against which resync needs to run
@@ -147,10 +149,12 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	}
 
 	// Get collectionIds
-	collectionIDs, hasAllCollections, err := getCollectionIds(db, resyncCollections)
+	collectionIDs, hasAllCollections, collectionNames, err := getCollectionIdsAndNames(db, resyncCollections)
 	if err != nil {
 		return err
 	}
+	// add collection list to manager for use in status call
+	r.SetCollectionStatus(collectionNames)
 	if hasAllCollections {
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against all collections", resyncLoggingID)
 	} else {
@@ -186,16 +190,24 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 			return err
 		}
 
-		if regenerateSequences {
-			var err error
+		// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
+		// In the case that a database is created with "start_offline": true, it is possible the index needed to create this is not yet ready, so make sure it is ready for use.
+		if !db.UseViews() && ((regenerateSequences && resyncCollections == nil) || r.DocsChanged.Value() > 0) {
+			err := initializePrincipalDocsIndex(ctx, db)
+			if err != nil {
+				return err
+			}
+		}
+		if regenerateSequences && resyncCollections == nil {
+			var multiError *base.MultiError
 			for _, databaseCollection := range db.CollectionByID {
 				if updateErr := databaseCollection.updateAllPrincipalsSequences(ctx); updateErr != nil {
-					err = updateErr
+					multiError = multiError.Append(updateErr)
 				}
 			}
 
-			if err != nil {
-				return err
+			if multiError.Len() > 0 {
+				return fmt.Errorf("Error updating principal sequences: %s", multiError.Error())
 			}
 		}
 
@@ -212,6 +224,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 
 		// If we regenerated sequences, update syncInfo for all collections affected
 		if regenerateSequences {
+			updatedDsNames := make(map[base.ScopeAndCollectionName]struct{}, len(collectionIDs))
 			for _, collectionID := range collectionIDs {
 				dbc, ok := db.CollectionByID[collectionID]
 				if !ok {
@@ -220,8 +233,16 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 				if err := base.SetSyncInfo(dbc.dataStore, db.DatabaseContext.Options.MetadataID); err != nil {
 					base.WarnfCtx(ctx, "[%s] Completed resync, but unable to update syncInfo for collection %v: %v", resyncLoggingID, collectionID, err)
 				}
-
+				updatedDsNames[base.ScopeAndCollectionName{Scope: dbc.ScopeName, Collection: dbc.Name}] = struct{}{}
 			}
+			collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
+			for _, dsName := range db.RequireResync {
+				_, ok := updatedDsNames[dsName]
+				if !ok {
+					collectionsRequiringResync = append(collectionsRequiringResync, dsName)
+				}
+			}
+			db.RequireResync = collectionsRequiringResync
 		}
 	case <-terminator.Done():
 		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending Resync process.", resyncLoggingID)
@@ -242,29 +263,40 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	return nil
 }
 
-func getCollectionIds(db *Database, resyncCollections ResyncCollections) ([]uint32, bool, error) {
+func getCollectionIdsAndNames(db *Database, resyncCollections ResyncCollections) ([]uint32, bool, map[string][]string, error) {
 	collectionIDs := make([]uint32, 0)
 	var hasAllCollections bool
+	scopeAndCollection := make(map[string][]string)
 
 	if len(resyncCollections) == 0 {
 		hasAllCollections = true
 		for collectionID := range db.CollectionByID {
 			collectionIDs = append(collectionIDs, collectionID)
 		}
+		for scopeName, collectionNames := range db.CollectionNames {
+			var resyncCollectionNames []string
+			for collName := range collectionNames {
+				resyncCollectionNames = append(resyncCollectionNames, collName)
+			}
+			scopeAndCollection[scopeName] = resyncCollectionNames
+		}
 	} else {
 		hasAllCollections = false
 
 		for scopeName, collectionsName := range resyncCollections {
+			var resyncCollectionNames []string
 			for _, collectionName := range collectionsName {
 				collection, err := db.GetDatabaseCollection(scopeName, collectionName)
 				if err != nil {
-					return nil, hasAllCollections, fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collectionName).Redact())
+					return nil, hasAllCollections, nil, fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collectionName).Redact())
 				}
 				collectionIDs = append(collectionIDs, collection.GetCollectionID())
+				resyncCollectionNames = append(resyncCollectionNames, collectionName)
 			}
+			scopeAndCollection[scopeName] = resyncCollectionNames
 		}
 	}
-	return collectionIDs, hasAllCollections, nil
+	return collectionIDs, hasAllCollections, scopeAndCollection, nil
 }
 
 func (r *ResyncManagerDCP) ResetStatus() {
@@ -273,6 +305,7 @@ func (r *ResyncManagerDCP) ResetStatus() {
 
 	r.DocsProcessed.Set(0)
 	r.DocsChanged.Set(0)
+	r.ResyncedCollections = nil
 }
 
 func (r *ResyncManagerDCP) SetStatus(docChanged, docProcessed int64) {
@@ -283,11 +316,19 @@ func (r *ResyncManagerDCP) SetStatus(docChanged, docProcessed int64) {
 	r.DocsProcessed.Set(docProcessed)
 }
 
+func (r *ResyncManagerDCP) SetCollectionStatus(collectionNames map[string][]string) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	r.ResyncedCollections = collectionNames
+}
+
 type ResyncManagerResponseDCP struct {
 	BackgroundManagerStatus
-	ResyncID      string `json:"resync_id"`
-	DocsChanged   int64  `json:"docs_changed"`
-	DocsProcessed int64  `json:"docs_processed"`
+	ResyncID              string              `json:"resync_id"`
+	DocsChanged           int64               `json:"docs_changed"`
+	DocsProcessed         int64               `json:"docs_processed"`
+	CollectionsProcessing map[string][]string `json:"collections_processing,omitempty"`
 }
 
 func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus) ([]byte, []byte, error) {
@@ -299,6 +340,7 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus) ([]b
 		ResyncID:                r.ResyncID,
 		DocsChanged:             r.DocsChanged.Value(),
 		DocsProcessed:           r.DocsProcessed.Value(),
+		CollectionsProcessing:   r.ResyncedCollections,
 	}
 
 	meta := AttachmentManagerMeta{
@@ -324,6 +366,22 @@ type ResyncManagerMeta struct {
 type ResyncManagerStatusDocDCP struct {
 	ResyncManagerResponseDCP `json:"status"`
 	ResyncManagerMeta        `json:"meta"`
+}
+
+// initializePrincipalDocsIndex creates the metadata indexes required for resync
+func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
+	n1qlStore, ok := base.AsN1QLStore(db.MetadataStore)
+	if !ok {
+		return errors.New("Cannot create indexes on non-Couchbase data store.")
+	}
+	options := InitializeIndexOptions{
+		FailFast:        false,
+		NumReplicas:     db.Options.NumIndexReplicas,
+		MetadataIndexes: IndexesPrincipalOnly,
+		UseXattrs:       db.UseXattrs(),
+	}
+
+	return InitializeIndexes(ctx, n1qlStore, options)
 }
 
 // getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync

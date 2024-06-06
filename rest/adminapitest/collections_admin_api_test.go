@@ -256,6 +256,20 @@ func TestRequireResync(t *testing.T) {
 		require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
 		return slices.Equal(needsResync, dbRootResponse.RequireResync)
 	}, "expected %+v but got %+v for requireResync", needsResync, dbRootResponse.RequireResync)
+
+	resp = rt.SendAdminRequest("GET", "/_all_dbs?verbose=true", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	var allDBsSummary []rest.DbSummary
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &allDBsSummary))
+	require.Len(t, allDBsSummary, 2)
+	// databases sorted alphabetically
+	require.Equal(t, db1Name, allDBsSummary[0].DBName)
+	require.Equal(t, db.RunStateString[db.DBOnline], allDBsSummary[0].State)
+	require.Equal(t, "", allDBsSummary[0].Reason)
+	require.Equal(t, db2Name, allDBsSummary[1].DBName)
+	require.Equal(t, db.RunStateString[db.DBOffline], allDBsSummary[1].State)
+	require.Equal(t, rest.OfflineReasonRequireResync, allDBsSummary[1].Reason)
+
 	// Run resync for collection
 	resyncCollections := make(db.ResyncCollections, 0)
 	resyncCollections[scope] = []string{collection1}
@@ -274,6 +288,25 @@ func TestRequireResync(t *testing.T) {
 			return db2.ResyncManager.GetRunState()
 		})
 
+	resp = rt.SendAdminRequest("GET", "/_all_dbs?verbose=true", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	allDBsSummary = nil
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &allDBsSummary))
+	require.Len(t, allDBsSummary, 2)
+	// databases sorted alphabetically
+	require.Equal(t, db1Name, allDBsSummary[0].DBName)
+	require.Equal(t, db.RunStateString[db.DBOnline], allDBsSummary[0].State)
+	require.Equal(t, "", allDBsSummary[0].Reason)
+	require.Equal(t, db2Name, allDBsSummary[1].DBName)
+	require.Equal(t, db.RunStateString[db.DBOffline], allDBsSummary[1].State)
+	require.Equal(t, "", allDBsSummary[1].Reason)
+
+	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	dbRootResponse = rest.DatabaseRoot{}
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
+	assert.Nil(t, dbRootResponse.RequireResync)
+
 	// Attempt online again, should now succeed
 	onlineResponse = rt.SendAdminRequest("POST", "/"+db2Name+"/_online", "")
 	rest.RequireStatus(t, onlineResponse, http.StatusOK)
@@ -283,6 +316,7 @@ func TestRequireResync(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	dbRootResponse = rest.DatabaseRoot{}
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
+	assert.Nil(t, dbRootResponse.RequireResync)
 	assert.Nil(t, dbRootResponse.RequireResync)
 
 	resp = rt.SendAdminRequest("GET", "/"+ks_db2_c1+"/testDoc1", "")

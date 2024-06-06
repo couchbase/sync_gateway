@@ -63,6 +63,7 @@ var (
 	PermCreateDb             = Permission{".sgw.db!create", true}
 	PermDeleteDb             = Permission{".sgw.db!delete", true}
 	PermUpdateDb             = Permission{".sgw.db!update", true}
+	PermGetDb                = Permission{".sgw.db!get", true}
 	PermConfigureSyncFn      = Permission{".sgw.sync_function!configure", true}
 	PermConfigureAuth        = Permission{".sgw.auth!configure", true}
 	PermWritePrincipal       = Permission{".sgw.principal!write", true}

@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -442,6 +443,93 @@ function sync(doc, oldDoc){
 		require.NoError(t, err)
 	}
 	return db, ctx
+}
+
+// TestResyncMou ensures that resync updates create mou, and preserve pcas in mou in the case where resync is reprocessing an import
+func TestResyncMou(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	if !db.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		t.Skip("Test requires multi-xattr subdoc operations, CBS 7.6 or higher")
+	}
+
+	db.Options.QueryPaginationLimit = 100 // Required for principal ID query to not deadlock
+
+	initialImportCount := db.DbStats.SharedBucketImport().ImportCount.Value()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	docBody := Body{"foo": "bar"}
+
+	// Create a document via SGW.  mou should not be updated
+	_, doc, err := collection.Put(ctx, "sgWrite", docBody)
+	require.NoError(t, err)
+	sgWriteCas := doc.Cas
+
+	syncData, mou, _ := getSyncAndMou(t, collection, "sgWrite")
+	require.NotNil(t, syncData)
+	require.Nil(t, mou)
+
+	// 2. Create via the SDK
+	_, err = collection.dataStore.WriteCas("sdkWrite", 0, 0, docBody, 0)
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, initialImportCount+1)
+
+	syncData, initialSDKMou, _ := getSyncAndMou(t, collection, "sdkWrite")
+	require.NotNil(t, syncData)
+	require.NotNil(t, initialSDKMou)
+
+	// Update sync function
+	syncFn := `
+function sync(doc, oldDoc){
+	channel("resync_channel");
+}`
+	_, err = collection.UpdateSyncFun(ctx, syncFn)
+	require.NoError(t, err)
+
+	resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
+	require.NotNil(t, resyncMgr)
+
+	initialStats := getResyncStats(resyncMgr.Process)
+	log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
+
+	options := map[string]interface{}{
+		"database":            db,
+		"regenerateSequences": false,
+		"collections":         ResyncCollections{},
+	}
+
+	err = resyncMgr.Start(ctx, options)
+	require.NoError(t, err)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		var status BackgroundManagerStatus
+		rawStatus, err := resyncMgr.GetStatus(ctx)
+		assert.NoError(c, err)
+		assert.NoError(c, json.Unmarshal(rawStatus, &status))
+		assert.Equal(c, BackgroundProcessStateCompleted, status.State)
+	}, 40*time.Second, 200*time.Millisecond)
+
+	stats := getResyncStats(resyncMgr.Process)
+	assert.Equal(t, int64(2), stats.DocsChanged)
+
+	syncData, mou, _ = getSyncAndMou(t, collection, "sgWrite")
+	require.NotNil(t, syncData)
+	require.NotNil(t, mou)
+	require.Equal(t, base.CasToString(sgWriteCas), mou.PreviousCAS)
+
+	syncData, mou, _ = getSyncAndMou(t, collection, "sdkWrite")
+	require.NotNil(t, syncData)
+	require.NotNil(t, mou)
+	require.Equal(t, initialSDKMou.PreviousCAS, mou.PreviousCAS)
+	require.NotEqual(t, initialSDKMou.CAS, mou.CAS)
 }
 
 // helper function to Unmarshal BackgroundProcess state into ResyncManagerResponseDCP

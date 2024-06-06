@@ -467,75 +467,79 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyConfig)
 
-	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
-	defer closeFn()
+	for _, test := range persistentConfigTestCases() {
+		t.Run(test.name, func(t *testing.T) {
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
+			defer closeFn()
 
-	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+			ctx := base.TestCtx(t)
+			tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
 
-	oneCollectionScopesConfig := GetCollectionsConfig(t, tb, 1)
-	dataStoreNames := GetDataStoreNamesFromScopesConfig(oneCollectionScopesConfig)
+			oneCollectionScopesConfig := GetCollectionsConfig(t, tb, 1)
+			dataStoreNames := GetDataStoreNamesFromScopesConfig(oneCollectionScopesConfig)
 
-	bucketName := tb.GetName()
-	scopeName := dataStoreNames[0].ScopeName()
-	groupID := sc.Config.Bootstrap.ConfigGroupID
-	bc := sc.BootstrapContext
+			bucketName := tb.GetName()
+			scopeName := dataStoreNames[0].ScopeName()
+			groupID := sc.Config.Bootstrap.ConfigGroupID
+			bc := sc.BootstrapContext
 
-	// reduce retry timeout for testing
-	bc.configRetryTimeout = 1 * time.Millisecond
+			// reduce retry timeout for testing
+			bc.configRetryTimeout = 1 * time.Millisecond
 
-	// set up ScopesConfigs used by tests
-	collection1Name := dataStoreNames[0].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+			// set up ScopesConfigs used by tests
+			collection1Name := dataStoreNames[0].CollectionName()
+			collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
 
-	const dbName = "c1_db1"
-	collection1db1Config := getTestDatabaseConfig(bucketName, dbName, collection1ScopesConfig, "2-a")
-	collection1db1Config.RevsLimit = base.Uint32Ptr(1000)
-	cas, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
-	require.NoError(t, err)
-	configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
-	require.NoError(t, err)
-	require.Len(t, configs, 1)
+			const dbName = "c1_db1"
+			collection1db1Config := getTestDatabaseConfig(bucketName, dbName, collection1ScopesConfig, "2-a")
+			collection1db1Config.RevsLimit = base.Uint32Ptr(1000)
+			cas, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
+			require.NoError(t, err)
+			configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
+			require.NoError(t, err)
+			require.Len(t, configs, 1)
 
-	db, err := sc.GetDatabase(ctx, dbName)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1000), int64(db.RevsLimit))
+			db, err := sc.GetDatabase(ctx, dbName)
+			require.NoError(t, err)
+			assert.Equal(t, int64(1000), int64(db.RevsLimit))
 
-	// simulate a rollback (not exactly - CAS increments, but lowering the config version is enough)
-	docID := PersistentConfigKey(ctx, groupID, dbName)
-	updatedConfig := *collection1db1Config
-	updatedConfig.Version = "1-a"
-	updatedConfig.RevsLimit = base.Uint32Ptr(500)
-	_, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, cas, &updatedConfig)
-	require.NoError(t, err)
+			// simulate a rollback (not exactly - CAS increments, but lowering the config version is enough)
+			docID := PersistentConfigKey(ctx, groupID, dbName)
+			updatedConfig := *collection1db1Config
+			updatedConfig.Version = "1-a"
+			updatedConfig.RevsLimit = base.Uint32Ptr(500)
+			_, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, cas, &updatedConfig)
+			require.NoError(t, err)
 
-	// we've not polled for config updates yet
-	db, err = sc.GetDatabase(ctx, dbName)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1000), int64(db.RevsLimit))
+			// we've not polled for config updates yet
+			db, err = sc.GetDatabase(ctx, dbName)
+			require.NoError(t, err)
+			assert.Equal(t, int64(1000), int64(db.RevsLimit))
 
-	_, err = sc.fetchAndLoadConfigs(ctx, false)
-	require.NoError(t, err)
+			_, err = sc.fetchAndLoadConfigs(ctx, false)
+			require.NoError(t, err)
 
-	db, err = sc.GetDatabase(ctx, dbName)
-	require.NoError(t, err)
-	assert.Equal(t, int64(500), int64(db.RevsLimit))
+			db, err = sc.GetDatabase(ctx, dbName)
+			require.NoError(t, err)
+			assert.Equal(t, int64(500), int64(db.RevsLimit))
 
-	// at this point the config and registry are re-aligned, but let's just write another config update to make sure it's in an updatable state
-	_, err = bc.UpdateConfig(ctx, bucketName, groupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		bucketDbConfig.Version = "3-c"
-		bucketDbConfig.RevsLimit = base.Uint32Ptr(1234)
-		return bucketDbConfig, nil
-	})
-	require.NoError(t, err)
+			// at this point the config and registry are re-aligned, but let's just write another config update to make sure it's in an updatable state
+			_, err = bc.UpdateConfig(ctx, bucketName, groupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+				bucketDbConfig.Version = "3-c"
+				bucketDbConfig.RevsLimit = base.Uint32Ptr(1234)
+				return bucketDbConfig, nil
+			})
+			require.NoError(t, err)
 
-	_, err = sc.fetchAndLoadConfigs(ctx, false)
-	require.NoError(t, err)
+			_, err = sc.fetchAndLoadConfigs(ctx, false)
+			require.NoError(t, err)
 
-	db, err = sc.GetDatabase(ctx, dbName)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1234), int64(db.RevsLimit))
+			db, err = sc.GetDatabase(ctx, dbName)
+			require.NoError(t, err)
+			assert.Equal(t, int64(1234), int64(db.RevsLimit))
+		})
+	}
 }
 
 // TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback simulates a vbucket rollback for the dbconfig,
@@ -548,19 +552,29 @@ func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback
 	tests := []struct {
 		name                  string
 		multiDatabaseRollback bool
+		useXattrConfig        bool
 	}{
-		{"single database rollback",
+		{"single database rollback - document persistence",
+			false,
 			false,
 		},
-		{"multi database rollback",
+		{"single database rollback - xattr persistence",
+			false,
+			true,
+		},
+		{"multi database rollback - document persistence",
+			true,
+			false,
+		},
+		{"multi database rollback - xattr persistence",
+			true,
 			true,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
-			sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.useXattrConfig)
 			defer closeFn()
 
 			ctx := base.TestCtx(t)
@@ -685,115 +699,119 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
-	defer closeFn()
+	for _, test := range persistentConfigTestCases() {
+		t.Run(test.name, func(t *testing.T) {
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
+			defer closeFn()
 
-	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+			ctx := base.TestCtx(t)
+			tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
 
-	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
-	dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
+			threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
+			dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
 
-	bucketName := tb.GetName()
-	scopeName := dataStoreNames[0].ScopeName()
-	groupID := sc.Config.Bootstrap.ConfigGroupID
-	bc := sc.BootstrapContext
+			bucketName := tb.GetName()
+			scopeName := dataStoreNames[0].ScopeName()
+			groupID := sc.Config.Bootstrap.ConfigGroupID
+			bc := sc.BootstrapContext
 
-	// reduce retry timeout for testing
-	bc.configRetryTimeout = 1 * time.Millisecond
+			// reduce retry timeout for testing
+			bc.configRetryTimeout = 1 * time.Millisecond
 
-	// SimulateCreateFailure updates the registry with a new config, but doesn't create the associated config file
-	simulateCreateFailure := func(t *testing.T, config *DatabaseConfig) {
-		registry, err := bc.getGatewayRegistry(ctx, bucketName)
-		require.NoError(t, err)
-		_, err = registry.upsertDatabaseConfig(ctx, groupID, config)
-		require.NoError(t, err)
-		require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+			// SimulateCreateFailure updates the registry with a new config, but doesn't create the associated config file
+			simulateCreateFailure := func(t *testing.T, config *DatabaseConfig) {
+				registry, err := bc.getGatewayRegistry(ctx, bucketName)
+				require.NoError(t, err)
+				_, err = registry.upsertDatabaseConfig(ctx, groupID, config)
+				require.NoError(t, err)
+				require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+			}
+
+			// set up ScopesConfigs used by tests
+			collection1Name := dataStoreNames[0].CollectionName()
+			collection2Name := dataStoreNames[1].CollectionName()
+			collection3Name := dataStoreNames[2].CollectionName()
+			collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+			collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
+			collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection3Name: {}}}}
+			collection1and2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}, collection2Name: {}}}}
+
+			// Case 1. GetDatabaseConfigs should roll back registry after create failure
+			collection1db1Config := getTestDatabaseConfig(bucketName, "c1_db1", collection1ScopesConfig, "1-a")
+			simulateCreateFailure(t, collection1db1Config)
+			configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
+			require.NoError(t, err)
+			require.Len(t, configs, 0)
+
+			// Case 2. InsertConfig with conflicting name should trigger registry rollback and then successful creation
+			simulateCreateFailure(t, collection1db1Config)
+			_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
+			require.NoError(t, err)
+
+			// Case 3. UpdateConfig on the database after create failure should return not found
+			collection2db1Config := getTestDatabaseConfig(bucketName, "c2_db1", collection2ScopesConfig, "2-a")
+			simulateCreateFailure(t, collection2db1Config)
+			_, err = bc.UpdateConfig(ctx, bucketName, groupID, "c2_db1", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+				bucketDbConfig.Version = "2-abc"
+				return bucketDbConfig, nil
+			})
+			require.Error(t, err)
+			require.True(t, err == base.ErrNotFound)
+
+			// Case 4. InsertConfig with a conflicting collection should return error, but should succeed after next GetDatabaseConfigs
+			collection3db1Config := getTestDatabaseConfig(bucketName, "c3_db1", collection3ScopesConfig, "1-a")
+			simulateCreateFailure(t, collection3db1Config)
+			collection3db2Config := getTestDatabaseConfig(bucketName, "c3_db2", collection3ScopesConfig, "1-b")
+			_, err = bc.InsertConfig(ctx, bucketName, groupID, collection3db2Config)
+			require.Error(t, err) // collection conflict
+
+			configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
+			require.NoError(t, err)
+			require.Len(t, configs, 1)
+
+			// Reattempt insert, should now succeed
+			_, err = bc.InsertConfig(ctx, bucketName, groupID, collection3db2Config)
+			require.NoError(t, err)
+
+			// Case 5. Update different db with conflicting collection after create failure
+			// - create failure adding new db 'c2_db2' that has collection 2
+			// - attempt to update existing database c1db1 to add collection 2
+			collection2db2Config := getTestDatabaseConfig(bucketName, "c2_db2", collection2ScopesConfig, "1-a")
+			simulateCreateFailure(t, collection2db2Config)
+
+			_, err = bc.UpdateConfig(ctx, bucketName, groupID, "c1_db1", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+				bucketDbConfig.Scopes = collection1and2ScopesConfig
+				bucketDbConfig.Version = "2-a"
+				return bucketDbConfig, nil
+			})
+			require.Error(t, err) // collection conflict
+
+			// GetDatabaseConfigs should rollback and remove the failed c2_db2
+			configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
+			require.NoError(t, err)
+			require.Len(t, configs, 2)
+
+			// Update should now succeed
+			_, err = bc.UpdateConfig(ctx, bucketName, groupID, "c1_db1", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+				bucketDbConfig.Scopes = collection1and2ScopesConfig
+				bucketDbConfig.Version = "2-a"
+				return bucketDbConfig, nil
+			})
+			require.NoError(t, err) // collection conflict
+
+			// Remove c3 (clean up for next case)
+			deleteErr := bc.DeleteConfig(ctx, bucketName, groupID, "c3_db2")
+			require.NoError(t, deleteErr)
+
+			// Case 6. Attempt to delete db after create failure for that db
+			//  - create failure for c3_db1 with collection 3
+			//  - attempt to delete c3_db1, rollback will remove from registry, then return 'not found' for the attempted delete
+			simulateCreateFailure(t, collection3db1Config)
+			deleteErr = bc.DeleteConfig(ctx, bucketName, groupID, "c3_db1")
+			require.Equal(t, base.ErrNotFound, deleteErr)
+		})
 	}
-
-	// set up ScopesConfigs used by tests
-	collection1Name := dataStoreNames[0].CollectionName()
-	collection2Name := dataStoreNames[1].CollectionName()
-	collection3Name := dataStoreNames[2].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
-	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
-	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection3Name: {}}}}
-	collection1and2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}, collection2Name: {}}}}
-
-	// Case 1. GetDatabaseConfigs should roll back registry after create failure
-	collection1db1Config := getTestDatabaseConfig(bucketName, "c1_db1", collection1ScopesConfig, "1-a")
-	simulateCreateFailure(t, collection1db1Config)
-	configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
-	require.NoError(t, err)
-	require.Len(t, configs, 0)
-
-	// Case 2. InsertConfig with conflicting name should trigger registry rollback and then successful creation
-	simulateCreateFailure(t, collection1db1Config)
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
-	require.NoError(t, err)
-
-	// Case 3. UpdateConfig on the database after create failure should return not found
-	collection2db1Config := getTestDatabaseConfig(bucketName, "c2_db1", collection2ScopesConfig, "2-a")
-	simulateCreateFailure(t, collection2db1Config)
-	_, err = bc.UpdateConfig(ctx, bucketName, groupID, "c2_db1", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		bucketDbConfig.Version = "2-abc"
-		return bucketDbConfig, nil
-	})
-	require.Error(t, err)
-	require.True(t, err == base.ErrNotFound)
-
-	// Case 4. InsertConfig with a conflicting collection should return error, but should succeed after next GetDatabaseConfigs
-	collection3db1Config := getTestDatabaseConfig(bucketName, "c3_db1", collection3ScopesConfig, "1-a")
-	simulateCreateFailure(t, collection3db1Config)
-	collection3db2Config := getTestDatabaseConfig(bucketName, "c3_db2", collection3ScopesConfig, "1-b")
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection3db2Config)
-	require.Error(t, err) // collection conflict
-
-	configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
-	require.NoError(t, err)
-	require.Len(t, configs, 1)
-
-	// Reattempt insert, should now succeed
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection3db2Config)
-	require.NoError(t, err)
-
-	// Case 5. Update different db with conflicting collection after create failure
-	// - create failure adding new db 'c2_db2' that has collection 2
-	// - attempt to update existing database c1db1 to add collection 2
-	collection2db2Config := getTestDatabaseConfig(bucketName, "c2_db2", collection2ScopesConfig, "1-a")
-	simulateCreateFailure(t, collection2db2Config)
-
-	_, err = bc.UpdateConfig(ctx, bucketName, groupID, "c1_db1", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		bucketDbConfig.Scopes = collection1and2ScopesConfig
-		bucketDbConfig.Version = "2-a"
-		return bucketDbConfig, nil
-	})
-	require.Error(t, err) // collection conflict
-
-	// GetDatabaseConfigs should rollback and remove the failed c2_db2
-	configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
-	require.NoError(t, err)
-	require.Len(t, configs, 2)
-
-	// Update should now succeed
-	_, err = bc.UpdateConfig(ctx, bucketName, groupID, "c1_db1", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		bucketDbConfig.Scopes = collection1and2ScopesConfig
-		bucketDbConfig.Version = "2-a"
-		return bucketDbConfig, nil
-	})
-	require.NoError(t, err) // collection conflict
-
-	// Remove c3 (clean up for next case)
-	deleteErr := bc.DeleteConfig(ctx, bucketName, groupID, "c3_db2")
-	require.NoError(t, deleteErr)
-
-	// Case 6. Attempt to delete db after create failure for that db
-	//  - create failure for c3_db1 with collection 3
-	//  - attempt to delete c3_db1, rollback will remove from registry, then return 'not found' for the attempted delete
-	simulateCreateFailure(t, collection3db1Config)
-	deleteErr = bc.DeleteConfig(ctx, bucketName, groupID, "c3_db1")
-	require.Equal(t, base.ErrNotFound, deleteErr)
 }
 
 // TestPersistentConfigRegistryRollbackAfterUpdateFailure simulates node failure during an updateConfig operation, leaving
@@ -809,124 +827,128 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
-	defer closeFn()
+	for _, test := range persistentConfigTestCases() {
+		t.Run(test.name, func(t *testing.T) {
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
+			defer closeFn()
 
-	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+			ctx := base.TestCtx(t)
+			tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
 
-	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
-	dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
+			threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
+			dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
 
-	bucketName := tb.GetName()
-	scopeName := dataStoreNames[0].ScopeName()
-	groupID := sc.Config.Bootstrap.ConfigGroupID
+			bucketName := tb.GetName()
+			scopeName := dataStoreNames[0].ScopeName()
+			groupID := sc.Config.Bootstrap.ConfigGroupID
 
-	collection1Name := dataStoreNames[0].CollectionName()
-	collection2Name := dataStoreNames[1].CollectionName()
-	collection3Name := dataStoreNames[2].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
-	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
-	collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection3Name: {}}}}
+			collection1Name := dataStoreNames[0].CollectionName()
+			collection2Name := dataStoreNames[1].CollectionName()
+			collection3Name := dataStoreNames[2].CollectionName()
+			collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+			collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
+			collection3ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection3Name: {}}}}
 
-	bc := sc.BootstrapContext
-	// reduce retry timeout for testing
-	bc.configRetryTimeout = 1 * time.Millisecond
+			bc := sc.BootstrapContext
+			// reduce retry timeout for testing
+			bc.configRetryTimeout = 1 * time.Millisecond
 
-	// Create database with collection 1
-	collection1db1Config := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "1-a")
-	_, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
-	require.NoError(t, err)
+			// Create database with collection 1
+			collection1db1Config := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "1-a")
+			_, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
+			require.NoError(t, err)
 
-	// simulateUpdateFailure updates the database registry but doesn't persist the updated config. Simulates
-	// node failure between registry update and config update.
-	simulateUpdateFailure := func(t *testing.T, config *DatabaseConfig) {
-		registry, err := bc.getGatewayRegistry(ctx, bucketName)
-		require.NoError(t, err)
-		_, err = registry.upsertDatabaseConfig(ctx, groupID, config)
-		require.NoError(t, err)
-		require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+			// simulateUpdateFailure updates the database registry but doesn't persist the updated config. Simulates
+			// node failure between registry update and config update.
+			simulateUpdateFailure := func(t *testing.T, config *DatabaseConfig) {
+				registry, err := bc.getGatewayRegistry(ctx, bucketName)
+				require.NoError(t, err)
+				_, err = registry.upsertDatabaseConfig(ctx, groupID, config)
+				require.NoError(t, err)
+				require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+			}
+
+			// Case 1. GetDatabaseConfigs should roll back registry after update failure
+			collection2db1Config := getTestDatabaseConfig(bucketName, "db1", collection2ScopesConfig, "2-a")
+			simulateUpdateFailure(t, collection2db1Config)
+			configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
+			require.NoError(t, err)
+			require.Len(t, configs, 1)
+			require.Equal(t, "1-a", configs[0].Version)
+
+			// Retrieve registry to ensure the previous version has been removed
+			registry, err := bc.getGatewayRegistry(ctx, bucketName)
+			require.NoError(t, err)
+			registryDb, ok := registry.getRegistryDatabase(groupID, "db1")
+			require.True(t, ok)
+			require.Equal(t, "1-a", registryDb.Version)
+			require.Nil(t, registryDb.PreviousVersion)
+
+			// Case 2. UpdateConfig with a version that conflicts with the failed update. Should trigger registry rollback and then successful update
+			simulateUpdateFailure(t, collection1db1Config)
+			_, err = bc.UpdateConfig(ctx, bucketName, groupID, "db1", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+				bucketDbConfig.Scopes = collection2ScopesConfig
+				bucketDbConfig.Version = "2-b"
+				return bucketDbConfig, nil
+			})
+			require.NoError(t, err)
+			// Retrieve registry to ensure the previous version has been removed and version updated to the new version
+			registry, err = bc.getGatewayRegistry(ctx, bucketName)
+			require.NoError(t, err)
+			registryDb, ok = registry.getRegistryDatabase(groupID, "db1")
+			require.True(t, ok)
+			require.Equal(t, "2-b", registryDb.Version)
+			require.Nil(t, registryDb.PreviousVersion)
+
+			// Case 3. InsertConfig for a different db with collection conflict with the failed update (should fail with conflict, but succeed after GetDatabaseConfigs runs)
+			collection1db1Config_v3 := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "3-a")
+			simulateUpdateFailure(t, collection1db1Config_v3)
+
+			collection1db2Config := getTestDatabaseConfig(bucketName, "db2", collection1ScopesConfig, "1-a")
+			_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db2Config)
+			require.Error(t, err) // collection conflict
+
+			configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
+			require.NoError(t, err)
+			require.Len(t, configs, 1)
+
+			// Reattempt insert, should now succeed
+			_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db2Config)
+			require.NoError(t, err)
+
+			// Case 4. InsertConfig for a different db with collection conflict with the version prior to the failed update
+			collection3db1Config := getTestDatabaseConfig(bucketName, "db1", collection3ScopesConfig, "3-a")
+			simulateUpdateFailure(t, collection3db1Config)
+
+			collection2db3Config := getTestDatabaseConfig(bucketName, "db3", collection1ScopesConfig, "1-a")
+			_, err = bc.InsertConfig(ctx, bucketName, groupID, collection2db3Config)
+			require.Error(t, err) // collection conflict
+
+			configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
+			require.NoError(t, err)
+			require.Len(t, configs, 2)
+
+			// Reattempt insert, should still be in conflict post-rollback
+			_, err = bc.InsertConfig(ctx, bucketName, groupID, collection2db3Config)
+			require.Error(t, err) // collection conflict
+
+			configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
+			require.NoError(t, err)
+			require.Len(t, configs, 2)
+
+			// Case 5. Attempt to delete db after update failure for that db
+			simulateUpdateFailure(t, collection3db1Config)
+			deleteErr := bc.DeleteConfig(ctx, bucketName, groupID, "db1")
+			require.NoError(t, deleteErr)
+
+			// Retrieve registry to ensure the delete was successful
+			registry, err = bc.getGatewayRegistry(ctx, bucketName)
+			require.NoError(t, err)
+			_, ok = registry.getRegistryDatabase(groupID, "db1")
+			require.False(t, ok)
+		})
 	}
-
-	// Case 1. GetDatabaseConfigs should roll back registry after update failure
-	collection2db1Config := getTestDatabaseConfig(bucketName, "db1", collection2ScopesConfig, "2-a")
-	simulateUpdateFailure(t, collection2db1Config)
-	configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
-	require.NoError(t, err)
-	require.Len(t, configs, 1)
-	require.Equal(t, "1-a", configs[0].Version)
-
-	// Retrieve registry to ensure the previous version has been removed
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
-	require.NoError(t, err)
-	registryDb, ok := registry.getRegistryDatabase(groupID, "db1")
-	require.True(t, ok)
-	require.Equal(t, "1-a", registryDb.Version)
-	require.Nil(t, registryDb.PreviousVersion)
-
-	// Case 2. UpdateConfig with a version that conflicts with the failed update. Should trigger registry rollback and then successful update
-	simulateUpdateFailure(t, collection1db1Config)
-	_, err = bc.UpdateConfig(ctx, bucketName, groupID, "db1", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		bucketDbConfig.Scopes = collection2ScopesConfig
-		bucketDbConfig.Version = "2-b"
-		return bucketDbConfig, nil
-	})
-	require.NoError(t, err)
-	// Retrieve registry to ensure the previous version has been removed and version updated to the new version
-	registry, err = bc.getGatewayRegistry(ctx, bucketName)
-	require.NoError(t, err)
-	registryDb, ok = registry.getRegistryDatabase(groupID, "db1")
-	require.True(t, ok)
-	require.Equal(t, "2-b", registryDb.Version)
-	require.Nil(t, registryDb.PreviousVersion)
-
-	// Case 3. InsertConfig for a different db with collection conflict with the failed update (should fail with conflict, but succeed after GetDatabaseConfigs runs)
-	collection1db1Config_v3 := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "3-a")
-	simulateUpdateFailure(t, collection1db1Config_v3)
-
-	collection1db2Config := getTestDatabaseConfig(bucketName, "db2", collection1ScopesConfig, "1-a")
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db2Config)
-	require.Error(t, err) // collection conflict
-
-	configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
-	require.NoError(t, err)
-	require.Len(t, configs, 1)
-
-	// Reattempt insert, should now succeed
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db2Config)
-	require.NoError(t, err)
-
-	// Case 4. InsertConfig for a different db with collection conflict with the version prior to the failed update
-	collection3db1Config := getTestDatabaseConfig(bucketName, "db1", collection3ScopesConfig, "3-a")
-	simulateUpdateFailure(t, collection3db1Config)
-
-	collection2db3Config := getTestDatabaseConfig(bucketName, "db3", collection1ScopesConfig, "1-a")
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection2db3Config)
-	require.Error(t, err) // collection conflict
-
-	configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
-	require.NoError(t, err)
-	require.Len(t, configs, 2)
-
-	// Reattempt insert, should still be in conflict post-rollback
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection2db3Config)
-	require.Error(t, err) // collection conflict
-
-	configs, err = bc.GetDatabaseConfigs(ctx, bucketName, groupID)
-	require.NoError(t, err)
-	require.Len(t, configs, 2)
-
-	// Case 5. Attempt to delete db after update failure for that db
-	simulateUpdateFailure(t, collection3db1Config)
-	deleteErr := bc.DeleteConfig(ctx, bucketName, groupID, "db1")
-	require.NoError(t, deleteErr)
-
-	// Retrieve registry to ensure the delete was successful
-	registry, err = bc.getGatewayRegistry(ctx, bucketName)
-	require.NoError(t, err)
-	_, ok = registry.getRegistryDatabase(groupID, "db1")
-	require.False(t, ok)
 }
 
 // TestPersistentConfigRegistryRollbackAfterDeleteFailure simulates node failure during an deleteConfig operation, leaving
@@ -940,90 +962,94 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
-	defer closeFn()
+	for _, test := range persistentConfigTestCases() {
+		t.Run(test.name, func(t *testing.T) {
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
+			defer closeFn()
 
-	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+			ctx := base.TestCtx(t)
+			tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
 
-	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
-	dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
+			threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
+			dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
 
-	bucketName := tb.GetName()
-	scopeName := dataStoreNames[0].ScopeName()
-	groupID := sc.Config.Bootstrap.ConfigGroupID
+			bucketName := tb.GetName()
+			scopeName := dataStoreNames[0].ScopeName()
+			groupID := sc.Config.Bootstrap.ConfigGroupID
 
-	collection1Name := dataStoreNames[0].CollectionName()
-	collection2Name := dataStoreNames[1].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
-	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
+			collection1Name := dataStoreNames[0].CollectionName()
+			collection2Name := dataStoreNames[1].CollectionName()
+			collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+			collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection2Name: {}}}}
 
-	// SimulateDeleteFailure updates the registry with a new config, but doesn't create the associated config file
-	bc := sc.BootstrapContext
+			// SimulateDeleteFailure updates the registry with a new config, but doesn't create the associated config file
+			bc := sc.BootstrapContext
 
-	// reduce retry timeout for testing
-	bc.configRetryTimeout = 1 * time.Millisecond
+			// reduce retry timeout for testing
+			bc.configRetryTimeout = 1 * time.Millisecond
 
-	// Create database with collection 1
-	collection1db1Config := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "1-a")
-	_, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
-	require.NoError(t, err)
+			// Create database with collection 1
+			collection1db1Config := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "1-a")
+			_, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
+			require.NoError(t, err)
 
-	// simulateDeleteFailure removes the database from the database registry but doesn't remove the associated config file.
-	// Simulates node failure between registry update and config removal.
-	simulateDeleteFailure := func(t *testing.T, config *DatabaseConfig) {
-		registry, err := bc.getGatewayRegistry(ctx, bucketName)
-		require.NoError(t, err)
-		require.NoError(t, registry.deleteDatabase(groupID, config.Name))
-		require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+			// simulateDeleteFailure removes the database from the database registry but doesn't remove the associated config file.
+			// Simulates node failure between registry update and config removal.
+			simulateDeleteFailure := func(t *testing.T, config *DatabaseConfig) {
+				registry, err := bc.getGatewayRegistry(ctx, bucketName)
+				require.NoError(t, err)
+				require.NoError(t, registry.deleteDatabase(groupID, config.Name))
+				require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+			}
+
+			// Case 1. Retrieval of database after delete failure should not find it (matching versions)
+			simulateDeleteFailure(t, collection1db1Config)
+			configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
+			require.NoError(t, err)
+			require.Len(t, configs, 0)
+
+			// Case 2. Attempt to recreate the config with a matching version generation and digest. Should resolve in-flight delete
+			// and then successfully
+			_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
+			require.NoError(t, err)
+
+			// Case 3. Attempt to recreate the config with a different version digest. Should resolve in-flight delete
+			// and then successfully recreate
+			simulateDeleteFailure(t, collection1db1Config)
+			collection1db1bConfig := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "1-b")
+			_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db1bConfig)
+			require.NoError(t, err)
+
+			// Case 4. Attempt to recreate the config with a different version generation and digest. Should resolve in-flight delete
+			// and then successfully recreate
+			collection2db2Config := getTestDatabaseConfig(bucketName, "db2", collection2ScopesConfig, "1-a")
+			_, err = bc.InsertConfig(ctx, bucketName, groupID, collection2db2Config)
+			require.NoError(t, err)
+			_, err = bc.UpdateConfig(ctx, bucketName, groupID, "db2", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+				bucketDbConfig.Scopes = collection2ScopesConfig
+				bucketDbConfig.Version = "2-a"
+				return bucketDbConfig, nil
+			})
+			require.NoError(t, err)
+
+			simulateDeleteFailure(t, collection2db2Config)
+			// Version 2-a is deleted, attempt to recreate as version 1-b.  Expect resolution of in-flight delete and then
+			// successfully recreate
+			collection2db2bConfig := getTestDatabaseConfig(bucketName, "db2", collection2ScopesConfig, "1-b")
+			_, err = bc.InsertConfig(ctx, bucketName, groupID, collection2db2bConfig)
+			require.NoError(t, err)
+
+			// Case 5. Attempt to update a config after delete failure.
+			simulateDeleteFailure(t, collection2db2Config)
+			_, err = bc.UpdateConfig(ctx, bucketName, groupID, "db2", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+				bucketDbConfig.Scopes = collection2ScopesConfig
+				bucketDbConfig.Version = "2-a"
+				return bucketDbConfig, nil
+			})
+			require.Equal(t, base.ErrNotFound, err)
+		})
 	}
-
-	// Case 1. Retrieval of database after delete failure should not find it (matching versions)
-	simulateDeleteFailure(t, collection1db1Config)
-	configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
-	require.NoError(t, err)
-	require.Len(t, configs, 0)
-
-	// Case 2. Attempt to recreate the config with a matching version generation and digest. Should resolve in-flight delete
-	// and then successfully
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
-	require.NoError(t, err)
-
-	// Case 3. Attempt to recreate the config with a different version digest. Should resolve in-flight delete
-	// and then successfully recreate
-	simulateDeleteFailure(t, collection1db1Config)
-	collection1db1bConfig := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "1-b")
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db1bConfig)
-	require.NoError(t, err)
-
-	// Case 4. Attempt to recreate the config with a different version generation and digest. Should resolve in-flight delete
-	// and then successfully recreate
-	collection2db2Config := getTestDatabaseConfig(bucketName, "db2", collection2ScopesConfig, "1-a")
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection2db2Config)
-	require.NoError(t, err)
-	_, err = bc.UpdateConfig(ctx, bucketName, groupID, "db2", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		bucketDbConfig.Scopes = collection2ScopesConfig
-		bucketDbConfig.Version = "2-a"
-		return bucketDbConfig, nil
-	})
-	require.NoError(t, err)
-
-	simulateDeleteFailure(t, collection2db2Config)
-	// Version 2-a is deleted, attempt to recreate as version 1-b.  Expect resolution of in-flight delete and then
-	// successfully recreate
-	collection2db2bConfig := getTestDatabaseConfig(bucketName, "db2", collection2ScopesConfig, "1-b")
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection2db2bConfig)
-	require.NoError(t, err)
-
-	// Case 5. Attempt to update a config after delete failure.
-	simulateDeleteFailure(t, collection2db2Config)
-	_, err = bc.UpdateConfig(ctx, bucketName, groupID, "db2", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		bucketDbConfig.Scopes = collection2ScopesConfig
-		bucketDbConfig.Version = "2-a"
-		return bucketDbConfig, nil
-	})
-	require.Equal(t, base.ErrNotFound, err)
 
 }
 
@@ -1034,115 +1060,123 @@ func TestPersistentConfigSlowCreateFailure(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
-	defer closeFn()
+	for _, test := range persistentConfigTestCases() {
+		t.Run(test.name, func(t *testing.T) {
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, false)
+			defer closeFn()
 
-	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+			ctx := base.TestCtx(t)
+			tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
 
-	threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
-	dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
+			threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
+			dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
 
-	bucketName := tb.GetName()
-	scopeName := dataStoreNames[0].ScopeName()
-	groupID := sc.Config.Bootstrap.ConfigGroupID
-	bc := sc.BootstrapContext
+			bucketName := tb.GetName()
+			scopeName := dataStoreNames[0].ScopeName()
+			groupID := sc.Config.Bootstrap.ConfigGroupID
+			bc := sc.BootstrapContext
 
-	// reduce retry timeout for testing
-	bc.configRetryTimeout = 1 * time.Millisecond
+			// reduce retry timeout for testing
+			bc.configRetryTimeout = 1 * time.Millisecond
 
-	// simulateSlowCreate updates the registry with a new config, but doesn't create the associated config file
-	simulateSlowCreate := func(t *testing.T, config *DatabaseConfig) {
-		registry, err := bc.getGatewayRegistry(ctx, bucketName)
-		require.NoError(t, err)
-		_, err = registry.upsertDatabaseConfig(ctx, groupID, config)
-		require.NoError(t, err)
-		require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+			// simulateSlowCreate updates the registry with a new config, but doesn't create the associated config file
+			simulateSlowCreate := func(t *testing.T, config *DatabaseConfig) {
+				registry, err := bc.getGatewayRegistry(ctx, bucketName)
+				require.NoError(t, err)
+				_, err = registry.upsertDatabaseConfig(ctx, groupID, config)
+				require.NoError(t, err)
+				require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+			}
+
+			completeSlowCreate := func(config *DatabaseConfig) error {
+				_, insertError := bc.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, config.Name), config)
+				return insertError
+			}
+
+			// set up ScopesConfigs used by tests
+			collection1Name := dataStoreNames[0].CollectionName()
+			collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
+
+			// Case 1. Complete slow create after rollback
+			collection1db1Config := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "1-a")
+			simulateSlowCreate(t, collection1db1Config)
+			configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
+			require.NoError(t, err)
+			require.Len(t, configs, 0)
+
+			err = completeSlowCreate(collection1db1Config)
+			require.NoError(t, err)
+
+			// Re-attempt the insert, verify it's not blocked by the slow write of the config file
+			_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
+			require.NoError(t, err)
+		})
 	}
-
-	completeSlowCreate := func(config *DatabaseConfig) error {
-		_, insertError := bc.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, config.Name), config)
-		return insertError
-	}
-
-	// set up ScopesConfigs used by tests
-	collection1Name := dataStoreNames[0].CollectionName()
-	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{map[string]*CollectionConfig{collection1Name: {}}}}
-
-	// Case 1. Complete slow create after rollback
-	collection1db1Config := getTestDatabaseConfig(bucketName, "db1", collection1ScopesConfig, "1-a")
-	simulateSlowCreate(t, collection1db1Config)
-	configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
-	require.NoError(t, err)
-	require.Len(t, configs, 0)
-
-	err = completeSlowCreate(collection1db1Config)
-	require.NoError(t, err)
-
-	// Re-attempt the insert, verify it's not blocked by the slow write of the config file
-	_, err = bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
-	require.NoError(t, err)
 }
 
 func TestMigratev30PersistentConfig(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
-	defer closeFn()
+	for _, test := range persistentConfigTestCases() {
+		t.Run(test.name, func(t *testing.T) {
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
+			defer closeFn()
 
-	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+			ctx := base.TestCtx(t)
+			tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
 
-	bucketName := tb.GetName()
-	groupID := sc.Config.Bootstrap.ConfigGroupID
-	defaultDbName := "defaultDb"
-	defaultVersion := "1-abc"
-	defaultDbConfig := makeDbConfig(tb.GetName(), defaultDbName, nil)
-	defaultDatabaseConfig := &DatabaseConfig{
-		DbConfig: defaultDbConfig,
-		Version:  defaultVersion,
+			bucketName := tb.GetName()
+			groupID := sc.Config.Bootstrap.ConfigGroupID
+			defaultDbName := "defaultDb"
+			defaultVersion := "1-abc"
+			defaultDbConfig := makeDbConfig(tb.GetName(), defaultDbName, nil)
+			defaultDatabaseConfig := &DatabaseConfig{
+				DbConfig: defaultDbConfig,
+				Version:  defaultVersion,
+			}
+
+			_, insertError := sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
+			require.NoError(t, insertError)
+
+			migrateErr := sc.migrateV30Configs(ctx)
+			require.NoError(t, migrateErr)
+
+			// Fetch the registry, verify database has been migrated
+			registry, registryErr := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+			require.NoError(t, registryErr)
+			require.NotNil(t, registry)
+			migratedDb, found := registry.getRegistryDatabase(groupID, defaultDbName)
+			require.True(t, found)
+			require.Equal(t, "1-abc", migratedDb.Version)
+			// Verify legacy config has been removed
+			_, getError := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
+			base.RequireDocNotFoundError(t, getError)
+
+			// Update the db in the registry, and recreate legacy config.  Verify migration doesn't overwrite
+			_, insertError = sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
+			require.NoError(t, insertError)
+			_, updateError := sc.BootstrapContext.UpdateConfig(ctx, bucketName, groupID, defaultDbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+				bucketDbConfig.Version = "2-abc"
+				return bucketDbConfig, nil
+			})
+			require.NoError(t, updateError)
+			migrateErr = sc.migrateV30Configs(ctx)
+			require.NoError(t, migrateErr)
+			registry, registryErr = sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+			require.NoError(t, registryErr)
+			require.NotNil(t, registry)
+			migratedDb, found = registry.getRegistryDatabase(groupID, defaultDbName)
+			require.True(t, found)
+			require.Equal(t, "2-abc", migratedDb.Version)
+
+			// Verify legacy config has been removed
+			_, getError = sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
+			base.RequireDocNotFoundError(t, getError)
+		})
 	}
-
-	_, insertError := sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
-	require.NoError(t, insertError)
-
-	migrateErr := sc.migrateV30Configs(ctx)
-	require.NoError(t, migrateErr)
-
-	// Fetch the registry, verify database has been migrated
-	registry, registryErr := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
-	require.NoError(t, registryErr)
-	require.NotNil(t, registry)
-	migratedDb, found := registry.getRegistryDatabase(groupID, defaultDbName)
-	require.True(t, found)
-	require.Equal(t, "1-abc", migratedDb.Version)
-	// Verify legacy config has been removed
-	_, getError := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
-	base.RequireDocNotFoundError(t, getError)
-
-	// Update the db in the registry, and recreate legacy config.  Verify migration doesn't overwrite
-	_, insertError = sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
-	require.NoError(t, insertError)
-	_, updateError := sc.BootstrapContext.UpdateConfig(ctx, bucketName, groupID, defaultDbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		bucketDbConfig.Version = "2-abc"
-		return bucketDbConfig, nil
-	})
-	require.NoError(t, updateError)
-	migrateErr = sc.migrateV30Configs(ctx)
-	require.NoError(t, migrateErr)
-	registry, registryErr = sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
-	require.NoError(t, registryErr)
-	require.NotNil(t, registry)
-	migratedDb, found = registry.getRegistryDatabase(groupID, defaultDbName)
-	require.True(t, found)
-	require.Equal(t, "2-abc", migratedDb.Version)
-
-	// Verify legacy config has been removed
-	_, getError = sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
-	base.RequireDocNotFoundError(t, getError)
 }
 
 func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
@@ -1216,48 +1250,52 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
-	defer closeFn()
+	for _, test := range persistentConfigTestCases() {
+		t.Run(test.name, func(t *testing.T) {
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
+			defer closeFn()
 
-	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+			ctx := base.TestCtx(t)
+			tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
 
-	bucketName := tb.GetName()
-	groupID := sc.Config.Bootstrap.ConfigGroupID
+			bucketName := tb.GetName()
+			groupID := sc.Config.Bootstrap.ConfigGroupID
 
-	// Set up a new database targeting the default collection
-	newDefaultDbName := "newDefaultDb"
-	newDefaultDbConfig := getTestDatabaseConfig(bucketName, newDefaultDbName, DefaultOnlyScopesConfig, "1-a")
-	_, err := sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, newDefaultDbConfig)
-	require.NoError(t, err)
+			// Set up a new database targeting the default collection
+			newDefaultDbName := "newDefaultDb"
+			newDefaultDbConfig := getTestDatabaseConfig(bucketName, newDefaultDbName, DefaultOnlyScopesConfig, "1-a")
+			_, err := sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, newDefaultDbConfig)
+			require.NoError(t, err)
 
-	// Insert a legacy db config with a different name directly to the bucket, and attempt to migrate
-	defaultDbName := "defaultDb30"
-	defaultVersion := "1-abc"
-	defaultDbConfig := makeDbConfig(tb.GetName(), defaultDbName, nil)
-	defaultDatabaseConfig := &DatabaseConfig{
-		DbConfig: defaultDbConfig,
-		Version:  defaultVersion,
+			// Insert a legacy db config with a different name directly to the bucket, and attempt to migrate
+			defaultDbName := "defaultDb30"
+			defaultVersion := "1-abc"
+			defaultDbConfig := makeDbConfig(tb.GetName(), defaultDbName, nil)
+			defaultDatabaseConfig := &DatabaseConfig{
+				DbConfig: defaultDbConfig,
+				Version:  defaultVersion,
+			}
+			_, insertError := sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
+			require.NoError(t, insertError)
+
+			// migration should not return error, but legacy config will not be migrated due to collection conflict
+			migrateErr := sc.migrateV30Configs(ctx)
+			require.NoError(t, migrateErr)
+
+			// Fetch the registry, verify newDefaultDb still exists and defaultDb30 has not been migrated due to collection conflict
+			registry, registryErr := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+			require.NoError(t, registryErr)
+			require.NotNil(t, registry)
+			migratedDb, found := registry.getRegistryDatabase(groupID, newDefaultDbName)
+			require.True(t, found)
+			require.Equal(t, "1-a", migratedDb.Version)
+
+			// Verify non-migrated legacy config has not been deleted (since it wasn't successfully migrated)
+			_, getErr := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
+			require.NoError(t, getErr)
+		})
 	}
-	_, insertError := sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
-	require.NoError(t, insertError)
-
-	// migration should not return error, but legacy config will not be migrated due to collection conflict
-	migrateErr := sc.migrateV30Configs(ctx)
-	require.NoError(t, migrateErr)
-
-	// Fetch the registry, verify newDefaultDb still exists and defaultDb30 has not been migrated due to collection conflict
-	registry, registryErr := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
-	require.NoError(t, registryErr)
-	require.NotNil(t, registry)
-	migratedDb, found := registry.getRegistryDatabase(groupID, newDefaultDbName)
-	require.True(t, found)
-	require.Equal(t, "1-a", migratedDb.Version)
-
-	// Verify non-migrated legacy config has not been deleted (since it wasn't successfully migrated)
-	_, getErr := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), defaultDatabaseConfig)
-	require.NoError(t, getErr)
 }
 
 // TestLegacyDuplicate tests the behaviour of GetDatabaseConfigs when the same database exists in legacy and non-legacy format
@@ -1265,38 +1303,42 @@ func TestLegacyDuplicate(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	sc, closeFn := startBootstrapServerWithoutConfigPolling(t)
-	defer closeFn()
+	for _, test := range persistentConfigTestCases() {
+		t.Run(test.name, func(t *testing.T) {
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
+			defer closeFn()
 
-	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+			ctx := base.TestCtx(t)
+			tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
 
-	bucketName := tb.GetName()
-	groupID := sc.Config.Bootstrap.ConfigGroupID
+			bucketName := tb.GetName()
+			groupID := sc.Config.Bootstrap.ConfigGroupID
 
-	// Set up a 3.1 database targeting the default collection
-	defaultDbName := "defaultDb"
-	newDefaultDbConfig := getTestDatabaseConfig(bucketName, defaultDbName, DefaultOnlyScopesConfig, "3.1")
-	_, err := sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, newDefaultDbConfig)
-	require.NoError(t, err)
+			// Set up a 3.1 database targeting the default collection
+			defaultDbName := "defaultDb"
+			newDefaultDbConfig := getTestDatabaseConfig(bucketName, defaultDbName, DefaultOnlyScopesConfig, "3.1")
+			_, err := sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, newDefaultDbConfig)
+			require.NoError(t, err)
 
-	// Insert a 3.0 db config for the same database name directly to the bucket
-	legacyVersion := "3.0"
-	legacyDbConfig := makeDbConfig(tb.GetName(), defaultDbName, nil)
-	legacyDatabaseConfig := &DatabaseConfig{
-		DbConfig: legacyDbConfig,
-		Version:  legacyVersion,
+			// Insert a 3.0 db config for the same database name directly to the bucket
+			legacyVersion := "3.0"
+			legacyDbConfig := makeDbConfig(tb.GetName(), defaultDbName, nil)
+			legacyDatabaseConfig := &DatabaseConfig{
+				DbConfig: legacyDbConfig,
+				Version:  legacyVersion,
+			}
+			_, insertError := sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), legacyDatabaseConfig)
+			require.NoError(t, insertError)
+
+			// Fetch the registry, verify newDefaultDb still exists and defaultDb30 has not been migrated due to collection conflict
+			configs, err := sc.BootstrapContext.GetDatabaseConfigs(ctx, tb.GetName(), groupID)
+			require.NoError(t, err)
+			require.Len(t, configs, 1)
+			dbConfig := configs[0]
+			assert.Equal(t, "3.1", dbConfig.Version)
+		})
 	}
-	_, insertError := sc.BootstrapContext.Connection.InsertMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), legacyDatabaseConfig)
-	require.NoError(t, insertError)
-
-	// Fetch the registry, verify newDefaultDb still exists and defaultDb30 has not been migrated due to collection conflict
-	configs, err := sc.BootstrapContext.GetDatabaseConfigs(ctx, tb.GetName(), groupID)
-	require.NoError(t, err)
-	require.Len(t, configs, 1)
-	dbConfig := configs[0]
-	assert.Equal(t, "3.1", dbConfig.Version)
 }
 
 func getTestDatabaseConfig(bucketName string, dbName string, scopesConfig ScopesConfig, version string) *DatabaseConfig {
@@ -1427,9 +1469,38 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 }
 
 // startBootstrapServerWithoutConfigPolling starts a server with config polling disabled, and returns the server context.
-func startBootstrapServerWithoutConfigPolling(t *testing.T) (*ServerContext, func()) {
+func startBootstrapServerWithoutConfigPolling(t *testing.T, useXattrConfig bool) (*ServerContext, func()) {
 	config := BootstrapStartupConfigForTest(t)
 	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Hour * 24)
+	config.Unsupported.UseXattrConfig = base.BoolPtr(useXattrConfig)
 	return StartServerWithConfig(t, &config)
+}
+
+type persistentConfigTestCase struct {
+	name        string
+	xattrConfig bool
+}
+
+func persistentConfigTestCases() []persistentConfigTestCase {
+
+	if base.UnitTestUrlIsWalrus() {
+		// rosmar has its own bootstrap implementation that doesn't differentiate between xattr and non-xattr persistence
+		return []persistentConfigTestCase{
+			{
+				name:        "rosmar_persistence",
+				xattrConfig: false,
+			},
+		}
+	} else {
+		return []persistentConfigTestCase{
+			{
+				name:        "xattr_persistence",
+				xattrConfig: true,
+			}, {
+				name:        "document_persistence",
+				xattrConfig: false,
+			},
+		}
+	}
 }

@@ -10,15 +10,17 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
-	"github.com/natefinch/lumberjack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 func TestRedactedLogFuncs(t *testing.T) {
@@ -55,6 +57,71 @@ func Benchmark_LoggingPerformance(b *testing.B) {
 		WarnfCtx(ctx, "some crud'y message")
 		ErrorfCtx(ctx, "some crud'y message")
 	}
+}
+
+func TestLogRotationInterval(t *testing.T) {
+	LongRunningTest(t)
+
+	// override min rotation interval for testing
+	originalMinRotationInterval := minLogRotationInterval
+	minLogRotationInterval = time.Millisecond * 10
+	defer func() { minLogRotationInterval = originalMinRotationInterval }()
+
+	rotationInterval := time.Millisecond * 100
+	config := &FileLoggerConfig{
+		Enabled:             BoolPtr(true),
+		CollationBufferSize: IntPtr(0),
+		Rotation: logRotationConfig{
+			RotationInterval: NewConfigDuration(rotationInterval),
+			Compress:         BoolPtr(false),
+		},
+	}
+
+	// On Windows, cleanup of t.TempDir() fails due to open log file handle from Lumberjack. Cannot be fixed from SG.
+	// https://github.com/natefinch/lumberjack/issues/185
+	var logPath string
+	if runtime.GOOS == "windows" {
+		var err error
+		logPath, err = os.MkdirTemp("", t.Name())
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			if err := os.RemoveAll(logPath); err != nil {
+				// log instead of error because it's likely this is going to fail on Windows for this test.
+				t.Logf("couldn't remove temp dir: %v", err)
+			}
+		})
+	} else {
+		logPath = t.TempDir()
+	}
+
+	countBefore := numFilesInDir(t, logPath, false)
+	t.Logf("countBefore: %d", countBefore)
+
+	ctx, ctxCancel := context.WithCancel(TestCtx(t))
+	defer ctxCancel()
+
+	fl, err := NewFileLogger(ctx, config, LevelTrace, "test", logPath, 0, nil)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, fl.Close()) }()
+
+	fl.logf("test 1")
+	countAfter1 := numFilesInDir(t, logPath, false)
+	t.Logf("countAfter1: %d", countAfter1)
+	assert.Greater(t, countAfter1, countBefore)
+
+	time.Sleep(rotationInterval * 5)
+	countAfterSleep := numFilesInDir(t, logPath, false)
+	t.Logf("countAfterSleep: %d", countAfterSleep)
+	assert.Greater(t, countAfterSleep, countAfter1)
+
+	fl.logf("test 2")
+	countAfter2 := numFilesInDir(t, logPath, false)
+	t.Logf("countAfter2: %d", countAfter2)
+	assert.GreaterOrEqual(t, countAfter2, countAfterSleep)
+
+	// Wait for Lumberjack to finish its async log compression work
+	// we have no way of waiting for this to finish, or even stopping the millRun() process inside Lumberjack.
+	time.Sleep(time.Second)
 }
 
 // Benchmark the time it takes to write x bytes of data to a logger, and optionally rotate and compress it.

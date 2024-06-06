@@ -45,6 +45,8 @@ const defaultBytesStatsReportingInterval = 30 * time.Second
 
 const dbLoadedStateChangeMsg = "DB loaded from config"
 
+const OfflineReasonRequireResync = "require_resync"
+
 var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named collections specified in database config, but not supported by connected Couchbase Server.")
 
 var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
@@ -347,17 +349,24 @@ func (sc *ServerContext) AllDatabaseNames() []string {
 	return names
 }
 
-func (sc *ServerContext) allDatabaseSummaries() []dbSummary {
+func (sc *ServerContext) allDatabaseSummaries() []DbSummary {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
 
-	dbs := make([]dbSummary, 0, len(sc.databases_))
+	dbs := make([]DbSummary, 0, len(sc.databases_))
 	for name, dbctx := range sc.databases_ {
-		dbs = append(dbs, dbSummary{
+		state := db.RunStateString[atomic.LoadUint32(&dbctx.State)]
+		summary := DbSummary{
 			DBName: name,
 			Bucket: dbctx.Bucket.GetName(),
-			State:  db.RunStateString[atomic.LoadUint32(&dbctx.State)],
-		})
+			State:  state,
+		}
+		if state == db.RunStateString[db.DBOffline] {
+			if len(dbctx.RequireResync.ScopeAndCollectionNames()) > 0 {
+				summary.Reason = OfflineReasonRequireResync
+			}
+		}
+		dbs = append(dbs, summary)
 	}
 	sort.Slice(dbs, func(i, j int) bool {
 		return dbs[i].DBName < dbs[j].DBName
@@ -1266,6 +1275,11 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
 		MaxConcurrentChangesBatches: sc.Config.Replicator.MaxConcurrentChangesBatches,
 		MaxConcurrentRevs:           sc.Config.Replicator.MaxConcurrentRevs,
+	}
+	if config.NumIndexReplicas != nil {
+		contextOptions.NumIndexReplicas = *config.NumIndexReplicas
+	} else {
+		contextOptions.NumIndexReplicas = DefaultNumIndexReplicas
 	}
 
 	// Per-database console logging config overrides

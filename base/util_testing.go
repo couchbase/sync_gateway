@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"math/rand"
 	"os"
@@ -749,7 +750,7 @@ func TestRequiresCollections(t testing.TB) {
 
 // TestRequiresDCPResync will skip the current test DCP sync is not supported.
 func TestRequiresDCPResync(t testing.TB) {
-	if !UnitTestUrlIsWalrus() {
+	if UnitTestUrlIsWalrus() {
 		t.Skip("Walrus doesn't support DCP resync CBG-2661")
 	}
 }
@@ -934,4 +935,22 @@ func MustJSONMarshal(t testing.TB, v interface{}) []byte {
 	b, err := JSONMarshal(v)
 	require.NoError(t, err)
 	return b
+}
+
+// numFilesInDir counts the number of files in a given directory
+func numFilesInDir(t *testing.T, dir string, recursive bool) int {
+	numFiles := 0
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if d.Name() == filepath.Base(dir) {
+			// skip counting the root directory
+			return nil
+		}
+		if !recursive && d.IsDir() {
+			return fs.SkipDir
+		}
+		numFiles++
+		return nil
+	})
+	require.NoError(t, err)
+	return numFiles
 }

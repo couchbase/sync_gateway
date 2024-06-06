@@ -690,7 +690,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 	require.NoError(t, err)
 
-	testOver := make(chan struct{})
+	foundEvent := make(chan struct{})
 	docID := t.Name()
 	var dcpMutationCas uint64
 	var dcpMutationRevNo uint64
@@ -698,19 +698,21 @@ func TestDCPFeedEventTypes(t *testing.T) {
 	var dcpDeletionRevNo uint64
 	// create callback
 	callback := func(event sgbucket.FeedEvent) bool {
-		fmt.Printf("!! event: %+v\n", event)
 		// other doc events can happen from previous tests
 		if docID != string(event.Key) {
 			return true
 		}
 		switch event.Opcode {
 		case sgbucket.FeedOpMutation:
+			defer func() {
+				foundEvent <- struct{}{}
+			}()
 			dcpMutationCas = event.Cas
 			dcpMutationRevNo = event.RevNo
 			require.NotEqual(t, uint64(0), dcpMutationCas)
 			require.NotEqual(t, uint64(0), dcpMutationRevNo)
 		case sgbucket.FeedOpDeletion:
-			defer close(testOver)
+			defer close(foundEvent)
 
 			dcpDeletionCas = event.Cas
 			dcpDeletionRevNo = event.RevNo
@@ -734,15 +736,22 @@ func TestDCPFeedEventTypes(t *testing.T) {
 	writeMutationCas, err := collection.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{xattrName: xattrBody}, nil, nil)
 	require.NoError(t, err)
 
+	// make sure mutation is processed
+	timeout := time.After(time.Second * 5)
+	select {
+	case <-foundEvent:
+	case <-timeout:
+		t.Fatalf("timeout waiting for doc mutation")
+	}
+
 	deleteMutationCas, err := collection.Remove(docID, writeMutationCas)
 	require.NoError(t, err)
 
-	timeout := time.After(time.Second * 5)
 	select {
-	case <-testOver:
+	case <-foundEvent:
 		require.NoError(t, dcpClient.Close())
 	case <-timeout:
-		t.Fatalf("timeout waiting for doc write/deletion to complete")
+		t.Fatalf("timeout waiting for doc deletion")
 	}
 	require.NoError(t, <-doneChan)
 

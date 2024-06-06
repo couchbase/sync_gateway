@@ -59,9 +59,10 @@ const (
 type SGIndexFlags uint8
 
 const (
-	IdxFlagXattrOnly       = SGIndexFlags(1 << iota) // Index should only be created when running w/ xattrs=true
-	IdxFlagIndexTombstones                           // When xattrs=true, index should be created with {“retain_deleted_xattr”:true} in order to index tombstones
-	IdxFlagMetadataOnly                              // Index should only be created when running against metadata store
+	IdxFlagXattrOnly         = SGIndexFlags(1 << iota) // Index should only be created when running w/ xattrs=true
+	IdxFlagIndexTombstones                             // When xattrs=true, index should be created with {“retain_deleted_xattr”:true} in order to index tombstones
+	IdxFlagMetadataOnly                                // Index should only be created when running against metadata store
+	IdxFlagPrincipalDocsOnly                           // Index necessary for principal docs
 )
 
 type indexCreationMode int
@@ -136,7 +137,7 @@ var (
 		IndexRoleAccess: IdxFlagIndexTombstones,
 		IndexChannels:   IdxFlagIndexTombstones,
 		IndexAllDocs:    IdxFlagIndexTombstones,
-		IndexSyncDocs:   IdxFlagMetadataOnly,
+		IndexSyncDocs:   IdxFlagMetadataOnly | IdxFlagPrincipalDocsOnly,
 		IndexUser:       IdxFlagMetadataOnly,
 		IndexRole:       IdxFlagMetadataOnly,
 		IndexTombstones: IdxFlagXattrOnly | IdxFlagIndexTombstones,
@@ -238,6 +239,11 @@ func (i *SGIndex) isMetadataOnly() bool {
 	return i.flags&IdxFlagMetadataOnly != 0
 }
 
+// isPrincipalOnly refers to an index that is only applicable for querying principal docs.
+func (i *SGIndex) isPrincipalOnly() bool {
+	return i.flags&IdxFlagPrincipalDocsOnly != 0
+}
+
 func (i *SGIndex) isXattrOnly() bool {
 	return i.flags&IdxFlagXattrOnly != 0
 }
@@ -266,6 +272,9 @@ func (i *SGIndex) shouldCreate(options InitializeIndexOptions) bool {
 		return false
 	}
 
+	if !i.isPrincipalOnly() && options.MetadataIndexes == IndexesPrincipalOnly {
+		return false
+	}
 	return true
 }
 
@@ -354,6 +363,7 @@ const (
 	IndexesWithoutMetadata CollectionIndexesType = iota // indexes for non-default collection that holds data
 	IndexesMetadataOnly                                 // indexes for metadata collection where default collection is not on the database
 	IndexesAll                                          // indexes for default.default when it is a configured collection on a database
+	IndexesPrincipalOnly                                // indexes for principal docs
 )
 
 // InitializeIndexOptions are options used for building Sync Gateway indexes, or waiting for it to come online.

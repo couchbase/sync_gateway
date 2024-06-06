@@ -326,10 +326,6 @@ func (lds *LeakyDataStore) SetUpdateCallback(callback func(key string)) {
 	lds.config.UpdateCallback = callback
 }
 
-func (lds *LeakyDataStore) IsError(err error, errorType sgbucket.DataStoreErrorType) bool {
-	return lds.dataStore.IsError(err, errorType)
-}
-
 func (lds *LeakyDataStore) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 	return lds.dataStore.IsSupported(feature)
 }

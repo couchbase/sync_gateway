@@ -300,11 +300,12 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			return base.HTTPErrorf(http.StatusBadRequest, "%s", err)
 		} else if len(channels) == 0 {
 			return base.HTTPErrorf(http.StatusBadRequest, "Empty channel list")
-
 		}
 	} else if filter != "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
 	}
+
+	collectionCtx.channels = channels
 
 	clientType := clientTypeCBL2
 	if rq.Properties["client_sgr2"] == trueProperty {
@@ -325,6 +326,8 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			requestPlusSeq = seq
 		}
 	}
+
+	bh.collectionCtx.sendReplacementRevs = subChangesParams.sendReplacementRevs()
 
 	// Start asynchronous changes goroutine
 	go func() {
@@ -351,7 +354,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			continuous:        continuous,
 			activeOnly:        subChangesParams.activeOnly(),
 			batchSize:         subChangesParams.batchSize(),
-			channels:          channels,
+			channels:          collectionCtx.channels,
 			revocations:       subChangesParams.revocations(),
 			clientType:        clientType,
 			ignoreNoConflicts: clientType == clientTypeSGR2, // force this side to accept a "changes" message, even in no conflicts mode for SGR2.
@@ -859,7 +862,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID str
 
 	if redactedRev != nil {
 		history := toHistory(redactedRev.History, knownRevs, maxHistory)
-		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq)
+		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq, "")
 		return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, redactedRev.BodyBytes, nil, properties, seq, nil)
 	}
 
@@ -1266,7 +1269,7 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 		if bh.clientType == BLIPClientTypeSGR2 {
 			return ErrAttachmentNotFound
 		}
-		if base.IsKeyNotFoundError(bh.collection.dataStore, err) {
+		if base.IsDocNotFoundError(err) {
 			return ErrAttachmentNotFound
 		}
 		return base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Error getting client attachment: %v", err))

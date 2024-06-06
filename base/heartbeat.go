@@ -284,7 +284,7 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats(ctx context.Context) error {
 		_, _, err := h.datastore.GetRaw(timeoutDocID)
 		SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 		if err != nil {
-			if !IsKeyNotFoundError(h.datastore, err) {
+			if !IsDocNotFoundError(err) {
 				// unexpected error
 				return err
 			}
@@ -316,7 +316,7 @@ func (h *couchbaseHeartBeater) sendHeartbeat() error {
 	}
 
 	// On KeyNotFound, recreate heartbeat timeout doc
-	if IsKeyNotFoundError(h.datastore, touchErr) {
+	if IsDocNotFoundError(touchErr) {
 		heartbeatDocBody := []byte(h.nodeUUID)
 		setErr := h.datastore.SetRaw(docID, h.heartbeatExpirySeconds, nil, heartbeatDocBody)
 		SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
@@ -473,7 +473,7 @@ func (dh *documentBackedListener) loadNodeIDs() error {
 	if err != nil {
 		dh.cas = 0
 		dh.nodeIDs = []string{}
-		if !IsKeyNotFoundError(dh.datastore, err) {
+		if !IsDocNotFoundError(err) {
 			return err
 		}
 	}

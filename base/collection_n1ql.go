@@ -139,7 +139,8 @@ func (c *Collection) CreatePrimaryIndex(ctx context.Context, indexName string, o
 
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
 func (c *Collection) WaitForIndexesOnline(ctx context.Context, indexNames []string, failfast bool) error {
-	return WaitForIndexesOnline(ctx, c.indexManager(), indexNames, failfast)
+	keyspace := strings.Join([]string{c.BucketName(), c.ScopeName(), c.CollectionName()}, ".")
+	return WaitForIndexesOnline(ctx, keyspace, c.indexManager(), indexNames, failfast)
 }
 
 func (c *Collection) GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error) {

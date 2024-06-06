@@ -691,6 +691,123 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
 
+func TestDCPResyncCollectionsStatus(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with walrus")
+	}
+	base.TestRequiresCollections(t)
+
+	testCases := []struct {
+		name              string
+		collectionNames   []string
+		expectedResult    map[string][]string
+		specifyCollection bool
+	}{
+		{
+			name:            "collections_specified",
+			collectionNames: []string{"sg_test_0"},
+			expectedResult: map[string][]string{
+				"sg_test_0": {"sg_test_0"},
+			},
+			specifyCollection: true,
+		},
+		{
+			name: "collections_not_specified",
+			expectedResult: map[string][]string{
+				"sg_test_0": {"sg_test_0", "sg_test_1", "sg_test_2"},
+			},
+			collectionNames: nil,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rt := rest.NewRestTesterMultipleCollections(t, nil, 3)
+			defer rt.Close()
+			scopeName := "sg_test_0"
+
+			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+			require.True(t, ok)
+
+			rt.TakeDbOffline()
+
+			if !testCase.specifyCollection {
+				resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+				rest.RequireStatus(t, resp, http.StatusOK)
+			} else {
+				payload := `{"scopes": {"sg_test_0":["sg_test_0"]}}`
+				resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", payload)
+				rest.RequireStatus(t, resp, http.StatusOK)
+			}
+
+			statusResponse := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+
+			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
+		})
+	}
+}
+
+func TestQueryResyncCollectionsStatus(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with walrus")
+	}
+	base.TestRequiresCollections(t)
+
+	testCases := []struct {
+		name              string
+		collectionNames   []string
+		expectedResult    map[string][]string
+		specifyCollection bool
+	}{
+		{
+			name:            "collections_specified",
+			collectionNames: []string{"sg_test_0"},
+			expectedResult: map[string][]string{
+				"sg_test_0": {"sg_test_0"},
+			},
+			specifyCollection: true,
+		},
+		{
+			name: "collections_not_specified",
+			expectedResult: map[string][]string{
+				"sg_test_0": {"sg_test_0", "sg_test_1", "sg_test_2"},
+			},
+			collectionNames: nil,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rt := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
+				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+					Unsupported: &db.UnsupportedOptions{
+						UseQueryBasedResyncManager: true,
+					},
+				},
+				},
+			}, 3)
+			defer rt.Close()
+			scopeName := "sg_test_0"
+
+			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
+			require.True(t, ok)
+
+			rt.TakeDbOffline()
+
+			if !testCase.specifyCollection {
+				resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+				rest.RequireStatus(t, resp, http.StatusOK)
+			} else {
+				payload := `{"scopes": {"sg_test_0":["sg_test_0"]}}`
+				resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", payload)
+				rest.RequireStatus(t, resp, http.StatusOK)
+			}
+
+			statusResponse := rt.WaitForResyncStatus(db.BackgroundProcessStateCompleted)
+
+			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
+		})
+	}
+}
+
 func TestResyncQueryBased(t *testing.T) {
 	base.LongRunningTest(t)
 
@@ -1635,10 +1752,10 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 
 	// persistence logic construction
 	version, err := rest.GenerateDatabaseConfigVersionID(rt.Context(), "", &dbConfig)
-	require.NoError(rt.TB, err)
+	require.NoError(rt.TB(), err)
 
-	metadataID, metadataIDError := rt.ServerContext().BootstrapContext.ComputeMetadataIDForDbConfig(base.TestCtx(rt.TB), &dbConfig)
-	require.NoError(rt.TB, metadataIDError)
+	metadataID, metadataIDError := rt.ServerContext().BootstrapContext.ComputeMetadataIDForDbConfig(base.TestCtx(rt.TB()), &dbConfig)
+	require.NoError(rt.TB(), metadataIDError)
 
 	badName := "badName"
 	dbConfig.Bucket = &badName

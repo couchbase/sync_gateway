@@ -22,25 +22,27 @@ import (
 	"sync"
 	"time"
 
-	"github.com/natefinch/lumberjack"
 	"github.com/pkg/errors"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
 	ErrInvalidLogFilePath    = errors.New("invalid log file path")
 	ErrUnwritableLogFilePath = errors.New("cannot write to log file path directory")
 
-	maxAgeLimit                            = 9999 // days
-	defaultMaxSize                         = 100  // 100 MB
-	defaultMaxAgeMultiplier                = 2    // e.g. 90 minimum == 180 default maxAge
-	defaultCumulativeMaxSizeBeforeDeletion = 1024 // 1 GB
-	minRotatedLogsSizeLimit                = 10   // 10 MB
-	rotatedLogsLowWatermarkMultiplier      = 0.8  // eg. 100 minRotatedLogsSizeLimit == 80 low watermark
+	maxAgeLimit                            = 9999               // days
+	defaultMaxSize                         = 100                // 100 MB
+	defaultMaxAgeMultiplier                = 2                  // e.g. 90 minimum == 180 default maxAge
+	defaultCumulativeMaxSizeBeforeDeletion = 1024               // 1 GB
+	minRotatedLogsSizeLimit                = 10                 // 10 MB
+	rotatedLogsLowWatermarkMultiplier      = 0.8                // eg. 100 minRotatedLogsSizeLimit == 80 low watermark
+	minLogRotationInterval                 = 15 * time.Minute   // 15 minutes
+	maxLogRotationInterval                 = 7 * 24 * time.Hour // 7 days
 
 	logFilePrefix = "sg_"
 
-	belowMinValueFmt = "%s for %v was set to %d which is below the minimum of %d"
-	aboveMaxValueFmt = "%s for %v was set to %d which is above the maximum of %d"
+	belowMinValueFmt = "%s for %v was set to %v which is below the minimum of %v"
+	aboveMaxValueFmt = "%s for %v was set to %v which is above the maximum of %v"
 )
 
 type FileLogger struct {
@@ -69,10 +71,12 @@ type FileLoggerConfig struct {
 }
 
 type logRotationConfig struct {
-	MaxSize              *int  `json:"max_size,omitempty"`                // The maximum size in MB of the log file before it gets rotated.
-	MaxAge               *int  `json:"max_age,omitempty"`                 // The maximum number of days to retain old log files.
-	LocalTime            *bool `json:"localtime,omitempty"`               // If true, it uses the computer's local time to format the backup timestamp.
-	RotatedLogsSizeLimit *int  `json:"rotated_logs_size_limit,omitempty"` // Max Size of log files before deletion
+	MaxSize              *int            `json:"max_size,omitempty"`                // The maximum size in MB of the log file before it gets rotated.
+	MaxAge               *int            `json:"max_age,omitempty"`                 // The maximum number of days to retain old log files.
+	LocalTime            *bool           `json:"localtime,omitempty"`               // If true, it uses the computer's local time to format the backup timestamp.
+	RotatedLogsSizeLimit *int            `json:"rotated_logs_size_limit,omitempty"` // Max Size of log files before deletion
+	RotationInterval     *ConfigDuration `json:"rotation_interval,omitempty"`       // Interval at which logs are rotated
+	Compress             *bool           `json:"-"`                                 // Enable log compression - not exposed in config
 }
 
 // NewFileLogger returns a new FileLogger from a config.
@@ -139,6 +143,13 @@ func (l *FileLogger) Rotate() error {
 	return errors.New("can't rotate non-lumberjack log output")
 }
 
+func (l *FileLogger) Close() error {
+	if c, ok := l.output.(io.Closer); ok {
+		return c.Close()
+	}
+	return nil
+}
+
 func (l *FileLogger) String() string {
 	return "FileLogger(" + l.level.String() + ")"
 }
@@ -188,12 +199,15 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 		return err
 	}
 
+	var rotateableLogger *lumberjack.Logger
 	if lfc.Output == nil {
-		lfc.Output = newLumberjackOutput(
+		rotateableLogger = newLumberjackOutput(
 			filepath.Join(filepath.FromSlash(logFilePath), logFilePrefix+name+".log"),
 			*lfc.Rotation.MaxSize,
 			*lfc.Rotation.MaxAge,
+			BoolDefault(lfc.Rotation.Compress, true),
 		)
+		lfc.Output = rotateableLogger
 	}
 
 	if lfc.CollationBufferSize == nil {
@@ -205,19 +219,38 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 		lfc.CollationBufferSize = &bufferSize
 	}
 
-	ticker := time.NewTicker(time.Hour)
+	var rotationTicker *time.Ticker
+	var rotationTickerCh <-chan time.Time
+	if i := lfc.Rotation.RotationInterval.Value(); i > 0 && rotateableLogger != nil {
+		rotationTicker = time.NewTicker(i)
+		rotationTickerCh = rotationTicker.C
+	}
+
+	logDeletionTicker := time.NewTicker(rotatedLogDeletionInterval)
 	go func() {
 		defer func() {
 			if panicked := recover(); panicked != nil {
-				WarnfCtx(ctx, "Panic when deleting rotated log files: \n %s", panicked, debug.Stack())
+				WarnfCtx(ctx, "Panic when rotating or deleting rotated log files: %s\n%s", panicked, debug.Stack())
 			}
 		}()
+		if rotationTicker != nil {
+			defer rotationTicker.Stop()
+		}
+		defer logDeletionTicker.Stop()
 		for {
 			select {
-			case <-ticker.C:
+			case <-ctx.Done():
+				return
+			case <-logDeletionTicker.C:
 				err := runLogDeletion(ctx, logFilePath, level.String(), int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
 				if err != nil {
 					WarnfCtx(ctx, "%s", err)
+				}
+			case <-rotationTickerCh:
+				DebugfCtx(ctx, KeyAll, "Rotating log file %s based on interval %q", name, lfc.Rotation.RotationInterval.Value())
+				err := rotateableLogger.Rotate()
+				if err != nil {
+					WarnfCtx(ctx, "Error rotating log file: %v", err)
 				}
 			}
 		}
@@ -252,15 +285,23 @@ func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, min
 		return fmt.Errorf(belowMinValueFmt, "RotatedLogsSizeLimit", name, *lfc.Rotation.RotatedLogsSizeLimit, minRotatedLogsSizeLimit)
 	}
 
+	if i := lfc.Rotation.RotationInterval; i != nil {
+		if i.Value() < minLogRotationInterval {
+			return fmt.Errorf(belowMinValueFmt, "RotationInterval", name, i.Value().String(), minLogRotationInterval.String())
+		} else if i.Value() > maxLogRotationInterval {
+			return fmt.Errorf(aboveMaxValueFmt, "RotationInterval", name, i.Value().String(), maxLogRotationInterval.String())
+		}
+	}
+
 	return nil
 }
 
-func newLumberjackOutput(filename string, maxSize, maxAge int) *lumberjack.Logger {
+func newLumberjackOutput(filename string, maxSize, maxAge int, compress bool) *lumberjack.Logger {
 	return &lumberjack.Logger{
 		Filename: filename,
 		MaxSize:  maxSize,
 		MaxAge:   maxAge,
-		Compress: true,
+		Compress: compress,
 	}
 }
 
