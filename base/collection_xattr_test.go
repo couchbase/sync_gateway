@@ -653,7 +653,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			// alive document with no xattrs
 			/* CBG-3918, should be a cas mismatch error
 			{
-				name: "previousDoc=body,xattrsToUpdate=_xattr1+xattr2,cas=0,deleteBody=true",
+				name: "previousDoc=body,xattrsToUpdate=_xattr1+_xattr2,cas=0,deleteBody=true",
 				previousDoc: &sgbucket.BucketDocument{
 					Body: []byte(`{"foo": "bar"}`),
 				},
@@ -668,7 +668,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			},
 			*/
 			{
-				name: "previousDoc=body,xattrsToUpdate=_xattr1+xattr2,cas=incorrect,deleteBody=true",
+				name: "previousDoc=body,xattrsToUpdate=_xattr1+_xattr2,cas=incorrect,deleteBody=true",
 				previousDoc: &sgbucket.BucketDocument{
 					Body: []byte(`{"foo": "bar"}`),
 				},
@@ -752,7 +752,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 				writeErrorFunc: RequireDocNotFoundError,
 			},
 			{
-				name:        "previousDoc=nil,xattrsToUpdate=_xattr1+xattr2,cas=incorrect,deleteBody=true",
+				name:        "previousDoc=nil,xattrsToUpdate=_xattr1+_xattr2,cas=incorrect,deleteBody=true",
 				previousDoc: nil,
 				updatedXattrs: map[string][]byte{
 					"_xattr1": []byte(`{"c": "d"}`),
