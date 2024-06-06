@@ -492,6 +492,199 @@ func TestGetUserDocAccessSpan(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "channel assigned through both dynamic and admin grants, assert earlier sequence (dynamic) is used",
+			grants: []grant{
+				docGrant{dynamicChannel: "A", docID: "docA"},
+				// create user with no channels
+				userGrant{
+					user: "alice",
+				},
+				// create another doc and assign dynamic chan through sync fn
+				docGrant{
+					userName:       "alice",
+					dynamicChannel: "A",
+				},
+				// assign same channels through admin_channels and assert on sequences
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+					docIDs:        []string{"doc", "docA"},
+					docUserTest:   true,
+					output:        `{"doc": {"A": { "entries" : ["3-0"]}}, "docA":{"A": { "entries" : ["3-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "channel assigned through both admin and admin role grants, assert earlier sequence (admin) is used",
+			grants: []grant{
+				docGrant{dynamicChannel: "A"},
+				// create user and assign channel through admin_channels
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// create role with same channel
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// assign role through admin_roles and assert on sequences
+				userGrant{
+					user:        "alice",
+					roles:       []string{"role1"},
+					docIDs:      []string{"doc"},
+					docUserTest: true,
+					output:      `{"doc": {"A": { "entries" : ["2-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "channel assigned through both admin and admin role grants, assert earlier sequence (admin role) is used",
+			grants: []grant{
+				docGrant{dynamicChannel: "A"},
+				// create user with no channels
+				userGrant{
+					user: "alice",
+				},
+				// create role with channel
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// assign role through admin_roles
+				userGrant{
+					user:  "alice",
+					roles: []string{"role1"},
+				},
+				// assign role channel through admin_channels and assert on sequences
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+					docIDs:        []string{"doc"},
+					docUserTest:   true,
+					output:        `{"doc": {"A": { "entries" : ["4-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "channel assigned through both dynamic role and admin grants, assert earlier sequence (dynamic role) is used",
+			grants: []grant{
+				// create user with no channels
+				userGrant{
+					user: "alice",
+				},
+				// create role with channel
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// create doc and assign role through sync fn
+				docGrant{
+					userName:       "alice",
+					dynamicRole:    "role1",
+					dynamicChannel: "A",
+				},
+				// assign role cahnnel to user through admin_channels and assert on sequences
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+					docIDs:        []string{"doc"},
+					docUserTest:   true,
+					output:        `{"doc": {"A": { "entries" : ["3-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "channel assigned through both dynamic role and admin grants, assert earlier sequence (admin) is used",
+			grants: []grant{
+				// create user with channel
+				userGrant{
+					user:          "alice",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// create role with same channel
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// assign role to user through sync fn and assert channel sequence is from admin_channels
+				docGrant{
+					userName:       "alice",
+					docIDs:         []string{"doc"},
+					dynamicChannel: "A",
+					docUserTest:    true,
+					dynamicRole:    "role1",
+					output:         `{"doc": {"A": { "entries" : ["3-0"]}}}`,
+				},
+			},
+		},
+		{
+			name: "channel assigned through both dynamic role and admin role grants, assert earlier sequence (dynamic role) is used",
+			grants: []grant{
+				// create user with no channels
+				userGrant{
+					user: "alice",
+				},
+				// create role with channel
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// create another role with same channel
+				roleGrant{
+					role:          "role2",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// assign first role through sync fn
+				docGrant{
+					userName:       "alice",
+					dynamicRole:    "role1",
+					dynamicChannel: "docChan",
+				},
+				// assign second role through admin_roles and assert sequence is from dynamic (first) role
+				userGrant{
+					user:        "alice",
+					roles:       []string{"role2"},
+					docIDs:      []string{"doc"},
+					docUserTest: true,
+					output:      ``,
+				},
+			},
+		},
+		{
+			name: "channel assigned through both dynamic role and admin role grants, assert earlier sequence (admin role) is used",
+			grants: []grant{
+				// create user with no channels
+				userGrant{
+					user: "alice",
+				},
+				// create role with channel
+				roleGrant{
+					role:          "role1",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// create another role with same channel
+				roleGrant{
+					role:          "role2",
+					adminChannels: map[string][]string{"{{.keyspace}}": {"A"}},
+				},
+				// assign role through admin_roles
+				userGrant{
+					user:  "alice",
+					roles: []string{"role1"},
+				},
+				// assign other role through sync fn and assert earlier sequences are returned
+				docGrant{
+					userName:       "alice",
+					dynamicRole:    "role2",
+					docIDs:         []string{"doc"},
+					dynamicChannel: "A",
+					docUserTest:    true,
+					output:         ``,
+				},
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

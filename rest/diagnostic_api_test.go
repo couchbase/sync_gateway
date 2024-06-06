@@ -132,6 +132,7 @@ type docGrant struct {
 	userName       string
 	dynamicRole    string
 	docIDs         []string
+	docID          string
 	docUserTest    bool
 	dynamicChannel string
 	output         string
@@ -153,8 +154,12 @@ func (g docGrant) getPayload() string {
 
 func (g docGrant) request(rt *RestTester) {
 	payload := g.getPayload()
+	docID := "doc"
+	if g.docID != "" {
+		docID = g.docID
+	}
 	rt.TB.Logf("Issuing dynamic grant: %+v", payload)
-	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc", payload)
+	response := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s", docID), payload)
 	if response.Code != http.StatusCreated && response.Code != http.StatusOK {
 		rt.TB.Fatalf("Expected 200 or 201 exit code, got %d, output: %s", response.Code, response.Body.String())
 	}
