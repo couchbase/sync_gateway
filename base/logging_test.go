@@ -121,7 +121,7 @@ func TestLogRotationInterval(t *testing.T) {
 
 	// Wait for Lumberjack to finish its async log compression work
 	// we have no way of waiting for this to finish, or even stopping the millRun() process inside Lumberjack.
-	time.Sleep(time.Millisecond * 500)
+	time.Sleep(time.Second)
 }
 
 // Benchmark the time it takes to write x bytes of data to a logger, and optionally rotate and compress it.
