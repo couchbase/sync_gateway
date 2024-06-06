@@ -124,7 +124,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		btr.replicationStats = db.NewBlipSyncStats()
 	}
 
-	ctx := base.DatabaseLogCtx(base.TestCtx(btr.bt.restTester.TB), btr.bt.restTester.GetDatabase().Name, nil)
+	ctx := base.DatabaseLogCtx(base.TestCtx(btr.bt.restTester.TB()), btr.bt.restTester.GetDatabase().Name, nil)
 	btr.bt.blipContext.HandlerForProfile[db.MessageProveAttachment] = func(msg *blip.Message) {
 		btr.storeMessage(msg)
 
@@ -497,12 +497,12 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 // TB returns testing.TB for the current test
 func (btr *BlipTesterReplicator) TB() testing.TB {
-	return btr.bt.restTester.TB
+	return btr.bt.restTester.TB()
 }
 
 // TB returns testing.TB for the current test
 func (btc *BlipTesterCollectionClient) TB() testing.TB {
-	return btc.parent.rt.TB
+	return btc.parent.rt.TB()
 }
 
 // saveAttachment takes a content-type, and base64 encoded data and stores the attachment on the client
@@ -510,7 +510,7 @@ func (btc *BlipTesterCollectionClient) saveAttachment(_, base64data string) (dat
 	btc.attachmentsLock.Lock()
 	defer btc.attachmentsLock.Unlock()
 
-	ctx := base.DatabaseLogCtx(base.TestCtx(btc.parent.rt.TB), btc.parent.rt.GetDatabase().Name, nil)
+	ctx := base.DatabaseLogCtx(base.TestCtx(btc.parent.rt.TB()), btc.parent.rt.GetDatabase().Name, nil)
 
 	data, err := base64.StdEncoding.DecodeString(base64data)
 	if err != nil {
@@ -549,7 +549,7 @@ func (btc *BlipTesterCollectionClient) updateLastReplicatedRev(docID, revID stri
 		return
 	}
 
-	ctx := base.TestCtx(btc.parent.rt.TB)
+	ctx := base.TestCtx(btc.parent.rt.TB())
 	currentGen, _ := db.ParseRevID(ctx, currentRevID)
 	incomingGen, _ := db.ParseRevID(ctx, revID)
 	if incomingGen > currentGen {
@@ -628,7 +628,7 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRT(rt *RestTes
 
 // TB returns testing.TB for the current test
 func (btc *BlipTesterClient) TB() testing.TB {
-	return btc.rt.TB
+	return btc.rt.TB()
 }
 
 func (btc *BlipTesterClient) Close() {
@@ -857,7 +857,7 @@ func (btc *BlipTesterCollectionClient) PushRev(docID string, parentVersion DocVe
 
 // PushRevWithHistory creates a revision on the client with history, and immediately sends a changes request for it.
 func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev string, body []byte, revCount, prunedRevCount int) (revID string, err error) {
-	ctx := base.DatabaseLogCtx(base.TestCtx(btc.parent.rt.TB), btc.parent.rt.GetDatabase().Name, nil)
+	ctx := base.DatabaseLogCtx(base.TestCtx(btc.parent.rt.TB()), btc.parent.rt.GetDatabase().Name, nil)
 	parentRevGen, _ := db.ParseRevID(ctx, parentRev)
 	revGen := parentRevGen + revCount + prunedRevCount
 
@@ -978,7 +978,7 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 }
 
 func (btc *BlipTesterCollectionClient) StoreRevOnClient(docID, revID string, body []byte) error {
-	ctx := base.DatabaseLogCtx(base.TestCtx(btc.parent.rt.TB), btc.parent.rt.GetDatabase().Name, nil)
+	ctx := base.DatabaseLogCtx(base.TestCtx(btc.parent.rt.TB()), btc.parent.rt.GetDatabase().Name, nil)
 	revGen, _ := db.ParseRevID(ctx, revID)
 	newBody, err := btc.ProcessInlineAttachments(body, revGen)
 	if err != nil {

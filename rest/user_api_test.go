@@ -1424,7 +1424,7 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), `"all_channels":["!"]`)
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.Scopes = GetCollectionsConfig(rt.TB, rt.TestBucket, 1)
+	dbConfig.Scopes = GetCollectionsConfig(rt.TB(), rt.TestBucket, 1)
 	resp := rt.ReplaceDbConfig(rt.GetDatabase().Name, dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 

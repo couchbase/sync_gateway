@@ -3008,7 +3008,7 @@ func TestBlipRefreshUser(t *testing.T) {
 		defer btc.Close()
 
 		// add chan1 explicitly
-		response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB, "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"chan1"}, nil))
+		response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"chan1"}, nil))
 		RequireStatus(t, response, http.StatusOK)
 
 		version := rt.PutDoc(docID, `{"channels":["chan1"]}`)

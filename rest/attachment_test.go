@@ -67,7 +67,7 @@ func TestDocEtag(t *testing.T) {
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	require.True(t, body["ok"].(bool))
-	afterAttachmentVersion := DocVersionFromPutResponse(rt.TB, response)
+	afterAttachmentVersion := DocVersionFromPutResponse(rt.TB(), response)
 	RequireDocVersionNotEqual(t, version, afterAttachmentVersion)
 
 	// validate Etag returned from adding an attachment
@@ -2746,11 +2746,11 @@ func (rt *RestTester) storeAttachment(docID string, version DocVersion, attName,
 func (rt *RestTester) storeAttachmentWithHeaders(docID string, version DocVersion, attName, attBody string, reqHeaders map[string]string) DocVersion {
 	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", docID, attName, version.RevID)
 	response := rt.SendAdminRequestWithHeaders(http.MethodPut, resource, attBody, reqHeaders)
-	RequireStatus(rt.TB, response, http.StatusCreated)
+	RequireStatus(rt.TB(), response, http.StatusCreated)
 	var body db.Body
-	require.NoError(rt.TB, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	require.True(rt.TB, body["ok"].(bool))
-	return DocVersionFromPutResponse(rt.TB, response)
+	require.NoError(rt.TB(), base.JSONUnmarshal(response.Body.Bytes(), &body))
+	require.True(rt.TB(), body["ok"].(bool))
+	return DocVersionFromPutResponse(rt.TB(), response)
 }
 
 // storeAttachmentWithIfMatch adds an attachment to a document version and returns the new version, using If-Match.
@@ -2759,9 +2759,9 @@ func (rt *RestTester) storeAttachmentWithIfMatch(docID string, version DocVersio
 	reqHeaders["If-Match"] = `"` + version.RevID + `"`
 	resource := fmt.Sprintf("/{{.keyspace}}/%s/%s", docID, attName)
 	response := rt.SendRequestWithHeaders(http.MethodPut, resource, attBody, reqHeaders)
-	RequireStatus(rt.TB, response, http.StatusCreated)
+	RequireStatus(rt.TB(), response, http.StatusCreated)
 	var body db.Body
-	require.NoError(rt.TB, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	require.True(rt.TB, body["ok"].(bool))
-	return DocVersionFromPutResponse(rt.TB, response)
+	require.NoError(rt.TB(), base.JSONUnmarshal(response.Body.Bytes(), &body))
+	require.True(rt.TB(), body["ok"].(bool))
+	return DocVersionFromPutResponse(rt.TB(), response)
 }

@@ -1752,10 +1752,10 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 
 	// persistence logic construction
 	version, err := rest.GenerateDatabaseConfigVersionID(rt.Context(), "", &dbConfig)
-	require.NoError(rt.TB, err)
+	require.NoError(rt.TB(), err)
 
-	metadataID, metadataIDError := rt.ServerContext().BootstrapContext.ComputeMetadataIDForDbConfig(base.TestCtx(rt.TB), &dbConfig)
-	require.NoError(rt.TB, metadataIDError)
+	metadataID, metadataIDError := rt.ServerContext().BootstrapContext.ComputeMetadataIDForDbConfig(base.TestCtx(rt.TB()), &dbConfig)
+	require.NoError(rt.TB(), metadataIDError)
 
 	badName := "badName"
 	dbConfig.Bucket = &badName

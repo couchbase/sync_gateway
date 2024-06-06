@@ -22,16 +22,16 @@ import (
 
 func (rt *RestTester) RequireDocNotFound(docID string) {
 	rawResponse := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), "")
-	RequireStatus(rt.TB, rawResponse, http.StatusNotFound)
+	RequireStatus(rt.TB(), rawResponse, http.StatusNotFound)
 }
 
 // prugeDoc removes all the revisions (active and tombstones) of the specified document.
 func (rt *RestTester) PurgeDoc(docID string) {
 	response := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_purge", rt.GetSingleKeyspace()), fmt.Sprintf(`{"%s":["*"]}`, docID))
-	RequireStatus(rt.TB, response, http.StatusOK)
+	RequireStatus(rt.TB(), response, http.StatusOK)
 	var body map[string]interface{}
-	require.NoError(rt.TB, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	require.Equal(rt.TB, body, map[string]interface{}{"purged": map[string]interface{}{docID: []interface{}{"*"}}})
+	require.NoError(rt.TB(), base.JSONUnmarshal(response.Body.Bytes(), &body))
+	require.Equal(rt.TB(), body, map[string]interface{}{"purged": map[string]interface{}{docID: []interface{}{"*"}}})
 }
 
 // PutDocResponse should be replaced with functions that return DocVersion.
@@ -47,34 +47,34 @@ func (rt *RestTester) PutNewEditsFalse(docID string, newVersion DocVersion, pare
 
 	var body db.Body
 	marshalErr := base.JSONUnmarshal([]byte(bodyString), &body)
-	require.NoError(rt.TB, marshalErr)
+	require.NoError(rt.TB(), marshalErr)
 
 	requestBody := body.ShallowCopy()
-	newRevGeneration, newRevDigest := db.ParseRevID(base.TestCtx(rt.TB), newVersion.RevID)
+	newRevGeneration, newRevDigest := db.ParseRevID(base.TestCtx(rt.TB()), newVersion.RevID)
 
 	revisions := make(map[string]interface{})
 	revisions["start"] = newRevGeneration
 	ids := []string{newRevDigest}
 	if parentVersion.RevID != "" {
-		_, parentDigest := db.ParseRevID(base.TestCtx(rt.TB), parentVersion.RevID)
+		_, parentDigest := db.ParseRevID(base.TestCtx(rt.TB()), parentVersion.RevID)
 		ids = append(ids, parentDigest)
 	}
 	revisions["ids"] = ids
 
 	requestBody[db.BodyRevisions] = revisions
 	requestBytes, err := json.Marshal(requestBody)
-	require.NoError(rt.TB, err)
+	require.NoError(rt.TB(), err)
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?new_edits=false", string(requestBytes))
-	RequireStatus(rt.TB, resp, 201)
+	RequireStatus(rt.TB(), resp, 201)
 
-	require.NoError(rt.TB, rt.WaitForPendingChanges())
+	require.NoError(rt.TB(), rt.WaitForPendingChanges())
 
-	return DocVersionFromPutResponse(rt.TB, resp)
+	return DocVersionFromPutResponse(rt.TB(), resp)
 }
 
 func (rt *RestTester) RequireWaitChanges(numChangesExpected int, since string) ChangesResults {
 	changesResults, err := rt.WaitForChanges(numChangesExpected, "/{{.keyspace}}/_changes?since="+since, "", true)
-	require.NoError(rt.TB, err)
-	require.Len(rt.TB, changesResults.Results, numChangesExpected)
+	require.NoError(rt.TB(), err)
+	require.Len(rt.TB(), changesResults.Results, numChangesExpected)
 	return changesResults
 }

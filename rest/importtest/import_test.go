@@ -2109,12 +2109,12 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 				return
 			}
 			if test.expectedStatusCode != nil {
-				rest.RequireStatus(rt.TB, resp, *test.expectedStatusCode)
+				rest.RequireStatus(rt.TB(), resp, *test.expectedStatusCode)
 			} else {
-				rest.RequireStatus(rt.TB, resp, 200)
+				rest.RequireStatus(rt.TB(), resp, 200)
 			}
 			var body db.Body
-			require.NoError(rt.TB, base.JSONUnmarshal(resp.Body.Bytes(), &body))
+			require.NoError(rt.TB(), base.JSONUnmarshal(resp.Body.Bytes(), &body))
 
 			for key, val := range body {
 				assert.EqualValues(t, val, body[key])

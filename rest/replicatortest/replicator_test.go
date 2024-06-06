@@ -2487,13 +2487,13 @@ func TestTotalSyncTimeStat(t *testing.T) {
 	activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
 
 	// wait for active replication stat to pick up the replication connection
-	_, ok := base.WaitForStat(passiveRT.TB, func() int64 {
+	_, ok := base.WaitForStat(passiveRT.TB(), func() int64 {
 		return passiveRT.GetDatabase().DbStats.DatabaseStats.NumReplicationsActive.Value()
 	}, 1)
 	require.True(t, ok)
 
 	// wait some time to wait for the stat to increment
-	_, ok = base.WaitForStat(passiveRT.TB, func() int64 {
+	_, ok = base.WaitForStat(passiveRT.TB(), func() int64 {
 		return passiveRT.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
 	}, 2)
 	require.True(t, ok)
@@ -7899,7 +7899,7 @@ func TestGroupIDReplications(t *testing.T) {
 		if rt.GetDatabase().OnlyDefaultCollection() {
 			dbConfig.Sync = base.StringPtr(channels.DocChannelsSyncFunction)
 		} else {
-			dbConfig.Scopes = rest.GetCollectionsConfigWithFiltering(rt.TB, rt.TestBucket, 1, base.StringPtr(channels.DocChannelsSyncFunction), nil)
+			dbConfig.Scopes = rest.GetCollectionsConfigWithFiltering(rt.TB(), rt.TestBucket, 1, base.StringPtr(channels.DocChannelsSyncFunction), nil)
 		}
 		dbcJSON, err := base.JSONMarshal(dbConfig)
 		require.NoError(t, err)

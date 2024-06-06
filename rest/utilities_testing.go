@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"text/template"
 	"time"
@@ -89,7 +90,7 @@ var defaultTestingCORSOrigin = []string{"http://example.com", "*", "http://stagi
 // RestTester provides a fake server for testing endpoints
 type RestTester struct {
 	*RestTesterConfig
-	TB                      testing.TB
+	testingTB               atomic.Pointer[testing.TB]
 	TestBucket              *base.TestBucket
 	RestTesterServerContext *ServerContext
 	AdminHandler            http.Handler
@@ -101,6 +102,10 @@ type RestTester struct {
 	DiagnosticHandler       http.Handler
 	diagnosticHandlerOnce   sync.Once
 	closed                  bool
+}
+
+func (rt *RestTester) TB() testing.TB {
+	return *rt.testingTB.Load()
 }
 
 // restTesterDefaultUserPassword is usable as a default password for SendUserRequest
@@ -127,7 +132,7 @@ func newRestTester(tb testing.TB, restConfig *RestTesterConfig, collectionConfig
 	if tb == nil {
 		panic("tester parameter cannot be nil")
 	}
-	rt.TB = tb
+	rt.testingTB.Store(&tb)
 	if restConfig != nil {
 		rt.RestTesterConfig = restConfig
 	} else {
@@ -156,7 +161,7 @@ func NewRestTesterMultipleCollections(tb testing.TB, restConfig *RestTesterConfi
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
-	if rt.TB == nil {
+	if rt.TB() == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	} else if rt.closed {
 		panic("RestTester was closed!")
@@ -169,7 +174,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// If we have a TestBucket defined on the RestTesterConfig, use that instead of requesting a new one.
 	testBucket := rt.RestTesterConfig.CustomTestBucket
 	if testBucket == nil {
-		testBucket = base.GetTestBucket(rt.TB)
+		testBucket = base.GetTestBucket(rt.TB())
 		if rt.leakyBucketConfig != nil {
 			leakyConfig := *rt.leakyBucketConfig
 			// Ignore closures to avoid double closing panics
@@ -177,20 +182,20 @@ func (rt *RestTester) Bucket() base.Bucket {
 			testBucket = testBucket.LeakyBucketClone(leakyConfig)
 		}
 	} else if rt.leakyBucketConfig != nil {
-		rt.TB.Fatalf("A passed in TestBucket cannot be used on the RestTester when defining a leakyBucketConfig")
+		rt.TB().Fatalf("A passed in TestBucket cannot be used on the RestTester when defining a leakyBucketConfig")
 	}
 	rt.TestBucket = testBucket
 
 	if rt.InitSyncSeq > 0 {
 		if base.TestsUseNamedCollections() {
-			rt.TB.Fatalf("RestTester InitSyncSeq doesn't support non-default collections")
+			rt.TB().Fatalf("RestTester InitSyncSeq doesn't support non-default collections")
 		}
 
 		log.Printf("Initializing %s to %d", base.DefaultMetadataKeys.SyncSeqKey(), rt.InitSyncSeq)
 		tbDatastore := testBucket.GetMetadataStore()
 		_, incrErr := tbDatastore.Incr(base.DefaultMetadataKeys.SyncSeqKey(), rt.InitSyncSeq, rt.InitSyncSeq, 0)
 		if incrErr != nil {
-			rt.TB.Fatalf("Error initializing %s in test bucket: %v", base.DefaultMetadataKeys.SyncSeqKey(), incrErr)
+			rt.TB().Fatalf("Error initializing %s in test bucket: %v", base.DefaultMetadataKeys.SyncSeqKey(), incrErr)
 		}
 	}
 
@@ -231,7 +236,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Replicator.MaxConcurrentRevs = rt.RestTesterConfig.maxConcurrentRevs
 	if rt.serverless {
 		if !rt.PersistentConfig {
-			rt.TB.Fatalf("Persistent config must be used when running in serverless mode")
+			rt.TB().Fatalf("Persistent config must be used when running in serverless mode")
 		}
 		sc.BucketCredentials = map[string]*base.CredentialsConfig{
 			testBucket.GetName(): {
@@ -249,7 +254,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		// by using a unique group ID for each new rest tester.
 		uniqueUUID, err := uuid.NewRandom()
 		if err != nil {
-			rt.TB.Fatalf("Could not generate random config group ID UUID: %v", err)
+			rt.TB().Fatalf("Could not generate random config group ID UUID: %v", err)
 		}
 		sc.Bootstrap.ConfigGroupID = uniqueUUID.String()
 	}
@@ -263,14 +268,14 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
 
 	// Allow EE-only config even in CE for testing using group IDs.
-	if err := sc.Validate(base.TestCtx(rt.TB), true); err != nil {
+	if err := sc.Validate(base.TestCtx(rt.TB()), true); err != nil {
 		panic("invalid RestTester StartupConfig: " + err.Error())
 	}
 
 	// Post-validation, we can lower the bcrypt cost beyond SG limits to reduce test runtime.
 	sc.Auth.BcryptCost = bcrypt.MinCost
 
-	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB), &sc, rt.RestTesterConfig.PersistentConfig)
+	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB()), &sc, rt.RestTesterConfig.PersistentConfig)
 	rt.RestTesterServerContext.allowScopesInPersistentConfig = true
 	if rt.RestTesterConfig.syncGatewayVersion != nil {
 		rt.RestTesterServerContext.BootstrapContext.sgVersion = *rt.RestTesterConfig.syncGatewayVersion
@@ -286,12 +291,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 		sc.Bootstrap.X509KeyPath = testBucket.BucketSpec.Keypath
 
 		rt.TestBucket.BucketSpec.TLSSkipVerify = base.TestTLSSkipVerify()
-		require.NoError(rt.TB, rt.RestTesterServerContext.initializeGocbAdminConnection(ctx))
+		require.NoError(rt.TB(), rt.RestTesterServerContext.initializeGocbAdminConnection(ctx))
 	}
-	require.NoError(rt.TB, rt.RestTesterServerContext.initializeBootstrapConnection(ctx))
+	require.NoError(rt.TB(), rt.RestTesterServerContext.initializeBootstrapConnection(ctx))
 
 	// Copy this startup config at this point into initial startup config
-	require.NoError(rt.TB, base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc))
+	require.NoError(rt.TB(), base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc))
 
 	// tests must create their own databases in persistent mode
 	if !rt.PersistentConfig {
@@ -308,7 +313,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			// If scopes is already set, assume the caller has a plan
 			if rt.DatabaseConfig.Scopes == nil {
 				// Configure non default collections by default
-				rt.DatabaseConfig.Scopes = GetCollectionsConfigWithFiltering(rt.TB, testBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
+				rt.DatabaseConfig.Scopes = GetCollectionsConfigWithFiltering(rt.TB(), testBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
 			}
 		} else {
 			// override SyncFn and ImportFilter if set
@@ -350,11 +355,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
 		var err error
 		if rt.leakyBucketConfig != nil || isLeaky {
-			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.TB, *rt.DatabaseConfig, testBucket.Bucket)
+			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.TB(), *rt.DatabaseConfig, testBucket.Bucket)
 		} else {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
 		}
-		require.NoError(rt.TB, err)
+		require.NoError(rt.TB(), err)
 		ctx = rt.Context() // get new ctx with db info before passing it down
 
 		// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
@@ -364,7 +369,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		if rt.DatabaseConfig.Guest == nil {
 			if err := rt.SetAdminParty(rt.GuestEnabled); err != nil {
-				rt.TB.Fatalf("Error from SetAdminParty %v", err)
+				rt.TB().Fatalf("Error from SetAdminParty %v", err)
 			}
 		}
 	}
@@ -441,11 +446,11 @@ func GetDataStoreNamesFromScopesConfig(config ScopesConfig) []sgbucket.DataStore
 // config when calling NewRestTester.
 func (rt *RestTester) LeakyBucket() *base.LeakyDataStore {
 	if rt.leakyBucketConfig == nil {
-		rt.TB.Fatalf("Cannot get leaky bucket when leakyBucketConfig was not set on RestTester initialisation")
+		rt.TB().Fatalf("Cannot get leaky bucket when leakyBucketConfig was not set on RestTester initialisation")
 	}
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 	if !ok {
-		rt.TB.Fatalf("Could not get bucket (type %T) as a leaky bucket", rt.Bucket())
+		rt.TB().Fatalf("Could not get bucket (type %T) as a leaky bucket", rt.Bucket())
 	}
 	return leakyDataStore
 }
@@ -458,7 +463,7 @@ func (rt *RestTester) ServerContext() *ServerContext {
 // CreateDatabase is a utility function to create a database through the REST API
 func (rt *RestTester) CreateDatabase(dbName string, config DbConfig) *TestResponse {
 	dbcJSON, err := base.JSONMarshal(config)
-	require.NoError(rt.TB, err)
+	require.NoError(rt.TB(), err)
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/", dbName), string(dbcJSON))
 	return resp
 }
@@ -466,7 +471,7 @@ func (rt *RestTester) CreateDatabase(dbName string, config DbConfig) *TestRespon
 // ReplaceDbConfig is a utility function to replace a database config through the REST API
 func (rt *RestTester) ReplaceDbConfig(dbName string, config DbConfig) *TestResponse {
 	dbcJSON, err := base.JSONMarshal(config)
-	require.NoError(rt.TB, err)
+	require.NoError(rt.TB(), err)
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_config", dbName), string(dbcJSON))
 	return resp
 }
@@ -474,14 +479,14 @@ func (rt *RestTester) ReplaceDbConfig(dbName string, config DbConfig) *TestRespo
 // UpsertDbConfig is a utility function to upsert a database through the REST API
 func (rt *RestTester) UpsertDbConfig(dbName string, config DbConfig) *TestResponse {
 	dbcJSON, err := base.JSONMarshal(config)
-	require.NoError(rt.TB, err)
+	require.NoError(rt.TB(), err)
 	resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_config", dbName), string(dbcJSON))
 	return resp
 }
 
 // GetDatabase Returns a database found for server context, if there is only one database. Fails the test harness if there is not a database defined.
 func (rt *RestTester) GetDatabase() *db.DatabaseContext {
-	require.Len(rt.TB, rt.ServerContext().AllDatabases(), 1)
+	require.Len(rt.TB(), rt.ServerContext().AllDatabases(), 1)
 	for _, database := range rt.ServerContext().AllDatabases() {
 		return database
 	}
@@ -490,22 +495,22 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 
 // CreateUser creates a user with the default password and channels scoped to a single test collection.
 func (rt *RestTester) CreateUser(username string, channels []string) {
-	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB, "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), channels, nil))
-	RequireStatus(rt.TB, response, http.StatusCreated)
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), channels, nil))
+	RequireStatus(rt.TB(), response, http.StatusCreated)
 }
 
 func (rt *RestTester) GetUserAdminAPI(username string) auth.PrincipalConfig {
 	response := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/"+username, "")
-	RequireStatus(rt.TB, response, http.StatusOK)
+	RequireStatus(rt.TB(), response, http.StatusOK)
 	var responseConfig auth.PrincipalConfig
 	err := json.Unmarshal(response.Body.Bytes(), &responseConfig)
-	require.NoError(rt.TB, err)
+	require.NoError(rt.TB(), err)
 	return responseConfig
 }
 
 // GetSingleTestDatabaseCollection will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
 func (rt *RestTester) GetSingleTestDatabaseCollection() *db.DatabaseCollection {
-	return db.GetSingleDatabaseCollection(rt.TB, rt.GetDatabase())
+	return db.GetSingleDatabaseCollection(rt.TB(), rt.GetDatabase())
 }
 
 // GetSingleTestDatabaseCollectionWithUser will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
@@ -522,7 +527,7 @@ func (rt *RestTester) GetSingleDataStore() base.DataStore {
 		Scope:      collection.ScopeName,
 		Collection: collection.Name,
 	})
-	require.NoError(rt.TB, err)
+	require.NoError(rt.TB(), err)
 	return ds
 }
 
@@ -541,7 +546,7 @@ func (rt *RestTester) WaitForDoc(docid string) (err error) {
 
 func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 	collection := rt.GetSingleTestDatabaseCollection()
-	doc, err := collection.GetDocument(base.TestCtx(rt.TB), docid, db.DocUnmarshalAll)
+	doc, err := collection.GetDocument(base.TestCtx(rt.TB()), docid, db.DocUnmarshalAll)
 	if err != nil {
 		return 0, err
 	}
@@ -550,12 +555,12 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 
 // Wait for sequence to be buffered by the channel cache
 func (rt *RestTester) WaitForSequence(seq uint64) error {
-	return rt.GetSingleTestDatabaseCollection().WaitForSequence(base.TestCtx(rt.TB), seq)
+	return rt.GetSingleTestDatabaseCollection().WaitForSequence(base.TestCtx(rt.TB()), seq)
 }
 
 func (rt *RestTester) WaitForPendingChanges() error {
 	for _, collection := range rt.GetDbCollections() {
-		err := collection.WaitForPendingChanges(base.TestCtx(rt.TB))
+		err := collection.WaitForPendingChanges(base.TestCtx(rt.TB()))
 		if err != nil {
 			return err
 		}
@@ -589,7 +594,7 @@ func (rt *RestTester) SetAdminParty(partyTime bool) error {
 }
 
 func (rt *RestTester) Close() {
-	if rt.TB == nil {
+	if rt.TB() == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
 	ctx := rt.Context() // capture ctx before closing rt
@@ -634,7 +639,7 @@ func (rt *RestTester) templateResource(resource string) (string, error) {
 	}
 
 	data := make(map[string]string)
-	require.NotNil(rt.TB, rt.ServerContext())
+	require.NotNil(rt.TB(), rt.ServerContext())
 	if rt.ServerContext() != nil {
 		databases := rt.ServerContext().AllDatabases()
 		var dbNames []string
@@ -654,18 +659,18 @@ func (rt *RestTester) templateResource(resource string) (string, error) {
 			}
 			if len(database.CollectionByID) == 1 {
 				if multipleDatabases {
-					data[fmt.Sprintf("db%dkeyspace", i+1)] = getKeyspaces(rt.TB, database)[0]
+					data[fmt.Sprintf("db%dkeyspace", i+1)] = getKeyspaces(rt.TB(), database)[0]
 				} else {
 					keyspace := rt.GetSingleKeyspace()
 					data["keyspace"] = keyspace
-					data["scopeAndCollection"] = getScopeAndCollectionFromKeyspace(rt.TB, keyspace)
+					data["scopeAndCollection"] = getScopeAndCollectionFromKeyspace(rt.TB(), keyspace)
 				}
 				continue
 			}
-			for j, keyspace := range getKeyspaces(rt.TB, database) {
+			for j, keyspace := range getKeyspaces(rt.TB(), database) {
 				if !multipleDatabases {
 					data[fmt.Sprintf("keyspace%d", j+1)] = keyspace
-					data[fmt.Sprintf("scopeAndCollection%d", j+1)] = getScopeAndCollectionFromKeyspace(rt.TB, keyspace)
+					data[fmt.Sprintf("scopeAndCollection%d", j+1)] = getScopeAndCollectionFromKeyspace(rt.TB(), keyspace)
 				} else {
 					data[fmt.Sprintf("db%dkeyspace%d", i+1, j+1)] = keyspace
 				}
@@ -689,7 +694,7 @@ func (rt *RestTester) templateResource(resource string) (string, error) {
 // This function causes the test to fail immediately if the given resource cannot be parsed.
 func (rt *RestTester) mustTemplateResource(resource string) string {
 	uri, err := rt.templateResource(resource)
-	require.NoErrorf(rt.TB, err, "URL template error: %v", err)
+	require.NoErrorf(rt.TB(), err, "URL template error: %v", err)
 	return uri
 }
 
@@ -818,7 +823,7 @@ func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, ch
 		}
 		if len(changes.Results) < numChangesExpected {
 			// not enough results, retry
-			rt.TB.Logf("Waiting for changes, expected %d, got %d: %v", numChangesExpected, len(changes.Results), changes)
+			rt.TB().Logf("Waiting for changes, expected %d, got %d: %v", numChangesExpected, len(changes.Results), changes)
 			return true, fmt.Errorf("expecting %d changes, got %d", numChangesExpected, len(changes.Results)), nil
 		}
 		// If it made it this far, there is no errors and it got enough changes
@@ -988,8 +993,8 @@ func (rt *RestTester) WaitForViewAvailable(viewURLPath string) (err error) {
 func (rt *RestTester) GetDBState() string {
 	var body db.Body
 	resp := rt.SendAdminRequest("GET", "/{{.db}}/", "")
-	RequireStatus(rt.TB, resp, 200)
-	require.NoError(rt.TB, base.JSONUnmarshal(resp.Body.Bytes(), &body))
+	RequireStatus(rt.TB(), resp, 200)
+	require.NoError(rt.TB(), base.JSONUnmarshal(resp.Body.Bytes(), &body))
 	return body["state"].(string)
 }
 
@@ -1016,8 +1021,8 @@ func (rt *RestTester) WaitForDatabaseState(dbName string, targetState uint32) er
 	for i := 0; i < maxTries; i++ {
 		dbRootResponse := DatabaseRoot{}
 		resp := rt.SendAdminRequest("GET", "/"+dbName+"/", "")
-		RequireStatus(rt.TB, resp, 200)
-		require.NoError(rt.TB, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
+		RequireStatus(rt.TB(), resp, 200)
+		require.NoError(rt.TB(), base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
 		stateCurr = dbRootResponse.State
 		if stateCurr == db.RunStateString[targetState] {
 			return nil
@@ -1103,14 +1108,14 @@ func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentialsConfig) {
 	rt.ServerContext().Config.BucketCredentials = config
 	// Update the CouchbaseCluster to include the new bucket credentials
-	couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(base.TestCtx(rt.TB), rt.ServerContext().Config, base.PerUseClusterConnections)
-	require.NoError(rt.TB, err)
+	couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(base.TestCtx(rt.TB()), rt.ServerContext().Config, base.PerUseClusterConnections)
+	require.NoError(rt.TB(), err)
 	rt.ServerContext().BootstrapContext.Connection = couchbaseCluster
 }
 
 // Context returns a context for a rest tester with server and database log context, if available an unambiguous.
 func (rt *RestTester) Context() context.Context {
-	ctx := base.TestCtx(rt.TB)
+	ctx := base.TestCtx(rt.TB())
 	if svrctx := rt.ServerContext(); svrctx != nil {
 		ctx = svrctx.AddServerLogContext(ctx)
 	}
@@ -1538,11 +1543,11 @@ func (bt *BlipTester) initializeCollections(collections []string) {
 		CheckpointIDs: checkpointIDs,
 	}
 	body, err := base.JSONMarshal(requestBody)
-	require.NoError(bt.restTester.TB, err)
+	require.NoError(bt.restTester.TB(), err)
 
 	getCollectionsRequest.SetBody(body)
 	sent := bt.sender.Send(getCollectionsRequest)
-	require.True(bt.restTester.TB, sent)
+	require.True(bt.restTester.TB(), sent)
 
 	type CollectionsResponseEntry struct {
 		LastSequence *int    `json:"last_sequence"`
@@ -1550,14 +1555,14 @@ func (bt *BlipTester) initializeCollections(collections []string) {
 	}
 
 	response, err := getCollectionsRequest.Response().Body()
-	require.NoError(bt.restTester.TB, err)
+	require.NoError(bt.restTester.TB(), err)
 
 	var collectionResponse []*CollectionsResponseEntry
 	err = base.JSONUnmarshal(response, &collectionResponse)
-	require.NoError(bt.restTester.TB, err)
+	require.NoError(bt.restTester.TB(), err)
 
 	for _, perCollectionResponse := range collectionResponse {
-		require.NotNil(bt.restTester.TB, perCollectionResponse)
+		require.NotNil(bt.restTester.TB(), perCollectionResponse)
 	}
 }
 
@@ -1571,7 +1576,7 @@ func (bt *BlipTester) newRequest() *blip.Message {
 // addCollectionProperty will automatically add a collection. If we are running with the default collection, or a single named collection, automatically add the right value. If there are multiple collections on the database, the test will fatally exit, since the behavior is undefined.
 func (bt *BlipTester) addCollectionProperty(msg *blip.Message) *blip.Message {
 	if bt.useCollections == true {
-		require.Equal(bt.restTester.TB, 1, len(bt.restTester.GetDatabase().CollectionByID), "Multiple collection exist on the database so we are unable to choose which collection to specify in BlipCollection property")
+		require.Equal(bt.restTester.TB(), 1, len(bt.restTester.GetDatabase().CollectionByID), "Multiple collection exist on the database so we are unable to choose which collection to specify in BlipCollection property")
 		msg.Properties[db.BlipCollection] = "0"
 	}
 
@@ -2126,7 +2131,7 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 	}
 	errCode := subChangesResponse.Properties[db.BlipErrorCode]
 	if errCode != "" {
-		bt.restTester.TB.Fatalf("Error sending subChanges request: %s", errCode)
+		bt.restTester.TB().Fatalf("Error sending subChanges request: %s", errCode)
 	}
 
 }
@@ -2500,7 +2505,7 @@ func (rt *RestTester) GetKeyspaces() []string {
 	db := rt.GetDatabase()
 	var keyspaces []string
 	for _, collection := range db.CollectionByID {
-		keyspaces = append(keyspaces, getRESTKeyspace(rt.TB, db.Name, collection))
+		keyspaces = append(keyspaces, getRESTKeyspace(rt.TB(), db.Name, collection))
 	}
 	sort.Strings(keyspaces)
 	return keyspaces
@@ -2522,11 +2527,11 @@ func (rt *RestTester) GetDbCollections() []*db.DatabaseCollection {
 // GetSingleKeyspace the name of the keyspace if there is only one test collection on one database.
 func (rt *RestTester) GetSingleKeyspace() string {
 	db := rt.GetDatabase()
-	require.Equal(rt.TB, 1, len(db.CollectionByID), "Database must be configured with only one collection to use this function")
+	require.Equal(rt.TB(), 1, len(db.CollectionByID), "Database must be configured with only one collection to use this function")
 	for _, collection := range db.CollectionByID {
-		return getRESTKeyspace(rt.TB, db.Name, collection)
+		return getRESTKeyspace(rt.TB(), db.Name, collection)
 	}
-	rt.TB.Fatal("Had no collection to return a keyspace for") // should be unreachable given length check above
+	rt.TB().Fatal("Had no collection to return a keyspace for") // should be unreachable given length check above
 	return ""
 }
 
@@ -2610,7 +2615,7 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	}
 	// Setup scopes.
 	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || (config.UseViews != nil && !*config.UseViews)) {
-		config.Scopes = GetCollectionsConfigWithFiltering(rt.TB, rt.TestBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
+		config.Scopes = GetCollectionsConfigWithFiltering(rt.TB(), rt.TestBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
 	} else {
 		config.Sync = stringPtrOrNil(rt.SyncFn)
 		config.ImportFilter = stringPtrOrNil(rt.ImportFilter)
