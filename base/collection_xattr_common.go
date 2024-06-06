@@ -51,7 +51,7 @@ func (c *Collection) WriteWithXattrs(ctx context.Context, k string, exp uint32, 
 				return false, sgbucket.ErrNeedXattrs, 0
 			}
 			// Update xattrs only
-			casOut, err = c.updateXattrs(ctx, k, exp, cas, xattrs, xattrsToDelete, false, opts)
+			casOut, err = c.updateXattrs(ctx, k, exp, cas, xattrs, xattrsToDelete, opts)
 			if err != nil {
 				shouldRetry = c.isRecoverableWriteError(err)
 				return shouldRetry, err, uint64(0)
@@ -99,7 +99,7 @@ func (c *Collection) WriteTombstoneWithXattrs(ctx context.Context, k string, exp
 				requiresBodyRemoval = !c.IsSupported(sgbucket.BucketStoreFeatureCreateDeletedWithXattr)
 			} else {
 				// If cas is non-zero, this is an already existing tombstone.  Update xattrs only
-				casOut, tombstoneErr = c.updateXattrs(ctx, k, exp, cas, xattrs, xattrsToDelete, true, opts)
+				casOut, tombstoneErr = c.updateXattrs(ctx, k, exp, cas, xattrs, xattrsToDelete, opts)
 			}
 		}
 
@@ -215,6 +215,12 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 			}
 		}
 
+		// defensive check to prevent infinite loops in case of CAS retry
+		if previousLoopCas != nil && *previousLoopCas == cas {
+			err := RedactErrorf("CAS retry triggered, but no change in document CAS detected for key=%s, xattrKeys=%s", UD(k), UD(xattrKeys))
+			WarnfCtx(ctx, "%s", err)
+			return 0, err
+		}
 		// Invoke callback to get updated value
 		updatedDoc, err := callback(value, xattrs, cas)
 
@@ -254,11 +260,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 			return casOut, nil
 		}
 
-		if previousLoopCas != nil && *previousLoopCas == cas {
-			err := RedactErrorf("CAS retry triggered, but no change in document CAS detected for key=%s, xattrKeys=%s", UD(k), UD(xattrKeys))
-			WarnfCtx(ctx, "%s", err)
-			return 0, err
-		} else if IsDocNotFoundError(writeErr) || IsCasMismatch(writeErr) {
+		if IsDocNotFoundError(writeErr) || IsCasMismatch(writeErr) {
 			// Retry on cas failure.  ErrNotStored is returned in some concurrent insert races that appear to be related
 			// to the timing of concurrent xattr subdoc operations.  Treating as CAS failure as these will get the usual
 			// conflict/duplicate handling on retry.
@@ -350,7 +352,7 @@ func removeSubdocPaths(ctx context.Context, store *Collection, k string, subdocP
 	return err
 }
 
-// Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS)
+// DeleteWithXattrs a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS)
 // tombstone when a document is deleted.  To remove the system xattr as well, an explicit subdoc delete operation is required.
 // This is currently called only for Purge operations.
 //

@@ -338,7 +338,7 @@ func (c *Collection) createTombstone(_ context.Context, k string, exp uint32, ca
 		docFlags = gocb.SubdocDocFlagMkDoc
 	}
 
-	mutateOps, err := getUpsertSpecs(xattrs)
+	mutateOps, err := getUpsertSpecsForXattrs(xattrs)
 	if err != nil {
 		return 0, err
 	}
@@ -361,7 +361,7 @@ func (c *Collection) insertBodyAndXattrs(_ context.Context, k string, exp uint32
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
-	mutateOps, err := getUpsertSpecs(xattrs)
+	mutateOps, err := getUpsertSpecsForXattrs(xattrs)
 	if err != nil {
 		return 0, err
 	}
@@ -429,17 +429,20 @@ func (c *Collection) SubdocSetXattrs(k string, xvs map[string][]byte) (casOut ui
 
 // UpdateXattrs updates the xattrs on an existing document. Writes cas and crc32c to the xattr using macro expansion.
 func (c *Collection) UpdateXattrs(ctx context.Context, k string, exp uint32, cas uint64, xattrs map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
-	return c.updateXattrs(ctx, k, exp, cas, xattrs, nil, false, opts)
+	return c.updateXattrs(ctx, k, exp, cas, xattrs, nil, opts)
 }
 
-func (c *Collection) updateXattrs(ctx context.Context, k string, exp uint32, cas uint64, xattrs map[string][]byte, xattrsToDelete []string, tombstoneToTombstone bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+func (c *Collection) updateXattrs(ctx context.Context, k string, exp uint32, cas uint64, xattrs map[string][]byte, xattrsToDelete []string, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 	if !c.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) && len(xattrs) >= 2 {
 		return 0, fmt.Errorf("UpdateXattrs: more than 1 xattr %v not supported in UpdateXattrs in this version of Couchbase Server", xattrs)
+	}
+	if cas == 0 && len(xattrsToDelete) > 0 {
+		return 0, sgbucket.ErrDeleteXattrOnDocumentInsert
 	}
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
-	mutateOps, err := getUpsertSpecs(xattrs)
+	mutateOps, err := getUpsertSpecsForXattrs(xattrs)
 	if err != nil {
 		return 0, err
 	}
@@ -472,7 +475,7 @@ func (c *Collection) updateBodyAndXattrs(ctx context.Context, k string, exp uint
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
-	mutateOps, err := getUpsertSpecs(xattrs)
+	mutateOps, err := getUpsertSpecsForXattrs(xattrs)
 	if err != nil {
 		return 0, err
 	}
@@ -504,7 +507,7 @@ func (c *Collection) updateXattrsDeleteBody(_ context.Context, k string, exp uin
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
-	mutateOps, err := getUpsertSpecs(xattrs)
+	mutateOps, err := getUpsertSpecsForXattrs(xattrs)
 	if err != nil {
 		return 0, err
 	}
@@ -709,8 +712,8 @@ func gocbMutationMacro(meType sgbucket.MacroExpansionType) gocb.MutationMacro {
 	}
 }
 
-// getUpsertSpecs returns a slice of gocb.MutateInSpec for the given xattrs, or returns an error if any values are nil.
-func getUpsertSpecs(xattrs map[string][]byte) ([]gocb.MutateInSpec, error) {
+// getUpsertSpecsForXattrs returns a slice of gocb.MutateInSpec for the given xattrs, or returns an error if any values are nil.
+func getUpsertSpecsForXattrs(xattrs map[string][]byte) ([]gocb.MutateInSpec, error) {
 	mutateOps := make([]gocb.MutateInSpec, 0, len(xattrs))
 	for xattrKey, xattrVal := range xattrs {
 		if xattrVal == nil {
