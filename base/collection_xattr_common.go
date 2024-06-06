@@ -213,19 +213,20 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 				value = nil
 				xattrs = nil
 			}
+			// defensive check to prevent infinite loops in case of CAS retry
+			if previousLoopCas != nil && *previousLoopCas == cas {
+				err := RedactErrorf("CAS retry triggered, but no change in document CAS detected for key=%s, xattrKeys=%s", UD(k), UD(xattrKeys))
+				WarnfCtx(ctx, "%s", err)
+				return 0, err
+			}
 		}
 
-		// defensive check to prevent infinite loops in case of CAS retry
-		if previousLoopCas != nil && *previousLoopCas == cas {
-			err := RedactErrorf("CAS retry triggered, but no change in document CAS detected for key=%s, xattrKeys=%s", UD(k), UD(xattrKeys))
-			WarnfCtx(ctx, "%s", err)
-			return 0, err
-		}
 		// Invoke callback to get updated value
 		updatedDoc, err := callback(value, xattrs, cas)
 
 		// If it's an ErrCasFailureShouldRetry, then retry by going back through the for loop
 		if err == ErrCasFailureShouldRetry {
+			previousLoopCas = nil
 			continue
 		}
 
@@ -264,7 +265,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 			// Retry on cas failure.  ErrNotStored is returned in some concurrent insert races that appear to be related
 			// to the timing of concurrent xattr subdoc operations.  Treating as CAS failure as these will get the usual
 			// conflict/duplicate handling on retry.
-			previousLoopCas = &cas
+			previousLoopCas = Uint64Ptr(cas)
 		} else {
 			// WriteWithXattrs already handles retry on recoverable errors, so fail on any errors other than ErrKeyExists
 			WarnfCtx(ctx, "Failed to update doc with xattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKeys), writeErr)
