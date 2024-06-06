@@ -352,7 +352,7 @@ func removeSubdocPaths(ctx context.Context, store *Collection, k string, subdocP
 	return err
 }
 
-// DeleteWithXattrs a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS)
+// DeleteWithXattrs a document and its associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS)
 // tombstone when a document is deleted.  To remove the system xattr as well, an explicit subdoc delete operation is required.
 // This is currently called only for Purge operations.
 //
