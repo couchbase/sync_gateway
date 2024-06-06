@@ -2304,6 +2304,8 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	}
 	initialSequenceTime := time.Now()
 
+	base.InfofCtx(ctx, base.KeyCRUD, "Database has _sync:seq value on startup of %d", initialSequence)
+
 	// Unlock change cache.  Validate that any allocated sequences on other nodes have either been assigned or released
 	// before starting
 	if initialSequence > 0 {
