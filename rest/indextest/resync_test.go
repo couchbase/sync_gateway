@@ -54,16 +54,17 @@ func TestResyncWithoutIndexes(t *testing.T) {
 	defaultDataStore, ok := base.AsN1QLStore(rt.Bucket().DefaultDataStore())
 	require.True(t, ok)
 
+	ctx := rt.Context()
 	if !base.TestsDisableGSI() {
 		// the sync docs index)
-		numIndexes, err := defaultDataStore.GetIndexes()
+		numIndexes, err := defaultDataStore.GetIndexes(ctx)
 		require.NoError(t, err)
 		require.Len(t, numIndexes, 1)
 
 		for _, collection := range rt.GetDatabase().CollectionByID {
 			n1qlStore, ok := base.AsN1QLStore(collection.GetCollectionDatastore())
 			require.True(t, ok)
-			numIndexes, err := n1qlStore.GetIndexes()
+			numIndexes, err := n1qlStore.GetIndexes(ctx)
 			require.NoError(t, err)
 			if collection.IsDefaultCollection() {
 				require.Len(t, numIndexes, 1, "Expected 1 index for default collection")

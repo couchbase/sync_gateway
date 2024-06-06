@@ -475,11 +475,11 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		}
 		tbp.Logf(ctx, "creating SG bucket indexes")
 		options := InitializeIndexOptions{
-			UseXattrs:       base.TestUseXattrs(),
-			NumReplicas:     0,
-			FailFast:        false,
-			Serverless:      false,
-			MetadataIndexes: IndexesWithoutMetadata,
+			UseXattrs:                  base.TestUseXattrs(),
+			NumReplicas:                0,
+			WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
+			Serverless:                 false,
+			MetadataIndexes:            IndexesWithoutMetadata,
 		}
 		if base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()) {
 			options.MetadataIndexes = IndexesAll

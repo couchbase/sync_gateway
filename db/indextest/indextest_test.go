@@ -418,7 +418,6 @@ func setupN1QLStore(ctx context.Context, bucket base.Bucket, isServerless bool) 
 		}
 
 		options := db.InitializeIndexOptions{
-			FailFast:    false,
 			NumReplicas: 0,
 			Serverless:  isServerless,
 			UseXattrs:   base.TestUseXattrs(),
@@ -440,7 +439,6 @@ var clearIndexes resetN1QLStoreFn = func(ctx context.Context, n1QLStores []base.
 	options := db.InitializeIndexOptions{
 		UseXattrs:       base.TestUseXattrs(),
 		NumReplicas:     0,
-		FailFast:        false,
 		Serverless:      isServerless,
 		MetadataIndexes: db.IndexesAll,
 	}

@@ -75,7 +75,6 @@ func TestInitializeIndexes(t *testing.T) {
 			// drop and restore indexes between tests, to the way the bucket pool would
 			defer func() {
 				options := InitializeIndexOptions{
-					FailFast:    false,
 					NumReplicas: 0,
 					Serverless:  db.IsServerless(),
 					UseXattrs:   base.TestUseXattrs(),
@@ -90,7 +89,6 @@ func TestInitializeIndexes(t *testing.T) {
 
 			// add and drop indexes that may be different from the way the bucket pool expects, so use specific options here for test
 			xattrSpecificIndexOptions := InitializeIndexOptions{
-				FailFast:    false,
 				NumReplicas: 0,
 				Serverless:  db.IsServerless(),
 				UseXattrs:   test.xattrs,
@@ -126,7 +124,6 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 
 	// construct indexes as the test expects
 	options := InitializeIndexOptions{
-		FailFast:    false,
 		NumReplicas: 0,
 		Serverless:  db.IsServerless(),
 		UseXattrs:   db.UseXattrs(),
@@ -187,7 +184,6 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	defer func() {
 		// Restore indexes after test
 		options := InitializeIndexOptions{
-			FailFast:    false,
 			NumReplicas: 0,
 			Serverless:  db.IsServerless(),
 			UseXattrs:   db.UseXattrs(),
@@ -252,7 +248,6 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 	}
 	useXattrs := false
 	options := InitializeIndexOptions{
-		FailFast:    false,
 		NumReplicas: 0,
 		Serverless:  false,
 		UseXattrs:   useXattrs,
@@ -315,7 +310,6 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 		err = InitializeViews(ctx, collection.dataStore)
 		assert.NoError(t, err)
 		options := InitializeIndexOptions{
-			FailFast:    false,
 			NumReplicas: 0,
 			Serverless:  db.IsServerless(),
 			UseXattrs:   base.TestUseXattrs(),
@@ -336,7 +330,6 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	assert.NoError(t, err)
 
 	options := InitializeIndexOptions{
-		FailFast:    false,
 		NumReplicas: 0,
 		Serverless:  db.IsServerless(),
 		UseXattrs:   db.UseXattrs(),

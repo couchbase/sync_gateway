@@ -682,7 +682,7 @@ var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Buc
 			return errors.New("N1QLBucketEmptierFunc used with non-N1QL store")
 		}
 
-		if hasPrimary, _, err := getIndexMetaWithoutRetry(ctx, n1qlStore, PrimaryIndexName); err != nil {
+		if hasPrimary, _, err := GetIndexMeta(ctx, n1qlStore, PrimaryIndexName); err != nil {
 			return err
 		} else if !hasPrimary {
 			return fmt.Errorf("bucket does not have primary index, so can't empty bucket using N1QL")

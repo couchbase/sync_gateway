@@ -49,7 +49,7 @@ type CollectionInitData map[base.ScopeAndCollectionName]db.CollectionIndexesType
 
 // Initializes the database.  Will establish a new cluster connection using the provided server config.  Establishes a new
 // cluster-only N1QLStore based on the startup config to perform initialization.
-func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig) (doneChan chan error, err error) {
+func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, n1qlStore base.ClusterN1QLStore) (doneChan chan error, err error) {
 	m.workersLock.Lock()
 	defer m.workersLock.Unlock()
 	if m.workers == nil {
@@ -86,11 +86,12 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 
 	// Initialize ClusterN1QLStore for the bucket.  Scope and collection name are set
 	// per-operation
-	n1qlStore, err := couchbaseCluster.GetClusterN1QLStore(bucketName, "", "")
-	if err != nil {
-		return nil, err
+	if n1qlStore == nil {
+		n1qlStore, err = couchbaseCluster.GetClusterN1QLStore(bucketName, "", "")
+		if err != nil {
+			return nil, err
+		}
 	}
-
 	indexOptions := m.BuildIndexOptions(startupConfig, dbConfig)
 
 	// Create new worker and add this caller as a watcher
@@ -127,10 +128,10 @@ func (m *DatabaseInitManager) BuildIndexOptions(startupConfig *StartupConfig, db
 		numReplicas = *dbConfig.NumIndexReplicas
 	}
 	return db.InitializeIndexOptions{
-		FailFast:    false,
-		NumReplicas: numReplicas,
-		Serverless:  startupConfig.IsServerless(),
-		UseXattrs:   dbConfig.UseXattrs(),
+		WaitForIndexesOnlineOption: base.WaitForIndexesInfinite,
+		NumReplicas:                numReplicas,
+		Serverless:                 startupConfig.IsServerless(),
+		UseXattrs:                  dbConfig.UseXattrs(),
 	}
 }
 
@@ -180,7 +181,7 @@ func (m *DatabaseInitManager) buildCollectionIndexData(config *DatabaseConfig) C
 // independent of the database being reloaded for config changes
 type DatabaseInitWorker struct {
 	dbName                     string
-	n1qlStore                  *base.ClusterOnlyN1QLStore
+	n1qlStore                  base.ClusterN1QLStore
 	options                    DatabaseInitOptions
 	ctx                        context.Context        // On close, terminates any goroutines associated with the worker
 	cancelFunc                 context.CancelFunc     // Cancel function for context, invoked if Cancel is called
@@ -201,7 +202,7 @@ type DatabaseInitOptions struct {
 	indexOptions db.InitializeIndexOptions // Options used for index initialization
 }
 
-func NewDatabaseInitWorker(ctx context.Context, dbName string, n1qlStore *base.ClusterOnlyN1QLStore, collections CollectionInitData, indexOptions db.InitializeIndexOptions, callback collectionCallbackFunc) *DatabaseInitWorker {
+func NewDatabaseInitWorker(ctx context.Context, dbName string, n1qlStore base.ClusterN1QLStore, collections CollectionInitData, indexOptions db.InitializeIndexOptions, callback collectionCallbackFunc) *DatabaseInitWorker {
 	cancelCtx, cancelFunc := context.WithCancel(ctx)
 	return &DatabaseInitWorker{
 		dbName:                     dbName,

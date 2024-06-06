@@ -9,6 +9,7 @@
 package indextest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -18,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
@@ -27,7 +29,7 @@ import (
 func requireNoIndexes(t *testing.T, dataStore base.DataStore) {
 	collection, err := base.AsCollection(dataStore)
 	require.NoError(t, err)
-	indexNames, err := collection.GetIndexes()
+	indexNames, err := collection.GetIndexes(base.TestCtx(t))
 	require.NoError(t, err)
 	require.Len(t, indexNames, 0)
 
@@ -69,7 +71,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		}
 		metadataCollection, err := base.AsCollection(bucket.DefaultDataStore())
 		require.NoError(t, err)
-		indexNames, err := metadataCollection.GetIndexes()
+		indexNames, err := metadataCollection.GetIndexes(ctx)
 		require.NoError(t, err)
 
 		require.Contains(t, indexNames, indexSyncDocs)
@@ -663,4 +665,47 @@ func requireActiveChannel(t *testing.T, dataStore base.DataStore, key string, ch
 	channel, ok := xattr.Channels[channelName]
 	require.True(t, ok)
 	require.Nil(t, channel)
+}
+
+func TestIndexCancellation(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test requires a N1QLStore")
+	}
+
+	sc, closeFn := rest.StartBootstrapServer(t)
+	defer closeFn()
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	dbConfig := &rest.DatabaseConfig{
+		DbConfig: rest.DbConfig{
+			BucketConfig: rest.BucketConfig{
+				Bucket: base.StringPtr(tb.GetName()),
+			},
+			NumIndexReplicas: base.UintPtr(0),
+		},
+	}
+
+	couchbaseCluster, err := rest.CreateBootstrapConnectionFromStartupConfig(ctx, sc.Config, base.PerUseClusterConnections)
+	require.NoError(t, err)
+
+	underlyingN1qlStore, err := couchbaseCluster.GetClusterN1QLStore(tb.GetName(), "", "")
+	require.NoError(t, err)
+
+	executeQuery := func(statement string) (callParent bool, results sgbucket.QueryResultIterator, err error) {
+		return false, &db.EmptyResultIterator{}, nil
+	}
+
+	n1qlStore := base.NewLeakyClusterOnlyN1QLStore(underlyingN1qlStore, executeQuery)
+
+	cancelCtx, cancelFn := context.WithCancel(ctx)
+	dbInitDoneChan, err := sc.DatabaseInitManager.InitializeDatabase(cancelCtx, sc.Config, dbConfig, n1qlStore)
+	require.NoError(t, err)
+
+	time.Sleep(1 * time.Second)
+	cancelFn()
+	err = <-dbInitDoneChan
+	require.ErrorContains(t, err, "canceled")
 }

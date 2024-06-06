@@ -703,7 +703,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// DatabaseInitManager will be nil if persistent config is not being used.
 		if sc.DatabaseInitManager != nil && (startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)) {
 			// Initialize indexes asynchronously using DatabaseInitManager.
-			dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config)
+			dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -721,11 +721,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 					return nil, errors.New("Cannot create indexes on non-Couchbase data store.")
 				}
 				options := db.InitializeIndexOptions{
-					FailFast:        false,
-					NumReplicas:     numReplicas,
-					Serverless:      sc.Config.IsServerless(),
-					MetadataIndexes: indexInfo.indexSet,
-					UseXattrs:       config.UseXattrs(),
+					WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
+					NumReplicas:                numReplicas,
+					Serverless:                 sc.Config.IsServerless(),
+					MetadataIndexes:            indexInfo.indexSet,
+					UseXattrs:                  config.UseXattrs(),
 				}
 				ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), ds.ScopeName(), ds.CollectionName())
 				indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
