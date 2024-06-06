@@ -78,8 +78,8 @@ func requireDocumentVersion(t testing.TB, expected rest.DocVersion, doc *db.Docu
 // underlying bucket backed by the given RestTester instance.
 func requireVersion(rt *rest.RestTester, docID string, version rest.DocVersion) {
 	doc, err := rt.GetSingleTestDatabaseCollection().GetDocument(rt.Context(), docID, db.DocUnmarshalAll)
-	require.NoError(rt.TB, err, "Error reading document from bucket")
-	requireDocumentVersion(rt.TB, version, doc)
+	require.NoError(rt.TB(), err, "Error reading document from bucket")
+	requireDocumentVersion(rt.TB(), version, doc)
 }
 
 func requireErrorKeyNotFound(t *testing.T, rt *rest.RestTester, docID string) {
@@ -101,7 +101,7 @@ func waitForTombstone(t *testing.T, rt *rest.RestTester, docID string) {
 func createDoc(rt *rest.RestTester, docID string, bodyValue string) rest.DocVersion {
 	body := fmt.Sprintf(`{"key":%q,"channels":["alice"]}`, bodyValue)
 	updatedVersion := rt.PutDoc(docID, body)
-	require.NoError(rt.TB, rt.WaitForPendingChanges())
+	require.NoError(rt.TB(), rt.WaitForPendingChanges())
 	return updatedVersion
 }
 
@@ -109,7 +109,7 @@ func createDoc(rt *rest.RestTester, docID string, bodyValue string) rest.DocVers
 func updateDoc(rt *rest.RestTester, docID string, version rest.DocVersion, bodyValue string) rest.DocVersion {
 	body := fmt.Sprintf(`{"key":%q,"channels":["alice"]}`, bodyValue)
 	updatedVersion := rt.UpdateDoc(docID, version, body)
-	require.NoError(rt.TB, rt.WaitForPendingChanges())
+	require.NoError(rt.TB(), rt.WaitForPendingChanges())
 	return updatedVersion
 }
 

@@ -161,20 +161,20 @@ func getDbConfigFromLegacyConfig(rt *rest.RestTester) string {
 
 	var legacyConfig rest.LegacyServerConfig
 	err := base.JSONUnmarshal(legacyConfigBytes, &legacyConfig)
-	assert.NoError(rt.TB, err)
+	assert.NoError(rt.TB(), err)
 
 	// Generate a dbConfig from the legacy startup config using ToStartupConfig, and use it to create a database
 	_, dbMap, err := legacyConfig.ToStartupConfig(rt.Context())
-	require.NoError(rt.TB, err)
+	require.NoError(rt.TB(), err)
 
 	dbConfig, ok := dbMap["db"]
-	require.True(rt.TB, ok)
+	require.True(rt.TB(), ok)
 
 	// Need to sanitize the db config, but can't use sanitizeDbConfigs because it assumes non-empty server address
 	dbConfig.Username = ""
 	dbConfig.Password = ""
 	dbConfigBytes, err := base.JSONMarshal(dbConfig)
-	require.NoError(rt.TB, err)
+	require.NoError(rt.TB(), err)
 	return string(dbConfigBytes)
 
 }
@@ -293,6 +293,6 @@ func requireBobUserLocation(rt *rest.RestTester, docName string) {
 	metadataStore := rt.GetDatabase().Bucket.DefaultDataStore()
 
 	_, _, err := metadataStore.GetRaw(docName)
-	require.NoError(rt.TB, err)
+	require.NoError(rt.TB(), err)
 
 }

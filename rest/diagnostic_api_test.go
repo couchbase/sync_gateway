@@ -25,9 +25,9 @@ type grant interface {
 func compareAllChannelsOutput(rt *RestTester, username string, expectedOutput string) {
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.db}}/_user/"+username+"/_all_channels", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	rt.TB.Logf("All channels response: %s", response.BodyString())
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	rt.TB().Logf("All channels response: %s", response.BodyString())
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 
 }
 
@@ -49,13 +49,13 @@ func (g *userGrant) getUserPayload(rt *RestTester) string {
 
 	for keyspace, chans := range g.adminChannels {
 		_, scope, collection, err := ParseKeyspace(rt.mustTemplateResource(keyspace))
-		require.NoError(rt.TB, err)
+		require.NoError(rt.TB(), err)
 		if scope == nil && collection == nil {
 			config.ExplicitChannels = base.SetFromArray(chans)
 			continue
 		}
-		require.NotNil(rt.TB, scope, "Could not find scope from keyspace %s", keyspace)
-		require.NotNil(rt.TB, collection, "Could not find collection from keyspace %s", keyspace)
+		require.NotNil(rt.TB(), scope, "Could not find scope from keyspace %s", keyspace)
+		require.NotNil(rt.TB(), collection, "Could not find collection from keyspace %s", keyspace)
 		if base.IsDefaultCollection(*scope, *collection) {
 			config.ExplicitChannels = base.SetFromArray(chans)
 		} else {
@@ -63,15 +63,15 @@ func (g *userGrant) getUserPayload(rt *RestTester) string {
 		}
 	}
 
-	return string(base.MustJSONMarshal(rt.TB, config))
+	return string(base.MustJSONMarshal(rt.TB(), config))
 }
 
 func (g userGrant) request(rt *RestTester) {
 	payload := g.getUserPayload(rt)
-	rt.TB.Logf("Issuing admin grant: %+v", payload)
+	rt.TB().Logf("Issuing admin grant: %+v", payload)
 	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+g.user, payload)
 	if response.Code != http.StatusCreated && response.Code != http.StatusOK {
-		rt.TB.Fatalf("Expected 200 or 201 exit code")
+		rt.TB().Fatalf("Expected 200 or 201 exit code")
 	}
 	if g.output != "" {
 		compareAllChannelsOutput(rt, g.user, g.output)
@@ -89,28 +89,28 @@ func (g roleGrant) getPayload(rt *RestTester) string {
 	}
 	for keyspace, chans := range g.adminChannels {
 		_, scope, collection, err := ParseKeyspace(rt.mustTemplateResource(keyspace))
-		require.NoError(rt.TB, err)
+		require.NoError(rt.TB(), err)
 		if scope == nil && collection == nil {
 			config.ExplicitChannels = base.SetFromArray(chans)
 			continue
 		}
-		require.NotNil(rt.TB, scope, "Could not find scope from keyspace %s", keyspace)
-		require.NotNil(rt.TB, collection, "Could not find collection from keyspace %s", keyspace)
+		require.NotNil(rt.TB(), scope, "Could not find scope from keyspace %s", keyspace)
+		require.NotNil(rt.TB(), collection, "Could not find collection from keyspace %s", keyspace)
 		if base.IsDefaultCollection(*scope, *collection) {
 			config.ExplicitChannels = base.SetFromArray(chans)
 		} else {
 			config.SetExplicitChannels(*scope, *collection, chans...)
 		}
 	}
-	return string(base.MustJSONMarshal(rt.TB, config))
+	return string(base.MustJSONMarshal(rt.TB(), config))
 }
 
 func (g roleGrant) request(rt *RestTester) {
 	payload := g.getPayload(rt)
-	rt.TB.Logf("Issuing admin grant: %+v", payload)
+	rt.TB().Logf("Issuing admin grant: %+v", payload)
 	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+g.role, payload)
 	if response.Code != http.StatusCreated && response.Code != http.StatusOK {
-		rt.TB.Fatalf("Expected 200 or 201 exit code")
+		rt.TB().Fatalf("Expected 200 or 201 exit code")
 	}
 }
 
@@ -137,10 +137,10 @@ func (g docGrant) getPayload() string {
 
 func (g docGrant) request(rt *RestTester) {
 	payload := g.getPayload()
-	rt.TB.Logf("Issuing dynamic grant: %+v", payload)
+	rt.TB().Logf("Issuing dynamic grant: %+v", payload)
 	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc", payload)
 	if response.Code != http.StatusCreated && response.Code != http.StatusOK {
-		rt.TB.Fatalf("Expected 200 or 201 exit code, got %d, output: %s", response.Code, response.Body.String())
+		rt.TB().Fatalf("Expected 200 or 201 exit code, got %d, output: %s", response.Code, response.Body.String())
 	}
 	if g.output != "" {
 		compareAllChannelsOutput(rt, g.userName, g.output)

@@ -27,10 +27,11 @@ import (
 // so that checks are made against the right instance (otherwise the outer test complains
 // "subtest may have called FailNow on a parent test")
 func (rt *RestTester) Run(name string, test func(*testing.T)) {
-	mainT := rt.TB.(*testing.T)
+	mainT := rt.TB().(*testing.T)
 	mainT.Run(name, func(t *testing.T) {
-		rt.TB = t
-		defer func() { rt.TB = mainT }()
+		var tb testing.TB = t
+		old := rt.testingTB.Swap(&tb)
+		defer func() { rt.testingTB.Store(old) }()
 		test(t)
 	})
 }
@@ -38,46 +39,46 @@ func (rt *RestTester) Run(name string, test func(*testing.T)) {
 // GetDocBody returns the doc body for the given docID. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocBody(docID string) db.Body {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
-	RequireStatus(rt.TB, rawResponse, 200)
+	RequireStatus(rt.TB(), rawResponse, 200)
 	var body db.Body
-	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
+	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
 	return body
 }
 
 // GetDoc returns the doc body and version for the given docID. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
-	RequireStatus(rt.TB, rawResponse, 200)
+	RequireStatus(rt.TB(), rawResponse, 200)
 	var body db.Body
-	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
+	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
 	var r struct {
 		RevID *string `json:"_rev"`
 	}
-	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &r))
+	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &r))
 	return DocVersion{RevID: *r.RevID}, body
 }
 
 // GetDocVersion returns the doc body and version for the given docID and version. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocVersion(docID string, version DocVersion) db.Body {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?rev="+version.RevID, "")
-	RequireStatus(rt.TB, rawResponse, http.StatusOK)
+	RequireStatus(rt.TB(), rawResponse, http.StatusOK)
 	var body db.Body
-	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
+	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
 	return body
 }
 
 // CreateTestDoc creates a document with an arbitrary body.
 func (rt *RestTester) CreateTestDoc(docid string) DocVersion {
 	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docid), `{"prop":true}`)
-	RequireStatus(rt.TB, response, 201)
-	return DocVersionFromPutResponse(rt.TB, response)
+	RequireStatus(rt.TB(), response, 201)
+	return DocVersionFromPutResponse(rt.TB(), response)
 }
 
 // PutDoc will upsert the document with a given contents.
 func (rt *RestTester) PutDoc(docID string, body string) DocVersion {
 	rawResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), body)
-	RequireStatus(rt.TB, rawResponse, 201)
-	return DocVersionFromPutResponse(rt.TB, rawResponse)
+	RequireStatus(rt.TB(), rawResponse, 201)
+	return DocVersionFromPutResponse(rt.TB(), rawResponse)
 }
 
 // UpdateDocRev updates a document at a specific revision and returns the new version. Deprecated for UpdateDoc.
@@ -90,8 +91,8 @@ func (rt *RestTester) UpdateDocRev(docID, revID string, body string) string {
 func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) DocVersion {
 	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, version.RevID)
 	rawResponse := rt.SendAdminRequest(http.MethodPut, resource, body)
-	RequireStatus(rt.TB, rawResponse, http.StatusCreated)
-	return DocVersionFromPutResponse(rt.TB, rawResponse)
+	RequireStatus(rt.TB(), rawResponse, http.StatusCreated)
+	return DocVersionFromPutResponse(rt.TB(), rawResponse)
 }
 
 // DeleteDoc deletes a document at a specific version. The test will fail if the revision does not exist.
@@ -103,8 +104,8 @@ func (rt *RestTester) DeleteDoc(docID string, docVersion DocVersion) {
 func (rt *RestTester) DeleteDocReturnVersion(docID string, docVersion DocVersion) DocVersion {
 	resp := rt.SendAdminRequest(http.MethodDelete,
 		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, docVersion.RevID), "")
-	RequireStatus(rt.TB, resp, http.StatusOK)
-	return DocVersionFromPutResponse(rt.TB, resp)
+	RequireStatus(rt.TB(), resp, http.StatusOK)
+	return DocVersionFromPutResponse(rt.TB(), resp)
 }
 
 // DeleteDocRev removes a document at a specific revision. Deprecated for DeleteDoc.
@@ -115,21 +116,21 @@ func (rt *RestTester) DeleteDocRev(docID, revID string) {
 func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 	var dbroot DatabaseRoot
 	resp := rt.SendAdminRequest("GET", "/"+dbname+"/", "")
-	RequireStatus(rt.TB, resp, 200)
-	require.NoError(rt.TB, base.JSONUnmarshal(resp.BodyBytes(), &dbroot))
+	RequireStatus(rt.TB(), resp, 200)
+	require.NoError(rt.TB(), base.JSONUnmarshal(resp.BodyBytes(), &dbroot))
 	return dbroot
 }
 
 // WaitForVersion retries a GET for a given document version until it returns 200 or 201 for a given document and revision. If version is not found, the test will fail.
 func (rt *RestTester) WaitForVersion(docID string, version DocVersion) error {
-	require.NotEqual(rt.TB, "", version.RevID)
+	require.NotEqual(rt.TB(), "", version.RevID)
 	return rt.WaitForCondition(func() bool {
 		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 		if rawResponse.Code != 200 && rawResponse.Code != 201 {
 			return false
 		}
 		var body db.Body
-		require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
+		require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
 		return body.ExtractRev() == version.RevID
 	})
 }
@@ -144,7 +145,7 @@ func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string
 	successFunc := func() bool {
 		val, _, err := rt.GetSingleDataStore().GetRaw(expectedName)
 		if err != nil {
-			rt.TB.Logf("Error getting checkpoint: %v - will retry", err)
+			rt.TB().Logf("Error getting checkpoint: %v - will retry", err)
 			return false
 		}
 		var config struct { // db.replicationCheckpoint
@@ -152,7 +153,7 @@ func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string
 		}
 		err = json.Unmarshal(val, &config)
 		if err != nil {
-			rt.TB.Logf("Error unmarshalling checkpoint: %v - will retry", err)
+			rt.TB().Logf("Error unmarshalling checkpoint: %v - will retry", err)
 			return false
 		}
 		lastSeq = config.LastSeq
@@ -166,7 +167,7 @@ func (rt *RestTester) WaitForActiveReplicatorInitialization(count int) {
 		ar := rt.GetDatabase().SGReplicateMgr.GetNumberActiveReplicators()
 		return ar == count
 	}
-	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "mismatch on number of active replicators")
+	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "mismatch on number of active replicators")
 }
 
 func (rt *RestTester) WaitForPullBlipSenderInitialisation(name string) {
@@ -174,7 +175,7 @@ func (rt *RestTester) WaitForPullBlipSenderInitialisation(name string) {
 		bs := rt.GetDatabase().SGReplicateMgr.GetActiveReplicator(name).Pull.GetBlipSender()
 		return bs != nil
 	}
-	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "blip sender on active replicator not initialized")
+	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "blip sender on active replicator not initialized")
 }
 
 // createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
@@ -197,9 +198,9 @@ func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string
 		replicationConfig.QueryParams = map[string]interface{}{"channels": channels}
 	}
 	payload, err := json.Marshal(replicationConfig)
-	require.NoError(rt.TB, err)
+	require.NoError(rt.TB(), err)
 	resp := rt.SendAdminRequest(http.MethodPost, "/"+dbName+"/_replication/", string(payload))
-	RequireStatus(rt.TB, resp, http.StatusCreated)
+	RequireStatus(rt.TB(), resp, http.StatusCreated)
 }
 
 func (rt *RestTester) WaitForAssignedReplications(count int) {
@@ -207,7 +208,7 @@ func (rt *RestTester) WaitForAssignedReplications(count int) {
 		replicationStatuses := rt.GetReplicationStatuses("?localOnly=true")
 		return len(replicationStatuses) == count
 	}
-	require.NoError(rt.TB, rt.WaitForCondition(successFunc))
+	require.NoError(rt.TB(), rt.WaitForCondition(successFunc))
 }
 
 func (rt *RestTester) GetActiveReplicatorCount() int {
@@ -222,7 +223,7 @@ func (rt *RestTester) WaitForActiveReplicatorCount(expCount int) {
 		count = rt.GetActiveReplicatorCount()
 		return count == expCount
 	}
-	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "Mismatch in active replicator count, expected count %d actual %d", expCount, count)
+	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "Mismatch in active replicator count, expected count %d actual %d", expCount, count)
 }
 
 func (rt *RestTester) WaitForReplicationStatusForDB(dbName string, replicationID string, targetStatus string) {
@@ -231,7 +232,7 @@ func (rt *RestTester) WaitForReplicationStatusForDB(dbName string, replicationID
 		status = rt.GetReplicationStatusForDB(dbName, replicationID)
 		return status.Status == targetStatus
 	}
-	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", targetStatus, status.Status)
+	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", targetStatus, status.Status)
 }
 
 func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatus string) {
@@ -240,8 +241,8 @@ func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatu
 
 func (rt *RestTester) GetReplications() (replications map[string]db.ReplicationCfg) {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.db}}/_replication/", "")
-	RequireStatus(rt.TB, rawResponse, 200)
-	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &replications))
+	RequireStatus(rt.TB(), rawResponse, 200)
+	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &replications))
 	return replications
 }
 
@@ -251,15 +252,15 @@ func (rt *RestTester) GetReplicationStatus(replicationID string) (status db.Repl
 
 func (rt *RestTester) GetReplicationStatusForDB(dbName string, replicationID string) (status db.ReplicationStatus) {
 	rawResponse := rt.SendAdminRequest("GET", "/"+dbName+"/_replicationStatus/"+replicationID, "")
-	RequireStatus(rt.TB, rawResponse, 200)
-	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &status))
+	RequireStatus(rt.TB(), rawResponse, 200)
+	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &status))
 	return status
 }
 
 func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.ReplicationStatus) {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.db}}/_replicationStatus/"+queryString, "")
-	RequireStatus(rt.TB, rawResponse, 200)
-	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &statuses))
+	RequireStatus(rt.TB(), rawResponse, 200)
+	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &statuses))
 	return statuses
 }
 
@@ -268,10 +269,10 @@ func (rt *RestTester) WaitForResyncStatus(status db.BackgroundProcessState) db.R
 	successFunc := func() bool {
 		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
 		err := json.Unmarshal(response.BodyBytes(), &resyncStatus)
-		require.NoError(rt.TB, err)
+		require.NoError(rt.TB(), err)
 
 		var val interface{}
-		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(rt.TB), &val)
+		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(rt.TB()), &val)
 
 		if status == db.BackgroundProcessStateCompleted {
 			return resyncStatus.State == status && base.IsDocNotFoundError(err)
@@ -279,7 +280,7 @@ func (rt *RestTester) WaitForResyncStatus(status db.BackgroundProcessState) db.R
 			return resyncStatus.State == status
 		}
 	}
-	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", status, resyncStatus.State)
+	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", status, resyncStatus.State)
 	return resyncStatus
 }
 
@@ -288,10 +289,10 @@ func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) d
 	successFunc := func() bool {
 		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
 		err := json.Unmarshal(response.BodyBytes(), &resyncStatus)
-		require.NoError(rt.TB, err)
+		require.NoError(rt.TB(), err)
 
 		var val interface{}
-		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(rt.TB), &val)
+		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(rt.TB()), &val)
 
 		if status == db.BackgroundProcessStateCompleted {
 			return resyncStatus.State == status && base.IsDocNotFoundError(err)
@@ -299,14 +300,14 @@ func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) d
 			return resyncStatus.State == status
 		}
 	}
-	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", status, resyncStatus.State)
+	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", status, resyncStatus.State)
 	return resyncStatus
 }
 
 // UpdatePersistedBucketName will update the persisted config bucket name to name specified in parameters
 func (rt *RestTester) UpdatePersistedBucketName(dbConfig *DatabaseConfig, newBucketName *string) (*DatabaseConfig, error) {
 	updatedDbConfig := DatabaseConfig{}
-	_, err := rt.ServerContext().BootstrapContext.UpdateConfig(base.TestCtx(rt.TB), *dbConfig.Bucket, rt.ServerContext().Config.Bootstrap.ConfigGroupID, dbConfig.Name, func(originalConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+	_, err := rt.ServerContext().BootstrapContext.UpdateConfig(base.TestCtx(rt.TB()), *dbConfig.Bucket, rt.ServerContext().Config.Bootstrap.ConfigGroupID, dbConfig.Name, func(originalConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 
 		bucketDbConfig := dbConfig
 		bucketDbConfig.cfgCas = originalConfig.cfgCas
@@ -318,16 +319,16 @@ func (rt *RestTester) UpdatePersistedBucketName(dbConfig *DatabaseConfig, newBuc
 }
 
 func (rt *RestTester) InsertDbConfigToBucket(config *DatabaseConfig, bucketName string) {
-	_, insertErr := rt.ServerContext().BootstrapContext.InsertConfig(base.TestCtx(rt.TB), bucketName, rt.ServerContext().Config.Bootstrap.ConfigGroupID, config)
-	require.NoError(rt.TB, insertErr)
+	_, insertErr := rt.ServerContext().BootstrapContext.InsertConfig(base.TestCtx(rt.TB()), bucketName, rt.ServerContext().Config.Bootstrap.ConfigGroupID, config)
+	require.NoError(rt.TB(), insertErr)
 }
 
 func (rt *RestTester) PersistDbConfigToBucket(dbConfig DbConfig, bucketName string) {
 	version, err := GenerateDatabaseConfigVersionID(rt.Context(), "", &dbConfig)
-	require.NoError(rt.TB, err)
+	require.NoError(rt.TB(), err)
 
-	metadataID, metadataIDError := rt.ServerContext().BootstrapContext.ComputeMetadataIDForDbConfig(base.TestCtx(rt.TB), &dbConfig)
-	require.NoError(rt.TB, metadataIDError)
+	metadataID, metadataIDError := rt.ServerContext().BootstrapContext.ComputeMetadataIDForDbConfig(base.TestCtx(rt.TB()), &dbConfig)
+	require.NoError(rt.TB(), metadataIDError)
 
 	dbConfig.Bucket = &bucketName
 	persistedConfig := DatabaseConfig{
@@ -399,14 +400,14 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 // TakeDbOffline takes the database offline.
 func (rt *RestTester) TakeDbOffline() {
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
-	RequireStatus(rt.TB, resp, http.StatusOK)
-	require.Equal(rt.TB, db.DBOffline, atomic.LoadUint32(&rt.GetDatabase().State))
+	RequireStatus(rt.TB(), resp, http.StatusOK)
+	require.Equal(rt.TB(), db.DBOffline, atomic.LoadUint32(&rt.GetDatabase().State))
 }
 
 // RequireDbOnline asserts that the state of the database is online
 func (rt *RestTester) RequireDbOnline() {
 	response := rt.SendAdminRequest("GET", "/{{.db}}/", "")
 	var body db.Body
-	require.NoError(rt.TB, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	require.Equal(rt.TB, "Online", body["state"].(string))
+	require.NoError(rt.TB(), base.JSONUnmarshal(response.Body.Bytes(), &body))
+	require.Equal(rt.TB(), "Online", body["state"].(string))
 }
