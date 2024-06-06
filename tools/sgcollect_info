@@ -265,7 +265,7 @@ def make_collect_logs_tasks(zip_dir, sg_url, sg_config_file_path, sg_username, s
     ]
     # Try to find user-specified log path
     if sg_url:
-        config_url = "{0}/_config".format(sg_url)
+        config_url = "{0}/_config?include_runtime=true".format(sg_url)
         try:
             response = urlopen_with_basic_auth(config_url, sg_username, sg_password)
         except urllib.error.URLError:
