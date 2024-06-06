@@ -27,7 +27,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 
 	const (
 		zeroCas casOption = iota
-		fakeCas
+		incorrectCas
 		previousCas
 	)
 	type testCase struct {
@@ -74,7 +74,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			updatedXattrs: map[string][]byte{
 				"_xattr1": []byte(`{"c" : "d"}`),
 			},
-			cas:            fakeCas,
+			cas:            incorrectCas,
 			deleteBody:     true,
 			writeErrorFunc: requireCasMismatchError,
 		},
@@ -123,7 +123,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			updatedXattrs: map[string][]byte{
 				"_xattr2": []byte(`{"c" : "d"}`),
 			},
-			cas:            fakeCas,
+			cas:            incorrectCas,
 			deleteBody:     true,
 			writeErrorFunc: requireCasMismatchError,
 		},
@@ -171,7 +171,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			updatedXattrs: map[string][]byte{
 				"_xattr1": []byte(`{"c" : "d"}`),
 			},
-			cas:            fakeCas,
+			cas:            incorrectCas,
 			deleteBody:     false,
 			writeErrorFunc: requireCasMismatchError,
 		},
@@ -219,7 +219,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			updatedXattrs: map[string][]byte{
 				"_xattr2": []byte(`{"c" : "d"}`),
 			},
-			cas:            fakeCas,
+			cas:            incorrectCas,
 			deleteBody:     false,
 			writeErrorFunc: requireCasMismatchError,
 		},
@@ -265,7 +265,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			updatedXattrs: map[string][]byte{
 				"_xattr1": []byte(`{"a" : "b"}`),
 			},
-			cas:            fakeCas,
+			cas:            incorrectCas,
 			deleteBody:     true,
 			writeErrorFunc: requireCasMismatchError,
 		},
@@ -303,7 +303,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			updatedXattrs: map[string][]byte{
 				"_xattr1": []byte(`{"a" : "b"}`),
 			},
-			cas:            fakeCas,
+			cas:            incorrectCas,
 			deleteBody:     false,
 			writeErrorFunc: requireCasMismatchError,
 		},
@@ -347,7 +347,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			updatedXattrs: map[string][]byte{
 				"_xattr1": []byte(`{"c" : "d"}`),
 			},
-			cas:            fakeCas,
+			cas:            incorrectCas,
 			deleteBody:     true,
 			writeErrorFunc: requireDocNotFoundOrCasMismatchError,
 		},
@@ -390,7 +390,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			updatedXattrs: map[string][]byte{
 				"_xattr1": []byte(`{"c" : "d"}`),
 			},
-			cas:            fakeCas,
+			cas:            incorrectCas,
 			deleteBody:     false,
 			writeErrorFunc: requireCasMismatchError,
 		},
@@ -435,7 +435,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			updatedXattrs: map[string][]byte{
 				"_xattr2": []byte(`{"c" : "d"}`),
 			},
-			cas:            fakeCas,
+			cas:            incorrectCas,
 			deleteBody:     true,
 			writeErrorFunc: RequireDocNotFoundError,
 		},
@@ -478,7 +478,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			updatedXattrs: map[string][]byte{
 				"_xattr2": []byte(`{"c" : "d"}`),
 			},
-			cas:            fakeCas,
+			cas:            incorrectCas,
 			deleteBody:     false,
 			writeErrorFunc: requireCasMismatchError,
 		},
@@ -514,7 +514,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			updatedXattrs: map[string][]byte{
 				"_xattr1": []byte(`{"a" : "b"}`),
 			},
-			cas:            fakeCas,
+			cas:            incorrectCas,
 			deleteBody:     true,
 			writeErrorFunc: RequireDocNotFoundError,
 		},
@@ -534,7 +534,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			updatedXattrs: map[string][]byte{
 				"_xattr1": []byte(`{"a" : "b"}`),
 			},
-			cas:            fakeCas,
+			cas:            incorrectCas,
 			writeErrorFunc: RequireDocNotFoundError,
 		},
 	}
@@ -575,7 +575,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 					"_xattr1": []byte(`{"c": "d"}`),
 					"_xattr2": []byte(`{"f": "g"}`),
 				},
-				cas:            fakeCas,
+				cas:            incorrectCas,
 				deleteBody:     true,
 				writeErrorFunc: requireCasMismatchError,
 			},
@@ -626,7 +626,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 					"_xattr1": []byte(`{"c": "d"}`),
 					"_xattr2": []byte(`{"f": "g"}`),
 				},
-				cas:            fakeCas,
+				cas:            incorrectCas,
 				deleteBody:     false,
 				writeErrorFunc: requireCasMismatchError,
 			},
@@ -676,7 +676,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 					"_xattr1": []byte(`{"c": "d"}`),
 					"_xattr2": []byte(`{"f": "g"}`),
 				},
-				cas:            fakeCas,
+				cas:            incorrectCas,
 				deleteBody:     true,
 				writeErrorFunc: requireCasMismatchError,
 			},
@@ -718,7 +718,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 					"_xattr1": []byte(`{"c": "d"}`),
 					"_xattr2": []byte(`{"f": "g"}`),
 				},
-				cas:            fakeCas,
+				cas:            incorrectCas,
 				deleteBody:     false,
 				writeErrorFunc: requireCasMismatchError,
 			},
@@ -758,7 +758,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 					"_xattr1": []byte(`{"c": "d"}`),
 					"_xattr2": []byte(`{"f": "g"}`),
 				},
-				cas:            fakeCas,
+				cas:            incorrectCas,
 				deleteBody:     true,
 				writeErrorFunc: RequireDocNotFoundError,
 			},
@@ -783,7 +783,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 					"_xattr1": []byte(`{"c": "d"}`),
 					"_xattr2": []byte(`{"f": "g"}`),
 				},
-				cas:            fakeCas,
+				cas:            incorrectCas,
 				deleteBody:     false,
 				writeErrorFunc: RequireDocNotFoundError,
 			},
@@ -858,7 +858,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			var exp uint32
 			docID := t.Name()
 			cas := uint64(0)
-			if test.cas == fakeCas {
+			if test.cas == incorrectCas {
 				cas = 1
 			}
 			if test.previousDoc != nil {
@@ -1285,9 +1285,9 @@ func TestWriteWithXattrsSetXattrNil(t *testing.T) {
 	col := bucket.GetSingleDataStore()
 	docID := t.Name()
 
-	for _, fakeCas := range []uint64{0, 1} {
-		t.Run(fmt.Sprintf("cas=%d", fakeCas), func(t *testing.T) {
-			_, err := col.WriteWithXattrs(ctx, docID, 0, fakeCas, []byte(`{"foo": "bar"}`), map[string][]byte{"xattr1": nil}, nil, nil)
+	for _, cas := range []uint64{0, 1} {
+		t.Run(fmt.Sprintf("cas=%d", cas), func(t *testing.T) {
+			_, err := col.WriteWithXattrs(ctx, docID, 0, cas, []byte(`{"foo": "bar"}`), map[string][]byte{"xattr1": nil}, nil, nil)
 			require.ErrorIs(t, err, sgbucket.ErrNilXattrValue)
 		})
 	}
@@ -1300,10 +1300,10 @@ func TestWriteTombstoneWithXattrsSetXattrNil(t *testing.T) {
 	col := bucket.GetSingleDataStore()
 	docID := t.Name()
 
-	for _, fakeCas := range []uint64{0, 1} {
+	for _, cas := range []uint64{0, 1} {
 		for _, deleteBody := range []bool{false, true} {
-			t.Run(fmt.Sprintf("cas=%d, deleteBody=%v", fakeCas, deleteBody), func(t *testing.T) {
-				_, err := col.WriteTombstoneWithXattrs(ctx, docID, 0, fakeCas, map[string][]byte{"_xattr1": nil}, nil, deleteBody, nil)
+			t.Run(fmt.Sprintf("cas=%d, deleteBody=%v", cas, deleteBody), func(t *testing.T) {
+				_, err := col.WriteTombstoneWithXattrs(ctx, docID, 0, cas, map[string][]byte{"_xattr1": nil}, nil, deleteBody, nil)
 				require.ErrorIs(t, err, sgbucket.ErrNilXattrValue)
 			})
 		}
