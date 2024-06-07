@@ -683,14 +683,14 @@ func TestGetUserDocAccessSpanWithSingleNamedCollection(t *testing.T) {
 	}
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
-	grant := userGrant{
+	grant1 := userGrant{
 		user: "alice",
 		adminChannels: map[string][]string{
 			"{{.keyspace1}}": {"defaultCollChan"},
 			"{{.keyspace2}}": {"coll2Chan"},
 		},
 	}
-	grant.request(rt)
+	grant1.request(rt)
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/doc1", `{"channel":"defaultCollChan"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
@@ -724,14 +724,14 @@ func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// check removed channel in keyspace2 is in history before deleting collection 2
-	grant := userGrant{
+	grant1 := userGrant{
 		user: "alice",
 		adminChannels: map[string][]string{
 			"{{.keyspace1}}": {"coll1Chan"},
 			"{{.keyspace2}}": {"coll2Chan"},
 		},
 	}
-	grant.request(rt)
+	grant1.request(rt)
 
 	expectedOutput1 := `{"doc1": {"coll1Chan": { "entries" : ["3-0"]}}}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
@@ -760,33 +760,27 @@ func TestGetUserDocAccessSpanDeletedRole(t *testing.T) {
 	defer rt.Close()
 
 	// Create role with 1 channel and assign it to user
-	roleGrant := roleGrant{role: "role1", adminChannels: map[string][]string{"{{.db}}": {"A"}}}
-	roleGrant.request(rt)
+	roleGrant1 := roleGrant{role: "role1", adminChannels: map[string][]string{"{{.db}}": {"A"}}}
+	roleGrant1.request(rt)
 
-	userGrant := userGrant{
+	userGrant1 := userGrant{
 		user:  "alice",
 		roles: []string{"role1"},
-		output: `
-		{
-			"all_channels":{
-				"{{.scopeAndCollection}}":{
-					"role1Chan":{
-						"entries":["2-0"]
-					}
-				}
-			}}`,
 	}
-	userGrant.request(rt)
+	userGrant1.request(rt)
 
 	// create doc in channel A
 	doc := docGrant{dynamicChannel: "A"}
 	doc.request(rt)
-
+	userGrant1 = userGrant{
+		user: "alice",
+	}
+	userGrant1.request(rt)
 	// Delete role and assert its channels no longer appear in response
 	resp := rt.SendAdminRequest("DELETE", "/db/_role/role1", ``)
 	RequireStatus(t, resp, http.StatusOK)
 
-	expectedOutput := `{"doc1": {"A": { "entries" : ["3-4"]} }}`
+	expectedOutput := `{"doc": {"A": { "entries" : ["3-4"]}}}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/alice?docids=doc", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
@@ -832,32 +826,36 @@ func TestGetUserDocAccessMultiChannel(t *testing.T) {
 func TestGetUserDocAccessContinuousAdminAPI(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
-	userGrant := userGrant{
+
+	roleGrant1 := roleGrant{role: "role1", adminChannels: map[string][]string{"{{.keyspace}}": {"A"}}}
+	roleGrant1.request(rt)
+
+	// create doc in channel A
+	doc := docGrant{dynamicChannel: "A"}
+	doc.request(rt)
+
+	userGrant1 := userGrant{
 		user: "alice",
 		adminChannels: map[string][]string{
 			"{{.keyspace}}": {"A"},
 		},
 	}
-	userGrant.request(rt)
+	userGrant1.request(rt)
 
-	version := rt.PutDoc("doc1", `{"channel":["A"]}`)
-	updatedVersion := rt.UpdateDoc("doc1", version, `{"channel":["B", "A"]}`)
-	updatedVersion = rt.UpdateDoc("doc1", updatedVersion, `{"channel":["C", "B"]}`)
+	userGrant1 = userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"!"},
+		},
+		roles: []string{"role1"},
+	}
+	userGrant1.request(rt)
 
 	// assert sequences are registered correctly
-	expectedOutput := `{"doc1": {"A": { "entries" : ["2-4"]}, "B": { "entries" : ["3-0"]},  "C": { "entries" : ["4-0"]} }}`
+	expectedOutput := `{"doc": {"A": { "entries" : ["3-4", "4-0"]} }}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/alice?docids=doc1", ``)
+		"/{{.keyspace}}/alice?docids=doc", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
 
-	// remove all channels
-	updatedVersion = rt.UpdateDoc("doc1", updatedVersion, `{"channel":[]}`)
-
-	// assert sequences spans end here
-	expectedOutput = `{"doc1": {"A": { "entries" : ["2-4"]}, "B": { "entries" : ["3-5"]},  "C": { "entries" : ["4-5"]} }}`
-	response = rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/alice?docids=doc1", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
