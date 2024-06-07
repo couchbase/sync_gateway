@@ -34,6 +34,21 @@ func (h *handler) handleGetAllChannels() error {
 		return kNotFoundError
 	}
 
+	resp, err := h.getAllUserChannelsResponse(user)
+	if err != nil {
+		return err
+	}
+	allChannels := allChannels{Channels: resp}
+
+	bytes, err := base.JSONMarshal(allChannels)
+	if err != nil {
+		return err
+	}
+	h.writeRawJSON(bytes)
+	return err
+}
+
+func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[string]channelHistory, error) {
 	resp := make(map[string]map[string]channelHistory)
 
 	// handles deleted collections, default/ single named collection
@@ -63,14 +78,99 @@ func (h *handler) handleGetAllChannels() error {
 			}
 			resp[keyspace][chanName] = chanHistoryEntry
 		}
-
 	}
-	allChannels := allChannels{Channels: resp}
 
-	bytes, err := base.JSONMarshal(allChannels)
-	if err != nil {
-		return err
+	base.InfofCtx(h.ctx(), base.KeyDiagnostic, "user.RoleHistory(} %s", user.RoleNames())
+	// deleted role handling
+	for roleName, roleEntry := range user.RoleHistory() {
+		role, err := h.db.Authenticator(h.ctx()).GetRoleIncDeleted(roleName)
+		if err != nil {
+			return nil, fmt.Errorf("error getting role: %w", err)
+		}
+		if role == nil {
+			base.InfofCtx(h.ctx(), base.KeyDiagnostic, "ROLE IS NIL %s", roleName)
+			return nil, fmt.Errorf("error getting role: %w", err)
+		}
+		// If role is not deleted, it will be handled by above loops
+		if !role.IsDeleted() {
+			continue
+		}
+		// default keyspace chan history
+		defaultKs := "_default._default"
+		for chanName, chanEntry := range role.ChannelHistory() {
+			entries := getRoleChanEntryOverlap(roleEntry.Entries, chanEntry.Entries)
+			chanHistoryEntry := channelHistory{Entries: entries}
+			resp[defaultKs][chanName] = chanHistoryEntry
+		}
+
+		collAccess := role.GetCollectionsAccess()
+		for scopeName, scope := range collAccess {
+			for collName, coll := range scope {
+				keyspace := scopeName + "." + collName
+				for chanName, chanEntry := range coll.ChannelHistory_ {
+					entries := getRoleChanEntryOverlap(roleEntry.Entries, chanEntry.Entries)
+					chanHistoryEntry := channelHistory{Entries: entries}
+					resp[keyspace][chanName] = chanHistoryEntry
+				}
+			}
+		}
 	}
-	h.writeRawJSON(bytes)
-	return err
+
+	for roleName, _ := range user.RoleNames() {
+		role, err := h.db.Authenticator(h.ctx()).GetRoleIncDeleted(roleName)
+		if err != nil {
+			return nil, fmt.Errorf("error getting role: %w", err)
+		}
+		// If role is not deleted, it will be handled by above loops
+		if !role.IsDeleted() {
+			continue
+		}
+		base.InfofCtx(h.ctx(), base.KeyDiagnostic, "role.Channels %s, role name %s", role.ChannelHistory(), roleName)
+
+		// default keyspace chan history
+		defaultKs := "_default._default"
+		for chanName, chanEntry := range role.ChannelHistory() {
+			//entries := getRoleChanEntryOverlap(roleEntry.Entries, chanEntry.Entries)
+			chanHistoryEntry := channelHistory{Entries: chanEntry.Entries}
+			resp[defaultKs][chanName] = chanHistoryEntry
+		}
+
+		collAccess := role.GetCollectionsAccess()
+		for scopeName, scope := range collAccess {
+			for collName, coll := range scope {
+				keyspace := scopeName + "." + collName
+				for chanName, chanEntry := range coll.ChannelHistory_ {
+					//entries := getRoleChanEntryOverlap(roleEntry.Entries, chanEntry.Entries)
+					chanHistoryEntry := channelHistory{Entries: chanEntry.Entries}
+					resp[keyspace][chanName] = chanHistoryEntry
+				}
+			}
+		}
+	}
+
+	return resp, nil
+}
+
+// Only used for deleted role, logic is for channels in channel_history and roles in role_history
+func getRoleChanEntryOverlap(roleEntries, chanEntries []auth.GrantHistorySequencePair) []auth.GrantHistorySequencePair {
+	var overlapEntries []auth.GrantHistorySequencePair
+	var entry auth.GrantHistorySequencePair
+	for _, roleEntry := range roleEntries {
+		for _, chanEntry := range chanEntries {
+			// default
+			entry = auth.GrantHistorySequencePair{StartSeq: chanEntry.StartSeq, EndSeq: roleEntry.EndSeq}
+			if roleEntry.StartSeq > chanEntry.EndSeq {
+				continue
+			} else if roleEntry.EndSeq < chanEntry.StartSeq {
+				continue
+			} else if chanEntry.EndSeq > roleEntry.EndSeq {
+				entry = auth.GrantHistorySequencePair{StartSeq: chanEntry.StartSeq, EndSeq: roleEntry.EndSeq}
+			} else if roleEntry.StartSeq > chanEntry.EndSeq {
+				entry = auth.GrantHistorySequencePair{StartSeq: roleEntry.StartSeq, EndSeq: chanEntry.EndSeq}
+			}
+			overlapEntries = append(overlapEntries, entry)
+		}
+	}
+
+	return overlapEntries
 }

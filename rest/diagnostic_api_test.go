@@ -825,7 +825,15 @@ func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
 	resp := rt.SendAdminRequest("DELETE", "/db/_role/role1", ``)
 	RequireStatus(t, resp, http.StatusOK)
 
-	userGrant.output = `{}`
+	userGrant.output = `
+		{
+			"all_channels":{
+				"{{.scopeAndCollection}}":{
+					"role1Chan":{
+						"entries":["2-3"]
+					}
+				}
+			}}`
 	userGrant.roles = []string{}
 	userGrant.request(rt)
 
