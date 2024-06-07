@@ -209,8 +209,8 @@ func (c *Collection) executeStatement(statement string) error {
 	return queryResults.Err()
 }
 
-func (c *Collection) IsErrNoResults(err error) bool {
-	return err == gocb.ErrNoResult
+func (c *Collection) IsErrNoResults(ctx context.Context, err error) bool {
+	return errors.Is(err, gocb.ErrNoResult)
 }
 
 func (c *Collection) GetIndexes() (indexes []string, err error) {
