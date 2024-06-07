@@ -1611,6 +1611,32 @@ func TestUpdateXattrs(t *testing.T) {
 		})
 	}
 }
+
+func TestWriteUpdateWithXattrsReplacingNilDoc(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	col := bucket.GetSingleDataStore()
+
+	docID := t.Name()
+
+	// Write binary doc directly to bucket with a nil body
+	var nilBody []byte
+	_, err := col.AddRaw(docID, 0, nilBody)
+	require.NoError(t, err)
+
+	writeUpdateFunc := func(_ []byte, _ map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+		return sgbucket.UpdatedDoc{
+			Doc:    []byte(`{"foo": "bar"}`),
+			Xattrs: map[string][]byte{"_xattr1": []byte(`{"a": "b"}`)},
+		}, nil
+	}
+
+	_, err = col.WriteUpdateWithXattrs(ctx, docID, nil, 0, nil, nil, writeUpdateFunc)
+	require.NoError(t, err)
+
+}
+
 func requireDocNotFoundOrCasMismatchError(t testing.TB, err error) {
 	require.Error(t, err)
 	if !IsDocNotFoundError(err) && !IsCasMismatch(err) {

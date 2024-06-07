@@ -190,6 +190,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 	var previousLoopCas *uint64
 	for {
 		var err error
+		wasTombstone := false
 		if previous != nil {
 			// If an existing value has been provided, use that as the initial value.
 			// A zero CAS is interpreted as no document existing.
@@ -197,12 +198,13 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 				value = previous.Body
 				xattrs = previous.Xattrs
 				cas = previous.Cas
+				wasTombstone = value != nil
 			}
 			previous = nil // a retry will get value from bucket, as below
 		} else {
 			// If no existing value has been provided, or on a retry,
 			// retrieve the current value from the bucket
-			value, xattrs, cas, err = c.subdocGetBodyAndXattrs(ctx, k, xattrKeys, true)
+			wasTombstone, value, xattrs, cas, err = c.subdocGetBodyAndXattrs(ctx, k, xattrKeys, true)
 			if err != nil {
 				if pkgerrors.Cause(err) != ErrNotFound {
 					// Unexpected error, cancel writeupdate
@@ -223,7 +225,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 
 		// Invoke callback to get updated value
 		updatedDoc, err := callback(value, xattrs, cas)
-
+		fmt.Printf("updatedDoc: %v\n", updatedDoc)
 		// If it's an ErrCasFailureShouldRetry, then retry by going back through the for loop
 		if err == ErrCasFailureShouldRetry {
 			previousLoopCas = nil
@@ -243,11 +245,11 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 
 		var writeErr error
 		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
-		deleteBody := value != nil
 		if updatedDoc.IsTombstone {
+			deleteBody := value != nil
 			casOut, writeErr = c.WriteTombstoneWithXattrs(ctx, k, exp, cas, updatedDoc.Xattrs, updatedDoc.XattrsToDelete, deleteBody, opts)
 		} else {
-			if !deleteBody {
+			if wasTombstone {
 				if len(updatedDoc.XattrsToDelete) > 0 {
 					return 0, sgbucket.ErrDeleteXattrOnTombstone
 				}

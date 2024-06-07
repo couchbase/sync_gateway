@@ -82,7 +82,7 @@ func (c *Collection) DeleteWithXattrs(ctx context.Context, k string, xattrKeys [
 }
 
 func (c *Collection) GetXattrs(ctx context.Context, k string, xattrKeys []string) (xattrs map[string][]byte, casOut uint64, err error) {
-	_, xattrs, casOut, err = c.subdocGetBodyAndXattrs(ctx, k, xattrKeys, false)
+	_, _, xattrs, casOut, err = c.subdocGetBodyAndXattrs(ctx, k, xattrKeys, false)
 	return xattrs, casOut, err
 }
 
@@ -95,7 +95,7 @@ func (c *Collection) WriteSubDoc(ctx context.Context, k string, subdocKey string
 }
 
 func (c *Collection) GetWithXattrs(ctx context.Context, k string, xattrKeys []string) ([]byte, map[string][]byte, uint64, error) {
-	body, xattrs, cas, err := c.subdocGetBodyAndXattrs(ctx, k, xattrKeys, true)
+	_, body, xattrs, cas, err := c.subdocGetBodyAndXattrs(ctx, k, xattrKeys, true)
 	return body, xattrs, cas, err
 }
 
@@ -190,12 +190,12 @@ func (c *Collection) SubdocWrite(ctx context.Context, k string, subdocKey string
 }
 
 // subdocGetBodyAndXattrs retrieves the document body and xattrs in a single LookupIn subdoc operation.  Does not require both to exist.
-func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattrKeys []string, fetchBody bool) (rawBody []byte, xattrs map[string][]byte, cas uint64, err error) {
+func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattrKeys []string, fetchBody bool) (isTombstone bool, rawBody []byte, xattrs map[string][]byte, cas uint64, err error) {
 	xattrKey2 := ""
 	// Backward compatibility for one system xattr and one user xattr support.
 	if !c.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
 		if len(xattrKeys) > 2 {
-			return nil, nil, 0, fmt.Errorf("subdocGetBodyAndXattrs: more than 2 xattrKeys %+v not supported in this version of Couchbase Server", xattrKeys)
+			return false, nil, nil, 0, fmt.Errorf("subdocGetBodyAndXattrs: more than 2 xattrKeys %+v not supported in this version of Couchbase Server", xattrKeys)
 		}
 		if len(xattrKeys) == 2 {
 			xattrKey2 = xattrKeys[1]
@@ -225,6 +225,8 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 			var docContentErr error
 			if fetchBody {
 				docContentErr = res.ContentAt(uint(len(xattrKeys)), &rawBody)
+				// check for tombstone here. Usually rawBody == nil would be a tombstone, with the exception of empty raw binary docs
+				isTombstone = isKVError(docContentErr, memd.StatusSubDocMultiPathFailureDeleted)
 			}
 			cas = uint64(res.Cas())
 			var xattrErrors []error
@@ -321,7 +323,8 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 		err = pkgerrors.Wrapf(err, "subdocGetBodyAndXattrs %v", UD(k).Redact())
 	}
 
-	return rawBody, xattrs, cas, err
+	fmt.Printf("isTombstone: %v, rawBody: %v, xattrs: %v, cas: %v, err: %v\n", isTombstone, rawBody, xattrs, cas, err)
+	return isTombstone, rawBody, xattrs, cas, err
 }
 
 // createTombstone inserts a new server tombstone with associated xattrs.  Writes cas and crc32c to the xattr using macro expansion.
