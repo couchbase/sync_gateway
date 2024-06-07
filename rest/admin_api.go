@@ -123,7 +123,7 @@ func (h *handler) handleCreateDB() error {
 				return httpErr
 			}
 			if errors.Is(err, base.ErrAuthError) {
-				return base.HTTPErrorf(http.StatusForbidden, "Provided credentials do not have access to specified bucket/scope/collection")
+				return base.HTTPErrorf(http.StatusForbidden, "The specified bucket/scope/collection does not exist, or the provided credentials do not have access to it")
 			}
 			if errors.Is(err, base.ErrAlreadyExists) {
 				return base.HTTPErrorf(http.StatusConflict, "couldn't load database: %s", err)
