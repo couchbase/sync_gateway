@@ -95,12 +95,24 @@ func (h *handler) handleGetUserDocAccessSpan() error {
 	docids := h.getQuery("docids")
 	docidsList := strings.Split(docids, ",")
 	var docList []*db.Document
-	_, scope, coll, err := ParseKeyspace(ks)
+
+	var scope, coll string
+	parts := strings.Split(ks, base.ScopeCollectionSeparator)
+	switch len(parts) {
+	case 1:
+		// if default collection, some calls using {{.keyspace}} will call /db/
+		scope = "_default"
+		coll = "_default"
+	case 3:
+		scope = parts[1]
+		coll = parts[2]
+	}
+
 	if err != nil {
 		return err
 	}
 
-	keyspace := *scope + "." + *coll
+	keyspace := scope + "." + coll
 
 	for _, docID := range docidsList {
 		doc, err := h.collection.GetDocument(h.ctx(), docID, db.DocUnmarshalSync)
@@ -116,7 +128,6 @@ func (h *handler) handleGetUserDocAccessSpan() error {
 	resp := make(map[string]map[string]channelHistory)
 	// TODO: refactor loops
 	for _, doc := range docList {
-
 		docChannelToSeqs := populateDocChannelInfo(*doc)
 		userChannels := h.getAllUserChannelsResponse(user)
 		base.InfofCtx(h.ctx(), base.KeyDiagnostic, "doc chans %s, user chans %s", docChannelToSeqs, userChannels)
@@ -132,11 +143,16 @@ func (h *handler) handleGetUserDocAccessSpan() error {
 
 				for _, userSeq := range userChanHistory.Entries {
 					for _, docSeq := range docSeqs {
+
 						startSeq := max(userSeq.StartSeq, docSeq.StartSeq)
 						endSeq := min(userSeq.EndSeq, docSeq.EndSeq)
-						if userSeq.EndSeq != 0 {
+
+						if userSeq.EndSeq == 0 {
+							endSeq = docSeq.EndSeq
+						} else if docSeq.EndSeq == 0 {
 							endSeq = userSeq.EndSeq
 						}
+
 						base.InfofCtx(h.ctx(), base.KeyDiagnostic, "endSeq %s startSeq %s", endSeq, startSeq)
 						if endSeq == 0 || startSeq < endSeq {
 							chanIntersection = append(chanIntersection, auth.GrantHistorySequencePair{

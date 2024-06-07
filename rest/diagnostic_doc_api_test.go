@@ -13,6 +13,7 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"testing"
 
@@ -209,59 +210,6 @@ func TestGetDocDryRuns(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &newrespMap)
 	assert.NoError(t, err)
 	assert.EqualValues(t, newrespMap.Channels.ToArray(), []string{"chanOld"})
-}
-
-func TestGetAllChannelsUserDocIntersection(t *testing.T) {
-	tests := []struct {
-		name          string
-		adminChannels []string
-		grants        []grant
-	}{
-		{
-			name: "admin channels once",
-			grants: []grant{
-				// grant 1
-				userGrant{
-					user: "alice",
-					adminChannels: map[string][]string{
-						"{{.keyspace}}": {"A", "B", "C"},
-					},
-					output: `
-					{"all_channels":{"{{.scopeAndCollection}}": {
-							"A": { "entries" : ["1-0"]},
-							"B": { "entries" : ["1-0"]},
-							"C": { "entries" : ["1-0"]}
-						}}}`,
-				},
-				docGrant{
-					userName:       "alice",
-					dynamicChannel: "A",
-					output: `
-					{"all_channels":{"{{.scopeAndCollection}}": {
-						"A": { "entries" : ["1-0"]}
-					}}}`,
-				},
-			},
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			rt := NewRestTester(t, &RestTesterConfig{
-				PersistentConfig: true,
-				SyncFn:           `function(doc) {channel(doc.channel); access(doc.user, doc.channel); role(doc.user, doc.role);}`,
-			})
-			defer rt.Close()
-
-			RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
-
-			// iterate and execute grants in each test case
-			for i, grant := range test.grants {
-				t.Logf("Processing grant %d", i+1)
-				grant.request(rt)
-			}
-
-		})
-	}
 }
 
 func TestGetUserDocAccessSpan(t *testing.T) {
@@ -622,6 +570,7 @@ func TestGetUserDocAccessSpan(t *testing.T) {
 		{
 			name: "channel assigned through both dynamic role and admin role grants, assert earlier sequence (dynamic role) is used",
 			grants: []grant{
+				docGrant{dynamicChannel: "A"},
 				// create user with no channels
 				userGrant{
 					user: "alice",
@@ -638,6 +587,7 @@ func TestGetUserDocAccessSpan(t *testing.T) {
 				},
 				// assign first role through sync fn
 				docGrant{
+					docID:          "doc2",
 					userName:       "alice",
 					dynamicRole:    "role1",
 					dynamicChannel: "docChan",
@@ -648,13 +598,14 @@ func TestGetUserDocAccessSpan(t *testing.T) {
 					roles:       []string{"role2"},
 					docIDs:      []string{"doc"},
 					docUserTest: true,
-					output:      ``,
+					output:      `{"doc": {"A": { "entries" : ["5-0"]}}}`,
 				},
 			},
 		},
 		{
 			name: "channel assigned through both dynamic role and admin role grants, assert earlier sequence (admin role) is used",
 			grants: []grant{
+				docGrant{dynamicChannel: "A"},
 				// create user with no channels
 				userGrant{
 					user: "alice",
@@ -676,12 +627,13 @@ func TestGetUserDocAccessSpan(t *testing.T) {
 				},
 				// assign other role through sync fn and assert earlier sequences are returned
 				docGrant{
+					docID:          "doc2",
 					userName:       "alice",
 					dynamicRole:    "role2",
-					docIDs:         []string{"doc"},
+					docIDs:         []string{"doc"}, // doc is the doc made in the first grant
 					dynamicChannel: "A",
 					docUserTest:    true,
-					output:         ``,
+					output:         `{"doc": {"A": { "entries" : ["5-0"]}}}`,
 				},
 			},
 		},
@@ -704,4 +656,208 @@ func TestGetUserDocAccessSpan(t *testing.T) {
 
 		})
 	}
+}
+
+func TestGetUserDocAccessSpanWithSingleNamedCollection(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	bucket := base.GetTestBucket(t)
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true, CustomTestBucket: bucket}, 1)
+	defer rt.Close()
+	SyncFn := `function(doc) {channel(doc.channel);}`
+	// add single named collection
+	newCollection := base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: "sg_test_0"}
+	require.NoError(t, bucket.CreateDataStore(base.TestCtx(t), newCollection))
+	defer func() {
+		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
+	}()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = ScopesConfig{
+		base.DefaultScope: {
+			Collections: CollectionsConfig{
+				base.DefaultCollection:         {SyncFn: &SyncFn},
+				newCollection.CollectionName(): {SyncFn: &SyncFn},
+			},
+		},
+	}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	grant := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace1}}": {"defaultCollChan"},
+			"{{.keyspace2}}": {"coll2Chan"},
+		},
+	}
+	grant.request(rt)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/doc1", `{"channel":"defaultCollChan"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/doc1", `{"channel":"coll2Chan"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	expectedOutput1 := `{"doc1": {"defaultCollChan": { "entries" : ["2-0"]}}}`
+	response := rt.SendDiagnosticRequest(http.MethodGet, "/{{.keyspace1}}/alice?docids=doc1", ``)
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput1), response.BodyString())
+
+	expectedOutput2 := `{"doc1": {"coll2Chan": { "entries" : ["3-0"]}}}`
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace2}}/alice?docids=doc1", ``)
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput2), response.BodyString())
+}
+
+func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true, SyncFn: `function(doc) {channel(doc.channel);}`}, 2)
+	defer rt.Close()
+
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/doc1", `{"foo":"bar", "channel":["coll1Chan"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/doc1", `{"foo":"bar", "channel":["coll2Chan"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// check removed channel in keyspace2 is in history before deleting collection 2
+	grant := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace1}}": {"coll1Chan"},
+			"{{.keyspace2}}": {"coll2Chan"},
+		},
+	}
+	grant.request(rt)
+
+	expectedOutput1 := `{"doc1": {"coll1Chan": { "entries" : ["3-0"]}}}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace1}}/alice?docids=doc1", ``)
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput1), response.BodyString())
+
+	expectedOutput2 := `{"doc1": {"coll2Chan": { "entries" : ["3-0"]}}}`
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace2}}/alice?docids=doc1", ``)
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput2), response.BodyString())
+
+	// delete collection 2
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(t, rt.TestBucket, 1)
+	RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
+
+}
+
+func TestGetUserDocAccessSpanDeletedRole(t *testing.T) {
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.channel); role(doc.user, doc.role);}`,
+	})
+	defer rt.Close()
+
+	// Create role with 1 channel and assign it to user
+	roleGrant := roleGrant{role: "role1", adminChannels: map[string][]string{"{{.db}}": {"A"}}}
+	roleGrant.request(rt)
+
+	userGrant := userGrant{
+		user:  "alice",
+		roles: []string{"role1"},
+		output: `
+		{
+			"all_channels":{
+				"{{.scopeAndCollection}}":{
+					"role1Chan":{
+						"entries":["2-0"]
+					}
+				}
+			}}`,
+	}
+	userGrant.request(rt)
+
+	// create doc in channel A
+	doc := docGrant{dynamicChannel: "A"}
+	doc.request(rt)
+
+	// Delete role and assert its channels no longer appear in response
+	resp := rt.SendAdminRequest("DELETE", "/db/_role/role1", ``)
+	RequireStatus(t, resp, http.StatusOK)
+
+	expectedOutput := `{"doc1": {"A": { "entries" : ["3-4"]} }}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/alice?docids=doc", ``)
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+
+}
+
+// put doc in multiple channels, remove from some channels, assert response gets right sequences for each channels
+func TestGetUserDocAccessMultiChannel(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	defer rt.Close()
+	userGrant := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"A", "B", "C"},
+		},
+	}
+	userGrant.request(rt)
+
+	version := rt.PutDoc("doc1", `{"channel":["A"]}`)
+	updatedVersion := rt.UpdateDoc("doc1", version, `{"channel":["B", "A"]}`)
+	updatedVersion = rt.UpdateDoc("doc1", updatedVersion, `{"channel":["C", "B"]}`)
+
+	// assert sequences are registered correctly
+	expectedOutput := `{"doc1": {"A": { "entries" : ["2-4"]}, "B": { "entries" : ["3-0"]},  "C": { "entries" : ["4-0"]} }}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/alice?docids=doc1", ``)
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+
+	// remove all channels
+	updatedVersion = rt.UpdateDoc("doc1", updatedVersion, `{"channel":[]}`)
+
+	// assert sequences spans end here
+	expectedOutput = `{"doc1": {"A": { "entries" : ["2-4"]}, "B": { "entries" : ["3-5"]},  "C": { "entries" : ["4-5"]} }}`
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/alice?docids=doc1", ``)
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
+
+// give user access to chanA through admin API and role, remove admin API assignment, and assert access span is admin assignment to 0
+func TestGetUserDocAccessContinuousAdminAPI(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	defer rt.Close()
+	userGrant := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"A"},
+		},
+	}
+	userGrant.request(rt)
+
+	version := rt.PutDoc("doc1", `{"channel":["A"]}`)
+	updatedVersion := rt.UpdateDoc("doc1", version, `{"channel":["B", "A"]}`)
+	updatedVersion = rt.UpdateDoc("doc1", updatedVersion, `{"channel":["C", "B"]}`)
+
+	// assert sequences are registered correctly
+	expectedOutput := `{"doc1": {"A": { "entries" : ["2-4"]}, "B": { "entries" : ["3-0"]},  "C": { "entries" : ["4-0"]} }}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/alice?docids=doc1", ``)
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+
+	// remove all channels
+	updatedVersion = rt.UpdateDoc("doc1", updatedVersion, `{"channel":[]}`)
+
+	// assert sequences spans end here
+	expectedOutput = `{"doc1": {"A": { "entries" : ["2-4"]}, "B": { "entries" : ["3-5"]},  "C": { "entries" : ["4-5"]} }}`
+	response = rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/alice?docids=doc1", ``)
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
