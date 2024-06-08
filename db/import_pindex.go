@@ -72,7 +72,8 @@ func getNewPIndexImplType(ctx context.Context) func(indexType, indexParams, path
 
 		importDest, err := getListenerImportDest(ctx, indexParams, restart)
 		if err != nil {
-			base.ErrorfCtx(ctx, "Error creating NewImportDest during NewImportPIndexImpl: %v", err)
+			// This error can occur when a stale index definition hasn't yet been removed from the plan (e.g. on update to db config)
+			base.InfofCtx(ctx, base.KeyDCP, "No importDest found for indexParams - usually an obsolete index pending removal. %v", err)
 		}
 		return nil, importDest, err
 	}

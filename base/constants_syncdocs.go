@@ -261,6 +261,20 @@ func (m *MetadataKeys) DCPCheckpointPrefix(groupID string) string {
 	return m.dcpCheckpoint
 }
 
+// DCPVersionedCheckpointPrefix returns the prefix used to store versioned DCP checkpoints.
+//
+//	format: _sync:dcp_ck:{m_$}:{groupID:}{version:}
+func (m *MetadataKeys) DCPVersionedCheckpointPrefix(groupID string, version uint64) string {
+	checkpointPrefix := m.dcpCheckpoint
+	if groupID != "" {
+		checkpointPrefix = checkpointPrefix + groupID + ":"
+	}
+	if version != 0 {
+		checkpointPrefix = checkpointPrefix + strconv.FormatUint(version, 10) + ":"
+	}
+	return checkpointPrefix
+}
+
 // DCPBackfillKey returns the key used to store DCP backfill statistics.
 //
 //	format: _sync:{m_$}:dcp_backfill

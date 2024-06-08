@@ -244,6 +244,22 @@ const collectionsDbConfig = `{
 		"import_docs": true
 	}`
 
+const collectionsDbConfigRevsLimit = `{
+		"bucket": "%s",
+		"num_index_replicas": 0,
+		"enable_shared_bucket_access": true,
+		"scopes": %s,
+		"import_docs": true,
+		"revs_limit": 21
+	}`
+
+const collectionsDbConfigUpsertRevsLimit = `{
+		"revs_limit": 22
+	}`
+const collectionsDbConfigUpsertScopes = `{
+		"scopes": %s
+	}`
+
 func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
@@ -275,9 +291,9 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	docBody := make(map[string]interface{})
 	docBody["foo"] = "bar"
 	docCount := 10
-	for i, dataStore := range dataStores {
+	for _, dataStore := range dataStores {
 		for j := 0; j < docCount; j++ {
-			_, err := dataStore.Add(fmt.Sprintf("datastore%d_%d", i, j), 0, docBody)
+			_, err := dataStore.Add(fmt.Sprintf("datastore%d", j), 0, docBody)
 			require.NoError(t, err, "Error writing SDK doc")
 		}
 	}
@@ -297,9 +313,9 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	_, err = rt.WaitForChanges(docCount, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 
-	for i, dataStore := range dataStores {
+	for _, dataStore := range dataStores {
 		for j := 0; j < docCount; j++ {
-			docName := fmt.Sprintf("datastore%d_%d", i, j)
+			docName := fmt.Sprintf("datastore%d", j)
 			if dataStore == dataStore1 {
 				requireSyncData(rt, dataStore, docName, true)
 			} else {
@@ -310,12 +326,12 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 
 	require.Equal(t, int64(docCount), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 
-	// update with 2 scopes
-	twoScopesConfig := rest.GetCollectionsConfig(t, testBucket, 2)
-	twoScopesConfigJSON, err := json.Marshal(twoScopesConfig)
+	// update config to add second collection
+	twoCollectionConfig := rest.GetCollectionsConfig(t, testBucket, 2)
+	twoCollectionConfigJSON, err := json.Marshal(twoCollectionConfig)
 	require.NoError(t, err)
 
-	response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", fmt.Sprintf(collectionsDbConfig, testBucket.GetName(), string(twoScopesConfigJSON)))
+	response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", fmt.Sprintf(collectionsDbConfig, testBucket.GetName(), string(twoCollectionConfigJSON)))
 	rest.RequireStatus(t, response, http.StatusCreated)
 
 	require.Equal(t, 2, len(rt.GetDbCollections()))
@@ -324,16 +340,16 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	_, err = rt.WaitForChanges(docCount, "/{{.keyspace2}}/_changes", "", true)
 	require.NoError(t, err)
 
-	for i, dataStore := range dataStores {
+	for _, dataStore := range dataStores {
 		for j := 0; j < docCount; j++ {
-			docName := fmt.Sprintf("datastore%d_%d", i, j)
+			docName := fmt.Sprintf("datastore%d", j)
 			requireSyncData(rt, dataStore, docName, true)
 		}
 	}
 
 	require.Equal(t, int64(docCount), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 
-	response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", fmt.Sprintf(collectionsDbConfig, testBucket.GetName(), string(twoScopesConfigJSON)))
+	response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", fmt.Sprintf(collectionsDbConfig, testBucket.GetName(), string(twoCollectionConfigJSON)))
 	rest.RequireStatus(t, response, http.StatusCreated)
 
 }
@@ -372,13 +388,13 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 		}
 	}
 
-	// update with 2 scopes
-	twoScopesConfig := rest.GetCollectionsConfig(t, testBucket, 2)
-	twoScopesConfigJSON, err := json.Marshal(twoScopesConfig)
+	// update with 2 collections
+	twoCollectionConfig := rest.GetCollectionsConfig(t, testBucket, 2)
+	twoCollectionConfigJSON, err := json.Marshal(twoCollectionConfig)
 	require.NoError(t, err)
 
 	dbName := "db"
-	response := rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/", fmt.Sprintf(collectionsDbConfig, testBucket.GetName(), string(twoScopesConfigJSON)))
+	response := rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/", fmt.Sprintf(collectionsDbConfig, testBucket.GetName(), string(twoCollectionConfigJSON)))
 	rest.RequireStatus(t, response, http.StatusCreated)
 
 	require.Equal(t, 2, len(rt.GetDbCollections()))
@@ -393,6 +409,9 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 	oneScopeConfig := rest.GetCollectionsConfig(t, testBucket, 1)
 	oneScopeConfigJSON, err := json.Marshal(oneScopeConfig)
 	require.NoError(t, err)
+
+	// Get the persisted config to check import version
+	initialImportVersion := GetImportVersion(t, rt, dbName)
 
 	response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", fmt.Sprintf(collectionsDbConfig, testBucket.GetName(), string(oneScopeConfigJSON)))
 	rest.RequireStatus(t, response, http.StatusCreated)
@@ -410,6 +429,100 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 	// there should be 10 documents datastore1_{10..19}
 	require.Equal(t, int64(docCount), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 
+	// Get the import version from the persisted config to ensure it didn't change
+	updatedImportVersion := GetImportVersion(t, rt, dbName)
+	require.Equal(t, initialImportVersion, updatedImportVersion)
+
+}
+
+// TestImportVersionWriteVariations - ensure import version is updated for all different APIs that can modify the collection set
+func TestImportVersionWriteVariations(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyDCP)
+	base.SkipImportTestsIfNotEnabled(t)
+	numCollections := 3
+	base.RequireNumTestDataStores(t, numCollections)
+
+	ctx := base.TestCtx(t)
+	testBucket := base.GetPersistentTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	rtConfig := &rest.RestTesterConfig{
+		CustomTestBucket: testBucket.NoCloseClone(),
+		PersistentConfig: true,
+	}
+
+	rt := rest.NewRestTester(t, rtConfig)
+	defer rt.Close()
+
+	// Set up collection payloads for 1, 2, 3 collections
+	oneCollectionConfig := rest.GetCollectionsConfig(t, testBucket, 1)
+	oneCollectionConfigJSON, err := json.Marshal(oneCollectionConfig)
+	require.NoError(t, err)
+	twoCollectionConfig := rest.GetCollectionsConfig(t, testBucket, 2)
+	twoCollectionConfigJSON, err := json.Marshal(twoCollectionConfig)
+	require.NoError(t, err)
+	threeCollectionConfig := rest.GetCollectionsConfig(t, testBucket, 3)
+	threeCollectionConfigJSON, err := json.Marshal(threeCollectionConfig)
+	require.NoError(t, err)
+
+	// Insert with PUT and single collection
+	dbName := "db"
+	response := rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/", fmt.Sprintf(collectionsDbConfig, testBucket.GetName(), string(oneCollectionConfigJSON)))
+	rest.RequireStatus(t, response, http.StatusCreated)
+
+	importVersion := GetImportVersion(t, rt, dbName)
+	require.Equal(t, uint64(0), importVersion)
+
+	// Update with PUT, change collection set, version should change
+	response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", fmt.Sprintf(collectionsDbConfig, testBucket.GetName(), string(twoCollectionConfigJSON)))
+	rest.RequireStatus(t, response, http.StatusCreated)
+	importVersion = GetImportVersion(t, rt, dbName)
+	require.Equal(t, uint64(1), importVersion)
+
+	// Update with PUT, do not change collection set, version should not change
+	response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", fmt.Sprintf(collectionsDbConfigRevsLimit, testBucket.GetName(), string(twoCollectionConfigJSON)))
+	rest.RequireStatus(t, response, http.StatusCreated)
+	importVersion = GetImportVersion(t, rt, dbName)
+	require.Equal(t, uint64(1), importVersion)
+
+	// Upsert with POST, do not include or change collection set, version should not change
+	response = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", collectionsDbConfigUpsertRevsLimit)
+	rest.RequireStatus(t, response, http.StatusCreated)
+	importVersion = GetImportVersion(t, rt, dbName)
+	require.Equal(t, uint64(1), importVersion)
+
+	// Upsert with POST, include scopes but do not change collection set, version should not change
+	response = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", fmt.Sprintf(collectionsDbConfigUpsertScopes, string(twoCollectionConfigJSON)))
+	rest.RequireStatus(t, response, http.StatusCreated)
+	importVersion = GetImportVersion(t, rt, dbName)
+	require.Equal(t, uint64(1), importVersion)
+
+	// Update with POST, add collection, version should change
+	response = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", fmt.Sprintf(collectionsDbConfigUpsertScopes, string(threeCollectionConfigJSON)))
+	rest.RequireStatus(t, response, http.StatusCreated)
+	importVersion = GetImportVersion(t, rt, dbName)
+	require.Equal(t, uint64(2), importVersion)
+
+	// Update with PUT, remove collection, version should not change
+	response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", fmt.Sprintf(collectionsDbConfigRevsLimit, testBucket.GetName(), string(twoCollectionConfigJSON)))
+	rest.RequireStatus(t, response, http.StatusCreated)
+	importVersion = GetImportVersion(t, rt, dbName)
+	require.Equal(t, uint64(2), importVersion)
+
+	// Update with POST, remove collection, version should not change
+	response = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", fmt.Sprintf(collectionsDbConfigUpsertScopes, string(oneCollectionConfigJSON)))
+	rest.RequireStatus(t, response, http.StatusCreated)
+	importVersion = GetImportVersion(t, rt, dbName)
+	require.Equal(t, uint64(2), importVersion)
+
+}
+
+func GetImportVersion(t *testing.T, rt *rest.RestTester, dbName string) uint64 {
+	var databaseConfig rest.DatabaseConfig
+	_, err := rt.ServerContext().BootstrapContext.GetConfig(rt.Context(), rt.CustomTestBucket.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID, dbName, &databaseConfig)
+	require.NoError(t, err)
+	return databaseConfig.ImportVersion
 }
 
 func requireSyncData(rt *rest.RestTester, dataStore base.DataStore, docName string, hasSyncData bool) {

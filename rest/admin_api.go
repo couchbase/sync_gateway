@@ -589,6 +589,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 		}
 		oldBucketDbConfig := bucketDbConfig.DbConfig
+		previousCollectionMap := bucketDbConfig.Scopes.CollectionMap()
 
 		if h.rq.Method == http.MethodPost {
 			base.TracefCtx(h.ctx(), base.KeyConfig, "merging upserted config into bucket config")
@@ -598,6 +599,12 @@ func (h *handler) handlePutDbConfig() (err error) {
 		} else {
 			base.TracefCtx(h.ctx(), base.KeyConfig, "using config as-is without merge")
 			bucketDbConfig.DbConfig = *dbConfig
+		}
+
+		// Update ImportVersion if new collections are being added to the database
+		if bucketDbConfig.Scopes.HasNewCollection(previousCollectionMap) {
+			bucketDbConfig.ImportVersion++
+			base.InfofCtx(h.ctx(), base.KeyConfig, "Import version incremented to %d, new collections detected", bucketDbConfig.ImportVersion)
 		}
 
 		if err := dbConfig.validatePersistentDbConfig(); err != nil {

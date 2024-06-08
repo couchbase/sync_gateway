@@ -846,6 +846,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		contextOptions.MetadataID = config.MetadataID
 	}
 
+	contextOptions.ImportVersion = config.ImportVersion
+
 	// Create the DB Context
 	dbcontext, err = db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
 	if err != nil {
