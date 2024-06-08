@@ -3612,10 +3612,10 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", `{"bucket": "nonexistentbucket"}`)
 	resp.RequireStatus(http.StatusForbidden)
-	assert.Contains(t, resp.Body, "Provided credentials do not have access to specified bucket/scope/collection")
+	assert.Contains(t, resp.Body, "The specified bucket/scope/collection does not exist, or the provided credentials do not have access to it")
 	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/nonexistentbucket/", `{}`)
 	resp.RequireStatus(http.StatusForbidden)
-	assert.Contains(t, resp.Body, "Provided credentials do not have access to specified bucket/scope/collection")
+	assert.Contains(t, resp.Body, "The specified bucket/scope/collection does not exist, or the provided credentials do not have access to it")
 }
 
 func TestPutDbConfigChangeName(t *testing.T) {
