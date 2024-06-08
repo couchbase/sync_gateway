@@ -180,6 +180,7 @@ type DatabaseContextOptions struct {
 	MaxConcurrentChangesBatches   *int        // Maximum number of changes batches to process concurrently per replication
 	MaxConcurrentRevs             *int        // Maximum number of revs to process concurrently per replication
 	NumIndexReplicas              uint        // Number of replicas for GSI indexes
+	ImportVersion                 uint64      // Version included in import DCP checkpoints, incremented when collections added to db
 }
 
 // DbLogConfig can be used to customise the logging for logs associated with this database.
@@ -2287,7 +2288,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
 	// subscription relies on the caching feed.
 	if importEnabled {
-		db.ImportListener = NewImportListener(ctx, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID), db)
+		db.ImportListener = NewImportListener(ctx, db.MetadataKeys.DCPVersionedCheckpointPrefix(db.Options.GroupID, db.Options.ImportVersion), db)
 		if importFeedErr := db.ImportListener.StartImportFeed(db); importFeedErr != nil {
 			return importFeedErr
 		}

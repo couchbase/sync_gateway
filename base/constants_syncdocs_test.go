@@ -88,3 +88,32 @@ func TestMetadataKeyHash(t *testing.T) {
 	require.Equal(t, "_sync:user:foo:afbf3a596bfe3e6687240e011bfccafd51611052", customMetadataKeys.UserKey(hashedUser))
 
 }
+
+// Verify that upgrading from non-versioned to versioned keys doesn't change the checkpoints if the version hasn't been incremented
+func TestDCPMetadataKeyUpgrade(t *testing.T) {
+
+	// Default metadata keys
+	defaultMetadataKeys := NewMetadataKeys("")
+	// Upgrade check with group ID
+	nonVersionedPrefixWithGroup := defaultMetadataKeys.DCPCheckpointPrefix("myGroup")
+	versionPrefixWithGroup := defaultMetadataKeys.DCPVersionedCheckpointPrefix("myGroup", 0)
+	require.Equal(t, nonVersionedPrefixWithGroup, versionPrefixWithGroup)
+
+	// Upgrade check with empty group ID
+	nonVersionedPrefix := defaultMetadataKeys.DCPCheckpointPrefix("")
+	versionPrefix := defaultMetadataKeys.DCPVersionedCheckpointPrefix("", 0)
+	require.Equal(t, nonVersionedPrefix, versionPrefix)
+
+	// Custom metadata keys
+	customMetadataKeys := NewMetadataKeys("foo")
+
+	// Upgrade check with group ID
+	nonVersionedPrefixWithGroup = customMetadataKeys.DCPCheckpointPrefix("myGroup")
+	versionPrefixWithGroup = customMetadataKeys.DCPVersionedCheckpointPrefix("myGroup", 0)
+	require.Equal(t, nonVersionedPrefixWithGroup, versionPrefixWithGroup)
+
+	// Upgrade check with empty group ID
+	nonVersionedPrefix = customMetadataKeys.DCPCheckpointPrefix("")
+	versionPrefix = customMetadataKeys.DCPVersionedCheckpointPrefix("", 0)
+	require.Equal(t, nonVersionedPrefix, versionPrefix)
+}

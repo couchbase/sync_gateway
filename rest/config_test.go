@@ -2785,3 +2785,143 @@ func TestBadCORSValuesConfig(t *testing.T) {
 		rt.CreateDatabase("db", dbConfig)
 	})
 }
+
+func TestScopesConfigCollectionMap(t *testing.T) {
+
+	testCases := []struct {
+		name               string
+		scopeName          string
+		initialCollections []string
+		updatedCollections []string
+		expectedHasNew     bool
+	}{
+		{
+			name:               "add collection",
+			scopeName:          "s1",
+			initialCollections: []string{"sg_test_0"},
+			updatedCollections: []string{"sg_test_0", "sg_test_1"},
+			expectedHasNew:     true,
+		},
+		{
+			name:               "replace collection",
+			scopeName:          "s1",
+			initialCollections: []string{"sg_test_0"},
+			updatedCollections: []string{"sg_test_1"},
+			expectedHasNew:     true,
+		},
+		{
+			name:               "same collection",
+			scopeName:          "s1",
+			initialCollections: []string{"sg_test_0"},
+			updatedCollections: []string{"sg_test_0"},
+			expectedHasNew:     false,
+		},
+		{
+			name:               "remove collection",
+			scopeName:          "s1",
+			initialCollections: []string{"sg_test_0", "sg_test_1"},
+			updatedCollections: []string{"sg_test_0"},
+			expectedHasNew:     false,
+		},
+		{
+			name:               "remove all and add collection",
+			scopeName:          "s1",
+			initialCollections: []string{"sg_test_0", "sg_test_1"},
+			updatedCollections: []string{"sg_test_2"},
+			expectedHasNew:     true,
+		},
+		{
+			name:               "default to named",
+			scopeName:          base.DefaultScope,
+			initialCollections: []string{"_default"},
+			updatedCollections: []string{"sg_test_0"},
+			expectedHasNew:     true,
+		},
+		{
+			name:               "default add named",
+			scopeName:          base.DefaultScope,
+			initialCollections: []string{"_default"},
+			updatedCollections: []string{"_default", "sg_test_0"},
+			expectedHasNew:     true,
+		},
+		{
+			name:               "named to default",
+			scopeName:          base.DefaultScope,
+			initialCollections: []string{"sg_test_0"},
+			updatedCollections: []string{"_default"},
+			expectedHasNew:     true,
+		},
+		{
+			name:               "default remove named",
+			scopeName:          base.DefaultScope,
+			initialCollections: []string{"_default", "sg_test_0"},
+			updatedCollections: []string{"_default"},
+			expectedHasNew:     false,
+		},
+		{
+			name:               "default to scopes default",
+			scopeName:          base.DefaultScope,
+			initialCollections: []string{"_default"},
+			updatedCollections: []string{"_scopesdefault"}, // gets converted to scopes config for default/default
+			expectedHasNew:     false,
+		},
+		{
+			name:               "scopes default to default",
+			scopeName:          base.DefaultScope,
+			initialCollections: []string{"_scopesdefault"}, // gets converted to scopes config for default/default
+			updatedCollections: []string{"_default"},
+			expectedHasNew:     false,
+		},
+		{
+			name:               "scopes default to named",
+			scopeName:          base.DefaultScope,
+			initialCollections: []string{"_scopesdefault"}, // gets converted to scopes config for default/default
+			updatedCollections: []string{"sg_test_0"},
+			expectedHasNew:     true,
+		},
+		{
+			name:               "named to scopes default",
+			scopeName:          base.DefaultScope,
+			initialCollections: []string{"_scopesdefault"}, // gets converted to scopes config for default/default
+			updatedCollections: []string{"sg_test_0"},
+			expectedHasNew:     true,
+		},
+		{
+			name:               "remove scopes default",
+			scopeName:          base.DefaultScope,
+			initialCollections: []string{"_scopesdefault", "sg_test_0"}, // gets converted to scopes config for default/default
+			updatedCollections: []string{"sg_test_0"},
+			expectedHasNew:     false,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+
+			// Create initial database
+			initialScopesConfig := makeScopesConfigWithDefault(test.scopeName, test.initialCollections)
+			initialCollectionsMap := initialScopesConfig.CollectionMap()
+
+			updatedScopesConfig := makeScopesConfigWithDefault(test.scopeName, test.updatedCollections)
+			require.Equal(t, test.expectedHasNew, updatedScopesConfig.HasNewCollection(initialCollectionsMap))
+		})
+	}
+}
+
+// makeScopesConfig creates a scopes config, with additional handling for explicitly defining the default collection in ScopesConfig
+func makeScopesConfigWithDefault(scopeName string, collections []string) *ScopesConfig {
+
+	// handling for _default._default - treat as no scopes defined
+	if len(collections) == 1 && collections[0] == base.DefaultCollection {
+		return nil
+	}
+
+	// handling for explicit default - ScopesConfig with _default._default only defined
+	if len(collections) == 1 && collections[0] == "_scopesdefault" {
+		scopesConfig := makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection})
+		return &scopesConfig
+	}
+
+	scopesConfig := makeScopesConfig(scopeName, collections)
+	return &scopesConfig
+}

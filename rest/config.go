@@ -279,6 +279,39 @@ type invalidDatabaseConfigs struct {
 	m       sync.RWMutex
 }
 
+// CollectionMap returns the set of collections defined in the ScopesConfig as a map of collections in scope.collection form.
+// Used for comparing sets of collections between configs
+func (sc *ScopesConfig) CollectionMap() map[string]struct{} {
+	collectionMap := make(map[string]struct{})
+	if sc == nil {
+		collectionMap["_default._default"] = struct{}{}
+		return collectionMap
+	}
+	for scopeName, scope := range *sc {
+		for collectionName, _ := range scope.Collections {
+			scName := scopeName + "." + collectionName
+			collectionMap[scName] = struct{}{}
+		}
+	}
+	return collectionMap
+}
+
+func (sc *ScopesConfig) HasNewCollection(previousCollectionMap map[string]struct{}) bool {
+	if sc == nil {
+		_, hasDefault := previousCollectionMap["_default._default"]
+		return !hasDefault
+	}
+	for scopeName, scope := range *sc {
+		for collectionName, _ := range scope.Collections {
+			scName := scopeName + "." + collectionName
+			if _, ok := previousCollectionMap[scName]; !ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // addInvalidDatabase adds a db to invalid dbconfig map if it doesn't exist in there yet and will log for it at warning level
 // if the db already exists there we will calculate if we need to log again according to the config update interval
 func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname string, cnf DatabaseConfig, bucket string) {

@@ -2601,7 +2601,7 @@ func TestImportRollback(t *testing.T) {
 
 			// Close db while we mess with checkpoints
 			db := rt.GetDatabase()
-			checkpointPrefix = rt.GetDatabase().MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID)
+			checkpointPrefix = rt.GetDatabase().MetadataKeys.DCPVersionedCheckpointPrefix(db.Options.GroupID, db.Options.ImportVersion)
 
 			rt.Close()
 
