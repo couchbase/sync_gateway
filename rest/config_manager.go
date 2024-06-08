@@ -169,7 +169,6 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 		}
 
 		base.DebugfCtx(ctx, base.KeyConfig, "UpdateConfig fetched registry and database successfully")
-
 		// Step 2. Update registry to update registry entry, and move previous registry entry to PreviousVersion
 		previousVersion = existingConfig.Version
 		var callbackErr error
