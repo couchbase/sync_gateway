@@ -444,7 +444,7 @@ func TestImportVersionWriteVariations(t *testing.T) {
 	base.RequireNumTestDataStores(t, numCollections)
 
 	ctx := base.TestCtx(t)
-	testBucket := base.GetPersistentTestBucket(t)
+	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close(ctx)
 
 	rtConfig := &rest.RestTesterConfig{
