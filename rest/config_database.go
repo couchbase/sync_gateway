@@ -38,6 +38,10 @@ type DatabaseConfig struct {
 	// MetadataID is the prefix used to store database metadata
 	MetadataID string `json:"metadata_id"`
 
+	// ImportVersion is included in the prefix used to store import checkpoints.
+	// Incremented when collections are added to a db, to trigger import of existing data in those collections.
+	ImportVersion uint64 `json:"import_version,omitempty"`
+
 	// DbConfig embeds database config properties
 	DbConfig
 }
