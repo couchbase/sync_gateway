@@ -2553,3 +2553,20 @@ channelEntry:
     updated_at:
       type: integer
       description: Unix timestamp of last update
+doc_access_spans:
+  description: |-
+    Grant history entries for a user, showing which documents the user had access to, through which channels and for which sequence spans.
+  type: object
+  properties:
+    doc_id:
+      description: |-
+        Document names.
+      type: object
+      properties:
+          channel:
+            description: Channel name
+            type: object
+            properties:
+              entries:
+                type: array
+                description: Start sequence to end sequence. If the channel is currently granted, the end sequence will be zero.
