@@ -144,7 +144,7 @@ func getRoleChanEntryOverlap(roleEntries, chanEntries []auth.GrantHistorySequenc
 				continue
 			} else if chanEntry.EndSeq > roleEntry.EndSeq {
 				entry = auth.GrantHistorySequencePair{StartSeq: chanEntry.StartSeq, EndSeq: roleEntry.EndSeq}
-			} else if roleEntry.StartSeq > chanEntry.EndSeq {
+			} else if roleEntry.StartSeq > chanEntry.StartSeq {
 				entry = auth.GrantHistorySequencePair{StartSeq: roleEntry.StartSeq, EndSeq: chanEntry.EndSeq}
 			}
 			overlapEntries = append(overlapEntries, entry)
