@@ -15,7 +15,7 @@ require (
 	github.com/couchbase/sg-bucket v0.0.0-20240606153601-d152b90edccb
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
 	github.com/couchbaselabs/gocbconnstr v1.0.5
-	github.com/couchbaselabs/rosmar v0.0.0-20240606160625-479bc71681f8
+	github.com/couchbaselabs/rosmar v0.0.0-20240610211258-c856107e8e78
 	github.com/elastic/gosigar v0.14.3
 	github.com/felixge/fgprof v0.9.4
 	github.com/google/uuid v1.6.0
