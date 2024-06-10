@@ -733,7 +733,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 	}()
 	xattrName := "_xattr1"
 	xattrBody := []byte(`{"an": "xattr"}`)
-	writeMutationCas, err := collection.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{xattrName: xattrBody}, nil)
+	writeMutationCas, err := collection.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{xattrName: xattrBody}, nil, nil)
 	require.NoError(t, err)
 
 	// make sure mutation is processed

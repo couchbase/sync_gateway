@@ -801,7 +801,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 }`
 
 		if base.TestUseXattrs() {
-			_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, DefaultMutateInOpts())
+			_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, nil, DefaultMutateInOpts())
 			assert.NoError(t, err)
 		} else {
 			newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
@@ -1088,7 +1088,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 }`
 
 	if base.TestUseXattrs() {
-		_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, DefaultMutateInOpts())
+		_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, nil, DefaultMutateInOpts())
 		assert.NoError(t, err)
 	} else {
 		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
@@ -1255,7 +1255,7 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 }`
 
 	if base.TestUseXattrs() {
-		_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, DefaultMutateInOpts())
+		_, err = collection.dataStore.WriteWithXattrs(ctx, docKey, 0, 0, []byte(bodyPre25), map[string][]byte{base.SyncXattrName: []byte(syncData)}, nil, DefaultMutateInOpts())
 		assert.NoError(t, err)
 	} else {
 		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
