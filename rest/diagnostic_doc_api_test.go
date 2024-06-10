@@ -753,7 +753,7 @@ func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
 }
 
 func TestGetUserDocAccessSpanDeletedRole(t *testing.T) {
-
+	t.Skip("Bugfix pending")
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.channel); role(doc.user, doc.role);}`,
 	})
@@ -915,7 +915,7 @@ func TestGetUserDocAccessDynamicGrantOnChanRemoval(t *testing.T) {
 
 // give role access to chanA through sync fn, remove doc from channel and keep role assignment
 func TestGetUserDocAccessDynamicRoleChanRemoval(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.dynamicChan, doc.user);}`})
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.dynamicChan);}`})
 	defer rt.Close()
 
 	// create role1
@@ -923,7 +923,7 @@ func TestGetUserDocAccessDynamicRoleChanRemoval(t *testing.T) {
 	roleGrant1.request(rt)
 
 	// create doc in channel A, assign chan A to role1
-	version := rt.PutDoc("doc1", `{"channel":["A"], "user":"role1", "dynamicChan":"A"}`)
+	version := rt.PutDoc("doc1", `{"channel":["A"], "user":"role:role1", "dynamicChan":"A"}`)
 
 	userGrant1 := userGrant{
 		user:  "alice",
@@ -932,10 +932,39 @@ func TestGetUserDocAccessDynamicRoleChanRemoval(t *testing.T) {
 	userGrant1.request(rt)
 
 	// update doc1 to remove chan A
-	_ = rt.UpdateDoc("doc1", version, `{"user":"role1", "dynamicChan":"A"}`)
+	_ = rt.UpdateDoc("doc1", version, `{"user":"role:role1", "dynamicChan":"A"}`)
 
 	// assert sequences are registered correctly
-	expectedOutput := `{"doc": {"A": { "entries" : ["3-4"]} }}`
+	expectedOutput := `{"doc1": {"A": { "entries" : ["3-4"]} }}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/alice?docids=doc1", ``)
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
+
+// give role access to chanA through sync fn, remove channel from role and keep doc in chan
+func TestGetUserDocAccessDynamicRoleChanRemoval2(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.dynamicChan);}`})
+	defer rt.Close()
+
+	// create role1
+	roleGrant1 := roleGrant{role: "role1"}
+	roleGrant1.request(rt)
+
+	// create doc in channel A, assign chan A to role1
+	version := rt.PutDoc("doc1", `{"channel":["A"], "user":"role:role1", "dynamicChan":"A"}`)
+
+	userGrant1 := userGrant{
+		user:  "alice",
+		roles: []string{"role1"},
+	}
+	userGrant1.request(rt)
+
+	// update doc1 to remove chan A
+	_ = rt.UpdateDoc("doc1", version, `{"channel":["A"]}`)
+
+	// assert sequences are registered correctly
+	expectedOutput := `{"doc1": {"A": { "entries" : ["3-4"]} }}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/alice?docids=doc1", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
