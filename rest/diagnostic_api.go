@@ -10,13 +10,14 @@ package rest
 
 import (
 	"fmt"
+	"net/http"
+	"strings"
+
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/gorilla/mux"
-	"net/http"
-	"strings"
 )
 
 type allChannels struct {

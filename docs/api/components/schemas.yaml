@@ -2563,10 +2563,10 @@ doc_access_spans:
         Document names.
       type: object
       properties:
-          channel:
-            description: Channel name
-            type: object
-            properties:
-              entries:
-                type: array
-                description: Start sequence to end sequence. If the channel is currently granted, the end sequence will be zero.
+        channel:
+          description: Channel name
+          type: object
+          properties:
+            entries:
+              type: array
+              description: Start sequence to end sequence. If the channel is currently granted, the end sequence will be zero.
