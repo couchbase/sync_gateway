@@ -698,13 +698,13 @@ func TestGetUserDocAccessSpanWithSingleNamedCollection(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	expectedOutput1 := `{"doc1": {"defaultCollChan": { "entries" : ["2-0"]}}}`
-	response := rt.SendDiagnosticRequest(http.MethodGet, "/{{.keyspace1}}/alice?docids=doc1", ``)
+	response := rt.SendDiagnosticRequest(http.MethodGet, "/{{.keyspace1}}/_user/alice?docids=doc1", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput1), response.BodyString())
 
 	expectedOutput2 := `{"doc1": {"coll2Chan": { "entries" : ["3-0"]}}}`
 	response = rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace2}}/alice?docids=doc1", ``)
+		"/{{.keyspace2}}/_user/alice?docids=doc1", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput2), response.BodyString())
 }
@@ -735,13 +735,13 @@ func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
 
 	expectedOutput1 := `{"doc1": {"coll1Chan": { "entries" : ["3-0"]}}}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace1}}/alice?docids=doc1", ``)
+		"/{{.keyspace1}}/_user/alice?docids=doc1", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput1), response.BodyString())
 
 	expectedOutput2 := `{"doc1": {"coll2Chan": { "entries" : ["3-0"]}}}`
 	response = rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace2}}/alice?docids=doc1", ``)
+		"/{{.keyspace2}}/_user/alice?docids=doc1", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput2), response.BodyString())
 
@@ -782,10 +782,9 @@ func TestGetUserDocAccessSpanDeletedRole(t *testing.T) {
 
 	expectedOutput := `{"doc": {"A": { "entries" : ["3-4"]}}}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/alice?docids=doc", ``)
+		"/{{.keyspace}}/_user/alice?docids=doc", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
-
 }
 
 // put doc in multiple channels, remove from some channels, assert response gets right sequences for each channels
@@ -807,7 +806,7 @@ func TestGetUserDocAccessMultiChannel(t *testing.T) {
 	// assert sequences are registered correctly
 	expectedOutput := `{"doc1": {"A": { "entries" : ["2-4"]}, "B": { "entries" : ["3-0"]},  "C": { "entries" : ["4-0"]} }}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/alice?docids=doc1", ``)
+		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
 
@@ -817,7 +816,7 @@ func TestGetUserDocAccessMultiChannel(t *testing.T) {
 	// assert sequences spans end here
 	expectedOutput = `{"doc1": {"A": { "entries" : ["2-4"]}, "B": { "entries" : ["3-5"]},  "C": { "entries" : ["4-5"]} }}`
 	response = rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/alice?docids=doc1", ``)
+		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
@@ -854,7 +853,7 @@ func TestGetUserDocAccessContinuousRoleAdminAPI(t *testing.T) {
 	// assert sequences are registered correctly
 	expectedOutput := `{"doc": {"A": { "entries" : ["3-4", "4-0"]} }}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/alice?docids=doc", ``)
+		"/{{.keyspace}}/_user/alice?docids=doc", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
@@ -887,7 +886,7 @@ func TestGetUserDocAccessContinuousSyncFnAdminAPI(t *testing.T) {
 	// assert sequences are registered correctly
 	expectedOutput := `{"doc": {"A": { "entries" : ["2-0"]} }}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/alice?docids=doc", ``)
+		"/{{.keyspace}}/_user/alice?docids=doc", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
@@ -908,7 +907,7 @@ func TestGetUserDocAccessDynamicGrantOnChanRemoval(t *testing.T) {
 	// assert sequences are registered correctly
 	expectedOutput := `{}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/alice?docids=doc1", ``)
+		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
@@ -937,7 +936,7 @@ func TestGetUserDocAccessDynamicRoleChanRemoval(t *testing.T) {
 	// assert sequences are registered correctly
 	expectedOutput := `{"doc1": {"A": { "entries" : ["3-4"]} }}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/alice?docids=doc1", ``)
+		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
@@ -966,7 +965,7 @@ func TestGetUserDocAccessDynamicRoleChanRemoval2(t *testing.T) {
 	// assert sequences are registered correctly
 	expectedOutput := `{"doc1": {"A": { "entries" : ["3-4"]} }}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/alice?docids=doc1", ``)
+		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
@@ -992,7 +991,7 @@ func TestGetUserDocAccessMultiDoc(t *testing.T) {
 	// assert sequences are registered correctly
 	expectedOutput := `{"doc1":{"A":{"entries":["2-0"]}},"doc2":{"A":{"entries":["3-0"]}},"doc3":{"A":{"entries":["4-0"]}}}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/alice?docids=doc1,doc2,doc3,doc4", ``)
+		"/{{.keyspace}}/_user/alice?docids=doc1,doc2,doc3,doc4", ``)
 	t.Log(response.BodyString())
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
@@ -1017,7 +1016,7 @@ func TestGetUserDocAccessMultiDocNotFound(t *testing.T) {
 
 	// assert sequences are registered correctly
 	response := rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/alice?docids=doc1,doc2,doc3,doc4", ``)
+		"/{{.keyspace}}/_user/alice?docids=doc1,doc2,doc3,doc4", ``)
 	RequireStatus(rt.TB, response, http.StatusNotFound)
 	assert.Contains(t, response.Body.String(), "doc doc4 not found")
 }
@@ -1037,7 +1036,7 @@ func TestGetUserDocAccessNoDocID(t *testing.T) {
 
 	// assert sequences are registered correctly
 	response := rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/alice?docids=", ``)
+		"/{{.keyspace}}/_user/alice?docids=", ``)
 	RequireStatus(rt.TB, response, http.StatusBadRequest)
 	assert.Contains(t, response.Body.String(), "empty doc id given in request")
 }
@@ -1061,7 +1060,7 @@ func TestGetUserDocAccessDuplicates(t *testing.T) {
 	// assert no duplicates
 	expectedOutput := `{"doc1":{"A":{"entries":["2-0"]}}}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/alice?docids=doc1,doc1,doc1,doc1", ``)
+		"/{{.keyspace}}/_user/alice?docids=doc1,doc1,doc1,doc1", ``)
 	t.Log(response.BodyString())
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())

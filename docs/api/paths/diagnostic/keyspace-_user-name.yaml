@@ -26,6 +26,8 @@ get:
       description: Bad Request
     '404':
       $ref: ../../components/responses.yaml#/Not-found
+    parameters:
+      - $ref: ../../components/parameters.yaml#/doc_id
   tags:
     - Database Security
-  operationId: get_keyspace-name
+  operationId: get_keyspace-_user-name

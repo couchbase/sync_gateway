@@ -33,7 +33,7 @@ func compareAllChannelsOutput(rt *RestTester, username string, expectedOutput st
 
 func compareUserDocSeqsOutput(rt *RestTester, username string, docids []string, expectedOutput string) {
 	response := rt.SendDiagnosticRequest(http.MethodGet,
-		"/{{.keyspace}}/"+username+"?docids="+strings.Join(docids, ","), ``)
+		"/{{.keyspace}}/_user/"+username+"?docids="+strings.Join(docids, ","), ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	rt.TB.Logf("All channels response: %s", response.BodyString())
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())

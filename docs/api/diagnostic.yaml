@@ -38,8 +38,8 @@ paths:
     $ref: './paths/diagnostic/keyspace-import_filter.yaml'
   '/{db}/_user/{name}/all_channels':
     $ref: './paths/diagnostic/db-_user-name-_all_channels.yaml'
-  '/{keyspace}/{name}':
-    $ref: './paths/diagnostic/keyspace-name.yaml'
+  '/{keyspace}/_user/{name}':
+    $ref: './paths/diagnostic/keyspace-_user-name.yaml'
 externalDocs:
   description: Sync Gateway Quickstart | Couchbase Docs
   url: 'https://docs.couchbase.com/sync-gateway/current/index.html'
