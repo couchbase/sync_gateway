@@ -823,7 +823,7 @@ func TestGetUserDocAccessMultiChannel(t *testing.T) {
 }
 
 // give user access to chanA through admin API and role, remove admin API assignment, and assert access span is admin assignment to 0
-func TestGetUserDocAccessContinuousAdminAPI(t *testing.T) {
+func TestGetUserDocAccessContinuousRoleAdminAPI(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 
@@ -857,5 +857,183 @@ func TestGetUserDocAccessContinuousAdminAPI(t *testing.T) {
 		"/{{.keyspace}}/alice?docids=doc", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
 
+// give user access to chanA through admin API and sync fn, remove admin API assignment, and assert access span is admin assignment to 0
+func TestGetUserDocAccessContinuousSyncFnAdminAPI(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.channel);}`})
+	defer rt.Close()
+
+	userGrant1 := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"A"},
+		},
+	}
+	userGrant1.request(rt)
+
+	// create doc in channel A
+	doc := docGrant{dynamicChannel: "A", userName: "alice"}
+	doc.request(rt)
+
+	userGrant1 = userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"!"},
+		},
+	}
+	userGrant1.request(rt)
+
+	// assert sequences are registered correctly
+	expectedOutput := `{"doc": {"A": { "entries" : ["2-0"]} }}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/alice?docids=doc", ``)
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
+
+// give user access to chanA through sync fn after removing doc from chan
+func TestGetUserDocAccessDynamicGrantOnChanRemoval(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.dynamicChan);}`})
+	defer rt.Close()
+
+	userGrant1 := userGrant{
+		user: "alice",
+	}
+	userGrant1.request(rt)
+
+	version := rt.PutDoc("doc1", `{"channel":["A"]}`)
+	_ = rt.UpdateDoc("doc1", version, `{"dynamicChan":"A", "user":"alice"}`)
+
+	// assert sequences are registered correctly
+	expectedOutput := `{}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/alice?docids=doc1", ``)
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
+
+// give role access to chanA through sync fn, remove doc from channel and keep role assignment
+func TestGetUserDocAccessDynamicRoleChanRemoval(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.dynamicChan, doc.user);}`})
+	defer rt.Close()
+
+	// create role1
+	roleGrant1 := roleGrant{role: "role1"}
+	roleGrant1.request(rt)
+
+	// create doc in channel A, assign chan A to role1
+	version := rt.PutDoc("doc1", `{"channel":["A"], "user":"role1", "dynamicChan":"A"}`)
+
+	userGrant1 := userGrant{
+		user:  "alice",
+		roles: []string{"role1"},
+	}
+	userGrant1.request(rt)
+
+	// update doc1 to remove chan A
+	_ = rt.UpdateDoc("doc1", version, `{"user":"role1", "dynamicChan":"A"}`)
+
+	// assert sequences are registered correctly
+	expectedOutput := `{"doc": {"A": { "entries" : ["3-4"]} }}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/alice?docids=doc1", ``)
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
+
+// multiple doc ids
+func TestGetUserDocAccessMultiDoc(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.dynamicChan, doc.user);}`})
+	defer rt.Close()
+
+	// update doc1 to remove chan A
+	userGrant1 := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"A"},
+		}}
+	userGrant1.request(rt)
+
+	_ = rt.PutDoc("doc1", `{"channel":["A"]}`)
+	_ = rt.PutDoc("doc2", `{"channel":["A"]}`)
+	_ = rt.PutDoc("doc3", `{"channel":["A"]}`)
+	_ = rt.PutDoc("doc4", `{"channel":["B"]}`)
+
+	// assert sequences are registered correctly
+	expectedOutput := `{"doc1":{"A":{"entries":["2-0"]}},"doc2":{"A":{"entries":["3-0"]}},"doc3":{"A":{"entries":["4-0"]}}}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/alice?docids=doc1,doc2,doc3,doc4", ``)
+	t.Log(response.BodyString())
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
+
+// multiple doc ids, one not found
+func TestGetUserDocAccessMultiDocNotFound(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.dynamicChan, doc.user);}`})
+	defer rt.Close()
+
+	// update doc1 to remove chan A
+	userGrant1 := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"A"},
+		}}
+	userGrant1.request(rt)
+
+	_ = rt.PutDoc("doc1", `{"channel":["A"]}`)
+	_ = rt.PutDoc("doc2", `{"channel":["A"]}`)
+	_ = rt.PutDoc("doc3", `{"channel":["A"]}`)
+
+	// assert sequences are registered correctly
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/alice?docids=doc1,doc2,doc3,doc4", ``)
+	RequireStatus(rt.TB, response, http.StatusNotFound)
+	assert.Contains(t, response.Body.String(), "doc doc4 not found")
+}
+
+// no doc id
+func TestGetUserDocAccessNoDocID(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.dynamicChan, doc.user);}`})
+	defer rt.Close()
+
+	// update doc1 to remove chan A
+	userGrant1 := userGrant{
+		user: "alice",
+	}
+	userGrant1.request(rt)
+
+	_ = rt.PutDoc("doc1", `{}`)
+
+	// assert sequences are registered correctly
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/alice?docids=", ``)
+	RequireStatus(rt.TB, response, http.StatusBadRequest)
+	assert.Contains(t, response.Body.String(), "empty doc id given in request")
+}
+
+// duplicate doc ids
+func TestGetUserDocAccessDuplicates(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.dynamicChan, doc.user);}`})
+	defer rt.Close()
+
+	// update doc1 to remove chan A
+	userGrant1 := userGrant{
+		user: "alice",
+		adminChannels: map[string][]string{
+			"{{.keyspace}}": {"A"},
+		}}
+	userGrant1.request(rt)
+
+	_ = rt.PutDoc("doc1", `{"channel":["A"]}`)
+	_ = rt.PutDoc("doc2", `{"channel":["A"]}`)
+
+	// assert no duplicates
+	expectedOutput := `{"doc1":{"A":{"entries":["2-0"]}}}`
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/alice?docids=doc1,doc1,doc1,doc1", ``)
+	t.Log(response.BodyString())
+	RequireStatus(rt.TB, response, http.StatusOK)
+	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
 }

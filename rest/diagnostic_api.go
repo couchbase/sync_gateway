@@ -12,9 +12,10 @@ import (
 	"fmt"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	channels "github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/gorilla/mux"
+	"net/http"
 	"strings"
 )
 
@@ -212,12 +213,15 @@ func (h *handler) handleGetUserDocAccessSpan() error {
 	keyspace := scope + "." + coll
 
 	for _, docID := range docidsList {
+		if docID == "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "empty doc id given in request")
+		}
 		doc, err := h.collection.GetDocument(h.ctx(), docID, db.DocUnmarshalSync)
+		if doc == nil {
+			return base.HTTPErrorf(http.StatusNotFound, "doc %s not found", docID)
+		}
 		if err != nil {
 			return err
-		}
-		if doc == nil {
-			return kNotFoundError
 		}
 		docList = append(docList, doc)
 	}
