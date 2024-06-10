@@ -198,7 +198,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 				value = previous.Body
 				xattrs = previous.Xattrs
 				cas = previous.Cas
-				wasTombstone = value != nil
+				wasTombstone = value == nil
 			}
 			previous = nil // a retry will get value from bucket, as below
 		} else {
@@ -225,7 +225,6 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 
 		// Invoke callback to get updated value
 		updatedDoc, err := callback(value, xattrs, cas)
-		fmt.Printf("updatedDoc: %v\n", updatedDoc)
 		// If it's an ErrCasFailureShouldRetry, then retry by going back through the for loop
 		if err == ErrCasFailureShouldRetry {
 			previousLoopCas = nil

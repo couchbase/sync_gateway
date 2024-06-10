@@ -323,7 +323,6 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 		err = pkgerrors.Wrapf(err, "subdocGetBodyAndXattrs %v", UD(k).Redact())
 	}
 
-	fmt.Printf("isTombstone: %v, rawBody: %v, xattrs: %v, cas: %v, err: %v\n", isTombstone, rawBody, xattrs, cas, err)
 	return isTombstone, rawBody, xattrs, cas, err
 }
 
