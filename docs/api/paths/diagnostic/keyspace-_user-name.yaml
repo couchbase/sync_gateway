@@ -19,6 +19,8 @@ get:
     * Sync Gateway Architect
     * Sync Gateway Application
     * Sync Gateway Application Read Only
+  parameters:
+    - $ref: ../../components/parameters.yaml#/doc_id
   responses:
     '200':
       $ref: ../../components/responses.yaml#/user_access_span_response
@@ -26,8 +28,6 @@ get:
       description: Bad Request
     '404':
       $ref: ../../components/responses.yaml#/Not-found
-    parameters:
-      - $ref: ../../components/parameters.yaml#/doc_id
   tags:
     - Database Security
   operationId: get_keyspace-_user-name

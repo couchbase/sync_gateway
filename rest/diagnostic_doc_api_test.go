@@ -13,9 +13,10 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/stretchr/testify/require"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -811,7 +812,7 @@ func TestGetUserDocAccessMultiChannel(t *testing.T) {
 	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
 
 	// remove all channels
-	updatedVersion = rt.UpdateDoc("doc1", updatedVersion, `{"channel":[]}`)
+	_ = rt.UpdateDoc("doc1", updatedVersion, `{"channel":[]}`)
 
 	// assert sequences spans end here
 	expectedOutput = `{"doc1": {"A": { "entries" : ["2-4"]}, "B": { "entries" : ["3-5"]},  "C": { "entries" : ["4-5"]} }}`
