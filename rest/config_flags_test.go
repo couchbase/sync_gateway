@@ -144,7 +144,7 @@ func TestAllConfigOptionsAsFlags(t *testing.T) {
 	cfg := NewEmptyStartupConfig()
 	cfgFieldsNum := countFields(cfg)
 	flagsNum := registerConfigFlags(&cfg, flag.NewFlagSet("test", flag.ContinueOnError))
-	assert.Equalf(t, len(flagsNum), cfgFieldsNum, "Number of cli flags and startup config properties did not match! Did you forget to add a new config option in registerConfigFlags?")
+	assert.Lenf(t, flagsNum, cfgFieldsNum, "Number of cli flags and startup config properties did not match! Did you forget to add a new config option in registerConfigFlags?")
 }
 
 func countFields(cfg interface{}) (fields int) {

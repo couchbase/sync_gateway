@@ -133,6 +133,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"logging.audit.rotation.localtime":               {&config.Logging.Audit.Rotation.LocalTime, fs.Bool("logging.audit.rotation.localtime", false, "")},
 		"logging.audit.rotation.rotated_logs_size_limit": {&config.Logging.Audit.Rotation.RotatedLogsSizeLimit, fs.Int("logging.audit.rotation.rotated_logs_size_limit", 0, "")},
 		"logging.audit.collation_buffer_size":            {&config.Logging.Audit.CollationBufferSize, fs.Int("logging.audit.collation_buffer_size", 0, "")},
+		"logging.audit.rotation.rotation_interval":       {&config.Logging.Audit.Rotation.RotationInterval, fs.String("logging.audit.rotation.rotation_interval", "", "")},
 		"logging.audit.audit_log_file_path":              {&config.Logging.Audit.AuditLogFilePath, fs.String("logging.audit.audit_log_file_path", "", "")},
 
 		"auth.bcrypt_cost": {&config.Auth.BcryptCost, fs.Int("auth.bcrypt_cost", 0, "Cost to use for bcrypt password hashes")},
