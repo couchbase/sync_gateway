@@ -640,20 +640,23 @@ func TestWaitForBucketExistence(t *testing.T) {
 	)
 	var options = &N1qlIndexOptions{NumReplica: 0}
 
-	defer func() {
-		// Drop the index;
-		err := n1qlStore.DropIndex(ctx, indexName)
-		assert.NoError(t, err, "Index should be removed from the bucket")
-	}()
-	indexExists, _, err := n1qlStore.GetIndexMeta(ctx, indexName)
-	require.NoError(t, err, "No error while trying to fetch the index metadata")
-	require.False(t, indexExists, "Index should not exist in the bucket")
-
 	go func() {
+		indexExists, _, err := getIndexMetaWithoutRetry(ctx, n1qlStore, indexName)
+		assert.NoError(t, err, "No error while trying to fetch the index metadata")
+
+		if indexExists {
+			err := n1qlStore.DropIndex(ctx, indexName)
+			assert.NoError(t, err, "Index should be removed from the bucket")
+		}
+
 		err = n1qlStore.CreateIndex(ctx, indexName, expression, filterExpression, options)
-		require.NoError(t, err, "Index should be created in the bucket")
+		assert.NoError(t, err, "Index should be created in the bucket")
 	}()
-	require.NoError(t, n1qlStore.WaitForIndexesOnline(TestCtx(t), []string{indexName}, WaitForIndexesDefault))
+	assert.NoError(t, n1qlStore.WaitForIndexesOnline(TestCtx(t), []string{indexName}, WaitForIndexesDefault))
+
+	// Drop the index;
+	err := n1qlStore.DropIndex(ctx, indexName)
+	assert.NoError(t, err, "Index should be removed from the bucket")
 }
 
 func TestIsIndexerRetryBuildError(t *testing.T) {
