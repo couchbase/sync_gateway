@@ -44,7 +44,7 @@ type N1QLStore interface {
 	ExplainQuery(ctx context.Context, statement string, params map[string]interface{}) (plan map[string]interface{}, err error)
 	GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error)
 	Query(ctx context.Context, statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error)
-	IsErrNoResults(context.Context, error) bool
+	IsErrNoResults(error) bool
 	EscapedKeyspace() string
 	IndexMetaBucketID() string
 	IndexMetaScopeID() string
@@ -333,7 +333,7 @@ func getIndexMetaWithoutRetry(ctx context.Context, store N1QLStore, indexName st
 	indexInfo := &IndexMeta{}
 	err = results.One(ctx, indexInfo)
 	if err != nil {
-		if store.IsErrNoResults(ctx, err) {
+		if store.IsErrNoResults(err) {
 			return false, nil, nil
 		} else {
 			return true, nil, err

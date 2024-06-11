@@ -434,13 +434,12 @@ func (lds *LeakyDataStore) Query(ctx context.Context, statement string, params m
 	return iterator, err
 }
 
-func (lds *LeakyDataStore) IsErrNoResults(ctx context.Context, err error) bool {
+func (lds *LeakyDataStore) IsErrNoResults(err error) bool {
 	n1qlStore, getN1QLStoreErr := lds.getN1QLStore()
 	if getN1QLStoreErr != nil {
-		WarnfCtx(ctx, "Calling LeakyDataStore.IsErrNoResults not supported: %s", err.Error())
 		return false
 	}
-	return n1qlStore.IsErrNoResults(ctx, err)
+	return n1qlStore.IsErrNoResults(err)
 }
 
 func (lds *LeakyDataStore) IndexMetaBucketID() string {

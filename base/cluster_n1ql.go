@@ -206,7 +206,7 @@ func (cl *ClusterOnlyN1QLStore) GetIndexMeta(ctx context.Context, indexName stri
 	return GetIndexMeta(ctx, cl, indexName)
 }
 
-func (cl *ClusterOnlyN1QLStore) IsErrNoResults(ctx context.Context, err error) bool {
+func (cl *ClusterOnlyN1QLStore) IsErrNoResults(err error) bool {
 	return errors.Is(err, gocb.ErrNoResult)
 }
 

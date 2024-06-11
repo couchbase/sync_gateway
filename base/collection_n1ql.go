@@ -209,7 +209,7 @@ func (c *Collection) executeStatement(statement string) error {
 	return queryResults.Err()
 }
 
-func (c *Collection) IsErrNoResults(ctx context.Context, err error) bool {
+func (c *Collection) IsErrNoResults(err error) bool {
 	return errors.Is(err, gocb.ErrNoResult)
 }
 
