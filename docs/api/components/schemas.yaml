@@ -1836,43 +1836,43 @@ Database:
                 type: string
               example: ["CRUD", "HTTP", "Query"]
         audit:
-            description: Audit logging configuration.
-            type: object
-            properties:
-              enabled:
-                description: Whether audit logging is enabled.
-                type: boolean
-                default: false
-              enabled_events:
-                description: List of enabled audit events
-                type: array
-                items:
-                  type: number
-                example: [1234, 5678]
-              disabled_users:
-                description: List of users for which audit logging is disabled
-                type: array
-                items:
-                  type: object
-                  properties:
-                    domain:
-                      description: The domain of the user for which audit logging is disabled.
-                      type: string
-                    name:
-                      description: The name of the user for which audit logging is disabled.
-                      type: string
-              disabled_roles:
-                description: List of roles for which audit logging is disabled
-                type: array
-                items:
-                  type: object
-                  properties:
-                    domain:
-                      description: The domain of the role for which audit logging is disabled.
-                      type: string
-                    name:
-                      description: The name of the role for which audit logging is disabled.
-                      type: string
+          description: Audit logging configuration.
+          type: object
+          properties:
+            enabled:
+              description: Whether audit logging is enabled.
+              type: boolean
+              default: false
+            enabled_events:
+              description: List of enabled audit events
+              type: array
+              items:
+                type: number
+              example: [1234, 5678]
+            disabled_users:
+              description: List of users for which audit logging is disabled
+              type: array
+              items:
+                type: object
+                properties:
+                  domain:
+                    description: The domain of the user for which audit logging is disabled.
+                    type: string
+                  name:
+                    description: The name of the user for which audit logging is disabled.
+                    type: string
+            disabled_roles:
+              description: List of roles for which audit logging is disabled
+              type: array
+              items:
+                type: object
+                properties:
+                  domain:
+                    description: The domain of the role for which audit logging is disabled.
+                    type: string
+                  name:
+                    description: The name of the role for which audit logging is disabled.
+                    type: string
   title: Database-config
 Database-audit:
   title: Database-audit
