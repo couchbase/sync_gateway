@@ -277,9 +277,15 @@ type DbConsoleLoggingConfig struct {
 
 // DbAuditLoggingConfig are per-db options configurable for audit logging
 type DbAuditLoggingConfig struct {
-	Enabled        *bool    `json:"enabled,omitempty"`         // Whether audit logging is enabled for this database
-	DisabledEvents []uint   `json:"disabled_events,omitempty"` // List of audit event IDs to disable
-	DisabledRoles  []string `json:"disabled_roles,omitempty"`  // List of roles to disable audit logging for
+	Enabled       *bool                   `json:"enabled,omitempty"`        // Whether audit logging is enabled for this database
+	EnabledEvents []uint                  `json:"enabled_events,omitempty"` // List of audit event IDs that are enabled
+	DisabledUsers []AuditLoggingPrincipal `json:"disabled_users,omitempty"` // List of users to disable audit logging for
+	DisabledRoles []AuditLoggingPrincipal `json:"disabled_roles,omitempty"` // List of roles to disable audit logging for
+}
+
+type AuditLoggingPrincipal struct {
+	Domain string `json:"domain,omitempty"`
+	Name   string `json:"name,omitempty"`
 }
 
 func GetTLSVersionFromString(stringV *string) uint16 {

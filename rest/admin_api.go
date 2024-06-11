@@ -21,6 +21,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/base/audit"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -656,6 +657,49 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	return base.HTTPErrorf(http.StatusCreated, "updated")
 
+}
+
+// GET audit config for database
+func (h *handler) handleGetDbAuditConfig() error {
+	h.assertAdminOnly()
+
+	showOnlyFilterable := h.getBoolQuery("filterable")
+	verbose := h.getBoolQuery("verbose")
+
+	// TODO: Move to structs
+	events := make(map[audit.ID]interface{}, len(audit.SGAuditEvents))
+	for id, descriptor := range audit.SGAuditEvents {
+		if showOnlyFilterable && !descriptor.FilteringPermitted {
+			continue
+		}
+		if verbose {
+			events[id] = map[string]interface{}{
+				"name":        descriptor.Name,
+				"description": descriptor.Description,
+				"enabled":     descriptor.EnabledByDefault, // TODO: Switch to actual configuration
+				"filterable":  descriptor.FilteringPermitted,
+			}
+		} else {
+			events[id] = descriptor.EnabledByDefault // TODO: Switch to actual configuration
+		}
+		return nil
+	}
+
+	return nil
+}
+
+// PUT/POST audit config for database
+func (h *handler) handlePutDbAuditConfig() error {
+	h.assertAdminOnly()
+
+	_ = h.getBoolQuery("verbose")
+
+	var body map[string]interface{}
+	if err := h.readJSONInto(&body); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // GET collection config sync function
