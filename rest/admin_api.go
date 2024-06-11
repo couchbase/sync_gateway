@@ -683,8 +683,9 @@ func (h *handler) handleGetDbAuditConfig() error {
 		} else {
 			events[idStr] = descriptor.EnabledByDefault // TODO: Switch to actual configuration
 		}
-		return nil
 	}
+
+	h.writeJSON(events)
 
 	return nil
 }
