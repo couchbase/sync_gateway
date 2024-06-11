@@ -2882,17 +2882,17 @@ func TestScopesConfigCollectionMap(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 
 			// Create initial database
-			initialScopesConfig := makeScopesConfigWithDefault(test.scopeName, test.initialCollections)
+			initialScopesConfig := makeScopesConfigWithDefault(t, test.scopeName, test.initialCollections)
 			initialCollectionsMap := initialScopesConfig.CollectionMap()
 
-			updatedScopesConfig := makeScopesConfigWithDefault(test.scopeName, test.updatedCollections)
+			updatedScopesConfig := makeScopesConfigWithDefault(t, test.scopeName, test.updatedCollections)
 			require.Equal(t, test.expectedHasNew, updatedScopesConfig.HasNewCollection(initialCollectionsMap))
 		})
 	}
 }
 
 // makeScopesConfig creates a scopes config, with additional handling for explicitly defining the default collection in ScopesConfig
-func makeScopesConfigWithDefault(scopeName string, collections []string) *ScopesConfig {
+func makeScopesConfigWithDefault(t testing.TB, scopeName string, collections []string) *ScopesConfig {
 
 	// handling for _default._default - treat as no scopes defined
 	if len(collections) == 1 && collections[0] == base.DefaultCollection {
@@ -2901,10 +2901,10 @@ func makeScopesConfigWithDefault(scopeName string, collections []string) *Scopes
 
 	// handling for explicit default - ScopesConfig with _default._default only defined
 	if len(collections) == 1 && collections[0] == "_scopesdefault" {
-		scopesConfig := makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection})
+		scopesConfig := MakeScopesConfig(t, base.DefaultScope, []string{base.DefaultCollection})
 		return &scopesConfig
 	}
 
-	scopesConfig := makeScopesConfig(scopeName, collections)
+	scopesConfig := MakeScopesConfig(t, scopeName, collections)
 	return &scopesConfig
 }

@@ -2704,3 +2704,32 @@ func RequireGocbDCPResync(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server since rosmar has no support for DCP resync")
 	}
 }
+
+// MakeDbConfig creates a DbConfig with the given bucket name, db name, and scopes config
+func MakeDbConfig(_ testing.TB, bucketName string, dbName string, scopesConfig ScopesConfig) DbConfig {
+	numIndexReplicas := uint(0)
+	enableXattrs := base.TestUseXattrs()
+	dbConfig := DbConfig{
+		BucketConfig: BucketConfig{
+			Bucket: &bucketName,
+		},
+		NumIndexReplicas: &numIndexReplicas,
+		EnableXattrs:     &enableXattrs,
+		Scopes:           scopesConfig,
+		Name:             dbName,
+	}
+	return dbConfig
+}
+
+// MakeScopesConfig returns a ScopesConfig with the given scope name and collection names.
+func MakeScopesConfig(_ testing.TB, scopeName string, collectionNames []string) ScopesConfig {
+	collectionsConfig := make(CollectionsConfig)
+	for _, collectionName := range collectionNames {
+		collectionsConfig[collectionName] = &CollectionConfig{}
+	}
+	return ScopesConfig{
+		scopeName: ScopeConfig{
+			Collections: collectionsConfig,
+		},
+	}
+}

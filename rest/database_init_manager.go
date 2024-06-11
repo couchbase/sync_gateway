@@ -32,13 +32,13 @@ type DatabaseInitManager struct {
 	workers     map[string]*DatabaseInitWorker
 	workersLock sync.Mutex
 
-	// collectionCompleteCallback is defined for testability only.
+	// CollectionCompleteCallback is defined for testability only.
 	// Invoked after collection initialization is complete for each collection
-	collectionCompleteCallback collectionCallbackFunc
+	CollectionCompleteCallback collectionCallbackFunc
 
-	// databaseCompleteCallback is defined for testability only.
+	// DatabaseCompleteCallback is defined for testability only.
 	// Invoked after worker completes, but before worker is removed from workers set
-	databaseCompleteCallback func(databaseName string) // Callback for testability only
+	DatabaseCompleteCallback func(databaseName string) // Callback for testability only
 }
 
 type collectionCallbackFunc func(dbName, collectionName string)
@@ -94,7 +94,7 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 	indexOptions := m.BuildIndexOptions(startupConfig, dbConfig)
 
 	// Create new worker and add this caller as a watcher
-	worker := NewDatabaseInitWorker(ctx, dbConfig.Name, n1qlStore, collectionSet, indexOptions, m.collectionCompleteCallback)
+	worker := NewDatabaseInitWorker(ctx, dbConfig.Name, n1qlStore, collectionSet, indexOptions, m.CollectionCompleteCallback)
 	m.workers[dbConfig.Name] = worker
 	doneChan = worker.addWatcher()
 
@@ -103,8 +103,8 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 		defer couchbaseCluster.Close()
 		// worker.Run blocks until completion, and returns any error on doneChan.
 		worker.Run()
-		if m.databaseCompleteCallback != nil {
-			m.databaseCompleteCallback(dbConfig.Name)
+		if m.DatabaseCompleteCallback != nil {
+			m.DatabaseCompleteCallback(dbConfig.Name)
 		}
 		// On success, remove worker
 		m.workersLock.Lock()
@@ -136,8 +136,8 @@ func (m *DatabaseInitManager) BuildIndexOptions(startupConfig *StartupConfig, db
 
 // Intended for test usage.  Updates to callback function aren't synchronized
 func (m *DatabaseInitManager) SetCallbacks(collectionComplete collectionCallbackFunc, databaseComplete func(dbName string)) {
-	m.collectionCompleteCallback = collectionComplete
-	m.databaseCompleteCallback = databaseComplete
+	m.CollectionCompleteCallback = collectionComplete
+	m.DatabaseCompleteCallback = databaseComplete
 }
 
 func (m *DatabaseInitManager) Cancel(dbName string) {

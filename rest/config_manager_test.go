@@ -81,7 +81,7 @@ func TestComputeMetadataID(t *testing.T) {
 	standardMetadataID := dbName
 
 	defaultVersion := "1-abc"
-	defaultDbConfig := makeDbConfig(tb.GetName(), dbName, nil)
+	defaultDbConfig := MakeDbConfig(t, tb.GetName(), dbName, nil)
 
 	// Use defaultMetadataID if database targets the default collection
 	metadataID := bootstrapContext.computeMetadataID(ctx, registry, &defaultDbConfig)
@@ -98,7 +98,7 @@ func TestComputeMetadataID(t *testing.T) {
 
 	// Add another database to the registry already using defaultMetadataID
 	existingDbName := "existingDb"
-	existingDbConfig := makeDbConfig(tb.GetName(), existingDbName, nil)
+	existingDbConfig := MakeDbConfig(t, tb.GetName(), existingDbName, nil)
 	existingDatabaseConfig := &DatabaseConfig{
 		DbConfig:   existingDbConfig,
 		Version:    defaultVersion,
@@ -120,7 +120,7 @@ func TestComputeMetadataID(t *testing.T) {
 
 	// If the database has been assigned a metadataID in another config group, that should be used
 	multiConfigGroupDbName := "multiConfigGroupDb"
-	existingDbConfigOtherConfigGroup := makeDbConfig(tb.GetName(), multiConfigGroupDbName, nil)
+	existingDbConfigOtherConfigGroup := MakeDbConfig(t, tb.GetName(), multiConfigGroupDbName, nil)
 	existingDatabaseConfigOtherConfigGroup := &DatabaseConfig{
 		DbConfig:   existingDbConfigOtherConfigGroup,
 		Version:    defaultVersion,
@@ -129,7 +129,7 @@ func TestComputeMetadataID(t *testing.T) {
 	_, err = registry.upsertDatabaseConfig(ctx, "differentConfigGroup", existingDatabaseConfigOtherConfigGroup)
 	require.NoError(t, err)
 
-	newDbConfig := makeDbConfig(tb.GetName(), multiConfigGroupDbName, nil)
+	newDbConfig := MakeDbConfig(t, tb.GetName(), multiConfigGroupDbName, nil)
 	metadataID = bootstrapContext.computeMetadataID(ctx, registry, &newDbConfig)
 	require.Equal(t, multiConfigGroupDbName, metadataID)
 

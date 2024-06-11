@@ -38,7 +38,7 @@ func WaitForChannel(t *testing.T, ch <-chan error, message string) {
 	}
 }
 
-func waitForError(t *testing.T, ch <-chan error, message string) error {
+func WaitForError(t *testing.T, ch <-chan error, message string) error {
 	if message != "" {
 		log.Printf("[%s] starting wait for error", message)
 		defer func() {
@@ -57,7 +57,7 @@ func waitForError(t *testing.T, ch <-chan error, message string) error {
 	}
 }
 
-func notifyChannel(t *testing.T, ch chan<- error, message string) {
+func NotifyChannel(t *testing.T, ch chan<- error, message string) {
 	if message != "" {
 		log.Printf("[%s] starting notify", message)
 		defer func() {
