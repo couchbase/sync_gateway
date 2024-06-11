@@ -262,6 +262,8 @@ func BuildLoggingConfigFromLoggers(redactionLevel RedactionLevel, LogFilePath st
 	config.Debug = debugLogger.getFileLoggerConfig()
 	config.Trace = traceLogger.getFileLoggerConfig()
 	config.Stats = statsLogger.getFileLoggerConfig()
+	// FIXME(bbrks): Once AuditLogger is implemented
+	config.Audit = &AuditLoggerConfig{}
 
 	return &config
 }
