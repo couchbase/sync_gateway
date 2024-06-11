@@ -693,8 +693,7 @@ func (h *handler) handleGetDbAuditConfig() error {
 func (h *handler) handlePutDbAuditConfig() error {
 	h.assertAdminOnly()
 
-	_ = h.getBoolQuery("verbose")
-
+	// interface can be either bool or object for verbose-format
 	var body map[string]interface{}
 	if err := h.readJSONInto(&body); err != nil {
 		return err
