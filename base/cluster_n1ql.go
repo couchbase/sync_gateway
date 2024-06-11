@@ -24,11 +24,6 @@ import (
 
 var _ N1QLStore = &ClusterOnlyN1QLStore{}
 
-type ClusterN1QLStore interface {
-	N1QLStore
-	SetScopeAndCollection(scName ScopeAndCollectionName)
-}
-
 // ClusterOnlyN1qlStore implements the N1QLStore using only a cluster connection.
 // Currently still intended for use for operations against a single collection, but maintains that
 // information via metadata, and so supports sharing of the underlying gocb.Cluster with other
@@ -61,7 +56,6 @@ func NewClusterOnlyN1QLStore(cluster *gocb.Cluster, bucketName, scopeName, colle
 
 }
 
-// GetName returns a human-readable name.
 func (cl *ClusterOnlyN1QLStore) GetName() string {
 	return cl.bucketName
 }
@@ -70,27 +64,22 @@ func (cl *ClusterOnlyN1QLStore) BucketName() string {
 	return cl.bucketName
 }
 
-// BuildDeferredIndexes issues a BUILD INDEX command for any of the indexes that have state deferred.
 func (cl *ClusterOnlyN1QLStore) BuildDeferredIndexes(ctx context.Context, indexSet []string) error {
 	return BuildDeferredIndexes(ctx, cl, indexSet)
 }
 
-// CreateIndex issues a CREATE INDEX query for a specified index.
 func (cl *ClusterOnlyN1QLStore) CreateIndex(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
 	return CreateIndex(ctx, cl, indexName, expression, filterExpression, options)
 }
 
-// CreatePrimaryIndex issues a CREATE PRIMARY INDEX query for a specified index.
 func (cl *ClusterOnlyN1QLStore) CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error {
 	return CreatePrimaryIndex(ctx, cl, indexName, options)
 }
 
-// ExplainQuery returns the query plan for a specified statement.
 func (cl *ClusterOnlyN1QLStore) ExplainQuery(ctx context.Context, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
 	return ExplainQuery(ctx, cl, statement, params)
 }
 
-// DropIndex issues a DROP INDEX query for a specified index.
 func (cl *ClusterOnlyN1QLStore) DropIndex(ctx context.Context, indexName string) error {
 	return DropIndex(ctx, cl, indexName)
 }
@@ -116,7 +105,6 @@ func (cl *ClusterOnlyN1QLStore) IndexMetaScopeID() string {
 	return cl.scopeName
 }
 
-// Query runs a N1QL query and returns the results.
 func (cl *ClusterOnlyN1QLStore) Query(ctx context.Context, statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
 	keyspaceStatement := strings.Replace(statement, KeyspaceQueryToken, cl.EscapedKeyspace(), -1)
 
@@ -200,12 +188,20 @@ func (cl *ClusterOnlyN1QLStore) runQuery(statement string, n1qlOptions *gocb.Que
 	return queryResults, err
 }
 
-// WaitForIndexesOnline takes set of indexes and watches them till they're online.
-func (cl *ClusterOnlyN1QLStore) WaitForIndexesOnline(ctx context.Context, indexNames []string, waitOption WaitForIndexesOnlineOption) error {
-	return WaitForIndexesOnline(ctx, cl, indexNames, waitOption)
+func (cl *ClusterOnlyN1QLStore) indexManager(scopeName, collectionName string) *indexManager {
+	return &indexManager{
+		cluster:        cl.cluster.QueryIndexes(),
+		bucketName:     cl.bucketName,
+		scopeName:      scopeName,
+		collectionName: collectionName,
+	}
 }
 
-// GetIndexMeta retrieves the metadata for a specified index.
+func (cl *ClusterOnlyN1QLStore) WaitForIndexesOnline(ctx context.Context, indexNames []string, option WaitForIndexesOnlineOption) error {
+	keyspace := strings.Join([]string{cl.bucketName, cl.scopeName, cl.collectionName}, ".")
+	return WaitForIndexesOnline(ctx, keyspace, cl.indexManager(cl.scopeName, cl.collectionName), indexNames, option)
+}
+
 func (cl *ClusterOnlyN1QLStore) GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error) {
 	return GetIndexMeta(ctx, cl, indexName)
 }
@@ -222,8 +218,12 @@ func (cl *ClusterOnlyN1QLStore) EscapedKeyspace() string {
 	return fmt.Sprintf("`%s`.`%s`.`%s`", cl.bucketName, cl.scopeName, cl.collectionName)
 }
 
-func (cl *ClusterOnlyN1QLStore) GetIndexes(ctx context.Context) (indexes []string, err error) {
-	return GetAllIndexes(ctx, cl)
+func (cl *ClusterOnlyN1QLStore) GetIndexes() (indexes []string, err error) {
+	if cl.supportsCollections {
+		return GetAllIndexes(cl.indexManager(cl.scopeName, cl.collectionName))
+	} else {
+		return GetAllIndexes(cl.indexManager("", ""))
+	}
 }
 
 // waitUntilQueryServiceReady will wait for the specified duration until the query service is available.

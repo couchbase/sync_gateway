@@ -330,7 +330,7 @@ func (t TestAuthenticator) GetCredentials() (username, password, bucketname stri
 func DropAllIndexes(ctx context.Context, n1QLStore N1QLStore) error {
 
 	// Retrieve all indexes on the bucket/collection
-	indexes, err := n1QLStore.GetIndexes(ctx)
+	indexes, err := n1QLStore.GetIndexes()
 	if err != nil {
 		return err
 	}

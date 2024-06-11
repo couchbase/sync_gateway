@@ -92,7 +92,7 @@ var primaryIndexReadier base.TBPBucketReadierFunc = func(ctx context.Context, b 
 			return errors.New("attempting to empty indexes with non-N1QL store")
 		}
 		// assert no lost indexes
-		indexes, err := n1qlStore.GetIndexes(ctx)
+		indexes, err := n1qlStore.GetIndexes()
 		if err != nil {
 			return err
 		}

@@ -62,12 +62,25 @@ func (c *Collection) BucketName() string {
 	return c.Bucket.GetName()
 }
 
+func (c *Collection) indexManager() *indexManager {
+	m := &indexManager{
+		bucketName:     c.BucketName(),
+		collectionName: c.CollectionName(),
+		scopeName:      c.ScopeName(),
+	}
+	if !c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		m.cluster = c.Bucket.cluster.QueryIndexes()
+	} else {
+		m.collection = c.Collection.QueryIndexes()
+	}
+	return m
+}
+
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaKeyspaceID() string {
 	return IndexMetaKeyspaceID(c.BucketName(), c.ScopeName(), c.CollectionName())
 }
 
-// Query runs a N1QL query and returns the results.
 func (c *Collection) Query(ctx context.Context, statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
 	keyspaceStatement := strings.Replace(statement, KeyspaceQueryToken, c.EscapedKeyspace(), -1)
 
@@ -112,27 +125,24 @@ func (c *Collection) Query(ctx context.Context, statement string, params map[str
 	return nil, err
 }
 
-// ExplainQuery returns the query plan for a specified statement.
 func (c *Collection) ExplainQuery(ctx context.Context, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
 	return ExplainQuery(ctx, c, statement, params)
 }
 
-// CreateIndex issues a CREATE INDEX query for a specified index.
 func (c *Collection) CreateIndex(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
 	return CreateIndex(ctx, c, indexName, expression, filterExpression, options)
 }
 
-// CreatePrimaryIndex issues a CREATE PRIMARY INDEX query for a specified index.
 func (c *Collection) CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error {
 	return CreatePrimaryIndex(ctx, c, indexName, options)
 }
 
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
 func (c *Collection) WaitForIndexesOnline(ctx context.Context, indexNames []string, option WaitForIndexesOnlineOption) error {
-	return WaitForIndexesOnline(ctx, c, indexNames, option)
+	keyspace := strings.Join([]string{c.BucketName(), c.ScopeName(), c.CollectionName()}, ".")
+	return WaitForIndexesOnline(ctx, keyspace, c.indexManager(), indexNames, option)
 }
 
-// GetIndexMeta retrieves the metadata for a specified index.
 func (c *Collection) GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error) {
 	return GetIndexMeta(ctx, c, indexName)
 }
@@ -203,8 +213,8 @@ func (c *Collection) IsErrNoResults(err error) bool {
 	return err == gocb.ErrNoResult
 }
 
-func (c *Collection) GetIndexes(ctx context.Context) (indexes []string, err error) {
-	return GetAllIndexes(ctx, c)
+func (c *Collection) GetIndexes() (indexes []string, err error) {
+	return GetAllIndexes(c.indexManager())
 }
 
 // waitUntilQueryServiceReady will wait for the specified duration until the query service is available.
