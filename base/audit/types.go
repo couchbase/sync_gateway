@@ -8,8 +8,15 @@
 
 package audit
 
+import "strconv"
+
 // ID is a unique identifier for an audit event.
 type ID uint
+
+// String implements Stringer
+func (i ID) String() string {
+	return strconv.FormatUint(uint64(i), 10)
+}
 
 // events is a map of audit event IDs to event descriptors.
 type events map[ID]EventDescriptor

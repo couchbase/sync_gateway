@@ -667,20 +667,21 @@ func (h *handler) handleGetDbAuditConfig() error {
 	verbose := h.getBoolQuery("verbose")
 
 	// TODO: Move to structs
-	events := make(map[audit.ID]interface{}, len(audit.SGAuditEvents))
+	events := make(map[string]interface{}, len(audit.SGAuditEvents))
 	for id, descriptor := range audit.SGAuditEvents {
 		if showOnlyFilterable && !descriptor.FilteringPermitted {
 			continue
 		}
+		idStr := id.String()
 		if verbose {
-			events[id] = map[string]interface{}{
+			events[idStr] = map[string]interface{}{
 				"name":        descriptor.Name,
 				"description": descriptor.Description,
 				"enabled":     descriptor.EnabledByDefault, // TODO: Switch to actual configuration
 				"filterable":  descriptor.FilteringPermitted,
 			}
 		} else {
-			events[id] = descriptor.EnabledByDefault // TODO: Switch to actual configuration
+			events[idStr] = descriptor.EnabledByDefault // TODO: Switch to actual configuration
 		}
 		return nil
 	}
