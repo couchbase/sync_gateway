@@ -318,22 +318,3 @@ func (h *handler) handleGetUserDocAccessSpan() error {
 	h.writeRawJSON(bytes)
 	return err
 }
-
-func (h *handler) getUserDeletedRoles(user auth.User) ([]auth.Role, error) {
-	var deletedRoles []auth.Role
-	for roleName, _ := range user.RoleNames() {
-		role, err := h.db.Authenticator(h.ctx()).GetRoleIncDeleted(roleName)
-		if err != nil {
-			return nil, fmt.Errorf("error getting role: %w", err)
-		}
-		if role == nil {
-			continue
-		}
-		if role.IsDeleted() {
-			base.InfofCtx(h.ctx(), base.KeyDiagnostic, "FOUND DELETED ROLE 1 %s", roleName)
-			deletedRoles = append(deletedRoles, role)
-		}
-	}
-
-	return deletedRoles, nil
-}
