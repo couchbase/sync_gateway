@@ -38,9 +38,7 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 		chanHistory := user.CollectionChannelHistory(dsName.ScopeName(), dsName.CollectionName())
 		// If no channels aside from public and no channels in history, don't make a key for this keyspace
 		if len(currentChannels) == 1 && len(chanHistory) == 0 {
-			if currentChannels.AllKeys()[0] == channels.DocumentStarChannel {
-				continue
-			}
+			continue
 		}
 		resp[keyspace] = make(map[string]channelHistory)
 		for chanName, chanEntry := range currentChannels {
