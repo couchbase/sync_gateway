@@ -2017,8 +2017,14 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			updatedDoc.IsTombstone = currentRevFromHistory.Deleted
-			if doc.metadataOnlyUpdate != nil && doc.metadataOnlyUpdate.CAS != "" {
-				updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas))
+			if doc.metadataOnlyUpdate != nil {
+				if doc.metadataOnlyUpdate.CAS != "" {
+					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas))
+				}
+			} else {
+				if currentXattrs[base.MouXattrName] != nil {
+					updatedDoc.XattrsToDelete = append(updatedDoc.XattrsToDelete, base.MouXattrName)
+				}
 			}
 
 			// Return the new raw document value for the bucket to store.
