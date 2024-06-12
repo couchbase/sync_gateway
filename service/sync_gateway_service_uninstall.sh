@@ -121,24 +121,8 @@ ubuntu)
   esac
   ;;
 redhat* | rhel* | centos | ol)
-  case $OS_MAJOR_VERSION in
-  5)
-    PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
-    service ${SERVICE_NAME} stop
-    chkconfig ${SERVICE_NAME} off
-    chkconfig --del ${SERVICE_NAME}
-
-    if [ -f /etc/init.d/${SERVICE_NAME} ]; then
-      rm /etc/init.d/${SERVICE_NAME}
-    fi
-    ;;
-  6)
-    initctl stop ${SERVICE_NAME}
-    if [ -f /etc/init/${SERVICE_NAME}.conf ]; then
-      rm /etc/init/${SERVICE_NAME}.conf
-    fi
-    ;;
-  7 | 8)
+  case 1:${OS_MAJOR_VERSION:--} in
+  $((OS_MAJOR_VERSION >= 7))*)
     systemctl stop ${SERVICE_NAME}
     systemctl disable ${SERVICE_NAME}
 
@@ -154,8 +138,8 @@ redhat* | rhel* | centos | ol)
   esac
   ;;
 amzn*)
-  case $OS_MAJOR_VERSION in
-  2)
+  case 1:${OS_MAJOR_VERSION:--} in
+  $((OS_MAJOR_VERSION >= 2))*)
     systemctl stop ${SERVICE_NAME}
     systemctl disable ${SERVICE_NAME}
 
