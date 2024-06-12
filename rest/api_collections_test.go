@@ -1014,9 +1014,8 @@ func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
 }
 
 // TestRaceBetweenConfigPollAndDbConfigUpdate:
-//   - Fixes CBG-3994
 //   - Create rest tester with very low config update frequency, so sync gateway polls really often during test
-//   - Creat db wirth collection 1 and perform crud against that collection
+//   - Create db with collection 1 and perform crud against that collection
 //   - Update db with collection 1 and 2
 //   - Fetch runtime config and assert the scope config matches what we expect
 //   - Assert we can perform crud operations against each collection 1 and 2
