@@ -10,6 +10,7 @@ package rest
 
 import (
 	"fmt"
+	"golang.org/x/exp/maps"
 	"net/http"
 	"strings"
 
@@ -33,7 +34,6 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 	// handles deleted collections, default/ single named collection
 	for _, dsName := range h.db.DataStoreNames() {
 		keyspace := dsName.ScopeName() + "." + dsName.CollectionName()
-
 		currentChannels := user.InheritedCollectionChannels(dsName.ScopeName(), dsName.CollectionName())
 		chanHistory := user.CollectionChannelHistory(dsName.ScopeName(), dsName.CollectionName())
 		// If no channels aside from public and no channels in history, don't make a key for this keyspace
@@ -67,13 +67,10 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 		if role == nil {
 			continue
 		}
-		if !role.IsDeleted() {
-			continue
-		}
 
 		// default keyspace chan history
 		defaultKs := "_default._default"
-		if _, ok := resp[defaultKs]; !ok {
+		if _, ok := resp[defaultKs]; !ok && len(maps.Keys(role.ChannelHistory())) != 0 {
 			resp[defaultKs] = make(map[string]channelHistory)
 		}
 		for chanName, chanEntry := range role.ChannelHistory() {
@@ -86,8 +83,9 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 		for scopeName, scope := range collAccess {
 			for collName, coll := range scope {
 				keyspace := scopeName + "." + collName
-				base.InfofCtx(h.ctx(), base.KeyDiagnostic, "role coll history %s", coll.ChannelHistory_)
-				base.InfofCtx(h.ctx(), base.KeyDiagnostic, "role coll channels %s", coll.Channels_)
+				if _, ok := resp[keyspace]; !ok && len(maps.Keys(coll.ChannelHistory_)) != 0 {
+					resp[keyspace] = make(map[string]channelHistory)
+				}
 				for chanName, chanEntry := range coll.ChannelHistory_ {
 					entries := getCurrentRoleChanEntryOverlap(roleVbSeq.Sequence, chanEntry.Entries)
 					chanHistoryEntry := channelHistory{Entries: entries}
@@ -110,7 +108,7 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 		}
 
 		defaultKs := "_default._default"
-		if _, ok := resp[defaultKs]; !ok {
+		if _, ok := resp[defaultKs]; !ok && len(maps.Keys(role.ChannelHistory())) != 0 {
 			resp[defaultKs] = make(map[string]channelHistory)
 		}
 		for chanName, chanEntry := range role.ChannelHistory() {
@@ -123,8 +121,6 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 		for scopeName, scope := range collAccess {
 			for collName, coll := range scope {
 				keyspace := scopeName + "." + collName
-				base.InfofCtx(h.ctx(), base.KeyDiagnostic, "role coll history %s", coll.ChannelHistory_)
-				base.InfofCtx(h.ctx(), base.KeyDiagnostic, "role coll channels %s", coll.Channels_)
 				for chanName, chanEntry := range coll.ChannelHistory_ {
 					entries := getHistoricRoleChanEntryOverlap(roleHistory.Entries, chanEntry.Entries)
 					chanHistoryEntry := channelHistory{Entries: entries}
@@ -259,15 +255,12 @@ func (h *handler) handleGetUserDocAccessSpan() error {
 	}
 
 	resp := make(map[string]map[string]channelHistory)
-	// TODO: refactor loops
 	for _, doc := range docList {
 		docChannelToSeqs := populateDocChannelInfo(*doc)
 		userChannels, err := h.getAllUserChannelsResponse(user)
 		if err != nil {
 			return err
 		}
-		base.InfofCtx(h.ctx(), base.KeyDiagnostic, "doc chans %s, user chans %s", docChannelToSeqs, userChannels)
-		base.InfofCtx(h.ctx(), base.KeyDiagnostic, "coll name %s", keyspace)
 
 		// Only keep current keyspace
 		channelsToSeqs := userChannels[keyspace]
@@ -289,7 +282,6 @@ func (h *handler) handleGetUserDocAccessSpan() error {
 							endSeq = userSeq.EndSeq
 						}
 
-						base.InfofCtx(h.ctx(), base.KeyDiagnostic, "endSeq %s startSeq %s", endSeq, startSeq)
 						if endSeq == 0 || startSeq < endSeq {
 							chanIntersection = append(chanIntersection, auth.GrantHistorySequencePair{
 								StartSeq: startSeq,
