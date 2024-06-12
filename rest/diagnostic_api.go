@@ -38,7 +38,9 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 		chanHistory := user.CollectionChannelHistory(dsName.ScopeName(), dsName.CollectionName())
 		// If no channels aside from public and no channels in history, don't make a key for this keyspace
 		if len(currentChannels) == 1 && len(chanHistory) == 0 {
-			continue
+			if currentChannels.AllKeys()[0] == channels.DocumentStarChannel {
+				continue
+			}
 		}
 		resp[keyspace] = make(map[string]channelHistory)
 		for chanName, chanEntry := range currentChannels {
@@ -59,25 +61,25 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 		}
 	}
 
-	base.InfofCtx(h.ctx(), base.KeyDiagnostic, "user.RoleHistory(} %s", user.RoleNames())
-	// deleted role handling
-	for roleName, roleEntry := range user.RoleHistory() {
+	for roleName, roleVbSeq := range user.RoleNames() {
 		role, err := h.db.Authenticator(h.ctx()).GetRoleIncDeleted(roleName)
 		if err != nil {
 			return nil, fmt.Errorf("error getting role: %w", err)
 		}
 		if role == nil {
-			base.InfofCtx(h.ctx(), base.KeyDiagnostic, "ROLE IS NIL %s", roleName)
-			return nil, fmt.Errorf("error getting role: %w", err)
+			continue
 		}
-		// If role is not deleted, it will be handled by above loops
 		if !role.IsDeleted() {
 			continue
 		}
+
 		// default keyspace chan history
 		defaultKs := "_default._default"
+		if _, ok := resp[defaultKs]; !ok {
+			resp[defaultKs] = make(map[string]channelHistory)
+		}
 		for chanName, chanEntry := range role.ChannelHistory() {
-			entries := getRoleChanEntryOverlap(roleEntry.Entries, chanEntry.Entries)
+			entries := getCurrentRoleChanEntryOverlap(roleVbSeq.Sequence, chanEntry.Entries)
 			chanHistoryEntry := channelHistory{Entries: entries}
 			resp[defaultKs][chanName] = chanHistoryEntry
 		}
@@ -86,8 +88,10 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 		for scopeName, scope := range collAccess {
 			for collName, coll := range scope {
 				keyspace := scopeName + "." + collName
+				base.InfofCtx(h.ctx(), base.KeyDiagnostic, "role coll history %s", coll.ChannelHistory_)
+				base.InfofCtx(h.ctx(), base.KeyDiagnostic, "role coll channels %s", coll.Channels_)
 				for chanName, chanEntry := range coll.ChannelHistory_ {
-					entries := getRoleChanEntryOverlap(roleEntry.Entries, chanEntry.Entries)
+					entries := getCurrentRoleChanEntryOverlap(roleVbSeq.Sequence, chanEntry.Entries)
 					chanHistoryEntry := channelHistory{Entries: entries}
 					resp[keyspace][chanName] = chanHistoryEntry
 				}
@@ -95,22 +99,25 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 		}
 	}
 
-	for roleName, _ := range user.RoleNames() {
+	for roleName, roleHistory := range user.RoleHistory() {
 		role, err := h.db.Authenticator(h.ctx()).GetRoleIncDeleted(roleName)
 		if err != nil {
 			return nil, fmt.Errorf("error getting role: %w", err)
 		}
-		// If role is not deleted, it will be handled by above loops
+		if role == nil {
+			continue
+		}
 		if !role.IsDeleted() {
 			continue
 		}
-		base.InfofCtx(h.ctx(), base.KeyDiagnostic, "role.Channels %s, role name %s", role.ChannelHistory(), roleName)
 
-		// default keyspace chan history
 		defaultKs := "_default._default"
+		if _, ok := resp[defaultKs]; !ok {
+			resp[defaultKs] = make(map[string]channelHistory)
+		}
 		for chanName, chanEntry := range role.ChannelHistory() {
-			//entries := getRoleChanEntryOverlap(roleEntry.Entries, chanEntry.Entries)
-			chanHistoryEntry := channelHistory{Entries: chanEntry.Entries}
+			entries := getHistoricRoleChanEntryOverlap(roleHistory.Entries, chanEntry.Entries)
+			chanHistoryEntry := channelHistory{Entries: entries}
 			resp[defaultKs][chanName] = chanHistoryEntry
 		}
 
@@ -118,9 +125,11 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 		for scopeName, scope := range collAccess {
 			for collName, coll := range scope {
 				keyspace := scopeName + "." + collName
+				base.InfofCtx(h.ctx(), base.KeyDiagnostic, "role coll history %s", coll.ChannelHistory_)
+				base.InfofCtx(h.ctx(), base.KeyDiagnostic, "role coll channels %s", coll.Channels_)
 				for chanName, chanEntry := range coll.ChannelHistory_ {
-					//entries := getRoleChanEntryOverlap(roleEntry.Entries, chanEntry.Entries)
-					chanHistoryEntry := channelHistory{Entries: chanEntry.Entries}
+					entries := getHistoricRoleChanEntryOverlap(roleHistory.Entries, chanEntry.Entries)
+					chanHistoryEntry := channelHistory{Entries: entries}
 					resp[keyspace][chanName] = chanHistoryEntry
 				}
 			}
@@ -131,19 +140,43 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 }
 
 // Only used for deleted role, logic is for channels in channel_history and roles in role_history
-func getRoleChanEntryOverlap(roleEntries, chanEntries []auth.GrantHistorySequencePair) []auth.GrantHistorySequencePair {
+func getCurrentRoleChanEntryOverlap(roleVbSeq uint64, chanEntries []auth.GrantHistorySequencePair) []auth.GrantHistorySequencePair {
+	var overlapEntries []auth.GrantHistorySequencePair
+	var entry auth.GrantHistorySequencePair
+	for _, chanEntry := range chanEntries {
+		// default
+		entry = auth.GrantHistorySequencePair{StartSeq: roleVbSeq, EndSeq: chanEntry.EndSeq}
+		// role was assigned to user after chan was removed from role, no entry
+		if roleVbSeq > chanEntry.EndSeq {
+			continue
+			// role was assigned to user before chan was assigned to role
+		} else if roleVbSeq < chanEntry.StartSeq {
+			entry = auth.GrantHistorySequencePair{StartSeq: chanEntry.StartSeq, EndSeq: chanEntry.EndSeq}
+		}
+		overlapEntries = append(overlapEntries, entry)
+	}
+
+	return overlapEntries
+}
+
+// Only used for deleted role, logic is for channels in channel_history and roles in role_history
+func getHistoricRoleChanEntryOverlap(roleEntries []auth.GrantHistorySequencePair, chanEntries []auth.GrantHistorySequencePair) []auth.GrantHistorySequencePair {
 	var overlapEntries []auth.GrantHistorySequencePair
 	var entry auth.GrantHistorySequencePair
 	for _, roleEntry := range roleEntries {
 		for _, chanEntry := range chanEntries {
 			// default
 			entry = auth.GrantHistorySequencePair{StartSeq: chanEntry.StartSeq, EndSeq: roleEntry.EndSeq}
+			// role was assigned to user after chan was removed from role, no entry
 			if roleEntry.StartSeq > chanEntry.EndSeq {
 				continue
+				// role was removed from user before chan was assigned to role, no entry
 			} else if roleEntry.EndSeq < chanEntry.StartSeq {
 				continue
+				// chan was removed from role after role was removed from user
 			} else if chanEntry.EndSeq > roleEntry.EndSeq {
 				entry = auth.GrantHistorySequencePair{StartSeq: chanEntry.StartSeq, EndSeq: roleEntry.EndSeq}
+				// role was assigned to user after chan was assigned to role
 			} else if roleEntry.StartSeq > chanEntry.StartSeq {
 				entry = auth.GrantHistorySequencePair{StartSeq: roleEntry.StartSeq, EndSeq: chanEntry.EndSeq}
 			}
@@ -286,4 +319,23 @@ func (h *handler) handleGetUserDocAccessSpan() error {
 	}
 	h.writeRawJSON(bytes)
 	return err
+}
+
+func (h *handler) getUserDeletedRoles(user auth.User) ([]auth.Role, error) {
+	var deletedRoles []auth.Role
+	for roleName, _ := range user.RoleNames() {
+		role, err := h.db.Authenticator(h.ctx()).GetRoleIncDeleted(roleName)
+		if err != nil {
+			return nil, fmt.Errorf("error getting role: %w", err)
+		}
+		if role == nil {
+			continue
+		}
+		if role.IsDeleted() {
+			base.InfofCtx(h.ctx(), base.KeyDiagnostic, "FOUND DELETED ROLE 1 %s", roleName)
+			deletedRoles = append(deletedRoles, role)
+		}
+	}
+
+	return deletedRoles, nil
 }

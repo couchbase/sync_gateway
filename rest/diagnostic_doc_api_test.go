@@ -13,10 +13,9 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"testing"
-
-	"github.com/stretchr/testify/require"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -754,14 +753,19 @@ func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
 }
 
 func TestGetUserDocAccessSpanDeletedRole(t *testing.T) {
-	t.Skip("Bugfix pending")
+	if !base.TestUseCouchbaseServer() {
+		t.Skip("Requires Couchbase Server")
+	}
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.channel); role(doc.user, doc.role);}`,
 	})
 	defer rt.Close()
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
 
 	// Create role with 1 channel and assign it to user
-	roleGrant1 := roleGrant{role: "role1", adminChannels: map[string][]string{"{{.db}}": {"A"}}}
+	roleGrant1 := roleGrant{role: "role1", adminChannels: map[string][]string{"{{.keyspace}}": {"A"}}}
 	roleGrant1.request(rt)
 
 	userGrant1 := userGrant{
@@ -777,11 +781,13 @@ func TestGetUserDocAccessSpanDeletedRole(t *testing.T) {
 		user: "alice",
 	}
 	userGrant1.request(rt)
+
 	// Delete role and assert its channels no longer appear in response
 	resp := rt.SendAdminRequest("DELETE", "/db/_role/role1", ``)
 	RequireStatus(t, resp, http.StatusOK)
 
-	expectedOutput := `{"doc": {"A": { "entries" : ["3-4"]}}}`
+	// seq 3 doc was made, seq 5 role was removed from user
+	expectedOutput := `{"doc": {"A": { "entries" : ["3-5"]}}}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/_user/alice?docids=doc", ``)
 	RequireStatus(rt.TB, response, http.StatusOK)
@@ -960,7 +966,7 @@ func TestGetUserDocAccessDynamicRoleChanRemoval2(t *testing.T) {
 	}
 	userGrant1.request(rt)
 
-	// update doc1 to remove chan A
+	// update doc1 to remove chan A from role1
 	_ = rt.UpdateDoc("doc1", version, `{"channel":["A"]}`)
 
 	// assert sequences are registered correctly

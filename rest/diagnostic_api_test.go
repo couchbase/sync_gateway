@@ -702,22 +702,22 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 			"{{.keyspace1}}": {"A"},
 		},
 		output: `
-{
-   "all_channels":{
-      "{{.scopeAndCollection1}}":{
-         "A":{
-            "entries":["2-0"]
-         }
-      },
-      "{{.scopeAndCollection2}}":{
-         "D":{
-            "entries":[
-               "1-0"
-            ]
-         }
-      }
-   }
-}`,
+		{
+		   "all_channels":{
+			  "{{.scopeAndCollection1}}":{
+				 "A":{
+					"entries":["2-0"]
+				 }
+			  },
+			  "{{.scopeAndCollection2}}":{
+				 "D":{
+					"entries":[
+					   "1-0"
+					]
+				 }
+			  }
+		   }
+		}`,
 	}
 	grant.request(rt)
 
@@ -824,7 +824,9 @@ func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
 }
 
 func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
-
+	if !base.TestUseCouchbaseServer() {
+		t.Skip("Requires Couchbase Server")
+	}
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
@@ -850,7 +852,7 @@ func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
 	resp := rt.SendAdminRequest("DELETE", "/db/_role/role1", ``)
 	RequireStatus(t, resp, http.StatusOK)
 
-	userGrant.output = `{}`
+	userGrant.output = `{"all_channels":{"_default._default":{"!":{"entries":["2-3"]},"role1Chan":{"entries":["2-3"]}}}}`
 	userGrant.roles = []string{}
 	userGrant.request(rt)
 
