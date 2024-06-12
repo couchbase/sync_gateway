@@ -32,11 +32,20 @@ type channelHistory struct {
 func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[string]channelHistory, error) {
 	resp := make(map[string]map[string]channelHistory)
 
-	// handles deleted collections, default/ single named collection
+	_, err := h.db.Authenticator(h.ctx()).RebuildChannels(user)
+	if err != nil {
+		return nil, err
+	}
+	err = h.db.Authenticator(h.ctx()).RebuildRoles(user)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, dsName := range h.db.DataStoreNames() {
 		keyspace := dsName.ScopeName() + "." + dsName.CollectionName()
 		currentChannels := user.InheritedCollectionChannels(dsName.ScopeName(), dsName.CollectionName())
 		chanHistory := user.CollectionChannelHistory(dsName.ScopeName(), dsName.CollectionName())
+
 		// If no channels aside from public and no channels in history, don't make a key for this keyspace
 		if len(currentChannels) == 1 && len(chanHistory) == 0 {
 			continue
@@ -48,6 +57,7 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 			}
 			resp[keyspace][chanName] = channelHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.Sequence, EndSeq: 0}}}
 		}
+
 		for chanName, chanEntry := range chanHistory {
 			chanHistoryEntry := channelHistory{Entries: chanEntry.Entries}
 			// if channel is also in history, append current entry to history entries

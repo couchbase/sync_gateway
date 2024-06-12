@@ -962,8 +962,9 @@ func TestGetUserDocAccessDynamicRoleChanRemoval2(t *testing.T) {
 	version := rt.PutDoc("doc1", `{"channel":["A"], "user":"role:role1", "dynamicChan":"A"}`)
 
 	userGrant1 := userGrant{
-		user:  "alice",
-		roles: []string{"role1"},
+		user:   "alice",
+		roles:  []string{"role1"},
+		output: `{"all_channels":{"sg_test_0.sg_test_0":{"A":{"entries":["3-0"]}}}}`,
 	}
 	userGrant1.request(rt)
 
