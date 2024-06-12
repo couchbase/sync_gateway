@@ -10,9 +10,10 @@ package rest
 
 import (
 	"fmt"
-	"golang.org/x/exp/maps"
 	"net/http"
 	"strings"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
