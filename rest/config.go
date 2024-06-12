@@ -1753,6 +1753,17 @@ func (sc *ServerContext) fetchConfigsSince(ctx context.Context, refreshInterval 
 	return sc.dbConfigs, nil
 }
 
+// forceRuntimeConfigReload will reset the runtime config cas value to allow fetchAndLoadDatabase to reload the database
+// config from the bucket in event of the runtime config needing to be rolled back to previous version
+func (sc *ServerContext) forceRuntimeConfigReload(nonContextStruct base.NonCancellableContext, dbName string) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	if dbCfg, ok := sc.dbConfigs[dbName]; ok {
+		base.DebugfCtx(nonContextStruct.Ctx, base.KeyConfig, "resetting runtime config cas to rollback the runtime config")
+		dbCfg.cfgCas = 0
+	}
+}
+
 // GetBucketNames returns a slice of the bucket names associated with the server context
 func (sc *ServerContext) GetBucketNames() (buckets []string, err error) {
 	if sc.Config.IsServerless() {
