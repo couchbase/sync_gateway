@@ -595,7 +595,7 @@ func WaitForIndexesOnline(ctx context.Context, keyspace string, mgr *indexManage
 		}
 
 		if watchedOnlineIndexCount == len(indexNames) {
-			return true, nil, nil
+			return false, nil, nil
 		}
 		InfofCtx(ctx, KeyAll, "Indexes %s not ready - retrying...", strings.Join(offlineIndexes, ", "))
 		return true, nil, nil
