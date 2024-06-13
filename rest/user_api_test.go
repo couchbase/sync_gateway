@@ -11,6 +11,7 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"golang.org/x/exp/maps"
 	"log"
 	"net/http"
 	"sort"
@@ -1579,4 +1580,37 @@ func TestUserMultipleDBs(t *testing.T) {
 
 		})
 	}
+}
+
+func TestDeletedRoleMultiCollection(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	rt := NewRestTesterMultipleCollections(t, nil, 1)
+	collection := rt.GetSingleTestDatabaseCollection()
+	defer rt.Close()
+
+	const roleName = "role"
+	response := rt.SendAdminRequest("PUT", "/db/_role/role", GetUserPayload(t, "role", "letmein", "", collection, []string{"channel"}, nil))
+	RequireStatus(t, response, 201)
+
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+
+	// Get role - ensure accessible
+	role, err := a.GetRole(roleName)
+	assert.NoError(t, err)
+	assert.NotNil(t, role)
+	assert.Len(t, role.GetCollectionsAccess()[collection.ScopeName][collection.Name].Channels_, 2)
+	assert.True(t, role.GetCollectionsAccess()[collection.ScopeName][collection.Name].Channels_.Contains("channel"))
+
+	// Delete role
+	err = a.DeleteRole(role, false, 2)
+	assert.NoError(t, err)
+
+	// get deleted role and assert channel is in channel history
+	role, err = a.GetRoleIncDeleted(roleName)
+	assert.NoError(t, err)
+	t.Logf("role %s", role)
+	require.Equal(t, maps.Keys(role.GetCollectionsAccess()[collection.ScopeName][collection.Name].ChannelHistory_), []string{"channel"})
 }
