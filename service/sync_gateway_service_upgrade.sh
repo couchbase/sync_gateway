@@ -113,8 +113,8 @@ ubuntu)
 redhat* | rhel* | centos | ol)
   case 1:${OS_MAJOR_VERSION:--} in
   $((OS_MAJOR_VERSION >= 7))*)
-    service ${SERVICE_NAME} stop
-    service ${SERVICE_NAME} start
+    systemctl stop ${SERVICE_NAME}
+    systemctl start ${SERVICE_NAME}
     ;;
   *)
     echo "ERROR: Unsupported RedHat/CentOS Version \"$VER\""
