@@ -243,34 +243,8 @@ ubuntu)
   esac
   ;;
 redhat* | rhel* | centos | ol)
-  case $OS_MAJOR_VERSION in
-  5)
-    if [ "$SERVICE_CMD_ONLY" = true ]; then
-      echo "service ${SERVICE_NAME} start"
-    else
-      #override location for logs and sync gateway config
-      LOGS_TEMPLATE_VAR=/var/log/${SERVICE_NAME}
-      CONFIG_TEMPLATE_VAR=/opt/${SERVICE_NAME}/etc/sync_gateway.json
-
-      pre_install_actions
-      render_template script_templates/sysv_sync_gateway.tpl >/etc/init.d/${SERVICE_NAME}
-      chmod 755 /etc/init.d/${SERVICE_NAME}
-      PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
-      chkconfig --add ${SERVICE_NAME}
-      chkconfig ${SERVICE_NAME} on
-      service ${SERVICE_NAME} start
-    fi
-    ;;
-  6)
-    if [ "$SERVICE_CMD_ONLY" = true ]; then
-      echo "initctl start ${SERVICE_NAME}"
-    else
-      pre_install_actions
-      render_template script_templates/upstart_redhat_sync_gateway.tpl >/etc/init/${SERVICE_NAME}.conf
-      initctl start ${SERVICE_NAME}
-    fi
-    ;;
-  7 | 8)
+  case 1:${OS_MAJOR_VERSION:--} in
+  $((OS_MAJOR_VERSION >= 7))*)
     if [ "$SERVICE_CMD_ONLY" = true ]; then
       echo "systemctl start ${SERVICE_NAME}"
     else
@@ -288,8 +262,8 @@ redhat* | rhel* | centos | ol)
   esac
   ;;
 amzn*)
-  case $OS_MAJOR_VERSION in
-  2)
+  case 1:${OS_MAJOR_VERSION:--} in
+  $((OS_MAJOR_VERSION >= 2))*)
   if [ "$SERVICE_CMD_ONLY" = true ]; then
       echo "systemctl start ${SERVICE_NAME}"
     else
