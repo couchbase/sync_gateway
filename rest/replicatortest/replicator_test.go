@@ -8304,13 +8304,77 @@ func TestReplicatorWithCollectionsFailWithoutCollectionsEnabled(t *testing.T) {
 
 }
 
+var emptyReplicationTestCases = []struct {
+	name         string
+	replications map[string]*db.ReplicationConfig
+	errorMessage string
+}{
+	{
+		name: "empty name and empty id",
+		replications: map[string]*db.ReplicationConfig{
+			"": {
+				ID: "",
+			},
+		},
+		errorMessage: "replication name cannot be empty, id is also empty",
+	},
+	{
+		name: "empty name and populated id",
+		replications: map[string]*db.ReplicationConfig{
+			"": {
+				ID: "foo",
+			},
+		},
+		errorMessage: `replication name cannot be empty, id: \"foo\"`,
+	},
+	{
+		name: "populated name and empty id",
+		replications: map[string]*db.ReplicationConfig{
+			"foo": {
+				ID: "",
+			},
+		},
+		errorMessage: `replication id cannot be empty, name: \"foo\"`,
+	},
+}
+
 func TestBanEmptyReplicationID(t *testing.T) {
 	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_replication/", `{"remote": "fakeremote", "direction": "pull", "initial_state": "stopped"}`)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
-	require.Contains(t, string(resp.Body.Bytes()), "Replication ID is required")
+	require.Contains(t, resp.BodyString(), "Replication ID is required")
+
+	for _, testCase := range emptyReplicationTestCases {
+		rt.Run(testCase.name, func(t *testing.T) {
+			// legacy config pathway, no errors, just warning
+			dbConfig := rt.NewDbConfig()
+			dbConfig.Replications = testCase.replications
+			require.NoError(t, rest.SetupAndValidateDatabases(rt.Context(), map[string]*rest.DbConfig{"db": &dbConfig}))
+			for _, method := range []string{http.MethodPut, http.MethodPost} {
+				t.Run(method, func(t *testing.T) {
+					configEndpoint := "/{{.db}}/_config"
+					newDBEndpoint := "/newdb/"
+					for _, endpoint := range []string{configEndpoint, newDBEndpoint} {
+						// only PUT is valid for a new endpoint
+						if endpoint == newDBEndpoint && method == http.MethodPost {
+							continue
+						}
+						t.Run(endpoint, func(t *testing.T) {
+							dbConfig := rt.NewDbConfig()
+							dbConfig.Replications = testCase.replications
+
+							resp := rt.SendAdminRequest(method, endpoint, string(base.MustJSONMarshal(t, dbConfig)))
+							rest.RequireStatus(t, resp, http.StatusBadRequest)
+							require.Contains(t, resp.BodyString(), testCase.errorMessage)
+
+						})
+					}
+				})
+			}
+		})
+	}
 }
 
 func requireBodyEqual(t *testing.T, expected string, doc *db.Document) {

@@ -411,12 +411,13 @@ func setupServerConfig(ctx context.Context, args []string) (config *LegacyServer
 	return config, nil
 }
 
-func setupAndValidateDatabases(ctx context.Context, databases DbConfigMap) error {
+func SetupAndValidateDatabases(ctx context.Context, databases DbConfigMap) error {
 	for name, dbConfig := range databases {
 		if err := dbConfig.setup(ctx, name, BootstrapConfig{}, nil, nil, false); err != nil {
 			return err
 		}
-		if err := dbConfig.validate(ctx, false); err != nil {
+		isUpsert := false
+		if err := dbConfig.validate(ctx, false, isUpsert); err != nil {
 			return err
 		}
 	}
@@ -427,7 +428,7 @@ func (config *LegacyServerConfig) setupAndValidateDatabases(ctx context.Context)
 	if config == nil {
 		return nil
 	}
-	return setupAndValidateDatabases(ctx, config.Databases)
+	return SetupAndValidateDatabases(ctx, config.Databases)
 }
 
 // validate validates the given server config and returns all invalid options as a slice of errors

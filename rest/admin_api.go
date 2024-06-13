@@ -60,7 +60,8 @@ func (h *handler) handleCreateDB() error {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
-		if err := config.validate(h.ctx(), validateOIDC); err != nil {
+		isUpsert := true
+		if err := config.validate(h.ctx(), validateOIDC, isUpsert); err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
@@ -561,7 +562,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	if !h.server.persistentConfig {
 		updatedDbConfig := &DatabaseConfig{DbConfig: *dbConfig}
-		err := updatedDbConfig.validate(h.ctx(), validateOIDC)
+		isUpsert := true
+		err := updatedDbConfig.validate(h.ctx(), validateOIDC, isUpsert)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
@@ -785,7 +787,8 @@ func (h *handler) handlePutCollectionConfigSync() error {
 			bucketDbConfig.Sync = &js
 		}
 
-		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
+		isUpsert := true
+		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation), isUpsert); err != nil {
 			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
@@ -945,7 +948,8 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 			bucketDbConfig.ImportFilter = &js
 		}
 
-		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
+		isUpsert := true
+		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation), isUpsert); err != nil {
 			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
