@@ -700,14 +700,14 @@ func TestGetUserDocAccessSpanWithSingleNamedCollection(t *testing.T) {
 
 	expectedOutput1 := `{"doc1": {"defaultCollChan": { "entries" : ["2-0"]}}}`
 	response := rt.SendDiagnosticRequest(http.MethodGet, "/{{.keyspace1}}/_user/alice?docids=doc1", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput1), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput1), response.BodyString())
 
 	expectedOutput2 := `{"doc1": {"coll2Chan": { "entries" : ["3-0"]}}}`
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace2}}/_user/alice?docids=doc1", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput2), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput2), response.BodyString())
 }
 
 func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
@@ -737,14 +737,14 @@ func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
 	expectedOutput1 := `{"doc1": {"coll1Chan": { "entries" : ["3-0"]}}}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace1}}/_user/alice?docids=doc1", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput1), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput1), response.BodyString())
 
 	expectedOutput2 := `{"doc1": {"coll2Chan": { "entries" : ["3-0"]}}}`
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace2}}/_user/alice?docids=doc1", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput2), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput2), response.BodyString())
 
 	// delete collection 2
 	dbConfig := rt.NewDbConfig()
@@ -791,8 +791,8 @@ func TestGetUserDocAccessSpanDeletedRole(t *testing.T) {
 	expectedOutput := `{"doc": {"A": { "entries" : ["3-5"]}}}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/_user/alice?docids=doc", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
 
 // put doc in multiple channels, remove from some channels, assert response gets right sequences for each channels
@@ -815,8 +815,8 @@ func TestGetUserDocAccessMultiChannel(t *testing.T) {
 	expectedOutput := `{"doc1": {"A": { "entries" : ["2-4"]}, "B": { "entries" : ["3-0"]},  "C": { "entries" : ["4-0"]} }}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 
 	// remove all channels
 	_ = rt.UpdateDoc("doc1", updatedVersion, `{"channel":[]}`)
@@ -825,8 +825,8 @@ func TestGetUserDocAccessMultiChannel(t *testing.T) {
 	expectedOutput = `{"doc1": {"A": { "entries" : ["2-4"]}, "B": { "entries" : ["3-5"]},  "C": { "entries" : ["4-5"]} }}`
 	response = rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
 
 // give user access to chanA through admin API and role, remove admin API assignment, and assert access span is admin assignment to 0
@@ -862,8 +862,8 @@ func TestGetUserDocAccessContinuousRoleAdminAPI(t *testing.T) {
 	expectedOutput := `{"doc": {"A": { "entries" : ["3-4", "4-0"]} }}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/_user/alice?docids=doc", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
 
 // give user access to chanA through admin API and sync fn, remove admin API assignment, and assert access span is admin assignment to 0
@@ -895,8 +895,8 @@ func TestGetUserDocAccessContinuousSyncFnAdminAPI(t *testing.T) {
 	expectedOutput := `{"doc": {"A": { "entries" : ["2-0"]} }}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/_user/alice?docids=doc", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
 
 // give user access to chanA through sync fn after removing doc from chan
@@ -916,8 +916,8 @@ func TestGetUserDocAccessDynamicGrantOnChanRemoval(t *testing.T) {
 	expectedOutput := `{}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
 
 // give role access to chanA through sync fn, remove doc from channel and keep role assignment
@@ -945,8 +945,8 @@ func TestGetUserDocAccessDynamicRoleChanRemoval(t *testing.T) {
 	expectedOutput := `{"doc1": {"A": { "entries" : ["3-4"]} }}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
 
 // give role access to chanA through sync fn, remove channel from role and keep doc in chan
@@ -975,8 +975,8 @@ func TestGetUserDocAccessDynamicRoleChanRemoval2(t *testing.T) {
 	expectedOutput := `{"doc1": {"A": { "entries" : ["3-4"]} }}`
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/_user/alice?docids=doc1", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
 
 // multiple doc ids
@@ -1002,8 +1002,8 @@ func TestGetUserDocAccessMultiDoc(t *testing.T) {
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/_user/alice?docids=doc1,doc2,doc3,doc4", ``)
 	t.Log(response.BodyString())
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
 
 // multiple doc ids, one not found
@@ -1026,7 +1026,7 @@ func TestGetUserDocAccessMultiDocNotFound(t *testing.T) {
 	// assert sequences are registered correctly
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/_user/alice?docids=doc1,doc2,doc3,doc4", ``)
-	RequireStatus(rt.TB, response, http.StatusNotFound)
+	RequireStatus(rt.TB(), response, http.StatusNotFound)
 	assert.Contains(t, response.Body.String(), "doc doc4 not found")
 }
 
@@ -1046,7 +1046,7 @@ func TestGetUserDocAccessNoDocID(t *testing.T) {
 	// assert sequences are registered correctly
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/_user/alice?docids=", ``)
-	RequireStatus(rt.TB, response, http.StatusBadRequest)
+	RequireStatus(rt.TB(), response, http.StatusBadRequest)
 	assert.Contains(t, response.Body.String(), "empty doc id given in request")
 }
 
@@ -1071,6 +1071,6 @@ func TestGetUserDocAccessDuplicates(t *testing.T) {
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/_user/alice?docids=doc1,doc1,doc1,doc1", ``)
 	t.Log(response.BodyString())
-	RequireStatus(rt.TB, response, http.StatusOK)
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 }

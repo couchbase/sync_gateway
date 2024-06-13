@@ -26,17 +26,17 @@ type grant interface {
 func compareAllChannelsOutput(rt *RestTester, username string, expectedOutput string) {
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.db}}/_user/"+username+"/_all_channels", ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	rt.TB.Logf("All channels response: %s", response.BodyString())
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	rt.TB().Logf("All channels response: %s", response.BodyString())
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
 
 func compareUserDocSeqsOutput(rt *RestTester, username string, docids []string, expectedOutput string) {
 	response := rt.SendDiagnosticRequest(http.MethodGet,
 		"/{{.keyspace}}/_user/"+username+"?docids="+strings.Join(docids, ","), ``)
-	RequireStatus(rt.TB, response, http.StatusOK)
-	rt.TB.Logf("All channels response: %s", response.BodyString())
-	require.JSONEq(rt.TB, rt.mustTemplateResource(expectedOutput), response.BodyString())
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	rt.TB().Logf("All channels response: %s", response.BodyString())
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
 
 type userGrant struct {
@@ -59,13 +59,13 @@ func (g *userGrant) getUserPayload(rt *RestTester) string {
 
 	for keyspace, chans := range g.adminChannels {
 		_, scope, collection, err := ParseKeyspace(rt.mustTemplateResource(keyspace))
-		require.NoError(rt.TB, err)
+		require.NoError(rt.TB(), err)
 		if scope == nil && collection == nil {
 			config.ExplicitChannels = base.SetFromArray(chans)
 			continue
 		}
-		require.NotNil(rt.TB, scope, "Could not find scope from keyspace %s", keyspace)
-		require.NotNil(rt.TB, collection, "Could not find collection from keyspace %s", keyspace)
+		require.NotNil(rt.TB(), scope, "Could not find scope from keyspace %s", keyspace)
+		require.NotNil(rt.TB(), collection, "Could not find collection from keyspace %s", keyspace)
 		if base.IsDefaultCollection(*scope, *collection) {
 			config.ExplicitChannels = base.SetFromArray(chans)
 		} else {
@@ -73,15 +73,15 @@ func (g *userGrant) getUserPayload(rt *RestTester) string {
 		}
 	}
 
-	return string(base.MustJSONMarshal(rt.TB, config))
+	return string(base.MustJSONMarshal(rt.TB(), config))
 }
 
 func (g userGrant) request(rt *RestTester) {
 	payload := g.getUserPayload(rt)
-	rt.TB.Logf("Issuing admin grant: %+v", payload)
+	rt.TB().Logf("Issuing admin grant: %+v", payload)
 	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+g.user, payload)
 	if response.Code != http.StatusCreated && response.Code != http.StatusOK {
-		rt.TB.Fatalf("Expected 200 or 201 exit code")
+		rt.TB().Fatalf("Expected 200 or 201 exit code")
 	}
 	if g.output != "" {
 		if g.docUserTest {
@@ -103,28 +103,28 @@ func (g roleGrant) getPayload(rt *RestTester) string {
 	}
 	for keyspace, chans := range g.adminChannels {
 		_, scope, collection, err := ParseKeyspace(rt.mustTemplateResource(keyspace))
-		require.NoError(rt.TB, err)
+		require.NoError(rt.TB(), err)
 		if scope == nil && collection == nil {
 			config.ExplicitChannels = base.SetFromArray(chans)
 			continue
 		}
-		require.NotNil(rt.TB, scope, "Could not find scope from keyspace %s", keyspace)
-		require.NotNil(rt.TB, collection, "Could not find collection from keyspace %s", keyspace)
+		require.NotNil(rt.TB(), scope, "Could not find scope from keyspace %s", keyspace)
+		require.NotNil(rt.TB(), collection, "Could not find collection from keyspace %s", keyspace)
 		if base.IsDefaultCollection(*scope, *collection) {
 			config.ExplicitChannels = base.SetFromArray(chans)
 		} else {
 			config.SetExplicitChannels(*scope, *collection, chans...)
 		}
 	}
-	return string(base.MustJSONMarshal(rt.TB, config))
+	return string(base.MustJSONMarshal(rt.TB(), config))
 }
 
 func (g roleGrant) request(rt *RestTester) {
 	payload := g.getPayload(rt)
-	rt.TB.Logf("Issuing admin grant: %+v", payload)
+	rt.TB().Logf("Issuing admin grant: %+v", payload)
 	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+g.role, payload)
 	if response.Code != http.StatusCreated && response.Code != http.StatusOK {
-		rt.TB.Fatalf("Expected 200 or 201 exit code")
+		rt.TB().Fatalf("Expected 200 or 201 exit code")
 	}
 }
 
@@ -158,10 +158,10 @@ func (g docGrant) request(rt *RestTester) {
 	if g.docID != "" {
 		docID = g.docID
 	}
-	rt.TB.Logf("Issuing dynamic grant: %+v", payload)
+	rt.TB().Logf("Issuing dynamic grant: %+v", payload)
 	response := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s", docID), payload)
 	if response.Code != http.StatusCreated && response.Code != http.StatusOK {
-		rt.TB.Fatalf("Expected 200 or 201 exit code, got %d, output: %s", response.Code, response.Body.String())
+		rt.TB().Fatalf("Expected 200 or 201 exit code, got %d, output: %s", response.Code, response.Body.String())
 	}
 	if g.output != "" {
 		if g.docUserTest {
