@@ -25,14 +25,14 @@ const (
 
 func TestValidateAuditEvents(t *testing.T) {
 	// Ensures that the above audit event IDs are within the allocated range and are valid.
-	require.NoError(t, validateAuditEvents(sgAuditEvents))
+	require.NoError(t, validateAuditEvents(SGAuditEvents))
 }
 
 func validateAuditEvents(e events) error {
 	for id, descriptor := range e {
 		if id < auditdSyncGatewayStartID || id > auditdSyncGatewayEndID {
 			return fmt.Errorf("invalid audit event ID: %d %q (allowed range: %d-%d)",
-				id, descriptor.name, auditdSyncGatewayStartID, auditdSyncGatewayEndID)
+				id, descriptor.Name, auditdSyncGatewayStartID, auditdSyncGatewayEndID)
 		}
 	}
 	return nil

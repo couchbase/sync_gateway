@@ -156,14 +156,20 @@ type ReplicatorConfig struct {
 }
 
 type UnsupportedConfig struct {
-	StatsLogFrequency    *base.ConfigDuration `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
-	UseStdlibJSON        *bool                `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
-	Serverless           ServerlessConfig     `json:"serverless,omitempty"`
-	HTTP2                *HTTP2Config         `json:"http2,omitempty"`
-	UserQueries          *bool                `json:"user_queries,omitempty"            help:"Feature flag for user N1QL/JS queries"`
-	UseXattrConfig       *bool                `json:"use_xattr_config,omitempty"        help:"Store database configurations in system xattrs"`
-	AllowDbConfigEnvVars *bool                `json:"allow_dbconfig_env_vars,omitempty" help:"Can be set to false to skip environment variable expansion in database configs"`
-	DiagnosticInterface  string               `json:"diagnostic_interface,omitempty"    help:"Network interface to bind diagnostic API to"`
+	StatsLogFrequency    *base.ConfigDuration     `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
+	UseStdlibJSON        *bool                    `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
+	Serverless           ServerlessConfig         `json:"serverless,omitempty"`
+	HTTP2                *HTTP2Config             `json:"http2,omitempty"`
+	UserQueries          *bool                    `json:"user_queries,omitempty"            help:"Feature flag for user N1QL/JS queries"`
+	UseXattrConfig       *bool                    `json:"use_xattr_config,omitempty"        help:"Store database configurations in system xattrs"`
+	AllowDbConfigEnvVars *bool                    `json:"allow_dbconfig_env_vars,omitempty" help:"Can be set to false to skip environment variable expansion in database configs"`
+	DiagnosticInterface  string                   `json:"diagnostic_interface,omitempty"    help:"Network interface to bind diagnostic API to"`
+	AuditInfoProvider    *AuditInfoProviderConfig `json:"audit_info_provider,omitempty"     help:"Configuration for audit info provider"`
+}
+
+type AuditInfoProviderConfig struct {
+	GlobalInfoEnvVarName  *string `json:"global_info_env_var_name,omitempty" help:"Environment variable name to get global audit event info from"`
+	RequestInfoHeaderName *string `json:"request_info_header_name,omitempty" help:"HTTP header name to get request audit event info from"`
 }
 
 type ServerlessConfig struct {
@@ -240,9 +246,11 @@ func NewEmptyStartupConfig() StartupConfig {
 			Debug:   &base.FileLoggerConfig{},
 			Trace:   &base.FileLoggerConfig{},
 			Stats:   &base.FileLoggerConfig{},
+			Audit:   &base.AuditLoggerConfig{},
 		},
 		Unsupported: UnsupportedConfig{
-			HTTP2: &HTTP2Config{},
+			HTTP2:             &HTTP2Config{},
+			AuditInfoProvider: &AuditInfoProviderConfig{},
 		},
 	}
 }
