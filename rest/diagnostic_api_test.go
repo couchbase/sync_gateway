@@ -824,8 +824,8 @@ func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
 }
 
 func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
-	if !base.TestUseCouchbaseServer() {
-		t.Skip("Requires Couchbase Server")
+	if base.TestsUseNamedCollections() {
+		t.Skip("Only works with default collection until CBG-4003 is fixed")
 	}
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
