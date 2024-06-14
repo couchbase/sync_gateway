@@ -116,7 +116,7 @@ func (h *handler) handleCreateDB() error {
 				"Duplicate database name %q", dbName)
 		}
 
-		_, err = h.server._applyConfig(contextNoCancel, loadedConfig, true, false, false)
+		_, err = h.server._applyConfig(contextNoCancel, loadedConfig, true, false)
 		if err != nil {
 			return databaseLoadErrorAsHTTPError(err)
 		}
