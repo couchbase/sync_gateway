@@ -1535,18 +1535,22 @@ func (sc *ServerContext) fetchAndLoadDatabaseSince(ctx context.Context, dbName s
 	return found, nil
 }
 
-func (sc *ServerContext) fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string) (found bool, err error) {
+func (sc *ServerContext) fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string, forceReload bool) (found bool, err error) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._fetchAndLoadDatabase(nonContextStruct, dbName)
+	return sc._fetchAndLoadDatabase(nonContextStruct, dbName, forceReload)
 }
 
 // _fetchAndLoadDatabase will attempt to find the given database name first in a matching bucket name,
 // but then fall back to searching through configs in each bucket to try and find a config.
-func (sc *ServerContext) _fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string) (found bool, err error) {
+func (sc *ServerContext) _fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string, forceReload bool) (found bool, err error) {
 	found, dbConfig, err := sc._fetchDatabase(nonContextStruct.Ctx, dbName)
 	if err != nil || !found {
 		return false, err
+	}
+	if forceReload {
+		// setting the config cas to 0 will force the reload of the config from the further down stack
+		dbConfig.cfgCas = 0
 	}
 	sc._applyConfigs(nonContextStruct.Ctx, map[string]DatabaseConfig{dbName: *dbConfig}, false)
 
