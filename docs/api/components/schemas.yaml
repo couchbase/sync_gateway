@@ -1835,7 +1835,81 @@ Database:
               items:
                 type: string
               example: ["CRUD", "HTTP", "Query"]
+        audit:
+          description: Audit logging configuration.
+          type: object
+          properties:
+            enabled:
+              description: Whether audit logging is enabled.
+              type: boolean
+              default: false
+            enabled_events:
+              description: List of enabled audit events
+              type: array
+              items:
+                type: number
+              example: [1234, 5678]
+            disabled_users:
+              description: List of users for which audit logging is disabled
+              type: array
+              items:
+                type: object
+                properties:
+                  domain:
+                    description: The domain of the user for which audit logging is disabled.
+                    type: string
+                  name:
+                    description: The name of the user for which audit logging is disabled.
+                    type: string
+            disabled_roles:
+              description: List of roles for which audit logging is disabled
+              type: array
+              items:
+                type: object
+                properties:
+                  domain:
+                    description: The domain of the role for which audit logging is disabled.
+                    type: string
+                  name:
+                    description: The name of the role for which audit logging is disabled.
+                    type: string
   title: Database-config
+Database-audit:
+  title: Database-audit
+  description: A map of audit events and whether they are enabled or not.
+  type: object
+  additionalProperties:
+    x-additionalPropertiesName: audit_id
+    description: The audit event ID and whether it is enabled or not.
+    type: boolean
+Database-audit-verbose:
+  title: Database-audit-verbose
+  description: A map of detailed audit events.
+  type: object
+  additionalProperties:
+    x-additionalPropertiesName: audit_id
+    description: The audit event ID and whether it is enabled or not.
+    $ref: '#/AuditEventVerbose'
+AuditEventVerbose:
+  title: audit-event-verbose
+  description: Detailed information about an audit event.
+  type: object
+  properties:
+    name:
+      type: string
+      description: "The name of the audit event."
+      readOnly: true
+    description:
+      type: string
+      description: "The description of the audit event."
+      readOnly: true
+    enabled:
+      type: boolean
+      description: "Whether this audit event is currently enabled or not."
+    filterable:
+      type: boolean
+      description: "Whether this audit event can be disabled. Some audit events are always on."
+      readOnly: true
 Event-config:
   type: object
   properties:
@@ -2162,6 +2236,8 @@ Startup-config:
           $ref: '#/File-logging-config'
         stats:
           $ref: '#/File-logging-config'
+        audit:
+          $ref: '#/File-logging-config'
     auth:
       type: object
       properties:
@@ -2284,6 +2360,8 @@ Runtime-config:
           $ref: '#/File-logging-config'
         stats:
           $ref: '#/File-logging-config'
+        audit:
+          $ref: '#/Audit-logging-config'
     max_concurrent_replications:
       description: Maximum number of concurrent replication connections allowed. If set to 0 this limit will be ignored.
       type: integer
@@ -2297,6 +2375,23 @@ File-logging-config:
       type: boolean
     rotation:
       $ref: '#/Log-rotation-config-readonly'
+    collation_buffer_size:
+      description: The size of the log collation buffer
+      type: integer
+      readOnly: true
+  title: File-logging-config
+Audit-logging-config:
+  type: object
+  properties:
+    enabled:
+      description: Toggle for this log output
+      type: boolean
+    rotation:
+      $ref: '#/Log-rotation-config-readonly'
+    audit_log_file_path:
+      description: The path to write audit log files to
+      type: string
+      readOnly: true
     collation_buffer_size:
       description: The size of the log collation buffer
       type: integer

@@ -54,8 +54,10 @@ func TestAllConfigFlags(t *testing.T) {
 			flags = append(flags, "-"+name+"=true")
 		case uint, uint64:
 			flags = append(flags, "-"+name, "1234")
-		case int:
+		case int, int64:
 			flags = append(flags, "-"+name, "-5678")
+		case float64:
+			flags = append(flags, "-"+name, "123.456")
 		default:
 			assert.Failf(t, "Unknown flag type", "value type %v for flag %v", rFlagVal.Interface(), name)
 		}
@@ -142,7 +144,7 @@ func TestAllConfigOptionsAsFlags(t *testing.T) {
 	cfg := NewEmptyStartupConfig()
 	cfgFieldsNum := countFields(cfg)
 	flagsNum := registerConfigFlags(&cfg, flag.NewFlagSet("test", flag.ContinueOnError))
-	assert.Equalf(t, len(flagsNum), cfgFieldsNum, "Number of cli flags and startup config properties did not match! Did you forget to add a new config option in registerConfigFlags?")
+	assert.Lenf(t, flagsNum, cfgFieldsNum, "Number of cli flags and startup config properties did not match! Did you forget to add a new config option in registerConfigFlags?")
 }
 
 func countFields(cfg interface{}) (fields int) {
