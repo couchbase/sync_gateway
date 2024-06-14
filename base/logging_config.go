@@ -241,6 +241,12 @@ type LoggingConfig struct {
 	Debug          *FileLoggerConfig    `json:"debug,omitempty"`
 	Trace          *FileLoggerConfig    `json:"trace,omitempty"`
 	Stats          *FileLoggerConfig    `json:"stats,omitempty"`
+	Audit          *AuditLoggerConfig   `json:"audit,omitempty"`
+}
+
+type AuditLoggerConfig struct {
+	FileLoggerConfig
+	AuditLogFilePath *string `json:"audit_log_file_path,omitempty"` // If set, overrides the output path for the audit log files
 }
 
 func BuildLoggingConfigFromLoggers(redactionLevel RedactionLevel, LogFilePath string) *LoggingConfig {
@@ -256,6 +262,8 @@ func BuildLoggingConfigFromLoggers(redactionLevel RedactionLevel, LogFilePath st
 	config.Debug = debugLogger.getFileLoggerConfig()
 	config.Trace = traceLogger.getFileLoggerConfig()
 	config.Stats = statsLogger.getFileLoggerConfig()
+	// FIXME(bbrks): Once AuditLogger is implemented
+	config.Audit = &AuditLoggerConfig{}
 
 	return &config
 }

@@ -15,21 +15,21 @@ const (
 	IDPlaceholder ID = 54000
 )
 
-var sgAuditEvents = events{
+var SGAuditEvents = events{
 	IDPlaceholder: {
-		name:        "Placeholder audit event",
-		description: "This is a placeholder.",
-		mandatoryFields: map[string]any{
+		Name:        "Placeholder audit event",
+		Description: "This is a placeholder.",
+		MandatoryFields: map[string]any{
 			"context": map[string]any{
 				"provider": "example provider",
 				"username": "alice",
 			},
 		},
-		optionalFields: map[string]any{
+		OptionalFields: map[string]any{
 			"operationID": 123,
 			"isSomething": false,
 		},
-		filteringPermitted: false,
-		eventType:          eventTypeAdmin,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
 	},
 }
