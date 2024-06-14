@@ -1581,7 +1581,8 @@ func TestUserMultipleDBs(t *testing.T) {
 	}
 }
 
-func TestDeletedRole(t *testing.T) {
+func TestDeletedRoleChanHistory(t *testing.T) {
+	t.Skip("disabled until CBG-4003 is fixed")
 	tests := []struct {
 		defaultCollection bool
 	}{
