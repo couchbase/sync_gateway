@@ -16,6 +16,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -1048,4 +1049,59 @@ func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &dbCfg))
 	assert.Equal(t, scopesConfig, dbCfg.Scopes)
 	assert.Equal(t, originalDBCfg.Scopes, dbCfg.Scopes)
+}
+
+// TestRaceBetweenConfigPollAndDbConfigUpdate:
+//   - Create rest tester with very low config update frequency, so sync gateway polls really often during test
+//   - Create db with collection 1 and perform crud against that collection
+//   - Update db with collection 1 and 2
+//   - Fetch runtime config and assert the scope config matches what we expect
+//   - Assert we can perform crud operations against each collection 1 and 2
+func TestRaceBetweenConfigPollAndDbConfigUpdate(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	base.TestRequiresCollections(t)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb,
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			// configure the interval time to small interval, so we try fetch configs from the bucket super often
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
+		},
+	}
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
+	defer rt.Close()
+
+	// create db with collection 1
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(t, tb, 1)
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+	// perform crud operation against collection 1
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc", `{"test": "doc"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// update config to include collection 1 + 2
+	dbConfig = rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(t, tb, 2)
+	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config?include_runtime=true", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	// unmarshal runtime response and assert that the correct collections is shown
+	var dbCfg DbConfig
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &dbCfg))
+	assert.Equal(t, dbConfig.Scopes, dbCfg.Scopes)
+
+	// assert we can perform crud operations against both keyspace (no keyspace not found errors returned)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/doc1", `{"test": "doc"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/doc1", `{"test": "doc"}`)
+	RequireStatus(t, resp, http.StatusCreated)
 }
