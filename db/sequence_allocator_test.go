@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package db
 
 import (
-	"fmt"
 	"math"
 	"sync"
 	"testing"
@@ -432,45 +431,45 @@ func TestSingleNodeSyncSeqRollback(t *testing.T) {
 	// triggers correction value increase to 10 (sequence batch value) thus nextSeq is higher than you would expect
 	nxtSeq, err = a.nextSequence(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, uint64(511), nxtSeq)
-	assert.Equal(t, uint64(520), a.max)
+	assert.Equal(t, uint64(521), nxtSeq)
+	assert.Equal(t, uint64(530), a.max)
 
 	// alter _sync:seq in bucket to end seq in prev batch
 	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 10)
 	require.NoError(t, err)
 
 	// alter s.last to mock sequences being allocated
-	a.last = 520
+	a.last = 530
 
 	nxtSeq, err = a.nextSequence(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, uint64(1021), nxtSeq)
-	assert.Equal(t, uint64(1030), a.max)
+	assert.Equal(t, uint64(1041), nxtSeq)
+	assert.Equal(t, uint64(1050), a.max)
 
 	// alter _sync:seq in bucket to start seq in batch
-	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 511)
+	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 521)
 	require.NoError(t, err)
 
 	// alter s.last to mock sequences being allocated
-	a.last = 1030
+	a.last = 1050
 
 	// triggers correction value increase to 10 (sequence batch value) thus nextSeq is higher than you would expect
 	nxtSeq, err = a.nextSequence(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, uint64(1531), nxtSeq)
-	assert.Equal(t, uint64(1540), a.max)
+	assert.Equal(t, uint64(1561), nxtSeq)
+	assert.Equal(t, uint64(1570), a.max)
 
 	// rollback _sync:seq in bucket to start seq to seq outside of batch
 	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 5)
 	require.NoError(t, err)
 
 	// alter s.last to mock sequences being allocated
-	a.last = 1540
+	a.last = 1570
 
 	nxtSeq, err = a.nextSequence(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, uint64(2041), nxtSeq)
-	assert.Equal(t, uint64(2050), a.max)
+	assert.Equal(t, uint64(2081), nxtSeq)
+	assert.Equal(t, uint64(2090), a.max)
 }
 
 // TestSingleNodeNextSeqGreaterThanRollbackHandling:
@@ -483,6 +482,7 @@ func TestSingleNodeNextSeqGreaterThanRollbackHandling(t *testing.T) {
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -514,39 +514,39 @@ func TestSingleNodeNextSeqGreaterThanRollbackHandling(t *testing.T) {
 	// triggers correction value increase to 10 (sequence batch value) thus nextSeq is higher than you would expect
 	nxtSeq, _, err = a.nextSequenceGreaterThan(ctx, 15)
 	require.NoError(t, err)
-	assert.Equal(t, uint64(516), nxtSeq)
-	assert.Equal(t, uint64(516), a.last)
-	assert.Equal(t, uint64(525), a.max)
+	assert.Equal(t, uint64(526), nxtSeq)
+	assert.Equal(t, uint64(526), a.last)
+	assert.Equal(t, uint64(535), a.max)
 
 	// alter _sync:seq in bucket to end seq in prev batch
 	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 10)
 	require.NoError(t, err)
 
-	nxtSeq, _, err = a.nextSequenceGreaterThan(ctx, 525)
+	nxtSeq, _, err = a.nextSequenceGreaterThan(ctx, 535)
 	require.NoError(t, err)
-	assert.Equal(t, uint64(1026), nxtSeq)
-	assert.Equal(t, uint64(1026), a.last)
-	assert.Equal(t, uint64(1035), a.max)
+	assert.Equal(t, uint64(1046), nxtSeq)
+	assert.Equal(t, uint64(1046), a.last)
+	assert.Equal(t, uint64(1055), a.max)
 
 	// alter _sync:seq in bucket to end seq in prev batch start seq
-	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 516)
+	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 526)
 	require.NoError(t, err)
 
-	nxtSeq, _, err = a.nextSequenceGreaterThan(ctx, 1035)
+	nxtSeq, _, err = a.nextSequenceGreaterThan(ctx, 1055)
 	require.NoError(t, err)
-	assert.Equal(t, uint64(1536), nxtSeq)
-	assert.Equal(t, uint64(1536), a.last)
-	assert.Equal(t, uint64(1545), a.max)
+	assert.Equal(t, uint64(1566), nxtSeq)
+	assert.Equal(t, uint64(1566), a.last)
+	assert.Equal(t, uint64(1575), a.max)
 
 	// alter _sync:seq in bucket to prev batch value
 	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 5)
 	require.NoError(t, err)
 
-	nxtSeq, _, err = a.nextSequenceGreaterThan(ctx, 1545)
+	nxtSeq, _, err = a.nextSequenceGreaterThan(ctx, 1575)
 	require.NoError(t, err)
-	assert.Equal(t, uint64(2046), nxtSeq)
-	assert.Equal(t, uint64(2046), a.last)
-	assert.Equal(t, uint64(2055), a.max)
+	assert.Equal(t, uint64(2086), nxtSeq)
+	assert.Equal(t, uint64(2086), a.last)
+	assert.Equal(t, uint64(2095), a.max)
 }
 
 // TestSyncSeqRollbackMultiNode:
@@ -734,16 +734,15 @@ func TestFiveNodeRollbackMiddleNodesDetects(t *testing.T) {
 	// sync:seq to be + 500
 	nxtSeq, err := c.nextSequence(ctx)
 	require.NoError(t, err)
-	fmt.Println(nxtSeq, c.last, c.max)
-	assert.Equal(t, uint64(531), nxtSeq)
-	assert.Equal(t, uint64(531), c.last)
-	assert.Equal(t, uint64(540), c.max)
+	assert.Equal(t, uint64(541), nxtSeq)
+	assert.Equal(t, uint64(541), c.last)
+	assert.Equal(t, uint64(550), c.max)
 
 	// mock a getting to end of batch and trigger new batch allocation, assert it continues from corrected value
 	a.last = 10
 	nxtSeq, err = a.nextSequence(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, uint64(541), nxtSeq)
-	assert.Equal(t, uint64(541), a.last)
-	assert.Equal(t, uint64(550), a.max)
+	assert.Equal(t, uint64(551), nxtSeq)
+	assert.Equal(t, uint64(551), a.last)
+	assert.Equal(t, uint64(560), a.max)
 }
