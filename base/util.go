@@ -444,7 +444,6 @@ func RetryLoop(ctx context.Context, description string, worker RetryWorker, slee
 
 	numAttempts := 1
 
-	startTime := time.Now()
 	for {
 		shouldRetry, err, value := worker()
 		if !shouldRetry {
@@ -471,7 +470,7 @@ func RetryLoop(ctx context.Context, description string, worker RetryWorker, slee
 			} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				verb = "timed out"
 			}
-			return fmt.Errorf("Retry loop for %v %s based on context after %s", description, verb, time.Since(startTime)), nil
+			return fmt.Errorf("Retry loop for %v %s based on context", description, verb), nil
 		case <-time.After(time.Millisecond * time.Duration(sleepMs)):
 		}
 
