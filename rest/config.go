@@ -1520,7 +1520,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 		}
 	}
 
-	return sc._applyConfigs(ctx, fetchedConfigs, isInitialStartup), nil
+	return sc._applyConfigs(ctx, fetchedConfigs, isInitialStartup, false), nil
 }
 
 // fetchAndLoadDatabaseSince refreshes all dbConfigs if they where last fetched past the refreshInterval. It then returns found if
@@ -1535,20 +1535,20 @@ func (sc *ServerContext) fetchAndLoadDatabaseSince(ctx context.Context, dbName s
 	return found, nil
 }
 
-func (sc *ServerContext) fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string) (found bool, err error) {
+func (sc *ServerContext) fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string, forceReload bool) (found bool, err error) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._fetchAndLoadDatabase(nonContextStruct, dbName)
+	return sc._fetchAndLoadDatabase(nonContextStruct, dbName, forceReload)
 }
 
 // _fetchAndLoadDatabase will attempt to find the given database name first in a matching bucket name,
 // but then fall back to searching through configs in each bucket to try and find a config.
-func (sc *ServerContext) _fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string) (found bool, err error) {
+func (sc *ServerContext) _fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string, forceReload bool) (found bool, err error) {
 	found, dbConfig, err := sc._fetchDatabase(nonContextStruct.Ctx, dbName)
 	if err != nil || !found {
 		return false, err
 	}
-	sc._applyConfigs(nonContextStruct.Ctx, map[string]DatabaseConfig{dbName: *dbConfig}, false)
+	sc._applyConfigs(nonContextStruct.Ctx, map[string]DatabaseConfig{dbName: *dbConfig}, false, forceReload)
 
 	return true, nil
 }
@@ -1753,17 +1753,6 @@ func (sc *ServerContext) fetchConfigsSince(ctx context.Context, refreshInterval 
 	return sc.dbConfigs, nil
 }
 
-// forceRuntimeConfigReload will reset the runtime config cas value to allow fetchAndLoadDatabase to reload the database
-// config from the bucket in event of the runtime config needing to be rolled back to previous version
-func (sc *ServerContext) forceRuntimeConfigReload(nonContextStruct base.NonCancellableContext, dbName string) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
-	if dbCfg, ok := sc.dbConfigs[dbName]; ok {
-		base.DebugfCtx(nonContextStruct.Ctx, base.KeyConfig, "resetting runtime config cas to rollback the runtime config")
-		dbCfg.cfgCas = 0
-	}
-}
-
 // GetBucketNames returns a slice of the bucket names associated with the server context
 func (sc *ServerContext) GetBucketNames() (buckets []string, err error) {
 	if sc.Config.IsServerless() {
@@ -1855,9 +1844,9 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 }
 
 // _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.
-func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig, isInitialStartup bool) (count int) {
+func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig, isInitialStartup bool, forceReload bool) (count int) {
 	for dbName, cnf := range dbNameConfigs {
-		applied, err := sc._applyConfig(base.NewNonCancelCtx(), cnf, true, isInitialStartup)
+		applied, err := sc._applyConfig(base.NewNonCancelCtx(), cnf, true, isInitialStartup, forceReload)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue
@@ -1873,11 +1862,11 @@ func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[st
 func (sc *ServerContext) applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig) (count int) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._applyConfigs(ctx, dbNameConfigs, false)
+	return sc._applyConfigs(ctx, dbNameConfigs, false, false)
 }
 
 // _applyConfig loads the given database, failFast=true will not attempt to retry connecting/loading
-func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContext, cnf DatabaseConfig, failFast, isInitialStartup bool) (applied bool, err error) {
+func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContext, cnf DatabaseConfig, failFast, isInitialStartup, forceReload bool) (applied bool, err error) {
 	ctx := nonContextStruct.Ctx
 
 	nodeSGVersion := sc.BootstrapContext.sgVersion
@@ -1908,6 +1897,11 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	duplicateCollections := sc._findDuplicateCollections(cnf)
 	if len(duplicateCollections) > 0 {
 		return false, fmt.Errorf("%w: Collection(s) %v already in use by other database(s)", base.ErrAlreadyExists, duplicateCollections)
+	}
+
+	if forceReload {
+		// setting he config cas to 0 will force the reload of the config from, the bucket below
+		cnf.cfgCas = 0
 	}
 
 	// skip if we already have this config loaded, and we've got a cas value to compare with

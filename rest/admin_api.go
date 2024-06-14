@@ -116,7 +116,7 @@ func (h *handler) handleCreateDB() error {
 				"Duplicate database name %q", dbName)
 		}
 
-		_, err = h.server._applyConfig(contextNoCancel, loadedConfig, true, false)
+		_, err = h.server._applyConfig(contextNoCancel, loadedConfig, true, false, false)
 		if err != nil {
 			return databaseLoadErrorAsHTTPError(err)
 		}
@@ -139,7 +139,7 @@ func (h *handler) handleCreateDB() error {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
 			} else if errors.Is(err, base.ErrAlreadyExists) {
 				// on-demand config load if someone else beat us to db creation
-				if _, err := h.server._fetchAndLoadDatabase(contextNoCancel, dbName); err != nil {
+				if _, err := h.server._fetchAndLoadDatabase(contextNoCancel, dbName, false); err != nil {
 					base.WarnfCtx(h.ctx(), "Couldn't load database after conflicting create: %v", err)
 				}
 				return base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
@@ -645,10 +645,9 @@ func (h *handler) handlePutDbConfig() (err error) {
 	})
 	if err != nil {
 		base.WarnfCtx(h.ctx(), "Couldn't update config for database - rolling back: %v", err)
-		// set runtime cfgCas to 0 to force a reload of db config from the bucket
-		h.server.forceRuntimeConfigReload(contextNoCancel, dbName)
 		// failed to start the new database config - rollback and return the original error for the user
-		if _, err := h.server.fetchAndLoadDatabase(contextNoCancel, dbName); err != nil {
+		// pass forceReload flag down stack to reset the cas to force the reload of the previous config from the bucket
+		if _, err := h.server.fetchAndLoadDatabase(contextNoCancel, dbName, true); err != nil {
 			base.WarnfCtx(h.ctx(), "got error rolling back database %q after failed update: %v", base.UD(dbName), err)
 		}
 		return err
