@@ -18,8 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/exp/maps"
-
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -1583,36 +1581,65 @@ func TestUserMultipleDBs(t *testing.T) {
 	}
 }
 
-func TestDeletedRoleMultiCollection(t *testing.T) {
-	t.Skip("Disable until fix")
-	ctx := base.TestCtx(t)
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close(ctx)
+func TestDeletedRole(t *testing.T) {
+	tests := []struct {
+		defaultCollection bool
+	}{
+		{defaultCollection: true},
+		{defaultCollection: false},
+	}
 
-	rt := NewRestTesterMultipleCollections(t, nil, 1)
-	collection := rt.GetSingleTestDatabaseCollection()
-	defer rt.Close()
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("defaultCollection:%v", test.defaultCollection), func(t *testing.T) {
+			ctx := base.TestCtx(t)
 
-	const roleName = "role"
-	response := rt.SendAdminRequest("PUT", "/db/_role/role", GetUserPayload(t, "role", "letmein", "", collection, []string{"channel"}, nil))
-	RequireStatus(t, response, 201)
+			var rt *RestTester
+			if test.defaultCollection {
+				rt = NewRestTesterDefaultCollection(t, nil)
+			} else {
+				rt = NewRestTesterMultipleCollections(t, nil, 1)
+			}
 
-	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+			collection := rt.GetSingleTestDatabaseCollection()
+			defer rt.Close()
 
-	// Get role - ensure accessible
-	role, err := a.GetRole(roleName)
-	assert.NoError(t, err)
-	assert.NotNil(t, role)
-	assert.Len(t, role.GetCollectionsAccess()[collection.ScopeName][collection.Name].Channels_, 2)
-	assert.True(t, role.GetCollectionsAccess()[collection.ScopeName][collection.Name].Channels_.Contains("channel"))
+			const roleName = "role"
+			response := rt.SendAdminRequest("PUT", "/db/_role/role", GetUserPayload(t, "role", "letmein", "", collection, []string{"channel"}, nil))
+			RequireStatus(t, response, 201)
 
-	// Delete role
-	err = a.DeleteRole(role, false, 2)
-	assert.NoError(t, err)
+			a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
-	// get deleted role and assert channel is in channel history
-	role, err = a.GetRoleIncDeleted(roleName)
-	assert.NoError(t, err)
-	t.Logf("role %s", role)
-	require.Equal(t, maps.Keys(role.GetCollectionsAccess()[collection.ScopeName][collection.Name].ChannelHistory_), []string{"channel"})
+			// Get role - ensure accessible
+			role, err := a.GetRole(roleName)
+			assert.NoError(t, err)
+			assert.NotNil(t, role)
+			if collection.IsDefaultCollection() {
+				assert.Len(t, role.Channels(), 2)
+				assert.True(t, role.Channels().Contains("channel"))
+			} else {
+				assert.Len(t, role.GetCollectionsAccess()[collection.ScopeName][collection.Name].Channels(), 2)
+				assert.True(t, role.GetCollectionsAccess()[collection.ScopeName][collection.Name].Channels().Contains("channel"))
+			}
+			t.Logf("role %#v", role)
+
+			// Delete role
+			err = a.DeleteRole(role, false, 2)
+			assert.NoError(t, err)
+
+			// get deleted role and assert channel is in channel history
+			role, err = a.GetRoleIncDeleted(roleName)
+			assert.NoError(t, err)
+			t.Logf("role %#v", role)
+			if collection.IsDefaultCollection() {
+				assert.Len(t, role.ChannelHistory(), 2)
+				_, ok := role.ChannelHistory()["channel"]
+				assert.Truef(t, ok, "Channel history should contain 'channel'")
+			} else {
+				assert.Len(t, role.GetCollectionsAccess()[collection.ScopeName][collection.Name].ChannelHistory(), 2)
+				_, ok := role.GetCollectionsAccess()[collection.ScopeName][collection.Name].ChannelHistory()["channel"]
+				assert.Truef(t, ok, "Channel history should contain 'channel'")
+			}
+		})
+	}
+
 }
