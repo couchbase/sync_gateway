@@ -11,13 +11,14 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	"golang.org/x/exp/maps"
 	"log"
 	"net/http"
 	"sort"
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
