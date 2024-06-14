@@ -27,17 +27,17 @@ type auditdEventDescriptor struct {
 	OptionalFields     map[string]any `json:"optional_fields,omitempty"`
 }
 
-// toAuditdEventDescriptor converts an eventDescriptor to an auditdEventDescriptor.
+// toAuditdEventDescriptor converts an EventDescriptor to an auditdEventDescriptor.
 // These are _mostly_ the same, but each event holds its own ID in an array in the JSON format.
-func toAuditdEventDescriptor(id ID, e eventDescriptor) auditdEventDescriptor {
+func toAuditdEventDescriptor(id ID, e EventDescriptor) auditdEventDescriptor {
 	return auditdEventDescriptor{
 		ID:                 id,
-		Name:               e.name,
-		Description:        e.description,
-		Enabled:            e.enabledByDefault,
-		FilteringPermitted: e.filteringPermitted,
-		MandatoryFields:    toAuditdFieldType(e.mandatoryFields),
-		OptionalFields:     toAuditdFieldType(e.optionalFields),
+		Name:               e.Name,
+		Description:        e.Description,
+		Enabled:            e.EnabledByDefault,
+		FilteringPermitted: e.FilteringPermitted,
+		MandatoryFields:    toAuditdFieldType(e.MandatoryFields),
+		OptionalFields:     toAuditdFieldType(e.OptionalFields),
 	}
 }
 

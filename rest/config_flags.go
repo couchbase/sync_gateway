@@ -127,6 +127,15 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"logging.stats.rotation.rotation_interval":       {&config.Logging.Stats.Rotation.RotationInterval, fs.String("logging.stats.rotation.rotation_interval", "", "")},
 		"logging.stats.collation_buffer_size":            {&config.Logging.Stats.CollationBufferSize, fs.Int("logging.stats.collation_buffer_size", 0, "")},
 
+		"logging.audit.enabled":                          {&config.Logging.Audit.Enabled, fs.Bool("logging.audit.enabled", false, "")},
+		"logging.audit.rotation.max_size":                {&config.Logging.Audit.Rotation.MaxSize, fs.Int("logging.audit.rotation.max_size", 0, "")},
+		"logging.audit.rotation.max_age":                 {&config.Logging.Audit.Rotation.MaxAge, fs.Int("logging.audit.rotation.max_age", 0, "")},
+		"logging.audit.rotation.localtime":               {&config.Logging.Audit.Rotation.LocalTime, fs.Bool("logging.audit.rotation.localtime", false, "")},
+		"logging.audit.rotation.rotated_logs_size_limit": {&config.Logging.Audit.Rotation.RotatedLogsSizeLimit, fs.Int("logging.audit.rotation.rotated_logs_size_limit", 0, "")},
+		"logging.audit.collation_buffer_size":            {&config.Logging.Audit.CollationBufferSize, fs.Int("logging.audit.collation_buffer_size", 0, "")},
+		"logging.audit.rotation.rotation_interval":       {&config.Logging.Audit.Rotation.RotationInterval, fs.String("logging.audit.rotation.rotation_interval", "", "")},
+		"logging.audit.audit_log_file_path":              {&config.Logging.Audit.AuditLogFilePath, fs.String("logging.audit.audit_log_file_path", "", "")},
+
 		"auth.bcrypt_cost": {&config.Auth.BcryptCost, fs.Int("auth.bcrypt_cost", 0, "Cost to use for bcrypt password hashes")},
 
 		"replicator.max_heartbeat":                  {&config.Replicator.MaxHeartbeat, fs.String("replicator.max_heartbeat", "", "Max heartbeat value for _changes request")},
@@ -138,16 +147,17 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"heap_profile_collection_threshold": {&config.HeapProfileCollectionThreshold, fs.Uint64("heap_profile_collection_threshold", 0, "Threshold in bytes for collecting heap profiles automatically. If set, Sync Gateway will collect a memory profile when it exceeds this value. The default value will be set to 85% of the lesser of cgroup or system memory.")},
 		"heap_profile_disable_collection":   {&config.HeapProfileDisableCollection, fs.Bool("heap_profile_disable_collection", false, "Disables automatic heap profile collection.")},
 
-		"unsupported.diagnostic_interface":                 {&config.Unsupported.DiagnosticInterface, fs.String("unsupported.diagnostic_interface", "", "Network interface to bind diagnostic API to")},
-		"unsupported.stats_log_frequency":                  {&config.Unsupported.StatsLogFrequency, fs.String("unsupported.stats_log_frequency", "", "How often should stats be written to stats logs")},
-		"unsupported.use_stdlib_json":                      {&config.Unsupported.UseStdlibJSON, fs.Bool("unsupported.use_stdlib_json", false, "Bypass the jsoniter package and use Go's stdlib instead")},
-		"unsupported.http2.enabled":                        {&config.Unsupported.HTTP2.Enabled, fs.Bool("unsupported.http2.enabled", false, "Whether HTTP2 support is enabled")},
-		"unsupported.serverless.enabled":                   {&config.Unsupported.Serverless.Enabled, fs.Bool("unsupported.serverless.enabled", false, "Settings for running Sync Gateway in serverless mode.")},
-		"unsupported.serverless.min_config_fetch_interval": {&config.Unsupported.Serverless.MinConfigFetchInterval, fs.String("unsupported.serverless.min_config_fetch_interval", "", "How long to cache configs fetched from the buckets for. This cache is used for requested databases that SG does not know about.")},
-		"unsupported.use_xattr_config":                     {&config.Unsupported.UseXattrConfig, fs.Bool("unsupported.use_xattr_config", false, "Store database configurations in system xattrs")},
-		"unsupported.allow_dbconfig_env_vars":              {&config.Unsupported.AllowDbConfigEnvVars, fs.Bool("unsupported.allow_dbconfig_env_vars", true, "Can be set to false to skip environment variable expansion in database configs")},
-
-		"unsupported.user_queries": {&config.Unsupported.UserQueries, fs.Bool("unsupported.user_queries", false, "Whether user-query APIs are enabled")},
+		"unsupported.diagnostic_interface":                         {&config.Unsupported.DiagnosticInterface, fs.String("unsupported.diagnostic_interface", "", "Network interface to bind diagnostic API to")},
+		"unsupported.stats_log_frequency":                          {&config.Unsupported.StatsLogFrequency, fs.String("unsupported.stats_log_frequency", "", "How often should stats be written to stats logs")},
+		"unsupported.use_stdlib_json":                              {&config.Unsupported.UseStdlibJSON, fs.Bool("unsupported.use_stdlib_json", false, "Bypass the jsoniter package and use Go's stdlib instead")},
+		"unsupported.http2.enabled":                                {&config.Unsupported.HTTP2.Enabled, fs.Bool("unsupported.http2.enabled", false, "Whether HTTP2 support is enabled")},
+		"unsupported.serverless.enabled":                           {&config.Unsupported.Serverless.Enabled, fs.Bool("unsupported.serverless.enabled", false, "Settings for running Sync Gateway in serverless mode.")},
+		"unsupported.serverless.min_config_fetch_interval":         {&config.Unsupported.Serverless.MinConfigFetchInterval, fs.String("unsupported.serverless.min_config_fetch_interval", "", "How long to cache configs fetched from the buckets for. This cache is used for requested databases that SG does not know about.")},
+		"unsupported.use_xattr_config":                             {&config.Unsupported.UseXattrConfig, fs.Bool("unsupported.use_xattr_config", false, "Store database configurations in system xattrs")},
+		"unsupported.allow_dbconfig_env_vars":                      {&config.Unsupported.AllowDbConfigEnvVars, fs.Bool("unsupported.allow_dbconfig_env_vars", true, "Can be set to false to skip environment variable expansion in database configs")},
+		"unsupported.user_queries":                                 {&config.Unsupported.UserQueries, fs.Bool("unsupported.user_queries", false, "Whether user-query APIs are enabled")},
+		"unsupported.audit_info_provider.global_info_env_var_name": {&config.Unsupported.AuditInfoProvider.GlobalInfoEnvVarName, fs.String("unsupported.audit_info_provider.global_info_env_var_name", "", "Environment variable name to get global audit event info from")},
+		"unsupported.audit_info_provider.request_info_header_name": {&config.Unsupported.AuditInfoProvider.RequestInfoHeaderName, fs.String("unsupported.audit_info_provider.request_info_header_name", "", "Header name to get request audit event info from")},
 
 		"database_credentials": {&config.DatabaseCredentials, fs.String("database_credentials", "null", "JSON-encoded per-database credentials, that can be used instead of the bootstrap ones. This will override bucket_credentials that target the bucket that the database is in.")},
 		"bucket_credentials":   {&config.BucketCredentials, fs.String("bucket_credentials", "null", "JSON-encoded per-bucket credentials, that can be used instead of the bootstrap ones.")},
@@ -174,18 +184,11 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) error {
 			}
 
 			switch rval.Interface().(type) {
-			case *string:
-				*val.config.(*string) = *val.flagValue.(*string)
-			case *[]string:
-				list := strings.Split(*val.flagValue.(*string), ",")
-				*val.config.(*[]string) = list
-			case *uint:
-				*val.config.(*uint) = *val.flagValue.(*uint)
-			case *uint64:
+			case *bool:
 				if pointer {
 					rval.Set(reflect.ValueOf(val.flagValue))
 				} else {
-					*val.config.(*uint64) = *val.flagValue.(*uint64)
+					*val.config.(*bool) = *val.flagValue.(*bool)
 				}
 			case *int:
 				if pointer {
@@ -193,12 +196,20 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) error {
 				} else {
 					*val.config.(*int) = *val.flagValue.(*int)
 				}
-			case *bool:
+			case *int64:
 				if pointer {
 					rval.Set(reflect.ValueOf(val.flagValue))
 				} else {
-					*val.config.(*bool) = *val.flagValue.(*bool)
+					*val.config.(*int64) = *val.flagValue.(*int64)
 				}
+			case *uint:
+				if pointer {
+					rval.Set(reflect.ValueOf(val.flagValue))
+				} else {
+					*val.config.(*uint) = *val.flagValue.(*uint)
+				}
+			case *uint64:
+				*val.config.(*uint64) = *val.flagValue.(*uint64)
 			case *base.ConfigDuration:
 				duration, err := time.ParseDuration(*val.flagValue.(*string))
 				if err != nil {
