@@ -275,7 +275,7 @@ func buildIndexes(ctx context.Context, s N1QLStore, indexNames []string) error {
 	err := s.executeStatement(buildStatement)
 
 	if IsIndexerRetryBuildError(err) {
-		InfofCtx(ctx, KeyQuery, "Indexer had a retryable error creating index, assuming it will continue in background. Error:%v", err)
+		InfofCtx(ctx, KeyQuery, "Indexer returned error that will be automatically retried by the index service - waiting for that to complete. Error:%v", err)
 		return nil
 	}
 	return err
