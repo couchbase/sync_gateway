@@ -111,17 +111,8 @@ ubuntu)
   esac
   ;;
 redhat* | rhel* | centos | ol)
-  case $OS_MAJOR_VERSION in
-  5)
-    PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
-    service ${SERVICE_NAME} stop
-    service ${SERVICE_NAME} start
-    ;;
-  6)
-    initctl stop ${SERVICE_NAME}
-    initctl start ${SERVICE_NAME}
-    ;;
-  7 | 8)
+  case 1:${OS_MAJOR_VERSION:--} in
+  $((OS_MAJOR_VERSION >= 7))*)
     systemctl stop ${SERVICE_NAME}
     systemctl start ${SERVICE_NAME}
     ;;
@@ -133,8 +124,8 @@ redhat* | rhel* | centos | ol)
   esac
   ;;
 amzn*)
-  case $OS_MAJOR_VERSION in
-  2)
+  case 1:${OS_MAJOR_VERSION:--} in
+  $((OS_MAJOR_VERSION >= 2))*)
     systemctl stop ${SERVICE_NAME}
     systemctl start ${SERVICE_NAME}
     ;;

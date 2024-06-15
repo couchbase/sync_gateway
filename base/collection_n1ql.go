@@ -210,7 +210,7 @@ func (c *Collection) executeStatement(statement string) error {
 }
 
 func (c *Collection) IsErrNoResults(err error) bool {
-	return err == gocb.ErrNoResult
+	return errors.Is(err, gocb.ErrNoResult)
 }
 
 func (c *Collection) GetIndexes() (indexes []string, err error) {

@@ -81,8 +81,6 @@ func TestFeedImport(t *testing.T) {
 func TestOnDemandImportMou(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
 	base.SkipImportTestsIfNotEnabled(t)
-	bucket := base.GetTestBucket(t)
-	defer bucket.Close(base.TestCtx(t))
 
 	// SetupTestDBWithOptions sets autoImport=false
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})
@@ -887,15 +885,11 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 	_, _, err = collection.Put(ctx, "sdkWrite", updatedBody)
 	require.NoError(t, err)
 
-	syncData, mou, updatedCas := getSyncAndMou(t, collection, "sdkWrite")
+	syncData, mou, _ = getSyncAndMou(t, collection, "sdkWrite")
 	require.NotNil(t, syncData)
 	require.NotZero(t, syncData.Sequence, "Sequence should not be zero for SG write")
 
-	// verify mou wasn't updated on non-import (CAS should no longer match document cas)
-	// TODO: When CBG-3895 is complete, expect mou removal (delete mou atomically on non-mou SG writes)
-	require.Equal(t, base.CasToString(writeCas), mou.PreviousCAS)
-	require.Equal(t, base.CasToString(importCas), mou.CAS)
-	require.NotEqual(t, base.CasToString(updatedCas), mou.CAS)
+	require.Nil(t, mou, "Mou should not be updated on SG write")
 
 }
 

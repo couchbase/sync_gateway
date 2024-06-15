@@ -11,6 +11,7 @@ package rest
 import (
 	"fmt"
 	"log"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -425,16 +426,18 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	dbName := "dbName"
 	dbConfig := makeDbConfig(tb.GetName(), dbName, collection1and2ScopesConfig)
 
-	var doneChan2 chan error
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
 	databaseCompleteCount := int64(0)
 	initMgr.databaseCompleteCallback = func(dbName string) {
 		// On first completion, invoke InitializeDatabase with the same collection set post-completion
 		currentCount := atomic.LoadInt64(&databaseCompleteCount)
 		if currentCount == 0 {
+			defer wg.Done()
 			log.Printf("invoking InitializeDatabase again during teardown")
-			var err error
-			doneChan2, err = initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig())
+			doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig())
 			require.NoError(t, err)
+			WaitForChannel(t, doneChan2, "done chan 2")
 		}
 		atomic.AddInt64(&databaseCompleteCount, 1)
 
@@ -445,7 +448,7 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	require.NoError(t, err)
 
 	WaitForChannel(t, doneChan1, "done chan 1")
-	WaitForChannel(t, doneChan2, "done chan 2")
+	wg.Wait()
 
 	// Verify initialization was run for 3 collections only
 	totalCollectionInitCount := atomic.LoadInt64(&collectionCount)

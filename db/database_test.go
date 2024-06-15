@@ -2500,9 +2500,6 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 
 func TestTombstoneCompactionStopWithManager(t *testing.T) {
 
-	// FIXME (bbrks)
-	t.Skip("leaky data store needs passing down into database to trigger callbacks properly")
-
 	if !base.TestUseXattrs() {
 		t.Skip("Compaction requires xattrs")
 	}
@@ -2530,7 +2527,6 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 
 	queryCount := 0
 	callbackFunc := func() {
-		fmt.Println("leakyDataStore query callbackFunc")
 		queryCount++
 		if queryCount == 2 {
 			assert.NoError(t, db.TombstoneCompactionManager.Stop())

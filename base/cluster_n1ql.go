@@ -207,7 +207,7 @@ func (cl *ClusterOnlyN1QLStore) GetIndexMeta(ctx context.Context, indexName stri
 }
 
 func (cl *ClusterOnlyN1QLStore) IsErrNoResults(err error) bool {
-	return err == gocb.ErrNoResult
+	return errors.Is(err, gocb.ErrNoResult)
 }
 
 // EscapedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)

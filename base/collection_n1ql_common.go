@@ -370,20 +370,17 @@ func DropIndex(ctx context.Context, store N1QLStore, indexName string) error {
 }
 
 // AsN1QLStore tries to return the given DataStore as a N1QLStore, based on underlying buckets.
-func AsN1QLStore(bucket DataStore) (N1QLStore, bool) {
+func AsN1QLStore(dataStore DataStore) (N1QLStore, bool) {
 
-	var underlyingDataStore DataStore
-	switch typedBucket := bucket.(type) {
+	switch typedDataStore := dataStore.(type) {
 	case *Collection:
-		return typedBucket, true
+		return typedDataStore, true
 	case *LeakyDataStore:
-		underlyingDataStore = typedBucket.dataStore
+		return typedDataStore, true
 	default:
 		// bail out for unrecognised/unsupported buckets
 		return nil, false
 	}
-
-	return AsN1QLStore(underlyingDataStore)
 }
 
 // Index not found errors (returned by DropIndex) don't have a specific N1QL error code - they are of the form:

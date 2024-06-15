@@ -139,7 +139,7 @@ func (h *handler) handleCreateDB() error {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
 			} else if errors.Is(err, base.ErrAlreadyExists) {
 				// on-demand config load if someone else beat us to db creation
-				if _, err := h.server._fetchAndLoadDatabase(contextNoCancel, dbName); err != nil {
+				if _, err := h.server._fetchAndLoadDatabase(contextNoCancel, dbName, false); err != nil {
 					base.WarnfCtx(h.ctx(), "Couldn't load database after conflicting create: %v", err)
 				}
 				return base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
@@ -627,6 +627,9 @@ func (h *handler) handlePutDbConfig() (err error) {
 			return nil, err
 		}
 
+		// we need to set the new dbConfig cfgCas to the old version to avoid the background task polling server for config changes from reloading a
+		// previous persisted config during the update dbConfig process
+		tmpConfig.cfgCas = bucketDbConfig.cfgCas
 		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 		bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
 		if err := tmpConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
@@ -643,7 +646,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 	if err != nil {
 		base.WarnfCtx(h.ctx(), "Couldn't update config for database - rolling back: %v", err)
 		// failed to start the new database config - rollback and return the original error for the user
-		if _, err := h.server.fetchAndLoadDatabase(contextNoCancel, dbName); err != nil {
+		// pass forceReload flag down stack to reset the cas to force the reload of the previous config from the bucket
+		if _, err := h.server.fetchAndLoadDatabase(contextNoCancel, dbName, true); err != nil {
 			base.WarnfCtx(h.ctx(), "got error rolling back database %q after failed update: %v", base.UD(dbName), err)
 		}
 		return err
