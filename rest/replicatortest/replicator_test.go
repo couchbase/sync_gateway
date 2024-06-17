@@ -8377,6 +8377,29 @@ func TestBanEmptyReplicationID(t *testing.T) {
 	}
 }
 
+func TestExistingConfigEmptyReplicationID(t *testing.T) {
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+	// this pathway is used for reading legacy config and also fetchAndLoadConfigs (bootstrap polling). There should be no errors, just warnings.
+	for i, testCase := range emptyReplicationTestCases {
+		rt.Run(testCase.name, func(t *testing.T) {
+			dbName := fmt.Sprintf("db%d", i)
+			ctx := rt.Context()
+			defer func() {
+				require.True(t, rt.ServerContext().RemoveDatabase(ctx, dbName))
+			}()
+			dbConfig := rt.NewDbConfig()
+			dbConfig.Name = dbName
+			dbConfig.Replications = testCase.replications
+			_, err := rt.ServerContext().AddDatabaseFromConfig(rt.Context(), rest.DatabaseConfig{DbConfig: dbConfig})
+			require.NoError(t, err)
+			rest.RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/"+dbName+"/", ""), http.StatusOK)
+		})
+	}
+}
+
 func requireBodyEqual(t *testing.T, expected string, doc *db.Document) {
 	var expectedBody db.Body
 	require.NoError(t, base.JSONUnmarshal([]byte(expected), &expectedBody))
