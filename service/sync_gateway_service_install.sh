@@ -285,7 +285,7 @@ darwin)
     echo "launchctl start /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist"
   else
     pre_install_actions
-    render_template script_templates/com.couchbase.mobile.sync_gateway.plist >/Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
+    render_template ${SCRIPT_DIR}/script_templates/com.couchbase.mobile.sync_gateway.plist >/Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
     launchctl load /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
   fi
   ;;
