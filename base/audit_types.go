@@ -6,20 +6,20 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
-package audit
+package base
 
 import "strconv"
 
-// ID is a unique identifier for an audit event.
-type ID uint
+// AuditID is a unique identifier for an audit event.
+type AuditID uint
 
-// String implements Stringer
-func (i ID) String() string {
+// String implements Stringer for AuditID
+func (i AuditID) String() string {
 	return strconv.FormatUint(uint64(i), 10)
 }
 
 // events is a map of audit event IDs to event descriptors.
-type events map[ID]EventDescriptor
+type events map[AuditID]EventDescriptor
 
 // EventDescriptor is an audit event. The fields closely (but not exactly) follows kv_engine's auditd descriptor implementation.
 type EventDescriptor struct {

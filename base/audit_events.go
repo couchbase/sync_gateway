@@ -6,17 +6,23 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
-package audit
+package base
 
 const (
 	// auditdSyncGatewayStartID is the start of an ID range allocated for Sync Gateway by auditd
-	auditdSyncGatewayStartID ID = 53248
+	auditdSyncGatewayStartID AuditID = 53248
 
-	IDPlaceholder ID = 54000
+	AuditIDPlaceholder AuditID = 54000
 )
 
-var SGAuditEvents = events{
-	IDPlaceholder: {
+// AuditEvents is a table of audit events created by Sync Gateway.
+//
+// This is used to generate:
+//   - events themselves
+//   - a kv-auditd-compatible descriptor with TestGenerateAuditdModuleDescriptor
+//   - CSV output for each event to be used to document
+var AuditEvents = events{
+	AuditIDPlaceholder: {
 		Name:        "Placeholder audit event",
 		Description: "This is a placeholder.",
 		MandatoryFields: map[string]any{

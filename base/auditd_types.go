@@ -6,7 +6,7 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
-package audit
+package base
 
 // auditdModuleDescriptor describes an audit module descriptor in the auditd JSON format.
 type auditdModuleDescriptor struct {
@@ -17,7 +17,7 @@ type auditdModuleDescriptor struct {
 
 // auditdEventDescriptor describes an audit event in the auditd JSON format.
 type auditdEventDescriptor struct {
-	ID                 ID             `json:"id"`
+	ID                 AuditID        `json:"id"`
 	Name               string         `json:"name"`
 	Description        string         `json:"description"`
 	Sync               bool           `json:"sync,omitempty"`
@@ -29,7 +29,7 @@ type auditdEventDescriptor struct {
 
 // toAuditdEventDescriptor converts an EventDescriptor to an auditdEventDescriptor.
 // These are _mostly_ the same, but each event holds its own ID in an array in the JSON format.
-func toAuditdEventDescriptor(id ID, e EventDescriptor) auditdEventDescriptor {
+func toAuditdEventDescriptor(id AuditID, e EventDescriptor) auditdEventDescriptor {
 	return auditdEventDescriptor{
 		ID:                 id,
 		Name:               e.Name,
