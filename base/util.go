@@ -466,7 +466,13 @@ func RetryLoop(ctx context.Context, description string, worker RetryWorker, slee
 
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("Retry loop for %v closed based on context", description), nil
+			verb := "closed"
+			if errors.Is(ctx.Err(), context.Canceled) {
+				verb = "canceled"
+			} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				verb = "timed out"
+			}
+			return fmt.Errorf("Retry loop for %v %s based on context", description, verb), nil
 		case <-time.After(time.Millisecond * time.Duration(sleepMs)):
 		}
 
@@ -608,6 +614,13 @@ func CreateIndefiniteMaxDoublingSleeperFunc(initialTimeToSleepMs int, maxSleepPe
 	}
 
 	return sleeper
+}
+
+// CreateFastFailRetrySleeperFunc returns a retry sleeper that will not retry.
+func CreateFastFailRetrySleeperFunc() RetrySleeper {
+	return func(retryCount int) (bool, int) {
+		return false, -1
+	}
 }
 
 // SortedUint64Slice attaches the methods of sort.Interface to []uint64, sorting in increasing order.

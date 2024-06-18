@@ -321,3 +321,183 @@ func (lds *LeakyDataStore) IsError(err error, errorType sgbucket.DataStoreErrorT
 func (lds *LeakyDataStore) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 	return lds.dataStore.IsSupported(feature)
 }
+
+func (lds *LeakyDataStore) UpdateXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+	return lds.dataStore.UpdateXattrs(ctx, k, exp, cas, xv, opts)
+}
+
+func (lds *LeakyDataStore) WriteTombstoneWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, xattrsToDelete []string, deleteBody bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+	return lds.dataStore.WriteTombstoneWithXattrs(ctx, k, exp, cas, xv, xattrsToDelete, deleteBody, opts)
+
+}
+
+func (lds *LeakyDataStore) WriteResurrectionWithXattrs(ctx context.Context, k string, exp uint32, body []byte, xv map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+	return lds.dataStore.WriteResurrectionWithXattrs(ctx, k, exp, body, xv, opts)
+}
+
+func (lds *LeakyDataStore) GetSpec() BucketSpec {
+	if b, ok := AsCouchbaseBucketStore(lds.bucket); ok {
+		return b.GetSpec()
+	} else {
+		// Return a minimal struct:
+		return BucketSpec{
+			BucketName: lds.bucket.GetName(),
+			UseXattrs:  true,
+		}
+	}
+}
+
+// getN1QLStore abstracts getting an N1QLStore from the underlying DataStore.
+func (lds *LeakyDataStore) getN1QLStore() (N1QLStore, error) {
+	// rosmar doesn't implement N1QLStore
+	n1qlStore, ok := AsN1QLStore(lds.dataStore)
+	if !ok {
+		return nil, fmt.Errorf("bucket %T does not support N1QL", lds.dataStore)
+	}
+	return n1qlStore, nil
+}
+func (lds *LeakyDataStore) BuildDeferredIndexes(ctx context.Context, indexSet []string) error {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return err
+	}
+	return n1qlStore.BuildDeferredIndexes(ctx, indexSet)
+}
+
+func (lds *LeakyDataStore) CreateIndex(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return err
+	}
+	return n1qlStore.CreateIndex(ctx, indexName, expression, filterExpression, options)
+}
+
+func (lds *LeakyDataStore) CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return err
+	}
+	return n1qlStore.CreatePrimaryIndex(ctx, indexName, options)
+}
+
+func (lds *LeakyDataStore) DropIndex(ctx context.Context, indexName string) error {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return err
+	}
+	return n1qlStore.DropIndex(ctx, indexName)
+}
+
+func (lds *LeakyDataStore) ExplainQuery(ctx context.Context, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return nil, err
+	}
+	return n1qlStore.ExplainQuery(ctx, statement, params)
+}
+
+func (lds *LeakyDataStore) EscapedKeyspace() string {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return fmt.Sprintf("Calling LeakyDataStore.EscapedKeyspace is not supported: %s", err.Error())
+	}
+	return n1qlStore.EscapedKeyspace()
+}
+
+func (lds *LeakyDataStore) GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error) {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return false, nil, err
+	}
+	return n1qlStore.GetIndexMeta(ctx, indexName)
+}
+
+func (lds *LeakyDataStore) Query(ctx context.Context, statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return nil, err
+	}
+	iterator, err := n1qlStore.Query(ctx, statement, params, consistency, adhoc)
+
+	if lds.config.PostN1QLQueryCallback != nil {
+		lds.config.PostN1QLQueryCallback()
+	}
+	return iterator, err
+}
+
+func (lds *LeakyDataStore) IsErrNoResults(err error) bool {
+	n1qlStore, getN1QLStoreErr := lds.getN1QLStore()
+	if getN1QLStoreErr != nil {
+		return false
+	}
+	return n1qlStore.IsErrNoResults(err)
+}
+
+func (lds *LeakyDataStore) IndexMetaBucketID() string {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return fmt.Sprintf("Calling LeakyDataStore.IndexMetaBucketID is not supported: %s", err.Error())
+	}
+	return n1qlStore.IndexMetaBucketID()
+}
+
+func (lds *LeakyDataStore) IndexMetaScopeID() string {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return fmt.Sprintf("Calling LeakyDataStore.IndexMetaScopeID is not supported: %s", err.Error())
+	}
+	return n1qlStore.IndexMetaScopeID()
+}
+
+func (lds *LeakyDataStore) IndexMetaKeyspaceID() string {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return fmt.Sprintf("Calling LeakyDataStore.IndexMetaKeyspaceID is not supported: %s", err.Error())
+	}
+	return n1qlStore.IndexMetaKeyspaceID()
+}
+
+func (lds *LeakyDataStore) WaitForIndexesOnline(ctx context.Context, indexNames []string, option WaitForIndexesOnlineOption) error {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return err
+	}
+	return n1qlStore.WaitForIndexesOnline(ctx, indexNames, option)
+}
+
+func (lds *LeakyDataStore) executeQuery(statement string) (sgbucket.QueryResultIterator, error) {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return nil, err
+	}
+	return n1qlStore.executeQuery(statement)
+}
+
+func (lds *LeakyDataStore) executeStatement(statement string) error {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return err
+	}
+	return n1qlStore.executeStatement(statement)
+}
+
+func (lds *LeakyDataStore) waitUntilQueryServiceReady(timeout time.Duration) error {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return err
+	}
+	return n1qlStore.waitUntilQueryServiceReady(timeout)
+}
+
+func (lds *LeakyDataStore) GetIndexes() (indexes []string, err error) {
+	n1qlStore, err := lds.getN1QLStore()
+	if err != nil {
+		return nil, err
+	}
+	return n1qlStore.GetIndexes()
+}
+
+// Assert interface compliance:
+var (
+	_ sgbucket.DataStore = &LeakyDataStore{}
+)

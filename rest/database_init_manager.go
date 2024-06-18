@@ -130,10 +130,10 @@ func (m *DatabaseInitManager) BuildIndexOptions(startupConfig *StartupConfig, db
 		numReplicas = *dbConfig.NumIndexReplicas
 	}
 	return db.InitializeIndexOptions{
-		FailFast:    false,
-		NumReplicas: numReplicas,
-		Serverless:  startupConfig.IsServerless(),
-		UseXattrs:   dbConfig.UseXattrs(),
+		WaitForIndexesOnlineOption: base.WaitForIndexesInfinite,
+		NumReplicas:                numReplicas,
+		Serverless:                 startupConfig.IsServerless(),
+		UseXattrs:                  dbConfig.UseXattrs(),
 	}
 }
 
