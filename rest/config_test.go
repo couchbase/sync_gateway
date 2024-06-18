@@ -417,8 +417,8 @@ func TestConfigValidationJWTAndOIDC(t *testing.T) {
 				t.Fatalf("received unexpected unmarshaling error: %v", err)
 			}
 
-			isUpsert := true
-			err = dbConfig.validate(base.TestCtx(t), tc.validateOIDC, isUpsert)
+			validateReplications := true
+			err = dbConfig.validate(base.TestCtx(t), tc.validateOIDC, validateReplications)
 			switch {
 			case tc.expectedError == "":
 				require.NoError(t, err, "failed to validate valid startupConfig")
@@ -2356,8 +2356,8 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 				dbConfig.ImportFilter = testCase.ImportFilter
 			}
 
-			isUpsert := true
-			err := dbConfig.validate(base.TestCtx(t), false, isUpsert)
+			validateReplications := true
+			err := dbConfig.validate(base.TestCtx(t), false, validateReplications)
 
 			if testCase.ExpectErrorCount == 0 {
 				assert.NoError(t, err)
@@ -2727,8 +2727,8 @@ func TestCollectionsValidation(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			validateOIDCConfig := false
-			isUpsert := true
-			err := test.dbConfig.validate(base.TestCtx(t), validateOIDCConfig, isUpsert)
+			validateReplications := true
+			err := test.dbConfig.validate(base.TestCtx(t), validateOIDCConfig, validateReplications)
 			if test.expectedError != nil {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), *test.expectedError)

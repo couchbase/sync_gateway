@@ -60,8 +60,8 @@ func (h *handler) handleCreateDB() error {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
-		isUpsert := true
-		if err := config.validate(h.ctx(), validateOIDC, isUpsert); err != nil {
+		validateReplications := true
+		if err := config.validate(h.ctx(), validateOIDC, validateReplications); err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
@@ -560,13 +560,14 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	validateOIDC := !h.getBoolQuery(paramDisableOIDCValidation)
 
+	validateReplications := true
+	err = dbConfig.validate(h.ctx(), validateOIDC, validateReplications)
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+	}
+
 	if !h.server.persistentConfig {
 		updatedDbConfig := &DatabaseConfig{DbConfig: *dbConfig}
-		isUpsert := true
-		err := updatedDbConfig.validate(h.ctx(), validateOIDC, isUpsert)
-		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
-		}
 		oldDBConfig := h.server.GetDatabaseConfig(h.db.Name).DatabaseConfig.DbConfig
 		err = updatedDbConfig.validateConfigUpdate(h.ctx(), oldDBConfig,
 			validateOIDC)
@@ -787,8 +788,8 @@ func (h *handler) handlePutCollectionConfigSync() error {
 			bucketDbConfig.Sync = &js
 		}
 
-		isUpsert := true
-		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation), isUpsert); err != nil {
+		validateReplications := false
+		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation), validateReplications); err != nil {
 			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
@@ -948,8 +949,8 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 			bucketDbConfig.ImportFilter = &js
 		}
 
-		isUpsert := true
-		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation), isUpsert); err != nil {
+		validateReplications := false
+		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation), validateReplications); err != nil {
 			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 

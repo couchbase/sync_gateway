@@ -416,8 +416,9 @@ func SetupAndValidateDatabases(ctx context.Context, databases DbConfigMap) error
 		if err := dbConfig.setup(ctx, name, BootstrapConfig{}, nil, nil, false); err != nil {
 			return err
 		}
-		isUpsert := false
-		if err := dbConfig.validate(ctx, false, isUpsert); err != nil {
+		validateOIDC := false
+		validateReplications := false
+		if err := dbConfig.validate(ctx, validateOIDC, validateReplications); err != nil {
 			return err
 		}
 	}

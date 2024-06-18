@@ -676,8 +676,8 @@ func (dbConfig *DbConfig) validatePersistentDbConfig() (errorMessages error) {
 
 // validateConfigUpdate combines the results of validate and validateChanges.
 func (dbConfig *DbConfig) validateConfigUpdate(ctx context.Context, old DbConfig, validateOIDCConfig bool) error {
-	isUpsert := true
-	err := dbConfig.validate(ctx, validateOIDCConfig, isUpsert)
+	validateReplications := false
+	err := dbConfig.validate(ctx, validateOIDCConfig, validateReplications)
 	var multiErr *base.MultiError
 	if !errors.As(err, &multiErr) {
 		multiErr = multiErr.Append(err)
@@ -712,12 +712,12 @@ func (dbConfig *DbConfig) validateChanges(ctx context.Context, old DbConfig) err
 	return nil
 }
 
-// validate checks the DbConfig for any invalid or unsupported values and return a http error. If isUpsert is true, add any checks that might be upposrte
-func (dbConfig *DbConfig) validate(ctx context.Context, validateOIDCConfig bool, isUpsert bool) error {
-	return dbConfig.validateVersion(ctx, base.IsEnterpriseEdition(), validateOIDCConfig, isUpsert)
+// validate checks the DbConfig for any invalid or unsupported values and return a http error. If validateReplications is true, return an error if any replications are not valid. Otherwise issue a warning.
+func (dbConfig *DbConfig) validate(ctx context.Context, validateOIDCConfig, validateReplications bool) error {
+	return dbConfig.validateVersion(ctx, base.IsEnterpriseEdition(), validateOIDCConfig, validateReplications)
 }
 
-func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEdition, validateOIDCConfig, isUpsert bool) error {
+func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEdition, validateOIDCConfig, validateReplications bool) error {
 
 	var multiError *base.MultiError
 	// Make sure a non-zero compact_interval_days config is within the valid range
@@ -1037,30 +1037,17 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		_, err := hostOnlyCORS(dbConfig.CORS.Origin)
 		base.WarnfCtx(ctx, "The cors.origin contains values that may be ignored: %s", err)
 	}
-	// certain checks are only applicable when upserting, since we will allow them for legacy config
-	for name, r := range dbConfig.Replications {
-		if name == "" {
-			if r.ID == "" {
-				msg := "replication name cannot be empty, id is also empty"
-				if isUpsert {
-					multiError = multiError.Append(errors.New(msg))
+
+	if validateReplications {
+		for name, r := range dbConfig.Replications {
+			if name == "" {
+				if r.ID == "" {
+					multiError = multiError.Append(errors.New("replication name cannot be empty, id is also empty"))
 				} else {
-					base.WarnfCtx(ctx, msg)
+					multiError = multiError.Append(fmt.Errorf("replication name cannot be empty, id: %q", r.ID))
 				}
-			} else {
-				msg := fmt.Sprintf("replication name cannot be empty, id: %q", r.ID)
-				if isUpsert {
-					multiError = multiError.Append(errors.New(msg))
-				} else {
-					base.WarnfCtx(ctx, msg)
-				}
-			}
-		} else if r.ID == "" {
-			msg := fmt.Sprintf("replication id cannot be empty, name: %q", name)
-			if isUpsert {
-				multiError = multiError.Append(errors.New(msg))
-			} else {
-				base.WarnfCtx(ctx, msg)
+			} else if r.ID == "" {
+				multiError = multiError.Append(fmt.Errorf("replication id cannot be empty, name: %q", name))
 			}
 		}
 	}
