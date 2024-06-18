@@ -8342,7 +8342,7 @@ func TestBanEmptyReplicationID(t *testing.T) {
 	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("POST", "/{{.db}}/_replication/", `{"remote": "fakeremote", "direction": "pull", "initial_state": "stopped"}`)
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_replication/", `{"remote": "fakeremote", "direction": "pull", "initial_state": "stopped"}`)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
 	require.Contains(t, resp.BodyString(), "Replication ID is required")
 
@@ -8398,6 +8398,37 @@ func TestExistingConfigEmptyReplicationID(t *testing.T) {
 			rest.RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/"+dbName+"/", ""), http.StatusOK)
 		})
 	}
+}
+
+func TestDbConfigNoOverwriteReplications(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	startReplicationConfig := db.ReplicationConfig{
+		ID:        "replication1",
+		Remote:    "http://remote:4984/db",
+		Direction: "pull",
+	}
+
+	// PUT replication
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/replication1", string(base.MustJSONMarshal(t, startReplicationConfig)))
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Replications = map[string]*db.ReplicationConfig{
+		"replication1": {
+			ID:        "replication1",
+			Remote:    "http://remote:4984/db",
+			Direction: "push",
+		},
+	}
+	rt.UpsertDbConfig("db", dbConfig)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_replication/replication1", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	var config *db.ReplicationConfig
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &config))
+	require.Equal(t, startReplicationConfig.Direction, config.Direction)
 }
 
 func requireBodyEqual(t *testing.T, expected string, doc *db.Document) {

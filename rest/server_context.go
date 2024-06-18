@@ -923,7 +923,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		newReplications[name] = replication
 	}
-	replicationErr := dbcontext.SGReplicateMgr.PutReplications(newReplications)
+	replicationErr := dbcontext.SGReplicateMgr.PutReplications(ctx, newReplications)
 	if replicationErr != nil {
 		return nil, replicationErr
 	}
