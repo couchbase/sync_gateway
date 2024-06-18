@@ -924,7 +924,7 @@ func TestImportResurrectionMou(t *testing.T) {
 	}
 	require.NotNil(t, syncData)
 
-	// Delete via SDK, expect mou to be removed
+	// Delete via SDK, the mou will be updated by the import process
 	require.NoError(t, collection.dataStore.Delete(docID))
 	base.RequireWaitForStat(t, func() int64 {
 		return db.DbStats.SharedBucketImport().ImportCount.Value()
