@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -388,4 +389,360 @@ func TestNextSequenceGreaterThanMultiNode(t *testing.T) {
 	assert.Equal(t, 14, int(releasedSequenceCount))
 	assertNewAllocatorStats(t, dbStatsA, 2, 25, 2, 14)
 
+}
+
+// TestSingleNodeSyncSeqRollback:
+//   - Test rollback of _sync:seq doc in bucket for a single node
+//   - Use nextSequence to allocate sequences and trigger the rollback handling code
+//   - Between each sequence allocation alter the _sync:seq doc to some value in the bucket + alter a.last to mock
+//     allocator allocating sequences to end of current batch
+//   - Asserts that handling using nextSequence function is correct
+func TestSingleNodeSyncSeqRollback(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	sgw, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
+	require.NoError(t, err)
+	testStats := dbstats.Database()
+	ds := bucket.GetSingleDataStore()
+
+	a := &sequenceAllocator{
+		datastore:         bucket.GetSingleDataStore(),
+		dbStats:           testStats,
+		sequenceBatchSize: 10,
+		reserveNotify:     make(chan struct{}, 50), // no sequence release monitor
+		metaKeys:          base.DefaultMetadataKeys,
+	}
+
+	nxtSeq, err := a.nextSequence(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), nxtSeq)
+
+	// alter _sync:seq in bucket to 5
+	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 5)
+	require.NoError(t, err)
+
+	// alter s.last to mock sequences being allocated
+	a.last = 10
+
+	// triggers correction value increase to 10 (sequence batch value) thus nextSeq is higher than you would expect
+	nxtSeq, err = a.nextSequence(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(521), nxtSeq)
+	assert.Equal(t, uint64(530), a.max)
+
+	// alter _sync:seq in bucket to end seq in prev batch
+	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 10)
+	require.NoError(t, err)
+
+	// alter s.last to mock sequences being allocated
+	a.last = 530
+
+	nxtSeq, err = a.nextSequence(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1041), nxtSeq)
+	assert.Equal(t, uint64(1050), a.max)
+
+	// alter _sync:seq in bucket to start seq in batch
+	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 521)
+	require.NoError(t, err)
+
+	// alter s.last to mock sequences being allocated
+	a.last = 1050
+
+	// triggers correction value increase to 10 (sequence batch value) thus nextSeq is higher than you would expect
+	nxtSeq, err = a.nextSequence(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1561), nxtSeq)
+	assert.Equal(t, uint64(1570), a.max)
+
+	// rollback _sync:seq in bucket to start seq to seq outside of batch
+	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 5)
+	require.NoError(t, err)
+
+	// alter s.last to mock sequences being allocated
+	a.last = 1570
+
+	nxtSeq, err = a.nextSequence(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2081), nxtSeq)
+	assert.Equal(t, uint64(2090), a.max)
+}
+
+// TestSingleNodeNextSeqGreaterThanRollbackHandling:
+//   - Test rollback of _sync:seq doc in bucket for a single node
+//   - Use nextSequenceGreaterThan to allocate sequences and trigger the rollback handling code
+//   - Between each sequence allocation alter the _sync:seq doc to some value in the bucket + alter a.last to mock
+//     allocator allocating sequences to end of current batch
+//   - Asserts that handling using nextSequenceGreaterThan function is correct
+func TestSingleNodeNextSeqGreaterThanRollbackHandling(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	sgw, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
+	require.NoError(t, err)
+	testStats := dbstats.Database()
+	ds := bucket.GetSingleDataStore()
+
+	a := &sequenceAllocator{
+		datastore:         bucket.GetSingleDataStore(),
+		dbStats:           testStats,
+		sequenceBatchSize: 10,
+		reserveNotify:     make(chan struct{}, 50), // no sequence release monitor
+		metaKeys:          base.DefaultMetadataKeys,
+	}
+
+	// allocate something
+	nxtSeq, err := a.nextSequence(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), nxtSeq)
+
+	// alter _sync:seq in bucket to 5
+	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 5)
+	require.NoError(t, err)
+
+	// alter s.last to mock sequences being allocated
+	a.last = 10
+
+	// triggers correction value increase to 10 (sequence batch value) thus nextSeq is higher than you would expect
+	nxtSeq, _, err = a.nextSequenceGreaterThan(ctx, 15)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(526), nxtSeq)
+	assert.Equal(t, uint64(526), a.last)
+	assert.Equal(t, uint64(535), a.max)
+
+	// alter _sync:seq in bucket to end seq in prev batch
+	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 10)
+	require.NoError(t, err)
+
+	nxtSeq, _, err = a.nextSequenceGreaterThan(ctx, 535)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1046), nxtSeq)
+	assert.Equal(t, uint64(1046), a.last)
+	assert.Equal(t, uint64(1055), a.max)
+
+	// alter _sync:seq in bucket to end seq in prev batch start seq
+	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 526)
+	require.NoError(t, err)
+
+	nxtSeq, _, err = a.nextSequenceGreaterThan(ctx, 1055)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1566), nxtSeq)
+	assert.Equal(t, uint64(1566), a.last)
+	assert.Equal(t, uint64(1575), a.max)
+
+	// alter _sync:seq in bucket to prev batch value
+	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 5)
+	require.NoError(t, err)
+
+	nxtSeq, _, err = a.nextSequenceGreaterThan(ctx, 1575)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2086), nxtSeq)
+	assert.Equal(t, uint64(2086), a.last)
+	assert.Equal(t, uint64(2095), a.max)
+}
+
+// TestSyncSeqRollbackMultiNode:
+//   - Test rollback of _sync:seq doc in bucket for a multi node cluster node
+//   - Use nextSequenceGreaterThan to allocate sequences and trigger the rollback handling code
+//   - Alter _sync:seq in the bucket to rollback the value
+//   - Alter last seq on each allocator to mock allocation of some sequences
+//   - Use two go routines to test two nodes racing to update the rollback back _sync:seq document
+//   - Asser that the resulting batches on each node do not overlap
+func TestSyncSeqRollbackMultiNode(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	statsA, err := stats.NewDBStats("A", false, false, false, nil, nil)
+	require.NoError(t, err)
+	statsB, err := stats.NewDBStats("B", false, false, false, nil, nil)
+	require.NoError(t, err)
+	dbStatsA := statsA.DatabaseStats
+	dbStatsB := statsB.DatabaseStats
+	ds := bucket.GetSingleDataStore()
+
+	a := &sequenceAllocator{
+		datastore:         bucket.GetSingleDataStore(),
+		dbStats:           dbStatsA,
+		sequenceBatchSize: 10,
+		reserveNotify:     make(chan struct{}, 50),
+		metaKeys:          base.DefaultMetadataKeys,
+	}
+
+	b := &sequenceAllocator{
+		datastore:         bucket.GetSingleDataStore(),
+		dbStats:           dbStatsB,
+		sequenceBatchSize: 10,
+		reserveNotify:     make(chan struct{}, 50),
+		metaKeys:          base.DefaultMetadataKeys,
+	}
+
+	// perform batch allocation on sequence allocator a
+	nextSequence, _, err := a.nextSequenceGreaterThan(ctx, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(1), nextSequence)
+
+	// perform batch allocation on sequence allocator b
+	nextSequence, _, err = b.nextSequenceGreaterThan(ctx, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(11), nextSequence)
+
+	// alter _sync:seq in bucket to prev value
+	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 2)
+	require.NoError(t, err)
+
+	// set a.last on this allocator to 5 (mock some sequences being allocated)
+	a.last = 5
+
+	// set b.last on this allocator to 15 (mock some sequences being allocated)
+	b.last = 15
+
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+
+	go func() {
+		_, _, err := b.nextSequenceGreaterThan(ctx, 20)
+		assert.NoError(t, err)
+		wg.Done()
+	}()
+
+	go func() {
+		_, _, err := a.nextSequenceGreaterThan(ctx, 10)
+		assert.NoError(t, err)
+		wg.Done()
+	}()
+	wg.Wait()
+
+	// above goroutines will race each other for access to _sync:seq
+	// to assert that _sync:seq is corrected appropriately we need to determine which sequence allocator got there first
+	// assert that each sequence batch doesn't overlap
+	if a.last < b.last {
+		assert.Greater(t, b.last, a.max)
+	} else {
+		assert.Greater(t, a.last, b.max)
+	}
+
+	// grab sync seq value from bucket
+	syncSeqVal, err := a.getSequence()
+	require.NoError(t, err)
+	// get max batch value
+	maxBatchSeq := math.Max(float64(a.max), float64(b.max))
+	// assert equal to _sync:seq Value
+	assert.Equal(t, syncSeqVal, uint64(maxBatchSeq))
+}
+
+// TestFiveNodeRollbackMiddleNodesDetects:
+//   - Mock 5 nodes each with their allocation of sequence batches
+//   - Rollback the _sync:seq document to 5 then mock node c getting to end of sequence batch
+//   - Trigger new allocation of batch on that node, and assert the _sync:seq document is corrected
+//   - Trigger new batch allocation on node a and assert that batch is unique
+func TestFiveNodeRollbackMiddleNodesDetects(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	statsA, err := stats.NewDBStats("A", false, false, false, nil, nil)
+	require.NoError(t, err)
+	statsB, err := stats.NewDBStats("B", false, false, false, nil, nil)
+	require.NoError(t, err)
+	statsC, err := stats.NewDBStats("C", false, false, false, nil, nil)
+	require.NoError(t, err)
+	statsD, err := stats.NewDBStats("D", false, false, false, nil, nil)
+	require.NoError(t, err)
+	statsE, err := stats.NewDBStats("E", false, false, false, nil, nil)
+	require.NoError(t, err)
+	dbStatsA := statsA.DatabaseStats
+	dbStatsB := statsB.DatabaseStats
+	dbStatsC := statsC.DatabaseStats
+	dbStatsD := statsD.DatabaseStats
+	dbStatsE := statsE.DatabaseStats
+	ds := bucket.GetSingleDataStore()
+
+	a := &sequenceAllocator{
+		datastore:         bucket.GetSingleDataStore(),
+		dbStats:           dbStatsA,
+		sequenceBatchSize: 10,
+		reserveNotify:     make(chan struct{}, 50),
+		metaKeys:          base.DefaultMetadataKeys,
+	}
+	b := &sequenceAllocator{
+		datastore:         bucket.GetSingleDataStore(),
+		dbStats:           dbStatsB,
+		sequenceBatchSize: 10,
+		reserveNotify:     make(chan struct{}, 50),
+		metaKeys:          base.DefaultMetadataKeys,
+	}
+	c := &sequenceAllocator{
+		datastore:         bucket.GetSingleDataStore(),
+		dbStats:           dbStatsC,
+		sequenceBatchSize: 10,
+		reserveNotify:     make(chan struct{}, 50),
+		metaKeys:          base.DefaultMetadataKeys,
+	}
+	d := &sequenceAllocator{
+		datastore:         bucket.GetSingleDataStore(),
+		dbStats:           dbStatsD,
+		sequenceBatchSize: 10,
+		reserveNotify:     make(chan struct{}, 50),
+		metaKeys:          base.DefaultMetadataKeys,
+	}
+	e := &sequenceAllocator{
+		datastore:         bucket.GetSingleDataStore(),
+		dbStats:           dbStatsE,
+		sequenceBatchSize: 10,
+		reserveNotify:     make(chan struct{}, 50),
+		metaKeys:          base.DefaultMetadataKeys,
+	}
+
+	nextSequence, _, err := a.nextSequenceGreaterThan(ctx, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(1), nextSequence)
+	nextSequence, _, err = b.nextSequenceGreaterThan(ctx, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(11), nextSequence)
+	nextSequence, _, err = c.nextSequenceGreaterThan(ctx, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(21), nextSequence)
+	nextSequence, _, err = d.nextSequenceGreaterThan(ctx, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(31), nextSequence)
+	nextSequence, _, err = e.nextSequenceGreaterThan(ctx, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(41), nextSequence)
+
+	// alter _sync:seq in bucket to rolled back value
+	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 5)
+	require.NoError(t, err)
+
+	// mock node c getting to end of batch
+	c.last = 30
+
+	// trigger new batch allocation for node c, should correct the rollback by the minimum the node expect
+	// sync:seq to be + 500
+	nxtSeq, err := c.nextSequence(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(541), nxtSeq)
+	assert.Equal(t, uint64(541), c.last)
+	assert.Equal(t, uint64(550), c.max)
+
+	// mock a getting to end of batch and trigger new batch allocation, assert it continues from corrected value
+	a.last = 10
+	nxtSeq, err = a.nextSequence(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(551), nxtSeq)
+	assert.Equal(t, uint64(551), a.last)
+	assert.Equal(t, uint64(560), a.max)
 }

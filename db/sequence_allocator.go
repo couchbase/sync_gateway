@@ -34,6 +34,11 @@ const (
 
 	// Idle batch size.  Initial batch size if SG is in an idle state (with respect to writes)
 	idleBatchSize = 1
+
+	// minimum number that _sync:seq will be corrected by in event of a rollback
+	// Accounts for a maximum SG cluster size of 50 nodes, each allocating a full batch size of 10
+	// if this value is too low and this correction has potential to allocate sequences that other nodes have already reserved a batch for
+	syncSeqCorrectionValue = 500
 )
 
 // MaxSequenceIncrFrequency is the maximum frequency we want to perform incr operations.
@@ -235,11 +240,23 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 
 	numberToRelease := existingSequence - s.max
 	numberToAllocate := s.sequenceBatchSize
-	allocatedToSeq, err := s.incrementSequence(numberToRelease + numberToAllocate)
+	incrVal := numberToRelease + numberToAllocate
+	allocatedToSeq, err := s.incrementSequence(incrVal)
 	if err != nil {
 		base.WarnfCtx(ctx, "Error from incrementSequence in nextSequenceGreaterThan(%d): %v", existingSequence, err)
 		s.mutex.Unlock()
 		return 0, 0, err
+	}
+
+	// check for rollback of _sync:seq before continuing
+	minimumExpectedValue := incrVal + prevAllocReleaseTo
+	if allocatedToSeq < minimumExpectedValue {
+		// rollback of _sync:seq detected
+		allocatedToSeq, err = s._fixSyncSeqRollback(ctx, allocatedToSeq, minimumExpectedValue)
+		if err != nil {
+			s.mutex.Unlock()
+			return 0, 0, err
+		}
 	}
 
 	s.max = allocatedToSeq
@@ -304,6 +321,16 @@ func (s *sequenceAllocator) _reserveSequenceBatch(ctx context.Context) error {
 	if err != nil {
 		base.WarnfCtx(ctx, "Error from incrementSequence in _reserveSequences(%d): %v", s.sequenceBatchSize, err)
 		return err
+	}
+
+	// check for rollback of _sync:seq document
+	minimumExpectedValue := s.max + s.sequenceBatchSize
+	if max < minimumExpectedValue {
+		// rollback of _sync:seq detected
+		max, err = s._fixSyncSeqRollback(ctx, max, minimumExpectedValue)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Update max and last used sequences.  Last is updated here to account for sequences allocated/used by other
@@ -380,4 +407,52 @@ func (s *sequenceAllocator) waitForReleasedSequences(ctx context.Context, startT
 	base.InfofCtx(ctx, base.KeyCache, "Waiting %v for sequence allocation...", requiredWait)
 	time.Sleep(requiredWait)
 	return requiredWait
+}
+
+// _fixSyncSeqRollback will correct a rolled back _sync:seq document in the bucket
+func (s *sequenceAllocator) _fixSyncSeqRollback(ctx context.Context, prevAllocTo, expectedValue uint64) (allocatedToSeq uint64, err error) {
+	base.WarnfCtx(ctx, "rollback of _sync:seq document detected. Allocated to %d but expected value of at least %d", prevAllocTo, expectedValue)
+	// find diff between current _sync:seq value and what we expected it to be + correction value
+	correctionIncrValue := (expectedValue - prevAllocTo) + syncSeqCorrectionValue
+
+	worker := func() (bool, error, interface{}) {
+		// grab _sync:seq value + its current cas value
+		var result uint64
+		cas, err := s.datastore.Get(s.metaKeys.SyncSeqKey(), &result)
+		if err != nil {
+			return false, err, 0
+		}
+		// set the value to _sync:seq current value + incr value if result above is below that value
+		setVal := result + correctionIncrValue
+		if result < setVal {
+			_, err = s.datastore.WriteCas(s.metaKeys.SyncSeqKey(), 0, cas, setVal, 0)
+			if base.IsCasMismatch(err) {
+				// retry on cas error
+				return true, err, nil
+			}
+			if err == nil {
+				// successfully corrected _sync:seq value above
+				base.DebugfCtx(ctx, base.KeyCRUD, "corrected _sync:seq document from value %d by the value of %d", prevAllocTo, setVal)
+				return false, nil, setVal
+			}
+		}
+		// if we get here we either had error above that is not a cas mismatch thus we need to exit with failure or the result
+		// from the fetch of _sync:seq was larger than expected (_sync:seq may have been fixed by another node)
+		return false, err, 0
+	}
+
+	retryErr, _ := base.RetryLoop(ctx, "Fix _sync:seq Value", worker, base.CreateDoublingSleeperFunc(1000, 5))
+	if retryErr != nil {
+		base.WarnfCtx(ctx, "error: %v in retry loop to correct _sync:seq value", retryErr)
+		return 0, retryErr
+	}
+
+	base.DebugfCtx(ctx, base.KeyCRUD, "_sync:seq value successfully corrected, entering normal sequence batch processing for this node")
+	// if _sync:seq has been fixed successfully just increment by batch size to get new unique batch for this node
+	allocatedToSeq, err = s.incrementSequence(s.sequenceBatchSize)
+	if err != nil {
+		return 0, err
+	}
+
+	return allocatedToSeq, err
 }
