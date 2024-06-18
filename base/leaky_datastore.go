@@ -470,12 +470,12 @@ func (lds *LeakyDataStore) IndexMetaKeyspaceID() string {
 	return n1qlStore.IndexMetaKeyspaceID()
 }
 
-func (lds *LeakyDataStore) WaitForIndexesOnline(ctx context.Context, indexNames []string, failfast bool) error {
+func (lds *LeakyDataStore) WaitForIndexesOnline(ctx context.Context, indexNames []string, option WaitForIndexesOnlineOption) error {
 	n1qlStore, err := lds.getN1QLStore()
 	if err != nil {
 		return err
 	}
-	return n1qlStore.WaitForIndexesOnline(ctx, indexNames, failfast)
+	return n1qlStore.WaitForIndexesOnline(ctx, indexNames, option)
 }
 
 func (lds *LeakyDataStore) executeQuery(statement string) (sgbucket.QueryResultIterator, error) {

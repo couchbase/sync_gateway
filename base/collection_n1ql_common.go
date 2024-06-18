@@ -34,6 +34,18 @@ const (
 	RequestPlus = ConsistencyMode(2)
 )
 
+type WaitForIndexesOnlineOption int8
+
+const (
+	// WaitForIndexesDefault will wait a standard amount of time for indexes to come online
+	WaitForIndexesDefault WaitForIndexesOnlineOption = iota
+
+	// WaitForIndexesFailfast will fail immediately if the indexes are not online
+	WaitForIndexesFailfast
+	// WaitForIndexesInfinite will wait an indefinite amount of time for indexes to come online, or until the context is cancelled.
+	WaitForIndexesInfinite
+)
+
 // N1QLStore defines the set of operations Sync Gateway uses to manage and interact with N1QL
 type N1QLStore interface {
 	GetName() string
@@ -50,7 +62,7 @@ type N1QLStore interface {
 	IndexMetaScopeID() string
 	IndexMetaKeyspaceID() string
 	BucketName() string
-	WaitForIndexesOnline(ctx context.Context, indexNames []string, failfast bool) error
+	WaitForIndexesOnline(ctx context.Context, indexNames []string, option WaitForIndexesOnlineOption) error
 
 	// executeQuery performs the specified query without any built-in retry handling and returns the resultset
 	executeQuery(statement string) (sgbucket.QueryResultIterator, error)
@@ -262,13 +274,10 @@ func buildIndexes(ctx context.Context, s N1QLStore, indexNames []string) error {
 	buildStatement := fmt.Sprintf("BUILD INDEX ON %s(%s)", s.EscapedKeyspace(), indexNameList)
 	err := s.executeStatement(buildStatement)
 
-	// If indexer reports build will be completed in the background, wait to validate build actually happens.
 	if IsIndexerRetryBuildError(err) {
-		InfofCtx(ctx, KeyQuery, "Indexer error creating index - waiting for background build.  Error:%v", err)
-		// Wait for bucket to be created in background before returning
-		return s.WaitForIndexesOnline(ctx, indexNames, false)
+		InfofCtx(ctx, KeyQuery, "Indexer returned error that will be automatically retried by the index service - waiting for that to complete. Error:%v", err)
+		return nil
 	}
-
 	return err
 }
 
@@ -538,22 +547,28 @@ func IndexMetaKeyspaceID(bucketName, scopeName, collectionName string) string {
 }
 
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
-func WaitForIndexesOnline(ctx context.Context, keyspace string, mgr *indexManager, indexNames []string, failfast bool) error {
-	maxNumAttempts := 180
-	if failfast {
-		maxNumAttempts = 1
+func WaitForIndexesOnline(ctx context.Context, keyspace string, mgr *indexManager, indexNames []string, waitOption WaitForIndexesOnlineOption) error {
+	var retrySleeper RetrySleeper
+	initialWaitTime := 100
+	maxSleepTime := 5000
+	switch waitOption {
+	case WaitForIndexesDefault:
+		retrySleeper = CreateMaxDoublingSleeperFunc(180, initialWaitTime, maxSleepTime)
+	case WaitForIndexesFailfast:
+		retrySleeper = CreateFastFailRetrySleeperFunc()
+	case WaitForIndexesInfinite:
+		retrySleeper = CreateIndefiniteMaxDoublingSleeperFunc(initialWaitTime, maxSleepTime)
+	default:
+		return fmt.Errorf("Invalid WaitForIndexesOnlineOption: %d", waitOption)
 	}
-	retrySleeper := CreateMaxDoublingSleeperFunc(maxNumAttempts, 100, 5000)
-	retryCount := 0
 
 	onlineIndexes := make(map[string]bool)
 
-	startTime := time.Now()
-	for {
+	err, _ := RetryLoop(ctx, "WaitForIndexesOnline", func() (shouldRetry bool, err error, _ any) {
 		watchedOnlineIndexCount := 0
 		currIndexes, err := mgr.GetAllIndexes()
 		if err != nil {
-			return err
+			return false, err, nil
 		}
 		// check each of the current indexes state, add to map once finished to make sure each index online is only being logged once
 		for i := 0; i < len(currIndexes); i++ {
@@ -577,16 +592,12 @@ func WaitForIndexesOnline(ctx context.Context, keyspace string, mgr *indexManage
 		}
 
 		if watchedOnlineIndexCount == len(indexNames) {
-			return nil
-		}
-		retryCount++
-		shouldContinue, sleepMs := retrySleeper(retryCount)
-		if !shouldContinue {
-			return fmt.Errorf("Waiting for indexes in %q timed out after %s minutes. The following indexes are still offline: %s ...", MD(keyspace), time.Since(startTime)*time.Minute, strings.Join(offlineIndexes, ", "))
+			return false, nil, nil
 		}
 		InfofCtx(ctx, KeyAll, "Indexes %s not ready - retrying...", strings.Join(offlineIndexes, ", "))
-		time.Sleep(time.Millisecond * time.Duration(sleepMs))
-	}
+		return true, nil, nil
+	}, retrySleeper)
+	return err
 }
 
 func GetAllIndexes(mgr *indexManager) (indexes []string, err error) {

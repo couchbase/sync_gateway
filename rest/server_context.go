@@ -721,11 +721,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 					return nil, errors.New("Cannot create indexes on non-Couchbase data store.")
 				}
 				options := db.InitializeIndexOptions{
-					FailFast:        false,
-					NumReplicas:     numReplicas,
-					Serverless:      sc.Config.IsServerless(),
-					MetadataIndexes: indexInfo.indexSet,
-					UseXattrs:       config.UseXattrs(),
+					WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
+					NumReplicas:                numReplicas,
+					Serverless:                 sc.Config.IsServerless(),
+					MetadataIndexes:            indexInfo.indexSet,
+					UseXattrs:                  config.UseXattrs(),
 				}
 				ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), ds.ScopeName(), ds.CollectionName())
 				indexErr := db.InitializeIndexes(ctx, n1qlStore, options)

@@ -375,10 +375,10 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 		return errors.New("Cannot create indexes on non-Couchbase data store.")
 	}
 	options := InitializeIndexOptions{
-		FailFast:        false,
-		NumReplicas:     db.Options.NumIndexReplicas,
-		MetadataIndexes: IndexesPrincipalOnly,
-		UseXattrs:       db.UseXattrs(),
+		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
+		NumReplicas:                db.Options.NumIndexReplicas,
+		MetadataIndexes:            IndexesPrincipalOnly,
+		UseXattrs:                  db.UseXattrs(),
 	}
 
 	return InitializeIndexes(ctx, n1qlStore, options)

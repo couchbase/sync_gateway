@@ -368,11 +368,11 @@ const (
 
 // InitializeIndexOptions are options used for building Sync Gateway indexes, or waiting for it to come online.
 type InitializeIndexOptions struct {
-	FailFast        bool                  // if set, don't wait for indexes to come online
-	NumReplicas     uint                  // number of indexer nodes for this index
-	MetadataIndexes CollectionIndexesType // indicate which indexes to create
-	Serverless      bool                  // if true, create indexes for serverless
-	UseXattrs       bool                  // if true, create indexes on xattrs, otherwise, use inline sync data
+	WaitForIndexesOnlineOption base.WaitForIndexesOnlineOption // how long to wait for indexes to become online
+	NumReplicas                uint                            // number of indexer nodes for this index
+	MetadataIndexes            CollectionIndexesType           // indicate which indexes to create
+	Serverless                 bool                            // if true, create indexes for serverless
+	UseXattrs                  bool                            // if true, create indexes on xattrs, otherwise, use inline sync data
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
@@ -427,7 +427,7 @@ func waitForIndexes(ctx context.Context, bucket base.N1QLStore, options Initiali
 		indexes = append(indexes, fullIndexName)
 	}
 
-	err := bucket.WaitForIndexesOnline(ctx, indexes, options.FailFast)
+	err := bucket.WaitForIndexesOnline(ctx, indexes, options.WaitForIndexesOnlineOption)
 	if err != nil {
 		return err
 	}

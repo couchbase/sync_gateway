@@ -19,6 +19,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -209,6 +210,49 @@ func TestRetryLoop(t *testing.T) {
 	assert.Equal(t, "result", result)
 	assert.True(t, numTimesInvoked == 4)
 
+}
+
+func TestRetryLoopFastFail(t *testing.T) {
+	numTimesInvoked := 0
+	worker := func() (shouldRetry bool, err error, value any) {
+		numTimesInvoked += 1
+		return true, nil, nil
+	}
+
+	err, _ := RetryLoop(TestCtx(t), t.Name(), worker, CreateFastFailRetrySleeperFunc())
+	require.ErrorContains(t, err, "giving up after 1 attempts")
+	require.Equal(t, 1, numTimesInvoked)
+}
+
+func TestRetryLoopContextCancellation(t *testing.T) {
+	var invoked atomic.Bool
+	worker := func() (shouldRetry bool, err error, value any) {
+		invoked.Store(true)
+		return true, nil, nil
+	}
+
+	ctx, cancelFunc := context.WithCancel(TestCtx(t))
+
+	go func() {
+		require.Eventually(t, func() bool { return invoked.Load() == true }, 10*time.Second, 50*time.Millisecond)
+		cancelFunc()
+	}()
+	err, _ := RetryLoop(ctx, t.Name(), worker, CreateIndefiniteMaxDoublingSleeperFunc(10, 100))
+	require.ErrorContains(t, err, "canceled based on context")
+}
+
+func TestRetryLoopContextDeadline(t *testing.T) {
+	var invoked atomic.Bool
+	worker := func() (shouldRetry bool, err error, value any) {
+		invoked.Store(true)
+		return true, nil, nil
+	}
+
+	ctx, cancelFunc := context.WithTimeout(TestCtx(t), 50*time.Millisecond)
+	defer cancelFunc()
+
+	err, _ := RetryLoop(ctx, t.Name(), worker, CreateIndefiniteMaxDoublingSleeperFunc(10, 100))
+	require.ErrorContains(t, err, "timed out based on context")
 }
 
 func TestSyncSourceFromURL(t *testing.T) {

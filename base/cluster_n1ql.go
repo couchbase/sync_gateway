@@ -197,9 +197,9 @@ func (cl *ClusterOnlyN1QLStore) indexManager(scopeName, collectionName string) *
 	}
 }
 
-func (cl *ClusterOnlyN1QLStore) WaitForIndexesOnline(ctx context.Context, indexNames []string, failfast bool) error {
+func (cl *ClusterOnlyN1QLStore) WaitForIndexesOnline(ctx context.Context, indexNames []string, option WaitForIndexesOnlineOption) error {
 	keyspace := strings.Join([]string{cl.bucketName, cl.scopeName, cl.collectionName}, ".")
-	return WaitForIndexesOnline(ctx, keyspace, cl.indexManager(cl.scopeName, cl.collectionName), indexNames, failfast)
+	return WaitForIndexesOnline(ctx, keyspace, cl.indexManager(cl.scopeName, cl.collectionName), indexNames, option)
 }
 
 func (cl *ClusterOnlyN1QLStore) GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error) {
