@@ -1040,6 +1040,7 @@ func (m *sgReplicateManager) AddReplication(replication *ReplicationCfg) error {
 
 // validateReplications checks the replication configs and provides warning messages.
 func (m *sgReplicateManager) validateReplications(ctx context.Context, replications map[string]*ReplicationCfg) {
+	// the replications may exist in a way that is missing ID or name, validate and warn the user.
 	resetCheckpointMsg := "This will reset the ISGR checkpoints but prevent multiple simultaneous replications from overwriting status and checkpoint documents"
 	for replicationID, replication := range replications {
 		if replicationID == "" {

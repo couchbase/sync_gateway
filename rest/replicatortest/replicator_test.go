@@ -8401,13 +8401,17 @@ func TestExistingConfigEmptyReplicationID(t *testing.T) {
 }
 
 func TestDbConfigNoOverwriteReplications(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("Requires EE since this tests persistence of replication configuration in CfgSg")
+	}
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	startReplicationConfig := db.ReplicationConfig{
-		ID:        "replication1",
-		Remote:    "http://remote:4984/db",
-		Direction: "pull",
+		ID:                 "replication1",
+		Remote:             "http://remote:4984/db",
+		Direction:          "pull",
+		CollectionsEnabled: !rt.GetDatabase().OnlyDefaultCollection(),
 	}
 
 	// PUT replication
@@ -8417,9 +8421,10 @@ func TestDbConfigNoOverwriteReplications(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Replications = map[string]*db.ReplicationConfig{
 		"replication1": {
-			ID:        "replication1",
-			Remote:    "http://remote:4984/db",
-			Direction: "push",
+			ID:                 "replication1",
+			Remote:             "http://remote:4984/db",
+			Direction:          "push",
+			CollectionsEnabled: !rt.GetDatabase().OnlyDefaultCollection(),
 		},
 	}
 	rt.UpsertDbConfig("db", dbConfig)
