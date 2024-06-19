@@ -8378,10 +8378,15 @@ func TestBanEmptyReplicationID(t *testing.T) {
 }
 
 func TestExistingConfigEmptyReplicationID(t *testing.T) {
+	bucket := base.GetTestBucket(t)
+
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
+		CustomTestBucket: bucket,
 	})
 	defer rt.Close()
+
+	username, password, _ := bucket.BucketSpec.Auth.GetCredentials()
 	// this pathway is used for reading legacy config and also fetchAndLoadConfigs (bootstrap polling). There should be no errors, just warnings.
 	for i, testCase := range emptyReplicationTestCases {
 		rt.Run(testCase.name, func(t *testing.T) {
@@ -8392,6 +8397,8 @@ func TestExistingConfigEmptyReplicationID(t *testing.T) {
 			}()
 			dbConfig := rt.NewDbConfig()
 			dbConfig.Name = dbName
+			dbConfig.Username = username
+			dbConfig.Password = password
 			dbConfig.Replications = testCase.replications
 			_, err := rt.ServerContext().AddDatabaseFromConfig(rt.Context(), rest.DatabaseConfig{DbConfig: dbConfig})
 			require.NoError(t, err)
