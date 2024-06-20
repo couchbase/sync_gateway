@@ -12,7 +12,23 @@ const (
 	// auditdSyncGatewayStartID is the start of an ID range allocated for Sync Gateway by auditd
 	auditdSyncGatewayStartID AuditID = 53248
 
-	AuditIDPlaceholder AuditID = 54000
+	AuditIDCreateDatabase       AuditID = 53300 // create database
+	AuditIDReadDatabase         AuditID = 53301 // view database information
+	AuditIDReadDatabaseConfig   AuditID = 53302 // view database config
+	AuditIDUpdateDatabaseConfig AuditID = 53303 // update database config
+	AuditIDDeleteDatabase       AuditID = 53304 // delete database
+
+	AuditIDUserAuthenticated        AuditID = 53400 // successful login
+	AuditIDUserAuthenticationFailed AuditID = 53401 // incorrect login
+	AuditIDUserAuthorizationFailed  AuditID = 53402 // correct login but incorrect permissions
+
+	AuditIDDocumentCreate AuditID = 53500 // create document
+	AuditIDDocumentRead   AuditID = 53501 // read document
+	AuditIDDocumentUpdate AuditID = 53502 // update document
+	AuditIDDocumentDelete AuditID = 53503 // delete document
+
+	AuditIDReplicationConnect    AuditID = 53600 // new replication connection
+	AuditIDReplicationDisconnect AuditID = 53601 // replication connection closed
 )
 
 // AuditEvents is a table of audit events created by Sync Gateway.
@@ -22,20 +38,15 @@ const (
 //   - a kv-auditd-compatible descriptor with TestGenerateAuditdModuleDescriptor
 //   - CSV output for each event to be used to document
 var AuditEvents = events{
-	AuditIDPlaceholder: {
-		Name:        "Placeholder audit event",
-		Description: "This is a placeholder.",
-		MandatoryFields: map[string]any{
-			"context": map[string]any{
-				"provider": "example provider",
-				"username": "alice",
-			},
+	AuditIDReadDatabase: {
+		Name:        "Read database",
+		Description: "Information about this database was read.",
+		MandatoryFields: AuditFields{
+			"db": "database_name",
 		},
-		OptionalFields: map[string]any{
-			"operationID": 123,
-			"isSomething": false,
-		},
+		OptionalFields:     AuditFields{},
+		EnabledByDefault:   true,
 		FilteringPermitted: false,
-		EventType:          eventTypeAdmin,
+		EventType:          eventTypeUser,
 	},
 }

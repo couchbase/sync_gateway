@@ -29,8 +29,8 @@ type LogContext struct {
 	// Database is the name of the sync gateway database (see DatabaseLogCtx)
 	Database string
 
-	// DbConsoleLogConfig is database-specific log settings that should be applied (see DatabaseLogCtx)
-	DbConsoleLogConfig *DbConsoleLogConfig
+	// DbLogConfig is database-specific log settings that should be applied (see DatabaseLogCtx)
+	DbLogConfig *DbLogConfig
 
 	// Bucket is the name of the backing bucket (see KeyspaceLogCtx)
 	Bucket string
@@ -43,12 +43,33 @@ type LogContext struct {
 
 	// TestName can be a unit test name (see TestCtx)
 	TestName string
+
+	// TODO: CBG-3973 - Add request data (user, ips, etc.) - to be used by auditFieldsFromContext
+	//// Username is the name of the authenticated user
+	//Username string
+	//// UserDomain can be syncgateway or couchbase depending on whether the authenticated user is a sync gateway user or a couchbase RBAC user
+	//UserDomain string
+	//// RequestPort is the HTTP port of the request associated with this log.
+	//RequestPort string
+	//// RemoteAddr is the IP and port of the remote client making the request associated with this log
+	//RemoteAddr string
+}
+
+// DbLogConfig can be used to customise the logging for logs associated with this database.
+type DbLogConfig struct {
+	Console *DbConsoleLogConfig
+	Audit   *DbAuditLogConfig
 }
 
 // DbConsoleLogConfig can be used to customise the console logging for logs associated with this database.
 type DbConsoleLogConfig struct {
 	LogLevel *LogLevel
 	LogKeys  *LogKeyMask
+}
+
+// DbAuditLogConfig can be used to customise the audit logging for events associated with this database.
+type DbAuditLogConfig struct {
+	EnabledEvents map[AuditID]struct{}
 }
 
 // addContext returns a string format with additional log context if present.
@@ -97,13 +118,13 @@ func (lc *LogContext) getContextKey() LogContextKey {
 
 func (lc *LogContext) getCopy() LogContext {
 	return LogContext{
-		CorrelationID:      lc.CorrelationID,
-		Database:           lc.Database,
-		DbConsoleLogConfig: lc.DbConsoleLogConfig,
-		Bucket:             lc.Bucket,
-		Scope:              lc.Scope,
-		Collection:         lc.Collection,
-		TestName:           lc.TestName,
+		CorrelationID: lc.CorrelationID,
+		Database:      lc.Database,
+		DbLogConfig:   lc.DbLogConfig,
+		Bucket:        lc.Bucket,
+		Scope:         lc.Scope,
+		Collection:    lc.Collection,
+		TestName:      lc.TestName,
 	}
 }
 
@@ -158,10 +179,10 @@ func CorrelationIDLogCtx(parent context.Context, correlationID string) context.C
 }
 
 // DatabaseLogCtx extends the parent context with a database name.
-func DatabaseLogCtx(parent context.Context, databaseName string, config *DbConsoleLogConfig) context.Context {
+func DatabaseLogCtx(parent context.Context, databaseName string, config *DbLogConfig) context.Context {
 	newCtx := getLogCtx(parent)
 	newCtx.Database = databaseName
-	newCtx.DbConsoleLogConfig = config
+	newCtx.DbLogConfig = config
 	return LogContextWith(parent, &newCtx)
 }
 

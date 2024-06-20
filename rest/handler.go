@@ -205,7 +205,7 @@ func (h *handler) ctx() context.Context {
 	return h.rqCtx
 }
 
-func (h *handler) addDatabaseLogContext(dbName string, logConfig *base.DbConsoleLogConfig) {
+func (h *handler) addDatabaseLogContext(dbName string, logConfig *base.DbLogConfig) {
 	if dbName != "" {
 		h.rqCtx = base.DatabaseLogCtx(h.ctx(), dbName, logConfig)
 	}
@@ -380,7 +380,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	// If this call is in the context of a DB make sure the DB is in a valid state
 	if dbContext != nil {
-		h.addDatabaseLogContext(keyspaceDb, dbContext.Options.LoggingConfig.Console)
+		h.addDatabaseLogContext(keyspaceDb, dbContext.Options.LoggingConfig)
 		if !h.runOffline {
 			// get a read lock on the dbContext
 			// When the lock is returned we know that the db state will not be changed by
@@ -725,25 +725,34 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 		return nil
 	}
 
+	auditFields := make(base.AuditFields)
+
 	// Record Auth stats
 	defer func(t time.Time) {
 		delta := time.Since(t).Nanoseconds()
 		dbCtx.DbStats.Security().TotalAuthTime.Add(delta)
 		if err != nil {
 			dbCtx.DbStats.Security().AuthFailedCount.Add(1)
+			if errors.Is(err, ErrInvalidLogin) {
+				base.Audit(h.ctx(), base.AuditIDUserAuthorizationFailed, auditFields)
+			}
 		} else {
 			dbCtx.DbStats.Security().AuthSuccessCount.Add(1)
+			base.Audit(h.ctx(), base.AuditIDUserAuthenticated, auditFields)
 		}
-
 	}(time.Now())
 
 	// If oidc enabled, check for bearer ID token
 	if dbCtx.Options.OIDCOptions != nil || len(dbCtx.LocalJWTProviders) > 0 {
 		if token := h.getBearerToken(); token != "" {
+			auditFields["method"] = "bearer"
 			var updates auth.PrincipalConfig
 			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.LocalJWTProviders, h.getOIDCCallbackURL)
 			if h.user == nil || err != nil {
 				return ErrInvalidLogin
+			}
+			if issuer := h.user.JWTIssuer(); issuer != "" {
+				auditFields["oidc_issuer"] = issuer
 			}
 			if changes := checkJWTIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
 				updates = updates.Merge(*changes)
@@ -781,12 +790,14 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	// Check basic auth first
 	if !dbCtx.Options.DisablePasswordAuthentication {
 		if userName, password := h.getBasicAuth(); userName != "" {
+			auditFields["method"] = "basic"
 			h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateUser(userName, password)
 			if err != nil {
 				return err
 			}
 			if h.user == nil {
 				base.InfofCtx(h.ctx(), base.KeyAll, "HTTP auth failed for username=%q", base.UD(userName))
+				auditFields["username"] = userName
 				if dbCtx.Options.SendWWWAuthenticateHeader == nil || *dbCtx.Options.SendWWWAuthenticateHeader {
 					h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 				}
@@ -798,6 +809,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 
 	// Check cookie
 	h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateCookie(h.rq, h.response)
+	auditFields["method"] = "cookie"
 	if err != nil && h.privs != publicPrivs {
 		return err
 	} else if h.user != nil {
@@ -805,6 +817,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	// No auth given -- check guest access
+	auditFields["method"] = "guest"
 	if h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(""); err != nil {
 		return err
 	}
@@ -818,6 +831,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 		return ErrLoginRequired
 	}
 
+	auditFields["method"] = "none"
 	return nil
 }
 

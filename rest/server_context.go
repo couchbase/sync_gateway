@@ -793,7 +793,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		return nil, err
 	}
 
-	ctx = base.DatabaseLogCtx(ctx, dbName, contextOptions.LoggingConfig.Console)
+	ctx = base.DatabaseLogCtx(ctx, dbName, contextOptions.LoggingConfig)
 
 	contextOptions.UseViews = useViews
 
@@ -968,7 +968,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// If asyncOnline is requested, set state to Starting and spawn a separate goroutine to wait for init completion
 		// before going online
 		base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete asynchonously...")
-		nonCancelCtx := base.NewNonCancelCtxForDatabase(dbName, dbcontext.Options.LoggingConfig.Console)
+		nonCancelCtx := base.NewNonCancelCtxForDatabase(dbName, dbcontext.Options.LoggingConfig)
 		go sc.asyncDatabaseOnline(nonCancelCtx, dbcontext, dbInitDoneChan, config.Version)
 		return dbcontext, nil
 	}
@@ -1284,8 +1284,8 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		contextOptions.NumIndexReplicas = DefaultNumIndexReplicas
 	}
 
-	// Per-database console logging config overrides
-	contextOptions.LoggingConfig.Console = config.toDbConsoleLogConfig(ctx)
+	// Per-database logging config overrides
+	contextOptions.LoggingConfig = config.toDbLogConfig(ctx)
 
 	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {
 		var err error

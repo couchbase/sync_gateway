@@ -8,7 +8,11 @@
 
 package base
 
-import "strconv"
+import (
+	"fmt"
+	"log/slog"
+	"strconv"
+)
 
 // AuditID is a unique identifier for an audit event.
 type AuditID uint
@@ -32,15 +36,71 @@ type EventDescriptor struct {
 	// FilteringPermitted indicates whether the event can be filtered or not
 	FilteringPermitted bool
 	// MandatoryFields describe field(s) required for a valid instance of the event
-	MandatoryFields map[string]any
+	MandatoryFields AuditFields
+
+	// The following fields are for documentation-use only.
 	// OptionalFields describe optional field(s) valid in an instance of the event
-	OptionalFields map[string]any
-	// EventType represents a type of event. Used only for documentation categorization.
+	OptionalFields AuditFields
+	// EventType represents a type of event
 	EventType eventType
 }
 
 const (
 	eventTypeAdmin eventType = "admin"
+	eventTypeUser  eventType = "user"
+	eventTypeData  eventType = "data"
 )
 
 type eventType string
+
+// AuditFields represents additional data associated with a specific audit event invocation.
+// E.g. Username, IPs, request parameters, etc.
+type AuditFields map[string]any
+
+func (i AuditID) MustValidateFields(f AuditFields) {
+	if err := i.ValidateFields(f); err != nil {
+		panic(fmt.Errorf("fields for audit event %s invalid:\n%v", i, err))
+	}
+}
+
+func (i AuditID) ValidateFields(f AuditFields) error {
+	return mandatoryFieldsPresent(f, AuditEvents[i].MandatoryFields)
+}
+
+func mandatoryFieldsPresent(fields, mandatoryFields AuditFields) error {
+	me := &MultiError{}
+	for k, v := range mandatoryFields {
+		// recuse if map
+		if vv, ok := v.(map[string]any); ok {
+			if pv, ok := fields[k].(map[string]any); ok {
+				me = me.Append(mandatoryFieldsPresent(pv, vv))
+			}
+		}
+		if _, ok := fields[k]; !ok {
+			me = me.Append(fmt.Errorf("missing mandatory field %s", k))
+		}
+	}
+	return me.ErrorOrNil()
+}
+
+func (f AuditFields) toSlogAttrs() []slog.Attr {
+	attrs := make([]slog.Attr, 0, len(f))
+	for k, v := range f {
+		switch val := v.(type) {
+		case map[string]any:
+			groupAttrs := AuditFields(val).toSlogAttrs()
+			attrs = append(attrs, slog.Group(k, attrsToAny(groupAttrs)...))
+		default:
+			attrs = append(attrs, slog.Any(k, val))
+		}
+	}
+	return attrs
+}
+
+func attrsToAny(attrs []slog.Attr) []any {
+	anySlice := make([]any, 0, len(attrs))
+	for _, attr := range attrs {
+		anySlice = append(anySlice, attr)
+	}
+	return anySlice
+}
