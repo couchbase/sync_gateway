@@ -36,8 +36,7 @@ usage() {
 }
 
 ostype() {
-  _lsb_release_exists=$(command -v lsb_release)
-  if [ $? -eq 0 ]; then
+  if [ -x "$(command -v lsb_release)" ]; then
     OS=$(lsb_release -si)
     VER=$(lsb_release -sr)
   elif [ -f /etc/os-release ]; then
