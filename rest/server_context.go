@@ -1652,10 +1652,11 @@ func (sc *ServerContext) logStats(ctx context.Context) error {
 	sc.updateCalculatedStats(ctx)
 	// Create wrapper expvar map in order to add a timestamp field for logging purposes
 	currentTime := time.Now()
+	timestamp := currentTime.Format(time.RFC3339)
 	wrapper := statsWrapper{
 		Stats:              []byte(base.SyncGatewayStats.String()),
 		UnixEpochTimestamp: currentTime.Unix(),
-		RFC3339:            currentTime.Format(time.RFC3339),
+		RFC3339:            timestamp,
 	}
 
 	marshalled, err := base.JSONMarshal(wrapper)
@@ -1666,7 +1667,18 @@ func (sc *ServerContext) logStats(ctx context.Context) error {
 	// Marshal expvar map w/ timestamp to string and write to logs
 	base.RecordStats(string(marshalled))
 
-	return nil
+	if sc.Config.API.HeapProfileDisableCollection {
+		return nil
+	}
+
+	currentMemory := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().GoMemstatsHeapInUse.Value()
+	profileCollectionThreshold := int64(*sc.Config.API.HeapProfileCollectionThreshold)
+	if currentMemory <= profileCollectionThreshold {
+		return nil
+	}
+	base.InfofCtx(ctx, base.KeyAll, "Memory usage %d exceeds threshold %d, collecting memory profile", currentMemory, profileCollectionThreshold)
+
+	return sc.statsContext.collectMemoryProfile(ctx, sc.Config.Logging.LogFilePath, timestamp)
 
 }
 

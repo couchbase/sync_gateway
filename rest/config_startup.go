@@ -17,6 +17,9 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/shirou/gopsutil/mem"
+
+	"github.com/KimMachineGun/automemlimit/memlimit"
 )
 
 const (
@@ -28,8 +31,8 @@ const (
 )
 
 // DefaultStartupConfig returns a StartupConfig with values populated with defaults.
-func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
-	return StartupConfig{
+func DefaultStartupConfig(ctx context.Context, defaultLogFilePath string) StartupConfig {
+	config := StartupConfig{
 		Bootstrap: BootstrapConfig{
 			ConfigGroupID:         PersistentConfigDefaultGroupID,
 			ConfigUpdateFrequency: base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
@@ -73,6 +76,20 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
 	}
+
+	memoryTotal, err := memlimit.FromCgroup()
+	if err != nil {
+		base.TracefCtx(ctx, base.KeyAll, "Did not detec a cgroup for a memory limit")
+		memory, err := mem.VirtualMemory()
+		if err != nil {
+			base.WarnfCtx(ctx, "Error getting total memory from gopsutil: %v", err)
+		} else {
+			memoryTotal = memory.Total
+		}
+	}
+	config.API.HeapProfileCollectionThreshold = base.Uint64Ptr(uint64(float64(memoryTotal) * 0.85))
+	return config
+
 }
 
 // StartupConfig is the config file used by Sync Gateway in 3.0+ to start up with node-specific settings, and then bootstrap databases via Couchbase Server.
@@ -128,8 +145,10 @@ type APIConfig struct {
 	CompressResponses  *bool `json:"compress_responses,omitempty"   help:"If false, disables compression of HTTP responses"`
 	HideProductVersion *bool `json:"hide_product_version,omitempty" help:"Whether product versions removed from Server headers and REST API responses"`
 
-	HTTPS HTTPSConfig      `json:"https,omitempty"`
-	CORS  *auth.CORSConfig `json:"cors,omitempty"`
+	HTTPS                          HTTPSConfig      `json:"https,omitempty"`
+	CORS                           *auth.CORSConfig `json:"cors,omitempty"`
+	HeapProfileCollectionThreshold *uint64          `json:"heap_profile_collection_threshold,omitempty" help:"Threshold in bytes for collecting heap profiles automatically. If set, Sync Gateway will collect a memory profile when it exceeds this value. The default value will be set to 85% to the lesser of cgroup or system memory."`
+	HeapProfileDisableCollection   bool             `json:"heap_profile_disable_collection,omitempty" help:"Disables automatic heap profile collection"`
 }
 
 type HTTPSConfig struct {

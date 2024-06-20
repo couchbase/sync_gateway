@@ -2553,6 +2553,7 @@ func TestHandleGetConfig(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal([]byte(resp.Body.String()), &respBody))
 
 	assert.Equal(t, "127.0.0.1:4985", respBody.API.AdminInterface)
+	require.NotEqual(t, 0, respBody.API.HeapProfileCollectionThreshold)
 }
 
 func TestHandleGetRevTree(t *testing.T) {
@@ -2928,7 +2929,8 @@ func TestConfigEndpoint(t *testing.T) {
 
 			base.InitializeMemoryLoggers()
 			tempDir := os.TempDir()
-			test := rest.DefaultStartupConfig(tempDir)
+			ctx := base.TestCtx(t)
+			test := rest.DefaultStartupConfig(ctx, tempDir)
 			err := test.SetupAndValidateLogging(base.TestCtx(t))
 			assert.NoError(t, err)
 
@@ -3029,7 +3031,8 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 
 	base.InitializeMemoryLoggers()
 	tempDir := os.TempDir()
-	test := rest.DefaultStartupConfig(tempDir)
+	ctx := base.TestCtx(t)
+	test := rest.DefaultStartupConfig(ctx, tempDir)
 	err := test.SetupAndValidateLogging(base.TestCtx(t))
 	assert.NoError(t, err)
 

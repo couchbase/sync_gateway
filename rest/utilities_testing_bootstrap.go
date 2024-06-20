@@ -22,7 +22,7 @@ import (
 
 // BootstrapStartupConfigForTest returns a default config for use to start a Sync Gateway server. It will run APIs on randomly chosen ports.
 func BootstrapStartupConfigForTest(t *testing.T) StartupConfig {
-	config := DefaultStartupConfig("")
+	config := DefaultStartupConfig(base.TestCtx(t), "")
 
 	config.Logging.Console = &base.ConsoleLoggerConfig{
 		LogLevel: base.ConsoleLogLevel(),

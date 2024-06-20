@@ -11,10 +11,14 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"runtime"
+	"runtime/pprof"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -24,11 +28,15 @@ import (
 	"github.com/shirou/gopsutil/v3/cpu"
 )
 
+// ppofPrefix is the prefix used for the memory profile files that are collected at high memory times.
+const pprofPrefix = "pprof_heap_high_"
+
 // Group the stats related context that is associated w/ a ServerContext into a struct
 type statsContext struct {
 	statsLoggingTicker *time.Ticker
 	terminator         chan struct{} // Used to stop the goroutine handling the stats logging
 	cpuStatsSnapshot   *cpuStatsSnapshot
+	lastHeapProfile    time.Time
 	doneChan           chan struct{} // doneChan is closed when the stats logger goroutine finishes.
 }
 
@@ -360,4 +368,46 @@ func discoverInterfaceName(hostnameOrIP string) (interfaceName string, err error
 
 	return "", fmt.Errorf("unable to find matching interface for %s", hostnameOrIP)
 
+}
+
+// collectMemoryProfile collects a memory profile and writes it to a file in the outputDir. It will also remove old memory profiles if there are more than 10.
+func (statsContext *statsContext) collectMemoryProfile(ctx context.Context, outputDir string, timestamp string) error {
+	currentTime := time.Now()
+	if currentTime.Sub(statsContext.lastHeapProfile) <= 5*time.Minute {
+		return nil
+	}
+	statsContext.lastHeapProfile = currentTime
+
+	memoryProfile := pprof.Lookup("heap")
+	filename := filepath.Join(outputDir, pprofPrefix+timestamp+".pb.gz")
+	file, err := os.Create(filename)
+	defer func() {
+		err = file.Close()
+		if err != nil {
+			base.WarnfCtx(ctx, "Error closing memory profile file %q: %v", filename, err)
+		}
+	}()
+	if err != nil {
+		return fmt.Errorf("Error opening memory profile file %q: %w", filename, err)
+	}
+	err = memoryProfile.WriteTo(file, 0)
+	if err != nil {
+		return fmt.Errorf("Error writing memory profile to %q: %w", filename, err)
+	}
+	existingProfiles, err := filepath.Glob(filepath.Join(outputDir, pprofPrefix+"*.pb.gz"))
+	if err != nil {
+		return fmt.Errorf("Error listing existing memory profiles in %q: %w", outputDir, err)
+	}
+	if len(existingProfiles) <= 10 {
+		return nil
+	}
+	slices.Reverse(existingProfiles)
+	var multiErr *base.MultiError
+	for _, profile := range existingProfiles[10:] {
+		err = os.Remove(profile)
+		if err != nil {
+			multiErr = multiErr.Append(fmt.Errorf("Error removing old memory profile %q: %w", profile, err))
+		}
+	}
+	return multiErr.ErrorOrNil()
 }

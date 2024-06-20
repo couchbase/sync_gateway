@@ -84,6 +84,7 @@ func TestFillConfigWithFlagsValidVals(t *testing.T) {
 		"-logging.console.log_level", "warn", // *LogLevel
 		"-replicator.max_heartbeat", "5h2m33s", // base.ConfigDuration
 		"-max_file_descriptors", "12345", // uint64
+		"-api.heap_profile_collection_threshold", "10000", // uint64
 	})
 	require.NoError(t, err)
 
@@ -101,6 +102,7 @@ func TestFillConfigWithFlagsValidVals(t *testing.T) {
 	assert.Equal(t, "warn", config.Logging.Console.LogLevel.String())
 	assert.Equal(t, base.NewConfigDuration(time.Hour*5+time.Minute*2+time.Second*33), config.Replicator.MaxHeartbeat)
 	assert.Equal(t, uint64(12345), config.MaxFileDescriptors)
+	assert.Equal(t, uint64(10000), *config.API.HeapProfileCollectionThreshold)
 
 	// unset values
 	assert.Equal(t, "", config.Bootstrap.X509CertPath)           // String

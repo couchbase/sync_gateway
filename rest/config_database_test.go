@@ -12,13 +12,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDefaultDbConfig(t *testing.T) {
 	useXattrs := true
-	sc := DefaultStartupConfig("")
+	ctx := base.TestCtx(t)
+	sc := DefaultStartupConfig(ctx, "")
 	compactIntervalDays := *(DefaultDbConfig(&sc, useXattrs).CompactIntervalDays)
 	require.Equal(t, db.DefaultCompactInterval, time.Duration(compactIntervalDays)*time.Hour*24)
 }

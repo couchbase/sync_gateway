@@ -1406,8 +1406,8 @@ func deleteTempFile(t *testing.T, file *os.File) {
 
 func TestDefaultLogging(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
-	config := DefaultStartupConfig("")
+	ctx := base.TestCtx(t)
+	config := DefaultStartupConfig(ctx, "")
 	assert.Equal(t, base.RedactPartial, config.Logging.RedactionLevel)
 	assert.Equal(t, true, base.RedactUserData)
 
@@ -1425,13 +1425,13 @@ func TestDefaultLogging(t *testing.T) {
 func TestSetupServerContext(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
-		config := DefaultStartupConfig("")
+		ctx := base.TestCtx(t)
+		config := DefaultStartupConfig(ctx, "")
 		config.Bootstrap.Server = base.UnitTestUrl() // Valid config requires server to be explicitly defined
 		config.Bootstrap.UseTLSServer = base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl()))
 		config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
 		config.Bootstrap.Username = base.TestClusterUsername()
 		config.Bootstrap.Password = base.TestClusterPassword()
-		ctx := base.TestCtx(t)
 		sc, err := SetupServerContext(ctx, &config, false)
 		require.NoError(t, err)
 		defer sc.Close(ctx)

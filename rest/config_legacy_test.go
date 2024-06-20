@@ -25,6 +25,7 @@ import (
 )
 
 func TestLegacyConfigToStartupConfig(t *testing.T) {
+	ctx := base.TestCtx(t)
 	tests := []struct {
 		name     string
 		base     StartupConfig
@@ -33,9 +34,9 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 	}{
 		{
 			name:     "No overrides",
-			base:     DefaultStartupConfig(""),
+			base:     DefaultStartupConfig(ctx, ""),
 			input:    LegacyServerConfig{},
-			expected: DefaultStartupConfig(""),
+			expected: DefaultStartupConfig(ctx, ""),
 		},
 		{
 			name:     "Override *duration for StatsLogFrequency",

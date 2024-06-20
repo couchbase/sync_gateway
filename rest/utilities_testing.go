@@ -211,7 +211,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		adminInterface = &rt.RestTesterConfig.adminInterface
 	}
 
-	sc := DefaultStartupConfig("")
+	sc := DefaultStartupConfig(base.TestCtx(rt.TB()), "")
 
 	username, password, _ := testBucket.BucketSpec.Auth.GetCredentials()
 

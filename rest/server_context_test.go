@@ -241,10 +241,10 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 func TestStatsLoggerStopped(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	sc := DefaultStartupConfig("")
+	ctx := base.TestCtx(t)
+	sc := DefaultStartupConfig(ctx, "")
 
 	// Start up stats logger by creating server context
-	ctx := base.TestCtx(t)
 	svrctx := NewServerContext(ctx, &sc, false)
 
 	// Close server context which will send signal to close stats logger
@@ -675,7 +675,7 @@ func TestLogFlush(t *testing.T) {
 			base.TracefCtx(ctx, base.KeyAll, "trace: "+testDirName)
 			base.RecordStats("{}")
 
-			config := DefaultStartupConfig(tempPath)
+			config := DefaultStartupConfig(ctx, tempPath)
 			config = testCase.EnableFunc(config)
 
 			// Setup logging

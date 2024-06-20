@@ -64,6 +64,9 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"api.cors.headers":      {&config.API.CORS.Headers, fs.String("api.cors.headers", "", "List of comma separated allowed headers")},
 		"api.cors.max_age":      {&config.API.CORS.MaxAge, fs.Int("api.cors.max_age", 0, "Maximum age of the CORS Options request")},
 
+		"api.heap_profile_collection_threshold": {&config.API.HeapProfileCollectionThreshold, fs.Uint64("api.heap_profile_collection_threshold", 0, "Threshold in bytes for collecting heap profiles automatically. If set, Sync Gateway will collect a memory profile when it exceeds this value. The default value will be set to 85% to the lesser of cgroup or system memory.")},
+		"api.heap_profile_disable_collection":   {&config.API.HeapProfileDisableCollection, fs.Bool("api.heap_profile_disable_collection", false, "Disables automatic heap profile collection.")},
+
 		"logging.log_file_path":   {&config.Logging.LogFilePath, fs.String("logging.log_file_path", "", "Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file")},
 		"logging.redaction_level": {&config.Logging.RedactionLevel, fs.String("logging.redaction_level", "", "Redaction level to apply to log output. Options: none, partial, full, unset")},
 
@@ -179,7 +182,11 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) error {
 			case *uint:
 				*val.config.(*uint) = *val.flagValue.(*uint)
 			case *uint64:
-				*val.config.(*uint64) = *val.flagValue.(*uint64)
+				if pointer {
+					rval.Set(reflect.ValueOf(val.flagValue))
+				} else {
+					*val.config.(*uint64) = *val.flagValue.(*uint64)
+				}
 			case *int:
 				if pointer {
 					rval.Set(reflect.ValueOf(val.flagValue))
@@ -187,7 +194,11 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) error {
 					*val.config.(*int) = *val.flagValue.(*int)
 				}
 			case *bool:
-				rval.Set(reflect.ValueOf(val.flagValue))
+				if pointer {
+					rval.Set(reflect.ValueOf(val.flagValue))
+				} else {
+					*val.config.(*bool) = *val.flagValue.(*bool)
+				}
 			case *base.ConfigDuration:
 				duration, err := time.ParseDuration(*val.flagValue.(*string))
 				if err != nil {

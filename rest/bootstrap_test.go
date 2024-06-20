@@ -198,7 +198,8 @@ func DevTestFetchConfigManual(t *testing.T) {
 
 	serverErr := make(chan error)
 
-	config := DefaultStartupConfig("")
+	ctx := base.TestCtx(t)
+	config := DefaultStartupConfig(ctx, "")
 
 	logLevel := base.LevelInfo
 	config.Logging.Console = &base.ConsoleLoggerConfig{
@@ -221,7 +222,6 @@ func DevTestFetchConfigManual(t *testing.T) {
 	// Start SG with no databases, high frequency polling
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Second)
 
-	ctx := base.TestCtx(t)
 	sc, err := SetupServerContext(ctx, &config, true)
 	require.NoError(t, err)
 
