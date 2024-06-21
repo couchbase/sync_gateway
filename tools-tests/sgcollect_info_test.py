@@ -1,15 +1,28 @@
-import sgcollect_info
 import unittest
 import io
 
+import pytest
 
-def test_make_collect_logs_tasks(tmpdir):
+import sgcollect_info
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        '{{"logfilepath": "{tmpdir}"}}',
+        '{{"Logging": {{ "default": {{ "logfilepath": "{log_file}" }} }} }}',
+        '{{"logging": {{ "log_file_path": "{tmpdir}" }} }}',
+    ],
+)
+def test_make_collect_logs_tasks(config, tmpdir):
+    log_file = tmpdir.join("sg_info.log")
+    log_file.write("foo")
     with unittest.mock.patch(
         "sgcollect_info.urlopen_with_basic_auth",
-        return_value=io.BytesIO(f'{{"logfilepath": "{tmpdir}"}}'.encode("utf-8")),
+        return_value=io.BytesIO(
+            config.format(tmpdir=tmpdir, log_file=log_file).encode("utf-8")
+        ),
     ):
-        log_file = tmpdir.join("sg_info.log")
-        log_file.write("foo")
         rotated_log_file = tmpdir.join("sg_info-01.log.gz")
         rotated_log_file.write("foo")
         tasks = sgcollect_info.make_collect_logs_tasks(
