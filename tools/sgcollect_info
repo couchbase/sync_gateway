@@ -353,6 +353,7 @@ def make_collect_logs_tasks(
     else:
         config_str = ""
 
+    print(f"config_str: {config_str}")
     # If SG isn't running, load the bootstrap config - it'll have the logging config in it
     if (
         config_str == ""
@@ -368,6 +369,7 @@ def make_collect_logs_tasks(
 
     # Find log file path from old style top level config
     guessed_log_path = extract_element_from_config("LogFilePath", config_str)
+    print(f"guessed_log_path toplevel LogFilePath: {guessed_log_path}")
     if guessed_log_path and os.path.isfile(guessed_log_path):
         # If the specified log path is a file, add filename to standard SG log files list
         # and parent directory path of the file to standard SG log directories list to
@@ -423,6 +425,7 @@ def make_collect_logs_tasks(
     guessed_logging_path = extract_element_from_default_logging_config(
         "LogFilePath", config_str
     )
+    print(f"guessed_log_path default LogFilePath: {guessed_log_path}")
     if guessed_logging_path and os.path.isfile(guessed_logging_path):
         # Get the parent directory and the log file name
         log_file_parent_dir = os.path.abspath(
@@ -449,6 +452,7 @@ def make_collect_logs_tasks(
     guessed_log_file_path = extract_element_from_logging_config(
         "log_file_path", config_str
     )
+    print(f"guessed_log_path 2.1: {guessed_log_path}")
     if guessed_log_file_path:
         log_file_path = os.path.abspath(guessed_log_file_path)
 
