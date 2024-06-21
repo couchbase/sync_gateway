@@ -13,7 +13,6 @@ licenses/APL2.txt.
 # -*- python -*-
 import atexit
 import base64
-import glob
 import gzip
 import hashlib
 import io
@@ -21,7 +20,6 @@ import optparse
 import os
 import re
 import shutil
-import signal
 import socket
 import subprocess
 import sys
@@ -185,7 +183,6 @@ class Task(object):
 
     def execute(self, fp):
         """Run the task"""
-        import subprocess
 
         use_shell = not isinstance(self.command, list)
         if "literal" in self.__dict__:
@@ -888,344 +885,6 @@ def make_stats_archives_task(guts, initargs_path):
     )
 
 
-def make_product_task(guts, initargs_path, options):
-    root = os.path.abspath(os.path.join(initargs_path, "..", "..", "..", ".."))
-    dbdir = read_guts(guts, "db_dir")
-    viewdir = read_guts(guts, "idx_dir")
-
-    diag_url = "http://127.0.0.1:%s/diag?noLogs=1" % read_guts(guts, "rest_port")
-    if options.single_node_diag:
-        diag_url += "&oneNode=1"
-
-    from distutils.spawn import find_executable
-
-    lookup_cmd = None
-    for cmd in ["dig", "nslookup", "host"]:
-        if find_executable(cmd) is not None:
-            lookup_cmd = cmd
-            break
-
-    lookup_tasks = []
-    if lookup_cmd is not None:
-        lookup_tasks = [
-            UnixTask(
-                "DNS lookup information for %s" % node,
-                "%(lookup_cmd)s '%(node)s'" % locals(),
-            )
-            for node in correct_split(read_guts(guts, "nodes"), ",")
-        ]
-
-    query_tasks = []
-    query_port = read_guts(guts, "query_port")
-    if query_port:
-
-        def make(statement):
-            return make_query_task(
-                statement,
-                user="@",
-                password=read_guts(guts, "memcached_pass"),
-                port=query_port,
-            )
-
-        query_tasks = [
-            make("SELECT * FROM system:datastores"),
-            make("SELECT * FROM system:namespaces"),
-            make("SELECT * FROM system:keyspaces"),
-            make("SELECT * FROM system:indexes"),
-        ]
-
-    index_tasks = []
-    index_port = read_guts(guts, "indexer_http_port")
-    if index_port:
-        url = "http://127.0.0.1:%s/getIndexStatus" % index_port
-        index_tasks = [
-            make_curl_task(
-                name="Index definitions are: ",
-                user="@",
-                password=read_guts(guts, "memcached_pass"),
-                url=url,
-            )
-        ]
-
-    fts_tasks = []
-    fts_port = read_guts(guts, "fts_http_port")
-    if fts_port:
-        url = "http://127.0.0.1:%s/api/diag" % fts_port
-        fts_tasks = [
-            make_curl_task(
-                name="FTS /api/diag: ",
-                user="@",
-                password=read_guts(guts, "memcached_pass"),
-                url=url,
-            )
-        ]
-
-    _tasks = [
-        UnixTask("Directory structure", ["ls", "-lRai", root]),
-        UnixTask("Database directory structure", ["ls", "-lRai", dbdir]),
-        UnixTask("Index directory structure", ["ls", "-lRai", viewdir]),
-        UnixTask(
-            "couch_dbinfo",
-            [
-                "find",
-                dbdir,
-                "-type",
-                "f",
-                "-name",
-                "*.couch.*",
-                "-exec",
-                "couch_dbinfo",
-                "{}",
-                "+",
-            ],
-        ),
-        LinuxTask(
-            "Database directory filefrag info",
-            ["find", dbdir, "-type", "f", "-exec", "filefrag", "-v", "{}", "+"],
-        ),
-        LinuxTask(
-            "Index directory filefrag info",
-            ["find", viewdir, "-type", "f", "-exec", "filefrag", "-v", "{}", "+"],
-        ),
-        WindowsTask("Database directory structure", "dir /s " + winquote_path(dbdir)),
-        WindowsTask("Index directory structure", "dir /s " + winquote_path(viewdir)),
-        WindowsTask(
-            "Version file", "type " + winquote_path(basedir()) + "\\..\\VERSION.txt"
-        ),
-        WindowsTask(
-            "Manifest file", "type " + winquote_path(basedir()) + "\\..\\manifest.txt"
-        ),
-        WindowsTask(
-            "Manifest file", "type " + winquote_path(basedir()) + "\\..\\manifest.xml"
-        ),
-        LinuxTask("Version file", "cat '%s/VERSION.txt'" % root),
-        LinuxTask("Manifest file", "cat '%s/manifest.txt'" % root),
-        LinuxTask("Manifest file", "cat '%s/manifest.xml'" % root),
-        AllOsTask("Couchbase config", "", literal=read_guts(guts, "ns_config")),
-        AllOsTask(
-            "Couchbase static config", "", literal=read_guts(guts, "static_config")
-        ),
-        AllOsTask("Raw ns_log", "", literal=read_guts(guts, "ns_log")),
-        # TODO: just gather those in python
-        WindowsTask(
-            "Memcached logs",
-            "cd "
-            + winquote_path(read_guts(guts, "memcached_logs_path"))
-            + " && "
-            + "for /f %a IN ('dir /od /b memcached.log.*') do type %a",
-            log_file="memcached.log",
-        ),
-        UnixTask(
-            "Memcached logs",
-            [
-                "sh",
-                "-c",
-                'cd "$1"; for file in $(ls -tr memcached.log.*); do cat "$file"; done',
-                "--",
-                read_guts(guts, "memcached_logs_path"),
-            ],
-            log_file="memcached.log",
-        ),
-        [
-            WindowsTask(
-                "Ini files (%s)" % p, "type " + winquote_path(p), log_file="ini.log"
-            )
-            for p in read_guts(guts, "couch_inis").split(";")
-        ],
-        UnixTask(
-            "Ini files",
-            ["sh", "-c", 'for i in "$@"; do echo "file: $i"; cat "$i"; done', "--"]
-            + read_guts(guts, "couch_inis").split(";"),
-            log_file="ini.log",
-        ),
-        make_curl_task(
-            name="couchbase diags",
-            user="@",
-            password=read_guts(guts, "memcached_pass"),
-            timeout=600,
-            url=diag_url,
-            log_file="diag.log",
-        ),
-        make_curl_task(
-            name="master events",
-            user="@",
-            password=read_guts(guts, "memcached_pass"),
-            timeout=300,
-            url="http://127.0.0.1:%s/diag/masterEvents?o=1"
-            % read_guts(guts, "rest_port"),
-            log_file="master_events.log",
-            no_header=True,
-        ),
-        make_curl_task(
-            name="ale configuration",
-            user="@",
-            password=read_guts(guts, "memcached_pass"),
-            url="http://127.0.0.1:%s/diag/ale" % read_guts(guts, "rest_port"),
-            log_file="couchbase.log",
-        ),
-        [
-            AllOsTask(
-                "couchbase logs (%s)" % name,
-                "cbbrowse_logs %s" % name,
-                addenv=[("REPORT_DIR", read_guts(guts, "log_path"))],
-                log_file="ns_server.%s" % name,
-            )
-            for name in [
-                "debug.log",
-                "info.log",
-                "error.log",
-                "couchdb.log",
-                "xdcr.log",
-                "xdcr_errors.log",
-                "views.log",
-                "mapreduce_errors.log",
-                "stats.log",
-                "babysitter.log",
-                "ssl_proxy.log",
-                "reports.log",
-                "xdcr_trace.log",
-                "http_access.log",
-                "http_access_internal.log",
-                "ns_couchdb.log",
-                "goxdcr.log",
-                "query.log",
-                "projector.log",
-                "indexer.log",
-                "fts.log",
-                "metakv.log",
-            ]
-        ],
-        [
-            AllOsTask(
-                "memcached stats %s" % kind,
-                flatten(
-                    [
-                        "cbstats",
-                        "-a",
-                        "127.0.0.1:%s" % read_guts(guts, "memcached_port"),
-                        kind,
-                        "-b",
-                        read_guts(guts, "memcached_admin"),
-                        "-p",
-                        read_guts(guts, "memcached_pass"),
-                    ]
-                ),
-                log_file="stats.log",
-                timeout=60,
-            )
-            for kind in [
-                "all",
-                "allocator",
-                "checkpoint",
-                "config",
-                "dcp",
-                "dcpagg",
-                ["diskinfo", "detail"],
-                ["dispatcher", "logs"],
-                "failovers",
-                ["hash", "detail"],
-                "kvstore",
-                "kvtimings",
-                "memory",
-                "prev-vbucket",
-                "runtimes",
-                "scheduler",
-                "tap",
-                "tapagg",
-                "timings",
-                "uuid",
-                "vbucket",
-                "vbucket-details",
-                "vbucket-seqno",
-                "warmup",
-                "workload",
-            ]
-        ],
-        [
-            AllOsTask(
-                "memcached mcstat %s" % kind,
-                flatten(
-                    [
-                        "mcstat",
-                        "-h",
-                        "127.0.0.1:%s" % read_guts(guts, "memcached_port"),
-                        "-u",
-                        read_guts(guts, "memcached_admin"),
-                        "-P",
-                        read_guts(guts, "memcached_pass"),
-                        kind,
-                    ]
-                ),
-                log_file="stats.log",
-                timeout=60,
-            )
-            for kind in ["connections"]
-        ],
-        [
-            AllOsTask(
-                "ddocs for %s (%s)" % (bucket, path),
-                ["couch_dbdump", path],
-                log_file="ddocs.log",
-            )
-            for bucket in set(correct_split(read_guts(guts, "buckets"), ","))
-            - set(correct_split(read_guts(guts, "memcached_buckets"), ","))
-            for path in glob.glob(os.path.join(dbdir, bucket, "master.couch*"))
-        ],
-        [
-            AllOsTask(
-                "replication docs (%s)" % (path),
-                ["couch_dbdump", path],
-                log_file="ddocs.log",
-            )
-            for path in glob.glob(os.path.join(dbdir, "_replicator.couch*"))
-        ],
-        [
-            AllOsTask(
-                "Couchstore local documents (%s, %s)"
-                % (bucket, os.path.basename(path)),
-                ["couch_dbdump", "--local", path],
-                log_file="couchstore_local.log",
-            )
-            for bucket in set(correct_split(read_guts(guts, "buckets"), ","))
-            - set(correct_split(read_guts(guts, "memcached_buckets"), ","))
-            for path in glob.glob(os.path.join(dbdir, bucket, "*.couch.*"))
-        ],
-        [
-            UnixTask(
-                "moxi stats (port %s)" % port,
-                "echo stats proxy | nc 127.0.0.1 %s" % port,
-                log_file="stats.log",
-                timeout=60,
-            )
-            for port in correct_split(read_guts(guts, "moxi_ports"), ",")
-        ],
-        [
-            AllOsTask(
-                "mctimings",
-                [
-                    "mctimings",
-                    "-u",
-                    read_guts(guts, "memcached_admin"),
-                    "-P",
-                    read_guts(guts, "memcached_pass"),
-                    "-h",
-                    "127.0.0.1:%s" % read_guts(guts, "memcached_port"),
-                    "-v",
-                ]
-                + stat,
-                log_file="stats.log",
-                timeout=60,
-            )
-            for stat in ([], ["subdoc_execute"])
-        ],
-        make_stats_archives_task(guts, initargs_path),
-    ]
-
-    _tasks = flatten([lookup_tasks, query_tasks, index_tasks, fts_tasks, _tasks])
-
-    return _tasks
-
-
 def find_script(name):
     dirs = [basedir(), os.path.join(basedir(), "scripts")]
     for d in dirs:
@@ -1235,31 +894,6 @@ def find_script(name):
             return path
 
     return None
-
-
-def get_server_guts(initargs_path):
-    dump_guts_path = find_script("dump-guts")
-
-    if dump_guts_path is None:
-        log("Couldn't find dump-guts script. Some information will be missing")
-        return {}
-
-    escript = exec_name("escript")
-    extra_args = os.getenv("EXTRA_DUMP_GUTS_ARGS")
-    args = [escript, dump_guts_path, "--initargs-path", initargs_path]
-    if extra_args:
-        args = args + extra_args.split(";")
-    print("Checking for server guts in %s..." % initargs_path)
-    p = subprocess.Popen(args, stdout=subprocess.PIPE)
-    output = p.stdout.read()
-    p.wait()
-    # print("args: %s gave rc: %d and:\n\n%s\n" % (args, rc, output))
-    tokens = output.rstrip("\0").split("\0")
-    d = {}
-    if len(tokens) > 1:
-        for i in range(0, len(tokens), 2):
-            d[tokens[i]] = tokens[i + 1]
-    return d
 
 
 def guess_utility(command):
@@ -1289,7 +923,7 @@ def dump_utilities(*args, **kwargs):
         def __getattr__(self, name):
             return None
 
-    tasks = make_os_tasks() + make_product_task({}, "", FakeOptions())
+    tasks = make_os_tasks()
 
     for task in tasks:
         utility = guess_utility(task.command)
@@ -1301,7 +935,7 @@ def dump_utilities(*args, **kwargs):
                 platform_utils[name].add(utility)
 
     print(
-        "This is an autogenerated, possibly incomplete and flawed list of utilites used by cbcollect_info"
+        "This is an autogenerated, possibly incomplete and flawed list of utilites used by sgcollect_info"
     )
 
     for name, utilities in sorted(list(platform_utils.items()), key=lambda x: x[0]):
@@ -1321,20 +955,6 @@ def setup_stdin_watcher():
     th = threading.Thread(target=_in_thread)
     th.setDaemon(True)
     th.start()
-
-
-class CurlKiller:
-    def __init__(self, p):
-        self.p = p
-
-    def cleanup(self):
-        if self.p is not None:
-            print("Killing curl...")
-            os.kill(self.p.pid, signal.SIGKILL)
-            print("done")
-
-    def disarm(self):
-        self.p = None
 
 
 def do_upload(path, url, proxy):

@@ -436,6 +436,7 @@ def make_collect_logs_tasks(
             log_file_parent_dir, "{0}*{1}".format(name, ext)
         )
         for log_file_item_name in glob.iglob(rotated_logs_pattern):
+            assert False
             log_file_item_path = os.path.join(log_file_parent_dir, log_file_item_name)
             # As long as a task that monitors this log file path has not already been added, add a new task
             if log_file_item_path not in sg_log_file_paths:
