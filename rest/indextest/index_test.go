@@ -640,11 +640,9 @@ func TestAsyncInitConfigUpdates(t *testing.T) {
 	dbName := "db"
 
 	keyspace := dbName
-	expectedCollectionCount := 1 // metadata store
 	if len(dbConfig.Scopes) > 0 {
 		keyspaces := getRESTKeyspaces(dbName, dbConfig.Scopes)
 		keyspace = keyspaces[0]
-		expectedCollectionCount += len(keyspaces)
 	}
 
 	// Create database with offline=true
@@ -755,11 +753,9 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	dbConfig.StartOffline = base.BoolPtr(true)
 
 	keyspace := dbName
-	expectedCollectionCount := 1 // metadata store
 	if len(dbConfig.Scopes) > 0 {
 		keyspaces := getRESTKeyspaces(dbName, dbConfig.Scopes)
 		keyspace = keyspaces[0]
-		expectedCollectionCount += len(keyspaces)
 	}
 
 	bucketName := tb.GetName()
@@ -775,7 +771,8 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	databaseConfig.Version = version
 	databaseConfig.MetadataID = metadataID
 
-	sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, databaseConfig)
+	_, err = sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, databaseConfig)
+	require.NoError(t, err)
 
 	// Wait for init to start before interacting with the db, validate db state is offline
 	rest.WaitForChannel(t, initStarted, "waiting for initialization to start")
@@ -805,12 +802,14 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 		bucketDbConfig.ImportFilter = nil
 		return bucketDbConfig, nil
 	})
+	require.NoError(t, err)
 
 	// Need a wait loop here to wait for config polling to pick up the change
 	err = rest.WaitForConditionWithOptions(ctx, func() bool {
 		resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+keyspace+"/_config/import_filter", "")
 		return (resp.StatusCode == http.StatusOK) && resp.Body == ""
 	}, 200, 100)
+	require.NoError(t, err)
 
 	// Unblock initialization, verify status goes to Online
 	close(unblockInit)
