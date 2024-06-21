@@ -865,6 +865,10 @@ func (rt *RestTester) WaitForCondition(successFunc func() bool) error {
 }
 
 func (rt *RestTester) WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
+	return WaitForConditionWithOptions(rt.Context(), successFunc, maxNumAttempts, timeToSleepMs)
+}
+
+func WaitForConditionWithOptions(ctx context.Context, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
 	waitForSuccess := func() (shouldRetry bool, err error, value interface{}) {
 		if successFunc() {
 			return false, nil, nil
@@ -873,7 +877,7 @@ func (rt *RestTester) WaitForConditionWithOptions(successFunc func() bool, maxNu
 	}
 
 	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
-	err, _ := base.RetryLoop(rt.Context(), "Wait for condition options", waitForSuccess, sleeper)
+	err, _ := base.RetryLoop(ctx, "Wait for condition options", waitForSuccess, sleeper)
 	if err != nil {
 		return err
 	}
