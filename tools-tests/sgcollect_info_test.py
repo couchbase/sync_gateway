@@ -20,7 +20,10 @@ def test_make_collect_logs_tasks(config, tmpdir):
     with unittest.mock.patch(
         "sgcollect_info.urlopen_with_basic_auth",
         return_value=io.BytesIO(
-            config.format(tmpdir=tmpdir, log_file=log_file).encode("utf-8")
+            config.format(
+                tmpdir=str(tmpdir).replace("\\", "\\\\"),
+                log_file=str(log_file).replace("\\", "\\\\"),
+            ).encode("utf-8")
         ),
     ):
         rotated_log_file = tmpdir.join("sg_info-01.log.gz")
