@@ -391,6 +391,8 @@ def make_collect_logs_tasks(
             for file in files:
                 name, ext = os.path.splitext(file)
                 # Collect active and rotated log files from the default log locations.
+                print(f"Looking for log files in {pathlib.Path(dir)}")
+                print("Glob is ", [p for p in pathlib.Path(dir).glob("*")])
                 for std_log_file in pathlib.Path(dir).glob(f"{name}*{ext}"):
                     if std_log_file not in sg_log_file_paths:
                         sg_tasks.append(add_file_task(sourcefile_path=std_log_file))
