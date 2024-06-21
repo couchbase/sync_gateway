@@ -59,12 +59,19 @@ type AuditFields map[string]any
 
 func (i AuditID) MustValidateFields(f AuditFields) {
 	if err := i.ValidateFields(f); err != nil {
-		panic(fmt.Errorf("fields for audit event %s invalid:\n%v", i, err))
+		panic(fmt.Errorf("audit event %s invalid:\n%v", i, err))
 	}
 }
 
 func (i AuditID) ValidateFields(f AuditFields) error {
-	return mandatoryFieldsPresent(f, AuditEvents[i].MandatoryFields)
+	if i < auditdSyncGatewayStartID || i > auditdSyncGatewayEndID {
+		return fmt.Errorf("invalid audit event ID: %d (allowed range: %d-%d)", i, auditdSyncGatewayStartID, auditdSyncGatewayEndID)
+	}
+	event, ok := AuditEvents[i]
+	if !ok {
+		return fmt.Errorf("unknown audit event ID %d", i)
+	}
+	return mandatoryFieldsPresent(f, event.MandatoryFields)
 }
 
 func mandatoryFieldsPresent(fields, mandatoryFields AuditFields) error {
