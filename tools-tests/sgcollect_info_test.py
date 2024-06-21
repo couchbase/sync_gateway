@@ -34,7 +34,6 @@ def test_make_collect_logs_tasks(config, tmpdir):
             salt="",
             should_redact=False,
         )
-        assert len(tasks) == 2
         assert [t.log_file for t in tasks] == [
             log_file.basename,
             rotated_log_file.basename,
