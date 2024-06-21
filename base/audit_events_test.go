@@ -6,7 +6,7 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
-package audit
+package base
 
 import (
 	"fmt"
@@ -25,7 +25,7 @@ const (
 
 func TestValidateAuditEvents(t *testing.T) {
 	// Ensures that the above audit event IDs are within the allocated range and are valid.
-	require.NoError(t, validateAuditEvents(SGAuditEvents))
+	require.NoError(t, validateAuditEvents(AuditEvents))
 }
 
 func validateAuditEvents(e events) error {
