@@ -734,7 +734,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 		if err != nil {
 			dbCtx.DbStats.Security().AuthFailedCount.Add(1)
 			if errors.Is(err, ErrInvalidLogin) {
-				base.Audit(h.ctx(), base.AuditIDUserAuthorizationFailed, auditFields)
+				base.Audit(h.ctx(), base.AuditIDUserAuthenticationFailed, auditFields)
 			}
 		} else {
 			dbCtx.DbStats.Security().AuthSuccessCount.Add(1)

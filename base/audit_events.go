@@ -61,4 +61,30 @@ var AuditEvents = events{
 		FilteringPermitted: false,
 		EventType:          eventTypeUser,
 	},
+	AuditIDUserAuthenticated: {
+		Name:        "User authenticated",
+		Description: "User successfully authenticated",
+		MandatoryFields: AuditFields{
+			"method": "auth_method", // e.g. "basic", "oidc", "cookie", ...
+		},
+		OptionalFields: AuditFields{
+			"oidc_issuer": "issuer",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeUser,
+	},
+	AuditIDUserAuthenticationFailed: {
+		Name:        "User authentication failed",
+		Description: "User authentication failed",
+		MandatoryFields: AuditFields{
+			"method": "auth_method", // e.g. "basic", "oidc", "cookie", ...
+		},
+		OptionalFields: AuditFields{
+			"username": "username",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeUser,
+	},
 }
