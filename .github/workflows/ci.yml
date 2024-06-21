@@ -86,7 +86,7 @@ jobs:
       - name: Build
         run: go build -v "./..."
       - name: Run Tests
-        run: go test -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
+        run: go test -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
         shell: bash
       - name: Annotate Failures
         if: always()
