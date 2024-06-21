@@ -6,7 +6,13 @@ import io
 def test_make_collect_logs_tasks(tmpdir):
     with unittest.mock.patch(
         "sgcollect_info.urlopen_with_basic_auth",
-        return_value=io.BytesIO(f'{{"logfilepath": "{tmpdir}"}}'.encode("utf-8")),
+        return_value=io.BytesIO(
+            '{{"logfilepath": "{logdir}"}}'.format(
+                logdir=str(tmpdir).replace(
+                    "\\", "\\\\"
+                )  # replace backslashes with double backslashes for windows paths in json
+            ).encode("utf-8")
+        ),
     ):
         pprof_file = tmpdir.join("pprof_heap_high_01.pb.gz")
         pprof_file.write("foo")
@@ -19,5 +25,4 @@ def test_make_collect_logs_tasks(tmpdir):
             salt="",
             should_redact=False,
         )
-        assert len(tasks) == 1
-        assert tasks[0].log_file == pprof_file.basename
+        assert [tasks[0].log_file] == [pprof_file.basename]
