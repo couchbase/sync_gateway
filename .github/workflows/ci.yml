@@ -57,4 +57,4 @@ jobs:
           pip install pytest pytest-github-actions-annotate-failures pytest-httpserver trustme
       - name: Run test
         run: |
-          pytest
+          pytest -vv
