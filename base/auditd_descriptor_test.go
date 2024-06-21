@@ -6,7 +6,7 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
-package audit
+package base
 
 import (
 	"testing"
@@ -16,7 +16,7 @@ import (
 
 // TestGenerateAuditdModuleDescriptor outputs a generated auditd module descriptor for SGAuditEvents.
 func TestGenerateAuditdModuleDescriptor(t *testing.T) {
-	b, err := generateAuditdModuleDescriptor(SGAuditEvents)
+	b, err := generateAuditdModuleDescriptor(AuditEvents)
 	require.NoError(t, err)
 	t.Log(string(b))
 }

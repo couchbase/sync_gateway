@@ -21,7 +21,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/base/audit"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -671,8 +670,8 @@ func (h *handler) handleGetDbAuditConfig() error {
 	verbose := h.getBoolQuery("verbose")
 
 	// TODO: Move to structs
-	events := make(map[string]interface{}, len(audit.SGAuditEvents))
-	for id, descriptor := range audit.SGAuditEvents {
+	events := make(map[string]interface{}, len(base.AuditEvents))
+	for id, descriptor := range base.AuditEvents {
 		if showOnlyFilterable && !descriptor.FilteringPermitted {
 			continue
 		}
