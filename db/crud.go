@@ -2130,7 +2130,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			_shallowCopyBody: storedDoc.Body(ctx),
 		}
 
-		// get collection id here to pass down
+		// retrieve collectionID for use at rev cache
 		collectionID := db.GetCollectionID()
 
 		if createNewRevIDSkipped {
