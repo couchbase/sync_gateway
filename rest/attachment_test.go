@@ -587,7 +587,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	// rather than loading it from the (stale) rev cache.  The rev cache will be stale since the test
 	// short-circuits Sync Gateway and directly updates the bucket.
 	// Reset at the end of the test, to avoid bleed into other tests
-	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// Get latest rev id
 	version, _ := rt.GetDoc(doc1ID)
@@ -2162,7 +2162,7 @@ func TestAttachmentsMissing(t *testing.T) {
 
 	_ = rt.PutNewEditsFalse(docID, NewDocVersionFromFakeRev("2-b"), version1, `{"_rev": "2-b", "_revisions": {"ids": ["b", "ca9ad22802b66f662ff171f226211d5c"], "start": 2}, "Winning Rev": true}`)
 
-	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	body := rt.GetDocVersion(docID, version2)
 	require.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", body["_attachments"].(map[string]interface{})["hello.txt"].(map[string]interface{})["digest"])
@@ -2181,7 +2181,7 @@ func TestAttachmentsMissingNoBody(t *testing.T) {
 
 	_ = rt.PutNewEditsFalse(docID, NewDocVersionFromFakeRev("2-b"), version1, `{}`)
 
-	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	body := rt.GetDocVersion(docID, version2)
 	require.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", body["_attachments"].(map[string]interface{})["hello.txt"].(map[string]interface{})["digest"])

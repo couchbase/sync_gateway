@@ -26,7 +26,7 @@ type ShardedLRURevisionCache struct {
 }
 
 // Creates a sharded revision cache with the given capacity and an optional loader function.
-func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, backingStore RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *ShardedLRURevisionCache {
+func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, backingStore map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *ShardedLRURevisionCache {
 
 	caches := make([]*LRURevisionCache, shardCount)
 	// Add 10% to per-shared cache capacity to ensure overall capacity is reached under non-ideal shard hashing
@@ -45,37 +45,37 @@ func (sc *ShardedLRURevisionCache) getShard(docID string) *LRURevisionCache {
 	return sc.caches[sgbucket.VBHash(docID, sc.numShards)]
 }
 
-func (sc *ShardedLRURevisionCache) Get(ctx context.Context, docID, revID string, includeBody bool, includeDelta bool) (docRev DocumentRevision, err error) {
-	return sc.getShard(docID).Get(ctx, docID, revID, includeBody, includeDelta)
+func (sc *ShardedLRURevisionCache) Get(ctx context.Context, docID, revID string, collectionID uint32, includeBody, includeDelta bool) (docRev DocumentRevision, err error) {
+	return sc.getShard(docID).Get(ctx, docID, revID, collectionID, includeBody, includeDelta)
 }
 
-func (sc *ShardedLRURevisionCache) Peek(ctx context.Context, docID, revID string) (docRev DocumentRevision, found bool) {
-	return sc.getShard(docID).Peek(ctx, docID, revID)
+func (sc *ShardedLRURevisionCache) Peek(ctx context.Context, docID, revID string, collectionID uint32) (docRev DocumentRevision, found bool) {
+	return sc.getShard(docID).Peek(ctx, docID, revID, collectionID)
 }
 
-func (sc *ShardedLRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta) {
-	sc.getShard(docID).UpdateDelta(ctx, docID, revID, toDelta)
+func (sc *ShardedLRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta) {
+	sc.getShard(docID).UpdateDelta(ctx, docID, revID, collectionID, toDelta)
 }
 
-func (sc *ShardedLRURevisionCache) GetActive(ctx context.Context, docID string, includeBody bool) (docRev DocumentRevision, err error) {
-	return sc.getShard(docID).GetActive(ctx, docID, includeBody)
+func (sc *ShardedLRURevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32, includeBody bool) (docRev DocumentRevision, err error) {
+	return sc.getShard(docID).GetActive(ctx, docID, collectionID, includeBody)
 }
 
-func (sc *ShardedLRURevisionCache) Put(ctx context.Context, docRev DocumentRevision) {
-	sc.getShard(docRev.DocID).Put(ctx, docRev)
+func (sc *ShardedLRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
+	sc.getShard(docRev.DocID).Put(ctx, docRev, collectionID)
 }
 
-func (sc *ShardedLRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision) {
-	sc.getShard(docRev.DocID).Upsert(ctx, docRev)
+func (sc *ShardedLRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
+	sc.getShard(docRev.DocID).Upsert(ctx, docRev, collectionID)
 }
 
-func (sc *ShardedLRURevisionCache) Remove(docID, revID string) {
-	sc.getShard(docID).Remove(docID, revID)
+func (sc *ShardedLRURevisionCache) Remove(docID, revID string, collectionID uint32) {
+	sc.getShard(docID).Remove(docID, revID, collectionID)
 }
 
 // An LRU cache of document revision bodies, together with their channel access.
 type LRURevisionCache struct {
-	backingStore RevisionCacheBackingStore
+	backingStore map[uint32]RevisionCacheBackingStore
 	cache        map[IDAndRev]*list.Element
 	lruList      *list.List
 	cacheHits    *base.SgwIntStat
@@ -100,8 +100,13 @@ type revCacheValue struct {
 	removed     bool
 }
 
+// NewBackingStoreMap will return a new empty map for mapping collection ID to its associated rev cache backing store
+func NewBackingStoreMap() map[uint32]RevisionCacheBackingStore {
+	return make(map[uint32]RevisionCacheBackingStore)
+}
+
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewLRURevisionCache(capacity uint32, backingStore RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *LRURevisionCache {
+func NewLRURevisionCache(capacity uint32, backingStore map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *LRURevisionCache {
 
 	return &LRURevisionCache{
 		cache:        map[IDAndRev]*list.Element{},
@@ -117,14 +122,14 @@ func NewLRURevisionCache(capacity uint32, backingStore RevisionCacheBackingStore
 // Returns the body of the revision, its history, and the set of channels it's in.
 // If the cache has a loaderFunction, it will be called if the revision isn't in the cache;
 // any error returned by the loaderFunction will be returned from Get.
-func (rc *LRURevisionCache) Get(ctx context.Context, docID, revID string, includeBody bool, includeDelta bool) (DocumentRevision, error) {
-	return rc.getFromCache(ctx, docID, revID, true, includeBody, includeDelta)
+func (rc *LRURevisionCache) Get(ctx context.Context, docID, revID string, collectionID uint32, includeBody, includeDelta bool) (DocumentRevision, error) {
+	return rc.getFromCache(ctx, docID, revID, collectionID, true, includeBody, includeDelta)
 }
 
 // Looks up a revision from the cache only.  Will not fall back to loader function if not
 // present in the cache.
-func (rc *LRURevisionCache) Peek(ctx context.Context, docID, revID string) (docRev DocumentRevision, found bool) {
-	docRev, err := rc.getFromCache(ctx, docID, revID, false, RevCacheOmitBody, RevCacheOmitDelta)
+func (rc *LRURevisionCache) Peek(ctx context.Context, docID, revID string, collectionID uint32) (docRev DocumentRevision, found bool) {
+	docRev, err := rc.getFromCache(ctx, docID, revID, collectionID, false, RevCacheOmitBody, RevCacheOmitDelta)
 	if err != nil {
 		return DocumentRevision{}, false
 	}
@@ -133,20 +138,20 @@ func (rc *LRURevisionCache) Peek(ctx context.Context, docID, revID string) (docR
 
 // Attempt to update the delta on a revision cache entry.  If the entry is no longer resident in the cache,
 // fails silently
-func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta) {
-	value := rc.getValue(docID, revID, false)
+func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta) {
+	value := rc.getValue(docID, revID, collectionID, false)
 	if value != nil {
 		value.updateDelta(toDelta)
 	}
 }
 
-func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID string, loadOnCacheMiss bool, includeBody bool, includeDelta bool) (DocumentRevision, error) {
-	value := rc.getValue(docID, revID, loadOnCacheMiss)
+func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID string, collectionID uint32, loadOnCacheMiss, includeBody, includeDelta bool) (DocumentRevision, error) {
+	value := rc.getValue(docID, revID, collectionID, loadOnCacheMiss)
 	if value == nil {
 		return DocumentRevision{}, nil
 	}
 
-	docRev, statEvent, err := value.load(ctx, rc.backingStore, includeBody, includeDelta)
+	docRev, statEvent, err := value.load(ctx, rc.backingStore[collectionID], includeBody, includeDelta)
 	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {
@@ -157,7 +162,7 @@ func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID strin
 
 // In the event that a revision in invalid it needs to be replaced later and the revision cache value should not be
 // used. This function grabs the value directly from the bucket.
-func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(ctx context.Context, key IDAndRev, doc *Document, includeBody bool, includeDelta bool) (DocumentRevision, error) {
+func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(ctx context.Context, key IDAndRev, doc *Document, collectionID uint32, includeBody bool, includeDelta bool) (DocumentRevision, error) {
 	var delta *RevisionDelta
 	var docRevBody Body
 
@@ -168,9 +173,9 @@ func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(ctx context.Context, 
 	// If doc has been passed in use this to grab values. Otherwise run revCacheLoader which will grab the Document
 	// first
 	if doc != nil {
-		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, key.RevID)
+		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(ctx, rc.backingStore[collectionID], doc, key.RevID)
 	} else {
-		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(ctx, rc.backingStore, key, includeBody)
+		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(ctx, rc.backingStore[collectionID], key, includeBody)
 	}
 
 	if includeDelta {
@@ -195,11 +200,11 @@ func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(ctx context.Context, 
 // of the retrieved document to get the current rev from _sync metadata.  If active rev is already in the
 // rev cache, will use it.  Otherwise will add to the rev cache using the raw document obtained in the
 // initial retrieval.
-func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, includeBody bool) (DocumentRevision, error) {
+func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32, includeBody bool) (DocumentRevision, error) {
 
 	// Look up active rev for doc.  Note - can't rely on DocUnmarshalAll here when includeBody=true, because for a
 	// cache hit we don't want to do that work (yet).
-	bucketDoc, getErr := rc.backingStore.GetDocument(ctx, docID, DocUnmarshalSync)
+	bucketDoc, getErr := rc.backingStore[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
 	if getErr != nil {
 		return DocumentRevision{}, getErr
 	}
@@ -208,9 +213,9 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, include
 	}
 
 	// Retrieve from or add to rev cache
-	value := rc.getValue(docID, bucketDoc.CurrentRev, true)
+	value := rc.getValue(docID, bucketDoc.CurrentRev, collectionID, true)
 
-	docRev, statEvent, err := value.loadForDoc(ctx, rc.backingStore, bucketDoc, includeBody)
+	docRev, statEvent, err := value.loadForDoc(ctx, rc.backingStore[collectionID], bucketDoc, includeBody)
 	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {
@@ -229,18 +234,18 @@ func (rc *LRURevisionCache) statsRecorderFunc(cacheHit bool) {
 }
 
 // Adds a revision to the cache.
-func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision) {
+func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
 	if docRev.History == nil {
 		// TODO: CBG-1948
 		panic("Missing history for RevisionCache.Put")
 	}
-	value := rc.getValue(docRev.DocID, docRev.RevID, true)
+	value := rc.getValue(docRev.DocID, docRev.RevID, collectionID, true)
 	value.store(docRev)
 }
 
 // Upsert a revision in the cache.
-func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision) {
-	key := IDAndRev{DocID: docRev.DocID, RevID: docRev.RevID}
+func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
+	key := IDAndRev{DocID: docRev.DocID, RevID: docRev.RevID, CollectionID: collectionID}
 
 	rc.lock.Lock()
 	// If element exists remove from lrulist
@@ -261,12 +266,12 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision)
 	value.store(docRev)
 }
 
-func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *revCacheValue) {
+func (rc *LRURevisionCache) getValue(docID, revID string, collectionID uint32, create bool) (value *revCacheValue) {
 	if docID == "" || revID == "" {
 		// TODO: CBG-1948
 		panic("RevisionCache: invalid empty doc/rev id")
 	}
-	key := IDAndRev{DocID: docID, RevID: revID}
+	key := IDAndRev{DocID: docID, RevID: revID, CollectionID: collectionID}
 	rc.lock.Lock()
 	if elem := rc.cache[key]; elem != nil {
 		rc.lruList.MoveToFront(elem)
@@ -283,8 +288,8 @@ func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *r
 }
 
 // Remove removes a value from the revision cache, if present.
-func (rc *LRURevisionCache) Remove(docID, revID string) {
-	key := IDAndRev{DocID: docID, RevID: revID}
+func (rc *LRURevisionCache) Remove(docID, revID string, collectionID uint32) {
+	key := IDAndRev{DocID: docID, RevID: revID, CollectionID: collectionID}
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
 	element, ok := rc.cache[key]

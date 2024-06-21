@@ -31,26 +31,26 @@ type RevisionCache interface {
 	// Get returns the given revision, and stores if not already cached.
 	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
 	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
-	Get(ctx context.Context, docID, revID string, includeBody bool, includeDelta bool) (DocumentRevision, error)
+	Get(ctx context.Context, docID, revID string, collectionID uint32, includeBody, includeDelta bool) (DocumentRevision, error)
 
 	// GetActive returns the current revision for the given doc ID, and stores if not already cached.
 	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
-	GetActive(ctx context.Context, docID string, includeBody bool) (docRev DocumentRevision, err error)
+	GetActive(ctx context.Context, docID string, collectionID uint32, includeBody bool) (docRev DocumentRevision, err error)
 
 	// Peek returns the given revision if present in the cache
-	Peek(ctx context.Context, docID, revID string) (docRev DocumentRevision, found bool)
+	Peek(ctx context.Context, docID, revID string, collectionID uint32) (docRev DocumentRevision, found bool)
 
 	// Put will store the given docRev in the cache
-	Put(ctx context.Context, docRev DocumentRevision)
+	Put(ctx context.Context, docRev DocumentRevision, collectionID uint32)
 
 	// Update will remove existing value and re-create new one
-	Upsert(ctx context.Context, docRev DocumentRevision)
+	Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32)
 
 	// Remove eliminates a revision in the cache.
-	Remove(docID, revID string)
+	Remove(docID, revID string, collectionID uint32)
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
-	UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta)
+	UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta)
 }
 
 const (
@@ -66,7 +66,7 @@ var _ RevisionCache = &ShardedLRURevisionCache{}
 var _ RevisionCache = &BypassRevisionCache{}
 
 // NewRevisionCache returns a RevisionCache implementation for the given config options.
-func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStore RevisionCacheBackingStore, cacheStats *base.CacheStats) RevisionCache {
+func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStore map[uint32]RevisionCacheBackingStore, cacheStats *base.CacheStats) RevisionCache {
 
 	// If cacheOptions is not passed in, use defaults
 	if cacheOptions == nil {
@@ -219,8 +219,9 @@ func (rev *DocumentRevision) As1xBytes(ctx context.Context, db *DatabaseCollecti
 }
 
 type IDAndRev struct {
-	DocID string
-	RevID string
+	DocID        string
+	RevID        string
+	CollectionID uint32
 }
 
 // RevisionDelta stores data about a delta between a revision and ToRevID.

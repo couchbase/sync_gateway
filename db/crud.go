@@ -306,10 +306,10 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		revision, err = db.revisionCache.Get(ctx, docid, revid, includeBody, RevCacheOmitDelta)
+		revision, err = db.dbCtx.revisionCache.Get(ctx, docid, revid, db.GetCollectionID(), includeBody, RevCacheOmitDelta)
 	} else {
 		// No rev ID given, so load active revision
-		revision, err = db.revisionCache.GetActive(ctx, docid, includeBody)
+		revision, err = db.dbCtx.revisionCache.GetActive(ctx, docid, db.GetCollectionID(), includeBody)
 	}
 
 	if err != nil {
@@ -370,7 +370,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		return nil, nil, nil
 	}
 
-	fromRevision, err := db.revisionCache.Get(ctx, docID, fromRevID, RevCacheOmitBody, RevCacheIncludeDelta)
+	fromRevision, err := db.dbCtx.revisionCache.Get(ctx, docID, fromRevID, db.GetCollectionID(), RevCacheOmitBody, RevCacheIncludeDelta)
 
 	// If the fromRevision is a removal cache entry (no body), but the user has access to that removal, then just
 	// return 404 missing to indicate that the body of the revision is no longer available.
@@ -410,7 +410,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
 		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)
-		toRevision, err := db.revisionCache.Get(ctx, docID, toRevID, RevCacheOmitBody, RevCacheIncludeDelta)
+		toRevision, err := db.dbCtx.revisionCache.Get(ctx, docID, toRevID, db.GetCollectionID(), RevCacheOmitBody, RevCacheIncludeDelta)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -428,7 +428,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
 		if deleted {
 			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRevID, toRevision, deleted, nil)
-			db.revisionCache.UpdateDelta(ctx, docID, fromRevID, revCacheDelta)
+			db.dbCtx.revisionCache.UpdateDelta(ctx, docID, fromRevID, db.GetCollectionID(), revCacheDelta)
 			return &revCacheDelta, nil, nil
 		}
 
@@ -468,7 +468,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		revCacheDelta := newRevCacheDelta(deltaBytes, fromRevID, toRevision, deleted, toRevAttStorageMeta)
 
 		// Write the newly calculated delta back into the cache before returning
-		db.revisionCache.UpdateDelta(ctx, docID, fromRevID, revCacheDelta)
+		db.dbCtx.revisionCache.UpdateDelta(ctx, docID, fromRevID, db.GetCollectionID(), revCacheDelta)
 		return &revCacheDelta, nil, nil
 	}
 
@@ -2053,7 +2053,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 			// Prior to saving doc, remove the revision in cache
 			if createNewRevIDSkipped {
-				db.revisionCache.Remove(doc.ID, doc.CurrentRev)
+				db.dbCtx.revisionCache.Remove(doc.ID, doc.CurrentRev, db.GetCollectionID())
 			}
 
 			base.DebugfCtx(ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
@@ -2130,10 +2130,13 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			_shallowCopyBody: storedDoc.Body(ctx),
 		}
 
+		// get collection id here to pass down
+		collectionID := db.GetCollectionID()
+
 		if createNewRevIDSkipped {
-			db.revisionCache.Upsert(ctx, documentRevision)
+			db.dbCtx.revisionCache.Upsert(ctx, documentRevision, collectionID)
 		} else {
-			db.revisionCache.Put(ctx, documentRevision)
+			db.dbCtx.revisionCache.Put(ctx, documentRevision, collectionID)
 		}
 
 		if db.eventMgr().HasHandlerForEvent(DocumentChange) {

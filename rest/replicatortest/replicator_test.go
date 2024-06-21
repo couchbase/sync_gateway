@@ -5164,7 +5164,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	assert.NoError(t, err)
 
 	require.NoError(t, rt2collection.FlushChannelCache(ctx2))
-	rt2collection.FlushRevisionCacheForTest()
+	rt2.GetDatabase().FlushRevisionCacheForTest()
 
 	assert.NoError(t, ar.Start(ctx1))
 
@@ -7373,6 +7373,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator.
 	srv := httptest.NewServer(passiveRT.TestAdminHandler())
 	defer srv.Close()
+	passiveCollection := passiveRT.GetSingleTestDatabaseCollection()
 
 	// Active //
 	activeBucket := base.GetTestBucket(t)
@@ -7429,12 +7430,12 @@ func TestUnprocessableDeltas(t *testing.T) {
 	err = activeRT.WaitForPendingChanges()
 	require.NoError(t, err)
 
-	rev, err := passiveRT.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().GetActive(base.TestCtx(t), "test", true)
+	rev, err := passiveRT.GetDatabase().GetRevisionCacheForTest().GetActive(base.TestCtx(t), "test", passiveCollection.GetCollectionID(), true)
 	require.NoError(t, err)
 	// Making body invalid to trigger log "Unable to unmarshal mutable body for doc" in handleRev
 	// Which should give a HTTP 422
 	rev.BodyBytes = []byte("{invalid}")
-	passiveRT.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Upsert(base.TestCtx(t), rev)
+	passiveRT.GetDatabase().GetRevisionCacheForTest().Upsert(base.TestCtx(t), rev, passiveCollection.GetCollectionID())
 
 	assert.NoError(t, ar.Start(activeCtx))
 	// Check if it replicated
@@ -7488,7 +7489,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	version3 := activeRT.UpdateDoc(docID, version2, `{"key":"3","channels":["rev2+3chan"]}`)
 	require.NoError(t, activeRT.WaitForVersion(docID, version3))
 
-	activeRT.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+	activeRT.GetDatabase().FlushRevisionCacheForTest()
 	err := activeRT.GetSingleDataStore().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(version2.RevID), version2.RevID))
 	require.NoError(t, err)
 	// Set-up replicator //
