@@ -366,6 +366,9 @@ func (sc *ServerContext) allDatabaseSummaries() []DbSummary {
 				summary.Reason = OfflineReasonRequireResync
 			}
 		}
+		if sc.DatabaseInitManager.HasActiveInitialization(name) {
+			summary.InitializationActive = true
+		}
 		dbs = append(dbs, summary)
 	}
 	sort.Slice(dbs, func(i, j int) bool {
