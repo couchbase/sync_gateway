@@ -77,7 +77,7 @@ func (i AuditID) ValidateFields(f AuditFields) error {
 func mandatoryFieldsPresent(fields, mandatoryFields AuditFields) error {
 	me := &MultiError{}
 	for k, v := range mandatoryFields {
-		// recuse if map
+		// recurse if map
 		if vv, ok := v.(map[string]any); ok {
 			if pv, ok := fields[k].(map[string]any); ok {
 				me = me.Append(mandatoryFieldsPresent(pv, vv))
