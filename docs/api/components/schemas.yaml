@@ -2528,6 +2528,10 @@ CollectionNames:
         enum:
           - require_resync
           - ""
+      init_in_progress:
+        description: Indicates whether database initialization is in progress.
+        type: boolean
+        example: true
 all_user_channels:
   description: |-
     All user channels split by how they were assigned to the user and by keyspace.
