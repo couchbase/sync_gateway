@@ -577,7 +577,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
 			return err
 		}
-		if err := h.server.ReloadDatabaseWithConfig(contextNoCancel, *updatedDbConfig, false); err != nil {
+		if err := h.server.ReloadDatabaseWithConfig(contextNoCancel, *updatedDbConfig); err != nil {
 			return err
 		}
 		return base.HTTPErrorf(http.StatusCreated, "updated")
@@ -635,7 +635,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		}
 
 		// Load the new dbConfig before we persist the update.
-		err = h.server.ReloadDatabaseWithConfig(contextNoCancel, tmpConfig, true)
+		err = h.server.ReloadDatabaseWithConfig(contextNoCancel, tmpConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -746,7 +746,7 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
@@ -810,7 +810,7 @@ func (h *handler) handlePutCollectionConfigSync() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
@@ -905,7 +905,7 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
@@ -970,7 +970,7 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 	defer h.server.lock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
 		return err
 	}
 
