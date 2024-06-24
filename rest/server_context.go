@@ -45,8 +45,6 @@ const defaultBytesStatsReportingInterval = 30 * time.Second
 
 const dbLoadedStateChangeMsg = "DB loaded from config"
 
-const OfflineReasonRequireResync = "require_resync"
-
 var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named collections specified in database config, but not supported by connected Couchbase Server.")
 
 var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
@@ -363,8 +361,11 @@ func (sc *ServerContext) allDatabaseSummaries() []DbSummary {
 		}
 		if state == db.RunStateString[db.DBOffline] {
 			if len(dbctx.RequireResync.ScopeAndCollectionNames()) > 0 {
-				summary.Reason = OfflineReasonRequireResync
+				summary.RequireResync = true
 			}
+		}
+		if sc.DatabaseInitManager.HasActiveInitialization(name) {
+			summary.InitializationActive = true
 		}
 		dbs = append(dbs, summary)
 	}

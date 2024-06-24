@@ -2523,11 +2523,14 @@ CollectionNames:
           - Starting
           - Stopping
           - Resyncing
-      reason:
-        description: Optional reason a database is in a particular state.
-        enum:
-          - require_resync
-          - ""
+      require_resync:
+        description: Indicates whether the database requires resync before it can be brought online.
+        type: boolean
+        example: true
+      init_in_progress:
+        description: Indicates whether database initialization is in progress.
+        type: boolean
+        example: true
 all_user_channels:
   description: |-
     All user channels split by how they were assigned to the user and by keyspace.
