@@ -893,6 +893,59 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 
 }
 
+func TestImportResurrectionMou(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport, base.KeyCRUD)
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+
+	docID := "mouResurrection"
+
+	firstBody := Body{"foo": "bar"}
+	_, _, err := collection.Put(ctx, docID, firstBody)
+	require.NoError(t, err)
+
+	syncData, mou, _ := getSyncAndMou(t, collection, docID)
+	require.NotNil(t, syncData)
+	require.Nil(t, mou)
+
+	// Update via SDK, expect mou to be created
+	err = collection.dataStore.Set(docID, 0, nil, []byte(`{"foo": "baz"}`))
+	require.NoError(t, err)
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 1)
+	syncData, mou, _ = getSyncAndMou(t, collection, docID)
+	if db.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		require.NotNil(t, mou)
+	} else {
+		require.Nil(t, mou)
+	}
+	require.NotNil(t, syncData)
+
+	// Delete via SDK, the mou will be updated by the import process
+	require.NoError(t, collection.dataStore.Delete(docID))
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 2)
+	syncData, mou, _ = getSyncAndMou(t, collection, docID)
+	if db.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		require.NotNil(t, mou)
+	} else {
+		require.Nil(t, mou)
+	}
+	require.NotNil(t, syncData)
+
+	// replace initial doc, expect mou to be removed
+	_, _, err = collection.Put(ctx, docID, firstBody)
+	require.NoError(t, err)
+
+	syncData, mou, _ = getSyncAndMou(t, collection, docID)
+	require.Nil(t, mou)
+	require.NotNil(t, syncData)
+}
+
 func getSyncAndMou(t *testing.T, collection *DatabaseCollectionWithUser, key string) (syncData *SyncData, mou *MetadataOnlyUpdate, cas uint64) {
 
 	ctx := base.TestCtx(t)

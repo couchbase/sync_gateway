@@ -2022,7 +2022,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas))
 				}
 			} else {
-				if currentXattrs[base.MouXattrName] != nil {
+				if currentXattrs[base.MouXattrName] != nil && docExists {
 					updatedDoc.XattrsToDelete = append(updatedDoc.XattrsToDelete, base.MouXattrName)
 				}
 			}
