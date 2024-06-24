@@ -412,7 +412,7 @@ type DbSummary struct {
 	Bucket               string `json:"bucket"`
 	State                string `json:"state"`
 	InitializationActive bool   `json:"init_in_progress,omitempty"`
-	Reason               string `json:"reason,omitempty"`
+	RequireResync        bool   `json:"require_resync,omitempty"`
 }
 
 func (h *handler) handleGetDB() error {
