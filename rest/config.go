@@ -1900,7 +1900,7 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	}
 
 	// TODO: Dynamic update instead of reload
-	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast, false); err != nil {
+	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast); err != nil {
 		// remove these entries we just created above if the database hasn't loaded properly
 		return false, fmt.Errorf("couldn't reload database: %w", err)
 	}
