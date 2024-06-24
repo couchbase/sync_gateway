@@ -426,6 +426,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	rest.WaitForChannel(t, initStarted, "waiting for initialization to start")
 	log.Printf("initialization started")
 	waitAndRequireDBState(t, dbName, db.DBOffline)
+	verifyInitializationActive(t, dbName, true)
 
 	// Set up payloads for upserting db state
 	onlineConfigUpsert := rest.DbConfig{
@@ -444,11 +445,13 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
 	resp.RequireStatus(http.StatusCreated)
 	waitAndRequireDBState(t, dbName, db.DBStarting)
+	verifyInitializationActive(t, dbName, true)
 
 	// Take the database offline while async init is still in progress
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/"+dbName+"/_config", string(dbOfflineConfigPayload))
 	resp.RequireStatus(http.StatusCreated)
 	waitAndRequireDBState(t, dbName, db.DBOffline)
+	verifyInitializationActive(t, dbName, true)
 
 	// Verify offline changes can still be made
 	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/"+keyspace+"/_config/sync", "")
@@ -458,10 +461,12 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
 	resp.RequireStatus(http.StatusCreated)
 	waitAndRequireDBState(t, dbName, db.DBStarting)
+	verifyInitializationActive(t, dbName, true)
 
 	// Unblock initialization, verify status goes to Online
 	close(unblockInit)
 	waitAndRequireDBState(t, dbName, db.DBOnline)
+	verifyInitializationActive(t, dbName, true)
 
 	// Verify only four collections were initialized (offline/online didn't trigger duplicate initialization)
 	totalCount := atomic.LoadInt64(&collectionCount)
@@ -471,11 +476,13 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/"+dbName+"/_config", string(dbOfflineConfigPayload))
 	resp.RequireStatus(http.StatusCreated)
 	waitAndRequireDBState(t, dbName, db.DBOffline)
+	verifyInitializationActive(t, dbName, false)
 
 	// Take database back online after init complete, verify successful
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
 	resp.RequireStatus(http.StatusCreated)
 	waitAndRequireDBState(t, dbName, db.DBOnline)
+	verifyInitializationActive(t, dbName, false)
 
 }
 
@@ -886,6 +893,29 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	// Unblock initialization, verify status goes to Online
 	close(unblockInit)
 	waitAndRequireDBState(t, dbName, db.DBOnline)
+}
+
+// verifyInitializationActive verifies the expected value of InitializationActive on db and verbose all_dbs responses
+func verifyInitializationActive(t *testing.T, dbName string, expectedValue bool) {
+
+	var dbResult rest.DatabaseRoot
+	resp := rest.BootstrapAdminRequest(t, http.MethodGet, "/"+dbName+"/", "")
+	resp.RequireStatus(http.StatusOK)
+	require.NoError(t, base.JSONUnmarshal([]byte(resp.Body), &dbResult))
+	require.Equal(t, expectedValue, dbResult.InitializationActive)
+
+	var allDbResult []rest.DbSummary
+	allDbResp := rest.BootstrapAdminRequest(t, http.MethodGet, "/_all_dbs?verbose=true", "")
+	allDbResp.RequireStatus(http.StatusOK)
+	require.NoError(t, base.JSONUnmarshal([]byte(allDbResp.Body), &allDbResult))
+	dbFound := false
+	for _, dbSummary := range allDbResult {
+		if dbSummary.DBName == dbName {
+			dbFound = true
+			require.Equal(t, expectedValue, dbSummary.InitializationActive)
+		}
+	}
+	require.True(t, dbFound, "Database not found in _all_dbs response")
 }
 
 func makeDbConfig(t *testing.T, tb *base.TestBucket, syncFunction string, importFilter string) rest.DbConfig {
