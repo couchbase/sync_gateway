@@ -869,7 +869,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 							feeds[i] = nil
 						} else {
 							// On feed error, send the error and exit changes processing
-							if current[i].Err == base.ErrChannelFeed {
+							if errors.Is(current[i].Err, base.ErrChannelFeed) {
 								base.WarnfCtx(ctx, "MultiChangesFeed got error reading changes feed: %v", current[i].Err)
 								output <- current[i]
 								return

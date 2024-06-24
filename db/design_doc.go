@@ -688,7 +688,7 @@ func waitForViewIndexing(ctx context.Context, viewStore sgbucket.ViewStore, buck
 		}
 
 		// Retry on timeout or undefined view errors , otherwise return the error
-		if err == base.ErrViewTimeoutError {
+		if errors.Is(err, base.ErrViewTimeoutError) {
 			base.InfofCtx(ctx, base.KeyAll, "Timeout waiting for view %q to be ready for bucket %q - retrying...", viewName, base.UD(bucketName))
 		} else {
 			// For any other error, retry up to maxRetry, to wait for view initialization on the server

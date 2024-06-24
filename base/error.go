@@ -238,13 +238,17 @@ func IsDocNotFoundError(err error) bool {
 }
 
 func IsXattrNotFoundError(err error) bool {
-	if unwrappedErr := pkgerrors.Cause(err); unwrappedErr == nil {
+	if err == nil {
 		return false
-	} else if unwrappedErr == ErrXattrNotFound {
-		return true
-	} else if _, ok := unwrappedErr.(sgbucket.XattrMissingError); ok {
+	} else if errors.Is(err, ErrXattrNotFound) {
 		return true
 	}
+
+	unwrappedErr := pkgerrors.Cause(err)
+	if _, ok := unwrappedErr.(sgbucket.XattrMissingError); ok {
+		return true
+	}
+
 	return false
 }
 

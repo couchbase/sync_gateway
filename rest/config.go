@@ -1568,7 +1568,7 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 	for _, bucketName := range buckets {
 		var dbConfig DatabaseConfig
 		legacyCas, getErr := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), &dbConfig)
-		if getErr == base.ErrNotFound {
+		if errors.Is(getErr, base.ErrNotFound) {
 			continue
 		} else if getErr != nil {
 			base.InfofCtx(ctx, base.KeyConfig, "Unable to retrieve 3.0 config during config migration for bucket: %s, groupID: %s: %s", base.MD(bucketName), base.MD(groupID), getErr)
@@ -1578,7 +1578,7 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 		base.InfofCtx(ctx, base.KeyConfig, "Found legacy persisted config for database %s in bucket %s, groupID %s - migrating to db registry.", base.MD(dbConfig.Name), base.MD(bucketName), base.MD(groupID))
 		_, insertErr := sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, &dbConfig)
 		if insertErr != nil {
-			if insertErr == base.ErrAlreadyExists {
+			if errors.Is(insertErr, base.ErrAlreadyExists) {
 				base.DebugfCtx(ctx, base.KeyConfig, "Found legacy config for database %s in bucket %s, groupID: %s, but already exists in registry.", base.MD(dbConfig.Name), base.MD(bucketName), base.MD(groupID))
 			} else {
 				base.InfofCtx(ctx, base.KeyConfig, "Unable to persist migrated v3.0 config for bucket %s groupID %s: %s", base.MD(bucketName), base.MD(groupID), insertErr)
@@ -1629,7 +1629,7 @@ func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (fou
 	var cnf DatabaseConfig
 	callback := func(bucket string) (exit bool, err error) {
 		cas, err := sc.BootstrapContext.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &cnf)
-		if err == base.ErrNotFound {
+		if errors.Is(err, base.ErrNotFound) {
 			base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
 			return false, err
 		}
@@ -1719,7 +1719,7 @@ func (sc *ServerContext) bucketNameFromDbName(ctx context.Context, dbName string
 	cfgDbName := &dbConfigNameOnly{}
 	callback := func(bucket string) (exit bool, err error) {
 		_, err = sc.BootstrapContext.GetConfigName(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, cfgDbName)
-		if err != nil && err != base.ErrNotFound {
+		if err != nil && !errors.Is(err, base.ErrNotFound) {
 			return true, err
 		}
 		if dbName == cfgDbName.Name {

@@ -341,7 +341,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		var err error
 		if dbContext, err = h.server.GetActiveDatabase(keyspaceDb); err != nil {
 			h.addDatabaseLogContext(keyspaceDb, nil)
-			if err == base.ErrNotFound {
+			if errors.Is(err, base.ErrNotFound) {
 				if shouldCheckAdminAuth {
 					// Check if authenticated before attempting to get inactive database
 					authorized, err := h.checkAdminAuthenticationOnly()
@@ -1090,7 +1090,7 @@ func (h *handler) readSanitizeJSON(val interface{}) error {
 
 	if err != nil {
 		err = base.WrapJSONUnknownFieldErr(err)
-		if errors.Cause(err) != base.ErrUnknownField {
+		if !errors.Is(err, base.ErrUnknownField) {
 			err = base.HTTPErrorf(http.StatusBadRequest, "Bad JSON: %s", err.Error())
 		}
 	}
@@ -1120,7 +1120,7 @@ func (h *handler) readSanitizeDbConfigJSON() (*DbConfig, error) {
 	var config DbConfig
 	err := h.readSanitizeJSON(&config)
 	if err != nil {
-		if errors.Cause(base.WrapJSONUnknownFieldErr(err)) == base.ErrUnknownField {
+		if errors.Is(base.WrapJSONUnknownFieldErr(err), base.ErrUnknownField) {
 			err = base.HTTPErrorf(http.StatusBadRequest, "JSON Unknown Field: %s", err.Error())
 		}
 	}

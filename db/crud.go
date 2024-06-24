@@ -240,7 +240,7 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 	var importErr error
 
 	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, isDelete, cas, nil, ImportOnDemand)
-	if importErr == base.ErrImportCancelledFilter {
+	if errors.Is(importErr, base.ErrImportCancelledFilter) {
 		// If the import was cancelled due to filter, treat as not found
 		return nil, base.HTTPErrorf(404, "Not imported")
 	} else if importErr != nil {
@@ -833,7 +833,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 
 	importedDoc, importErr := importDb.ImportDoc(ctx, docid, doc, isDelete, nil, ImportOnDemand) // nolint:staticcheck
 
-	if importErr == base.ErrImportCancelledFilter {
+	if errors.Is(importErr, base.ErrImportCancelledFilter) {
 		// Document exists, but existing doc wasn't imported based on import filter.  Treat write as insert
 		doc.SyncData = SyncData{History: make(RevTree)}
 	} else if importErr != nil {
@@ -2060,7 +2060,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			return updatedDoc, err
 		})
 		if err != nil {
-			if err == base.ErrDocumentMigrated {
+			if errors.Is(err, base.ErrDocumentMigrated) {
 				base.DebugfCtx(ctx, base.KeyCRUD, "Migrated document %q to use xattr.", base.UD(key))
 			} else {
 				base.DebugfCtx(ctx, base.KeyCRUD, "Did not update document %q w/ xattr: %v", base.UD(key), err)
@@ -2089,7 +2089,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		}
 	}
 
-	if err == base.ErrUpdateCancel {
+	if errors.Is(err, base.ErrUpdateCancel) {
 		return nil, "", nil
 	} else if err != nil {
 		return nil, "", err

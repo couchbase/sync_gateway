@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -333,7 +334,7 @@ func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, opt
 		err = bucket.CreateIndex(ctx, indexName, indexExpression, filterExpression, n1qlOptions)
 		if err != nil {
 			// If index has already been created (race w/ other SG node), return without error
-			if err == base.ErrAlreadyExists {
+			if errors.Is(err, base.ErrAlreadyExists) {
 				isDeferred = false // Index already exists, don't need to update.
 				return false, nil, nil
 			}

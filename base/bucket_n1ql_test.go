@@ -54,9 +54,7 @@ func TestN1qlQuery(t *testing.T) {
 
 	indexExpression := "val"
 	err := n1qlStore.CreateIndex(ctx, "testIndex_value", indexExpression, "", testN1qlOptions)
-	if err != nil && err != ErrAlreadyExists {
-		t.Errorf("Error creating index: %s", err)
-	}
+	require.NoError(t, err)
 
 	// Wait for index readiness
 	onlineErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_value"}, WaitForIndexesDefault)

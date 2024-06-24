@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -387,7 +388,7 @@ func (s *SkippedSequenceSlice) processUnusedSequenceRangeAtSkipped(ctx context.C
 
 	// batch remove from skipped
 	err := s._removeSeqRange(ctx, fromSequence, toSequence)
-	if err != nil && err == base.ErrSkippedSequencesMissing {
+	if err != nil && errors.Is(err, base.ErrSkippedSequencesMissing) {
 		base.DebugfCtx(ctx, base.KeyCache, err.Error())
 		// we have sequences (possibly duplicate sequences) in the unused range that don't exist in skipped list
 		// handle any potential duplicate sequences between the unused range and the skipped list

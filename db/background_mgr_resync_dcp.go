@@ -137,7 +137,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 
 		if err == nil {
 			r.DocsChanged.Add(1)
-		} else if err != base.ErrUpdateCancel {
+		} else if !errors.Is(err, base.ErrUpdateCancel) {
 			base.WarnfCtx(ctx, "[%s] Error updating doc %q: %v", resyncLoggingID, base.UD(docID), err)
 		}
 		return true

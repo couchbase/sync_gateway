@@ -258,7 +258,7 @@ func (sc *ServerContext) Close(ctx context.Context) {
 // GetDatabase attempts to return the DatabaseContext of the database. It will load the database if necessary.
 func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.DatabaseContext, error) {
 	dbc, err := sc.GetActiveDatabase(name)
-	if err == base.ErrNotFound {
+	if errors.Is(err, base.ErrNotFound) {
 		dbc, _, err := sc.GetInactiveDatabase(ctx, name)
 		return dbc, err
 	}
@@ -284,7 +284,7 @@ func (sc *ServerContext) GetActiveDatabase(name string) (*db.DatabaseContext, er
 // This should be used if GetActiveDatabase fails. Turns the database context, a variable to say if the config exists, and an error.
 func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (*db.DatabaseContext, bool, error) {
 	dbc, err := sc.unsuspendDatabase(ctx, name)
-	if err != nil && err != base.ErrNotFound && err != ErrSuspendingDisallowed {
+	if err != nil && !errors.Is(err, base.ErrNotFound) && !errors.Is(err, ErrSuspendingDisallowed) {
 		return nil, false, err
 	} else if err == nil {
 		return dbc, true, nil
@@ -1572,7 +1572,7 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 		}
 
 		cas, err := sc.BootstrapContext.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &dbConfig.DatabaseConfig)
-		if err == base.ErrNotFound {
+		if errors.Is(err, base.ErrNotFound) {
 			// Database no longer exists, so clean up dbConfigs
 			base.InfofCtx(ctx, base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName), base.MD(bucket))
 			delete(sc.dbConfigs, dbName)

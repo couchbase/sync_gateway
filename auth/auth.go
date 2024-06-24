@@ -211,7 +211,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		}
 	})
 
-	if err != nil && err != base.ErrUpdateCancel {
+	if err != nil && !errors.Is(err, base.ErrUpdateCancel) {
 		return nil, err
 	}
 
@@ -472,7 +472,7 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, scope st
 
 	if subdocStore, ok := base.AsSubdocStore(auth.datastore); ok {
 		err := subdocStore.SubdocInsert(auth.LogCtx, docID, subdocPath, 0, invalSeq)
-		if err != nil && err != base.ErrAlreadyExists && err != base.ErrPathExists && err != base.ErrPathNotFound && !base.IsDocNotFoundError(err) {
+		if err != nil && !errors.Is(err, base.ErrAlreadyExists) && !errors.Is(err, base.ErrPathExists) && errors.Is(err, base.ErrPathNotFound) && !base.IsDocNotFoundError(err) {
 			return err
 		}
 		return nil
@@ -500,7 +500,7 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, scope st
 		return updated, nil, false, err
 	})
 
-	if err == base.ErrUpdateCancel {
+	if errors.Is(err, base.ErrUpdateCancel) {
 		return nil
 	}
 
@@ -514,7 +514,7 @@ func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) err
 
 	if subdocStore, ok := base.AsSubdocStore(auth.datastore); ok {
 		err := subdocStore.SubdocInsert(auth.LogCtx, docID, "role_inval_seq", 0, invalSeq)
-		if err != nil && err != base.ErrAlreadyExists && err != base.ErrPathNotFound && err != base.ErrPathExists && !base.IsDocNotFoundError(err) {
+		if err != nil && !errors.Is(err, base.ErrAlreadyExists) && !errors.Is(err, base.ErrPathExists) && errors.Is(err, base.ErrPathNotFound) && !base.IsDocNotFoundError(err) {
 			return err
 		}
 		return nil
@@ -543,7 +543,7 @@ func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) err
 		return updated, nil, false, err
 	})
 
-	if err == base.ErrUpdateCancel {
+	if errors.Is(err, base.ErrUpdateCancel) {
 		return nil
 	}
 
@@ -623,7 +623,7 @@ func (auth *Authenticator) casUpdatePrincipal(p Principal, callback casUpdatePri
 	for i := 1; i <= PrincipalUpdateMaxCasRetries; i++ {
 		updatedPrincipal, err := callback(p)
 		if err != nil {
-			if err == base.ErrUpdateCancel {
+			if errors.Is(err, base.ErrUpdateCancel) {
 				return nil
 			} else {
 				return err

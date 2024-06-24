@@ -13,6 +13,7 @@ package functions
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -164,7 +165,7 @@ func (jserr *jsError) Unwrap() error {
 var HttpErrRE = regexp.MustCompile(`^HTTP:\s*(\d+)\s+(.*)`)
 
 func (runner *jsRunner) convertError(err error) error {
-	if err == sgbucket.ErrJSTimeout {
+	if errors.Is(err, sgbucket.ErrJSTimeout) {
 		return base.HTTPErrorf(408, "Timeout in JavaScript")
 	}
 	// Unfortunately there is no API on otto.Error to get the name & message separately.

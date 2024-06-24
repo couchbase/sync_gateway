@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"runtime/debug"
@@ -846,13 +847,13 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID str
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
 	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(bsc.loggingCtx, docID, deltaSrcRevID, revID)
-	if err == ErrForbidden { // nolint: gocritic // can't convert if/else if to switch since base.IsFleeceDeltaError is not switchable
+	if errors.Is(err, ErrForbidden) {
 		return err
 	} else if base.IsFleeceDeltaError(err) {
 		// Something went wrong in the diffing library. We want to know about this!
 		base.WarnfCtx(bsc.loggingCtx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
-	} else if err == base.ErrDeltaSourceIsTombstone {
+	} else if errors.Is(err, base.ErrDeltaSourceIsTombstone) {
 		base.TracefCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Delta source %s is tombstone. Unable to generate delta to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
 		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
 	} else if err != nil {
@@ -1459,7 +1460,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Bod
 			}
 
 			// Peer doesn't support proveAttachment or does not have attachment. Fall back to using getAttachment as proof.
-			if proveAttErr == errNoBlipHandler || proveAttErr == ErrAttachmentNotFound {
+			if errors.Is(proveAttErr, errNoBlipHandler) || errors.Is(proveAttErr, ErrAttachmentNotFound) {
 				base.InfofCtx(bh.loggingCtx, base.KeySync, "Peer sent prove attachment error %v, falling back to getAttachment for proof in doc %s (digest %s)", proveAttErr, base.UD(docID), digest)
 				_, getAttErr := bh.sendGetAttachment(sender, docID, name, digest, meta)
 				if getAttErr == nil {

@@ -10,6 +10,7 @@ package rest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -384,7 +385,7 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 				continue
 			}
 			dbConfig, err := b.getDatabaseConfig(ctx, bucketName, groupID, dbName, registryDb.Version, registry)
-			if err == base.ErrConfigRegistryReloadRequired {
+			if errors.Is(err, base.ErrConfigRegistryReloadRequired) {
 				reloadRequired = true
 				break
 			} else if err != nil {
@@ -466,7 +467,7 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 	)
 
 	// Return the config with rollback error, to support rollback by the caller if appropriate
-	if err != nil && err != base.ErrConfigRegistryRollback {
+	if err != nil && !errors.Is(err, base.ErrConfigRegistryRollback) {
 		return nil, err
 	}
 
@@ -489,7 +490,7 @@ func (b *bootstrapContext) getDatabaseConfig(ctx context.Context, bucketName, gr
 	ctx = b.addDatabaseLogContext(ctx, &DbConfig{Name: dbName})
 	config, err := b.getConfigVersionWithRetry(ctx, bucketName, groupID, dbName, version)
 	if err != nil {
-		if err == base.ErrConfigRegistryRollback {
+		if errors.Is(err, base.ErrConfigRegistryRollback) {
 			base.InfofCtx(ctx, base.KeyConfig, "Registry rollback required for bucket: %s, groupID: %s, dbName:%s", bucketName, groupID, dbName)
 			rollbackErr := b.rollbackRegistry(ctx, bucketName, groupID, dbName, config, registry)
 			// On successful registry rollback, caller needs reload registry
@@ -547,7 +548,7 @@ func (b *bootstrapContext) waitForConfigDelete(ctx context.Context, bucketName, 
 	)
 
 	// If still exists after retry, re-attempt the delete
-	if err == base.ErrAlreadyExists {
+	if errors.Is(err, base.ErrAlreadyExists) {
 		existingCas, ok := retryResult.(uint64)
 		if !ok {
 			return fmt.Errorf("Unable to convert returned cas of type %T to uint64", retryResult)
@@ -701,11 +702,11 @@ func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketNam
 			// Use waitForConfigDelete to confirm/clean up any unexpected config files.  Recovers from slow updates
 			// racing with rollback.
 			err := b.waitForConfigDelete(ctx, bucketName, groupID, dbName, "", registry)
-			if err == base.ErrConfigRegistryReloadRequired {
+			if errors.Is(err, base.ErrConfigRegistryReloadRequired) {
 				continue
 			}
 			// On rollback (delete) of config for non-existent registry entry, log a warning but continue.
-			if err == base.ErrConfigRegistryRollback {
+			if errors.Is(err, base.ErrConfigRegistryRollback) {
 				base.WarnfCtx(ctx, "Removed existing config for groupID: %v, dbName: %v that was not found in the registry", base.MD(groupID), base.MD(dbName))
 				return registry, nil, nil
 			}
@@ -714,7 +715,7 @@ func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketNam
 			if registryDb.Version != "" && !registryDb.IsDeleted() {
 				// Database exists in registry, go fetch the config
 				config, err = b.getDatabaseConfig(ctx, bucketName, groupID, dbName, registryDb.Version, registry)
-				if err == base.ErrConfigRegistryReloadRequired {
+				if errors.Is(err, base.ErrConfigRegistryReloadRequired) {
 					// ReloadRegistry is returned by getDatabaseConfig immediately if the config version is greater than version found in the registry.
 					// We want to restart to pick up the latest registry
 					continue
@@ -722,7 +723,7 @@ func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketNam
 			} else if registryDb.PreviousVersion != nil {
 				// Previous Version without current version represents in-progress delete.  Wait for delete to complete
 				err := b.waitForConfigDelete(ctx, bucketName, groupID, dbName, registryDb.PreviousVersion.Version, registry)
-				if err == base.ErrConfigRegistryReloadRequired {
+				if errors.Is(err, base.ErrConfigRegistryReloadRequired) {
 					// ReloadRegistry is returned by waitForConfigDelete immediately if the config exists but the
 					// version does not match the previous version. Indicates a concurrent author has recreated the
 					// database - continue to reload the registry.

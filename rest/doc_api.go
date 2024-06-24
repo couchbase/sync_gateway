@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math"
 	"mime/multipart"
@@ -69,7 +70,7 @@ func (h *handler) handleGetDoc() error {
 		// Single-revision GET:
 		value, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 		if err != nil {
-			if err == base.ErrImportCancelledPurged {
+			if errors.Is(err, base.ErrImportCancelledPurged) {
 				base.DebugfCtx(h.ctx(), base.KeyImport, fmt.Sprintf("Import cancelled as document %v is purged", base.UD(docid)))
 				return nil
 			}

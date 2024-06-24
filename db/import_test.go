@@ -214,7 +214,7 @@ func TestMigrateMetadata(t *testing.T) {
 		&sgbucket.MutateInOptions{PreserveExpiry: false},
 	)
 	assert.True(t, err != nil)
-	assert.True(t, err == base.ErrCasFailureShouldRetry)
+	assert.ErrorIs(t, err, base.ErrCasFailureShouldRetry)
 
 }
 

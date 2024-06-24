@@ -1636,7 +1636,7 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 			_, unusedSequences, err = db.resyncDocument(ctx, docid, key, regenerateSequences, unusedSequences)
 			if err == nil {
 				docsChanged++
-			} else if err != base.ErrUpdateCancel {
+			} else if !errors.Is(err, base.ErrUpdateCancel) {
 				base.WarnfCtx(ctx, "Error updating doc %q: %v", base.UD(docid), err)
 			}
 			highSeq = importRow.Seq
@@ -2460,7 +2460,7 @@ func (dbc *DatabaseContext) InstallPrincipals(ctx context.Context, spec map[stri
 					return false, nil, nil
 				}
 
-				if err == base.ErrViewTimeoutError {
+				if errors.Is(err, base.ErrViewTimeoutError) {
 					// Timeout error, possibly due to view re-indexing, so retry
 					base.InfofCtx(ctx, base.KeyAuth, "Error calling UpdatePrincipal(): %v.  Will retry in case this is a temporary error", err)
 					return true, err, nil

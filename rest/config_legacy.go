@@ -387,7 +387,7 @@ func setupServerConfig(ctx context.Context, args []string) (config *LegacyServer
 	var unknownFieldsErr error
 
 	config, err = ParseCommandLine(ctx, args, flag.ExitOnError)
-	if pkgerrors.Cause(err) == base.ErrUnknownField {
+	if errors.Is(err, base.ErrUnknownField) {
 		unknownFieldsErr = err
 	} else if err != nil {
 		return nil, fmt.Errorf(err.Error())

@@ -915,7 +915,7 @@ func (m *sgReplicateManager) updateCluster(callback ClusterUpdateFunc) error {
 		}
 
 		_, err = m.cfg.Set(cfgKeySGRCluster, updatedBytes, cas)
-		if err == base.ErrCfgCasError {
+		if errors.Is(err, base.ErrCfgCasError) {
 			base.DebugfCtx(m.loggingCtx, base.KeyReplicate, "CAS Retry updating sg-replicate cluster definition (%d/%d)", i, maxSGRClusterCasRetries)
 		} else if err != nil {
 			base.InfofCtx(m.loggingCtx, base.KeyReplicate, "Error persisting sg-replicate cluster definition - update cancelled: %v", err)
@@ -1478,7 +1478,7 @@ func (m *sgReplicateManager) PutReplicationStatus(ctx context.Context, replicati
 	if err != nil {
 		// Not found is expected when adhoc replication is stopped, return removed status instead of error
 		// since UpdateReplicationState was successful
-		if err == base.ErrNotFound {
+		if errors.Is(err, base.ErrNotFound) {
 			replicationStatus := &ReplicationStatus{
 				ID:     replicationID,
 				Status: "removed",

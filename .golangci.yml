@@ -15,6 +15,7 @@ linters:
   enable:
     - bodyclose # checks whether HTTP response body is closed successfully
     - dupl # Tool for code clone detection
+    - err113 # Golang linter to check the errors handling expressions
     - errcheck # Errcheck is a program for checking for unchecked errors in go programs. These unchecked errors can be critical bugs in some cases
     - goconst # Finds repeated strings that could be replaced by a constant
     - gocritic # The most opinionated Go source code linter
@@ -37,7 +38,6 @@ linters:
     - asciicheck # Simple linter to check that your code does not contain non-ASCII identifiers
     - depguard # Go linter that checks if package imports are in a list of acceptable packages
     - dogsled # Checks assignments with too many blank identifiers # (e.g. x, _, _, _, := f())
-    - err113 # Golang linter to check the errors handling expressions
     - funlen # Tool for detection of long functions
     - gochecknoglobals # Checks that no globals are present in Go code
     - gochecknoinits # Checks that no init functions are present in Go code
@@ -78,3 +78,6 @@ issues:
       linters:
         - govet
       text: fieldalignment
+    - linters:
+        - err113
+      text: "do not define dynamic errors"

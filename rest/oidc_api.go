@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -152,7 +153,7 @@ func (h *handler) handleOIDCCallback() error {
 	if !provider.DisableCallbackState {
 		stateCookie, err := h.rq.Cookie(stateCookieName)
 
-		if err == http.ErrNoCookie || stateCookie == nil {
+		if errors.Is(err, http.ErrNoCookie) || stateCookie == nil {
 			return ErrNoStateCookie
 		}
 

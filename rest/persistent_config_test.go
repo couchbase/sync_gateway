@@ -756,8 +756,7 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 				bucketDbConfig.Version = "2-abc"
 				return bucketDbConfig, nil
 			})
-			require.Error(t, err)
-			require.True(t, err == base.ErrNotFound)
+			require.ErrorIs(t, err, base.ErrNotFound)
 
 			// Case 4. InsertConfig with a conflicting collection should return error, but should succeed after next GetDatabaseConfigs
 			collection3db1Config := getTestDatabaseConfig(bucketName, "c3_db1", collection3ScopesConfig, "1-a")

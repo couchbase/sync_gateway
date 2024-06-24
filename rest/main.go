@@ -22,7 +22,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	pkgerrors "github.com/pkg/errors"
 )
 
 // ServerMain is the main entry point of launching the Sync Gateway server; the main
@@ -46,7 +45,7 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	flagStartupConfig, fs, disablePersistentConfig, err := parseFlags(ctx, osArgs)
 	if err != nil {
 		// Return nil for ErrHelp so the shell exit code is 0
-		if err == flag.ErrHelp {
+		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
@@ -80,7 +79,7 @@ func serverMainPersistentConfig(ctx context.Context, fs *flag.FlagSet, flagStart
 	var legacyDbRoles map[string]map[string]*auth.PrincipalConfig // [db][roles]PrincipleConfig
 	if len(configPath) == 1 {
 		fileStartupConfig, err = LoadStartupConfigFromPath(ctx, configPath[0])
-		if pkgerrors.Cause(err) == base.ErrUnknownField {
+		if errors.Is(err, base.ErrUnknownField) {
 			// If we have an unknown field error processing config its possible that the config is a 2.x config
 			// requiring automatic upgrade. We should attempt to perform this upgrade
 
@@ -93,7 +92,7 @@ func serverMainPersistentConfig(ctx context.Context, fs *flag.FlagSet, flagStart
 				// We need to validate if the error was again, an unknown field error. If this is the case its possible
 				// the config is actually a 3.x config but with a genuine unknown field, therefore we should  return the
 				// original error from LoadStartupConfigFromPath.
-				if pkgerrors.Cause(upgradeError) == base.ErrUnknownField {
+				if errors.Is(upgradeError, base.ErrUnknownField) {
 					base.WarnfCtx(ctx, "Automatic upgrade attempt failed, %s not recognized as legacy config format: %v", base.MD(configPath[0]), upgradeError)
 					base.WarnfCtx(ctx, "Provided config %s not recognized as bootstrap config format: %v", base.MD(configPath[0]), err)
 					return false, fmt.Errorf("unknown config fields supplied. Unable to continue")

@@ -11,6 +11,7 @@ package channels
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"time"
 
@@ -91,7 +92,7 @@ func ConvertJSONNumbers(value interface{}) interface{} {
 			return asInt
 		} else {
 			numErr, _ := err.(*strconv.NumError)
-			if numErr.Err == strconv.ErrRange {
+			if errors.Is(numErr.Err, strconv.ErrRange) {
 				return value
 			}
 		}

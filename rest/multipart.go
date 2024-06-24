@@ -42,7 +42,7 @@ func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}
 	err := ReadJSONFromMIMERawErr(headers, input, into)
 	if err != nil {
 		err = base.WrapJSONUnknownFieldErr(err)
-		if errors.Cause(err) == base.ErrUnknownField {
+		if errors.Is(err, base.ErrUnknownField) {
 			err = base.HTTPErrorf(http.StatusBadRequest, "JSON Unknown Field: %s", err.Error())
 		} else {
 			err = base.HTTPErrorf(http.StatusBadRequest, "Bad JSON: %s", err.Error())

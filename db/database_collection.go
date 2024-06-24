@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -333,7 +334,7 @@ func (c *DatabaseCollection) UpdateSyncFun(ctx context.Context, syncFun string) 
 		}
 	})
 
-	if err == base.ErrUpdateCancel {
+	if errors.Is(err, base.ErrUpdateCancel) {
 		err = nil
 	}
 	return

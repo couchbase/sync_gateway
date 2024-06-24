@@ -713,7 +713,7 @@ func (meh *sgMgrEventHandlers) OnFeedError(_ string, r cbgt.Feed, feedErr error)
 	// on the next janitor work cycle(ephemeral network issue to the same node).
 	if strings.Contains(feedErr.Error(), "EOF") {
 		// If this wasn't an intentional close, log about the EOF
-		if meh.ctx.Err() != context.Canceled {
+		if !errors.Is(meh.ctx.Err(), context.Canceled) {
 			InfofCtx(meh.ctx, KeyDCP, "Handling EOF on cbgt feed - notifying manager to trigger reconnection to feed for bucketName:%v, bucketUUID:%v, err: %v", MD(bucketName), bucketUUID, feedErr)
 		}
 		dcpFeed.NotifyMgrOnClose()
