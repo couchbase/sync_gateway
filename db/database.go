@@ -482,10 +482,16 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 	dbContext.Scopes = make(map[string]Scope, len(options.Scopes))
 	dbContext.CollectionNames = make(map[string]map[string]struct{}, len(options.Scopes))
+
+	// Init the rev cache
+	dbContext.revisionCache = NewRevisionCache(
+		dbContext.Options.RevisionCacheOptions,
+		dbContext.CollectionByID,
+		dbContext.DbStats.Cache(),
+	)
+
 	// if any sync functions for any collection, we recommend running a resync
 	syncFunctionsChanged := false
-	// Create new backing store map to map from collection ID's to their associated rev cache backing stores for rev cache document loads
-	collectionIDToDbCollection := NewBackingStoreMap()
 	for scopeName, scope := range options.Scopes {
 		dbContext.Scopes[scopeName] = Scope{
 			Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
@@ -532,18 +538,15 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			collectionID := dbCollection.GetCollectionID()
 			dbContext.CollectionByID[collectionID] = dbCollection
 			collectionNameMap[collName] = struct{}{}
-			collectionIDToDbCollection[collectionID] = dbCollection
 		}
 		dbContext.CollectionNames[scopeName] = collectionNameMap
 	}
 
-	// Init the rev cache
 	dbContext.revisionCache = NewRevisionCache(
 		dbContext.Options.RevisionCacheOptions,
-		collectionIDToDbCollection,
+		dbContext.CollectionByID,
 		dbContext.DbStats.Cache(),
 	)
-
 	if syncFunctionsChanged {
 		base.InfofCtx(ctx, base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbContext.Name))
 	}

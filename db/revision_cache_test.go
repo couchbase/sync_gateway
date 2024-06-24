@@ -80,8 +80,8 @@ func (*noopBackingStore) getRevision(ctx context.Context, doc *Document, revid s
 // This should only be used in tests that have no database context being created.
 const testCollectionID = 0
 
-// CreateTestSingleBackingStoreMap will create map of rev cache backing stores and assign the specified backing store to collection ID specified for testing purposes
-func CreateTestSingleBackingStoreMap(backingStore RevisionCacheBackingStore, collectionID uint32) map[uint32]RevisionCacheBackingStore {
+// createTestSingleBackingStoreMap will create map of rev cache backing stores and assign the specified backing store to collection ID specified for testing purposes
+func createTestSingleBackingStoreMap(backingStore RevisionCacheBackingStore, collectionID uint32) map[uint32]RevisionCacheBackingStore {
 	backingStoreMap := make(map[uint32]RevisionCacheBackingStore)
 	backingStoreMap[collectionID] = backingStore
 	return backingStoreMap
@@ -90,7 +90,7 @@ func CreateTestSingleBackingStoreMap(backingStore RevisionCacheBackingStore, col
 // Tests the eviction from the LRURevisionCache
 func TestLRURevisionCacheEviction(t *testing.T) {
 	cacheHitCounter, cacheMissCounter := base.SgwIntStat{}, base.SgwIntStat{}
-	backingStoreMap := CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID)
+	backingStoreMap := createTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID)
 	cache := NewLRURevisionCache(10, backingStoreMap, &cacheHitCounter, &cacheMissCounter)
 
 	ctx := base.TestCtx(t)
@@ -144,7 +144,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 func TestBackingStore(t *testing.T) {
 
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
-	backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{[]string{"Peter"}, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
+	backingStoreMap := createTestSingleBackingStoreMap(&testBackingStore{[]string{"Peter"}, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
 	cache := NewLRURevisionCache(10, backingStoreMap, &cacheHitCounter, &cacheMissCounter)
 
 	// Get Rev for the first time - miss cache, but fetch the doc and revision to store
@@ -245,7 +245,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	backingStoreMap := CreateTestSingleBackingStoreMap(collection, testCollectionID)
+	backingStoreMap := createTestSingleBackingStoreMap(collection, testCollectionID)
 
 	docBody := Body{
 		"value": 1234,
@@ -396,7 +396,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 // Ensure subsequent updates to delta don't mutate previously retrieved deltas
 func TestRevisionImmutableDelta(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
-	backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
+	backingStoreMap := createTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
 	cache := NewLRURevisionCache(10, backingStoreMap, &cacheHitCounter, &cacheMissCounter)
 
 	firstDelta := []byte("delta")
@@ -432,7 +432,7 @@ func TestRevisionImmutableDelta(t *testing.T) {
 // Ensure subsequent updates to delta don't mutate previously retrieved deltas
 func TestSingleLoad(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
-	backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
+	backingStoreMap := createTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
 	cache := NewLRURevisionCache(10, backingStoreMap, &cacheHitCounter, &cacheMissCounter)
 
 	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc123", RevID: "1-abc", History: Revisions{"start": 1}}, testCollectionID)
@@ -443,7 +443,7 @@ func TestSingleLoad(t *testing.T) {
 // Ensure subsequent updates to delta don't mutate previously retrieved deltas
 func TestConcurrentLoad(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
-	backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
+	backingStoreMap := createTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
 	cache := NewLRURevisionCache(10, backingStoreMap, &cacheHitCounter, &cacheMissCounter)
 
 	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc1", RevID: "1-abc", History: Revisions{"start": 1}}, testCollectionID)
@@ -607,7 +607,7 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 	base.SetUpBenchmarkLogging(b, base.LevelDebug, base.KeyAll)
 
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
-	backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
+	backingStoreMap := createTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
 	cache := NewLRURevisionCache(5000, backingStoreMap, &cacheHitCounter, &cacheMissCounter)
 
 	ctx := base.TestCtx(b)

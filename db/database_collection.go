@@ -21,6 +21,7 @@ import (
 // DatabaseCollection provides a representation of a single collection of a database.
 type DatabaseCollection struct {
 	dataStore            base.DataStore          // Storage
+	revisionCache        collectionRevisionCache // Cache of recently-accessed document revisions
 	collectionStats      *base.CollectionStats   // pointer to the collection stats (to avoid map lookups when used)
 	dbCtx                *DatabaseContext        // pointer to database context to allow passthrough of functions
 	ChannelMapper        *channels.ChannelMapper // Collection's sync function
@@ -42,6 +43,7 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, data
 		dataStore:       dataStore,
 		dbCtx:           dbContext,
 		collectionStats: stats,
+		revisionCache:   newCollectionRevisionCache(&dbContext.revisionCache, dataStore.GetCollectionID()),
 		ScopeName:       dataStore.ScopeName(),
 		Name:            dataStore.CollectionName(),
 	}
@@ -131,6 +133,11 @@ func (c *DatabaseCollection) exitChanges() chan struct{} {
 // GetCollectionID returns a collectionID. If couchbase server does not return collections, it will return base.DefaultCollectionID, like the default collection for a Couchbase Server that does support collections.
 func (c *DatabaseCollection) GetCollectionID() uint32 {
 	return c.dataStore.GetCollectionID()
+}
+
+// GetRevisionCacheForTest allow accessing a copy of revision cache.
+func (c *DatabaseCollection) GetRevisionCacheForTest() *collectionRevisionCache {
+	return &c.revisionCache
 }
 
 // FlushChannelCache flush support. Currently test-only - added for unit test access from rest package

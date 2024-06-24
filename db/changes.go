@@ -321,7 +321,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 
 // UserHasDocAccess checks whether the user has access to the active revision of the document
 func UserHasDocAccess(ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (bool, error) {
-	currentRev, err := collection.dbCtx.revisionCache.GetActive(ctx, docID, collection.GetCollectionID(), false)
+	currentRev, err := collection.revisionCache.GetActive(ctx, docID, false)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			return false, nil

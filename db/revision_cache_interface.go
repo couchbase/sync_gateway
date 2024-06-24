@@ -66,8 +66,12 @@ var _ RevisionCache = &ShardedLRURevisionCache{}
 var _ RevisionCache = &BypassRevisionCache{}
 
 // NewRevisionCache returns a RevisionCache implementation for the given config options.
-func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStore map[uint32]RevisionCacheBackingStore, cacheStats *base.CacheStats) RevisionCache {
+func NewRevisionCache(cacheOptions *RevisionCacheOptions, collectionByID map[uint32]*DatabaseCollection, cacheStats *base.CacheStats) RevisionCache {
 
+	backingStores := make(map[uint32]RevisionCacheBackingStore, len(collectionByID))
+	for collectionID, collection := range collectionByID {
+		backingStores[collectionID] = collection
+	}
 	// If cacheOptions is not passed in, use defaults
 	if cacheOptions == nil {
 		cacheOptions = DefaultRevisionCacheOptions()
@@ -75,17 +79,17 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStore map[uint3
 
 	if cacheOptions.Size == 0 {
 		bypassStat := cacheStats.RevisionCacheBypass
-		return NewBypassRevisionCache(backingStore, bypassStat)
+		return NewBypassRevisionCache(backingStores, bypassStat)
 	}
 
 	cacheHitStat := cacheStats.RevisionCacheHits
 	cacheMissStat := cacheStats.RevisionCacheMisses
 
 	if cacheOptions.ShardCount > 1 {
-		return NewShardedLRURevisionCache(cacheOptions.ShardCount, cacheOptions.Size, backingStore, cacheHitStat, cacheMissStat)
+		return NewShardedLRURevisionCache(cacheOptions.ShardCount, cacheOptions.Size, backingStores, cacheHitStat, cacheMissStat)
 	}
 
-	return NewLRURevisionCache(cacheOptions.Size, backingStore, cacheHitStat, cacheMissStat)
+	return NewLRURevisionCache(cacheOptions.Size, backingStores, cacheHitStat, cacheMissStat)
 }
 
 type RevisionCacheOptions struct {
@@ -287,4 +291,56 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 	channels = doc.History[revid].Channels
 
 	return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, err
+}
+
+// collectionRevisionCache is a view of a revision cache for a collection.
+type collectionRevisionCache struct {
+	revCache     *RevisionCache // pointer to struct to allow this to be replaced for testing seam
+	collectionID uint32
+}
+
+// NewCollectionRevisionCache returns a view of a revision cache for a collection.
+func newCollectionRevisionCache(revCache *RevisionCache, collectionID uint32) collectionRevisionCache {
+	return collectionRevisionCache{
+		revCache:     revCache,
+		collectionID: collectionID,
+	}
+}
+
+// Get returns the given revision, and stores if not already cached.
+// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
+// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
+func (c *collectionRevisionCache) Get(ctx context.Context, docID, revID string, includeBody, includeDelta bool) (DocumentRevision, error) {
+	return (*c.revCache).Get(ctx, docID, revID, c.collectionID, includeBody, includeDelta)
+}
+
+// GetActive returns the current revision for the given doc ID, and stores if not already cached.
+// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
+func (c *collectionRevisionCache) GetActive(ctx context.Context, docID string, includeBody bool) (docRev DocumentRevision, err error) {
+	return (*c.revCache).GetActive(ctx, docID, c.collectionID, includeBody)
+}
+
+// Peek returns the given revision if present in the cache
+func (c *collectionRevisionCache) Peek(ctx context.Context, docID, revID string) (docRev DocumentRevision, found bool) {
+	return (*c.revCache).Peek(ctx, docID, revID, c.collectionID)
+}
+
+// Put will store the given docRev in the cache
+func (c *collectionRevisionCache) Put(ctx context.Context, docRev DocumentRevision) {
+	(*c.revCache).Put(ctx, docRev, c.collectionID)
+}
+
+// Update will remove existing value and re-create new one
+func (c *collectionRevisionCache) Upsert(ctx context.Context, docRev DocumentRevision) {
+	(*c.revCache).Upsert(ctx, docRev, c.collectionID)
+}
+
+// Remove eliminates a revision in the cache.
+func (c *collectionRevisionCache) Remove(docID, revID string) {
+	(*c.revCache).Remove(docID, revID, c.collectionID)
+}
+
+// UpdateDelta stores the given toDelta value in the given rev if cached
+func (c *collectionRevisionCache) UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta) {
+	(*c.revCache).UpdateDelta(ctx, docID, revID, c.collectionID, toDelta)
 }
