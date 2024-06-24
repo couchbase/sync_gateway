@@ -621,7 +621,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	// set if we find an alternative revision to send in the event the originally requested rev is unavailable
 	var replacedRevID string
 
-	if base.IsDocNotFoundError(originalErr) {
+	if base.IsDocNotFoundError(originalErr) || errors.Is(originalErr, base.ErrImportFailed) {
 		collectionCtx, collectionErr := bsc.collections.get(collectionIdx)
 		if collectionErr != nil {
 			return collectionErr

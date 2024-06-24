@@ -528,7 +528,7 @@ func TestImportNullDoc(t *testing.T) {
 
 	// Import a null document
 	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, existingDoc, ImportOnDemand)
-	assert.Equal(t, base.ErrEmptyDocument, err)
+	assert.ErrorIs(t, err, base.ErrEmptyDocument)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
 
@@ -546,7 +546,7 @@ func TestImportNullDocRaw(t *testing.T) {
 		base.SyncXattrName: []byte("{}"),
 	}
 	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, false, 1, &exp, ImportFromFeed)
-	assert.Equal(t, base.ErrEmptyDocument, err)
+	assert.ErrorIs(t, err, base.ErrEmptyDocument)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
 

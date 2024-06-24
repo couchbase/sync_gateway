@@ -3051,7 +3051,11 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true, GuestEnabled: true})
+		rt := NewRestTester(t, &RestTesterConfig{
+			PersistentConfig: true, GuestEnabled: true,
+			SyncFn:       `function(doc, olddoc) { if (doc.sync_reject) { throw("reject doc"); } }`,
+			ImportFilter: `function(doc) { if (doc.import_reject) { throw("reject doc"); } }`,
+		})
 		defer rt.Close()
 		config := rt.NewDbConfig()
 		config.AutoImport = false
@@ -3084,6 +3088,14 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 			{
 				name:        "invalid json",
 				invalidBody: []byte(``),
+			},
+			{
+				name:        "sync function reject",
+				invalidBody: []byte(`{"sync_reject": true}`),
+			},
+			{
+				name:        "import filter reject",
+				invalidBody: []byte(`{"import_reject": true}`),
 			},
 		}
 		for i, testCase := range testCases {

@@ -110,6 +110,12 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 //	mode - ImportMode - ImportFromFeed or ImportOnDemand
 func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid string, body Body, expiry *uint32, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
 
+	defer func() {
+		// allow downstream code to use errors.Is() to check for import failure
+		if err != nil {
+			err = fmt.Errorf("%w %w", base.ErrImportFailed, err)
+		}
+	}()
 	base.DebugfCtx(ctx, base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
 	importStartTime := time.Now()
 

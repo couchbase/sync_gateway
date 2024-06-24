@@ -240,7 +240,7 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 	var importErr error
 
 	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, isDelete, cas, nil, ImportOnDemand)
-	if importErr == base.ErrImportCancelledFilter {
+	if errors.Is(importErr, base.ErrImportCancelledFilter) {
 		// If the import was cancelled due to filter, treat as not found
 		return nil, base.HTTPErrorf(404, "Not imported")
 	} else if importErr != nil {
@@ -833,7 +833,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 
 	importedDoc, importErr := importDb.ImportDoc(ctx, docid, doc, isDelete, nil, ImportOnDemand) // nolint:staticcheck
 
-	if importErr == base.ErrImportCancelledFilter {
+	if errors.Is(importErr, base.ErrImportCancelledFilter) {
 		// Document exists, but existing doc wasn't imported based on import filter.  Treat write as insert
 		doc.SyncData = SyncData{History: make(RevTree)}
 	} else if importErr != nil {

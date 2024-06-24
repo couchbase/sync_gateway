@@ -32,6 +32,7 @@ var (
 	ErrImportCasFailure      = &sgError{"CAS failure during import"}
 	ErrViewTimeoutError      = &sgError{"Timeout performing Query"}
 	ErrImportCancelledFilter = &sgError{"Import cancelled based on import filter"}
+	ErrImportFailed          = &sgError{"Import failed"}
 	ErrDocumentMigrated      = &sgError{"Document migrated"}
 	ErrFatalBucketConnection = &sgError{"Fatal error connecting to bucket"}
 	ErrAuthError             = &sgError{"Authentication failure"}
@@ -168,18 +169,21 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		return http.StatusNotFound, "missing"
 	case sgbucket.XattrMissingError:
 		return http.StatusNotFound, "missing"
-	case *sgError:
-		switch unwrappedErr {
-		case ErrNotFound:
-			return http.StatusNotFound, "missing"
-		case ErrEmptyDocument:
-			return http.StatusBadRequest, "Document body is empty"
-		}
 	case *json.SyntaxError, *json.UnmarshalTypeError, *JSONIterError:
 		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", unwrappedErr)
 	case *RetryTimeoutError:
 		return http.StatusGatewayTimeout, unwrappedErr.Error()
 	}
+	var httpErr *HTTPError
+	if errors.As(unwrappedErr, &httpErr) {
+		return httpErr.Status, httpErr.Message
+	}
+	if errors.Is(err, ErrEmptyDocument) {
+		return http.StatusBadRequest, "Document body is empty"
+	} else if errors.Is(err, ErrNotFound) {
+		return http.StatusNotFound, "missing"
+	}
+
 	return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", unwrappedErr)
 }
 
