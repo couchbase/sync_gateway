@@ -115,6 +115,9 @@ func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupCon
 }
 
 func (m *DatabaseInitManager) HasActiveInitialization(dbName string) bool {
+	if m == nil {
+		return false
+	}
 	m.workersLock.Lock()
 	defer m.workersLock.Unlock()
 	_, ok := m.workers[dbName]

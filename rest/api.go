@@ -404,14 +404,16 @@ type DatabaseRoot struct {
 	State                         string                       `json:"state"`
 	ServerUUID                    string                       `json:"server_uuid,omitempty"`
 	RequireResync                 []string                     `json:"require_resync,omitempty"`
+	InitializationActive          bool                         `json:"init_in_progress,omitempty"`
 	Scopes                        map[string]databaseRootScope `json:"scopes,omitempty"` // stats for each scope/collection
 }
 
 type DbSummary struct {
-	DBName string `json:"db_name"`
-	Bucket string `json:"bucket"`
-	State  string `json:"state"`
-	Reason string `json:"reason,omitempty"`
+	DBName               string `json:"db_name"`
+	Bucket               string `json:"bucket"`
+	State                string `json:"state"`
+	InitializationActive bool   `json:"init_in_progress,omitempty"`
+	RequireResync        bool   `json:"require_resync,omitempty"`
 }
 
 type databaseRootScope struct {
@@ -448,6 +450,7 @@ func (h *handler) handleGetDB() error {
 		State:                         runState,
 		ServerUUID:                    h.db.DatabaseContext.ServerUUID,
 		RequireResync:                 h.db.RequireResync.ScopeAndCollectionNames(),
+		InitializationActive:          h.server.DatabaseInitManager.HasActiveInitialization(h.db.Name),
 
 		// TODO: If running with multiple scope/collections
 		// Scopes: map[string]databaseRootScope{
