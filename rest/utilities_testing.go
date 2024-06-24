@@ -865,6 +865,10 @@ func (rt *RestTester) WaitForCondition(successFunc func() bool) error {
 }
 
 func (rt *RestTester) WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
+	return WaitForConditionWithOptions(rt.Context(), successFunc, maxNumAttempts, timeToSleepMs)
+}
+
+func WaitForConditionWithOptions(ctx context.Context, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
 	waitForSuccess := func() (shouldRetry bool, err error, value interface{}) {
 		if successFunc() {
 			return false, nil, nil
@@ -873,7 +877,7 @@ func (rt *RestTester) WaitForConditionWithOptions(successFunc func() bool, maxNu
 	}
 
 	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
-	err, _ := base.RetryLoop(rt.Context(), "Wait for condition options", waitForSuccess, sleeper)
+	err, _ := base.RetryLoop(ctx, "Wait for condition options", waitForSuccess, sleeper)
 	if err != nil {
 		return err
 	}
@@ -2640,6 +2644,25 @@ func DropAllTestIndexes(t *testing.T, tb *base.TestBucket) {
 		ds, err := tb.GetNamedDataStore(i)
 		require.NoError(t, err)
 		dropAllNonPrimaryIndexes(t, ds)
+	}
+}
+
+func DropAllTestIndexesIncludingPrimary(t *testing.T, tb *base.TestBucket) {
+
+	ctx := base.TestCtx(t)
+	n1qlStore, ok := base.AsN1QLStore(tb.GetMetadataStore())
+	require.True(t, ok)
+	dropErr := base.DropAllIndexes(ctx, n1qlStore)
+	require.NoError(t, dropErr)
+
+	dsNames := tb.GetNonDefaultDatastoreNames()
+	for i := 0; i < len(dsNames); i++ {
+		ds, err := tb.GetNamedDataStore(i)
+		require.NoError(t, err)
+		n1qlStore, ok := base.AsN1QLStore(ds)
+		require.True(t, ok)
+		dropErr := base.DropAllIndexes(ctx, n1qlStore)
+		require.NoError(t, dropErr)
 	}
 }
 

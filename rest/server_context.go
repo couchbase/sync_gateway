@@ -440,14 +440,16 @@ func (sc *ServerContext) ReloadDatabase(ctx context.Context, reloadDbName string
 	return dbContext, err
 }
 
-func (sc *ServerContext) ReloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig, asyncOnline bool) error {
+func (sc *ServerContext) ReloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, asyncOnline)
+	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true)
 }
 
-func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool, asyncOnline bool) error {
+func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool) error {
 	sc._removeDatabase(ctx, config.Name)
+	// use async initialization whenever using persistent config
+	asyncOnline := sc.persistentConfig
 	_, err := sc._getOrAddDatabaseFromConfig(ctx, config, getOrAddDatabaseConfigOptions{
 		useExisting: false,
 		failFast:    failFast,
