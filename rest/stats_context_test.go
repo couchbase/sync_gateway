@@ -86,10 +86,9 @@ func TestMemoryProfile(t *testing.T) {
 		expectedFilenames = append(expectedFilenames, fmt.Sprintf("pprof_heap_high_%02d.pb.gz", i))
 		require.NoError(t, stats.collectMemoryProfile(ctx, outputDir, fmt.Sprintf("%02d", i)))
 	}
-	slices.Sort(expectedFilenames)
-	require.Equal(t, expectedFilenames, getFilenames(t, outputDir))
+	require.ElementsMatch(t, expectedFilenames, getFilenames(t, outputDir))
 
-	// ask for another profile, this should not be collected because lastHeapProfile was not set.
+	// ask for another profile, this should not be collected. Since the last profile collection (11) set lastHeapProfile, we do not collect another profile for 5 minutes.
 	require.NoError(t, stats.collectMemoryProfile(ctx, outputDir, "12"))
 	require.Equal(t, expectedFilenames, getFilenames(t, outputDir))
 }

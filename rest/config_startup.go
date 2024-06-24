@@ -79,7 +79,7 @@ func DefaultStartupConfig(ctx context.Context, defaultLogFilePath string) Startu
 
 	memoryTotal, err := memlimit.FromCgroup()
 	if err != nil {
-		base.TracefCtx(ctx, base.KeyAll, "Did not detec a cgroup for a memory limit")
+		base.TracefCtx(ctx, base.KeyAll, "Did not detect a cgroup for a memory limit")
 		memory, err := mem.VirtualMemory()
 		if err != nil {
 			base.WarnfCtx(ctx, "Error getting total memory from gopsutil: %v", err)
@@ -147,7 +147,7 @@ type APIConfig struct {
 
 	HTTPS                          HTTPSConfig      `json:"https,omitempty"`
 	CORS                           *auth.CORSConfig `json:"cors,omitempty"`
-	HeapProfileCollectionThreshold *uint64          `json:"heap_profile_collection_threshold,omitempty" help:"Threshold in bytes for collecting heap profiles automatically. If set, Sync Gateway will collect a memory profile when it exceeds this value. The default value will be set to 85% to the lesser of cgroup or system memory."`
+	HeapProfileCollectionThreshold *uint64          `json:"heap_profile_collection_threshold,omitempty" help:"Threshold in bytes for collecting heap profiles automatically. If set, Sync Gateway will collect a memory profile when it exceeds this value. The default value will be set to 85% of the lesser of cgroup or system memory."`
 	HeapProfileDisableCollection   bool             `json:"heap_profile_disable_collection,omitempty" help:"Disables automatic heap profile collection"`
 }
 
