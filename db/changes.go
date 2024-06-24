@@ -137,7 +137,6 @@ func (db *DatabaseCollectionWithUser) addDocToChangeEntry(ctx context.Context, e
 }
 
 func (db *DatabaseCollectionWithUser) AddDocToChangeEntryUsingRevCache(ctx context.Context, entry *ChangeEntry, revID string) (err error) {
-	// DONE
 	rev, err := db.getRev(ctx, entry.ID, revID, 0, nil)
 	if err != nil {
 		return err

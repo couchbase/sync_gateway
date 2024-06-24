@@ -53,8 +53,6 @@ type RevisionCache interface {
 }
 
 const (
-	RevCacheIncludeBody  = true
-	RevCacheOmitBody     = false
 	RevCacheIncludeDelta = true
 	RevCacheOmitDelta    = false
 )
@@ -337,8 +335,7 @@ func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 // Its job is to load a revision from the bucket when there's a cache miss.
 func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore, id IDAndRev) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
 	var doc *Document
-	unmarshalLevel := DocUnmarshalSync
-	if doc, err = backingStore.GetDocument(ctx, id.DocID, unmarshalLevel); doc == nil {
+	if doc, err = backingStore.GetDocument(ctx, id.DocID, DocUnmarshalSync); doc == nil {
 		return bodyBytes, history, channels, removed, attachments, deleted, expiry, err
 	}
 
