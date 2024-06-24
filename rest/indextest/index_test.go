@@ -799,6 +799,7 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	// Update the db config from a remote node, verify change is picked up while in starting state
 	_, err = sc.BootstrapContext.UpdateConfig(ctx, bucketName, groupID, dbName, func(bucketDbConfig *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
 		_, scopeName, collectionName, err := rest.ParseKeyspace(keyspace)
+		require.NoError(t, err)
 		if scopeName == nil || collectionName == nil {
 			bucketDbConfig.ImportFilter = nil
 		} else {
