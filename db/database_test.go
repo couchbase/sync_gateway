@@ -510,9 +510,11 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	_, rev1Digest := ParseRevID(ctx, rev1ID)
 	_, rev2Digest := ParseRevID(ctx, rev2ID)
 
+	var interfaceListChannels []interface{}
+	interfaceListChannels = append(interfaceListChannels, "ABC")
 	bodyExpected := Body{
 		"k2":       "v2",
-		"channels": []string{"ABC"},
+		"channels": interfaceListChannels,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2Digest, rev1Digest},
