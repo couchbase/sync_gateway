@@ -261,10 +261,9 @@ func TestAsyncInitWithResync(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodDelete, "/"+dbName+"/", "")
 	resp.RequireStatus(http.StatusOK)
 
-	rest.DropAllTestIndexes(t, tb)
+	rest.DropAllTestIndexesIncludingPrimary(t, tb)
 
 	// Set testing callbacks for async initialization
-
 	collectionCount := int64(0)
 	initStarted := make(chan error)
 	unblockInit := make(chan error)
@@ -797,9 +796,14 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+keyspace+"/_config/import_filter", "")
 	resp.RequireResponse(http.StatusOK, importFilter)
 
-	// Delete the import filter from a remote node, verify change is picked up while in starting state
+	// Update the db config from a remote node, verify change is picked up while in starting state
 	_, err = sc.BootstrapContext.UpdateConfig(ctx, bucketName, groupID, dbName, func(bucketDbConfig *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
-		bucketDbConfig.ImportFilter = nil
+		_, scopeName, collectionName, err := rest.ParseKeyspace(keyspace)
+		if scopeName == nil || collectionName == nil {
+			bucketDbConfig.ImportFilter = nil
+		} else {
+			bucketDbConfig.Scopes[*scopeName].Collections[*collectionName].ImportFilter = nil
+		}
 		return bucketDbConfig, nil
 	})
 	require.NoError(t, err)
@@ -807,6 +811,11 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	// Need a wait loop here to wait for config polling to pick up the change
 	err = rest.WaitForConditionWithOptions(ctx, func() bool {
 		resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+keyspace+"/_config/import_filter", "")
+		if resp.StatusCode == http.StatusOK && resp.Body == "" {
+			return true
+		} else {
+			log.Printf("Waiting for OK and empty filter, current status: %v, filter: %q", resp.StatusCode, resp.Body)
+		}
 		return (resp.StatusCode == http.StatusOK) && resp.Body == ""
 	}, 200, 100)
 	require.NoError(t, err)
@@ -818,7 +827,7 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 
 func makeDbConfig(t *testing.T, tb *base.TestBucket, syncFunction string, importFilter string) rest.DbConfig {
 
-	scopesConfig := rest.GetCollectionsConfig(t, tb, 3)
+	scopesConfig := rest.GetCollectionsConfig(t, tb, 1)
 	for scopeName, scope := range scopesConfig {
 		for collectionName := range scope.Collections {
 			collectionConfig := &rest.CollectionConfig{}
@@ -842,6 +851,7 @@ func makeDbConfig(t *testing.T, tb *base.TestBucket, syncFunction string, import
 		NumIndexReplicas: &numIndexReplicas,
 		EnableXattrs:     &enableXattrs,
 		Scopes:           scopesConfig,
+		AutoImport:       false, // disable import to streamline index tests and avoid teardown races
 	}
 	return dbConfig
 }

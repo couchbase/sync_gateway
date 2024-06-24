@@ -2647,6 +2647,25 @@ func DropAllTestIndexes(t *testing.T, tb *base.TestBucket) {
 	}
 }
 
+func DropAllTestIndexesIncludingPrimary(t *testing.T, tb *base.TestBucket) {
+
+	ctx := base.TestCtx(t)
+	n1qlStore, ok := base.AsN1QLStore(tb.GetMetadataStore())
+	require.True(t, ok)
+	dropErr := base.DropAllIndexes(ctx, n1qlStore)
+	require.NoError(t, dropErr)
+
+	dsNames := tb.GetNonDefaultDatastoreNames()
+	for i := 0; i < len(dsNames); i++ {
+		ds, err := tb.GetNamedDataStore(i)
+		require.NoError(t, err)
+		n1qlStore, ok := base.AsN1QLStore(ds)
+		require.True(t, ok)
+		dropErr := base.DropAllIndexes(ctx, n1qlStore)
+		require.NoError(t, dropErr)
+	}
+}
+
 func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, expectedDbNames []string) {
 	sc.invalidDatabaseConfigTracking.m.RLock()
 	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
