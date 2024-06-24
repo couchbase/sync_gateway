@@ -42,8 +42,8 @@ github.com/couchbase/go-couchbase v0.1.1 h1:ClFXELcKj/ojyoTYbsY34QUrrYCBi/1G749s
 github.com/couchbase/go-couchbase v0.1.1/go.mod h1:+/bddYDxXsf9qt0xpDUtRR47A2GjaXmGGAqQ/k3GJ8A=
 github.com/couchbase/gocb/v2 v2.8.1 h1:syeJEVy36IvUy4wyzK/74M4wc4OJ2eWZ1d6yWG31Qno=
 github.com/couchbase/gocb/v2 v2.8.1/go.mod h1:xI7kkiz4IhdrhBAAEcKC6R2oqVXxpMIV/ZkmxB+PWgM=
-github.com/couchbase/gocbcore/v10 v10.4.1 h1:2vZjYRTbSCp1HEcL3iFQv+r4HwiI13VhdnbTku+E/+M=
-github.com/couchbase/gocbcore/v10 v10.4.1/go.mod h1:rulbgUK70EuyRUiLQ0LhQAfSI/Rl+jWws8tTbHzvB6M=
+github.com/couchbase/gocbcore/v10 v10.5.0 h1:rgm8cPEDZVgegbBf4dIPZD4Ng52/qkn0XU3h6lP9yL0=
+github.com/couchbase/gocbcore/v10 v10.5.0/go.mod h1:rulbgUK70EuyRUiLQ0LhQAfSI/Rl+jWws8tTbHzvB6M=
 github.com/couchbase/gocbcoreps v0.1.2 h1:wlGyyMnkWpCNOlTtfy8UG+8XZsFtqTJtPXz63+QKC58=
 github.com/couchbase/gocbcoreps v0.1.2/go.mod h1:33hSdOKnrUVaBqw4+RiqW+2JoD8ylkbvqm89Wg81uXk=
 github.com/couchbase/gomemcached v0.2.1 h1:lDONROGbklo8pOt4Sr4eV436PVEaKDr3o9gUlhv9I2U=
