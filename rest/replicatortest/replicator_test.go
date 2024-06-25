@@ -7373,7 +7373,6 @@ func TestUnprocessableDeltas(t *testing.T) {
 	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator.
 	srv := httptest.NewServer(passiveRT.TestAdminHandler())
 	defer srv.Close()
-	passiveCollection := passiveRT.GetSingleTestDatabaseCollection()
 
 	// Active //
 	activeBucket := base.GetTestBucket(t)
@@ -7430,12 +7429,12 @@ func TestUnprocessableDeltas(t *testing.T) {
 	err = activeRT.WaitForPendingChanges()
 	require.NoError(t, err)
 
-	rev, err := passiveRT.GetDatabase().GetRevisionCacheForTest().GetActive(base.TestCtx(t), "test", passiveCollection.GetCollectionID(), true)
+	rev, err := passiveRT.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().GetActive(base.TestCtx(t), "test", true)
 	require.NoError(t, err)
 	// Making body invalid to trigger log "Unable to unmarshal mutable body for doc" in handleRev
 	// Which should give a HTTP 422
 	rev.BodyBytes = []byte("{invalid}")
-	passiveRT.GetDatabase().GetRevisionCacheForTest().Upsert(base.TestCtx(t), rev, passiveCollection.GetCollectionID())
+	passiveRT.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Upsert(base.TestCtx(t), rev)
 
 	assert.NoError(t, ar.Start(activeCtx))
 	// Check if it replicated

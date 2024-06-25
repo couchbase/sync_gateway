@@ -43,7 +43,7 @@ type RevisionCache interface {
 	// Put will store the given docRev in the cache
 	Put(ctx context.Context, docRev DocumentRevision, collectionID uint32)
 
-	// Update will remove existing value and re-create new one
+	// Upsert will remove existing value and re-create new one
 	Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32)
 
 	// Remove eliminates a revision in the cache.
@@ -104,6 +104,55 @@ func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 type RevisionCacheBackingStore interface {
 	GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error)
 	getRevision(ctx context.Context, doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error)
+}
+
+// collectionRevisionCache is a view of a revision cache for a collection.
+type collectionRevisionCache struct {
+	revCache     *RevisionCache
+	collectionID uint32
+}
+
+// NewCollectionRevisionCache returns a view of a revision cache for a collection.
+func newCollectionRevisionCache(revCache *RevisionCache, collectionID uint32) collectionRevisionCache {
+	return collectionRevisionCache{
+		revCache:     revCache,
+		collectionID: collectionID,
+	}
+}
+
+// Get is for per collection access to Get method
+func (c *collectionRevisionCache) Get(ctx context.Context, docID, revID string, includeBody, includeDelta bool) (DocumentRevision, error) {
+	return (*c.revCache).Get(ctx, docID, revID, c.collectionID, includeBody, includeDelta)
+}
+
+// GetActive is for per collection access to GetActive method
+func (c *collectionRevisionCache) GetActive(ctx context.Context, docID string, includeBody bool) (DocumentRevision, error) {
+	return (*c.revCache).GetActive(ctx, docID, c.collectionID, includeBody)
+}
+
+// Peek is for per collection access to Peek method
+func (c *collectionRevisionCache) Peek(ctx context.Context, docID, revID string) (DocumentRevision, bool) {
+	return (*c.revCache).Peek(ctx, docID, revID, c.collectionID)
+}
+
+// Put is for per collection access to Put method
+func (c *collectionRevisionCache) Put(ctx context.Context, docRev DocumentRevision) {
+	(*c.revCache).Put(ctx, docRev, c.collectionID)
+}
+
+// Upsert is for per collection access to Upsert method
+func (c *collectionRevisionCache) Upsert(ctx context.Context, docRev DocumentRevision) {
+	(*c.revCache).Upsert(ctx, docRev, c.collectionID)
+}
+
+// Remove is for per collection access to Remove method
+func (c *collectionRevisionCache) Remove(docID, revID string) {
+	(*c.revCache).Remove(docID, revID, c.collectionID)
+}
+
+// UpdateDelta is for per collection access to UpdateDelta method
+func (c *collectionRevisionCache) UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta) {
+	(*c.revCache).UpdateDelta(ctx, docID, revID, c.collectionID, toDelta)
 }
 
 // DocumentRevision stored and returned by the rev cache

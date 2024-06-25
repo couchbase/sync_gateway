@@ -605,11 +605,6 @@ func (db *DatabaseContext) FlushRevisionCacheForTest() {
 
 }
 
-// GetRevisionCacheForTest allow accessing a copy of revision cache.
-func (db *DatabaseContext) GetRevisionCacheForTest() RevisionCache {
-	return db.revisionCache
-}
-
 // TestBucketPoolWithIndexes runs a TestMain for packages that require creation of indexes
 func TestBucketPoolWithIndexes(ctx context.Context, m *testing.M, tbpOptions base.TestBucketPoolOptions) {
 	base.TestBucketPoolMain(ctx, m, viewsAndGSIBucketReadier, viewsAndGSIBucketInit, tbpOptions)
