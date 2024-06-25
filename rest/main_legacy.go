@@ -29,7 +29,7 @@ func legacyServerMain(ctx context.Context, osArgs []string, flagStartupConfig *S
 		return err
 	}
 
-	sc := DefaultStartupConfig(ctx, defaultLogFilePath)
+	sc := DefaultStartupConfig(defaultLogFilePath)
 
 	lc.DisablePersistentConfig = base.BoolPtr(true)
 

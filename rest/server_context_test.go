@@ -241,10 +241,10 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 func TestStatsLoggerStopped(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	ctx := base.TestCtx(t)
-	sc := DefaultStartupConfig(ctx, "")
+	sc := DefaultStartupConfig("")
 
 	// Start up stats logger by creating server context
+	ctx := base.TestCtx(t)
 	svrctx := NewServerContext(ctx, &sc, false)
 
 	// Close server context which will send signal to close stats logger
@@ -675,7 +675,7 @@ func TestLogFlush(t *testing.T) {
 			base.TracefCtx(ctx, base.KeyAll, "trace: "+testDirName)
 			base.RecordStats("{}")
 
-			config := DefaultStartupConfig(ctx, tempPath)
+			config := DefaultStartupConfig(tempPath)
 			config = testCase.EnableFunc(config)
 
 			// Setup logging
@@ -890,6 +890,48 @@ func TestCompactIntervalFromConfig(t *testing.T) {
 			opts, err := dbcOptionsFromConfig(base.TestCtx(t), sc, config, "fakedb")
 			require.NoError(t, err)
 			require.Equal(t, int(test.expectedCompactIntervalSecs), int(opts.CompactInterval))
+		})
+	}
+}
+
+func TestHeapProfileValuesPopulated(t *testing.T) {
+	totalMemory := int64(float64(getTotalMemory(base.TestCtx(t))) * 0.85)
+	testCases := []struct {
+		name                           string
+		startupConfig                  *StartupConfig
+		heapProfileCollectionThreshold int64
+		heapProfileCollectionEnabled   bool
+	}{
+		{
+			name:                           "Default",
+			startupConfig:                  &StartupConfig{},
+			heapProfileCollectionThreshold: totalMemory,
+			heapProfileCollectionEnabled:   true,
+		},
+		{
+			name: "HeapProfileDisabled",
+			startupConfig: &StartupConfig{
+				HeapProfileDisableCollection: true,
+			},
+			heapProfileCollectionThreshold: totalMemory, // set but ignored
+			heapProfileCollectionEnabled:   false,
+		},
+		{
+			name: "HeapProfileCollectionThreshold",
+			startupConfig: &StartupConfig{
+				HeapProfileCollectionThreshold: base.Uint64Ptr(100),
+			},
+			heapProfileCollectionThreshold: 100,
+			heapProfileCollectionEnabled:   true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			sc := NewServerContext(ctx, test.startupConfig, false)
+			defer sc.Close(ctx)
+			require.Equal(t, test.heapProfileCollectionThreshold, sc.statsContext.heapProfileCollectionThreshold)
+			require.Equal(t, test.heapProfileCollectionEnabled, sc.statsContext.heapProfileEnabled)
 		})
 	}
 }

@@ -67,7 +67,7 @@ func serverMain(ctx context.Context, osArgs []string) error {
 // serverMainPersistentConfig runs the Sync Gateway server with persistent config.
 func serverMainPersistentConfig(ctx context.Context, fs *flag.FlagSet, flagStartupConfig *StartupConfig) (disablePersistentConfigFallback bool, err error) {
 
-	sc := DefaultStartupConfig(ctx, defaultLogFilePath)
+	sc := DefaultStartupConfig(defaultLogFilePath)
 	base.TracefCtx(ctx, base.KeyAll, "default config: %#v", sc)
 
 	configPath := fs.Args()

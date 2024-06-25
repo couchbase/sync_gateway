@@ -76,7 +76,7 @@ func TestX509UnknownAuthorityWrap(t *testing.T) {
 
 	tb.BucketSpec.CACertPath = ""
 
-	sc := DefaultStartupConfig(ctx, "")
+	sc := DefaultStartupConfig("")
 
 	username, password, _ := tb.BucketSpec.Auth.GetCredentials()
 

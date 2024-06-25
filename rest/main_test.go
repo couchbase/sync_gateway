@@ -103,7 +103,7 @@ func TestDefaultStartupConfig(t *testing.T) {
 	ctx := base.TestCtx(t)
 	sc, _, _, err := parseFlags(ctx, []string{"sync_gateway"})
 	require.NoError(t, err)
-	require.Nil(t, sc.API.HeapProfileCollectionThreshold)
+	require.Nil(t, sc.HeapProfileCollectionThreshold)
 }
 
 func TestSanitizeDbConfigs(t *testing.T) {

@@ -68,10 +68,13 @@ func TestDescriptionPopulation(t *testing.T) {
 }
 
 func TestMemoryProfile(t *testing.T) {
-	stats := statsContext{}
+	stats := statsContext{heapProfileCollectionThreshold: 1, heapProfileEnabled: true} // set to a very low value to ensure collection
 
 	outputDir := t.TempDir()
 	ctx := base.TestCtx(t)
+
+	// make sure go memory stats are set once
+	AddGoRuntimeStats()
 
 	// collect single profile
 	startTime := "01"

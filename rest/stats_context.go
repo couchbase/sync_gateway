@@ -33,11 +33,13 @@ const pprofPrefix = "pprof_heap_high_"
 
 // Group the stats related context that is associated w/ a ServerContext into a struct
 type statsContext struct {
-	statsLoggingTicker *time.Ticker
-	terminator         chan struct{} // Used to stop the goroutine handling the stats logging
-	cpuStatsSnapshot   *cpuStatsSnapshot
-	lastHeapProfile    time.Time
-	doneChan           chan struct{} // doneChan is closed when the stats logger goroutine finishes.
+	statsLoggingTicker             *time.Ticker
+	terminator                     chan struct{} // Used to stop the goroutine handling the stats logging
+	doneChan                       chan struct{} // doneChan is closed when the stats logger goroutines finishes.
+	cpuStatsSnapshot               *cpuStatsSnapshot
+	lastHeapProfile                time.Time // last time a heap profile was collected
+	heapProfileCollectionThreshold int64     // memory threshold in bytes at which to collect a heap profile
+	heapProfileEnabled             bool      // Whether to collect heap profiles when memory usage exceeds the threshold
 }
 
 // The peak number of goroutines observed during lifetime of program
@@ -370,8 +372,19 @@ func discoverInterfaceName(hostnameOrIP string) (interfaceName string, err error
 
 }
 
-// collectMemoryProfile collects a memory profile and writes it to a file in the outputDir. It will also remove old memory profiles if there are more than 10.
+// collectMemoryProfile collects a memory profile if memory thresholds are exceeded and writes it to a file in the outputDir. It will also remove old memory profiles if there are more than 10.
 func (statsContext *statsContext) collectMemoryProfile(ctx context.Context, outputDir string, timestamp string) error {
+	if !statsContext.heapProfileEnabled {
+		return nil
+	}
+
+	currentMemory := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().GoMemstatsHeapInUse.Value()
+	profileCollectionThreshold := statsContext.heapProfileCollectionThreshold
+	if currentMemory <= profileCollectionThreshold {
+		return nil
+	}
+	base.InfofCtx(ctx, base.KeyAll, "Memory usage %d exceeds threshold %d, collecting memory profile", currentMemory, profileCollectionThreshold)
+
 	currentTime := time.Now()
 	if currentTime.Sub(statsContext.lastHeapProfile) <= 5*time.Minute {
 		return nil
