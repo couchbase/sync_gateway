@@ -483,17 +483,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.Scopes = make(map[string]Scope, len(options.Scopes))
 	dbContext.CollectionNames = make(map[string]map[string]struct{}, len(options.Scopes))
 
-	//// Init the rev cache
-	//dbContext.revisionCache = NewRevisionCache(
-	//	dbContext.Options.RevisionCacheOptions,
-	//	nil,
-	//	dbContext.DbStats.Cache(),
-	//)
-
 	// if any sync functions for any collection, we recommend running a resync
 	syncFunctionsChanged := false
 	// Create new backing store map to map from collection ID's to their associated rev cache backing stores for rev cache document loads
-	collectionIDToDbCollection := NewBackingStoreMap()
+	collectionIDToRevCacheBackingStore := NewBackingStoreMap()
 	for scopeName, scope := range options.Scopes {
 		dbContext.Scopes[scopeName] = Scope{
 			Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
@@ -540,7 +533,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			collectionID := dbCollection.GetCollectionID()
 			dbContext.CollectionByID[collectionID] = dbCollection
 			collectionNameMap[collName] = struct{}{}
-			collectionIDToDbCollection[collectionID] = dbCollection
+			collectionIDToRevCacheBackingStore[collectionID] = dbCollection
 		}
 		dbContext.CollectionNames[scopeName] = collectionNameMap
 	}
@@ -548,7 +541,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// Init the rev cache
 	dbContext.revisionCache = NewRevisionCache(
 		dbContext.Options.RevisionCacheOptions,
-		collectionIDToDbCollection,
+		collectionIDToRevCacheBackingStore,
 		dbContext.DbStats.Cache(),
 	)
 
