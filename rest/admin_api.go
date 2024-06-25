@@ -394,7 +394,8 @@ func (h *handler) handleGetConfig() error {
 			}
 		}
 
-		cfg.Logging = *base.BuildLoggingConfigFromLoggers(h.server.Config.Logging.RedactionLevel, h.server.Config.Logging.LogFilePath)
+		// because loggers can be changed at runtime, we need to work backwards to get the config that would've created the actually running instances
+		cfg.Logging = *base.BuildLoggingConfigFromLoggers(h.server.Config.Logging)
 		cfg.Databases = databaseMap
 
 		h.writeJSON(cfg)
