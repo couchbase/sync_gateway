@@ -81,7 +81,6 @@ type logRotationConfig struct {
 
 // NewFileLogger returns a new FileLogger from a config.
 func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, buffer *strings.Builder) (*FileLogger, error) {
-
 	if config == nil {
 		config = &FileLoggerConfig{}
 	}

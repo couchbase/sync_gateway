@@ -10,10 +10,8 @@ package base
 
 import (
 	"context"
-	"log"
-	"log/slog"
+	"fmt"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -105,29 +103,29 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 		id.MustValidateFields(fields)
 	}
 
-	if auditLogger == nil || !auditLogger.Enabled.IsTrue() {
+	if !auditLogger.shouldLog(id, ctx) {
 		return
-	}
-	logCtx := getLogCtx(ctx)
-	if logCtx.DbLogConfig != nil && logCtx.DbLogConfig.Audit != nil {
-		if _, ok := logCtx.DbLogConfig.Audit.EnabledEvents[id]; !ok {
-			return
-		}
 	}
 
 	// delayed expansion until after enabled checks in non-dev mode
 	if fields == nil {
 		fields = expandFields(id, ctx, additionalData)
 	}
-	attrs := fields.toSlogAttrs()
-	auditLogger.sl.LogAttrs(ctx, slog.LevelInfo, "", attrs...)
+	fieldsJSON, err := JSONMarshal(fields)
+	if err != nil {
+		if IsDevMode() {
+			panic(fmt.Sprintf("failed to marshal audit fields: %v", err))
+		} else {
+			WarnfCtx(ctx, "failed to marshal audit fields: %v", err)
+			return
+		}
+	}
+	auditLogger.logf(string(fieldsJSON))
 }
 
 // AuditLogger is a file logger with audit-specific behaviour.
 type AuditLogger struct {
 	FileLogger
-
-	sl *slog.Logger
 
 	// AuditLoggerConfig stores the initial config used to instantiate AuditLogger
 	config AuditLoggerConfig
@@ -139,57 +137,28 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 		config = &AuditLoggerConfig{}
 	}
 
-	// validate and set defaults
-	if err := config.init(ctx, LevelNone, auditLogName, logFilePath, minAge); err != nil {
+	fl, err := NewFileLogger(ctx, &config.FileLoggerConfig, LevelNone, auditLogName, logFilePath, minAge, buffer)
+	if err != nil {
 		return nil, err
 	}
 
-	// removeKeys returns a function suitable for HandlerOptions.ReplaceAttr
-	// that removes all Attrs with the given keys.
-	removeKeys := func(keys ...string) func([]string, slog.Attr) slog.Attr {
-		return func(_ []string, a slog.Attr) slog.Attr {
-			for _, k := range keys {
-				if a.Key == k {
-					return slog.Attr{}
-				}
-			}
-			return a
-		}
-	}
-
-	// TODO: May end up removing slog and doing manual JSON marshalling -> write to file logger.
-	h := slog.NewJSONHandler(config.Output, &slog.HandlerOptions{
-		// strip all builtin slog keys
-		ReplaceAttr: removeKeys(slog.TimeKey, slog.MessageKey, slog.LevelKey, slog.SourceKey),
-	})
-	sl := slog.New(h)
-
 	logger := &AuditLogger{
-		FileLogger: FileLogger{
-			Enabled: AtomicBool{},
-			level:   LevelNone,
-			name:    auditLogName,
-			output:  config.Output,
-			logger:  log.New(config.Output, "", 0),
-		},
-		config: *config,
-		sl:     sl,
-	}
-	logger.Enabled.Set(*config.Enabled)
-
-	if buffer != nil {
-		logger.buffer = *buffer
-	}
-
-	// Only create the collateBuffer channel and worker if required.
-	if *config.CollationBufferSize > 1 {
-		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
-		logger.flushChan = make(chan struct{}, 1)
-		logger.collateBufferWg = &sync.WaitGroup{}
-
-		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
+		FileLogger: *fl,
+		config:     *config,
 	}
 
 	return logger, nil
+}
+
+func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
+	if !auditLogger.FileLogger.shouldLog(LevelNone) {
+		return false
+	}
+	logCtx := getLogCtx(ctx)
+	if logCtx.DbLogConfig != nil && logCtx.DbLogConfig.Audit != nil {
+		if _, ok := logCtx.DbLogConfig.Audit.EnabledEvents[id]; !ok {
+			return false
+		}
+	}
+	return true
 }

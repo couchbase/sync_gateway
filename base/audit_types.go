@@ -1,4 +1,4 @@
-// Copyright 2024-Present Couchbase, Inc.
+// Copyright 2024-Pres	ent Couchbase, Inc.
 //
 // Use of this software is governed by the Business Source License included
 // in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
@@ -10,7 +10,6 @@ package base
 
 import (
 	"fmt"
-	"log/slog"
 	"strconv"
 )
 
@@ -88,26 +87,4 @@ func mandatoryFieldsPresent(fields, mandatoryFields AuditFields) error {
 		}
 	}
 	return me.ErrorOrNil()
-}
-
-func (f AuditFields) toSlogAttrs() []slog.Attr {
-	attrs := make([]slog.Attr, 0, len(f))
-	for k, v := range f {
-		switch val := v.(type) {
-		case map[string]any:
-			groupAttrs := AuditFields(val).toSlogAttrs()
-			attrs = append(attrs, slog.Group(k, attrsToAny(groupAttrs)...))
-		default:
-			attrs = append(attrs, slog.Any(k, val))
-		}
-	}
-	return attrs
-}
-
-func attrsToAny(attrs []slog.Attr) []any {
-	anySlice := make([]any, 0, len(attrs))
-	for _, attr := range attrs {
-		anySlice = append(anySlice, attr)
-	}
-	return anySlice
 }
