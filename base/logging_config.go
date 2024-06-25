@@ -267,10 +267,10 @@ type AuditLoggerConfig struct {
 	AuditLogFilePath *string `json:"audit_log_file_path,omitempty"` // If set, overrides the output path for the audit log files
 }
 
-func BuildLoggingConfigFromLoggers(redactionLevel RedactionLevel, LogFilePath string) *LoggingConfig {
+func BuildLoggingConfigFromLoggers(originalConfig LoggingConfig) *LoggingConfig {
 	config := LoggingConfig{
-		RedactionLevel: redactionLevel,
-		LogFilePath:    LogFilePath,
+		RedactionLevel: originalConfig.RedactionLevel,
+		LogFilePath:    originalConfig.LogFilePath,
 	}
 
 	config.Console = consoleLogger.getConsoleLoggerConfig()
@@ -280,8 +280,7 @@ func BuildLoggingConfigFromLoggers(redactionLevel RedactionLevel, LogFilePath st
 	config.Debug = debugLogger.getFileLoggerConfig()
 	config.Trace = traceLogger.getFileLoggerConfig()
 	config.Stats = statsLogger.getFileLoggerConfig()
-	// FIXME(bbrks): Once AuditLogger is implemented
-	config.Audit = &AuditLoggerConfig{}
+	config.Audit = auditLogger.getAuditLoggerConfig()
 
 	return &config
 }
