@@ -673,6 +673,11 @@ func (h *handler) handleGetDbAuditConfig() error {
 	showOnlyFilterable := h.getBoolQuery("filterable")
 	verbose := h.getBoolQuery("verbose")
 
+	isEnabledFn := func(id base.AuditID) bool {
+		_, ok := h.db.Options.LoggingConfig.Audit.EnabledEvents[id]
+		return ok
+	}
+
 	// TODO: Move to structs
 	events := make(map[string]interface{}, len(base.AuditEvents))
 	for id, descriptor := range base.AuditEvents {
@@ -684,11 +689,11 @@ func (h *handler) handleGetDbAuditConfig() error {
 			events[idStr] = map[string]interface{}{
 				"name":        descriptor.Name,
 				"description": descriptor.Description,
-				"enabled":     descriptor.EnabledByDefault, // TODO: Switch to actual configuration
+				"enabled":     isEnabledFn(id),
 				"filterable":  descriptor.FilteringPermitted,
 			}
 		} else {
-			events[idStr] = descriptor.EnabledByDefault // TODO: Switch to actual configuration
+			events[idStr] = isEnabledFn(id)
 		}
 	}
 
