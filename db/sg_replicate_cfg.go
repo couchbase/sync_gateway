@@ -1048,7 +1048,7 @@ func (m *sgReplicateManager) validateReplications(ctx context.Context, replicati
 			base.WarnfCtx(ctx, "An ISGR replication with an empty key exists. To fix this, this replication should be removed from database config and directly from edit the database config and the %q document. %s",
 				m.dbContext.MetadataKeys.SGCfgPrefix(m.dbContext.Options.GroupID), resetCheckpointMsg)
 		} else if replication.ID == "" {
-			base.WarnfCtx(ctx, "An ISGR replication with an empty `id` exists. To fix this, update the replication using PUT /%s/_replication/%s. %s", m.dbContext.Name, replicationID, resetCheckpointMsg)
+			base.WarnfCtx(ctx, "An ISGR replication with an empty 'replication_id' exists. To fix this, update the replication using PUT /%s/_replication/%s. %s", m.dbContext.Name, replicationID, resetCheckpointMsg)
 		}
 	}
 }
