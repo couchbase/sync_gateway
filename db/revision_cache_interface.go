@@ -66,7 +66,7 @@ var _ RevisionCache = &ShardedLRURevisionCache{}
 var _ RevisionCache = &BypassRevisionCache{}
 
 // NewRevisionCache returns a RevisionCache implementation for the given config options.
-func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStore map[uint32]RevisionCacheBackingStore, cacheStats *base.CacheStats) RevisionCache {
+func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint32]RevisionCacheBackingStore, cacheStats *base.CacheStats) RevisionCache {
 
 	// If cacheOptions is not passed in, use defaults
 	if cacheOptions == nil {
@@ -75,17 +75,17 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStore map[uint3
 
 	if cacheOptions.Size == 0 {
 		bypassStat := cacheStats.RevisionCacheBypass
-		return NewBypassRevisionCache(backingStore, bypassStat)
+		return NewBypassRevisionCache(backingStores, bypassStat)
 	}
 
 	cacheHitStat := cacheStats.RevisionCacheHits
 	cacheMissStat := cacheStats.RevisionCacheMisses
 
 	if cacheOptions.ShardCount > 1 {
-		return NewShardedLRURevisionCache(cacheOptions.ShardCount, cacheOptions.Size, backingStore, cacheHitStat, cacheMissStat)
+		return NewShardedLRURevisionCache(cacheOptions.ShardCount, cacheOptions.Size, backingStores, cacheHitStat, cacheMissStat)
 	}
 
-	return NewLRURevisionCache(cacheOptions.Size, backingStore, cacheHitStat, cacheMissStat)
+	return NewLRURevisionCache(cacheOptions.Size, backingStores, cacheHitStat, cacheMissStat)
 }
 
 type RevisionCacheOptions struct {

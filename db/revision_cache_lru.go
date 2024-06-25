@@ -26,13 +26,13 @@ type ShardedLRURevisionCache struct {
 }
 
 // Creates a sharded revision cache with the given capacity and an optional loader function.
-func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, backingStore map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *ShardedLRURevisionCache {
+func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *ShardedLRURevisionCache {
 
 	caches := make([]*LRURevisionCache, shardCount)
 	// Add 10% to per-shared cache capacity to ensure overall capacity is reached under non-ideal shard hashing
 	perCacheCapacity := 1.1 * float32(capacity) / float32(shardCount)
 	for i := 0; i < int(shardCount); i++ {
-		caches[i] = NewLRURevisionCache(uint32(perCacheCapacity+0.5), backingStore, cacheHitStat, cacheMissStat)
+		caches[i] = NewLRURevisionCache(uint32(perCacheCapacity+0.5), backingStores, cacheHitStat, cacheMissStat)
 	}
 
 	return &ShardedLRURevisionCache{
@@ -75,13 +75,13 @@ func (sc *ShardedLRURevisionCache) Remove(docID, revID string, collectionID uint
 
 // An LRU cache of document revision bodies, together with their channel access.
 type LRURevisionCache struct {
-	backingStore map[uint32]RevisionCacheBackingStore
-	cache        map[IDAndRev]*list.Element
-	lruList      *list.List
-	cacheHits    *base.SgwIntStat
-	cacheMisses  *base.SgwIntStat
-	lock         sync.Mutex
-	capacity     uint32
+	backingStores map[uint32]RevisionCacheBackingStore
+	cache         map[IDAndRev]*list.Element
+	lruList       *list.List
+	cacheHits     *base.SgwIntStat
+	cacheMisses   *base.SgwIntStat
+	lock          sync.Mutex
+	capacity      uint32
 }
 
 // The cache payload data. Stored as the Value of a list Element.
@@ -106,15 +106,15 @@ func NewBackingStoreMap() map[uint32]RevisionCacheBackingStore {
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewLRURevisionCache(capacity uint32, backingStore map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *LRURevisionCache {
+func NewLRURevisionCache(capacity uint32, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *LRURevisionCache {
 
 	return &LRURevisionCache{
-		cache:        map[IDAndRev]*list.Element{},
-		lruList:      list.New(),
-		capacity:     capacity,
-		backingStore: backingStore,
-		cacheHits:    cacheHitStat,
-		cacheMisses:  cacheMissStat,
+		cache:         map[IDAndRev]*list.Element{},
+		lruList:       list.New(),
+		capacity:      capacity,
+		backingStores: backingStores,
+		cacheHits:     cacheHitStat,
+		cacheMisses:   cacheMissStat,
 	}
 }
 
@@ -151,7 +151,7 @@ func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID strin
 		return DocumentRevision{}, nil
 	}
 
-	docRev, statEvent, err := value.load(ctx, rc.backingStore[collectionID], includeBody, includeDelta)
+	docRev, statEvent, err := value.load(ctx, rc.backingStores[collectionID], includeBody, includeDelta)
 	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {
@@ -173,9 +173,9 @@ func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(ctx context.Context, 
 	// If doc has been passed in use this to grab values. Otherwise run revCacheLoader which will grab the Document
 	// first
 	if doc != nil {
-		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(ctx, rc.backingStore[collectionID], doc, key.RevID)
+		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, key.RevID)
 	} else {
-		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(ctx, rc.backingStore[collectionID], key, includeBody)
+		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(ctx, rc.backingStores[collectionID], key, includeBody)
 	}
 
 	if includeDelta {
@@ -204,7 +204,7 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 
 	// Look up active rev for doc.  Note - can't rely on DocUnmarshalAll here when includeBody=true, because for a
 	// cache hit we don't want to do that work (yet).
-	bucketDoc, getErr := rc.backingStore[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
+	bucketDoc, getErr := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
 	if getErr != nil {
 		return DocumentRevision{}, getErr
 	}
@@ -215,7 +215,7 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 	// Retrieve from or add to rev cache
 	value := rc.getValue(docID, bucketDoc.CurrentRev, collectionID, true)
 
-	docRev, statEvent, err := value.loadForDoc(ctx, rc.backingStore[collectionID], bucketDoc, includeBody)
+	docRev, statEvent, err := value.loadForDoc(ctx, rc.backingStores[collectionID], bucketDoc, includeBody)
 	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {

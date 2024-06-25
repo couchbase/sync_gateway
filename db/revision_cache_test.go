@@ -436,7 +436,7 @@ func TestSingleLoad(t *testing.T) {
 	cache := NewLRURevisionCache(10, backingStoreMap, &cacheHitCounter, &cacheMissCounter)
 
 	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc123", RevID: "1-abc", History: Revisions{"start": 1}}, testCollectionID)
-	_, err := cache.Get(base.TestCtx(t), "doc123", "1-abc", 0, true, false)
+	_, err := cache.Get(base.TestCtx(t), "doc123", "1-abc", testCollectionID, true, false)
 	assert.NoError(t, err)
 }
 
