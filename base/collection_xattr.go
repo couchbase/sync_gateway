@@ -294,18 +294,16 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 		// If BucketStoreFeatureMultiXattrSubdocOperations is not supported, do a second get for the second xattr.
 		if xattrKey2 != "" {
 			xattrs2, xattr2Cas, xattr2Err := c.GetXattrs(ctx, k, []string{xattrKey2})
-			switch pkgerrors.Cause(xattr2Err) {
-			case gocb.ErrDocumentNotFound:
-				// If key not found it has been deleted in between the first op and this op.
-				return false, err, xattr2Cas
-			case ErrXattrNotFound:
-				// Xattr doesn't exist, can skip
-			case nil:
+			if xattr2Err == nil {
 				if cas != xattr2Cas {
 					return true, errors.New("cas mismatch between user xattr and document body"), uint64(0)
 				}
-			default:
-				// Unknown error occurred
+			} else if errors.Is(xattr2Err, gocb.ErrDocumentNotFound) {
+				// If key not found it has been deleted in between the first op and this op.
+				return false, err, xattr2Cas
+			} else if errors.Is(xattr2Err, ErrXattrNotFound) {
+				// Xattr doesn't exist, can skip
+			} else {
 				// Shouldn't retry as any recoverable error will have been retried already in GetXattrs
 				return false, xattr2Err, uint64(0)
 			}
@@ -652,29 +650,30 @@ func (c *Collection) deleteBody(_ context.Context, k string, exp uint32, cas uin
 // where gocb doesn't return a typed error for the underlying error.
 func isKVError(err error, code memd.StatusCode) bool {
 
-	switch typedErr := err.(type) {
-	case gocb.KeyValueError:
-		if typedErr.StatusCode == code {
-			return true
-		}
-	case *gocb.KeyValueError:
-		if typedErr.StatusCode == code {
-			return true
-		}
-	case gocbcore.KeyValueError:
-		if typedErr.StatusCode == code {
-			return true
-		}
-	case *gocbcore.KeyValueError:
-		if typedErr.StatusCode == code {
-			return true
-		}
-	case gocbcore.SubDocumentError:
-		return isKVError(typedErr.InnerError, code)
-	case *gocbcore.SubDocumentError:
-		return isKVError(typedErr.InnerError, code)
+	var gocbKVErr *gocb.KeyValueError
+	if errors.As(err, &gocbKVErr) {
+		return gocbKVErr.StatusCode == code
 	}
-
+	var gocbKVErrNonPtr gocb.KeyValueError
+	if errors.As(err, &gocbKVErrNonPtr) {
+		return gocbKVErrNonPtr.StatusCode == code
+	}
+	var gocbcoreKVErr *gocbcore.KeyValueError
+	if errors.As(err, &gocbcoreKVErr) {
+		return gocbcoreKVErr.StatusCode == code
+	}
+	var gocbcoreKVErrNonPtr gocbcore.KeyValueError
+	if errors.As(err, &gocbcoreKVErrNonPtr) {
+		return gocbcoreKVErrNonPtr.StatusCode == code
+	}
+	var subdocErr *gocbcore.SubDocumentError
+	if errors.As(err, &subdocErr) {
+		return isKVError(subdocErr.InnerError, code)
+	}
+	var subdocErrNonPtr gocbcore.SubDocumentError
+	if errors.As(err, &subdocErrNonPtr) {
+		return isKVError(subdocErrNonPtr.InnerError, code)
+	}
 	return false
 }
 

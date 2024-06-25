@@ -15,10 +15,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"reflect"
 	"testing"
 
 	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/gocbcore/v10"
+	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
@@ -35,110 +38,233 @@ func TestError(t *testing.T) {
 }
 
 func TestErrorAsHTTPStatus(t *testing.T) {
-	code, text := ErrorAsHTTPStatus(nil)
-	assert.Equal(t, http.StatusOK, code)
-	assert.Equal(t, http.StatusText(http.StatusOK), text)
+	testCases := []struct {
+		name             string
+		err              error
+		code             int
+		text             string
+		wrappedErrorText string
+	}{
+		{
+			name: "nil",
+			err:  nil,
+			code: http.StatusOK,
+			text: http.StatusText(http.StatusOK),
+		},
+		{
+			name: "gocb.ErrDocumentNotFound",
+			err:  gocb.ErrDocumentNotFound,
+			code: http.StatusNotFound,
+			text: "missing",
+		},
+		{
+			name: "gocb.ErrDocumentExists",
+			err:  gocb.ErrDocumentExists,
+			code: http.StatusConflict,
+			text: "Conflict",
+		},
+		{
+			name: "ErrAlreadyExists",
+			err:  ErrAlreadyExists,
+			code: http.StatusConflict,
+			text: "Conflict",
+		},
+		{
+			name: "gocb.ErrTimeout",
+			err:  gocb.ErrTimeout,
+			code: http.StatusServiceUnavailable,
+			text: "Database timeout error (gocb.ErrTimeout)",
+		},
+		{
+			name: "gocb.ErrOverload",
+			err:  gocb.ErrOverload,
+			code: http.StatusServiceUnavailable,
+			text: "Database server is over capacity (gocb.ErrOverload)",
+		},
+		{
+			name: "gocb.ErrTemporaryFailure",
+			err:  gocb.ErrTemporaryFailure,
+			code: http.StatusServiceUnavailable,
+			text: "Database server is over capacity (gocb.ErrTemporaryFailure)",
+		},
+		{
+			name: "gocb.ErrValueTooLarge",
+			err:  gocb.ErrValueTooLarge,
+			code: http.StatusRequestEntityTooLarge,
+			text: "Document too large!",
+		},
+		{
+			name:             "ErrViewTimeoutError",
+			err:              ErrViewTimeoutError,
+			code:             http.StatusServiceUnavailable,
+			text:             ErrViewTimeoutError.Error(),
+			wrappedErrorText: fmt.Sprintf("wrapped error: %s", ErrViewTimeoutError.Error()),
+		},
+		{
+			name: "ErrReplicationLimitExceeded",
+			err:  ErrReplicationLimitExceeded,
+			code: http.StatusServiceUnavailable,
+			text: ErrReplicationLimitExceeded.Error(),
+		},
+		{
+			name: "HTTPError",
+			err:  &HTTPError{Status: http.StatusForbidden, Message: http.StatusText(http.StatusForbidden)},
+			code: http.StatusForbidden,
+			text: http.StatusText(http.StatusForbidden),
+		},
+		{
+			name: "gomemcached.MCResponse KEY_ENOENT",
+			err:  &gomemcached.MCResponse{Status: gomemcached.KEY_ENOENT},
+			code: http.StatusNotFound,
+			text: "missing",
+		},
+		{
+			name: "gomemcached.MCResponse KEY_EEXISTS",
+			err:  &gomemcached.MCResponse{Status: gomemcached.KEY_EEXISTS},
+			code: http.StatusConflict,
+			text: "Conflict",
+		},
+		{
+			name: "gomemcached.MCResponse E2BIG",
+			err:  &gomemcached.MCResponse{Status: gomemcached.E2BIG, Body: []byte("Document too large!")},
+			code: http.StatusRequestEntityTooLarge,
+			text: "Too Large: Document too large!",
+		},
+		{
+			name: "gomemcached.MCResponse TMPFAIL",
+			err:  &gomemcached.MCResponse{Status: gomemcached.TMPFAIL},
+			code: http.StatusServiceUnavailable,
+			text: "Database server is over capacity (gomemcached.TMPFAIL)",
+		},
+		{
+			name: "gomemcached.MCResponse ROLLBACK",
+			err:  &gomemcached.MCResponse{Status: gomemcached.ROLLBACK, Body: []byte("Rollback error")},
+			code: http.StatusBadGateway,
+			text: "Rollback error (ROLLBACK)",
+		},
+		{
+			name: "sgbucket.DocTooBigErr",
+			err:  sgbucket.DocTooBigErr{},
+			code: http.StatusRequestEntityTooLarge,
+			text: "Document too large!",
+		},
+		{
+			name: "sgbucket.MissingError",
+			err:  sgbucket.MissingError{},
+			code: http.StatusNotFound,
+			text: "missing",
+		},
+		{
+			name: "sgbucket.CasMismatchErr",
+			err:  sgbucket.CasMismatchErr{},
+			code: http.StatusConflict,
+			text: "Conflict",
+		},
+		{
+			name: "sgbucket.XattrMissingError",
+			err:  sgbucket.XattrMissingError{},
+			code: http.StatusNotFound,
+			text: "missing",
+		},
+		{
+			name: "ErrNotFound",
+			err:  ErrNotFound,
+			code: http.StatusNotFound,
+			text: "missing",
+		},
+		{
+			name: "ErrEmptyDocument",
+			err:  ErrEmptyDocument,
+			code: http.StatusBadRequest,
+			text: "Document body is empty",
+		},
+		{
+			name: "json.SyntaxError",
+			err:  &json.SyntaxError{},
+			code: http.StatusBadRequest,
+			text: "Invalid JSON: \"\"",
+		},
+		{
+			name: "json.UnmarshalTypeError",
+			err:  &json.UnmarshalTypeError{Value: "FakeValue", Type: reflect.TypeOf(1)},
+			code: http.StatusBadRequest,
+			text: "Invalid JSON: \"json: cannot unmarshal FakeValue into Go value of type int\"",
+		},
+		{
+			name: "JSONIterError",
+			err:  &JSONIterError{E: &json.SyntaxError{}},
+			code: http.StatusBadRequest,
+			text: "Invalid JSON: \"\"",
+		},
+		{
+			name: "RetryTimeoutError",
+			err:  &RetryTimeoutError{},
+			code: http.StatusGatewayTimeout,
+			text: (&RetryTimeoutError{}).Error(),
+		},
+		{
+			name:             "json.UnsupportedTypeError",
+			err:              &json.UnsupportedTypeError{Type: reflect.TypeOf(3.14)},
+			code:             http.StatusInternalServerError,
+			text:             "Internal error: json: unsupported type: float64",
+			wrappedErrorText: "Internal error: wrapped error: json: unsupported type: float64",
+		},
+		{
+			name: "&gocb.KeyValueError, memd.StatusTooBig",
+			err:  &gocb.KeyValueError{StatusCode: memd.StatusTooBig, InnerError: fmt.Errorf("fake inner error")},
+			code: http.StatusRequestEntityTooLarge,
+			text: "Document too large!",
+		},
+		{
+			name: "gocb.KeyValueError, memd.StatusTooBig",
+			err:  gocb.KeyValueError{StatusCode: memd.StatusTooBig, InnerError: fmt.Errorf("fake inner error")},
+			code: http.StatusRequestEntityTooLarge,
+			text: "Document too large!",
+		},
+		{
+			name: "&gocbcore.KeyValueError, memd.StatusTooBig",
+			err:  &gocbcore.KeyValueError{StatusCode: memd.StatusTooBig, InnerError: fmt.Errorf("fake inner error")},
+			code: http.StatusRequestEntityTooLarge,
+			text: "Document too large!",
+		},
+		{
+			name: "gocbcore.KeyValueError, memd.StatusTooBig",
+			err:  gocbcore.KeyValueError{StatusCode: memd.StatusTooBig, InnerError: fmt.Errorf("fake inner error")},
+			code: http.StatusRequestEntityTooLarge,
+			text: "Document too large!",
+		},
+		{
+			name: "&gocbcore.SubdocumentError{gocbcore.KeyValueError, memd.StatusTooBig}",
+			err:  &gocbcore.SubDocumentError{InnerError: gocbcore.KeyValueError{StatusCode: memd.StatusTooBig, InnerError: fmt.Errorf("fake inner error")}},
+			code: http.StatusRequestEntityTooLarge,
+			text: "Document too large!",
+		},
+		{
+			name: "gocbcore.SubdocumentError{gocbcore.KeyValueError, memd.StatusTooBig}",
+			err:  gocbcore.SubDocumentError{InnerError: gocbcore.KeyValueError{StatusCode: memd.StatusTooBig, InnerError: fmt.Errorf("fake inner error")}},
+			code: http.StatusRequestEntityTooLarge,
+			text: "Document too large!",
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			code, text := ErrorAsHTTPStatus(test.err)
+			assert.Equal(t, test.code, code)
+			assert.Equal(t, test.text, text)
 
-	code, text = ErrorAsHTTPStatus(gocb.ErrDocumentNotFound)
-	assert.Equal(t, http.StatusNotFound, code)
-	assert.Equal(t, "missing", text)
-
-	code, text = ErrorAsHTTPStatus(gocb.ErrDocumentExists)
-	assert.Equal(t, http.StatusConflict, code)
-	assert.Equal(t, "Conflict", text)
-
-	code, text = ErrorAsHTTPStatus(gocb.ErrTimeout)
-	assert.Equal(t, http.StatusServiceUnavailable, code)
-	assert.Equal(t, "Database timeout error (gocb.ErrTimeout)", text)
-
-	code, text = ErrorAsHTTPStatus(gocb.ErrOverload)
-	assert.Equal(t, http.StatusServiceUnavailable, code)
-	assert.Equal(t, "Database server is over capacity (gocb.ErrOverload)", text)
-
-	code, text = ErrorAsHTTPStatus(gocb.ErrTemporaryFailure)
-	assert.Equal(t, http.StatusServiceUnavailable, code)
-	assert.Equal(t, "Database server is over capacity (gocb.ErrTemporaryFailure)", text)
-
-	code, text = ErrorAsHTTPStatus(gocb.ErrValueTooLarge)
-	assert.Equal(t, http.StatusRequestEntityTooLarge, code)
-	assert.Equal(t, "Document too large!", text)
-
-	code, text = ErrorAsHTTPStatus(ErrViewTimeoutError)
-	assert.Equal(t, http.StatusServiceUnavailable, code)
-	assert.Equal(t, ErrViewTimeoutError.Error(), text)
-
-	fakeHTTPError := &HTTPError{Status: http.StatusForbidden, Message: http.StatusText(http.StatusForbidden)}
-	code, text = ErrorAsHTTPStatus(fakeHTTPError)
-	assert.Equal(t, http.StatusForbidden, code)
-	assert.Equal(t, http.StatusText(http.StatusForbidden), text)
-
-	fakeMCResponse := &gomemcached.MCResponse{Status: gomemcached.KEY_ENOENT}
-	code, text = ErrorAsHTTPStatus(fakeMCResponse)
-	assert.Equal(t, http.StatusNotFound, code)
-	assert.Equal(t, "missing", text)
-
-	fakeMCResponse = &gomemcached.MCResponse{Status: gomemcached.KEY_EEXISTS}
-	code, text = ErrorAsHTTPStatus(fakeMCResponse)
-	assert.Equal(t, http.StatusConflict, code)
-	assert.Equal(t, "Conflict", text)
-
-	fakeMCResponse = &gomemcached.MCResponse{Status: gomemcached.E2BIG}
-	code, text = ErrorAsHTTPStatus(fakeMCResponse)
-	assert.Equal(t, http.StatusRequestEntityTooLarge, code)
-	assert.Equal(t, "Too Large: "+string(fakeMCResponse.Body), text)
-
-	fakeMCResponse = &gomemcached.MCResponse{Status: gomemcached.TMPFAIL}
-	code, text = ErrorAsHTTPStatus(fakeMCResponse)
-	assert.Equal(t, http.StatusServiceUnavailable, code)
-	assert.Equal(t, "Database server is over capacity (gomemcached.TMPFAIL)", text)
-
-	fakeMCResponse = &gomemcached.MCResponse{Status: gomemcached.ROLLBACK}
-	code, text = ErrorAsHTTPStatus(fakeMCResponse)
-	assert.Equal(t, http.StatusBadGateway, code)
-	assert.Equal(t, fmt.Sprintf("%s (%s)", string(fakeMCResponse.Body), fakeMCResponse.Status.String()), text)
-
-	fakeDocTooBigErr := sgbucket.DocTooBigErr{}
-	code, text = ErrorAsHTTPStatus(fakeDocTooBigErr)
-	assert.Equal(t, http.StatusRequestEntityTooLarge, code)
-	assert.Equal(t, "Document too large!", text)
-
-	fakeMissingError := sgbucket.MissingError{}
-	code, text = ErrorAsHTTPStatus(fakeMissingError)
-	assert.Equal(t, http.StatusNotFound, code)
-	assert.Equal(t, "missing", text)
-
-	code, text = ErrorAsHTTPStatus(ErrNotFound)
-	assert.Equal(t, http.StatusNotFound, code)
-	assert.Equal(t, "missing", text)
-
-	code, text = ErrorAsHTTPStatus(ErrEmptyDocument)
-	assert.Equal(t, http.StatusBadRequest, code)
-	assert.Equal(t, "Document body is empty", text)
-
-	fakeSyntaxError := &json.SyntaxError{}
-	code, text = ErrorAsHTTPStatus(fakeSyntaxError)
-	assert.Equal(t, http.StatusBadRequest, code)
-	assert.Equal(t, fmt.Sprintf("Invalid JSON: \"%v\"", fakeSyntaxError.Error()), text)
-
-	fakeUnmarshalTypeError := &json.UnmarshalTypeError{Value: "FakeValue", Type: reflect.TypeOf(1)}
-	code, text = ErrorAsHTTPStatus(fakeUnmarshalTypeError)
-	assert.Equal(t, http.StatusBadRequest, code)
-	assert.Equal(t, fmt.Sprintf("Invalid JSON: \"%v\"", fakeUnmarshalTypeError.Error()), text)
-
-	fakeJSONIterError := &JSONIterError{E: fakeSyntaxError}
-	code, text = ErrorAsHTTPStatus(fakeJSONIterError)
-	assert.Equal(t, http.StatusBadRequest, code)
-	assert.Equal(t, fmt.Sprintf("Invalid JSON: \"%v\"", fakeJSONIterError.Error()), text)
-
-	fakeRetryTimeoutError := &RetryTimeoutError{}
-	code, text = ErrorAsHTTPStatus(fakeRetryTimeoutError)
-	assert.Equal(t, http.StatusGatewayTimeout, code)
-	assert.Equal(t, fakeRetryTimeoutError.Error(), text)
-
-	fakeUnsupportedTypeError := &json.UnsupportedTypeError{Type: reflect.TypeOf(3.14)}
-	code, text = ErrorAsHTTPStatus(fakeUnsupportedTypeError)
-	assert.Equal(t, http.StatusInternalServerError, code)
-	assert.Equal(t, fmt.Sprintf("Internal error: %v", fakeUnsupportedTypeError.Error()), text)
+			if test.err == nil {
+				return
+			}
+			wrappedErr := fmt.Errorf("wrapped error: %w", test.err)
+			code, text = ErrorAsHTTPStatus(wrappedErr)
+			assert.Equal(t, test.code, code)
+			if test.wrappedErrorText != "" {
+				assert.Equal(t, test.wrappedErrorText, text)
+			} else {
+				assert.Equal(t, test.text, text)
+			}
+		})
+	}
 }
 
 func TestCouchHTTPErrorName(t *testing.T) {
@@ -217,6 +343,131 @@ func TestIsDocNotFoundError(t *testing.T) {
 			} else {
 				assert.False(t, IsDocNotFoundError(test.err))
 			}
+			wrappedErr := fmt.Errorf("wrapped error: %w", test.err)
+			if test.isDocNotFound {
+				assert.True(t, IsDocNotFoundError(wrappedErr))
+			} else {
+				assert.False(t, IsDocNotFoundError(wrappedErr))
+			}
+		})
+	}
+}
+
+func TestIsCasMismatch(t *testing.T) {
+	testCases := []struct {
+		name          string
+		err           error
+		isCasMismatch bool
+	}{
+		{
+			name:          "nil",
+			err:           nil,
+			isCasMismatch: false,
+		},
+		{
+			name:          "&gomemcached.MCResponse KEY_ENOENT",
+			err:           &gomemcached.MCResponse{Status: gomemcached.KEY_ENOENT},
+			isCasMismatch: false,
+		},
+		{
+			name:          "go-couchbase error",
+			err:           fmt.Errorf("CAS mismatch error"),
+			isCasMismatch: true,
+		},
+		{
+			name:          "sgbucket.CasMismatchErr",
+			err:           sgbucket.CasMismatchErr{},
+			isCasMismatch: true,
+		},
+		{
+			name:          "&gocb.KeyValueError, memd.StatusTooBig",
+			err:           &gocb.KeyValueError{StatusCode: memd.StatusTooBig, InnerError: fmt.Errorf("fake error")},
+			isCasMismatch: false,
+		},
+		{
+			name:          "gocb.KeyValueError, memd.StatusTooBig",
+			err:           gocb.KeyValueError{StatusCode: memd.StatusTooBig, InnerError: fmt.Errorf("fake error")},
+			isCasMismatch: false,
+		},
+		{
+			name:          "gocb.KeyValueError, memd.StatusKeyExists",
+			err:           gocb.KeyValueError{StatusCode: memd.StatusKeyExists, InnerError: fmt.Errorf("fake inner error")},
+			isCasMismatch: true,
+		},
+		{
+			name:          "&gocb.KeyValueError, memd.StatusKeyExists",
+			err:           &gocb.KeyValueError{StatusCode: memd.StatusKeyExists, InnerError: fmt.Errorf("fake inner error")},
+			isCasMismatch: true,
+		},
+		{
+			name:          "gocbcore.KeyValueError, memd.StatusNotStored",
+			err:           gocbcore.KeyValueError{StatusCode: memd.StatusNotStored, InnerError: fmt.Errorf("fake inner error")},
+			isCasMismatch: true,
+		},
+		{
+			name:          "&gocbcore.KeyValueError, memd.StatusNotStored",
+			err:           &gocbcore.KeyValueError{StatusCode: memd.StatusNotStored, InnerError: fmt.Errorf("fake inner error")},
+			isCasMismatch: true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			if test.isCasMismatch {
+				assert.True(t, IsCasMismatch(test.err))
+			} else {
+				assert.False(t, IsCasMismatch(test.err))
+			}
+			wrappedErr := fmt.Errorf("wrapped error: %w", test.err)
+			if test.isCasMismatch {
+				assert.True(t, IsCasMismatch(wrappedErr))
+			} else {
+				assert.False(t, IsCasMismatch(wrappedErr))
+			}
+		})
+	}
+}
+
+func TestIsXattrNotFoundError(t *testing.T) {
+	testCases := []struct {
+		name            string
+		err             error
+		isXattrNotFound bool
+	}{
+		{
+			name:            "nil",
+			err:             nil,
+			isXattrNotFound: false,
+		},
+		{
+			name:            "ErrXattrNotFound",
+			err:             ErrXattrNotFound,
+			isXattrNotFound: true,
+		},
+		{
+			name:            "sgbucket.XattrMissingError",
+			err:             sgbucket.XattrMissingError{},
+			isXattrNotFound: true,
+		},
+		{
+			name:            "custom error",
+			err:             fmt.Errorf("custom error"),
+			isXattrNotFound: false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			if test.isXattrNotFound {
+				assert.True(t, IsXattrNotFoundError(test.err), "Expected %+v to be IsXattrNotFoundError", test.err)
+			} else {
+				assert.False(t, IsXattrNotFoundError(test.err), "Expected %+v to not be IsXattrNotFoundError", test.err)
+			}
+
+			wrappedErr := fmt.Errorf("wrapped error: %w", test.err)
+			if test.isXattrNotFound {
+				assert.True(t, IsXattrNotFoundError(wrappedErr), "Expected %+v to be IsXattrNotFoundError", wrappedErr)
+			} else {
+				assert.False(t, IsXattrNotFoundError(wrappedErr), "Expected %+v to not be IsXattrNotFoundError", wrappedErr)
+			}
 		})
 	}
 }
@@ -242,5 +493,51 @@ func TestMultiError(t *testing.T) {
 
 	var nilError *MultiError
 	assert.Nil(t, nilError.ErrorOrNil())
+
+}
+
+func TestIsGocbQueryTimeoutError(t *testing.T) {
+	testCases := []struct {
+		name                    string
+		err                     error
+		isGoCBQueryTimeoutError bool
+	}{
+		{
+			name:                    "nil",
+			err:                     nil,
+			isGoCBQueryTimeoutError: false,
+		},
+		{
+			name:                    "ErrXattrNotFound",
+			err:                     ErrXattrNotFound,
+			isGoCBQueryTimeoutError: false,
+		},
+		{
+			name:                    "url.Error, connection refused",
+			err:                     &url.Error{Op: "Get", URL: "http://localhost:8091", Err: fmt.Errorf("connection refused")},
+			isGoCBQueryTimeoutError: false,
+		},
+		{
+			name:                    "url.Error, connection refused",
+			err:                     &url.Error{Op: "Get", URL: "http://localhost:8091", Err: fmt.Errorf("request canceled")},
+			isGoCBQueryTimeoutError: true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			if test.isGoCBQueryTimeoutError {
+				assert.True(t, isGoCBQueryTimeoutError(test.err), "Expected %+v to be isGoCBQueryTimeoutError", test.err)
+			} else {
+				assert.False(t, isGoCBQueryTimeoutError(test.err), "Expected %+v to not be isGoCBQueryTimeoutError", test.err)
+			}
+
+			wrappedErr := fmt.Errorf("wrapped error: %w", test.err)
+			if test.isGoCBQueryTimeoutError {
+				assert.True(t, isGoCBQueryTimeoutError(wrappedErr), "Expected %+v to be isGoCBQueryTimeoutError", wrappedErr)
+			} else {
+				assert.False(t, isGoCBQueryTimeoutError(wrappedErr), "Expected %+v to not be isGoCBQueryTimeoutError", wrappedErr)
+			}
+		})
+	}
 
 }

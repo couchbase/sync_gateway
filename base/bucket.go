@@ -27,7 +27,6 @@ import (
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/rosmar"
-	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -331,20 +330,19 @@ func IsCasMismatch(err error) bool {
 		return false
 	}
 
-	unwrappedErr := pkgerrors.Cause(err)
-
 	// GoCB V2 handling
-	if isKVError(unwrappedErr, memd.StatusKeyExists) || isKVError(unwrappedErr, memd.StatusNotStored) {
+	if isKVError(err, memd.StatusKeyExists) || isKVError(err, memd.StatusNotStored) {
 		return true
 	}
 
-	// sgbucket, Walrus
-	if _, ok := unwrappedErr.(sgbucket.CasMismatchErr); ok {
+	// sgbucket, rosmar
+	var casMismatchErr sgbucket.CasMismatchErr
+	if errors.As(err, &casMismatchErr) {
 		return true
 	}
 
 	// GoCouchbase
-	if strings.Contains(unwrappedErr.Error(), "CAS mismatch") {
+	if strings.Contains(err.Error(), "CAS mismatch") {
 		return true
 	}
 

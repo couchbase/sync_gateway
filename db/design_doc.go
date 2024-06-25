@@ -755,15 +755,15 @@ func IsMissingDDocError(err error) bool {
 	if err == nil {
 		return false
 	}
-	unwrappedErr := pkgerrors.Cause(err)
 
-	// Walrus
-	if _, ok := unwrappedErr.(sgbucket.MissingError); ok {
+	// rosmar
+	var sgbucketMissingErr sgbucket.MissingError
+	if errors.As(err, &sgbucketMissingErr) {
 		return true
 	}
 
 	// gocb
-	if strings.Contains(unwrappedErr.Error(), "not_found") {
+	if strings.Contains(err.Error(), "not_found") {
 		return true
 	}
 

@@ -10,6 +10,7 @@ package base
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -206,7 +207,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 			// retrieve the current value from the bucket
 			wasTombstone, value, xattrs, cas, err = c.subdocGetBodyAndXattrs(ctx, k, xattrKeys, true)
 			if err != nil {
-				if pkgerrors.Cause(err) != ErrNotFound {
+				if !errors.Is(err, ErrNotFound) {
 					// Unexpected error, cancel writeupdate
 					DebugfCtx(ctx, KeyCRUD, "Retrieval of existing doc failed during WriteUpdateWithXattrs for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKeys), err)
 					return emptyCas, err

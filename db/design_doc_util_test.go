@@ -9,9 +9,12 @@
 package db
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -37,4 +40,54 @@ func assertDesignDocNotExists(t testing.TB, viewStore sgbucket.ViewStore, ddocNa
 		return assert.Failf(t, "Design doc %s should not exist but but it did: %v", ddocName, ddoc)
 	}
 	return assert.Truef(t, IsMissingDDocError(err), "Design doc %s should not exist but got a different error fetching it: %v", ddocName, err)
+}
+
+func TestIsMissingDDocError(t *testing.T) {
+	testCases := []struct {
+		name               string
+		err                error
+		isMissingDDocError bool
+	}{
+		{
+			name:               "nil",
+			err:                nil,
+			isMissingDDocError: false,
+		},
+		{
+			name:               "ErrNotFound",
+			err:                base.ErrNotFound,
+			isMissingDDocError: true,
+		},
+		{
+			name:               "gocb.ErrDesignDocumentNotFound",
+			err:                gocb.ErrDesignDocumentNotFound,
+			isMissingDDocError: true,
+		},
+		{
+			name:               "sgbucket.MissingError",
+			err:                sgbucket.MissingError{},
+			isMissingDDocError: true,
+		},
+		{
+			name:               "gocb not_found error",
+			err:                fmt.Errorf("gocb custom not_found error"),
+			isMissingDDocError: true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			if test.isMissingDDocError {
+				assert.True(t, IsMissingDDocError(test.err), "Expected %+v to be IsMissingDDocError", test.err)
+			} else {
+				assert.False(t, IsMissingDDocError(test.err), "Expected %+v to not be IsMissingDDocError", test.err)
+			}
+
+			wrappedErr := fmt.Errorf("wrapped error: %w", test.err)
+			if test.isMissingDDocError {
+				assert.True(t, IsMissingDDocError(wrappedErr), "Expected %+v to be IsMissingDDocError", wrappedErr)
+			} else {
+				assert.False(t, IsMissingDDocError(wrappedErr), "Expected %+v to not be IsMissingDDocError", wrappedErr)
+			}
+		})
+	}
 }

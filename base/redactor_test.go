@@ -11,6 +11,8 @@ licenses/APL2.txt.
 package base
 
 import (
+	"errors"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -31,6 +33,7 @@ func TestRedactHelper(t *testing.T) {
 		1234,
 		big.NewInt(1234),
 		struct{}{},
+		errors.Join(fmt.Errorf("wrapped error"), RedactErrorf("an error")),
 	}
 
 	out := redact(in)
@@ -49,6 +52,7 @@ func TestRedactHelper(t *testing.T) {
 	assert.Equal(t, 1234, out[3])
 	assert.Equal(t, big.NewInt(1234).String(), out[4].(*big.Int).String())
 	assert.Equal(t, struct{}{}, out[5])
+	assert.Equal(t, RedactErrorf("an error").Redact(), out[6])
 }
 
 func TestSetRedaction(t *testing.T) {

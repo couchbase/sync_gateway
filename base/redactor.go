@@ -11,11 +11,10 @@ licenses/APL2.txt.
 package base
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
-
-	pkgerrors "github.com/pkg/errors"
 )
 
 // Redactor provides an interface for log redaction.
@@ -50,8 +49,8 @@ func redact(args []interface{}) []interface{} {
 			args[i] = r.Redact()
 		} else if err, ok := v.(error); ok {
 			// it's an error, and may need to be unwrapped before it can be redacted
-			err = pkgerrors.Cause(err)
-			if r, ok := err.(Redactor); ok {
+			var r Redactor
+			if errors.As(err, &r) {
 				args[i] = r.Redact()
 			}
 		}

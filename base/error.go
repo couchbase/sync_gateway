@@ -18,7 +18,6 @@ import (
 	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
-	pkgerrors "github.com/pkg/errors"
 )
 
 type sgError struct {
@@ -107,80 +106,83 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		return 200, "OK"
 	}
 
-	unwrappedErr := pkgerrors.Cause(err)
-
-	// Check for SGErrors
-	switch unwrappedErr {
-	case gocb.ErrDocumentNotFound, ErrNotFound:
+	if errors.Is(err, ErrNotFound) || errors.Is(err, gocb.ErrDocumentNotFound) {
 		return http.StatusNotFound, "missing"
-	case gocb.ErrDocumentExists, ErrAlreadyExists:
-		return http.StatusConflict, "Conflict"
-	case gocb.ErrTimeout:
-		return http.StatusServiceUnavailable, "Database timeout error (gocb.ErrTimeout)"
-	case gocb.ErrOverload:
+	} else if errors.Is(err, gocb.ErrOverload) {
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrOverload)"
-	case gocb.ErrTemporaryFailure:
+	} else if errors.Is(err, gocb.ErrTemporaryFailure) {
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrTemporaryFailure)"
-	case gocb.ErrValueTooLarge:
+	} else if errors.Is(err, gocb.ErrValueTooLarge) {
 		return http.StatusRequestEntityTooLarge, "Document too large!"
-	case ErrViewTimeoutError:
-		return http.StatusServiceUnavailable, unwrappedErr.Error()
-	case ErrReplicationLimitExceeded:
-		return http.StatusServiceUnavailable, unwrappedErr.Error()
-	}
-
-	// gocb V2 errors
-	if errors.Is(unwrappedErr, gocb.ErrDocumentNotFound) {
-		return http.StatusNotFound, "missing"
-	}
-	if errors.Is(unwrappedErr, gocb.ErrDocumentExists) {
+	} else if errors.Is(err, ErrViewTimeoutError) {
+		return http.StatusServiceUnavailable, err.Error()
+	} else if errors.Is(err, ErrEmptyDocument) {
+		return http.StatusBadRequest, "Document body is empty"
+	} else if errors.Is(err, gocb.ErrDocumentExists) || errors.Is(err, ErrAlreadyExists) {
 		return http.StatusConflict, "Conflict"
-	}
-	if errors.Is(unwrappedErr, gocb.ErrTimeout) {
+	} else if errors.Is(err, gocb.ErrTimeout) {
 		return http.StatusServiceUnavailable, "Database timeout error (gocb.ErrTimeout)"
+	} else if errors.Is(err, ErrReplicationLimitExceeded) {
+		return http.StatusServiceUnavailable, ErrReplicationLimitExceeded.Error()
 	}
-	if isKVError(unwrappedErr, memd.StatusTooBig) {
+
+	if isKVError(err, memd.StatusTooBig) {
 		return http.StatusRequestEntityTooLarge, "Document too large!"
 	}
 
-	switch unwrappedErr := unwrappedErr.(type) {
-	case *HTTPError:
-		return unwrappedErr.Status, unwrappedErr.Message
-	case *gomemcached.MCResponse:
-		switch unwrappedErr.Status {
+	var httpError *HTTPError
+	if errors.As(err, &httpError) {
+		return httpError.Status, httpError.Message
+	}
+	var mcResponseErr *gomemcached.MCResponse
+	if errors.As(err, &mcResponseErr) {
+		switch mcResponseErr.Status {
 		case gomemcached.KEY_ENOENT:
 			return http.StatusNotFound, "missing"
 		case gomemcached.KEY_EEXISTS:
 			return http.StatusConflict, "Conflict"
 		case gomemcached.E2BIG:
-			return http.StatusRequestEntityTooLarge, "Too Large: " + string(unwrappedErr.Body)
+			return http.StatusRequestEntityTooLarge, "Too Large: " + string(mcResponseErr.Body)
 		case gomemcached.TMPFAIL:
 			return http.StatusServiceUnavailable, "Database server is over capacity (gomemcached.TMPFAIL)"
 		default:
 			return http.StatusBadGateway, fmt.Sprintf("%s (%s)",
-				string(unwrappedErr.Body), unwrappedErr.Status.String())
+				string(mcResponseErr.Body), mcResponseErr.Status.String())
 		}
-	case sgbucket.DocTooBigErr:
-		return http.StatusRequestEntityTooLarge, "Document too large!"
-	case sgbucket.CasMismatchErr:
-		return http.StatusConflict, "Conflict"
-	case sgbucket.MissingError:
-		return http.StatusNotFound, "missing"
-	case sgbucket.XattrMissingError:
-		return http.StatusNotFound, "missing"
-	case *sgError:
-		switch unwrappedErr {
-		case ErrNotFound:
-			return http.StatusNotFound, "missing"
-		case ErrEmptyDocument:
-			return http.StatusBadRequest, "Document body is empty"
-		}
-	case *json.SyntaxError, *json.UnmarshalTypeError, *JSONIterError:
-		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", unwrappedErr)
-	case *RetryTimeoutError:
-		return http.StatusGatewayTimeout, unwrappedErr.Error()
 	}
-	return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", unwrappedErr)
+	var docTooBigErr sgbucket.DocTooBigErr
+	if errors.As(err, &docTooBigErr) {
+		return http.StatusRequestEntityTooLarge, "Document too large!"
+	}
+	var missingError sgbucket.MissingError
+	if errors.As(err, &missingError) {
+		return http.StatusNotFound, "missing"
+	}
+	var casMismatchErr sgbucket.CasMismatchErr
+	if errors.As(err, &casMismatchErr) {
+		return http.StatusConflict, "Conflict"
+	}
+	var xattrMissingError sgbucket.XattrMissingError
+	if errors.As(err, &xattrMissingError) {
+		return http.StatusNotFound, "missing"
+	}
+	var jsonSyntaxError *json.SyntaxError
+	if errors.As(err, &jsonSyntaxError) {
+		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", jsonSyntaxError)
+	}
+	var jsonUnmarshalTypeError *json.UnmarshalTypeError
+	if errors.As(err, &jsonUnmarshalTypeError) {
+		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", jsonUnmarshalTypeError)
+	}
+	var jsonIterError *JSONIterError
+	if errors.As(err, &jsonIterError) {
+		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", jsonIterError)
+	}
+	var retryTimeoutError *RetryTimeoutError
+	if errors.As(err, &retryTimeoutError) {
+		return http.StatusGatewayTimeout, retryTimeoutError.Error()
+	}
+	return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", err)
 }
 
 // Returns the standard CouchDB error string for an HTTP error status.
@@ -225,24 +227,26 @@ func IsDocNotFoundError(err error) bool {
 	if errors.As(err, &missingError) {
 		return true
 	}
-	unwrappedErr := pkgerrors.Cause(err)
-
-	switch unwrappedErr := unwrappedErr.(type) {
-	case *gomemcached.MCResponse:
-		return unwrappedErr.Status == gomemcached.KEY_ENOENT || unwrappedErr.Status == gomemcached.NOT_STORED
-	case *HTTPError:
-		return unwrappedErr.Status == http.StatusNotFound
-	default:
-		return false
+	var mcResponseErr *gomemcached.MCResponse
+	if errors.As(err, &mcResponseErr) {
+		return mcResponseErr.Status == gomemcached.KEY_ENOENT || mcResponseErr.Status == gomemcached.NOT_STORED
 	}
+
+	var httpError *HTTPError
+	if errors.As(err, &httpError) {
+		return httpError.Status == http.StatusNotFound
+	}
+	return false
 }
 
 func IsXattrNotFoundError(err error) bool {
-	if unwrappedErr := pkgerrors.Cause(err); unwrappedErr == nil {
+	if err == nil {
 		return false
-	} else if unwrappedErr == ErrXattrNotFound {
+	} else if errors.Is(err, ErrXattrNotFound) {
 		return true
-	} else if _, ok := unwrappedErr.(sgbucket.XattrMissingError); ok {
+	}
+	var xattrMissingError sgbucket.XattrMissingError
+	if errors.As(err, &xattrMissingError) {
 		return true
 	}
 	return false

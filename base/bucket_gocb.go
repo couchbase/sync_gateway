@@ -47,8 +47,8 @@ func isGoCBQueryTimeoutError(err error) bool {
 	}
 
 	// If it's not a *url.Error, then it's not a viewtimeout error
-	netUrlError, ok := pkgerrors.Cause(err).(*url.Error)
-	if !ok {
+	var netUrlError *url.Error
+	if !pkgerrors.As(err, &netUrlError) {
 		return false
 	}
 
