@@ -2874,3 +2874,86 @@ func TestAllDbs(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 	require.Equal(t, fmt.Sprintf(`[{"db_name":"%s","bucket":"%s","state":"Online"}]`, rt.GetDatabase().Name, rt.GetDatabase().Bucket.GetName()), resp.Body.String())
 }
+
+func TestBulkDocsImport(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	docID := "doc"
+
+	bulkDoc := db.Body{
+		"write": 1,
+	}
+
+	// Create a document
+	version1 := rt.PutDoc(docID, string(base.MustJSONMarshal(t, bulkDoc)))
+
+	bulkGetBody := `{"docs": [{"id":"doc"}]}`
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_get", bulkGetBody)
+	RequireStatus(t, resp, http.StatusOK)
+
+	docs := readMultipartResponse(t, resp)
+	require.Len(t, docs, 1)
+	fmt.Println("!!!", resp.BodyString())
+	require.JSONEq(t, string(base.MustJSONMarshal(t, db.Body{
+		"write": 1,
+		"_id":   "doc",
+		"_rev":  version1.RevID,
+	})), docs[0])
+
+	// write doc via SDK, wait for import
+	err := rt.GetSingleDataStore().Set("doc", 0, nil, []byte(`{"write": 2}`))
+	require.NoError(t, err)
+	version2a, _ := rt.GetDoc(docID)
+
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_get", bulkGetBody)
+	RequireStatus(t, resp, http.StatusOK)
+
+	docs = readMultipartResponse(t, resp)
+	require.Len(t, docs, 1)
+	require.JSONEq(t, string(base.MustJSONMarshal(t, db.Body{
+		"write": 2,
+		"_id":   "doc",
+		"_rev":  version2a.RevID,
+	})), docs[0])
+
+	version2b := NewDocVersionFromFakeRev("2-def")
+	version2bResponse := rt.PutNewEditsFalse(docID, version2b, version1, `{"write": 3}`)
+	RequireDocVersionEqual(t, version2b, version2bResponse)
+
+	// not sure why I don't see the conflict here
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_get", bulkGetBody)
+	RequireStatus(t, resp, http.StatusOK)
+
+	docs = readMultipartResponse(t, resp)
+	require.Len(t, docs, 1)
+	require.JSONEq(t, string(base.MustJSONMarshal(t, db.Body{
+		"write": 3,
+		"_id":   "doc",
+		"_rev":  version2a.RevID,
+	})), docs[0])
+
+}
+
+func readMultipartResponse(t *testing.T, response *TestResponse) []string {
+	_, attrs, err := mime.ParseMediaType(response.Header().Get("Content-Type"))
+	require.NoError(t, err)
+	reader := multipart.NewReader(response.Body, attrs["boundary"])
+	var parts []string
+	for {
+
+		// Get the next part.  Break out of the loop if we hit EOF
+		part, err := reader.NextPart()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			t.Fatal(err)
+		}
+
+		partBytes, err := io.ReadAll(part)
+		require.NoError(t, err)
+		parts = append(parts, string(partBytes))
+	}
+	return parts
+}
