@@ -1065,6 +1065,21 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			}
 		}
 	}
+
+	if dbConfig.Logging != nil {
+		if dbConfig.Logging.Audit != nil {
+			if !isEnterpriseEdition && dbConfig.Logging.Audit.Enabled != nil {
+				base.WarnfCtx(ctx, eeOnlyWarningMsg, "logging.audit.enabled", *dbConfig.Logging.Audit.Enabled, false)
+				dbConfig.Logging.Audit.Enabled = nil
+			}
+			for _, id := range dbConfig.Logging.Audit.EnabledEvents {
+				if _, ok := base.AuditEvents[base.AuditID(id)]; !ok {
+					multiError = multiError.Append(fmt.Errorf("unknown audit event ID %q", id))
+				}
+			}
+		}
+	}
+
 	return multiError.ErrorOrNil()
 }
 
@@ -2197,6 +2212,7 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 			enabledEvents[base.AuditID(event)] = struct{}{}
 		}
 		aud = &base.DbAuditLogConfig{
+			Enabled:       base.BoolDefault(l.Audit.Enabled, false),
 			EnabledEvents: enabledEvents,
 		}
 	}

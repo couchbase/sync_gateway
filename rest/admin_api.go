@@ -668,7 +668,18 @@ func (h *handler) handlePutDbConfig() (err error) {
 	h.server.dbConfigs[dbName].cfgCas = cas
 
 	return base.HTTPErrorf(http.StatusCreated, "updated")
+}
 
+type handleDbAuditConfigBody struct {
+	Enabled *bool          `json:"enabled,omitempty"`
+	Events  map[string]any `json:"events,omitempty"`
+}
+
+type handleDbAuditConfigBodyVerboseEvent struct {
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Enabled     *bool   `json:"enabled,omitempty"`
+	Filterable  *bool   `json:"filterable,omitempty"`
 }
 
 // GET audit config for database
@@ -678,46 +689,142 @@ func (h *handler) handleGetDbAuditConfig() error {
 	showOnlyFilterable := h.getBoolQuery("filterable")
 	verbose := h.getBoolQuery("verbose")
 
-	isEnabledFn := func(id base.AuditID) bool {
-		_, ok := h.db.Options.LoggingConfig.Audit.EnabledEvents[id]
-		return ok
+	var (
+		etagVersion    string
+		dbAuditEnabled bool
+		enabledEvents  = make(map[base.AuditID]struct{})
+	)
+
+	if h.server.BootstrapContext.Connection != nil {
+		found, dbConfig, err := h.server.fetchDatabase(h.ctx(), h.db.Name)
+		if err != nil {
+			return err
+		}
+
+		if !found {
+			return base.HTTPErrorf(http.StatusNotFound, "database config not found")
+		}
+
+		etagVersion = dbConfig.Version
+
+		if dbConfig.Logging != nil && dbConfig.Logging.Audit != nil {
+			dbAuditEnabled = base.BoolDefault(dbConfig.Logging.Audit.Enabled, false)
+			for _, event := range dbConfig.Logging.Audit.EnabledEvents {
+				enabledEvents[base.AuditID(event)] = struct{}{}
+			}
+		}
 	}
 
-	// TODO: Move to structs
-	events := make(map[string]interface{}, len(base.AuditEvents))
+	events := make(map[string]any, len(base.AuditEvents))
 	for id, descriptor := range base.AuditEvents {
 		if showOnlyFilterable && !descriptor.FilteringPermitted {
 			continue
 		}
+
 		idStr := id.String()
+		_, eventEnabled := enabledEvents[id]
+
 		if verbose {
-			events[idStr] = map[string]interface{}{
-				"name":        descriptor.Name,
-				"description": descriptor.Description,
-				"enabled":     isEnabledFn(id),
-				"filterable":  descriptor.FilteringPermitted,
+			events[idStr] = handleDbAuditConfigBodyVerboseEvent{
+				Name:        stringPtrOrNil(descriptor.Name),
+				Description: stringPtrOrNil(descriptor.Description),
+				Enabled:     &eventEnabled,
+				Filterable:  base.BoolPtr(descriptor.FilteringPermitted),
 			}
 		} else {
-			events[idStr] = isEnabledFn(id)
+			events[idStr] = &eventEnabled
 		}
 	}
 
-	h.writeJSON(events)
+	resp := handleDbAuditConfigBody{
+		Enabled: &dbAuditEnabled,
+		Events:  events,
+	}
 
+	h.setEtag(etagVersion)
+	h.writeJSON(resp)
 	return nil
 }
 
 // PUT/POST audit config for database
 func (h *handler) handlePutDbAuditConfig() error {
-	h.assertAdminOnly()
+	return h.mutateDbConfig(func(config *DbConfig) error {
+		var body handleDbAuditConfigBody
+		if err := h.readJSONInto(&body); err != nil {
+			return err
+		}
 
-	// interface can be either bool or object for verbose-format
-	var body map[string]interface{}
-	if err := h.readJSONInto(&body); err != nil {
-		return err
-	}
+		// isReplace if the request is a PUT, and we want to overwrite existing config
+		isReplace := h.rq.Method == http.MethodPut
 
-	return nil
+		// This API endpoint takes audit config in a format that does not match the actual DbConfig stored, so translate the request here.
+		toChange := make(map[base.AuditID]bool, len(body.Events))
+		var multiError *base.MultiError
+		for id, val := range body.Events {
+			// find the event
+			auditID, err := base.ParseAuditID(id)
+			if err != nil {
+				multiError = multiError.Append(fmt.Errorf("invalid audit event ID: %q", id))
+				continue
+			}
+			_, ok := base.AuditEvents[auditID]
+			if !ok {
+				multiError = multiError.Append(fmt.Errorf("unknown audit event ID: %q", id))
+				continue
+			}
+
+			var eventEnabled bool
+			switch valT := val.(type) {
+			case bool:
+				eventEnabled = valT
+			case map[string]any:
+				// verbose format
+				eventEnabled = valT["enabled"].(bool)
+			}
+
+			toChange[auditID] = eventEnabled
+		}
+		if err := multiError.ErrorOrNil(); err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "couldn't update audit configuration: %s", err)
+		}
+
+		if isReplace || body.Enabled != nil {
+			config.Logging.Audit.Enabled = body.Enabled
+		}
+
+		if isReplace {
+			// we don't need to do anything to "disable" events, other than not enable them
+			config.Logging.Audit.EnabledEvents = func() []uint {
+				enabledEvents := make([]uint, 0)
+				for event, shouldEnable := range toChange {
+					if shouldEnable {
+						enabledEvents = append(enabledEvents, uint(event))
+					}
+				}
+				return enabledEvents
+			}()
+		} else {
+			for i, event := range config.Logging.Audit.EnabledEvents {
+				if shouldEnable, ok := toChange[base.AuditID(event)]; ok {
+					if shouldEnable {
+						// already enabled
+						continue
+					} else {
+						// disable by removing
+						config.Logging.Audit.EnabledEvents = append(config.Logging.Audit.EnabledEvents[:i], config.Logging.Audit.EnabledEvents[i+1:]...)
+					}
+					// drop from toChange so we don't duplicate IDs
+					delete(toChange, base.AuditID(event))
+				}
+			}
+			for id, enabled := range toChange {
+				if enabled {
+					config.Logging.Audit.EnabledEvents = append(config.Logging.Audit.EnabledEvents, uint(id))
+				}
+			}
+		}
+		return nil
+	})
 }
 
 // GET collection config sync function
