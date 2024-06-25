@@ -259,10 +259,10 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	}
 
 	err := h.validateAndWriteHeaders(method, accessPermissions, responsePermissions)
-
 	if err != nil {
 		return err
 	}
+
 	return method(h) // Call the actual handler code
 }
 
@@ -408,7 +408,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	// Authenticate, if not on admin port:
 	if h.privs != adminPrivs {
 		var err error
-		if err = h.checkAuth(dbContext); err != nil {
+		if err = h.checkPublicAuth(dbContext); err != nil {
 			// if auth fails we still need to record bytes read over the rest api for the stat, to do this we need to call GetBodyBytesCount to read
 			// the body to populate the bytes count on the CountedRequestReader struct
 			bytesCount := h.requestBody.GetBodyBytesCount()
@@ -428,7 +428,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	}
 
 	// If the user has OIDC roles/channels configured, we need to check if the OIDC issuer they came from is still valid.
-	// Note: checkAuth already does this check if the user authenticates with a bearer token, but we still need to recheck
+	// Note: checkPublicAuth already does this check if the user authenticates with a bearer token, but we still need to recheck
 	// for users using session tokens / basic auth. However, updatePrincipal will be idempotent.
 	if h.user != nil && h.user.JWTIssuer() != "" {
 		updates := checkJWTIssuerStillValid(h.ctx(), dbContext, h.user)
@@ -444,6 +444,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			}
 		}
 	}
+
 	if shouldCheckAdminAuth {
 		// If server is walrus but auth is enabled we should just kick the user out as invalid as we have nothing to
 		// validate credentials against
@@ -715,17 +716,17 @@ func (h *handler) logStatus(status int, message string) {
 	h.logDuration(false) // don't track actual time
 }
 
-// checkAuth verifies that the current request is authenticated for the given database.
+// checkPublicAuth verifies that the current request is authenticated for the given database.
 //
-// NOTE: checkAuth is not used for the admin interface.
-func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
+// NOTE: checkPublicAuth is not used for the admin interface.
+func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 
 	h.user = nil
 	if dbCtx == nil {
 		return nil
 	}
 
-	auditFields := make(base.AuditFields)
+	var auditFields base.AuditFields
 
 	// Record Auth stats
 	defer func(t time.Time) {
@@ -734,18 +735,18 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 		if err != nil {
 			dbCtx.DbStats.Security().AuthFailedCount.Add(1)
 			if errors.Is(err, ErrInvalidLogin) {
-				base.Audit(h.ctx(), base.AuditIDUserAuthenticationFailed, auditFields)
+				base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticationFailed, auditFields)
 			}
 		} else {
 			dbCtx.DbStats.Security().AuthSuccessCount.Add(1)
-			base.Audit(h.ctx(), base.AuditIDUserAuthenticated, auditFields)
+			base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticated, auditFields)
 		}
 	}(time.Now())
 
 	// If oidc enabled, check for bearer ID token
 	if dbCtx.Options.OIDCOptions != nil || len(dbCtx.LocalJWTProviders) > 0 {
 		if token := h.getBearerToken(); token != "" {
-			auditFields["method"] = "bearer"
+			auditFields = base.AuditFields{"method": "bearer"}
 			var updates auth.PrincipalConfig
 			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.LocalJWTProviders, h.getOIDCCallbackURL)
 			if h.user == nil || err != nil {
@@ -790,7 +791,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	// Check basic auth first
 	if !dbCtx.Options.DisablePasswordAuthentication {
 		if userName, password := h.getBasicAuth(); userName != "" {
-			auditFields["method"] = "basic"
+			auditFields = base.AuditFields{"method": "basic"}
 			h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateUser(userName, password)
 			if err != nil {
 				return err
@@ -808,8 +809,8 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	// Check cookie
+	auditFields = base.AuditFields{"method": "cookie"}
 	h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateCookie(h.rq, h.response)
-	auditFields["method"] = "cookie"
 	if err != nil && h.privs != publicPrivs {
 		return err
 	} else if h.user != nil {
@@ -817,7 +818,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	// No auth given -- check guest access
-	auditFields["method"] = "guest"
+	auditFields = base.AuditFields{"method": "guest"}
 	if h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(""); err != nil {
 		return err
 	}
@@ -831,7 +832,6 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 		return ErrLoginRequired
 	}
 
-	auditFields["method"] = "none"
 	return nil
 }
 

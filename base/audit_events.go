@@ -19,27 +19,12 @@ const (
 )
 
 const (
-	AuditIDAuditEnabled  AuditID = 53248 // audit enabled
-	AuditIDAuditDisabled AuditID = 53249 // audit disabled
-	AuditIDAuditChanged  AuditID = 53250 // audit configuration changed
+	AuditIDAuditEnabled AuditID = 53248
 
-	AuditIDUserAuthenticated        AuditID = 53260 // successful login
-	AuditIDUserAuthenticationFailed AuditID = 53261 // incorrect login
-	AuditIDUserAuthorizationFailed  AuditID = 53262 // correct login but incorrect permissions
+	AuditIDPublicUserAuthenticated        AuditID = 53260
+	AuditIDPublicUserAuthenticationFailed AuditID = 53261
 
-	AuditIDCreateDatabase       AuditID = 53300 // create database
-	AuditIDReadDatabase         AuditID = 53301 // view database information
-	AuditIDReadDatabaseConfig   AuditID = 53302 // view database config
-	AuditIDUpdateDatabaseConfig AuditID = 53303 // update database config
-	AuditIDDeleteDatabase       AuditID = 53304 // delete database
-
-	AuditIDDocumentCreate AuditID = 54300 // create document
-	AuditIDDocumentRead   AuditID = 54301 // read document
-	AuditIDDocumentUpdate AuditID = 54302 // update document
-	AuditIDDocumentDelete AuditID = 54303 // delete document
-
-	AuditIDReplicationConnect    AuditID = 55300 // new replication connection
-	AuditIDReplicationDisconnect AuditID = 55301 // replication connection closed
+	AuditIDReadDatabase AuditID = 53301
 )
 
 // AuditEvents is a table of audit events created by Sync Gateway.
@@ -61,7 +46,7 @@ var AuditEvents = events{
 		FilteringPermitted: false,
 		EventType:          eventTypeUser,
 	},
-	AuditIDUserAuthenticated: {
+	AuditIDPublicUserAuthenticated: {
 		Name:        "User authenticated",
 		Description: "User successfully authenticated",
 		MandatoryFields: AuditFields{
@@ -74,7 +59,7 @@ var AuditEvents = events{
 		FilteringPermitted: false,
 		EventType:          eventTypeUser,
 	},
-	AuditIDUserAuthenticationFailed: {
+	AuditIDPublicUserAuthenticationFailed: {
 		Name:        "User authentication failed",
 		Description: "User authentication failed",
 		MandatoryFields: AuditFields{
