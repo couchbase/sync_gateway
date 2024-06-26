@@ -11,6 +11,7 @@ package base
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 )
@@ -65,29 +66,32 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	if logCtx.Bucket != "" && logCtx.Scope != "" && logCtx.Collection != "" {
 		fields[auditFieldKeyspace] = FullyQualifiedCollectionName(logCtx.Bucket, logCtx.Scope, logCtx.Collection)
 	}
-	// TODO: CBG-3973 - Pull fields from ctx
-	userDomain := "placeholder"
-	userID := "placeholder"
+	userDomain := logCtx.UserDomain
+	userID := logCtx.Username
 	if userDomain != "" && userID != "" {
 		fields[auditFieldRealUserID] = map[string]any{
 			"domain": userDomain,
 			"user":   userID,
 		}
 	}
-	localIP := "192.0.2.1"
-	localPort := "4984"
-	if localIP != "" && localPort != "" {
+	if logCtx.RequestHost != "" {
+		host, port, err := net.SplitHostPort(logCtx.RequestHost)
+		if err != nil && IsDevMode() {
+			panic(fmt.Sprintf("failed to parse local address: %v", err))
+		}
 		fields[auditFieldLocal] = map[string]any{
-			"ip":   localIP,
-			"port": localPort,
+			"ip":   host,
+			"port": port,
 		}
 	}
-	remoteIP := "203.0.113.1"
-	remotePort := "12345"
-	if remoteIP != "" && remotePort != "" {
+	if logCtx.RequestRemoteAddr != "" {
+		host, port, err := net.SplitHostPort(logCtx.RequestRemoteAddr)
+		if err != nil && IsDevMode() {
+			panic(fmt.Sprintf("failed to parse remote address: %v", err))
+		}
 		fields[auditFieldRemote] = map[string]any{
-			"ip":   remoteIP,
-			"port": remotePort,
+			"ip":   host,
+			"port": port,
 		}
 	}
 

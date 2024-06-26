@@ -203,7 +203,12 @@ func newHandler(server *ServerContext, privs handlerPrivs, serverType serverType
 // ctx returns the request-scoped context for logging/cancellation.
 func (h *handler) ctx() context.Context {
 	if h.rqCtx == nil {
-		h.rqCtx = base.CorrelationIDLogCtx(h.rq.Context(), h.formatSerialNumber())
+		ctx := base.CorrelationIDLogCtx(h.rq.Context(), h.formatSerialNumber())
+		ctx = base.RequestLogCtx(ctx, base.RequestData{
+			RequestHost:       h.rq.Host, // FIXME: This is client-supplied data; replace with actual server listener address for API serving request.
+			RequestRemoteAddr: h.rq.RemoteAddr,
+		})
+		h.rqCtx = ctx
 	}
 	return h.rqCtx
 }
