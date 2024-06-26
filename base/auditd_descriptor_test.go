@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestGenerateAuditdModuleDescriptor outputs a generated auditd module descriptor for SGAuditEvents.
+// TestGenerateAuditdModuleDescriptor outputs a generated auditd module descriptor for AuditEvents.
 func TestGenerateAuditdModuleDescriptor(t *testing.T) {
 	b, err := generateAuditdModuleDescriptor(AuditEvents)
 	require.NoError(t, err)
