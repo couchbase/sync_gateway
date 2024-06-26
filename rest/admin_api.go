@@ -788,6 +788,10 @@ func (h *handler) handlePutDbAuditConfig() error {
 
 		if isReplace || body.Enabled != nil {
 
+			if config.Logging == nil {
+				config.Logging = &DbLoggingConfig{}
+			}
+
 			if config.Logging.Audit == nil {
 				config.Logging.Audit = &DbAuditLoggingConfig{}
 			}
