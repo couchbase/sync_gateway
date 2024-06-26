@@ -431,6 +431,7 @@ func (h *handler) handlePutConfig() error {
 			Debug   FileLoggerPutConfig     `json:"debug,omitempty"`
 			Trace   FileLoggerPutConfig     `json:"trace,omitempty"`
 			Stats   FileLoggerPutConfig     `json:"stats,omitempty"`
+			Audit   FileLoggerPutConfig     `json:"audit,omitempty"`
 		} `json:"logging"`
 		ReplicationLimit *int `json:"max_concurrent_replications,omitempty"`
 	}
@@ -482,6 +483,10 @@ func (h *handler) handlePutConfig() error {
 
 	if config.Logging.Stats.Enabled != nil {
 		base.EnableStatsLogger(*config.Logging.Stats.Enabled)
+	}
+
+	if config.Logging.Audit.Enabled != nil {
+		base.EnableAuditLogger(*config.Logging.Audit.Enabled)
 	}
 
 	if config.ReplicationLimit != nil {

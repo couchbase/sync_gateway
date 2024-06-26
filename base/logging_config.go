@@ -224,6 +224,12 @@ func EnableStatsLogger(enabled bool) {
 	}
 }
 
+func EnableAuditLogger(enabled bool) {
+	if auditLogger != nil {
+		auditLogger.Enabled.Set(enabled)
+	}
+}
+
 // === Used by tests only ===
 func ErrorLoggerIsEnabled() bool {
 	return errorLogger.Enabled.IsTrue()
