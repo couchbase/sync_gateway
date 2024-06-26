@@ -10,7 +10,6 @@ package base
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -97,9 +96,7 @@ func TestLogRotationInterval(t *testing.T) {
 	countBefore := numFilesInDir(t, logPath, false)
 	t.Logf("countBefore: %d", countBefore)
 
-	ctx, ctxCancel := context.WithCancel(TestCtx(t))
-	defer ctxCancel()
-
+	ctx := TestCtx(t)
 	fl, err := NewFileLogger(ctx, config, LevelTrace, "test", logPath, 0, nil)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, fl.Close()) }()

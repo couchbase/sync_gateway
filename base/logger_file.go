@@ -49,14 +49,16 @@ type FileLogger struct {
 	Enabled AtomicBool
 
 	// collateBuffer is used to store log entries to batch up multiple logs.
-	collateBuffer   chan string
-	collateBufferWg *sync.WaitGroup
-	flushChan       chan struct{}
-	level           LogLevel
-	name            string
-	output          io.Writer
-	logger          *log.Logger
-	buffer          strings.Builder
+	collateBuffer    chan string
+	collateBufferWg  *sync.WaitGroup
+	flushChan        chan struct{}
+	level            LogLevel
+	name             string
+	output           io.Writer
+	logger           *log.Logger
+	buffer           strings.Builder
+	cancelFunc       context.CancelFunc // cancelFunc is used to stop the log rotation goroutine
+	rotationDoneChan chan struct{}      // rotationDoneChan is used to signal when the log rotation goroutine has stopped
 
 	// FileLoggerConfig stores the initial config used to instantiate FileLogger
 	config FileLoggerConfig
@@ -86,18 +88,24 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 		config = &FileLoggerConfig{}
 	}
 
+	rotationDoneChan := make(chan struct{})
+	cancelCtx, cancelFunc := context.WithCancel(ctx)
+
 	// validate and set defaults
-	if err := config.init(ctx, level, name, logFilePath, minAge); err != nil {
+	if err := config.init(cancelCtx, level, name, logFilePath, minAge, rotationDoneChan); err != nil {
+		cancelFunc()
 		return nil, err
 	}
 
 	logger := &FileLogger{
-		Enabled: AtomicBool{},
-		level:   level,
-		name:    name,
-		output:  config.Output,
-		logger:  log.New(config.Output, "", 0),
-		config:  *config,
+		Enabled:          AtomicBool{},
+		level:            level,
+		name:             name,
+		output:           config.Output,
+		logger:           log.New(config.Output, "", 0),
+		config:           *config,
+		cancelFunc:       cancelFunc,
+		rotationDoneChan: rotationDoneChan,
 	}
 	logger.Enabled.Set(*config.Enabled)
 
@@ -144,6 +152,9 @@ func (l *FileLogger) Rotate() error {
 }
 
 func (l *FileLogger) Close() error {
+	// cancel the log rotation goroutine and wait for it to stop
+	l.cancelFunc()
+	<-l.rotationDoneChan
 	if c, ok := l.output.(io.Closer); ok {
 		return c.Close()
 	}
@@ -185,7 +196,7 @@ func (l *FileLogger) getFileLoggerConfig() *FileLoggerConfig {
 	return &fileLoggerConfig
 }
 
-func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name string, logFilePath string, minAge int) error {
+func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name string, logFilePath string, minAge int, rotationDoneChan chan struct{}) error {
 	if lfc == nil {
 		return errors.New("nil LogFileConfig")
 	}
@@ -240,6 +251,7 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 		for {
 			select {
 			case <-ctx.Done():
+				close(rotationDoneChan)
 				return
 			case <-logDeletionTicker.C:
 				err := runLogDeletion(ctx, logFilePath, level.String(), int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
