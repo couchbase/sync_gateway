@@ -44,15 +44,14 @@ type LogContext struct {
 	// TestName can be a unit test name (see TestCtx)
 	TestName string
 
-	// TODO: CBG-3973 - Add request data (user, ips, etc.) - to be used by auditFieldsFromContext
-	//// Username is the name of the authenticated user
-	//Username string
-	//// UserDomain can be syncgateway or couchbase depending on whether the authenticated user is a sync gateway user or a couchbase RBAC user
-	//UserDomain string
-	//// RequestPort is the HTTP port of the request associated with this log.
-	//RequestPort string
-	//// RemoteAddr is the IP and port of the remote client making the request associated with this log
-	//RemoteAddr string
+	// Username is the name of the authenticated user
+	Username string
+	// UserDomain can be syncgateway or couchbase depending on whether the authenticated user is a sync gateway user or a couchbase RBAC user
+	UserDomain string
+	// RequestHost is the HTTP Host of the request associated with this log.
+	RequestHost string
+	// RequestRemoteAddr is the IP and port of the remote client making the request associated with this log
+	RequestRemoteAddr string
 }
 
 // DbLogConfig can be used to customise the logging for logs associated with this database.
@@ -119,13 +118,17 @@ func (lc *LogContext) getContextKey() LogContextKey {
 
 func (lc *LogContext) getCopy() LogContext {
 	return LogContext{
-		CorrelationID: lc.CorrelationID,
-		Database:      lc.Database,
-		DbLogConfig:   lc.DbLogConfig,
-		Bucket:        lc.Bucket,
-		Scope:         lc.Scope,
-		Collection:    lc.Collection,
-		TestName:      lc.TestName,
+		CorrelationID:     lc.CorrelationID,
+		Database:          lc.Database,
+		DbLogConfig:       lc.DbLogConfig,
+		Bucket:            lc.Bucket,
+		Scope:             lc.Scope,
+		Collection:        lc.Collection,
+		TestName:          lc.TestName,
+		Username:          lc.Username,
+		UserDomain:        lc.UserDomain,
+		RequestHost:       lc.RequestHost,
+		RequestRemoteAddr: lc.RequestRemoteAddr,
 	}
 }
 
@@ -193,6 +196,18 @@ func KeyspaceLogCtx(parent context.Context, bucketName, scopeName, collectionNam
 	newCtx.Bucket = bucketName
 	newCtx.Collection = collectionName
 	newCtx.Scope = scopeName
+	return LogContextWith(parent, &newCtx)
+}
+
+type RequestData struct {
+	RequestHost       string
+	RequestRemoteAddr string
+}
+
+func RequestLogCtx(parent context.Context, d RequestData) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.RequestHost = d.RequestHost
+	newCtx.RequestRemoteAddr = d.RequestRemoteAddr
 	return LogContextWith(parent, &newCtx)
 }
 
