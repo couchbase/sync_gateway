@@ -297,7 +297,7 @@ func (h *handler) getOIDCProvider(providerName string) (*auth.OIDCProvider, erro
 // Builds the OIDC callback based on the current request. Used during OIDC Client lazy initialization.
 // Need to pass providerName and isDefault for the requested provider to determine whether we need to append it to the callback URL or not.
 func (h *handler) getOIDCCallbackURL(providerName string, isDefault bool) string {
-	// h.db not initialized at this point (checkAuth) from validateAndWriteHeaders
+	// h.db not initialized at this point (checkPublicAuth) from validateAndWriteHeaders
 	// we'll have to pull it out of the router path rather than using h.db.Name
 	dbName := h.PathVar("db")
 	if dbName == "" {

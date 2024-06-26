@@ -15,14 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	// auditdSyncGatewayEndID is the maximum ID that can be allocated to a Sync Gateway audit descriptor.
-	auditdSyncGatewayEndID = auditdSyncGatewayStartID + auditdIDBlockSize // 57343
-
-	// auditdIDBlockSize is the number of IDs allocated to each module in auditd.
-	auditdIDBlockSize = 0xFFF
-)
-
 func TestValidateAuditEvents(t *testing.T) {
 	// Ensures that the above audit event IDs are within the allocated range and are valid.
 	require.NoError(t, validateAuditEvents(AuditEvents))

@@ -1,4 +1,4 @@
-// Copyright 2024-Present Couchbase, Inc.
+// Copyright 2024-Pres	ent Couchbase, Inc.
 //
 // Use of this software is governed by the Business Source License included
 // in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
@@ -8,7 +8,10 @@
 
 package base
 
-import "strconv"
+import (
+	"fmt"
+	"strconv"
+)
 
 // AuditID is a unique identifier for an audit event.
 type AuditID uint
@@ -32,15 +35,56 @@ type EventDescriptor struct {
 	// FilteringPermitted indicates whether the event can be filtered or not
 	FilteringPermitted bool
 	// MandatoryFields describe field(s) required for a valid instance of the event
-	MandatoryFields map[string]any
+	MandatoryFields AuditFields
+
+	// The following fields are for documentation-use only.
 	// OptionalFields describe optional field(s) valid in an instance of the event
-	OptionalFields map[string]any
-	// EventType represents a type of event. Used only for documentation categorization.
+	OptionalFields AuditFields
+	// EventType represents a type of event
 	EventType eventType
 }
 
 const (
 	eventTypeAdmin eventType = "admin"
+	eventTypeUser  eventType = "user"
+	eventTypeData  eventType = "data"
 )
 
 type eventType string
+
+// AuditFields represents additional data associated with a specific audit event invocation.
+// E.g. Username, IPs, request parameters, etc.
+type AuditFields map[string]any
+
+func (i AuditID) MustValidateFields(f AuditFields) {
+	if err := i.ValidateFields(f); err != nil {
+		panic(fmt.Errorf("audit event %s invalid:\n%v", i, err))
+	}
+}
+
+func (i AuditID) ValidateFields(f AuditFields) error {
+	if i < auditdSyncGatewayStartID || i > auditdSyncGatewayEndID {
+		return fmt.Errorf("invalid audit event ID: %d (allowed range: %d-%d)", i, auditdSyncGatewayStartID, auditdSyncGatewayEndID)
+	}
+	event, ok := AuditEvents[i]
+	if !ok {
+		return fmt.Errorf("unknown audit event ID %d", i)
+	}
+	return mandatoryFieldsPresent(f, event.MandatoryFields)
+}
+
+func mandatoryFieldsPresent(fields, mandatoryFields AuditFields) error {
+	me := &MultiError{}
+	for k, v := range mandatoryFields {
+		// recurse if map
+		if vv, ok := v.(map[string]any); ok {
+			if pv, ok := fields[k].(map[string]any); ok {
+				me = me.Append(mandatoryFieldsPresent(pv, vv))
+			}
+		}
+		if _, ok := fields[k]; !ok {
+			me = me.Append(fmt.Errorf("missing mandatory field %s", k))
+		}
+	}
+	return me.ErrorOrNil()
+}

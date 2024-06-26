@@ -137,12 +137,12 @@ func shouldLogConsoleDatabase(ctx context.Context, logLevel LogLevel, logKey Log
 		return false, false
 	}
 
-	config := logCtx.DbConsoleLogConfig
-	if config == nil {
+	config := logCtx.DbLogConfig
+	if config == nil || config.Console == nil {
 		return false, false
 	}
 
-	return shouldLog(config.LogLevel, config.LogKeys, logLevel, logKey), true
+	return shouldLog(config.Console.LogLevel, config.Console.LogKeys, logLevel, logKey), true
 }
 
 // shouldLog returns true if a log at the given logLineLevel/logLineKey should get logged for the given logger levels/keys.
