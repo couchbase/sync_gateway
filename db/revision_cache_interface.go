@@ -118,13 +118,13 @@ func newCollectionRevisionCache(revCache *RevisionCache, collectionID uint32) co
 }
 
 // Get is for per collection access to Get method
-func (c *collectionRevisionCache) Get(ctx context.Context, docID, revID string, includeBody, includeDelta bool) (DocumentRevision, error) {
-	return (*c.revCache).Get(ctx, docID, revID, c.collectionID, includeBody, includeDelta)
+func (c *collectionRevisionCache) Get(ctx context.Context, docID, revID string, includeDelta bool) (DocumentRevision, error) {
+	return (*c.revCache).Get(ctx, docID, revID, c.collectionID, includeDelta)
 }
 
 // GetActive is for per collection access to GetActive method
-func (c *collectionRevisionCache) GetActive(ctx context.Context, docID string, includeBody bool) (DocumentRevision, error) {
-	return (*c.revCache).GetActive(ctx, docID, c.collectionID, includeBody)
+func (c *collectionRevisionCache) GetActive(ctx context.Context, docID string) (DocumentRevision, error) {
+	return (*c.revCache).GetActive(ctx, docID, c.collectionID)
 }
 
 // Peek is for per collection access to Peek method

@@ -145,7 +145,7 @@ func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID strin
 		return DocumentRevision{}, nil
 	}
 
-	docRev, statEvent, err := value.load(ctx, rc.backingStore[collectionID], includeDelta)
+	docRev, statEvent, err := value.load(ctx, rc.backingStores[collectionID], includeDelta)
 	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {
