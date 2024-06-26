@@ -90,17 +90,22 @@ func GenerateDatabaseConfigVersionID(ctx context.Context, previousRevID string, 
 }
 
 func DefaultPerDBLogging(bootstrapLoggingCnf base.LoggingConfig) *DbLoggingConfig {
+	dblc := &DbLoggingConfig{}
 	if bootstrapLoggingCnf.Console != nil {
 		if *bootstrapLoggingCnf.Console.Enabled {
-			return &DbLoggingConfig{
-				Console: &DbConsoleLoggingConfig{
-					LogLevel: bootstrapLoggingCnf.Console.LogLevel,
-					LogKeys:  bootstrapLoggingCnf.Console.LogKeys,
-				},
+			dblc.Console = &DbConsoleLoggingConfig{
+				LogLevel: bootstrapLoggingCnf.Console.LogLevel,
+				LogKeys:  bootstrapLoggingCnf.Console.LogKeys,
 			}
 		}
 	}
-	return &DbLoggingConfig{}
+	if bootstrapLoggingCnf.Audit != nil {
+		dblc.Audit = &DbAuditLoggingConfig{
+			Enabled:       base.BoolPtr(false),
+			EnabledEvents: base.DefaultAuditEventIDs,
+		}
+	}
+	return dblc
 }
 
 // MergeDatabaseConfigWithDefaults merges the passed in config onto a DefaultDbConfig which results in returned value
