@@ -19,12 +19,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/couchbase/sync_gateway/auth"
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	pkgerrors "github.com/pkg/errors"
+
+	"github.com/couchbase/sync_gateway/auth"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 )
 
 const kDefaultDBOnlineDelay = 0
@@ -786,6 +787,11 @@ func (h *handler) handlePutDbAuditConfig() error {
 		}
 
 		if isReplace || body.Enabled != nil {
+
+			if config.Logging.Audit == nil {
+				config.Logging.Audit = &DbAuditLoggingConfig{}
+			}
+
 			config.Logging.Audit.Enabled = body.Enabled
 		}
 
