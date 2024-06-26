@@ -21,6 +21,11 @@ func (i AuditID) String() string {
 	return strconv.FormatUint(uint64(i), 10)
 }
 
+func ParseAuditID(s string) (AuditID, error) {
+	id, err := strconv.ParseUint(s, 10, 64)
+	return AuditID(id), err
+}
+
 // events is a map of audit event IDs to event descriptors.
 type events map[AuditID]EventDescriptor
 
