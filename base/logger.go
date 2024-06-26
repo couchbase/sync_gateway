@@ -36,6 +36,10 @@ func FlushLogBuffers() {
 		&consoleLogger.FileLogger,
 	}
 
+	if auditLogger != nil {
+		loggers = append(loggers, &auditLogger.FileLogger)
+	}
+
 	for _, logger := range loggers {
 		if logger != nil && cap(logger.collateBuffer) > 1 {
 			logger.collateBufferWg.Wait()
