@@ -100,11 +100,6 @@ type revCacheValue struct {
 	removed     bool
 }
 
-// NewBackingStoreMap will return a new empty map for mapping collection ID to its associated rev cache backing store
-func NewBackingStoreMap() map[uint32]RevisionCacheBackingStore {
-	return make(map[uint32]RevisionCacheBackingStore)
-}
-
 // Creates a revision cache with the given capacity and an optional loader function.
 func NewLRURevisionCache(capacity uint32, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *LRURevisionCache {
 

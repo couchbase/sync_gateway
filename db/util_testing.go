@@ -592,7 +592,7 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 
 // FlushRevisionCacheForTest creates a new revision cache. This is currently at the database level. Only use this in test code.
 func (db *DatabaseContext) FlushRevisionCacheForTest() {
-	backingStores := NewBackingStoreMap()
+	backingStores := make(map[uint32]RevisionCacheBackingStore, len(db.CollectionByID))
 	for i, v := range db.CollectionByID {
 		backingStores[i] = v
 	}

@@ -486,7 +486,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// if any sync functions for any collection, we recommend running a resync
 	syncFunctionsChanged := false
 	// Create new backing store map to map from collection ID's to their associated rev cache backing stores for rev cache document loads
-	collectionIDToRevCacheBackingStore := NewBackingStoreMap()
+	collectionIDToRevCacheBackingStore := make(map[uint32]RevisionCacheBackingStore)
 	for scopeName, scope := range options.Scopes {
 		dbContext.Scopes[scopeName] = Scope{
 			Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
