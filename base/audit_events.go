@@ -11,8 +11,20 @@ package base
 const (
 	// auditdSyncGatewayStartID is the start of an ID range allocated for Sync Gateway by auditd
 	auditdSyncGatewayStartID AuditID = 53248
+	// auditdSyncGatewayEndID is the maximum ID that can be allocated to a Sync Gateway audit descriptor.
+	auditdSyncGatewayEndID = auditdSyncGatewayStartID + auditdIDBlockSize // 57343
 
-	AuditIDPlaceholder AuditID = 54000
+	// auditdIDBlockSize is the number of IDs allocated to each module in auditd.
+	auditdIDBlockSize = 0xFFF
+)
+
+const (
+	AuditIDAuditEnabled AuditID = 53248
+
+	AuditIDPublicUserAuthenticated        AuditID = 53260
+	AuditIDPublicUserAuthenticationFailed AuditID = 53261
+
+	AuditIDReadDatabase AuditID = 53301
 )
 
 // AuditEvents is a table of audit events created by Sync Gateway.
@@ -22,20 +34,42 @@ const (
 //   - a kv-auditd-compatible descriptor with TestGenerateAuditdModuleDescriptor
 //   - CSV output for each event to be used to document
 var AuditEvents = events{
-	AuditIDPlaceholder: {
-		Name:        "Placeholder audit event",
-		Description: "This is a placeholder.",
-		MandatoryFields: map[string]any{
-			"context": map[string]any{
-				"provider": "example provider",
-				"username": "alice",
-			},
+	AuditIDAuditEnabled: {}, // TODO: unreferenced event - somehow find this mistake via test or lint!
+	AuditIDReadDatabase: {
+		Name:        "Read database",
+		Description: "Information about this database was read.",
+		MandatoryFields: AuditFields{
+			"db": "database_name",
 		},
-		OptionalFields: map[string]any{
-			"operationID": 123,
-			"isSomething": false,
-		},
+		OptionalFields:     AuditFields{},
+		EnabledByDefault:   true,
 		FilteringPermitted: false,
-		EventType:          eventTypeAdmin,
+		EventType:          eventTypeUser,
+	},
+	AuditIDPublicUserAuthenticated: {
+		Name:        "User authenticated",
+		Description: "User successfully authenticated",
+		MandatoryFields: AuditFields{
+			"method": "auth_method", // e.g. "basic", "oidc", "cookie", ...
+		},
+		OptionalFields: AuditFields{
+			"oidc_issuer": "issuer",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeUser,
+	},
+	AuditIDPublicUserAuthenticationFailed: {
+		Name:        "User authentication failed",
+		Description: "User authentication failed",
+		MandatoryFields: AuditFields{
+			"method": "auth_method", // e.g. "basic", "oidc", "cookie", ...
+		},
+		OptionalFields: AuditFields{
+			"username": "username",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeUser,
 	},
 }

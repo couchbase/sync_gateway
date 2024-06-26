@@ -140,29 +140,29 @@ func BenchmarkConsoleShouldLog(b *testing.B) {
 func TestConsoleShouldLogWithDatabase(t *testing.T) {
 	for _, test := range consoleShouldLogTests {
 		for _, dbConfig := range []struct {
-			config   *DbConsoleLogConfig
-			expected bool
+			consoleConfig *DbConsoleLogConfig
+			expected      bool
 		}{
 			{
-				config:   nil,
-				expected: test.expected, // fully inherit from console logger when dbConfig nil
+				consoleConfig: nil,
+				expected:      test.expected, // fully inherit from console logger when dbConfig nil
 			},
 			{
-				config: &DbConsoleLogConfig{
+				consoleConfig: &DbConsoleLogConfig{
 					LogLevel: logLevelPtr(LevelNone),
 					LogKeys:  logKeyMask(KeyAll),
 				},
 				expected: false, // log nothing from db
 			},
 			{
-				config: &DbConsoleLogConfig{
+				consoleConfig: &DbConsoleLogConfig{
 					LogLevel: logLevelPtr(LevelTrace),
 					LogKeys:  logKeyMask(KeyAll),
 				},
 				expected: true, // log everything from db
 			},
 			{
-				config: &DbConsoleLogConfig{
+				consoleConfig: &DbConsoleLogConfig{
 					LogLevel: logLevelPtr(LevelInfo),
 					LogKeys:  logKeyMask(KeyDCP),
 				},
@@ -170,7 +170,7 @@ func TestConsoleShouldLogWithDatabase(t *testing.T) {
 				expected: test.logToKey == KeyDCP && test.logToLevel <= LevelInfo,
 			},
 			{
-				config: &DbConsoleLogConfig{
+				consoleConfig: &DbConsoleLogConfig{
 					LogLevel: logLevelPtr(LevelInfo),
 					LogKeys:  logKeyMask(KeyHTTP),
 				},
@@ -179,12 +179,12 @@ func TestConsoleShouldLogWithDatabase(t *testing.T) {
 			},
 		} {
 			dbConfigLevel := "<nil>"
-			if dbConfig.config != nil && dbConfig.config.LogLevel != nil {
-				dbConfigLevel = dbConfig.config.LogLevel.StringShort()
+			if dbConfig.consoleConfig != nil && dbConfig.consoleConfig.LogLevel != nil {
+				dbConfigLevel = dbConfig.consoleConfig.LogLevel.StringShort()
 			}
 			dbConfigKeys := "<nil>"
-			if dbConfig.config != nil && dbConfig.config.LogKeys != nil {
-				dbConfigKeys = dbConfig.config.LogKeys.String()
+			if dbConfig.consoleConfig != nil && dbConfig.consoleConfig.LogKeys != nil {
+				dbConfigKeys = dbConfig.consoleConfig.LogKeys.String()
 			}
 
 			name := fmt.Sprintf("logger{%s,%s}.shouldLog(dbConfig(%s,%s), %s,%s)",
@@ -202,7 +202,8 @@ func TestConsoleShouldLogWithDatabase(t *testing.T) {
 				}})
 
 			t.Run(name, func(ts *testing.T) {
-				ctx := DatabaseLogCtx(TestCtx(ts), "db", dbConfig.config)
+				config := &DbLogConfig{Console: dbConfig.consoleConfig}
+				ctx := DatabaseLogCtx(TestCtx(ts), "db", config)
 				got := l.shouldLog(ctx, test.logToLevel, test.logToKey)
 				assert.Equal(ts, dbConfig.expected, got)
 			})

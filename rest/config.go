@@ -1314,6 +1314,7 @@ func (sc *StartupConfig) SetupAndValidateLogging(ctx context.Context) (err error
 		sc.Logging.Debug,
 		sc.Logging.Trace,
 		sc.Logging.Stats,
+		sc.Logging.Audit,
 	)
 }
 
@@ -2173,15 +2174,35 @@ func RegisterSignalHandler(ctx context.Context) {
 	}()
 }
 
-// toDbConsoleLogConfig converts the console logging from a DbConfig to a DbConsoleLogConfig
-func (c *DbConfig) toDbConsoleLogConfig(ctx context.Context) *base.DbConsoleLogConfig {
-	// Per-database console logging config overrides
-	if c.Logging != nil && c.Logging.Console != nil {
-		logKey := base.ToLogKey(ctx, c.Logging.Console.LogKeys)
-		return &base.DbConsoleLogConfig{
-			LogLevel: c.Logging.Console.LogLevel,
+// toDbLogConfig converts the console logging from a DbConfig to a DbLogConfig
+func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
+	l := c.Logging
+	if l == nil || (l.Console == nil && l.Audit == nil) {
+		return nil
+	}
+
+	var con *base.DbConsoleLogConfig
+	if l.Console != nil {
+		logKey := base.ToLogKey(ctx, l.Console.LogKeys)
+		con = &base.DbConsoleLogConfig{
+			LogLevel: l.Console.LogLevel,
 			LogKeys:  &logKey,
 		}
 	}
-	return nil
+
+	var aud *base.DbAuditLogConfig
+	if l.Audit != nil {
+		enabledEvents := make(map[base.AuditID]struct{}, len(l.Audit.EnabledEvents))
+		for _, event := range l.Audit.EnabledEvents {
+			enabledEvents[base.AuditID(event)] = struct{}{}
+		}
+		aud = &base.DbAuditLogConfig{
+			EnabledEvents: enabledEvents,
+		}
+	}
+
+	return &base.DbLogConfig{
+		Console: con,
+		Audit:   aud,
+	}
 }

@@ -416,6 +416,8 @@ type DbSummary struct {
 }
 
 func (h *handler) handleGetDB() error {
+	base.Audit(h.ctx(), base.AuditIDReadDatabase, nil)
+
 	if h.rq.Method == "HEAD" {
 		return nil
 	}
