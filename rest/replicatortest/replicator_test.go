@@ -5164,7 +5164,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	assert.NoError(t, err)
 
 	require.NoError(t, rt2collection.FlushChannelCache(ctx2))
-	rt2collection.FlushRevisionCacheForTest()
+	rt2.GetDatabase().FlushRevisionCacheForTest()
 
 	assert.NoError(t, ar.Start(ctx1))
 
@@ -7488,7 +7488,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	version3 := activeRT.UpdateDoc(docID, version2, `{"key":"3","channels":["rev2+3chan"]}`)
 	require.NoError(t, activeRT.WaitForVersion(docID, version3))
 
-	activeRT.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+	activeRT.GetDatabase().FlushRevisionCacheForTest()
 	err := activeRT.GetSingleDataStore().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(version2.RevID), version2.RevID))
 	require.NoError(t, err)
 	// Set-up replicator //

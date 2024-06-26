@@ -354,6 +354,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	backingStoreMap := CreateTestSingleBackingStoreMap(collection, collection.GetCollectionID())
 
 	rev1body := Body{
 		"key1":     1234,
@@ -399,7 +400,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
+	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, backingStoreMap, cacheHitCounter, cacheMissCounter)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -537,7 +538,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	require.Equal(t, bodyExpected, body)
 
 	// Flush the revision cache and purge the old revision backup.
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
 	require.NoError(t, err, "Error purging old revision JSON")
 
@@ -597,7 +598,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 	require.NotEmpty(t, rev3ID, "Error creating doc")
 
 	// Flush the revision cache and purge the old revision backup.
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
 	require.NoError(t, err, "Error purging old revision JSON")
 
@@ -664,7 +665,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	require.NotEmpty(t, rev3ID, "Error creating doc")
 
 	// Flush the revision cache and purge the old revision backup.
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2ID)
 	require.NoError(t, err, "Error purging old revision JSON")
 
@@ -702,6 +703,7 @@ func TestGetRemoved(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	backingStoreMap := CreateTestSingleBackingStoreMap(collection, collection.GetCollectionID())
 
 	rev1body := Body{
 		"key1":     1234,
@@ -747,7 +749,7 @@ func TestGetRemoved(t *testing.T) {
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
+	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, backingStoreMap, cacheHitCounter, cacheMissCounter)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -770,6 +772,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	backingStoreMap := CreateTestSingleBackingStoreMap(collection, collection.GetCollectionID())
 
 	rev1body := Body{
 		"key1":     1234,
@@ -815,7 +818,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
+	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, backingStoreMap, cacheHitCounter, cacheMissCounter)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 

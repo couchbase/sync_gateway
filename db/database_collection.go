@@ -21,7 +21,7 @@ import (
 // DatabaseCollection provides a representation of a single collection of a database.
 type DatabaseCollection struct {
 	dataStore            base.DataStore          // Storage
-	revisionCache        RevisionCache           // Cache of recently-accessed doc revisions
+	revisionCache        collectionRevisionCache // Collection reference to cache of recently-accessed document revisions
 	collectionStats      *base.CollectionStats   // pointer to the collection stats (to avoid map lookups when used)
 	dbCtx                *DatabaseContext        // pointer to database context to allow passthrough of functions
 	ChannelMapper        *channels.ChannelMapper // Collection's sync function
@@ -43,14 +43,10 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, data
 		dataStore:       dataStore,
 		dbCtx:           dbContext,
 		collectionStats: stats,
+		revisionCache:   newCollectionRevisionCache(&dbContext.revisionCache, dataStore.GetCollectionID()),
 		ScopeName:       dataStore.ScopeName(),
 		Name:            dataStore.CollectionName(),
 	}
-	dbCollection.revisionCache = NewRevisionCache(
-		dbContext.Options.RevisionCacheOptions,
-		dbCollection,
-		dbContext.DbStats.Cache(),
-	)
 
 	return dbCollection, nil
 }
@@ -140,24 +136,14 @@ func (c *DatabaseCollection) GetCollectionID() uint32 {
 }
 
 // GetRevisionCacheForTest allow accessing a copy of revision cache.
-func (c *DatabaseCollection) GetRevisionCacheForTest() RevisionCache {
-	return c.revisionCache
+func (c *DatabaseCollection) GetRevisionCacheForTest() *collectionRevisionCache {
+	return &c.revisionCache
 }
 
 // FlushChannelCache flush support. Currently test-only - added for unit test access from rest package
 func (c *DatabaseCollection) FlushChannelCache(ctx context.Context) error {
 	base.InfofCtx(ctx, base.KeyCache, "Flushing channel cache")
 	return c.dbCtx.changeCache.Clear(ctx)
-}
-
-// FlushRevisionCacheForTest creates a new revision cache. This is currently at the database level. Only use this in test code.
-func (c *DatabaseCollection) FlushRevisionCacheForTest() {
-	c.revisionCache = NewRevisionCache(
-		c.dbCtx.Options.RevisionCacheOptions,
-		c,
-		c.dbStats().Cache(),
-	)
-
 }
 
 // ForceAPIForbiddenErrors returns true if we return 403 vs empty docs. This is controlled at the database level.

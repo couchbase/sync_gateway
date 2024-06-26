@@ -1798,7 +1798,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Flush rev cache in case this prevents the bug from showing up (didn't make a difference)
-	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
@@ -1860,7 +1860,7 @@ func TestMissingNoRev(t *testing.T) {
 	assert.NoError(t, err, "failed")
 
 	// Flush rev cache
-	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// Pull docs, expect to pull 4 since one was purged.  (also expect to NOT get stuck)
 	docs, ok = bt.WaitForNumDocsViaChanges(4)
@@ -1932,7 +1932,7 @@ func TestSendReplacementRevision(t *testing.T) {
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
 						err := rt.GetSingleTestDatabaseCollection().PurgeOldRevisionJSON(base.TestCtx(t), docID, version1.RevID)
 						require.NoError(t, err)
-						rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+						rt.GetDatabase().FlushRevisionCacheForTest()
 					}
 				}
 
@@ -2765,7 +2765,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 				})
 
 				// Flush cache so document has to be retrieved from the leaky bucket
-				rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+				rt.GetDatabase().FlushRevisionCacheForTest()
 
 				err := btcRunner.StartPull(btc.id)
 				require.NoError(t, err)
@@ -3108,7 +3108,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 
 				rt.CreateTestDoc(markerDoc)
 
-				rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
+				rt.GetDatabase().FlushRevisionCacheForTest()
 
 				btc2 := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 					Username:               "user",

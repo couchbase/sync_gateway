@@ -82,7 +82,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 	assert.NoError(t, err, "add 1-a")
 
 	// Flush the cache
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 1-a...")
@@ -376,7 +376,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	assert.Equal(t, rev2a_body["value"], revisionBody["value"])
 
 	// Retrieve the non-inline revision
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	rev2aGet, err := collection.Get1xRevBody(ctx, "doc1", "2-a", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 2-a")
 	assert.Equal(t, rev2a_body, rev2aGet)
@@ -464,7 +464,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	assert.Len(t, newRevTree.BodyKeyMap, 1) // tombstone 3-c
 
 	// Retrieve the non-inline tombstone revision
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	rev3cGet, err := collection.Get1xRevBody(ctx, "doc1", "3-c", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-c")
 	assert.Equal(t, rev3c_body, rev3cGet)
@@ -560,7 +560,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	assert.Equal(t, rev2a_body["value"], revisionBody["value"])
 
 	// Retrieve the non-inline revision
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	rev2aGet, err := collection.Get1xRevBody(ctx, "doc1", "2-a", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 2-a")
 	assert.Equal(t, rev2a_body, rev2aGet)
@@ -584,7 +584,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	assert.NoError(t, err, "add 3-b (tombstone)")
 
 	// Retrieve tombstone
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	rev3bGet, err := collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-b")
 	assert.Equal(t, rev3b_body, rev3bGet)
@@ -626,7 +626,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	assert.NoError(t, err, "add 8-a")
 
 	// Verify that 3-b is still present at this point
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	_, err = collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Rev 3-b should still exist")
 
@@ -636,7 +636,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Verify that 3-b has been pruned
 	log.Printf("Attempt to retrieve 3-b, expect pruned")
-	collection.FlushRevisionCacheForTest()
+	db.FlushRevisionCacheForTest()
 	_, err = collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	require.Error(t, err)
 	assert.Equal(t, "404 missing", err.Error())

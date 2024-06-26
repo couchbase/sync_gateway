@@ -590,6 +590,21 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 	return
 }
 
+// FlushRevisionCacheForTest creates a new revision cache. This is currently at the database level. Only use this in test code.
+func (db *DatabaseContext) FlushRevisionCacheForTest() {
+	backingStores := make(map[uint32]RevisionCacheBackingStore, len(db.CollectionByID))
+	for i, v := range db.CollectionByID {
+		backingStores[i] = v
+	}
+
+	db.revisionCache = NewRevisionCache(
+		db.Options.RevisionCacheOptions,
+		backingStores,
+		db.DbStats.Cache(),
+	)
+
+}
+
 // TestBucketPoolWithIndexes runs a TestMain for packages that require creation of indexes
 func TestBucketPoolWithIndexes(ctx context.Context, m *testing.M, tbpOptions base.TestBucketPoolOptions) {
 	base.TestBucketPoolMain(ctx, m, viewsAndGSIBucketReadier, viewsAndGSIBucketInit, tbpOptions)
