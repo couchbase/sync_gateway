@@ -1682,17 +1682,6 @@ func (sc *ServerContext) logStats(ctx context.Context) error {
 	// Marshal expvar map w/ timestamp to string and write to logs
 	base.RecordStats(string(marshalled))
 
-	if sc.Config.HeapProfileDisableCollection {
-		return nil
-	}
-
-	currentMemory := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().GoMemstatsHeapInUse.Value()
-	profileCollectionThreshold := int64(*sc.Config.HeapProfileCollectionThreshold)
-	if currentMemory <= profileCollectionThreshold {
-		return nil
-	}
-	base.InfofCtx(ctx, base.KeyAll, "Memory usage %d exceeds threshold %d, collecting memory profile", currentMemory, profileCollectionThreshold)
-
 	return sc.statsContext.collectMemoryProfile(ctx, sc.Config.Logging.LogFilePath, timestamp)
 
 }
