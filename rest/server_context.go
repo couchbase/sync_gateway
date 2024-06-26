@@ -182,11 +182,11 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 	}
 
 	if config.HeapProfileCollectionThreshold != nil {
-		sc.statsContext.heapProfileCollectionThreshold = int64(*config.HeapProfileCollectionThreshold)
+		sc.statsContext.heapProfileCollectionThreshold = *config.HeapProfileCollectionThreshold
 	} else {
 		memoryTotal := getTotalMemory(ctx)
 		if memoryTotal != 0 {
-			sc.statsContext.heapProfileCollectionThreshold = int64(float64(memoryTotal) * 0.85)
+			sc.statsContext.heapProfileCollectionThreshold = uint64(float64(memoryTotal) * 0.85)
 		} else {
 			base.WarnfCtx(ctx, "Could not determine system memory, disabling automatic heap profile collection")
 			sc.statsContext.heapProfileEnabled = false

@@ -38,7 +38,7 @@ type statsContext struct {
 	doneChan                       chan struct{} // doneChan is closed when the stats logger goroutines finishes.
 	cpuStatsSnapshot               *cpuStatsSnapshot
 	lastHeapProfile                time.Time // last time a heap profile was collected
-	heapProfileCollectionThreshold int64     // memory threshold in bytes at which to collect a heap profile
+	heapProfileCollectionThreshold uint64    // memory threshold in bytes at which to collect a heap profile
 	heapProfileEnabled             bool      // Whether to collect heap profiles when memory usage exceeds the threshold
 }
 
@@ -378,7 +378,7 @@ func (statsContext *statsContext) collectMemoryProfile(ctx context.Context, outp
 		return nil
 	}
 
-	currentMemory := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().GoMemstatsHeapInUse.Value()
+	currentMemory := uint64(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().GoMemstatsHeapInUse.Value())
 	profileCollectionThreshold := statsContext.heapProfileCollectionThreshold
 	if currentMemory <= profileCollectionThreshold {
 		return nil

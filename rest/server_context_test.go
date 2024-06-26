@@ -895,11 +895,11 @@ func TestCompactIntervalFromConfig(t *testing.T) {
 }
 
 func TestHeapProfileValuesPopulated(t *testing.T) {
-	totalMemory := int64(float64(getTotalMemory(base.TestCtx(t))) * 0.85)
+	totalMemory := uint64(float64(getTotalMemory(base.TestCtx(t))) * 0.85)
 	testCases := []struct {
 		name                           string
 		startupConfig                  *StartupConfig
-		heapProfileCollectionThreshold int64
+		heapProfileCollectionThreshold uint64
 		heapProfileCollectionEnabled   bool
 	}{
 		{
