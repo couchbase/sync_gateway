@@ -58,7 +58,8 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 				return nil, err
 			}
 
-			if err := bucketDbConfig.validate(h.ctx(), validateOIDC); err != nil {
+			validateReplications := false
+			if err := bucketDbConfig.validate(h.ctx(), validateOIDC, validateReplications); err != nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 			}
 

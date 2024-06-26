@@ -417,7 +417,8 @@ func TestConfigValidationJWTAndOIDC(t *testing.T) {
 				t.Fatalf("received unexpected unmarshaling error: %v", err)
 			}
 
-			err = dbConfig.validate(base.TestCtx(t), tc.validateOIDC)
+			validateReplications := true
+			err = dbConfig.validate(base.TestCtx(t), tc.validateOIDC, validateReplications)
 			switch {
 			case tc.expectedError == "":
 				require.NoError(t, err, "failed to validate valid startupConfig")
@@ -996,7 +997,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 		},
 	}
 
-	require.Nil(t, setupAndValidateDatabases(ctx, databases), "Unexpected error while validating databases")
+	require.Nil(t, SetupAndValidateDatabases(ctx, databases), "Unexpected error while validating databases")
 
 	sc := NewServerContext(ctx, config, false)
 	defer sc.Close(ctx)
@@ -2355,7 +2356,8 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 				dbConfig.ImportFilter = testCase.ImportFilter
 			}
 
-			err := dbConfig.validate(base.TestCtx(t), false)
+			validateReplications := true
+			err := dbConfig.validate(base.TestCtx(t), false, validateReplications)
 
 			if testCase.ExpectErrorCount == 0 {
 				assert.NoError(t, err)
@@ -2725,7 +2727,8 @@ func TestCollectionsValidation(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			validateOIDCConfig := false
-			err := test.dbConfig.validate(base.TestCtx(t), validateOIDCConfig)
+			validateReplications := true
+			err := test.dbConfig.validate(base.TestCtx(t), validateOIDCConfig, validateReplications)
 			if test.expectedError != nil {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), *test.expectedError)

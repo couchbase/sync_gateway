@@ -913,8 +913,20 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		return nil, err
 	}
 
-	// Upsert replications
-	replicationErr := dbcontext.SGReplicateMgr.PutReplications(config.Replications)
+	cfgReplications, err := dbcontext.SGReplicateMgr.GetReplications()
+	if err != nil {
+		return nil, err
+	}
+	// PUT replications that do not exist
+	newReplications := make(map[string]*db.ReplicationConfig)
+	for name, replication := range config.Replications {
+		_, ok := cfgReplications[name]
+		if ok {
+			continue
+		}
+		newReplications[name] = replication
+	}
+	replicationErr := dbcontext.SGReplicateMgr.PutReplications(ctx, newReplications)
 	if replicationErr != nil {
 		return nil, replicationErr
 	}

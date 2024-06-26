@@ -8304,13 +8304,143 @@ func TestReplicatorWithCollectionsFailWithoutCollectionsEnabled(t *testing.T) {
 
 }
 
+var emptyReplicationTestCases = []struct {
+	name         string
+	replications map[string]*db.ReplicationConfig
+	errorMessage string
+}{
+	{
+		name: "empty name and empty id",
+		replications: map[string]*db.ReplicationConfig{
+			"": {
+				ID: "",
+			},
+		},
+		errorMessage: "replication name cannot be empty, id is also empty",
+	},
+	{
+		name: "empty name and populated id",
+		replications: map[string]*db.ReplicationConfig{
+			"": {
+				ID: "foo",
+			},
+		},
+		errorMessage: `replication name cannot be empty, id: \"foo\"`,
+	},
+	{
+		name: "populated name and empty id",
+		replications: map[string]*db.ReplicationConfig{
+			"foo": {
+				ID: "",
+			},
+		},
+		errorMessage: `replication id cannot be empty, name: \"foo\"`,
+	},
+}
+
 func TestBanEmptyReplicationID(t *testing.T) {
 	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("POST", "/{{.db}}/_replication/", `{"remote": "fakeremote", "direction": "pull", "initial_state": "stopped"}`)
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_replication/", `{"remote": "fakeremote", "direction": "pull", "initial_state": "stopped"}`)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
-	require.Contains(t, string(resp.Body.Bytes()), "Replication ID is required")
+	require.Contains(t, resp.BodyString(), "Replication ID is required")
+
+	for _, testCase := range emptyReplicationTestCases {
+		rt.Run(testCase.name, func(t *testing.T) {
+			// legacy config pathway, no errors, just warning
+			dbConfig := rt.NewDbConfig()
+			dbConfig.Replications = testCase.replications
+			require.NoError(t, rest.SetupAndValidateDatabases(rt.Context(), map[string]*rest.DbConfig{"db": &dbConfig}))
+			for _, method := range []string{http.MethodPut, http.MethodPost} {
+				t.Run(method, func(t *testing.T) {
+					configEndpoint := "/{{.db}}/_config"
+					newDBEndpoint := "/newdb/"
+					for _, endpoint := range []string{configEndpoint, newDBEndpoint} {
+						// only PUT is valid for a new endpoint
+						if endpoint == newDBEndpoint && method == http.MethodPost {
+							continue
+						}
+						t.Run(endpoint, func(t *testing.T) {
+							dbConfig := rt.NewDbConfig()
+							dbConfig.Replications = testCase.replications
+
+							resp := rt.SendAdminRequest(method, endpoint, string(base.MustJSONMarshal(t, dbConfig)))
+							rest.RequireStatus(t, resp, http.StatusBadRequest)
+							require.Contains(t, resp.BodyString(), testCase.errorMessage)
+
+						})
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestExistingConfigEmptyReplicationID(t *testing.T) {
+	bucket := base.GetTestBucket(t)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		PersistentConfig: true,
+		CustomTestBucket: bucket,
+	})
+	defer rt.Close()
+
+	username, password, _ := bucket.BucketSpec.Auth.GetCredentials()
+	// this pathway is used for reading legacy config and also fetchAndLoadConfigs (bootstrap polling). There should be no errors, just warnings.
+	for i, testCase := range emptyReplicationTestCases {
+		rt.Run(testCase.name, func(t *testing.T) {
+			dbName := fmt.Sprintf("db%d", i)
+			ctx := rt.Context()
+			defer func() {
+				require.True(t, rt.ServerContext().RemoveDatabase(ctx, dbName))
+			}()
+			dbConfig := rt.NewDbConfig()
+			dbConfig.Name = dbName
+			dbConfig.Username = username
+			dbConfig.Password = password
+			dbConfig.Replications = testCase.replications
+			_, err := rt.ServerContext().AddDatabaseFromConfig(rt.Context(), rest.DatabaseConfig{DbConfig: dbConfig})
+			require.NoError(t, err)
+			rest.RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/"+dbName+"/", ""), http.StatusOK)
+		})
+	}
+}
+
+func TestDbConfigNoOverwriteReplications(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("Requires EE since this tests persistence of replication configuration in CfgSg")
+	}
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	startReplicationConfig := db.ReplicationConfig{
+		ID:                 "replication1",
+		Remote:             "http://remote:4984/db",
+		Direction:          "pull",
+		CollectionsEnabled: !rt.GetDatabase().OnlyDefaultCollection(),
+	}
+
+	// PUT replication
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/replication1", string(base.MustJSONMarshal(t, startReplicationConfig)))
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Replications = map[string]*db.ReplicationConfig{
+		"replication1": {
+			ID:                 "replication1",
+			Remote:             "http://remote:4984/db",
+			Direction:          "push",
+			CollectionsEnabled: !rt.GetDatabase().OnlyDefaultCollection(),
+		},
+	}
+	rt.UpsertDbConfig("db", dbConfig)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_replication/replication1", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	var config *db.ReplicationConfig
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &config))
+	require.Equal(t, startReplicationConfig.Direction, config.Direction)
 }
 
 func requireBodyEqual(t *testing.T, expected string, doc *db.Document) {

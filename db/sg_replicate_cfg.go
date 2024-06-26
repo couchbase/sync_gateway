@@ -527,6 +527,7 @@ func (m *sgReplicateManager) StartReplications(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	m.validateReplications(ctx, replications)
 	for replicationID, replicationCfg := range replications {
 		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Replication %s is assigned to node %s (local node is %s) on start up", replicationID, replicationCfg.AssignedNode, m.localNodeUUID)
 		if replicationCfg.AssignedNode == m.localNodeUUID {
@@ -1037,8 +1038,23 @@ func (m *sgReplicateManager) AddReplication(replication *ReplicationCfg) error {
 	return m.updateCluster(addReplicationCallback)
 }
 
+// validateReplications checks the replication configs and provides warning messages.
+func (m *sgReplicateManager) validateReplications(ctx context.Context, replications map[string]*ReplicationCfg) {
+	// the replications may exist in a way that is missing ID or name, validate and warn the user.
+	resetCheckpointMsg := "This will reset the ISGR checkpoints but prevent multiple simultaneous replications from overwriting status and checkpoint documents"
+	for replicationID, replication := range replications {
+		if replicationID == "" {
+			// we don't know the name
+			base.WarnfCtx(ctx, "An ISGR replication with an empty key exists. To fix this, this replication should be removed from database config and directly from edit the database config and the %q document. %s",
+				m.dbContext.MetadataKeys.SGCfgPrefix(m.dbContext.Options.GroupID), resetCheckpointMsg)
+		} else if replication.ID == "" {
+			base.WarnfCtx(ctx, "An ISGR replication with an empty 'replication_id' exists. To fix this, update the replication using PUT /%s/_replication/%s. %s", m.dbContext.Name, replicationID, resetCheckpointMsg)
+		}
+	}
+}
+
 // PutReplications sets the value of one or more replications in the config
-func (m *sgReplicateManager) PutReplications(replications map[string]*ReplicationConfig) error {
+func (m *sgReplicateManager) PutReplications(ctx context.Context, replications map[string]*ReplicationConfig) error {
 	addReplicationCallback := func(cluster *SGRCluster) (cancel bool, err error) {
 		if len(replications) == 0 {
 			return true, nil
