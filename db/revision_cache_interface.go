@@ -100,7 +100,7 @@ func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 // RevisionCacheBackingStore is the interface required to be passed into a RevisionCache constructor to provide a backing store for loading documents.
 type RevisionCacheBackingStore interface {
 	GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error)
-	getRevision(ctx context.Context, doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error)
+	getRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, error)
 }
 
 // collectionRevisionCache is a view of a revision cache for a collection.
@@ -344,7 +344,7 @@ func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore,
 
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
 func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, revid string) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
-	if bodyBytes, _, attachments, err = backingStore.getRevision(ctx, doc, revid); err != nil {
+	if bodyBytes, attachments, err = backingStore.getRevision(ctx, doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
 		// the revision was a channel removal. If so, we want to store as removal in the revision cache
 		removalBodyBytes, removalHistory, activeChannels, isRemoval, isDelete, isRemovalErr := doc.IsChannelRemoval(ctx, revid)

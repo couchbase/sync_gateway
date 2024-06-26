@@ -3325,3 +3325,60 @@ func TestBadDCPStart(t *testing.T) {
 
 	dbCtx.Close(ctx)
 }
+
+func TestInject1xBodyProperties(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+
+	rev1ID, _, err := collection.Put(ctx, "doc", Body{"test": "doc"})
+	require.NoError(t, err)
+	var rev2Body Body
+	rev2Data := `{"key":"value", "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
+	_, rev2ID, err := collection.PutExistingRevWithBody(ctx, "doc", rev2Body, []string{"2-abc", rev1ID}, true)
+	require.NoError(t, err)
+
+	docRev, err := collection.GetRev(ctx, "doc", rev2ID, true, nil)
+	require.NoError(t, err)
+
+	// mock expiry on doc
+	exp := time.Now()
+	docRev.Expiry = &exp
+
+	newDoc, err := docRev.Inject1xBodyProperties(ctx, collection, docRev.History, nil, true)
+	require.NoError(t, err)
+	var resBody Body
+	require.NoError(t, resBody.Unmarshal(newDoc))
+
+	// cast to map of interface given we have injected the properties runtime has no concept of the AttachmentMeta and Revisions types
+	revs := resBody[BodyRevisions].(map[string]interface{})
+	atts := resBody[BodyAttachments].(map[string]interface{})
+
+	assert.NotNil(t, atts)
+	assert.NotNil(t, revs)
+	assert.Equal(t, "doc", resBody[BodyId])
+	assert.Equal(t, "2-abc", resBody[BodyRev])
+	assert.Equal(t, exp.Format(time.RFC3339), resBody[BodyExpiry])
+	assert.Equal(t, "value", resBody["key"])
+
+	// mock doc deleted
+	docRev.Deleted = true
+
+	newDoc, err = docRev.Inject1xBodyProperties(ctx, collection, docRev.History, []string{"2-abc"}, true)
+	require.NoError(t, err)
+	require.NoError(t, resBody.Unmarshal(newDoc))
+
+	// cast to map of interface given we have injected the properties runtime has no concept of the AttachmentMeta and Revisions types
+	revs = resBody[BodyRevisions].(map[string]interface{})
+	atts = resBody[BodyAttachments].(map[string]interface{})
+
+	assert.NotNil(t, atts)
+	assert.NotNil(t, revs)
+	assert.Equal(t, "doc", resBody[BodyId])
+	assert.Equal(t, "2-abc", resBody[BodyRev])
+	assert.Equal(t, exp.Format(time.RFC3339), resBody[BodyExpiry])
+	assert.Equal(t, "value", resBody["key"])
+	assert.True(t, resBody[BodyDeleted].(bool))
+}
