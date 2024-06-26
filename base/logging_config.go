@@ -25,9 +25,10 @@ const (
 	errorMinAge = 180
 	warnMinAge  = 90
 	infoMinAge  = 3
-	statsMinage = 3
 	debugMinAge = 1
 	traceMinAge = 1
+	statsMinage = 3
+	auditMinage = 3
 
 	// defaultConsoleLoggerCollateBufferSize is the number of console logs we'll
 	// buffer and collate, before flushing the buffer to the output.
@@ -58,7 +59,8 @@ type LegacyLoggingConfig struct {
 
 func InitLogging(ctx context.Context, logFilePath string,
 	console *ConsoleLoggerConfig,
-	error, warn, info, debug, trace, stats *FileLoggerConfig) (err error) {
+	error, warn, info, debug, trace, stats *FileLoggerConfig,
+	audit *AuditLoggerConfig) (err error) {
 
 	consoleLogger, err = NewConsoleLogger(ctx, true, console)
 	if err != nil {
@@ -72,12 +74,13 @@ func InitLogging(ctx context.Context, logFilePath string,
 		ConsolefCtx(ctx, LevelError, KeyNone, ErrUnsetLogFilePath.Error())
 
 		// nil out other loggers
-		errorLogger = nil
-		warnLogger = nil
-		infoLogger = nil
-		debugLogger = nil
-		traceLogger = nil
-		statsLogger = nil
+		errorLogger = &FileLogger{}
+		warnLogger = &FileLogger{}
+		infoLogger = &FileLogger{}
+		debugLogger = &FileLogger{}
+		traceLogger = &FileLogger{}
+		statsLogger = &FileLogger{}
+		auditLogger = &AuditLogger{}
 
 		return nil
 	}
@@ -85,8 +88,18 @@ func InitLogging(ctx context.Context, logFilePath string,
 	err = validateLogFilePath(logFilePath)
 	if err != nil {
 		return err
-	} else {
-		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Files to %v", logFilePath)
+	}
+
+	ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Files to %v", logFilePath)
+
+	auditLogFilePath := logFilePath
+	if audit != nil && audit.AuditLogFilePath != nil && BoolDefault(audit.Enabled, false) {
+		auditLogFilePath = *audit.AuditLogFilePath
+		err = validateLogFilePath(auditLogFilePath)
+		if err != nil {
+			return fmt.Errorf("error validating audit log file path: %w", err)
+		}
+		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Audit to %v", auditLogFilePath)
 	}
 
 	errorLogger, err = NewFileLogger(ctx, error, LevelError, LevelError.String(), logFilePath, errorMinAge, &errorLogger.buffer)
@@ -116,6 +129,11 @@ func InitLogging(ctx context.Context, logFilePath string,
 
 	// Since there is no level checking in the stats logging, use LevelNone for the level.
 	statsLogger, err = NewFileLogger(ctx, stats, LevelNone, "stats", logFilePath, statsMinage, &statsLogger.buffer)
+	if err != nil {
+		return err
+	}
+
+	auditLogger, err = NewAuditLogger(ctx, audit, auditLogFilePath, auditMinage, &auditLogger.buffer)
 	if err != nil {
 		return err
 	}
