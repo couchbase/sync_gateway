@@ -9,10 +9,15 @@
 package base
 
 import (
+	"bytes"
+	"encoding/csv"
 	"fmt"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/maps"
 )
 
 func TestValidateAuditEvents(t *testing.T) {
@@ -28,4 +33,44 @@ func validateAuditEvents(e events) error {
 		}
 	}
 	return nil
+}
+
+// TestGenerateAuditDescriptorCSV outputs a CSV of AuditEvents.
+func TestGenerateAuditDescriptorCSV(t *testing.T) {
+	b, err := generateCSVModuleDescriptor(AuditEvents)
+	require.NoError(t, err)
+	fmt.Print(string(b))
+}
+
+// generateCSVModuleDescriptor returns a CSV module descriptor for the given events.
+func generateCSVModuleDescriptor(e events) ([]byte, error) {
+	buf := bytes.NewBuffer(nil)
+	w := csv.NewWriter(buf)
+
+	// Write header
+	if err := w.Write([]string{"ID", "Name", "Description", "DefaultEnabled", "Filterable", "EventType", "MandatoryFields", "OptionalFields"}); err != nil {
+		return nil, err
+	}
+
+	for id, event := range e {
+		if err := w.Write([]string{
+			id.String(),
+			event.Name,
+			event.Description,
+			strconv.FormatBool(event.EnabledByDefault),
+			strconv.FormatBool(event.FilteringPermitted),
+			string(event.EventType),
+			strings.Join(maps.Keys(event.MandatoryFields), ", "),
+			strings.Join(maps.Keys(event.OptionalFields), ", "),
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }
