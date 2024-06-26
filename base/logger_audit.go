@@ -68,7 +68,7 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	}
 	userDomain := logCtx.UserDomain
 	userID := logCtx.Username
-	if userDomain != "" && userID != "" {
+	if userDomain != "" || userID != "" {
 		fields[auditFieldRealUserID] = map[string]any{
 			"domain": userDomain,
 			"user":   userID,
@@ -76,22 +76,28 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	}
 	if logCtx.RequestHost != "" {
 		host, port, err := net.SplitHostPort(logCtx.RequestHost)
-		if err != nil && IsDevMode() {
-			panic(fmt.Sprintf("failed to parse local address: %v", err))
-		}
-		fields[auditFieldLocal] = map[string]any{
-			"ip":   host,
-			"port": port,
+		if err != nil {
+			if IsDevMode() {
+				panic(fmt.Sprintf("couldn't parse request host: %v", err))
+			}
+		} else {
+			fields[auditFieldLocal] = map[string]any{
+				"ip":   host,
+				"port": port,
+			}
 		}
 	}
 	if logCtx.RequestRemoteAddr != "" {
 		host, port, err := net.SplitHostPort(logCtx.RequestRemoteAddr)
-		if err != nil && IsDevMode() {
-			panic(fmt.Sprintf("failed to parse remote address: %v", err))
-		}
-		fields[auditFieldRemote] = map[string]any{
-			"ip":   host,
-			"port": port,
+		if err != nil {
+			if IsDevMode() {
+				panic(fmt.Sprintf("couldn't parse request remote addr: %v", err))
+			}
+		} else {
+			fields[auditFieldRemote] = map[string]any{
+				"ip":   host,
+				"port": port,
+			}
 		}
 	}
 
