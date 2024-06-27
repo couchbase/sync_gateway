@@ -49,15 +49,17 @@ const (
 	AuditIDSyncGatewayCollectInfoStatus AuditID = 53300
 	AuditIDSyncGatewayCollectInfoStart  AuditID = 53301
 	AuditIDSyncGatewayCollectInfoStop   AuditID = 53302
-	// TODO: Check API routes for more events
+	AuditIDSyncGatewayStats             AuditID = 53303
+	AuditIDSyncGatewayProfiling         AuditID = 53304
 
 	// SG cluster events
-	// TODO: Check API routes for more events
+	AuditIDClusterInfoRead AuditID = 53350
 
 	// Database events
-	AuditIDCreateDatabase AuditID = 54000
-	AuditIDReadDatabase   AuditID = 54001
-	AuditIDDeleteDatabase AuditID = 54002
+	AuditIDCreateDatabase  AuditID = 54000
+	AuditIDReadDatabase    AuditID = 54001
+	AuditIDDeleteDatabase  AuditID = 54002
+	AuditIDDatabaseAllRead AuditID = 54003
 	// Database config events
 	AuditIDReadDatabaseConfig   AuditID = 54010
 	AuditIDUpdateDatabaseConfig AuditID = 54011
@@ -70,7 +72,9 @@ const (
 	AuditIDDatabaseResyncStatus  AuditID = 54040
 	AuditIDDatabaseResyncStart   AuditID = 54041
 	AuditIDDatabaseResyncStop    AuditID = 54042
-	// TODO: Check API routes for more events
+	AuditIDDatabasePostUpgrade   AuditID = 54043
+	AuditIDDatabaseRepair        AuditID = 54044
+	AuditIDDatabaseFlush         AuditID = 54045
 
 	// User principal events
 	AuditIDUserCreate AuditID = 54100
@@ -84,33 +88,35 @@ const (
 	AuditIDRoleDelete AuditID = 54113
 
 	// Changes feeds events
+	AuditIDChangesFeedStarted AuditID = 54200
 
 	// BLIP Replication events
-	AuditIDReplicationConnect    AuditID = 55000
-	AuditIDReplicationDisconnect AuditID = 55001
+	AuditIDReplicationConnect    AuditID = 54300
+	AuditIDReplicationDisconnect AuditID = 54301
 
 	// ISGR events
-	AuditIDISGRCreate    AuditID = 55100
-	AuditIDISGRRead      AuditID = 55101
-	AuditIDISGRUpdate    AuditID = 55102
-	AuditIDISGRDelete    AuditID = 55103
-	AuditIDISGRStatus    AuditID = 55110
-	AuditIDISGRStart     AuditID = 55111
-	AuditIDISGRStop      AuditID = 55112
-	AuditIDISGRReset     AuditID = 55113
-	AuditIDISGRAllStatus AuditID = 55120
-	AuditIDISGRAllRead   AuditID = 55121
+	AuditIDISGRCreate    AuditID = 54400
+	AuditIDISGRRead      AuditID = 54401
+	AuditIDISGRUpdate    AuditID = 54402
+	AuditIDISGRDelete    AuditID = 54403
+	AuditIDISGRStatus    AuditID = 54410
+	AuditIDISGRStart     AuditID = 54411
+	AuditIDISGRStop      AuditID = 54412
+	AuditIDISGRReset     AuditID = 54413
+	AuditIDISGRAllStatus AuditID = 54420
+	AuditIDISGRAllRead   AuditID = 54421
 
 	// Documents events
-	AuditIDDocumentCreate AuditID = 56000
-	AuditIDDocumentRead   AuditID = 56001
-	AuditIDDocumentUpdate AuditID = 56002
-	AuditIDDocumentDelete AuditID = 56003
+	AuditIDDocumentCreate       AuditID = 55000
+	AuditIDDocumentRead         AuditID = 55001
+	AuditIDDocumentUpdate       AuditID = 55002
+	AuditIDDocumentMetadataRead AuditID = 55004
 	// Document attachments events
-	AuditIDAttachmentCreate AuditID = 56010
-	AuditIDAttachmentRead   AuditID = 56011
-	AuditIDAttachmentUpdate AuditID = 56012
-	AuditIDAttachmentDelete AuditID = 56013
+	AuditIDDocumentDelete   AuditID = 55003
+	AuditIDAttachmentCreate AuditID = 55010
+	AuditIDAttachmentRead   AuditID = 55011
+	AuditIDAttachmentUpdate AuditID = 55012
+	AuditIDAttachmentDelete AuditID = 55013
 )
 
 // AuditEvents is a table of audit events created by Sync Gateway.
@@ -282,6 +288,14 @@ var AuditEvents = events{
 		FilteringPermitted: false,
 		EventType:          eventTypeAdmin,
 	},
+	AuditIDSyncGatewayCollectInfoStatus: {
+		Name:               "sgcollect_info status",
+		Description:        "sgcollect_info status was viewed",
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		MandatoryFields:    AuditFields{},
+		EventType:          eventTypeAdmin,
+	},
 	AuditIDSyncGatewayCollectInfoStart: {
 		Name:               "sgcollect_info start",
 		Description:        "sgcollect_info was started",
@@ -305,12 +319,28 @@ var AuditEvents = events{
 		MandatoryFields:    AuditFields{},
 		EventType:          eventTypeAdmin,
 	},
-	AuditIDSyncGatewayCollectInfoStatus: {
-		Name:               "sgcollect_info status",
-		Description:        "sgcollect_info status was viewed",
+	AuditIDSyncGatewayStats: {
+		Name:               "stats requested",
+		Description:        "stats were requested",
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
-		MandatoryFields:    AuditFields{},
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDSyncGatewayProfiling: {
+		Name:        "profiling requested",
+		Description: "profiling was requested",
+		MandatoryFields: AuditFields{
+			"profile_type": "cpu, memory, etc.",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDClusterInfoRead: {
+		Name:               "Sync Gateway cluster info read",
+		Description:        "Sync Gateway cluster info was viewed",
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDCreateDatabase: {
@@ -326,7 +356,7 @@ var AuditEvents = events{
 	},
 	AuditIDReadDatabase: {
 		Name:        "Read database",
-		Description: "Information about this database was read.",
+		Description: "Information about this database was viewed.",
 		MandatoryFields: AuditFields{
 			"db": "database name",
 		},
@@ -347,7 +377,7 @@ var AuditEvents = events{
 	},
 	AuditIDReadDatabaseConfig: {
 		Name:        "Read database config",
-		Description: "Database configuration was read",
+		Description: "Database configuration was viewed",
 		MandatoryFields: AuditFields{
 			"db": "database name",
 		},
@@ -448,6 +478,36 @@ var AuditEvents = events{
 		FilteringPermitted: false,
 		EventType:          eventTypeAdmin,
 	},
+	AuditIDDatabasePostUpgrade: {
+		Name:        "Database post-upgrade",
+		Description: "Database post-upgrade was run",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseRepair: {
+		Name:        "Database repair",
+		Description: "Database repair was run",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseFlush: {
+		Name:        "Database flush",
+		Description: "Database flush was run",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
 	AuditIDUserCreate: {
 		Name:        "Create user",
 		Description: "A new user was created",
@@ -463,7 +523,7 @@ var AuditEvents = events{
 	},
 	AuditIDUserRead: {
 		Name:        "Read user",
-		Description: "Information about this user was read",
+		Description: "Information about this user was viewed",
 		MandatoryFields: AuditFields{
 			"username": "username",
 			"db":       "database name",
@@ -510,7 +570,7 @@ var AuditEvents = events{
 	},
 	AuditIDRoleRead: {
 		Name:        "Read role",
-		Description: "Information about this role was read",
+		Description: "Information about this role was viewed",
 
 		MandatoryFields: AuditFields{
 			"role": "role_name",
@@ -543,6 +603,24 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		EventType:          eventTypeAdmin,
+	},
+	AuditIDChangesFeedStarted: {
+		Name:        "Changes feed started",
+		Description: "Changes feed was started",
+		MandatoryFields: AuditFields{
+			"db":    "database name",
+			"ks":    "keyspace",
+			"since": "since",
+		},
+		OptionalFields: AuditFields{
+			"filter":    "filter",
+			"doc_ids":   []string{"list", "of", "doc_ids"},
+			"channels":  []string{"list", "of", "channels"},
+			"feed_type": "continuous, normal, longpoll, websocket, etc.",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
 	},
 	AuditIDReplicationConnect: {
 		Name:        "Replication connect",
@@ -580,7 +658,7 @@ var AuditEvents = events{
 	},
 	AuditIDISGRRead: {
 		Name:        "Read Inter-Sync Gateway Replication",
-		Description: "Information about this Inter-Sync Gateway Replication was read",
+		Description: "Information about this Inter-Sync Gateway Replication was viewed",
 		MandatoryFields: AuditFields{
 			"db":             "database name",
 			"replication_id": "replication id",
@@ -685,7 +763,7 @@ var AuditEvents = events{
 	},
 	AuditIDDocumentRead: {
 		Name:        "Read document",
-		Description: "A document was read",
+		Description: "A document was viewed",
 		MandatoryFields: AuditFields{
 			"db":          "database name",
 			"ks":          "keyspace",
@@ -705,6 +783,18 @@ var AuditEvents = events{
 			"doc_id":      "document id",
 			"doc_version": "revision ID or version",
 			"channels":    []string{"list", "of", "channels"},
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDDocumentMetadataRead: {
+		Name:        "Read document metadata",
+		Description: "Document metadata was viewed",
+		MandatoryFields: AuditFields{
+			"db":     "database name",
+			"ks":     "keyspace",
+			"doc_id": "document id",
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -740,7 +830,7 @@ var AuditEvents = events{
 	AuditIDAttachmentRead: {
 
 		Name:        "Read attachment",
-		Description: "An attachment was read",
+		Description: "An attachment was viewed",
 		MandatoryFields: AuditFields{
 			"db":            "database name",
 			"ks":            "keyspace",
