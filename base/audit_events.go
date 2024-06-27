@@ -38,6 +38,8 @@ const (
 	// Auth (public) events
 	AuditIDPublicUserAuthenticated        AuditID = 53280
 	AuditIDPublicUserAuthenticationFailed AuditID = 53281
+	AuditIDPublicUserSessionCreated       AuditID = 53282
+	AuditIDPublicUserSessionDeleted       AuditID = 53283
 	// Auth (admin) events
 	AuditIDAdminUserAuthenticated        AuditID = 53290
 	AuditIDAdminUserAuthenticationFailed AuditID = 53291
@@ -147,8 +149,9 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		MandatoryFields: AuditFields{
-			"db":         "database name",
-			"new_config": "JSON representation of new db audit config",
+			"db":          "database name",
+			"audit_scope": "global or db",
+			"new_config":  "JSON representation of new db audit config",
 		},
 		EventType: eventTypeAdmin,
 	},
@@ -159,6 +162,7 @@ var AuditEvents = events{
 		FilteringPermitted: false,
 		MandatoryFields: AuditFields{
 			"sg_version": "version string",
+			"config":     "JSON representation of startup config",
 		},
 		EventType: eventTypeAdmin,
 	},
@@ -228,6 +232,26 @@ var AuditEvents = events{
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
+		EventType:          eventTypeUser,
+	},
+	AuditIDPublicUserSessionCreated: {
+		Name:        "Public API user session created",
+		Description: "Public API user session was created",
+		MandatoryFields: AuditFields{
+			"session_id": "session_id",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeUser,
+	},
+	AuditIDPublicUserSessionDeleted: {
+		Name:        "Public API user session deleted",
+		Description: "Public API user session was deleted",
+		MandatoryFields: AuditFields{
+			"session_id": "session_id",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
 		EventType:          eventTypeUser,
 	},
 	AuditIDAdminUserAuthenticated: {
