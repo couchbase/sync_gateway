@@ -1152,11 +1152,11 @@ func (d *DbStats) initCacheStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.SkippedSeqCap, err = NewIntStat(SubsystemCacheKey, "skipped_seq_cap", StatUnitNoUnits, SkippedSeqCapDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	resUtil.SkippedSeqCap, err = NewIntStat(SubsystemCacheKey, "skipped_seq_cap", labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.NumCurrentSeqsSkipped, err = NewIntStat(SubsystemCacheKey, "current_skipped_seq_count", StatUnitNoUnits, NumCurrentSkippedSeq, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.NumCurrentSeqsSkipped, err = NewIntStat(SubsystemCacheKey, "current_skipped_seq_count", labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
