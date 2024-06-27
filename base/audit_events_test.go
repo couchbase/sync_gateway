@@ -26,13 +26,19 @@ func TestValidateAuditEvents(t *testing.T) {
 }
 
 func validateAuditEvents(e events) error {
+	multiError := &MultiError{}
+	seenIDs := make(map[AuditID]struct{})
 	for id, descriptor := range e {
 		if id < auditdSyncGatewayStartID || id > auditdSyncGatewayEndID {
-			return fmt.Errorf("invalid audit event ID: %d %q (allowed range: %d-%d)",
-				id, descriptor.Name, auditdSyncGatewayStartID, auditdSyncGatewayEndID)
+			multiError = multiError.Append(fmt.Errorf("invalid audit event ID: %d %q (allowed range: %d-%d)",
+				id, descriptor.Name, auditdSyncGatewayStartID, auditdSyncGatewayEndID))
 		}
+		if _, ok := seenIDs[id]; ok {
+			multiError = multiError.Append(fmt.Errorf("duplicate audit event ID: %d %q", id, descriptor.Name))
+		}
+		seenIDs[id] = struct{}{}
 	}
-	return nil
+	return multiError.ErrorOrNil()
 }
 
 // TestGenerateAuditDescriptorCSV outputs a CSV of AuditEvents.
@@ -53,6 +59,10 @@ func generateCSVModuleDescriptor(e events) ([]byte, error) {
 	}
 
 	for id, event := range e {
+		mandatoryFields := event.MandatoryFields
+		mandatoryFields.withCommonMandatoryFields()
+		optionalFields := event.OptionalFields
+		optionalFields.withCommonOptionalFields()
 		if err := w.Write([]string{
 			id.String(),
 			event.Name,
@@ -60,8 +70,8 @@ func generateCSVModuleDescriptor(e events) ([]byte, error) {
 			strconv.FormatBool(event.EnabledByDefault),
 			strconv.FormatBool(event.FilteringPermitted),
 			string(event.EventType),
-			strings.Join(maps.Keys(event.MandatoryFields), ", "),
-			strings.Join(maps.Keys(event.OptionalFields), ", "),
+			strings.Join(maps.Keys(mandatoryFields), ", "),
+			strings.Join(maps.Keys(optionalFields), ", "),
 		}); err != nil {
 			return nil, err
 		}
