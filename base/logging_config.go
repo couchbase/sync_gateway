@@ -60,7 +60,7 @@ type LegacyLoggingConfig struct {
 func InitLogging(ctx context.Context, logFilePath string,
 	console *ConsoleLoggerConfig,
 	error, warn, info, debug, trace, stats *FileLoggerConfig,
-	audit *AuditLoggerConfig) (err error) {
+	audit *AuditLoggerConfig, auditLogGlobalFields map[string]any) (err error) {
 
 	consoleLogger, err = NewConsoleLogger(ctx, true, console)
 	if err != nil {
@@ -101,7 +101,6 @@ func InitLogging(ctx context.Context, logFilePath string,
 		}
 		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Audit to %v", auditLogFilePath)
 	}
-
 	errorLogger, err = NewFileLogger(ctx, error, LevelError, LevelError.String(), logFilePath, errorMinAge, &errorLogger.buffer)
 	if err != nil {
 		return err
@@ -133,7 +132,7 @@ func InitLogging(ctx context.Context, logFilePath string,
 		return err
 	}
 
-	auditLogger, err = NewAuditLogger(ctx, audit, auditLogFilePath, auditMinage, &auditLogger.buffer)
+	auditLogger, err = NewAuditLogger(ctx, audit, auditLogFilePath, auditMinage, &auditLogger.buffer, auditLogGlobalFields)
 	if err != nil {
 		return err
 	}

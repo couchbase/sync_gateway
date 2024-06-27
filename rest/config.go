@@ -1305,6 +1305,14 @@ func (sc *StartupConfig) SetupAndValidateLogging(ctx context.Context) (err error
 		sc.Logging.LogFilePath = defaultLogFilePath
 	}
 
+	var auditLoggingFields map[string]any
+	if sc.Unsupported.AuditInfoProvider != nil && sc.Unsupported.AuditInfoProvider.GlobalInfoEnvVarName != nil {
+		v := os.Getenv(*sc.Unsupported.AuditInfoProvider.GlobalInfoEnvVarName)
+		err := base.JSONUnmarshal([]byte(v), &auditLoggingFields)
+		if err != nil {
+			return fmt.Errorf("Unable to unmarshal audit info from environment variable %s=%s %w", *sc.Unsupported.AuditInfoProvider.GlobalInfoEnvVarName, v, err)
+		}
+	}
 	return base.InitLogging(ctx,
 		sc.Logging.LogFilePath,
 		sc.Logging.Console,
@@ -1315,6 +1323,7 @@ func (sc *StartupConfig) SetupAndValidateLogging(ctx context.Context) (err error
 		sc.Logging.Trace,
 		sc.Logging.Stats,
 		sc.Logging.Audit,
+		auditLoggingFields,
 	)
 }
 
