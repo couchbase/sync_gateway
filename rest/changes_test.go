@@ -286,7 +286,9 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 //   - Update this doc again, triggering unused sequence range release
 //   - Write another doc and assert that the changes feed returns all expected docs
 func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
-
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Requires CBS")
+	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -308,17 +310,15 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	ds := rt.GetSingleDataStore()
-	xattrs, cas, err := ds.GetXattrs(ctx, "doc", []string{base.SyncXattrName})
+	var syncData db.SyncData
+	_, err := ds.GetXattr(ctx, "doc", base.SyncXattrName, &syncData)
 	require.NoError(t, err)
 
-	var retrievedXattr map[string]interface{}
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
-	retrievedXattr["sequence"] = uint64(20)
-	newXattrVal := map[string][]byte{
-		base.SyncXattrName: base.MustJSONMarshal(t, retrievedXattr),
-	}
+	syncData.Sequence = uint64(20)
+	newXattrVal, err := base.JSONMarshal(&syncData)
+	require.NoError(t, err)
 
-	_, err = ds.UpdateXattrs(ctx, "doc", 0, cas, newXattrVal, nil)
+	_, err = ds.SetXattr(ctx, "doc", base.SyncXattrName, newXattrVal)
 	require.NoError(t, err)
 
 	// wait for value to move from pending to cache and skipped list to fill
@@ -327,7 +327,7 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 		assert.Equal(c, int64(1), rt.GetDatabase().DbStats.CacheStats.SkippedSeqLen.Value())
 	}, time.Second*10, time.Millisecond*100)
 
-	docVrs := rt.UpdateDoc("doc", vrs, `{"prob": "lol"}`)
+	docVrs := rt.UpdateDoc("doc", vrs.Rev, `{"prob": "lol"}`)
 
 	// wait skipped list to be emptied by release of sequence range
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -343,7 +343,7 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 	changes.RequireDocIDs(t, []string{"doc1", "doc"})
-	changes.RequireRevID(t, []string{docVrs.RevID, doc1Vrs.RevID})
+	changes.RequireRevID(t, []string{docVrs.Rev, doc1Vrs.Rev})
 }
 
 // TestJumpInSequencesAtAllocatorRangeInPending:
@@ -355,6 +355,9 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 //   - Update this doc again, triggering unused sequence range release
 //   - Write another doc and assert that the changes feed returns all expected docs
 func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Requires CBS")
+	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -376,17 +379,15 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	ds := rt.GetSingleDataStore()
-	xattrs, cas, err := ds.GetXattrs(ctx, "doc", []string{base.SyncXattrName})
+	var syncData db.SyncData
+	_, err := ds.GetXattr(ctx, "doc", base.SyncXattrName, &syncData)
 	require.NoError(t, err)
 
-	var retrievedXattr map[string]interface{}
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
-	retrievedXattr["sequence"] = uint64(20)
-	newXattrVal := map[string][]byte{
-		base.SyncXattrName: base.MustJSONMarshal(t, retrievedXattr),
-	}
+	syncData.Sequence = uint64(20)
+	newXattrVal, err := base.JSONMarshal(&syncData)
+	require.NoError(t, err)
 
-	_, err = ds.UpdateXattrs(ctx, "doc", 0, cas, newXattrVal, nil)
+	_, err = ds.SetXattr(ctx, "doc", base.SyncXattrName, newXattrVal)
 	require.NoError(t, err)
 
 	// wait for value top be added to pending
@@ -395,7 +396,7 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 		assert.Equal(c, int64(1), rt.GetDatabase().DbStats.CacheStats.PendingSeqLen.Value())
 	}, time.Second*10, time.Millisecond*100)
 
-	docVrs := rt.UpdateDoc("doc", vrs, `{"prob": "lol"}`)
+	docVrs := rt.UpdateDoc("doc", vrs.Rev, `{"prob": "lol"}`)
 
 	// assert that nothing has been pushed to skipped
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -410,5 +411,5 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 	changes.RequireDocIDs(t, []string{"doc1", "doc"})
-	changes.RequireRevID(t, []string{docVrs.RevID, doc1Vrs.RevID})
+	changes.RequireRevID(t, []string{docVrs.Rev, doc1Vrs.Rev})
 }
