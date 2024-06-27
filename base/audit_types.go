@@ -56,31 +56,6 @@ type eventType string
 // E.g. Username, IPs, request parameters, etc.
 type AuditFields map[string]any
 
-func (f AuditFields) withCommonMandatoryFields() {
-	if f == nil {
-		f = make(AuditFields)
-	}
-	f[auditFieldID] = 0
-	f[auditFieldTimestamp] = "event timestamp"
-	f[auditFieldName] = "event name"
-	f[auditFieldDescription] = "event description"
-}
-
-func (f AuditFields) withCommonOptionalFields() {
-	if f == nil {
-		f = make(AuditFields)
-	}
-	f[auditFieldRealUserID] = map[string]any{
-		"domain": "user domain",
-		"user":   "user id",
-	}
-	f[auditFieldLocal] = "local ip"
-	f[auditFieldRemote] = "remote ip"
-	f[auditFieldDatabase] = "database name"
-	f[auditFieldCorrelationID] = "correlation id"
-	f[auditFieldKeyspace] = "keyspace"
-}
-
 func (i AuditID) MustValidateFields(f AuditFields) {
 	if err := i.ValidateFields(f); err != nil {
 		panic(fmt.Errorf("audit event %s invalid:\n%v", i, err))

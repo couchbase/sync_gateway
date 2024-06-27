@@ -12,85 +12,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 )
 
 const (
 	auditLogName = "audit"
 )
-
-// commonly used fields for audit events
-const (
-	auditFieldID            = "id"
-	auditFieldTimestamp     = "timestamp"
-	auditFieldName          = "name"
-	auditFieldDescription   = "description"
-	auditFieldRealUserID    = "real_userid"
-	auditFieldLocal         = "local"
-	auditFieldRemote        = "remote"
-	auditFieldDatabase      = "db"
-	auditFieldCorrelationID = "cid"
-	auditFieldKeyspace      = "ks"
-)
-
-// expandFields populates data with information from the id, context and additionalData.
-func expandFields(id AuditID, ctx context.Context, additionalData AuditFields) AuditFields {
-	var fields AuditFields
-	if additionalData != nil {
-		fields = additionalData
-	} else {
-		fields = make(AuditFields)
-	}
-
-	// static event data
-	fields[auditFieldID] = uint64(id)
-	fields[auditFieldName] = AuditEvents[id].Name
-	fields[auditFieldDescription] = AuditEvents[id].Description
-
-	// context data
-	logCtx := getLogCtx(ctx)
-	if logCtx.Database != "" {
-		fields[auditFieldDatabase] = logCtx.Database
-	}
-	if logCtx.CorrelationID != "" {
-		fields[auditFieldCorrelationID] = logCtx.CorrelationID
-	}
-	if logCtx.Bucket != "" && logCtx.Scope != "" && logCtx.Collection != "" {
-		fields[auditFieldKeyspace] = FullyQualifiedCollectionName(logCtx.Bucket, logCtx.Scope, logCtx.Collection)
-	}
-	// TODO: CBG-3973 - Pull fields from ctx
-	userDomain := "placeholder"
-	userID := "placeholder"
-	if userDomain != "" && userID != "" {
-		fields[auditFieldRealUserID] = map[string]any{
-			"domain": userDomain,
-			"user":   userID,
-		}
-	}
-	localIP := "192.0.2.1"
-	localPort := "4984"
-	if localIP != "" && localPort != "" {
-		fields[auditFieldLocal] = map[string]any{
-			"ip":   localIP,
-			"port": localPort,
-		}
-	}
-	remoteIP := "203.0.113.1"
-	remotePort := "12345"
-	if remoteIP != "" && remotePort != "" {
-		fields[auditFieldRemote] = map[string]any{
-			"ip":   remoteIP,
-			"port": remotePort,
-		}
-	}
-
-	fields[auditFieldTimestamp] = time.Now()
-
-	// TODO: CBG-3976 - Inject and merge data from env var
-	// TODO: CBG-3977 - Inject and merge data from request header
-
-	return fields
-}
 
 // Audit creates and logs an audit event for the given ID and a set of additional data associated with the request.
 func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {

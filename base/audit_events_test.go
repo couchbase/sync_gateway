@@ -62,7 +62,7 @@ func generateCSVModuleDescriptor(e events) ([]byte, error) {
 		mandatoryFields := event.MandatoryFields
 		mandatoryFields.withCommonMandatoryFields()
 		optionalFields := event.OptionalFields
-		optionalFields.withCommonOptionalFields()
+		//optionalFields.withCommonOptionalFields()
 		if err := w.Write([]string{
 			id.String(),
 			event.Name,
