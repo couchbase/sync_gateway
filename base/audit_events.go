@@ -19,7 +19,7 @@ const (
 )
 
 // Audit IDs for Sync Gateway.
-// The grouping is arbitrary, but are spaced out enough to allow for some future expansion in each area.
+// The IDs and grouping is arbitrary, but are spaced to allow for some additions in each area.
 const (
 	// Audit events
 	AuditIDAuditEnabled       AuditID = 53248
@@ -33,7 +33,7 @@ const (
 	AuditIDPublicHTTPAPIRequest  AuditID = 53270
 	AuditIDAdminHTTPAPIRequest   AuditID = 53271
 	AuditIDMetricsHTTPAPIRequest AuditID = 53272
-	//AuditIDBLIPMessage           AuditID = 0
+	//AuditIDBLIPMessage           AuditID = 0 // TODO: Is this required? What info should the event contain?
 
 	// Auth (public) events
 	AuditIDPublicUserAuthenticated        AuditID = 53280
@@ -47,8 +47,10 @@ const (
 	AuditIDSyncGatewayCollectInfoStatus AuditID = 53300
 	AuditIDSyncGatewayCollectInfoStart  AuditID = 53301
 	AuditIDSyncGatewayCollectInfoStop   AuditID = 53302
+	// TODO: Check API routes for more events
 
 	// SG cluster events
+	// TODO: Check API routes for more events
 
 	// Database events
 	AuditIDCreateDatabase AuditID = 54000
@@ -66,6 +68,7 @@ const (
 	AuditIDDatabaseResyncStatus  AuditID = 54040
 	AuditIDDatabaseResyncStart   AuditID = 54041
 	AuditIDDatabaseResyncStop    AuditID = 54042
+	// TODO: Check API routes for more events
 
 	// User principal events
 	AuditIDUserCreate AuditID = 54100
@@ -124,7 +127,7 @@ var AuditEvents = events{
 			"audit_scope": "global or db",
 		},
 		OptionalFields: AuditFields{
-			"db": "database_name",
+			"db": "database name",
 		},
 		EventType: eventTypeAdmin,
 	},
@@ -144,7 +147,7 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		MandatoryFields: AuditFields{
-			"db":         "database_name",
+			"db":         "database name",
 			"new_config": "JSON representation of new db audit config",
 		},
 		EventType: eventTypeAdmin,
@@ -280,7 +283,7 @@ var AuditEvents = events{
 	},
 	AuditIDSyncGatewayCollectInfoStatus: {
 		Name:               "sgcollect_info status",
-		Description:        "sgcollect_info status was checked",
+		Description:        "sgcollect_info status was viewed",
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		MandatoryFields:    AuditFields{},
@@ -290,7 +293,7 @@ var AuditEvents = events{
 		Name:        "Create database",
 		Description: "A new database was created",
 		MandatoryFields: AuditFields{
-			"db":     "database_name",
+			"db":     "database name",
 			"config": "JSON representation of db config",
 		},
 		EnabledByDefault:   true,
@@ -301,7 +304,7 @@ var AuditEvents = events{
 		Name:        "Read database",
 		Description: "Information about this database was read.",
 		MandatoryFields: AuditFields{
-			"db": "database_name",
+			"db": "database name",
 		},
 		OptionalFields:     AuditFields{},
 		EnabledByDefault:   true,
@@ -312,7 +315,7 @@ var AuditEvents = events{
 		Name:        "Delete database",
 		Description: "A database was deleted",
 		MandatoryFields: AuditFields{
-			"db": "database_name",
+			"db": "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -322,7 +325,7 @@ var AuditEvents = events{
 		Name:        "Read database config",
 		Description: "Database configuration was read",
 		MandatoryFields: AuditFields{
-			"db": "database_name",
+			"db": "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -332,7 +335,7 @@ var AuditEvents = events{
 		Name:        "Update database config",
 		Description: "Database configuration was updated",
 		MandatoryFields: AuditFields{
-			"db":     "database_name",
+			"db":     "database name",
 			"config": "JSON representation of new db config",
 		},
 		EnabledByDefault:   true,
@@ -343,7 +346,7 @@ var AuditEvents = events{
 		Name:        "Database offline",
 		Description: "Database was taken offline",
 		MandatoryFields: AuditFields{
-			"db": "database_name",
+			"db": "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -353,7 +356,7 @@ var AuditEvents = events{
 		Name:        "Database online",
 		Description: "Database was brought online",
 		MandatoryFields: AuditFields{
-			"db": "database_name",
+			"db": "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -361,9 +364,9 @@ var AuditEvents = events{
 	},
 	AuditIDDatabaseCompactStatus: {
 		Name:        "Database compaction status",
-		Description: "Database compaction status was checked",
+		Description: "Database compaction status was viewed",
 		MandatoryFields: AuditFields{
-			"db": "database_name",
+			"db": "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -373,7 +376,7 @@ var AuditEvents = events{
 		Name:        "Database compaction start",
 		Description: "Database compaction was started",
 		MandatoryFields: AuditFields{
-			"db": "database_name",
+			"db": "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -383,7 +386,7 @@ var AuditEvents = events{
 		Name:        "Database compaction stop",
 		Description: "Database compaction was stopped",
 		MandatoryFields: AuditFields{
-			"db": "database_name",
+			"db": "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -391,9 +394,9 @@ var AuditEvents = events{
 	},
 	AuditIDDatabaseResyncStatus: {
 		Name:        "Database resync status",
-		Description: "Database resync status was checked",
+		Description: "Database resync status was viewed",
 		MandatoryFields: AuditFields{
-			"db": "database_name",
+			"db": "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -403,7 +406,7 @@ var AuditEvents = events{
 		Name:        "Database resync start",
 		Description: "Database resync was started",
 		MandatoryFields: AuditFields{
-			"db":                   "database_name",
+			"db":                   "database name",
 			"collections":          []string{"list", "of", "collections"},
 			"regenerate_sequences": true,
 		},
@@ -415,7 +418,7 @@ var AuditEvents = events{
 		Name:        "Database resync stop",
 		Description: "Database resync was stopped",
 		MandatoryFields: AuditFields{
-			"db": "database_name",
+			"db": "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -426,7 +429,7 @@ var AuditEvents = events{
 		Description: "A new user was created",
 		MandatoryFields: AuditFields{
 			"username": "username",
-			"db":       "database_name",
+			"db":       "database name",
 			"roles":    []string{"list", "of", "roles"},
 			"channels": []string{"list", "of", "channels"},
 		},
@@ -439,7 +442,7 @@ var AuditEvents = events{
 		Description: "Information about this user was read",
 		MandatoryFields: AuditFields{
 			"username": "username",
-			"db":       "database_name",
+			"db":       "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -450,7 +453,7 @@ var AuditEvents = events{
 		Description: "User was updated",
 		MandatoryFields: AuditFields{
 			"username": "username",
-			"db":       "database_name",
+			"db":       "database name",
 			"roles":    []string{"list", "of", "roles"},
 			"channels": []string{"list", "of", "channels"},
 		},
@@ -463,7 +466,7 @@ var AuditEvents = events{
 		Description: "User was deleted",
 		MandatoryFields: AuditFields{
 			"username": "username",
-			"db":       "database_name",
+			"db":       "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -474,7 +477,7 @@ var AuditEvents = events{
 		Description: "A new role was created",
 		MandatoryFields: AuditFields{
 			"role":           "role_name",
-			"db":             "database_name",
+			"db":             "database name",
 			"admin_channels": []string{"list", "of", "channels"},
 		},
 		EnabledByDefault:   true,
@@ -487,7 +490,7 @@ var AuditEvents = events{
 
 		MandatoryFields: AuditFields{
 			"role": "role_name",
-			"db":   "database_name",
+			"db":   "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -499,7 +502,7 @@ var AuditEvents = events{
 
 		MandatoryFields: AuditFields{
 			"role":           "role_name",
-			"db":             "database_name",
+			"db":             "database name",
 			"admin_channels": []string{"list", "of", "channels"},
 		},
 		EnabledByDefault:   true,
@@ -511,10 +514,248 @@ var AuditEvents = events{
 		Description: "Role was deleted",
 		MandatoryFields: AuditFields{
 			"role": "role_name",
-			"db":   "database_name",
+			"db":   "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		EventType:          eventTypeAdmin,
+	},
+	AuditIDReplicationConnect: {
+		Name:        "Replication connect",
+		Description: "A client connected using WebSocket/BLIP for replication",
+		MandatoryFields: AuditFields{
+			"db":  "database name",
+			"cid": "context id",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeUser,
+	},
+	AuditIDReplicationDisconnect: {
+		Name:        "Replication disconnect",
+		Description: "A client disconnected from WebSocket/BLIP replication",
+		MandatoryFields: AuditFields{
+			"db":  "database name",
+			"cid": "context id",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeUser,
+	},
+	AuditIDISGRCreate: {
+		Name:        "Create Inter-Sync Gateway Replication",
+		Description: "A new Inter-Sync Gateway Replication was created",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+			"config":         "JSON representation of replication config",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDISGRRead: {
+		Name:        "Read Inter-Sync Gateway Replication",
+		Description: "Information about this Inter-Sync Gateway Replication was read",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDISGRUpdate: {
+		Name:        "Update Inter-Sync Gateway Replication",
+		Description: "Inter-Sync Gateway Replication was updated",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+			"config":         "JSON representation of new replication config",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+	},
+	AuditIDISGRDelete: {
+		Name:        "Delete Inter-Sync Gateway Replication",
+		Description: "Inter-Sync Gateway Replication was deleted",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDISGRStatus: {
+		Name:        "Inter-Sync Gateway Replication status",
+		Description: "Inter-Sync Gateway Replication status was document viewed",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+	},
+	AuditIDISGRStart: {
+		Name:        "Inter-Sync Gateway Replication start",
+		Description: "Inter-Sync Gateway Replication was started",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+	},
+	AuditIDISGRStop: {
+		Name:        "Inter-Sync Gateway Replication stop",
+		Description: "Inter-Sync Gateway Replication was stopped",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+	},
+	AuditIDISGRReset: {
+		Name:        "Inter-Sync Gateway Replication reset",
+		Description: "Inter-Sync Gateway Replication was reset",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+	},
+	AuditIDISGRAllStatus: {
+		Name:        "All Inter-Sync Gateway Replication status",
+		Description: "All Inter-Sync Gateway Replication statuses were viewed",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+	},
+	AuditIDISGRAllRead: {
+		Name:        "Read all Inter-Sync Gateway Replications",
+		Description: "All Inter-Sync Gateway Replications were viewed",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+	},
+	AuditIDDocumentCreate: {
+		Name:        "Create document",
+		Description: "A new document was created",
+		MandatoryFields: AuditFields{
+			"db":          "database name",
+			"ks":          "keyspace",
+			"doc_id":      "document id",
+			"doc_version": "revision ID or version",
+			"channels":    []string{"list", "of", "channels"},
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDDocumentRead: {
+		Name:        "Read document",
+		Description: "A document was read",
+		MandatoryFields: AuditFields{
+			"db":          "database name",
+			"ks":          "keyspace",
+			"doc_id":      "document id",
+			"doc_version": "revision ID or version",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDDocumentUpdate: {
+		Name:        "Update document",
+		Description: "A document was updated",
+		MandatoryFields: AuditFields{
+			"db":          "database name",
+			"ks":          "keyspace",
+			"doc_id":      "document id",
+			"doc_version": "revision ID or version",
+			"channels":    []string{"list", "of", "channels"},
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDDocumentDelete: {
+		Name:        "Delete document",
+		Description: "A document was deleted",
+		MandatoryFields: AuditFields{
+			"db":          "database name",
+			"ks":          "keyspace",
+			"doc_id":      "document id",
+			"doc_version": "revision ID or version",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDAttachmentCreate: {
+		Name:        "Create attachment",
+		Description: "A new attachment was created",
+		MandatoryFields: AuditFields{
+			"db":            "database name",
+			"ks":            "keyspace",
+			"doc_id":        "document id",
+			"doc_version":   "revision ID or version",
+			"attachment_id": "attachment name",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDAttachmentRead: {
+
+		Name:        "Read attachment",
+		Description: "An attachment was read",
+		MandatoryFields: AuditFields{
+			"db":            "database name",
+			"ks":            "keyspace",
+			"doc_id":        "document id",
+			"doc_version":   "revision ID or version",
+			"attachment_id": "attachment name",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+
+		EventType: eventTypeData,
+	},
+	AuditIDAttachmentUpdate: {
+		Name:        "Update attachment",
+		Description: "An attachment was updated",
+		MandatoryFields: AuditFields{
+			"db":            "database name",
+			"ks":            "keyspace",
+			"doc_id":        "document id",
+			"doc_version":   "revision ID or version",
+			"attachment_id": "attachment name",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDAttachmentDelete: {
+		Name:        "Delete attachment",
+		Description: "An attachment was deleted",
+
+		MandatoryFields: AuditFields{
+			"db":          "database name",
+			"ks":          "keyspace",
+			"doc_id":      "document id",
+			"doc_version": "revision ID or version",
+			"attachment":  "attachment_name",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
 	},
 }
