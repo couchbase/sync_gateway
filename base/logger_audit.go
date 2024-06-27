@@ -35,10 +35,12 @@ const (
 )
 
 // expandFields populates data with information from the id, context and additionalData.
-func expandFields(id AuditID, ctx context.Context, additionalData AuditFields) AuditFields {
-	var fields AuditFields
+func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, additionalData AuditFields) AuditFields {
+	fields := auditLogger.baseFields()
 	if additionalData != nil {
-		fields = additionalData
+		for k, v := range additionalData {
+			fields[k] = v
+		}
 	} else {
 		fields = make(AuditFields)
 	}
@@ -100,7 +102,7 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	if IsDevMode() {
 		// NOTE: This check is expensive and indicates a dev-time mistake that needs addressing.
 		// Don't bother in production code, but also delay expandFields until we know we will log.
-		fields = expandFields(id, ctx, additionalData)
+		fields = expandFields(id, ctx, auditLogger.baseFields(), additionalData)
 		id.MustValidateFields(fields)
 	}
 
@@ -110,7 +112,7 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 
 	// delayed expansion until after enabled checks in non-dev mode
 	if fields == nil {
-		fields = expandFields(id, ctx, additionalData)
+		fields = expandFields(id, ctx, auditLogger.baseFields(), additionalData)
 	}
 	fieldsJSON, err := JSONMarshal(fields)
 	if err != nil {
@@ -129,7 +131,8 @@ type AuditLogger struct {
 	FileLogger
 
 	// AuditLoggerConfig stores the initial config used to instantiate AuditLogger
-	config AuditLoggerConfig
+	config       AuditLoggerConfig
+	globalFields map[string]any
 }
 
 func (l *AuditLogger) getAuditLoggerConfig() *AuditLoggerConfig {
@@ -145,7 +148,7 @@ func (l *AuditLogger) getAuditLoggerConfig() *AuditLoggerConfig {
 }
 
 // NewAuditLogger returns a new AuditLogger from a config.
-func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath string, minAge int, buffer *strings.Builder) (*AuditLogger, error) {
+func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath string, minAge int, buffer *strings.Builder, globalFields map[string]any) (*AuditLogger, error) {
 	if config == nil {
 		config = &AuditLoggerConfig{}
 	}
@@ -160,8 +163,9 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 	}
 
 	logger := &AuditLogger{
-		FileLogger: *fl,
-		config:     *config,
+		FileLogger:   *fl,
+		config:       *config,
+		globalFields: globalFields,
 	}
 
 	return logger, nil
@@ -181,4 +185,16 @@ func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
 		}
 	}
 	return true
+}
+
+// baseFields returns the fields that are common to all audit events.
+func (al *AuditLogger) baseFields() AuditFields {
+	if al == nil {
+		return make(AuditFields)
+	}
+	fields := make(AuditFields, len(al.globalFields))
+	for k, v := range al.globalFields {
+		fields[k] = v
+	}
+	return fields
 }
