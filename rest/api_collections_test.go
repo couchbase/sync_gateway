@@ -989,6 +989,9 @@ func TestCollectionStats(t *testing.T) {
 //   - Get conflict error on collection update and assert that the runtime config rolls back to the old config for
 //     database db1
 func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with walrus")
+	}
 	base.TestRequiresCollections(t)
 
 	ctx := base.TestCtx(t)
@@ -1058,6 +1061,9 @@ func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
 //   - Fetch runtime config and assert the scope config matches what we expect
 //   - Assert we can perform crud operations against each collection 1 and 2
 func TestRaceBetweenConfigPollAndDbConfigUpdate(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with walrus")
+	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	base.TestRequiresCollections(t)
 
