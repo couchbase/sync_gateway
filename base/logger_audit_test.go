@@ -64,3 +64,108 @@ func TestAuditLogger(t *testing.T) {
 	}
 
 }
+
+func TestAuditFieldsMerge(t *testing.T) {
+	testCases := []struct {
+		name      string
+		base      AuditFields
+		overwrite AuditFields
+		output    AuditFields
+	}{
+		{
+			name:      "no overwrites",
+			base:      map[string]any{"foo": "bar"},
+			overwrite: nil,
+			output:    map[string]any{"foo": "bar"},
+		},
+		{
+			name:      "new fields",
+			base:      map[string]any{"foo": "bar"},
+			overwrite: map[string]any{"baz": "qux"},
+			output: map[string]any{
+				"foo": "bar",
+				"baz": "qux",
+			},
+		},
+		{
+			name:      "overwrite fields",
+			base:      map[string]any{"foo": "bar"},
+			overwrite: map[string]any{"foo": "baz"},
+			output:    map[string]any{"foo": "baz"},
+		},
+		{
+			name: "add to deep map",
+			base: map[string]any{
+				"lvl1": map[string]any{
+					"lvl2": map[string]any{
+						"foo": "baz",
+					},
+				},
+			},
+			overwrite: map[string]any{
+				"lvl1": map[string]any{
+					"lvl2": map[string]any{
+						"bar": "qux",
+					},
+				},
+			},
+			output: map[string]any{
+				"lvl1": map[string]any{
+					"lvl2": map[string]any{
+						"foo": "baz",
+						"bar": "qux",
+					},
+				},
+			},
+		},
+		{
+			name: "overwrite overwrite deep map with int",
+			base: map[string]any{
+				"lvl1": map[string]any{
+					"lvl2": map[string]any{
+						"foo": "baz",
+					},
+				},
+			},
+			overwrite: map[string]any{
+				"lvl1": map[string]any{
+					"lvl2": 1,
+				},
+			},
+			output: map[string]any{
+				"lvl1": map[string]any{
+					"lvl2": 1,
+				},
+			},
+		},
+		{
+			name: "overwrite overwrite deep map with string",
+			base: map[string]any{
+				"lvl1": map[string]any{
+					"lvl2": 1,
+				},
+			},
+			overwrite: map[string]any{
+				"lvl1": map[string]any{
+					"lvl2": map[string]any{
+						"foo": "baz",
+					},
+				},
+			},
+			output: map[string]any{
+				"lvl1": map[string]any{
+					"lvl2": map[string]any{
+						"foo": "baz",
+					},
+				},
+			},
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			testCase.base.Merge(testCase.overwrite)
+			require.Equal(t, testCase.output, testCase.base)
+		})
+	}
+
+}
