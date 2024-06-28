@@ -456,6 +456,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	// Verify offline changes can still be made
 	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/"+keyspace+"/_config/sync", "")
 	resp.RequireResponse(http.StatusOK, syncFunc)
+	verifyInitializationActive(t, dbName, true)
 
 	// Take the database back online while async init is still in progress, verify state goes to Starting
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
@@ -466,7 +467,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	// Unblock initialization, verify status goes to Online
 	close(unblockInit)
 	waitAndRequireDBState(t, dbName, db.DBOnline)
-	verifyInitializationActive(t, dbName, true)
+	verifyInitializationActive(t, dbName, false)
 
 	// Verify only four collections were initialized (offline/online didn't trigger duplicate initialization)
 	totalCount := atomic.LoadInt64(&collectionCount)
@@ -476,7 +477,6 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/"+dbName+"/_config", string(dbOfflineConfigPayload))
 	resp.RequireStatus(http.StatusCreated)
 	waitAndRequireDBState(t, dbName, db.DBOffline)
-	verifyInitializationActive(t, dbName, false)
 
 	// Take database back online after init complete, verify successful
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/"+dbName+"/_config", string(dbOnlineConfigPayload))
