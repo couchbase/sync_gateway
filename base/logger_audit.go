@@ -95,6 +95,32 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	return fields
 }
 
+// Merge will perform a deep overwrite of the fields in the AuditFields. If there are type conflicts, the overwrites will replace the type
+func (f *AuditFields) Merge(overwrites AuditFields) {
+	mergeMap(*f, overwrites)
+}
+
+func mergeMap(base map[string]any, overwrites map[string]any) {
+	for k, v := range overwrites {
+		baseVal, ok := base[k]
+		if !ok {
+			base[k] = v
+		}
+		switch v := v.(type) {
+		case map[string]any:
+			switch baseVal := baseVal.(type) {
+			case map[string]any:
+				mergeMap(baseVal, v)
+			default:
+				base[k] = v
+			}
+		default:
+			base[k] = v
+		}
+		fmt.Printf("baseVal: %v\n", baseVal)
+	}
+}
+
 // Audit creates and logs an audit event for the given ID and a set of additional data associated with the request.
 func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	var fields AuditFields
