@@ -190,7 +190,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 	var previousLoopCas *uint64
 	for {
 		var err error
-		wasTombstone := false
+		wasServerTombstone := false
 		if previous != nil {
 			// If an existing value has been provided, use that as the initial value.
 			// A zero CAS is interpreted as no document existing.
@@ -198,13 +198,13 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 				value = previous.Body
 				xattrs = previous.Xattrs
 				cas = previous.Cas
-				wasTombstone = value == nil
+				wasServerTombstone = value == nil
 			}
 			previous = nil // a retry will get value from bucket, as below
 		} else {
 			// If no existing value has been provided, or on a retry,
 			// retrieve the current value from the bucket
-			wasTombstone, value, xattrs, cas, err = c.subdocGetBodyAndXattrs(ctx, k, xattrKeys, true)
+			wasServerTombstone, value, xattrs, cas, err = c.subdocGetBodyAndXattrs(ctx, k, xattrKeys, true)
 			if err != nil {
 				if pkgerrors.Cause(err) != ErrNotFound {
 					// Unexpected error, cancel writeupdate
@@ -248,7 +248,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 			deleteBody := value != nil
 			casOut, writeErr = c.WriteTombstoneWithXattrs(ctx, k, exp, cas, updatedDoc.Xattrs, updatedDoc.XattrsToDelete, deleteBody, opts)
 		} else {
-			if wasTombstone {
+			if wasServerTombstone {
 				if len(updatedDoc.XattrsToDelete) > 0 {
 					return 0, sgbucket.ErrDeleteXattrOnTombstone
 				}
