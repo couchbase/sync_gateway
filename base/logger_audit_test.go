@@ -15,30 +15,58 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAuditLogger(t *testing.T) {
+func TestAuditLoggerGlobalFields(t *testing.T) {
 	ResetGlobalTestLogging(t)
 
 	tmpdir := t.TempDir()
 
-	ctx := TestCtx(t)
-
-	globalFields := AuditFields{
-		"global": "field",
-	}
 	testCases := []struct {
-		name         string
-		globalFields AuditFields
+		name           string
+		functionFields AuditFields
+		globalFields   AuditFields
+		finalFields    AuditFields
 	}{
 		{
 			name: "no global fields",
+			functionFields: AuditFields{
+				"method": "basic",
+			},
+			globalFields: AuditFields{
+				"method": "basic",
+			},
+			finalFields: AuditFields{
+				"method": "basic",
+			},
 		},
 		{
-			name:         "with global fields",
-			globalFields: globalFields,
+			name: "with global fields",
+			functionFields: AuditFields{
+				"method": "basic",
+			},
+			globalFields: AuditFields{
+				"global": "field",
+			},
+			finalFields: AuditFields{
+				"method": "basic",
+				"global": "field",
+			},
+		},
+		{
+			name: "overwrite global fields",
+			functionFields: AuditFields{
+				"method": "basic",
+			},
+			globalFields: AuditFields{
+				"method": "global",
+			},
+			finalFields: AuditFields{
+				"method": "global",
+			},
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			ctx := TestCtx(t)
 			var err error
 			auditLogger, err = NewAuditLogger(ctx, nil, tmpdir, 0, nil, testCase.globalFields)
 			require.NoError(t, err)
@@ -50,15 +78,9 @@ func TestAuditLogger(t *testing.T) {
 			)
 			var event map[string]any
 			require.NoError(t, json.Unmarshal(output, &event))
-			method, ok := event["method"].(string)
-			require.True(t, ok)
-			require.Equal(t, "basic", method)
-			for k := range testCase.globalFields {
-				if testCase.globalFields == nil {
-					require.NotContains(t, event, k)
-				} else {
-					require.Contains(t, event, k)
-				}
+			require.NotNil(t, testCase.finalFields)
+			for k, v := range testCase.finalFields {
+				require.Equal(t, v, event[k])
 			}
 		})
 	}

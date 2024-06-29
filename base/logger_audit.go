@@ -36,11 +36,9 @@ const (
 
 // expandFields populates data with information from the id, context and additionalData.
 func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, additionalData AuditFields) AuditFields {
-	fields := auditLogger.baseFields()
+	var fields AuditFields
 	if additionalData != nil {
-		for k, v := range additionalData {
-			fields[k] = v
-		}
+		fields = additionalData
 	} else {
 		fields = make(AuditFields)
 	}
@@ -89,7 +87,7 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 
 	fields[auditFieldTimestamp] = time.Now()
 
-	// TODO: CBG-3976 - Inject and merge data from env var
+	fields.Merge(globalFields)
 	// TODO: CBG-3977 - Inject and merge data from request header
 
 	return fields
@@ -117,7 +115,6 @@ func mergeMap(base map[string]any, overwrites map[string]any) {
 		default:
 			base[k] = v
 		}
-		fmt.Printf("baseVal: %v\n", baseVal)
 	}
 }
 
@@ -128,7 +125,7 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	if IsDevMode() {
 		// NOTE: This check is expensive and indicates a dev-time mistake that needs addressing.
 		// Don't bother in production code, but also delay expandFields until we know we will log.
-		fields = expandFields(id, ctx, auditLogger.baseFields(), additionalData)
+		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData)
 		id.MustValidateFields(fields)
 	}
 
@@ -138,7 +135,7 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 
 	// delayed expansion until after enabled checks in non-dev mode
 	if fields == nil {
-		fields = expandFields(id, ctx, auditLogger.baseFields(), additionalData)
+		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData)
 	}
 	fieldsJSON, err := JSONMarshal(fields)
 	if err != nil {
@@ -211,16 +208,4 @@ func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
 		}
 	}
 	return true
-}
-
-// baseFields returns the fields that are common to all audit events.
-func (al *AuditLogger) baseFields() AuditFields {
-	if al == nil {
-		return make(AuditFields)
-	}
-	fields := make(AuditFields, len(al.globalFields))
-	for k, v := range al.globalFields {
-		fields[k] = v
-	}
-	return fields
 }
