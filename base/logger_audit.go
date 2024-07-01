@@ -87,7 +87,7 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	fields[auditFieldTimestamp] = time.Now()
 
 	fields.Merge(globalFields)
-	// TODO: CBG-3977 - Inject and merge data from request header
+	fields.Merge(logCtx.AuditFields)
 
 	return fields
 }
