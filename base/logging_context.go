@@ -128,6 +128,7 @@ func (lc *LogContext) getCopy() LogContext {
 		Scope:         lc.Scope,
 		Collection:    lc.Collection,
 		TestName:      lc.TestName,
+		AuditFields:   lc.AuditFields,
 	}
 }
 

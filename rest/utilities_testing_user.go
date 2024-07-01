@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -72,4 +73,8 @@ func DeleteUser(t *testing.T, httpClient *http.Client, serverURL, username strin
 	require.Equal(t, http.StatusOK, resp.(*http.Response).StatusCode)
 
 	require.NoError(t, resp.(*http.Response).Body.Close(), "Error closing response body")
+}
+
+func getBasicAuthHeader(username, password string) string {
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
 }

@@ -40,7 +40,7 @@ const paramDeleted = "deleted"
 
 // "Create" a database (actually just register an existing bucket)
 func (h *handler) handleCreateDB() error {
-	contextNoCancel := base.NewNonCancelCtx()
+	contextNoCancel := base.NewNonCancelCtx(h.ctx())
 	h.assertAdminOnly()
 	dbName := h.PathVar("newdb")
 	config, err := h.readSanitizeDbConfigJSON()
@@ -235,7 +235,7 @@ func (h *handler) handleDbOnline() error {
 	base.InfofCtx(h.ctx(), base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
 	go func() {
 		time.Sleep(time.Duration(input.Delay) * time.Second)
-		h.server.TakeDbOnline(base.NewNonCancelCtx(), h.db.DatabaseContext)
+		h.server.TakeDbOnline(base.NewNonCancelCtx(h.ctx()), h.db.DatabaseContext)
 	}()
 
 	return nil
@@ -245,7 +245,7 @@ func (h *handler) handleDbOnline() error {
 func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	var err error
-	if err = h.db.TakeDbOffline(base.NewNonCancelCtx(), "ADMIN Request"); err != nil {
+	if err = h.db.TakeDbOffline(base.NewNonCancelCtx(h.ctx()), "ADMIN Request"); err != nil {
 		base.InfofCtx(h.ctx(), base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
 	}
 
@@ -505,7 +505,7 @@ func (h *handler) handlePutConfig() error {
 // handlePutDbConfig Upserts a new database config
 func (h *handler) handlePutDbConfig() (err error) {
 	h.assertAdminOnly()
-	contextNoCancel := base.NewNonCancelCtx()
+	contextNoCancel := base.NewNonCancelCtx(h.ctx())
 
 	var dbConfig *DbConfig
 
