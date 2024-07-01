@@ -2744,6 +2744,11 @@ func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, body)
 	assert.Contains(t, err.Error(), "null doc body for doc")
+
+	bodyBytes, err := documentRev.Inject1xBodyProperties(rt.Context(), collection, nil, nil, false)
+	require.Error(t, err)
+	require.Nil(t, bodyBytes)
+	assert.Contains(t, err.Error(), "b is not a JSON object")
 }
 
 func TestTombstoneCompactionAPI(t *testing.T) {

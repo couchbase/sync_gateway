@@ -137,7 +137,7 @@ func (db *DatabaseCollectionWithUser) addDocToChangeEntry(ctx context.Context, e
 }
 
 func (db *DatabaseCollectionWithUser) AddDocToChangeEntryUsingRevCache(ctx context.Context, entry *ChangeEntry, revID string) (err error) {
-	rev, err := db.getRev(ctx, entry.ID, revID, 0, nil, RevCacheIncludeBody)
+	rev, err := db.getRev(ctx, entry.ID, revID, 0, nil)
 	if err != nil {
 		return err
 	}
@@ -321,7 +321,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 
 // UserHasDocAccess checks whether the user has access to the active revision of the document
 func UserHasDocAccess(ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (bool, error) {
-	currentRev, err := collection.revisionCache.GetActive(ctx, docID, false)
+	currentRev, err := collection.revisionCache.GetActive(ctx, docID)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			return false, nil
