@@ -289,6 +289,19 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		}
 	}()
 
+	if h.server.Config.Unsupported.AuditInfoProvider != nil && h.server.Config.Unsupported.AuditInfoProvider.RequestInfoHeaderName != nil {
+		auditLoggingFields := h.rq.Header.Get(*h.server.Config.Unsupported.AuditInfoProvider.RequestInfoHeaderName)
+		if auditLoggingFields != "" {
+			var fields base.AuditFields
+			err := base.JSONUnmarshal([]byte(auditLoggingFields), fields)
+			if err != nil {
+				base.WarnfCtx(h.ctx(), "Error unmarshalling audit logging fields: %v", err)
+			} else {
+				h.rqCtx = base.AuditLogCtx(h.ctx(), fields)
+			}
+		}
+	}
+
 	switch h.rq.Header.Get("Content-Encoding") {
 	case "":
 		h.requestBody = NewReaderCounter(h.rq.Body)
