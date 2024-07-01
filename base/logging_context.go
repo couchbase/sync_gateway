@@ -44,6 +44,8 @@ type LogContext struct {
 	// TestName can be a unit test name (see TestCtx)
 	TestName string
 
+	// AuditFields is a map of fields to be included in audit logs
+	AuditFields map[string]any
 	// TODO: CBG-3973 - Add request data (user, ips, etc.) - to be used by auditFieldsFromContext
 	//// Username is the name of the authenticated user
 	//Username string
@@ -184,6 +186,12 @@ func DatabaseLogCtx(parent context.Context, databaseName string, config *DbLogCo
 	newCtx := getLogCtx(parent)
 	newCtx.Database = databaseName
 	newCtx.DbLogConfig = config
+	return LogContextWith(parent, &newCtx)
+}
+
+func AuditLogCtx(parent context.Context, auditFields map[string]any) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.AuditFields = auditFields
 	return LogContextWith(parent, &newCtx)
 }
 
