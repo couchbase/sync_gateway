@@ -16,6 +16,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -980,4 +981,133 @@ func TestCollectionStats(t *testing.T) {
 		base.RequireWaitForStat(t, collection2Stats.ImportCount.Value, 1)
 		assert.Equal(t, int64(2), collection2Stats.NumDocWrites.Value())
 	}
+}
+
+// TestRuntimeConfigUpdateAfterConfigUpdateConflict:
+//   - Creates two db's both linked to different collections under same scope
+//   - Attempt to change db1 config to have the same collection that is assigned to database db
+//   - Get conflict error on collection update and assert that the runtime config rolls back to the old config for
+//     database db1
+func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with walrus")
+	}
+	base.TestRequiresCollections(t)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb,
+		PersistentConfig: true,
+	}
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 3)
+	defer rt.Close()
+
+	// create db with collection 1
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(t, tb, 1)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	// rebuild scopes config with collection 2
+	dbConfig = rt.NewDbConfig()
+	scopesConfig := GetCollectionsConfig(t, tb, 2)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
+	scope := dataStoreNames[0].ScopeName()
+	collection1 := dataStoreNames[0].CollectionName()
+	delete(scopesConfig[scope].Collections, collection1)
+	dbConfig.Scopes = scopesConfig
+	// create db1 with collection 2
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/db1/_config?include_runtime=true", "")
+	RequireStatus(t, resp, http.StatusOK)
+	var originalDBCfg DbConfig
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &originalDBCfg))
+
+	// rebuild scope config for both collections to attempt to update db1 config to that
+	dbConfig = rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(t, tb, 2)
+	// create conflicting update
+	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusConflict)
+
+	// grab runtime config again after failed update
+	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config?include_runtime=true", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	// unmarshal runtime response and assert that the correct collection is shown in config after update error
+	var dbCfg DbConfig
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &dbCfg))
+
+	delete(scopesConfig[scope].Collections, collection1)
+	assert.Equal(t, scopesConfig, dbCfg.Scopes)
+	originalDBCfg.Server = nil
+	assert.Equal(t, originalDBCfg, dbCfg)
+
+	// now assert that _config shows the same
+	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &dbCfg))
+	assert.Equal(t, scopesConfig, dbCfg.Scopes)
+	assert.Equal(t, originalDBCfg.Scopes, dbCfg.Scopes)
+}
+
+// TestRaceBetweenConfigPollAndDbConfigUpdate:
+//   - Create rest tester with very low config update frequency, so sync gateway polls really often during test
+//   - Create db with collection 1 and perform crud against that collection
+//   - Update db with collection 1 and 2
+//   - Fetch runtime config and assert the scope config matches what we expect
+//   - Assert we can perform crud operations against each collection 1 and 2
+func TestRaceBetweenConfigPollAndDbConfigUpdate(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with walrus")
+	}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	base.TestRequiresCollections(t)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb,
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			// configure the interval time to small interval, so we try fetch configs from the bucket super often
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
+		},
+	}
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
+	defer rt.Close()
+
+	// create db with collection 1
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(t, tb, 1)
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+	// perform crud operation against collection 1
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc", `{"test": "doc"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// update config to include collection 1 + 2
+	dbConfig = rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfig(t, tb, 2)
+	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config?include_runtime=true", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	// unmarshal runtime response and assert that the correct collections is shown
+	var dbCfg DbConfig
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &dbCfg))
+	assert.Equal(t, dbConfig.Scopes, dbCfg.Scopes)
+
+	// assert we can perform crud operations against both keyspace (no keyspace not found errors returned)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/doc1", `{"test": "doc"}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/doc1", `{"test": "doc"}`)
+	RequireStatus(t, resp, http.StatusCreated)
 }
