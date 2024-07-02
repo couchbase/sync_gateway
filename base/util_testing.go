@@ -598,6 +598,28 @@ func SetUpTestLogging(tb testing.TB, logLevel LogLevel, logKeys ...LogKey) {
 	tb.Cleanup(cleanup)
 }
 
+// ResetGlobalTestLogging will ensure that the loggers are replaced at the endof the the test. This is only safe to call with go:build !race since swapping the global loggers can trigger a race condition from background processes of the test harness.
+func ResetGlobalTestLogging(t *testing.T) {
+	oldErrorLogger := errorLogger
+	oldWarnLogger := warnLogger
+	oldInfoLogger := infoLogger
+	oldDebugLogger := debugLogger
+	oldTraceLogger := traceLogger
+	oldStatsLogger := statsLogger
+	oldAuditLogger := auditLogger
+	oldConsoleLogger := consoleLogger
+	t.Cleanup(func() {
+		errorLogger = oldErrorLogger
+		warnLogger = oldWarnLogger
+		infoLogger = oldInfoLogger
+		debugLogger = oldDebugLogger
+		traceLogger = oldTraceLogger
+		statsLogger = oldStatsLogger
+		auditLogger = oldAuditLogger
+		consoleLogger = oldConsoleLogger
+	})
+}
+
 // DisableTestLogging is an alias for SetUpTestLogging(LevelNone, KeyNone)
 // This function will panic if called multiple times in the same test.
 func DisableTestLogging(tb testing.TB) {

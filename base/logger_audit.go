@@ -34,7 +34,7 @@ const (
 )
 
 // expandFields populates data with information from the id, context and additionalData.
-func expandFields(id AuditID, ctx context.Context, additionalData AuditFields) AuditFields {
+func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, additionalData AuditFields) AuditFields {
 	var fields AuditFields
 	if additionalData != nil {
 		fields = additionalData
@@ -86,10 +86,35 @@ func expandFields(id AuditID, ctx context.Context, additionalData AuditFields) A
 
 	fields[auditFieldTimestamp] = time.Now()
 
-	// TODO: CBG-3976 - Inject and merge data from env var
+	fields.Merge(globalFields)
 	// TODO: CBG-3977 - Inject and merge data from request header
 
 	return fields
+}
+
+// Merge will perform a deep overwrite of the fields in the AuditFields. If there are type conflicts, the overwrites will replace the type
+func (f *AuditFields) Merge(overwrites AuditFields) {
+	mergeMap(*f, overwrites)
+}
+
+func mergeMap(base map[string]any, overwrites map[string]any) {
+	for k, v := range overwrites {
+		baseVal, ok := base[k]
+		if !ok {
+			base[k] = v
+		}
+		switch v := v.(type) {
+		case map[string]any:
+			switch baseVal := baseVal.(type) {
+			case map[string]any:
+				mergeMap(baseVal, v)
+			default:
+				base[k] = v
+			}
+		default:
+			base[k] = v
+		}
+	}
 }
 
 // Audit creates and logs an audit event for the given ID and a set of additional data associated with the request.
@@ -99,7 +124,7 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	if IsDevMode() {
 		// NOTE: This check is expensive and indicates a dev-time mistake that needs addressing.
 		// Don't bother in production code, but also delay expandFields until we know we will log.
-		fields = expandFields(id, ctx, additionalData)
+		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData)
 		id.MustValidateFields(fields)
 	}
 
@@ -109,7 +134,7 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 
 	// delayed expansion until after enabled checks in non-dev mode
 	if fields == nil {
-		fields = expandFields(id, ctx, additionalData)
+		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData)
 	}
 	fieldsJSON, err := JSONMarshal(fields)
 	if err != nil {
@@ -128,11 +153,12 @@ type AuditLogger struct {
 	FileLogger
 
 	// AuditLoggerConfig stores the initial config used to instantiate AuditLogger
-	config AuditLoggerConfig
+	config       AuditLoggerConfig
+	globalFields map[string]any
 }
 
 // NewAuditLogger returns a new AuditLogger from a config.
-func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath string, minAge int, buffer *strings.Builder) (*AuditLogger, error) {
+func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath string, minAge int, buffer *strings.Builder, globalFields map[string]any) (*AuditLogger, error) {
 	if config == nil {
 		config = &AuditLoggerConfig{}
 	}
@@ -143,8 +169,9 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 	}
 
 	logger := &AuditLogger{
-		FileLogger: *fl,
-		config:     *config,
+		FileLogger:   *fl,
+		config:       *config,
+		globalFields: globalFields,
 	}
 
 	return logger, nil
