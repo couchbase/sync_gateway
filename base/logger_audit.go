@@ -35,7 +35,7 @@ const (
 )
 
 // expandFields populates data with information from the id, context and additionalData.
-func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, additionalData AuditFields) AuditFields {
+func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, additionalData AuditFields, isDevMode bool) AuditFields {
 	var fields AuditFields
 	if additionalData != nil {
 		fields = additionalData
@@ -87,45 +87,45 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 
 	fields[auditFieldTimestamp] = time.Now()
 
-	fields.Merge(globalFields)
+	fields.merge(ctx, globalFields, isDevMode)
 	// TODO: CBG-3977 - Inject and merge data from request header
 
 	return fields
 }
 
-// Merge will perform a deep overwrite of the fields in the AuditFields. If there are type conflicts, the overwrites will replace the type
-func (f *AuditFields) Merge(overwrites AuditFields) {
-	mergeMap(*f, overwrites)
-}
-
-func mergeMap(base map[string]any, overwrites map[string]any) {
+// Merge will perform a shallow overwrite of the fields in the AuditFields. If there are conflicts, do not overwrite but log a warning. This will panic in dev mode.
+func (f *AuditFields) merge(ctx context.Context, overwrites AuditFields, isDevMode bool) {
+	var duplicateFields []string
 	for k, v := range overwrites {
-		baseVal, ok := base[k]
-		if !ok {
-			base[k] = v
+		_, ok := (*f)[k]
+		if ok {
+			duplicateFields = append(duplicateFields, fmt.Sprintf("%q=%q", k, v))
+			continue
 		}
-		switch v := v.(type) {
-		case map[string]any:
-			switch baseVal := baseVal.(type) {
-			case map[string]any:
-				mergeMap(baseVal, v)
-			default:
-				base[k] = v
-			}
-		default:
-			base[k] = v
+		(*f)[k] = v
+	}
+	if duplicateFields != nil {
+		msg := fmt.Sprintf("audit fields %s already exist in base audit fields %+v, will not overwrite an audit event", strings.Join(duplicateFields, ","), *f)
+		if isDevMode {
+			panic(msg)
 		}
+		WarnfCtx(ctx, msg)
 	}
 }
 
 // Audit creates and logs an audit event for the given ID and a set of additional data associated with the request.
 func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
+	audit(ctx, id, additionalData, IsDevMode())
+}
+
+// audit creates and logs an audit event for the given ID and a set of additional data associated with the request, but allows passing a devmode field.
+func audit(ctx context.Context, id AuditID, additionalData AuditFields, isDevMode bool) {
 	var fields AuditFields
 
-	if IsDevMode() {
+	if isDevMode {
 		// NOTE: This check is expensive and indicates a dev-time mistake that needs addressing.
 		// Don't bother in production code, but also delay expandFields until we know we will log.
-		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData)
+		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData, isDevMode)
 		id.MustValidateFields(fields)
 	}
 
@@ -135,11 +135,11 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 
 	// delayed expansion until after enabled checks in non-dev mode
 	if fields == nil {
-		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData)
+		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData, isDevMode)
 	}
 	fieldsJSON, err := JSONMarshal(fields)
 	if err != nil {
-		if IsDevMode() {
+		if isDevMode {
 			panic(fmt.Sprintf("failed to marshal audit fields: %v", err))
 		} else {
 			WarnfCtx(ctx, "failed to marshal audit fields: %v", err)

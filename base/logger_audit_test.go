@@ -10,6 +10,8 @@ package base
 
 import (
 	"encoding/json"
+	"fmt"
+	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -25,15 +27,14 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 		functionFields AuditFields
 		globalFields   AuditFields
 		finalFields    AuditFields
+		hasError       bool
 	}{
 		{
 			name: "no global fields",
 			functionFields: AuditFields{
 				"method": "basic",
 			},
-			globalFields: AuditFields{
-				"method": "basic",
-			},
+			globalFields: nil,
 			finalFields: AuditFields{
 				"method": "basic",
 			},
@@ -60,27 +61,44 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 				"method": "global",
 			},
 			finalFields: AuditFields{
-				"method": "global",
+				"method": "basic",
 			},
+			hasError: true,
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			ctx := TestCtx(t)
-			var err error
-			auditLogger, err = NewAuditLogger(ctx, nil, tmpdir, 0, nil, testCase.globalFields)
-			require.NoError(t, err)
+			for _, devmode := range []bool{true, false} {
+				t.Run(fmt.Sprintf("devmode=%v", devmode), func(t *testing.T) {
+					ctx := TestCtx(t)
+					var err error
+					auditLogger, err = NewAuditLogger(ctx, nil, tmpdir, 0, nil, testCase.globalFields)
+					require.NoError(t, err)
 
-			output := AuditLogContents(t, func() {
-				// Test basic audit event
-				Audit(ctx, AuditIDPublicUserAuthenticated, map[string]any{"method": "basic"})
-			},
-			)
-			var event map[string]any
-			require.NoError(t, json.Unmarshal(output, &event))
-			require.NotNil(t, testCase.finalFields)
-			for k, v := range testCase.finalFields {
-				require.Equal(t, v, event[k])
+					if testCase.hasError && devmode {
+						require.Panics(t, func() {
+							audit(ctx, AuditIDPublicUserAuthenticated, testCase.functionFields, devmode)
+						})
+						return
+					}
+					startWarnCount := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+					output := AuditLogContents(t, func() {
+						// Test basic audit event
+						audit(ctx, AuditIDPublicUserAuthenticated, map[string]any{"method": "basic"}, devmode)
+					},
+					)
+					var event map[string]any
+					require.NoError(t, json.Unmarshal(output, &event))
+					require.NotNil(t, testCase.finalFields)
+					for k, v := range testCase.finalFields {
+						require.Equal(t, v, event[k])
+					}
+					if testCase.hasError {
+						require.Equal(t, startWarnCount+1, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
+					} else {
+						require.Equal(t, startWarnCount, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
+					}
+				})
 			}
 		})
 	}
@@ -93,6 +111,7 @@ func TestAuditFieldsMerge(t *testing.T) {
 		base      AuditFields
 		overwrite AuditFields
 		output    AuditFields
+		hasError  bool
 	}{
 		{
 			name:      "no overwrites",
@@ -113,7 +132,8 @@ func TestAuditFieldsMerge(t *testing.T) {
 			name:      "overwrite fields",
 			base:      map[string]any{"foo": "bar"},
 			overwrite: map[string]any{"foo": "baz"},
-			output:    map[string]any{"foo": "baz"},
+			output:    map[string]any{"foo": "bar"},
+			hasError:  true,
 		},
 		{
 			name: "add to deep map",
@@ -135,10 +155,10 @@ func TestAuditFieldsMerge(t *testing.T) {
 				"lvl1": map[string]any{
 					"lvl2": map[string]any{
 						"foo": "baz",
-						"bar": "qux",
 					},
 				},
 			},
+			hasError: true,
 		},
 		{
 			name: "overwrite overwrite deep map with int",
@@ -156,9 +176,12 @@ func TestAuditFieldsMerge(t *testing.T) {
 			},
 			output: map[string]any{
 				"lvl1": map[string]any{
-					"lvl2": 1,
+					"lvl2": map[string]any{
+						"foo": "baz",
+					},
 				},
 			},
+			hasError: true,
 		},
 		{
 			name: "overwrite overwrite deep map with string",
@@ -176,17 +199,39 @@ func TestAuditFieldsMerge(t *testing.T) {
 			},
 			output: map[string]any{
 				"lvl1": map[string]any{
-					"lvl2": map[string]any{
-						"foo": "baz",
-					},
+					"lvl2": 1,
 				},
 			},
+			hasError: true,
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			testCase.base.Merge(testCase.overwrite)
-			require.Equal(t, testCase.output, testCase.base)
+			for _, devmode := range []bool{true, false} {
+				t.Run(fmt.Sprintf("devmode=%v", devmode), func(t *testing.T) {
+					base := make(AuditFields, len(testCase.base))
+					maps.Copy(base, testCase.base)
+					ctx := TestCtx(t)
+					startWarnCount := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+					if testCase.hasError {
+						errMsg := "already exist in base audit fields"
+						if devmode {
+							require.Panics(t, func() {
+								base.merge(ctx, testCase.overwrite, devmode)
+							})
+							return
+						}
+						AssertLogContains(t, errMsg, func() {
+							base.merge(ctx, testCase.overwrite, devmode)
+						})
+						require.Equal(t, startWarnCount+1, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
+					} else {
+						base.merge(ctx, testCase.overwrite, devmode)
+						require.Equal(t, startWarnCount, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
+					}
+					require.Equal(t, testCase.output, base)
+				})
+			}
 		})
 	}
 
