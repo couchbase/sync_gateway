@@ -29,7 +29,7 @@ type roleImpl struct {
 	ExplicitChannels_ ch.TimedSet                             `json:"admin_channels,omitempty"`
 	Channels_         ch.TimedSet                             `json:"all_channels"`
 	Sequence_         uint64                                  `json:"sequence"`
-	ChannelHistory_   TimedSetHistory                         `json:"channel_history,omitempty"`   // Added to when a previously granted channel is revoked. Calculated inside of rebuildChannels.
+	ChannelHistory_   TimedSetHistory                         `json:"channel_history,omitempty"`   // Added to when a previously granted channel is revoked. Calculated inside of RebuildChannels.
 	ChannelInvalSeq   uint64                                  `json:"channel_inval_seq,omitempty"` // Sequence at which the channels were invalidated. Data remains in Channels_ for history calculation.
 	Deleted           bool                                    `json:"deleted,omitempty"`
 	CollectionsAccess map[string]map[string]*CollectionAccess `json:"collection_access,omitempty"` // Nested maps of CollectionAccess, indexed by scope and collection name
@@ -232,7 +232,7 @@ func (auth *Authenticator) NewRole(name string, channels base.Set) (Role, error)
 	if err := role.initRole(name, channels, auth.Collections); err != nil {
 		return nil, err
 	}
-	if _, err := auth.rebuildChannels(role); err != nil {
+	if _, err := auth.RebuildChannels(role); err != nil {
 		return nil, err
 	}
 	return role, nil
@@ -256,7 +256,7 @@ func (auth *Authenticator) NewRoleNoChannels(name string) (Role, error) {
 	if err := role.initRole(name, nil, nil); err != nil {
 		return nil, err
 	}
-	if _, err := auth.rebuildChannels(role); err != nil {
+	if _, err := auth.RebuildChannels(role); err != nil {
 		return nil, err
 	}
 	return role, nil

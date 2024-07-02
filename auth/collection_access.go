@@ -137,7 +137,7 @@ type UserCollectionAccess interface {
 type CollectionAccess struct {
 	ExplicitChannels_ ch.TimedSet     `json:"admin_channels,omitempty"`
 	Channels_         ch.TimedSet     `json:"all_channels,omitempty"`
-	ChannelHistory_   TimedSetHistory `json:"channel_history,omitempty"`   // Added to when a previously granted channel is revoked. Calculated inside of rebuildChannels.
+	ChannelHistory_   TimedSetHistory `json:"channel_history,omitempty"`   // Added to when a previously granted channel is revoked. Calculated inside of RebuildChannels.
 	ChannelInvalSeq   uint64          `json:"channel_inval_seq,omitempty"` // Sequence at which the channels were invalidated. Data remains in Channels_ for history calculation.
 	JWTChannels_      ch.TimedSet     `json:"jwt_channels,omitempty"`      // TODO: JWT properties should only be populated for user but would like to share scope/collection map
 	JWTLastUpdated    *time.Time      `json:"jwt_last_updated,omitempty"`

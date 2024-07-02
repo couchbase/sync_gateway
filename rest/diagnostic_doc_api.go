@@ -33,6 +33,19 @@ type ImportFilterDryRun struct {
 	Error        string `json:"error"`
 }
 
+func populateDocChannelInfo(doc db.Document) map[string][]auth.GrantHistorySequencePair {
+	resp := make(map[string][]auth.GrantHistorySequencePair, len(doc.Channels))
+
+	for _, chanSetInfo := range doc.SyncData.ChannelSet {
+		resp[chanSetInfo.Name] = append(resp[chanSetInfo.Name], auth.GrantHistorySequencePair{StartSeq: chanSetInfo.Start, EndSeq: chanSetInfo.End})
+	}
+	for _, hist := range doc.SyncData.ChannelSetHistory {
+		resp[hist.Name] = append(resp[hist.Name], auth.GrantHistorySequencePair{StartSeq: hist.Start, EndSeq: hist.End, Compacted: hist.Compacted})
+		continue
+	}
+	return resp
+}
+
 // HTTP handler for a GET of a document's channels and their sequence spans
 func (h *handler) handleGetDocChannels() error {
 	docid := h.PathVar("docid")
@@ -44,16 +57,7 @@ func (h *handler) handleGetDocChannels() error {
 	if doc == nil {
 		return kNotFoundError
 	}
-	resp := make(map[string][]auth.GrantHistorySequencePair, len(doc.Channels))
-
-	for _, chanSetInfo := range doc.SyncData.ChannelSet {
-		resp[chanSetInfo.Name] = append(resp[chanSetInfo.Name], auth.GrantHistorySequencePair{StartSeq: chanSetInfo.Start, EndSeq: chanSetInfo.End})
-	}
-	for _, hist := range doc.SyncData.ChannelSetHistory {
-		resp[hist.Name] = append(resp[hist.Name], auth.GrantHistorySequencePair{StartSeq: hist.Start, EndSeq: hist.End, Compacted: hist.Compacted})
-		continue
-	}
-
+	resp := populateDocChannelInfo(*doc)
 	h.writeJSON(resp)
 	return nil
 }

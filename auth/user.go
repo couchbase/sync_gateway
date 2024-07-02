@@ -50,7 +50,7 @@ type userImplBody struct {
 	JWTLastUpdated_  time.Time       `json:"jwt_last_updated,omitempty"`
 	RolesSince_      ch.TimedSet     `json:"rolesSince"`
 	RoleInvalSeq     uint64          `json:"role_inval_seq,omitempty"` // Sequence at which the roles were invalidated. Data remains in RolesSince_ for history calculation.
-	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`   // Added to when a previously granted role is revoked. Calculated inside of rebuildRoles.
+	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`   // Added to when a previously granted role is revoked. Calculated inside of RebuildRoles.
 	SessionUUID_     string          `json:"session_uuid"`             // marker of when the user object changes, to match with session docs to determine if they are valid
 
 	OldExplicitRoles_ []string `json:"admin_roles,omitempty"` // obsolete; declared for migration
@@ -96,11 +96,11 @@ func (auth *Authenticator) NewUser(username string, password string, channels ba
 		return nil, err
 	}
 
-	if _, err := auth.rebuildChannels(user); err != nil {
+	if _, err := auth.RebuildChannels(user); err != nil {
 		return nil, err
 	}
 
-	if err := auth.rebuildRoles(user); err != nil {
+	if err := auth.RebuildRoles(user); err != nil {
 		return nil, err
 	}
 
@@ -125,11 +125,11 @@ func (auth *Authenticator) NewUserNoChannels(username string, password string) (
 	if err := user.initRole(username, nil, nil); err != nil {
 		return nil, err
 	}
-	if _, err := auth.rebuildChannels(user); err != nil {
+	if _, err := auth.RebuildChannels(user); err != nil {
 		return nil, err
 	}
 
-	if err := auth.rebuildRoles(user); err != nil {
+	if err := auth.RebuildRoles(user); err != nil {
 		return nil, err
 	}
 
