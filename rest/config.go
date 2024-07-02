@@ -2174,7 +2174,7 @@ func RegisterSignalHandler(ctx context.Context) {
 	}()
 }
 
-// toDbLogConfig converts the console logging from a DbConfig to a DbLogConfig
+// toDbLogConfig converts the logging from a DbConfig to a DbLogConfig
 func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 	l := c.Logging
 	if l == nil || (l.Console == nil && l.Audit == nil) {

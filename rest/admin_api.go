@@ -394,7 +394,8 @@ func (h *handler) handleGetConfig() error {
 			}
 		}
 
-		cfg.Logging = *base.BuildLoggingConfigFromLoggers(h.server.Config.Logging.RedactionLevel, h.server.Config.Logging.LogFilePath)
+		// because loggers can be changed at runtime, we need to work backwards to get the config that would've created the actually running instances
+		cfg.Logging = *base.BuildLoggingConfigFromLoggers(h.server.Config.Logging)
 		cfg.Databases = databaseMap
 
 		h.writeJSON(cfg)
@@ -430,6 +431,7 @@ func (h *handler) handlePutConfig() error {
 			Debug   FileLoggerPutConfig     `json:"debug,omitempty"`
 			Trace   FileLoggerPutConfig     `json:"trace,omitempty"`
 			Stats   FileLoggerPutConfig     `json:"stats,omitempty"`
+			Audit   FileLoggerPutConfig     `json:"audit,omitempty"`
 		} `json:"logging"`
 		ReplicationLimit *int `json:"max_concurrent_replications,omitempty"`
 	}
@@ -481,6 +483,10 @@ func (h *handler) handlePutConfig() error {
 
 	if config.Logging.Stats.Enabled != nil {
 		base.EnableStatsLogger(*config.Logging.Stats.Enabled)
+	}
+
+	if config.Logging.Audit.Enabled != nil {
+		base.EnableAuditLogger(*config.Logging.Audit.Enabled)
 	}
 
 	if config.ReplicationLimit != nil {
@@ -672,6 +678,11 @@ func (h *handler) handleGetDbAuditConfig() error {
 	showOnlyFilterable := h.getBoolQuery("filterable")
 	verbose := h.getBoolQuery("verbose")
 
+	isEnabledFn := func(id base.AuditID) bool {
+		_, ok := h.db.Options.LoggingConfig.Audit.EnabledEvents[id]
+		return ok
+	}
+
 	// TODO: Move to structs
 	events := make(map[string]interface{}, len(base.AuditEvents))
 	for id, descriptor := range base.AuditEvents {
@@ -683,11 +694,11 @@ func (h *handler) handleGetDbAuditConfig() error {
 			events[idStr] = map[string]interface{}{
 				"name":        descriptor.Name,
 				"description": descriptor.Description,
-				"enabled":     descriptor.EnabledByDefault, // TODO: Switch to actual configuration
+				"enabled":     isEnabledFn(id),
 				"filterable":  descriptor.FilteringPermitted,
 			}
 		} else {
-			events[idStr] = descriptor.EnabledByDefault // TODO: Switch to actual configuration
+			events[idStr] = isEnabledFn(id)
 		}
 	}
 

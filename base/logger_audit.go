@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	auditLogName = "audit"
+	auditLogName        = "audit"
+	defaultAuditEnabled = false
 )
 
 // commonly used fields for audit events
@@ -131,10 +132,26 @@ type AuditLogger struct {
 	config AuditLoggerConfig
 }
 
+func (l *AuditLogger) getAuditLoggerConfig() *AuditLoggerConfig {
+	c := AuditLoggerConfig{}
+	if l != nil {
+		// Copy config struct to avoid mutating running config
+		c = l.config
+	}
+
+	c.FileLoggerConfig = *l.getFileLoggerConfig()
+
+	return &c
+}
+
 // NewAuditLogger returns a new AuditLogger from a config.
 func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath string, minAge int, buffer *strings.Builder) (*AuditLogger, error) {
 	if config == nil {
 		config = &AuditLoggerConfig{}
+	}
+
+	if config.FileLoggerConfig.Enabled == nil {
+		config.FileLoggerConfig.Enabled = BoolPtr(defaultAuditEnabled)
 	}
 
 	fl, err := NewFileLogger(ctx, &config.FileLoggerConfig, LevelNone, auditLogName, logFilePath, minAge, buffer)
@@ -156,6 +173,9 @@ func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
 	}
 	logCtx := getLogCtx(ctx)
 	if logCtx.DbLogConfig != nil && logCtx.DbLogConfig.Audit != nil {
+		if !logCtx.DbLogConfig.Audit.Enabled {
+			return false
+		}
 		if _, ok := logCtx.DbLogConfig.Audit.EnabledEvents[id]; !ok {
 			return false
 		}
