@@ -2206,7 +2206,6 @@ Startup-config:
     unsupported:
       description: Settings that are not officially supported. It is highly recommended these are **not** used.
       type: object
-      x-internal: true
       properties:
         serverless:
           $ref: '#/Serverless'
@@ -2243,7 +2242,6 @@ Startup-config:
             By default, this API will not be run unless this string is specified.
           type: string
           default: ""
-          x-internal: true
       readOnly: true
     database_credentials:
       description: 'A map of database name to credentials, that can be used instead of the bootstrap ones.'
