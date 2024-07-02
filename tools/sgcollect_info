@@ -330,6 +330,7 @@ def make_collect_logs_tasks(
         "sg_stats.log": "sg_stats.log",
         "sync_gateway_access.log": "sync_gateway_access.log",
         "sync_gateway_error.log": "sync_gateway_error.log",
+        "pprof.pb": "pprof.pb",
     }
 
     os_home_dirs = [

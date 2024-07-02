@@ -893,3 +893,45 @@ func TestCompactIntervalFromConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestHeapProfileValuesPopulated(t *testing.T) {
+	totalMemory := uint64(float64(getTotalMemory(base.TestCtx(t))) * 0.85)
+	testCases := []struct {
+		name                           string
+		startupConfig                  *StartupConfig
+		heapProfileCollectionThreshold uint64
+		heapProfileCollectionEnabled   bool
+	}{
+		{
+			name:                           "Default",
+			startupConfig:                  &StartupConfig{},
+			heapProfileCollectionThreshold: totalMemory,
+			heapProfileCollectionEnabled:   true,
+		},
+		{
+			name: "HeapProfileDisabled",
+			startupConfig: &StartupConfig{
+				HeapProfileDisableCollection: true,
+			},
+			heapProfileCollectionThreshold: totalMemory, // set but ignored
+			heapProfileCollectionEnabled:   false,
+		},
+		{
+			name: "HeapProfileCollectionThreshold",
+			startupConfig: &StartupConfig{
+				HeapProfileCollectionThreshold: base.Uint64Ptr(100),
+			},
+			heapProfileCollectionThreshold: 100,
+			heapProfileCollectionEnabled:   true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			sc := NewServerContext(ctx, test.startupConfig, false)
+			defer sc.Close(ctx)
+			require.Equal(t, test.heapProfileCollectionThreshold, sc.statsContext.heapProfileCollectionThreshold)
+			require.Equal(t, test.heapProfileCollectionEnabled, sc.statsContext.heapProfileEnabled)
+		})
+	}
+}

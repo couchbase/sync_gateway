@@ -99,6 +99,13 @@ func TestParseFlags(t *testing.T) {
 	}
 }
 
+func TestDefaultStartupConfig(t *testing.T) {
+	ctx := base.TestCtx(t)
+	sc, _, _, err := parseFlags(ctx, []string{"sync_gateway"})
+	require.NoError(t, err)
+	require.Nil(t, sc.HeapProfileCollectionThreshold)
+}
+
 func TestSanitizeDbConfigs(t *testing.T) {
 	serverAddressErrorString := "automatic upgrade to persistent config requires each database config to have a server address specified that are all matching in the 2.x config"
 	testCases := []struct {

@@ -135,6 +135,9 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"replicator.max_concurrent_changes_batches": {&config.Replicator.MaxConcurrentChangesBatches, fs.Int("replicator.max_concurrent_changes_batches", 0, "Maximum number of changes batches to process concurrently per replication")},
 		"replicator.max_concurrent_revs":            {&config.Replicator.MaxConcurrentRevs, fs.Int("replicator.max_concurrent_revs", 0, "Maximum number of revs to process concurrently per replication")},
 
+		"heap_profile_collection_threshold": {&config.HeapProfileCollectionThreshold, fs.Uint64("heap_profile_collection_threshold", 0, "Threshold in bytes for collecting heap profiles automatically. If set, Sync Gateway will collect a memory profile when it exceeds this value. The default value will be set to 85% of the lesser of cgroup or system memory.")},
+		"heap_profile_disable_collection":   {&config.HeapProfileDisableCollection, fs.Bool("heap_profile_disable_collection", false, "Disables automatic heap profile collection.")},
+
 		"unsupported.diagnostic_interface":                 {&config.Unsupported.DiagnosticInterface, fs.String("unsupported.diagnostic_interface", "", "Network interface to bind diagnostic API to")},
 		"unsupported.stats_log_frequency":                  {&config.Unsupported.StatsLogFrequency, fs.String("unsupported.stats_log_frequency", "", "How often should stats be written to stats logs")},
 		"unsupported.use_stdlib_json":                      {&config.Unsupported.UseStdlibJSON, fs.Bool("unsupported.use_stdlib_json", false, "Bypass the jsoniter package and use Go's stdlib instead")},
@@ -179,7 +182,11 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) error {
 			case *uint:
 				*val.config.(*uint) = *val.flagValue.(*uint)
 			case *uint64:
-				*val.config.(*uint64) = *val.flagValue.(*uint64)
+				if pointer {
+					rval.Set(reflect.ValueOf(val.flagValue))
+				} else {
+					*val.config.(*uint64) = *val.flagValue.(*uint64)
+				}
 			case *int:
 				if pointer {
 					rval.Set(reflect.ValueOf(val.flagValue))
@@ -187,7 +194,11 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) error {
 					*val.config.(*int) = *val.flagValue.(*int)
 				}
 			case *bool:
-				rval.Set(reflect.ValueOf(val.flagValue))
+				if pointer {
+					rval.Set(reflect.ValueOf(val.flagValue))
+				} else {
+					*val.config.(*bool) = *val.flagValue.(*bool)
+				}
 			case *base.ConfigDuration:
 				duration, err := time.ParseDuration(*val.flagValue.(*string))
 				if err != nil {

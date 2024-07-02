@@ -28,8 +28,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/KimMachineGun/automemlimit/memlimit"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/db/functions"
+	"github.com/shirou/gopsutil/mem"
 
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -143,6 +145,7 @@ func (sc *ServerContext) CloseCpuPprofFile(ctx context.Context) {
 }
 
 func NewServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) *ServerContext {
+
 	sc := &ServerContext{
 		Config:             config,
 		persistentConfig:   persistentConfig,
@@ -151,7 +154,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		dbConfigs:          map[string]*RuntimeDatabaseConfig{},
 		databases_:         map[string]*db.DatabaseContext{},
 		HTTPClient:         http.DefaultClient,
-		statsContext:       &statsContext{},
+		statsContext:       &statsContext{heapProfileEnabled: !config.HeapProfileDisableCollection},
 		BootstrapContext:   &bootstrapContext{sgVersion: *base.ProductVersion},
 		hasStarted:         make(chan struct{}),
 		_httpServers:       map[serverType]*serverInfo{},
@@ -174,6 +177,18 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 
 	if sc.persistentConfig {
 		sc.DatabaseInitManager = &DatabaseInitManager{}
+	}
+
+	if config.HeapProfileCollectionThreshold != nil {
+		sc.statsContext.heapProfileCollectionThreshold = *config.HeapProfileCollectionThreshold
+	} else {
+		memoryTotal := getTotalMemory(ctx)
+		if memoryTotal != 0 {
+			sc.statsContext.heapProfileCollectionThreshold = uint64(float64(memoryTotal) * 0.85)
+		} else {
+			base.WarnfCtx(ctx, "Could not determine system memory, disabling automatic heap profile collection")
+			sc.statsContext.heapProfileEnabled = false
+		}
 	}
 
 	sc.startStatsLogger(ctx)
@@ -1667,10 +1682,11 @@ func (sc *ServerContext) logStats(ctx context.Context) error {
 	sc.updateCalculatedStats(ctx)
 	// Create wrapper expvar map in order to add a timestamp field for logging purposes
 	currentTime := time.Now()
+	timestamp := currentTime.Format(time.RFC3339)
 	wrapper := statsWrapper{
 		Stats:              []byte(base.SyncGatewayStats.String()),
 		UnixEpochTimestamp: currentTime.Unix(),
-		RFC3339:            currentTime.Format(time.RFC3339),
+		RFC3339:            timestamp,
 	}
 
 	marshalled, err := base.JSONMarshal(wrapper)
@@ -1681,7 +1697,7 @@ func (sc *ServerContext) logStats(ctx context.Context) error {
 	// Marshal expvar map w/ timestamp to string and write to logs
 	base.RecordStats(string(marshalled))
 
-	return nil
+	return sc.statsContext.collectMemoryProfile(ctx, sc.Config.Logging.LogFilePath, timestamp)
 
 }
 
@@ -2145,4 +2161,19 @@ func (sc *ServerContext) SetContextLogID(parent context.Context, id string) cont
 		return base.LogContextWith(parent, &base.ServerLogContext{LogContextID: sc.LogContextID})
 	}
 	return parent
+}
+
+// getTotalMemory returns the total memory available on the system. If a cgroup is detected, it will use the cgroup memory max.
+func getTotalMemory(ctx context.Context) uint64 {
+	memoryTotal, err := memlimit.FromCgroup()
+	if err == nil {
+		return memoryTotal
+	}
+	base.TracefCtx(ctx, base.KeyAll, "Did not detect a cgroup for a memory limit")
+	memory, err := mem.VirtualMemory()
+	if err != nil {
+		base.WarnfCtx(ctx, "Error getting total memory from gopsutil: %v", err)
+		return 0
+	}
+	return memory.Total
 }

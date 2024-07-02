@@ -11,10 +11,14 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -61,4 +65,44 @@ func TestDescriptionPopulation(t *testing.T) {
 	require.NoError(t, err)
 	// assert on a HELP description
 	assert.Contains(t, string(bodyString), `HELP sgw_cache_high_seq_stable The highest contiguous sequence number that has been cached.`)
+}
+
+func TestMemoryProfile(t *testing.T) {
+	stats := statsContext{heapProfileCollectionThreshold: 1, heapProfileEnabled: true} // set to a very low value to ensure collection
+
+	outputDir := t.TempDir()
+	ctx := base.TestCtx(t)
+
+	// make sure go memory stats are set once
+	AddGoRuntimeStats()
+
+	// collect single profile
+	startTime := "01"
+	require.NoError(t, stats.collectMemoryProfile(ctx, outputDir, startTime))
+	require.Equal(t, []string{"pprof_heap_high_01.pb.gz"}, getFilenames(t, outputDir))
+
+	// collect enough profiles to trigger rotation
+	expectedFilenames := make([]string, 0, 10)
+	for i := 2; i < 12; i++ {
+		// reset heap profile time time to ensure we create new heap profiles
+		stats.lastHeapProfile = time.Time{}
+		expectedFilenames = append(expectedFilenames, fmt.Sprintf("pprof_heap_high_%02d.pb.gz", i))
+		require.NoError(t, stats.collectMemoryProfile(ctx, outputDir, fmt.Sprintf("%02d", i)))
+	}
+	require.ElementsMatch(t, expectedFilenames, getFilenames(t, outputDir))
+
+	// ask for another profile, this should not be collected. Since the last profile collection (11) set lastHeapProfile, we do not collect another profile for 5 minutes.
+	require.NoError(t, stats.collectMemoryProfile(ctx, outputDir, "12"))
+	require.Equal(t, expectedFilenames, getFilenames(t, outputDir))
+}
+
+func getFilenames(t *testing.T, dir string) []string {
+	files, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	filenames := make([]string, 0, len(files))
+	for _, file := range files {
+		filenames = append(filenames, file.Name())
+	}
+	slices.Sort(filenames)
+	return filenames
 }
