@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -58,7 +59,15 @@ func generateCSVModuleDescriptor(e events) ([]byte, error) {
 		return nil, err
 	}
 
-	for id, event := range e {
+	keys := make([]AuditID, 0, len(e))
+	for k := range e {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+
+	for _, id := range keys {
+		event := e[id]
+
 		mandatoryFields := event.MandatoryFields
 		mandatoryFields.withCommonMandatoryFields()
 		optionalFields := event.OptionalFields
