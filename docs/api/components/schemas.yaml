@@ -2248,6 +2248,16 @@ Startup-config:
       description: TCP keep-alive interval between SG and Couchbase server
       type: integer
       readOnly: true
+    heap_profile_collection_threshold:
+      description: Threshold in bytes for collecting heap profiles automatically. If set, Sync Gateway will collect a memory profile when it exceeds this value. The default value will be set to 85% of the lesser of cgroup or system memory.
+      readOnly: true
+      type: integer
+      default: max memory
+    heap_profile_disable_collection:
+      description: Disables automatic heap profile collection.
+      default: false
+      type: boolean
+      readOnly: true
   title: Startup-config
 Runtime-config:
   type: object
