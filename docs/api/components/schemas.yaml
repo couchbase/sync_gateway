@@ -2248,6 +2248,16 @@ Startup-config:
       description: TCP keep-alive interval between SG and Couchbase server
       type: integer
       readOnly: true
+    heap_profile_collection_threshold:
+      description: Threshold in bytes for automatic collection of heap profiles. If not specified, defaults to 85% of the lesser of cgroup or system memory.
+      readOnly: true
+      type: integer
+      default: max memory
+    heap_profile_disable_collection:
+      description: Disables automatic heap profile collection.
+      default: false
+      type: boolean
+      readOnly: true
   title: Startup-config
 Runtime-config:
   type: object
