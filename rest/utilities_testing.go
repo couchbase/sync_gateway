@@ -719,6 +719,14 @@ func (rt *RestTester) SendMetricsRequest(method, resource, body string) *TestRes
 	return rt.sendMetrics(Request(method, rt.mustTemplateResource(resource), body))
 }
 
+func (rt *RestTester) SendMetricsRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
+	request := Request(method, rt.mustTemplateResource(resource), body)
+	for k, v := range headers {
+		request.Header.Set(k, v)
+	}
+	return rt.sendMetrics(request)
+}
+
 func (rt *RestTester) sendMetrics(request *http.Request) *TestResponse {
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
 	rt.TestMetricsHandler().ServeHTTP(response, request)
@@ -730,6 +738,18 @@ func (rt *RestTester) SendDiagnosticRequest(method, resource, body string) *Test
 	request := Request(method, rt.mustTemplateResource(resource), body)
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
 	rt.TestDiagnosticHandler().ServeHTTP(response, Request(method, rt.mustTemplateResource(resource), body))
+	return response
+}
+
+// SendDiagnosticRequestWithHeaders runs a request against the diagnostic handler with headers.
+func (rt *RestTester) SendDiagnosticRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
+	request := Request(method, rt.mustTemplateResource(resource), body)
+	for k, v := range headers {
+		request.Header.Set(k, v)
+	}
+	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
+
+	rt.TestDiagnosticHandler().ServeHTTP(response, request)
 	return response
 }
 

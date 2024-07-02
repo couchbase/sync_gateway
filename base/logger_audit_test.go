@@ -24,6 +24,7 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 		name           string
 		functionFields AuditFields
 		globalFields   AuditFields
+		contextFields  AuditFields
 		finalFields    AuditFields
 	}{
 		{
@@ -63,10 +64,72 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 				"method": "global",
 			},
 		},
+		{
+			name: "context fields only",
+			functionFields: AuditFields{
+				"method": "basic",
+			},
+			globalFields: nil,
+			contextFields: AuditFields{
+				"context": "field",
+			},
+			finalFields: AuditFields{
+				"method":  "basic",
+				"context": "field",
+			},
+		},
+		{
+			name: "context fields overwrite fields",
+			functionFields: AuditFields{
+				"method": "basic",
+			},
+			globalFields: nil,
+			contextFields: AuditFields{
+				"method": "context",
+			},
+			finalFields: AuditFields{
+				"method": "context",
+			},
+		},
+		{
+			name: "global fields and context fields",
+			functionFields: AuditFields{
+				"method": "basic",
+			},
+			globalFields: AuditFields{
+				"global": "field",
+			},
+			contextFields: AuditFields{
+				"context": "field",
+			},
+			finalFields: AuditFields{
+				"method":  "basic",
+				"global":  "field",
+				"context": "field",
+			},
+		},
+		{
+			name: "global fields and context fields overwrite fields",
+			functionFields: AuditFields{
+				"method": "basic",
+			},
+			globalFields: AuditFields{
+				"method": "global",
+			},
+			contextFields: AuditFields{
+				"method": "context",
+			},
+			finalFields: AuditFields{
+				"method": "context",
+			},
+		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			ctx := TestCtx(t)
+			if testCase.contextFields != nil {
+				ctx = AuditLogCtx(ctx, testCase.contextFields)
+			}
 			var err error
 			auditLogger, err = NewAuditLogger(ctx, nil, tmpdir, 0, nil, testCase.globalFields)
 			require.NoError(t, err)
@@ -80,6 +143,7 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 			require.NoError(t, json.Unmarshal(output, &event))
 			require.NotNil(t, testCase.finalFields)
 			for k, v := range testCase.finalFields {
+				require.Contains(t, event, k)
 				require.Equal(t, v, event[k])
 			}
 		})
@@ -190,4 +254,51 @@ func TestAuditFieldsMerge(t *testing.T) {
 		})
 	}
 
+}
+
+func TestAuditLoggerContextFields(t *testing.T) {
+	tmpdir := t.TempDir()
+	testCases := []struct {
+		name          string
+		contextFields AuditFields
+	}{
+		{
+			name:          "no context fields",
+			contextFields: nil,
+		},
+		{
+			name:          "with context fields",
+			contextFields: map[string]any{"context": "field"},
+		},
+		{
+			name: "with context fields, nil value",
+			contextFields: map[string]any{
+				"context": nil,
+			},
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := TestCtx(t)
+			var err error
+			auditLogger, err = NewAuditLogger(ctx, nil, tmpdir, 0, nil, testCase.contextFields)
+			require.NoError(t, err)
+
+			output := AuditLogContents(t, func() {
+				// Test basic audit event
+				Audit(ctx, AuditIDPublicUserAuthenticated, map[string]any{"method": "basic"})
+			},
+			)
+			var event map[string]any
+			require.NoError(t, json.Unmarshal(output, &event))
+			method, ok := event["method"].(string)
+			require.True(t, ok)
+			require.Equal(t, "basic", method)
+			for k, v := range testCase.contextFields {
+				require.Contains(t, event, k)
+				require.Equal(t, v, event[k])
+			}
+
+		})
+	}
 }
