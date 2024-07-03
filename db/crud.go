@@ -1557,6 +1557,8 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 		doc.setFlag(channels.Hidden, true)
 		if doc.CurrentRev != prevCurrentRev {
 			doc.promoteNonWinningRevisionBody(ctx, doc.CurrentRev, db.RevisionBodyLoader)
+			// If the update resulted in promoting a previous non-winning revision body to winning, this isn't a metadata only update.
+			doc.metadataOnlyUpdate = nil
 		}
 	}
 }
@@ -1816,7 +1818,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 		return
 	}
 
-	// Invoke the callback to update the document and return a new revision body:
+	// Invoke the callback to update the document and with a new revision body to be used by the Sync Function:
 	newDoc, newAttachments, createNewRevIDSkipped, updatedExpiry, err := callback(doc)
 	if err != nil {
 		return
@@ -2031,7 +2033,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			doc.SetCrc32cUserXattrHash()
 			var rawSyncXattr, rawMouXattr, rawDocBody []byte
 			rawDocBody, rawSyncXattr, rawMouXattr, err = doc.MarshalWithXattrs()
-			if !isImport {
+			if len(rawDocBody) > 0 {
 				updatedDoc.Doc = rawDocBody
 				docBytes = len(updatedDoc.Doc)
 			}

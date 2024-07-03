@@ -946,6 +946,57 @@ func TestImportResurrectionMou(t *testing.T) {
 	require.NotNil(t, syncData)
 }
 
+// TestImportTombstoneWithConflict issues an SDK delete for a document with conflicting, non-tombstoned
+// branches, then attempt to fetch the document.  The resulting document should not be treated as a metadata-only
+// update, even though it originated with an SDK delete, because the existing non-winning revision body will be
+// promoted to winning.
+func TestImportConflictWithTombstone(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport, base.KeyCRUD)
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+
+	docID := t.Name()
+
+	// Create rev 1 through SGW
+	body := Body{"foo": "bar"}
+	rev1ID, _, err := collection.Put(ctx, docID, body)
+	require.NoError(t, err)
+
+	// Create rev 2 through SGW
+	body["foo"] = "abc"
+	_, _, err = collection.PutExistingRevWithBody(ctx, docID, body, []string{"2-abc", rev1ID}, false)
+	require.NoError(t, err)
+
+	// Create conflicting rev 2 through SGW
+	body["foo"] = "def"
+	_, _, err = collection.PutExistingRevWithBody(ctx, docID, body, []string{"2-def", rev1ID}, false)
+	require.NoError(t, err)
+
+	docRev, err := collection.GetRev(ctx, docID, "", false, nil)
+	require.NoError(t, err)
+	require.Equal(t, "2-def", docRev.RevID)
+
+	// Issue delete through SDK
+	err = collection.dataStore.Delete(docID)
+	require.NoError(t, err)
+	base.RequireWaitForStat(t, func() int64 {
+		return db.DbStats.SharedBucketImport().ImportCount.Value()
+	}, 1)
+
+	// Verify that post-import, the document is not a tombstone, and 2-abc has been promoted (GetRev with revID = "" returns active rev)
+	docRev, err = collection.GetRev(ctx, docID, "", false, nil)
+	require.NoError(t, err)
+	require.Equal(t, "2-abc", docRev.RevID)
+	require.False(t, docRev.Deleted)
+
+	// Verify that mou was not populated for this import
+	syncData, mou, _ := getSyncAndMou(t, collection, docID)
+	require.Nil(t, mou)
+	require.NotNil(t, syncData)
+}
+
 func getSyncAndMou(t *testing.T, collection *DatabaseCollectionWithUser, key string) (syncData *SyncData, mou *MetadataOnlyUpdate, cas uint64) {
 
 	ctx := base.TestCtx(t)
