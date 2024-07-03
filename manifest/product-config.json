@@ -6,7 +6,7 @@
             "release_name": "Couchbase Sync Gateway",
             "production": true,
             "interval": 30,
-            "go_version": "1.22.2",
+            "go_version": "1.22.5",
             "trigger_blackduck": true,
             "start_build": 320
         },
@@ -454,7 +454,7 @@
             "release_name": "Couchbase Sync Gateway 3.1.9",
             "production": true,
             "interval": 120,
-            "go_version": "1.21.8",
+            "go_version": "1.22.5",
             "trigger_blackduck": true,
             "start_build": 1
         },
