@@ -96,6 +96,30 @@ func ExplainQuery(ctx context.Context, store N1QLStore, statement string, params
 	return plan, unmarshalErr
 }
 
+type indexManager struct {
+	cluster        *gocb.QueryIndexManager
+	collection     *gocb.CollectionQueryIndexManager
+	bucketName     string
+	scopeName      string
+	collectionName string
+}
+
+func (im *indexManager) GetAllIndexes() ([]gocb.QueryIndex, error) {
+	opts := &gocb.GetAllQueryIndexesOptions{
+		RetryStrategy: &goCBv2FailFastRetryStrategy{},
+	}
+
+	if im.collection != nil {
+		return im.collection.GetAllIndexes(opts)
+	}
+	// ScopeName and CollectionName options are deprecated (and skipped for staticcheck) as of gocb v2.7.0
+	// (GOCBC-1391). When these run on more than a single collection (CBG-3026) this should be replaced with
+	// a N1QL query rather than a gocb call.
+	opts.ScopeName = im.scopeName           // nolint:staticcheck
+	opts.CollectionName = im.collectionName // nolint:staticcheck
+	return im.cluster.GetAllIndexes(im.bucketName, opts)
+}
+
 // CreateIndex issues a CREATE INDEX query in the current bucket, using the form:
 //
 //	CREATE INDEX indexName ON bucket.Name(expression) WHERE filterExpression WITH options
@@ -546,7 +570,7 @@ func WaitForIndexesOnline(ctx context.Context, keyspace string, mgr *indexManage
 
 	err, _ := RetryLoop(ctx, "WaitForIndexesOnline", func() (shouldRetry bool, err error, _ any) {
 		watchedOnlineIndexCount := 0
-		currIndexes, err := mgr.GetAllIndexes(bucketName, &indexOption)
+		currIndexes, err := mgr.GetAllIndexes()
 		if err != nil {
 			return false, err, nil
 		}

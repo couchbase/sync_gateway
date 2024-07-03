@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 )
@@ -26,7 +27,7 @@ type LeakyDataStore struct {
 var (
 	_ DataStore         = &LeakyDataStore{}
 	_ WrappingDatastore = &LeakyDataStore{}
-	// _ N1QLStore = &LeakyDataStore{} // TODO: Not implemented
+	_ N1QLStore         = &LeakyDataStore{}
 )
 
 func NewLeakyDataStore(bucket *LeakyBucket, dataStore DataStore, config *LeakyBucketConfig) *LeakyDataStore {
@@ -41,6 +42,10 @@ func NewLeakyDataStore(bucket *LeakyBucket, dataStore DataStore, config *LeakyBu
 func AsLeakyDataStore(ds DataStore) (*LeakyDataStore, bool) {
 	lds, ok := ds.(*LeakyDataStore)
 	return lds, ok
+}
+
+func (lds *LeakyDataStore) BucketName() string {
+	return lds.bucket.GetName()
 }
 
 func (lds *LeakyDataStore) GetUnderlyingDataStore() DataStore {
@@ -320,19 +325,6 @@ func (lds *LeakyDataStore) IsError(err error, errorType sgbucket.DataStoreErrorT
 
 func (lds *LeakyDataStore) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 	return lds.dataStore.IsSupported(feature)
-}
-
-func (lds *LeakyDataStore) UpdateXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
-	return lds.dataStore.UpdateXattrs(ctx, k, exp, cas, xv, opts)
-}
-
-func (lds *LeakyDataStore) WriteTombstoneWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, xattrsToDelete []string, deleteBody bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
-	return lds.dataStore.WriteTombstoneWithXattrs(ctx, k, exp, cas, xv, xattrsToDelete, deleteBody, opts)
-
-}
-
-func (lds *LeakyDataStore) WriteResurrectionWithXattrs(ctx context.Context, k string, exp uint32, body []byte, xv map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
-	return lds.dataStore.WriteResurrectionWithXattrs(ctx, k, exp, body, xv, opts)
 }
 
 func (lds *LeakyDataStore) GetSpec() BucketSpec {
