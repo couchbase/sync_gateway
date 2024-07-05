@@ -79,6 +79,8 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 		if err != nil {
 			if IsDevMode() {
 				panic(fmt.Sprintf("couldn't parse request host: %v", err))
+			} else {
+				WarnfCtx(ctx, "couldn't parse request host %q for audit log: %v", logCtx.RequestHost, err)
 			}
 		} else {
 			fields[auditFieldLocal] = map[string]any{
@@ -92,6 +94,8 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 		if err != nil {
 			if IsDevMode() {
 				panic(fmt.Sprintf("couldn't parse request remote addr: %v", err))
+			} else {
+				WarnfCtx(ctx, "couldn't parse request remote addr %q for audit log: %v", logCtx.RequestRemoteAddr, err)
 			}
 		} else {
 			fields[auditFieldRemote] = map[string]any{
