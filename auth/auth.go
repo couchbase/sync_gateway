@@ -678,12 +678,25 @@ func (auth *Authenticator) DeleteRole(role Role, purge bool, deleteSeq uint64) e
 		p.setDeleted(true)
 		p.SetSequence(deleteSeq)
 
+		// Update channel history for default collection
 		channelHistory := auth.calculateHistory(p.Name(), deleteSeq, p.Channels(), nil, p.ChannelHistory())
 		if len(channelHistory) != 0 {
 			p.SetChannelHistory(channelHistory)
 		}
-
 		p.SetChannelInvalSeq(deleteSeq)
+
+		// Update channel history for non-default collections
+		roleCollectionAccess := role.GetCollectionsAccess()
+		for _, scope := range roleCollectionAccess {
+			for _, collectionAccess := range scope {
+				collectionChannelHistory := auth.calculateHistory(p.Name(), deleteSeq, collectionAccess.Channels(), nil, collectionAccess.ChannelHistory())
+				if len(collectionChannelHistory) != 0 {
+					collectionAccess.SetChannelHistory(collectionChannelHistory)
+				}
+				collectionAccess.SetChannelInvalSeq(deleteSeq)
+			}
+		}
+
 		return p, nil
 
 	})

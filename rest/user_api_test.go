@@ -1580,3 +1580,66 @@ func TestUserMultipleDBs(t *testing.T) {
 		})
 	}
 }
+
+func TestDeletedRoleChanHistory(t *testing.T) {
+	tests := []struct {
+		defaultCollection bool
+	}{
+		{defaultCollection: true},
+		{defaultCollection: false},
+	}
+
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("defaultCollection:%v", test.defaultCollection), func(t *testing.T) {
+			ctx := base.TestCtx(t)
+
+			var rt *RestTester
+			if test.defaultCollection {
+				rt = NewRestTesterDefaultCollection(t, nil)
+			} else {
+				rt = NewRestTesterMultipleCollections(t, nil, 1)
+			}
+
+			collection := rt.GetSingleTestDatabaseCollection()
+			defer rt.Close()
+
+			const roleName = "role"
+			response := rt.SendAdminRequest("PUT", "/db/_role/role", GetUserPayload(t, "role", "letmein", "", collection, []string{"channel"}, nil))
+			RequireStatus(t, response, 201)
+
+			a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+
+			// Get role - ensure accessible
+			role, err := a.GetRole(roleName)
+			assert.NoError(t, err)
+			assert.NotNil(t, role)
+			if collection.IsDefaultCollection() {
+				assert.Len(t, role.Channels(), 2)
+				assert.True(t, role.Channels().Contains("channel"))
+			} else {
+				assert.Len(t, role.GetCollectionsAccess()[collection.ScopeName][collection.Name].Channels(), 2)
+				assert.True(t, role.GetCollectionsAccess()[collection.ScopeName][collection.Name].Channels().Contains("channel"))
+			}
+			t.Logf("role %#v", role)
+
+			// Delete role
+			err = a.DeleteRole(role, false, 2)
+			assert.NoError(t, err)
+
+			// get deleted role and assert channel is in channel history
+			role, err = a.GetRoleIncDeleted(roleName)
+			assert.NoError(t, err)
+			t.Logf("role %#v", role)
+			if collection.IsDefaultCollection() {
+				assert.Len(t, role.ChannelHistory(), 2)
+				_, ok := role.ChannelHistory()["channel"]
+				assert.Truef(t, ok, "Channel history should contain 'channel'")
+			} else {
+				assert.Len(t, role.GetCollectionsAccess()[collection.ScopeName][collection.Name].ChannelHistory(), 2)
+				_, ok := role.GetCollectionsAccess()[collection.ScopeName][collection.Name].ChannelHistory()["channel"]
+				assert.Truef(t, ok, "Channel history should contain 'channel'")
+			}
+		})
+	}
+
+}
