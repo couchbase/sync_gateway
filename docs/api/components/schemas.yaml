@@ -2057,13 +2057,13 @@ Startup-config:
           type: boolean
         server_read_timeout:
           description: |-
-            Maximum duration.Second before timing out read of the HTTP(S) request.
+            Maximum duration before timing out read of the HTTP(S) request.
 
             This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
           type: string
         server_write_timeout:
           description: |-
-            Maximum duration.Second before timing out write of the HTTP(S) response.
+            Maximum duration before timing out write of the HTTP(S) response.
 
             This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
           type: string
@@ -2082,8 +2082,9 @@ Startup-config:
           type: string
           default: 90s
         pretty:
-          description: Pretty-print JSON responses
+          description: Pretty-print JSON responses. This property is deprecated.
           type: boolean
+          deprecated: true
         max_connections:
           description: Max of incoming HTTP connections to accept
           type: number
@@ -2189,6 +2190,18 @@ Startup-config:
         max_concurrent_replications:
           description: Maximum number of concurrent replication connections allowed. If set to 0 this limit will be ignored.
           type: integer
+        max_concurrent_changes_batches:
+          description: Maximum number of changes batches to process concurrently per replication (1-5)"
+          type: integer
+          default: 2
+          minimum: 1
+          maximum: 5
+        max_concurrent_revs:
+          description: Maximum number of revs to process concurrently per replication (5-200)
+          type: integer
+          default: 5
+          minimum: 5
+          maximum: 200
       readOnly: true
     unsupported:
       description: Settings that are not officially supported. It is highly recommended these are **not** used.
@@ -2199,6 +2212,7 @@ Startup-config:
         use_xattr_config:
           description: Store database configurations in system xattrs
           type: boolean
+          default: false
         stats_log_frequency:
           description: |-
             How often should stats be written to stats logs.
@@ -2209,12 +2223,18 @@ Startup-config:
         use_stdlib_json:
           description: Bypass the jsoniter package and use Go's stdlib instead
           type: boolean
+          default: false
         http2:
           type: object
           properties:
             enabled:
               description: Whether HTTP2 support is enabled
               type: boolean
+              default: false
+        allow_dbconfig_env_vars:
+          description: Can be set to false to skip environment variable expansion in database configs
+          type: boolean
+          default: true
         diagnostic_interface:
           description: |-
             Network interface to bind diagnotic API to.
@@ -2222,7 +2242,6 @@ Startup-config:
             By default, this API will not be run unless this string is specified.
           type: string
           default: ""
-          x-internal: true
       readOnly: true
     database_credentials:
       description: 'A map of database name to credentials, that can be used instead of the bootstrap ones.'
@@ -2245,8 +2264,9 @@ Startup-config:
       minimum: 0
       readOnly: true
     couchbase_keepalive_interval:
-      description: TCP keep-alive interval between SG and Couchbase server
+      description: TCP keep-alive interval between SG and Couchbase server. This is unused.
       type: integer
+      deprecated: true
       readOnly: true
     heap_profile_collection_threshold:
       description: Threshold in bytes for automatic collection of heap profiles. If not specified, defaults to 85% of the lesser of cgroup or system memory.
