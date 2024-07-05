@@ -130,6 +130,7 @@ type DatabaseContext struct {
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
 	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
 	CORS                         *auth.CORSConfig               // CORS configuration
+	EnableMou                    bool                           // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
 }
 
 type Scope struct {
@@ -416,6 +417,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		ServerUUID:          serverUUID,
 		UserFunctionTimeout: defaultUserFunctionTimeout,
 	}
+
+	// Check if server version supports multi-xattr operations, required for mou handling
+	dbContext.EnableMou = bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations)
 
 	// Initialize metadata ID and keys
 	metaKeys := base.NewMetadataKeys(options.MetadataID)
@@ -1971,7 +1975,7 @@ func (context *DatabaseContext) UseViews() bool {
 }
 
 func (context *DatabaseContext) UseMou() bool {
-	return context.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations)
+	return context.EnableMou
 }
 
 // UseQueryBasedResyncManager returns if query bases resync manager should be used for Resync operation
