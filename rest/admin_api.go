@@ -788,6 +788,13 @@ func (h *handler) handlePutDbAuditConfig() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "couldn't update audit configuration: %s", err)
 		}
 
+		if config.Logging == nil {
+			config.Logging = &DbLoggingConfig{}
+		}
+		if config.Logging.Audit == nil {
+			config.Logging.Audit = &DbAuditLoggingConfig{}
+		}
+
 		if isReplace || body.Enabled != nil {
 			config.Logging.Audit.Enabled = body.Enabled
 		}
