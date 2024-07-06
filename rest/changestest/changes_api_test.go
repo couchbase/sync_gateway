@@ -202,7 +202,7 @@ func TestChangesFeedOnInheritedChannelsFromRoles(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// create role with collection channel access set to channel A
-	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/role", rest.GetRolePayload(t, "", "", collection, []string{"A"}))
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/role", rest.GetRolePayload(t, "", collection, []string{"A"}))
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// create user and assign the role create above to that user
@@ -235,7 +235,7 @@ func TestChangesFeedOnInheritedChannelsFromRolesDefaultCollection(t *testing.T) 
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// create role with collection channel access set to channel A
-	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/role", rest.GetRolePayload(t, "", "", collection, []string{"A"}))
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/role", rest.GetRolePayload(t, "", collection, []string{"A"}))
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// create user and assign the role create above to that user

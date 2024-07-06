@@ -425,7 +425,7 @@ func TestRebuildUserChannelsMultiCollection(t *testing.T) {
 	err := auth.Save(user)
 	assert.NoError(t, err)
 
-	err = auth.InvalidateChannels("testUser", true, "scope1", "collection1", 2)
+	err = auth.InvalidateChannels("testUser", true, base.ScopeAndCollectionNames{base.NewScopeAndCollectionName("scope1", "collection1")}, 2)
 	assert.NoError(t, err)
 
 	user2, err := auth.GetUser("testUser")
@@ -452,7 +452,7 @@ func TestRebuildUserChannelsNamedCollection(t *testing.T) {
 	err := auth.Save(user)
 	assert.NoError(t, err)
 
-	err = auth.InvalidateChannels("testUser", true, "scope1", "collection1", 2)
+	err = auth.InvalidateChannels("testUser", true, base.ScopeAndCollectionNames{base.NewScopeAndCollectionName("scope1", "collection1")}, 2)
 	assert.NoError(t, err)
 
 	user2, err := auth.GetUser("testUser")

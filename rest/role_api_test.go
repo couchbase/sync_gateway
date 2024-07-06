@@ -31,7 +31,7 @@ func TestRolePurge(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create role
-	resp := rt.SendAdminRequest("PUT", "/db/_role/role", GetRolePayload(t, "", "", collection, []string{"channel"}))
+	resp := rt.SendAdminRequest("PUT", "/db/_role/role", GetRolePayload(t, "", collection, []string{"channel"}))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Delete role
@@ -48,7 +48,7 @@ func TestRolePurge(t *testing.T) {
 	assert.NotNil(t, role)
 
 	// Re-create role
-	resp = rt.SendAdminRequest("PUT", "/db/_role/role", GetRolePayload(t, "", "", collection, []string{"channel"}))
+	resp = rt.SendAdminRequest("PUT", "/db/_role/role", GetRolePayload(t, "", collection, []string{"channel"}))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Delete role again but with purge flag
@@ -72,10 +72,10 @@ func TestRoleAPI(t *testing.T) {
 
 	// PUT a role
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
-	response := rt.SendAdminRequest("PUT", "/db/_role/hipster", GetRolePayload(t, "", "", collection, []string{"fedoras", "fixies"}))
+	response := rt.SendAdminRequest("PUT", "/db/_role/hipster", GetRolePayload(t, "", collection, []string{"fedoras", "fixies"}))
 	RequireStatus(t, response, 201)
 
-	response = rt.SendAdminRequest("PUT", "/db/_role/testdeleted", GetRolePayload(t, "", "", collection, []string{"fedoras", "fixies"}))
+	response = rt.SendAdminRequest("PUT", "/db/_role/testdeleted", GetRolePayload(t, "", collection, []string{"fedoras", "fixies"}))
 	RequireStatus(t, response, 201)
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/testdeleted", ""), 200)
 
@@ -97,9 +97,9 @@ func TestRoleAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
 
 	// POST a role
-	response = rt.SendAdminRequest("POST", "/db/_role", GetRolePayload(t, "hipster", "", collection, []string{"fedoras", "fixies"}))
+	response = rt.SendAdminRequest("POST", "/db/_role", GetRolePayload(t, "hipster", collection, []string{"fedoras", "fixies"}))
 	RequireStatus(t, response, 301)
-	response = rt.SendAdminRequest("POST", "/db/_role/", GetRolePayload(t, "hipster", "", collection, []string{"fedoras", "fixies"}))
+	response = rt.SendAdminRequest("POST", "/db/_role/", GetRolePayload(t, "hipster", collection, []string{"fedoras", "fixies"}))
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_role/hipster", "")
 	RequireStatus(t, response, 200)
@@ -157,7 +157,7 @@ func TestFunkyRoleNames(t *testing.T) {
 			require.NoError(t, a.Save(user))
 
 			// Create role
-			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", url.PathEscape(tc.RoleName)), GetRolePayload(t, "", "", collection, []string{"testchannel"}))
+			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", url.PathEscape(tc.RoleName)), GetRolePayload(t, "", collection, []string{"testchannel"}))
 			RequireStatus(t, response, 201)
 
 			// Create test document
@@ -251,7 +251,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	assert.NoError(t, err)
 
 	// POST a role
-	response := rt.SendAdminRequest("POST", "/db/_role/", GetRolePayload(t, "role1", "", collection, []string{"chan1"}))
+	response := rt.SendAdminRequest("POST", "/db/_role/", GetRolePayload(t, "role1", collection, []string{"chan1"}))
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_role/role1", "")
 	RequireStatus(t, response, 200)
@@ -310,7 +310,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/_user/zegpold", GetUserPayload(t, "zegpold", "letmein", "", collection, []string{"beta"}, nil))
 	RequireStatus(t, response, 201)
 
-	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", GetRolePayload(t, "hipster", "", collection, []string{"gamma"}))
+	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", GetRolePayload(t, "hipster", collection, []string{"gamma"}))
 	RequireStatus(t, response, 201)
 	/*
 		alice, err := a.NewUser("alice", "letmein", channels.BaseSetOf(t, "alpha"))
