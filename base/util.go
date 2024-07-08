@@ -47,16 +47,25 @@ const (
 	kMaxDeltaTtlDuration = 60 * 60 * 24 * 30 * time.Second
 )
 
-// NonCancellableContext is here to store a context that is not cancellable. Used to explicitly state when a change from
+// NonCancellableContext is here to stroe a context that is not cancellable. Used to explicitly state when a change from
 // a cancellable context to a context withoutr contex is required
 type NonCancellableContext struct {
 	Ctx context.Context
 }
 
 // NewNonCancelCtx creates a new background context struct for operations that require a fresh context
-func NewNonCancelCtx(ctx context.Context) NonCancellableContext {
+func NewNonCancelCtx() NonCancellableContext {
 	ctxStruct := NonCancellableContext{
-		Ctx: ctx,
+		Ctx: context.Background(),
+	}
+	return ctxStruct
+}
+
+// NewNonCancelCtx creates a new background context struct for operations that require a fresh context, with database logging context added
+func NewNonCancelCtxForDatabase(dbName string, dbLogConfig *DbLogConfig) NonCancellableContext {
+	dbLogContext := DatabaseLogCtx(context.Background(), dbName, dbLogConfig)
+	ctxStruct := NonCancellableContext{
+		Ctx: dbLogContext,
 	}
 	return ctxStruct
 }

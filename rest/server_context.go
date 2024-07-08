@@ -310,7 +310,7 @@ func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (
 			dbConfigFound, _ = sc.fetchAndLoadDatabaseSince(ctx, name, sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 
 		} else {
-			dbConfigFound, _ = sc.fetchAndLoadDatabase(base.NewNonCancelCtx(ctx), name, false)
+			dbConfigFound, _ = sc.fetchAndLoadDatabase(base.NewNonCancelCtx(), name, false)
 		}
 		if dbConfigFound {
 			sc.lock.RLock()
@@ -998,7 +998,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// If asyncOnline is requested, set state to Starting and spawn a separate goroutine to wait for init completion
 		// before going online
 		base.InfofCtx(ctx, base.KeyAll, "Waiting for database init to complete asynchonously...")
-		nonCancelCtx := base.NewNonCancelCtx(ctx)
+		nonCancelCtx := base.NewNonCancelCtxForDatabase(dbName, dbcontext.Options.LoggingConfig)
 		go sc.asyncDatabaseOnline(nonCancelCtx, dbcontext, dbInitDoneChan, config.Version)
 		return dbcontext, nil
 	}
@@ -1143,7 +1143,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	// Create a callback function that will be invoked if the database goes offline and comes
 	// back online again
 	dbOnlineCallback := func(dbContext *db.DatabaseContext) {
-		sc.TakeDbOnline(base.NewNonCancelCtx(ctx), dbContext)
+		sc.TakeDbOnline(base.NewNonCancelCtx(), dbContext)
 	}
 
 	oldRevExpirySeconds := base.DefaultOldRevExpirySeconds

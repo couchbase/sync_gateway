@@ -1890,7 +1890,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 // _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.
 func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig, isInitialStartup bool) (count int) {
 	for dbName, cnf := range dbNameConfigs {
-		applied, err := sc._applyConfig(base.NewNonCancelCtx(ctx), cnf, true, isInitialStartup)
+		applied, err := sc._applyConfig(base.NewNonCancelCtx(), cnf, true, isInitialStartup)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue

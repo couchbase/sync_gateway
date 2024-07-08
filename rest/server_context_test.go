@@ -838,8 +838,7 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 	// ensure doc1 is not imported - since we started the database offline
 	assert.Equal(t, int64(0), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 
-	ctx := base.TestCtx(t)
-	rt.ServerContext().TakeDbOnline(base.NewNonCancelCtx(ctx), rt.GetDatabase())
+	rt.ServerContext().TakeDbOnline(base.NewNonCancelCtx(), rt.GetDatabase())
 
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc3", `{"type":"doc3"}`)
 	RequireStatus(t, resp, http.StatusCreated)
