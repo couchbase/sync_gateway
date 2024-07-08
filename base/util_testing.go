@@ -609,13 +609,37 @@ func ResetGlobalTestLogging(t *testing.T) {
 	oldAuditLogger := auditLogger
 	oldConsoleLogger := consoleLogger
 	t.Cleanup(func() {
+		if errorLogger != nil {
+			errorLogger.Close()
+		}
 		errorLogger = oldErrorLogger
+		if warnLogger != nil {
+			warnLogger.Close()
+		}
 		warnLogger = oldWarnLogger
+		if infoLogger != nil {
+			infoLogger.Close()
+		}
 		infoLogger = oldInfoLogger
+		if debugLogger != nil {
+			debugLogger.Close()
+		}
 		debugLogger = oldDebugLogger
+		if traceLogger != nil {
+			traceLogger.Close()
+		}
 		traceLogger = oldTraceLogger
+		if statsLogger != nil {
+			statsLogger.Close()
+		}
 		statsLogger = oldStatsLogger
+		if auditLogger != nil {
+			auditLogger.Close()
+		}
 		auditLogger = oldAuditLogger
+		if consoleLogger != nil {
+			consoleLogger.Close()
+		}
 		consoleLogger = oldConsoleLogger
 	})
 }
