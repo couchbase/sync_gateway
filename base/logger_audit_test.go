@@ -10,7 +10,6 @@ package base
 
 import (
 	"encoding/json"
-	"fmt"
 	"maps"
 	"testing"
 
@@ -68,37 +67,27 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			for _, devmode := range []bool{true, false} {
-				t.Run(fmt.Sprintf("devmode=%v", devmode), func(t *testing.T) {
-					ctx := TestCtx(t)
-					var err error
-					auditLogger, err = NewAuditLogger(ctx, nil, tmpdir, 0, nil, testCase.globalFields)
-					require.NoError(t, err)
+			ctx := TestCtx(t)
+			var err error
+			auditLogger, err = NewAuditLogger(ctx, nil, tmpdir, 0, nil, testCase.globalFields)
+			require.NoError(t, err)
 
-					if testCase.hasError && devmode {
-						require.Panics(t, func() {
-							audit(ctx, AuditIDPublicUserAuthenticated, testCase.functionFields, devmode)
-						})
-						return
-					}
-					startWarnCount := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
-					output := AuditLogContents(t, func() {
-						// Test basic audit event
-						audit(ctx, AuditIDPublicUserAuthenticated, map[string]any{"method": "basic"}, devmode)
-					},
-					)
-					var event map[string]any
-					require.NoError(t, json.Unmarshal(output, &event))
-					require.NotNil(t, testCase.finalFields)
-					for k, v := range testCase.finalFields {
-						require.Equal(t, v, event[k])
-					}
-					if testCase.hasError {
-						require.Equal(t, startWarnCount+1, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
-					} else {
-						require.Equal(t, startWarnCount, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
-					}
-				})
+			startWarnCount := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+			output := AuditLogContents(t, func() {
+				// Test basic audit event
+				audit(ctx, AuditIDPublicUserAuthenticated, map[string]any{"method": "basic"})
+			},
+			)
+			var event map[string]any
+			require.NoError(t, json.Unmarshal(output, &event))
+			require.NotNil(t, testCase.finalFields)
+			for k, v := range testCase.finalFields {
+				require.Equal(t, v, event[k])
+			}
+			if testCase.hasError {
+				require.Equal(t, startWarnCount+1, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
+			} else {
+				require.Equal(t, startWarnCount, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
 			}
 		})
 	}
@@ -207,31 +196,20 @@ func TestAuditFieldsMerge(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			for _, devmode := range []bool{true, false} {
-				t.Run(fmt.Sprintf("devmode=%v", devmode), func(t *testing.T) {
-					base := make(AuditFields, len(testCase.base))
-					maps.Copy(base, testCase.base)
-					ctx := TestCtx(t)
-					startWarnCount := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
-					if testCase.hasError {
-						errMsg := "already exist in base audit fields"
-						if devmode {
-							require.Panics(t, func() {
-								base.merge(ctx, testCase.overwrite, devmode)
-							})
-							return
-						}
-						AssertLogContains(t, errMsg, func() {
-							base.merge(ctx, testCase.overwrite, devmode)
-						})
-						require.Equal(t, startWarnCount+1, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
-					} else {
-						base.merge(ctx, testCase.overwrite, devmode)
-						require.Equal(t, startWarnCount, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
-					}
-					require.Equal(t, testCase.output, base)
+			base := make(AuditFields, len(testCase.base))
+			maps.Copy(base, testCase.base)
+			ctx := TestCtx(t)
+			startWarnCount := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+			if testCase.hasError {
+				AssertLogContains(t, "already exist in base audit fields", func() {
+					base.merge(ctx, testCase.overwrite)
 				})
+				require.Equal(t, startWarnCount+1, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
+			} else {
+				base.merge(ctx, testCase.overwrite)
+				require.Equal(t, startWarnCount, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
 			}
+			require.Equal(t, testCase.output, base)
 		})
 	}
 
