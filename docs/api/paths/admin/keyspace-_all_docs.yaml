@@ -10,7 +10,7 @@ parameters:
 get:
   summary: Gets all the documents in the database with the given parameters
   description: |-
-    Returns all documents in the databased based on the specified parameters.
+    Returns all documents in the database based on the specified parameters.
 
     Required Sync Gateway RBAC roles:
 
@@ -39,7 +39,7 @@ get:
 post:
   summary: Get all the documents in the database using a built-in view
   description: |-
-    Get a built-in view of all the documents in the database.
+    Returns all documents in the database based on the specified parameters.
 
     Required Sync Gateway RBAC roles:
 

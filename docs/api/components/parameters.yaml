@@ -25,7 +25,7 @@ Include-channels:
   in: query
   required: false
   schema:
-    type: string
+    type: boolean
   description: Include the channels each document is part of that the calling user also has access too.
 atts_since:
   name: atts_since
@@ -123,21 +123,21 @@ include-access:
   in: query
   required: false
   schema:
-    type: string
+    type: boolean
   description: Include what user/roles that each document grants access too.
 include-revs:
   name: revs
   in: query
   required: false
   schema:
-    type: string
+    type: boolean
   description: Include all the revisions for each document under the `_revisions` property.
 include-seqs:
   name: update_seq
   in: query
   required: false
   schema:
-    type: string
+    type: boolean
   description: Include the document sequence number `update_seq` property for each document.
 includeAttachments:
   name: attachments
@@ -158,7 +158,7 @@ include_docs:
   in: query
   required: false
   schema:
-    type: string
+    type: boolean
   description: Include the body associated with each document.
 include_runtime:
   name: include_runtime
