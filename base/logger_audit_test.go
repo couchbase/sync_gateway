@@ -69,9 +69,8 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			ctx := TestCtx(t)
 			var err error
-			auditLogger, err = NewAuditLogger(ctx, nil, tmpdir, 0, nil, testCase.globalFields)
+			auditLogger, err = NewAuditLogger(ctx, &AuditLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true)}}, tmpdir, 0, nil, testCase.globalFields)
 			require.NoError(t, err)
-
 			startWarnCount := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 			output := AuditLogContents(t, func() {
 				// Test basic audit event
