@@ -57,6 +57,16 @@ func TestRoot(t *testing.T) {
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "Welcome", body["couchdb"])
+	isAdmin, ok := body["admin"].(bool)
+	assert.False(t, ok)
+	assert.False(t, isAdmin)
+
+	response = rt.SendAdminRequest("GET", "/", "")
+	RequireStatus(t, response, 200)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	isAdmin, ok = body["admin"].(bool)
+	assert.True(t, ok)
+	assert.True(t, isAdmin)
 
 	response = rt.SendRequest("HEAD", "/", "")
 	RequireStatus(t, response, 200)
