@@ -62,7 +62,7 @@ func TestN1qlQuery(t *testing.T) {
 	}
 
 	// Wait for index readiness
-	onlineErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_value"}, false)
+	onlineErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_value"}, WaitForIndexesDefault)
 	if onlineErr != nil {
 		t.Fatalf("Error waiting for index to come online: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestN1qlQuery(t *testing.T) {
 		}
 	}()
 
-	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_value"}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_value"}, WaitForIndexesDefault)
 	require.NoError(t, readyErr, "Error validating index online")
 
 	// Query the index
@@ -172,7 +172,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 	}
 
 	// Wait for index readiness
-	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_filtered_value"}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_filtered_value"}, WaitForIndexesDefault)
 	require.NoError(t, readyErr, "Error validating index online")
 
 	// Defer index teardown
@@ -245,7 +245,7 @@ func TestIndexMeta(t *testing.T) {
 		t.Fatalf("Error creating index: %s", err)
 	}
 
-	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_value"}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_value"}, WaitForIndexesDefault)
 	require.NoError(t, readyErr, "Error validating index online")
 
 	// Defer index teardown
@@ -299,7 +299,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 		t.Fatalf("Error creating index: %s", err)
 	}
 
-	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_value_malformed"}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_value_malformed"}, WaitForIndexesDefault)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Defer index teardown
@@ -363,7 +363,7 @@ func TestCreateAndDropIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
 	}
-	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_sequence"}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{"testIndex_sequence"}, WaitForIndexesDefault)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Drop the index
@@ -395,7 +395,7 @@ func TestCreateDuplicateIndex(t *testing.T) {
 		t.Fatalf("Error creating index: %s", err)
 	}
 
-	readyErr := n1qlStore.WaitForIndexesOnline(TestCtx(t), []string{"testIndexDuplicateSequence"}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline(TestCtx(t), []string{"testIndexDuplicateSequence"}, WaitForIndexesDefault)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Attempt to create duplicate, validate duplicate error
@@ -431,7 +431,7 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 		t.Fatalf("Error creating index: %s", err)
 	}
 
-	readyErr := n1qlStore.WaitForIndexesOnline(TestCtx(t), []string{"testIndex-sequence"}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline(TestCtx(t), []string{"testIndex-sequence"}, WaitForIndexesDefault)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Drop the index
@@ -482,7 +482,7 @@ func TestDeferredCreateIndex(t *testing.T) {
 	buildErr := buildIndexes(ctx, n1qlStore, []string{indexName})
 	assert.NoError(t, buildErr, "Error building indexes")
 
-	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{indexName}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline(ctx, []string{indexName}, WaitForIndexesDefault)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 }
@@ -543,9 +543,9 @@ func TestBuildDeferredIndexes(t *testing.T) {
 	buildErr := n1qlStore.BuildDeferredIndexes(TestCtx(t), []string{deferredIndexName, nonDeferredIndexName})
 	assert.NoError(t, buildErr, "Error building indexes")
 
-	readyErr := n1qlStore.WaitForIndexesOnline(TestCtx(t), []string{deferredIndexName}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline(TestCtx(t), []string{deferredIndexName}, WaitForIndexesDefault)
 	assert.NoError(t, readyErr, "Error validating index online")
-	readyErr = n1qlStore.WaitForIndexesOnline(TestCtx(t), []string{nonDeferredIndexName}, false)
+	readyErr = n1qlStore.WaitForIndexesOnline(TestCtx(t), []string{nonDeferredIndexName}, WaitForIndexesDefault)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Ensure no errors from no-op scenarios
@@ -662,7 +662,7 @@ func TestWaitForBucketExistence(t *testing.T) {
 		err = n1qlStore.CreateIndex(ctx, indexName, expression, filterExpression, options)
 		assert.NoError(t, err, "Index should be created in the bucket")
 	}()
-	assert.NoError(t, n1qlStore.WaitForIndexesOnline(TestCtx(t), []string{indexName}, false))
+	assert.NoError(t, n1qlStore.WaitForIndexesOnline(TestCtx(t), []string{indexName}, WaitForIndexesDefault))
 
 	// Drop the index;
 	err := n1qlStore.DropIndex(ctx, indexName)

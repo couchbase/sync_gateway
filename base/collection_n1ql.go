@@ -62,6 +62,20 @@ func (c *Collection) BucketName() string {
 	return c.Bucket.GetName()
 }
 
+func (c *Collection) indexManager() *indexManager {
+	m := &indexManager{
+		bucketName:     c.BucketName(),
+		collectionName: c.CollectionName(),
+		scopeName:      c.ScopeName(),
+	}
+	if !c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		m.cluster = c.Bucket.cluster.QueryIndexes()
+	} else {
+		m.collection = c.Collection.QueryIndexes()
+	}
+	return m
+}
+
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
 func (c *Collection) IndexMetaKeyspaceID() string {
 	return IndexMetaKeyspaceID(c.BucketName(), c.ScopeName(), c.CollectionName())
@@ -123,8 +137,10 @@ func (c *Collection) CreatePrimaryIndex(ctx context.Context, indexName string, o
 	return CreatePrimaryIndex(ctx, c, indexName, options)
 }
 
-func (c *Collection) WaitForIndexesOnline(ctx context.Context, indexNames []string, failfast bool) error {
-	return WaitForIndexesOnline(ctx, c.Bucket.cluster, c.BucketName(), c.ScopeName(), c.CollectionName(), indexNames, failfast)
+// WaitForIndexesOnline takes set of indexes and watches them till they're online.
+func (c *Collection) WaitForIndexesOnline(ctx context.Context, indexNames []string, option WaitForIndexesOnlineOption) error {
+	keyspace := strings.Join([]string{c.BucketName(), c.ScopeName(), c.CollectionName()}, ".")
+	return WaitForIndexesOnline(ctx, keyspace, c.indexManager(), indexNames, option)
 }
 
 func (c *Collection) GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error) {
