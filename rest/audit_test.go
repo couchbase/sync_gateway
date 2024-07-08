@@ -20,6 +20,8 @@ import (
 )
 
 func TestAuditInjectableHeader(t *testing.T) {
+	// get tempdir before resetting global loggers, since the logger cleanup needs to happen before deletion
+	tempdir := t.TempDir()
 	base.ResetGlobalTestLogging(t)
 	base.InitializeMemoryLoggers()
 	const headerName = "extra-audit-logging-header"
@@ -30,7 +32,7 @@ func TestAuditInjectableHeader(t *testing.T) {
 				RequestInfoHeaderName: base.StringPtr(headerName),
 			}
 			config.Logging = base.LoggingConfig{
-				LogFilePath: t.TempDir(),
+				LogFilePath: tempdir,
 				Audit: &base.AuditLoggerConfig{
 					FileLoggerConfig: base.FileLoggerConfig{
 						Enabled: base.BoolPtr(true),
