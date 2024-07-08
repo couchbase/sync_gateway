@@ -73,3 +73,16 @@ var AuditEvents = events{
 		EventType:          eventTypeUser,
 	},
 }
+
+// DefaultAuditEventIDs is a list of audit event IDs that are enabled by default.
+var DefaultAuditEventIDs = buildDefaultAuditIDList(AuditEvents)
+
+func buildDefaultAuditIDList(e events) []uint {
+	var ids []uint
+	for id, event := range e {
+		if event.EnabledByDefault {
+			ids = append(ids, uint(id))
+		}
+	}
+	return ids
+}
