@@ -239,9 +239,6 @@ func TestResyncInvalidatePrincipals(t *testing.T) {
 	// validate user channels and roles have been updated
 	user, err = rt.GetDatabase().Authenticator(ctx).GetUser(username)
 	require.NoError(t, err)
-
-	user, err = rt.GetDatabase().Authenticator(ctx).GetUser(username)
-	require.NoError(t, err)
 	channels = user.CollectionChannels(scopeName, collectionName)
 	_, ok = channels["channelABC"]
 	require.False(t, ok, "user should not have channel channelABC")
