@@ -124,7 +124,7 @@ post:
               type: string
             include_docs:
               description: Include the body associated with each document.
-              type: string
+              type: boolean
             revocations:
               description: 'If true, revocation messages will be sent on the changes feed.'
               type: string
