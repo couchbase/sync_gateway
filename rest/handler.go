@@ -628,7 +628,7 @@ func (h *handler) shouldUpdateBytesTransferredStats() bool {
 	if h.db == nil {
 		return false
 	}
-	if h.privs != publicPrivs && h.privs != regularPrivs {
+	if h.serverType != publicServer {
 		return false
 	}
 	if h.isBlipSync() {
@@ -682,7 +682,7 @@ func (h *handler) logRESTCount() {
 	if h.db == nil {
 		return
 	}
-	if h.privs != publicPrivs && h.privs != regularPrivs {
+	if h.serverType != publicServer {
 		return
 	}
 	if h.isBlipSync() {
@@ -1582,7 +1582,7 @@ func (h *handler) formatSerialNumber() string {
 // Admin requests can always see this, regardless of the HideProductVersion setting.
 func (h *handler) shouldShowProductVersion() bool {
 	hideProductVersion := base.BoolDefault(h.server.Config.API.HideProductVersion, false)
-	return h.privs == adminPrivs || !hideProductVersion
+	return h.serverType == adminServer || !hideProductVersion
 }
 
 func requiresWritePermission(accessPermissions []Permission) bool {
