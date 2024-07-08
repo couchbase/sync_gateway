@@ -1613,14 +1613,9 @@ func TestDeletedRoleChanHistory(t *testing.T) {
 			role, err := a.GetRole(roleName)
 			assert.NoError(t, err)
 			assert.NotNil(t, role)
-			if collection.IsDefaultCollection() {
-				assert.Len(t, role.Channels(), 2)
-				assert.True(t, role.Channels().Contains("channel"))
-			} else {
-				assert.Len(t, role.GetCollectionsAccess()[collection.ScopeName][collection.Name].Channels(), 2)
-				assert.True(t, role.GetCollectionsAccess()[collection.ScopeName][collection.Name].Channels().Contains("channel"))
-			}
-			t.Logf("role %#v", role)
+			channels := role.CollectionChannels(collection.ScopeName, collection.Name)
+			assert.Len(t, channels, 2)
+			assert.True(t, channels.Contains("channel"))
 
 			// Delete role
 			err = a.DeleteRole(role, false, 2)
@@ -1629,16 +1624,11 @@ func TestDeletedRoleChanHistory(t *testing.T) {
 			// get deleted role and assert channel is in channel history
 			role, err = a.GetRoleIncDeleted(roleName)
 			assert.NoError(t, err)
-			t.Logf("role %#v", role)
-			if collection.IsDefaultCollection() {
-				assert.Len(t, role.ChannelHistory(), 2)
-				_, ok := role.ChannelHistory()["channel"]
-				assert.Truef(t, ok, "Channel history should contain 'channel'")
-			} else {
-				assert.Len(t, role.GetCollectionsAccess()[collection.ScopeName][collection.Name].ChannelHistory(), 2)
-				_, ok := role.GetCollectionsAccess()[collection.ScopeName][collection.Name].ChannelHistory()["channel"]
-				assert.Truef(t, ok, "Channel history should contain 'channel'")
-			}
+			channelHistory := role.CollectionChannelHistory(collection.ScopeName, collection.Name)
+			assert.Len(t, channelHistory, 2)
+			_, ok := channelHistory["channel"]
+			require.True(t, ok)
+			assert.Truef(t, ok, "Channel history should contain 'channel'")
 		})
 	}
 
