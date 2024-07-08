@@ -103,6 +103,7 @@ type handler struct {
 	authScopeFunc         authScopeFunc
 	httpLogLevel          *base.LogLevel // if set, always log HTTP information at this level, instead of the default
 	rqCtx                 context.Context
+	serverType            serverType
 }
 
 type authScopeFunc func(context.Context, *handler) (string, error)
@@ -121,7 +122,8 @@ type handlerMethod func(*handler) error
 // makeHandlerWithOptions creates an http.Handler that will run a handler with the given method handlerOptions
 func makeHandlerWithOptions(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, options handlerOptions) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := newHandler(server, privs, r, rq, options)
+		serverType := getCtxServerType(rq.Context())
+		h := newHandler(server, privs, serverType, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		if !options.skipLogDuration {
@@ -176,7 +178,7 @@ type handlerOptions struct {
 	httpLogLevel      *base.LogLevel // if set, log HTTP requests to this handler at this level, instead of the usual info level
 }
 
-func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request, options handlerOptions) *handler {
+func newHandler(server *ServerContext, privs handlerPrivs, serverType serverType, r http.ResponseWriter, rq *http.Request, options handlerOptions) *handler {
 	h := &handler{
 		server:            server,
 		privs:             privs,
@@ -189,6 +191,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		allowNilDBContext: options.allowNilDBContext,
 		authScopeFunc:     options.authScopeFunc,
 		httpLogLevel:      options.httpLogLevel,
+		serverType:        serverType,
 	}
 
 	// initialize h.rqCtx
@@ -625,7 +628,7 @@ func (h *handler) shouldUpdateBytesTransferredStats() bool {
 	if h.db == nil {
 		return false
 	}
-	if h.privs != publicPrivs && h.privs != regularPrivs {
+	if h.serverType != publicServer {
 		return false
 	}
 	if h.isBlipSync() {
@@ -679,7 +682,7 @@ func (h *handler) logRESTCount() {
 	if h.db == nil {
 		return
 	}
-	if h.privs != publicPrivs && h.privs != regularPrivs {
+	if h.serverType != publicServer {
 		return
 	}
 	if h.isBlipSync() {
@@ -1579,7 +1582,7 @@ func (h *handler) formatSerialNumber() string {
 // Admin requests can always see this, regardless of the HideProductVersion setting.
 func (h *handler) shouldShowProductVersion() bool {
 	hideProductVersion := base.BoolDefault(h.server.Config.API.HideProductVersion, false)
-	return h.privs == adminPrivs || !hideProductVersion
+	return h.serverType == adminServer || !hideProductVersion
 }
 
 func requiresWritePermission(accessPermissions []Permission) bool {

@@ -51,7 +51,7 @@ var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named co
 
 var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
 
-var allServers = []string{publicServer, adminServer, metricsServer, diagnosticServer}
+var allServers = []serverType{publicServer, adminServer, metricsServer, diagnosticServer}
 
 // serverInfo represents an instance of an HTTP server from sync gateway
 type serverInfo struct {
