@@ -69,6 +69,7 @@ type DbConsoleLogConfig struct {
 
 // DbAuditLogConfig can be used to customise the audit logging for events associated with this database.
 type DbAuditLogConfig struct {
+	Enabled       bool
 	EnabledEvents map[AuditID]struct{}
 }
 
