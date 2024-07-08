@@ -1086,9 +1086,9 @@ func (m *sgReplicateManager) PutReplications(ctx context.Context, replications m
 }
 
 // PUT _replication/replicationID
-func (m *sgReplicateManager) UpsertReplication(ctx context.Context, replication *ReplicationUpsertConfig) (created bool, err error) {
+func (m *sgReplicateManager) UpsertReplication(ctx context.Context, replication *ReplicationUpsertConfig) (created bool, auditEvents []base.AuditID, err error) {
 	if replication.ID == "" {
-		return false, base.HTTPErrorf(http.StatusBadRequest, "Replication ID is required")
+		return false, nil, base.HTTPErrorf(http.StatusBadRequest, "Replication ID is required")
 	}
 	created = true
 	addReplicationCallback := func(cluster *SGRCluster) (cancel bool, err error) {
@@ -1103,6 +1103,7 @@ func (m *sgReplicateManager) UpsertReplication(ctx context.Context, replication 
 			if state.Status != ReplicationStateStopped {
 				return true, base.HTTPErrorf(http.StatusBadRequest, "Replication must be stopped before updating config")
 			}
+			auditEvents = append(auditEvents, base.AuditIDISGRUpdate)
 		} else {
 			// Add a new replication to the cfg.  Set targetState based on initialState when specified.
 			replicationConfig := DefaultReplicationConfig()
@@ -1115,6 +1116,7 @@ func (m *sgReplicateManager) UpsertReplication(ctx context.Context, replication 
 				ReplicationConfig: replicationConfig,
 				TargetState:       targetState,
 			}
+			auditEvents = append(auditEvents, base.AuditIDISGRCreate)
 		}
 
 		cluster.Replications[replication.ID].Upsert(ctx, replication)
@@ -1123,11 +1125,21 @@ func (m *sgReplicateManager) UpsertReplication(ctx context.Context, replication 
 		if validateErr != nil {
 			return true, validateErr
 		}
+		switch cluster.Replications[replication.ID].TargetState {
+		case ReplicationStateRunning:
+			// by default a replication will be created running, or an existing replication can go from stopped to running
+			auditEvents = append(auditEvents, base.AuditIDISGRStart)
+		case ReplicationStateStopped:
+			// if initial creation, then there is no starting
+		case ReplicationStateResetting:
+			// a replication can start in a resetting state, or go from stop->reset
+			auditEvents = append(auditEvents, base.AuditIDISGRReset)
+		}
 
 		cluster.RebalanceReplications()
 		return false, nil
 	}
-	return created, m.updateCluster(addReplicationCallback)
+	return created, auditEvents, m.updateCluster(addReplicationCallback)
 }
 
 func (m *sgReplicateManager) UpdateReplicationState(replicationID string, state string) error {
@@ -1471,23 +1483,27 @@ func (m *sgReplicateManager) GetReplicationStatus(ctx context.Context, replicati
 	return status, nil
 }
 
-func (m *sgReplicateManager) PutReplicationStatus(ctx context.Context, replicationID, action string) (status *ReplicationStatus, err error) {
+// PutReplicationStatus updates the state of a replication.
+func (m *sgReplicateManager) PutReplicationStatus(ctx context.Context, replicationID, action string) (status *ReplicationStatus, auditEvent base.AuditID, err error) {
 
 	targetState := ""
 	switch action {
 	case "reset":
+		auditEvent = base.AuditIDISGRReset
 		targetState = ReplicationStateResetting
 	case "stop":
+		auditEvent = base.AuditIDISGRStop
 		targetState = ReplicationStateStopped
 	case "start":
+		auditEvent = base.AuditIDISGRStart
 		targetState = ReplicationStateRunning
 	default:
-		return nil, base.HTTPErrorf(http.StatusBadRequest, "Unrecognized action %q.  Valid values are start/stop/reset.", action)
+		return nil, 0, base.HTTPErrorf(http.StatusBadRequest, "Unrecognized action %q.  Valid values are start/stop/reset.", action)
 	}
 
 	err = m.UpdateReplicationState(replicationID, targetState)
 	if err != nil {
-		return nil, err
+		return nil, auditEvent, err
 	}
 
 	updatedStatus, err := m.GetReplicationStatus(ctx, replicationID, DefaultReplicationStatusOptions())
@@ -1499,15 +1515,15 @@ func (m *sgReplicateManager) PutReplicationStatus(ctx context.Context, replicati
 				ID:     replicationID,
 				Status: "removed",
 			}
-			return replicationStatus, nil
+			return replicationStatus, auditEvent, nil
 		} else {
-			return nil, err
+			return nil, auditEvent, err
 		}
 	}
 
 	// Modify the returned replication state to align with the requested state
 	updatedStatus.Status = transitionStateName(updatedStatus.Status, targetState)
-	return updatedStatus, nil
+	return updatedStatus, auditEvent, nil
 }
 
 func (m *sgReplicateManager) GetReplicationStatusAll(ctx context.Context, options ReplicationStatusOptions) ([]*ReplicationStatus, error) {

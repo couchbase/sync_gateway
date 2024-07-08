@@ -22,16 +22,18 @@ const (
 
 // commonly used fields for audit events
 const (
-	auditFieldID            = "id"
-	auditFieldTimestamp     = "timestamp"
-	auditFieldName          = "name"
-	auditFieldDescription   = "description"
-	auditFieldRealUserID    = "real_userid"
-	auditFieldLocal         = "local"
-	auditFieldRemote        = "remote"
-	auditFieldDatabase      = "db"
-	auditFieldCorrelationID = "cid"
-	auditFieldKeyspace      = "ks"
+	auditFieldID                = "id"
+	auditFieldTimestamp         = "timestamp"
+	auditFieldName              = "name"
+	auditFieldDescription       = "description"
+	auditFieldRealUserID        = "real_userid"
+	auditFieldLocal             = "local"
+	auditFieldRemote            = "remote"
+	auditFieldDatabase          = "db"
+	auditFieldCorrelationID     = "cid" // FIXME: how to distinguish between this field (http) and blip id below
+	auditFieldKeyspace          = "ks"
+	AuditFieldReplicationID     = "replication_correlation_id"
+	AuditFieldISGRReplicationID = "isgr_replication_id"
 )
 
 // expandFields populates data with information from the id, context and additionalData.

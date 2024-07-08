@@ -7789,7 +7789,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	assert.Equal(t, "", config.RemoteUsername)
 	assert.Equal(t, "", config.RemotePassword)
 
-	_, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(activeRT.Context(), t.Name(), "stop")
+	_, _, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(activeRT.Context(), t.Name(), "stop")
 	require.NoError(t, err)
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 	err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(t.Name())
@@ -8113,7 +8113,7 @@ function (doc) {
 			}
 
 			// Stop and remove replicator (to stop checkpointing after teardown causing panic)
-			_, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(activeRT.Context(), replName, "stop")
+			_, _, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(activeRT.Context(), replName, "stop")
 			require.NoError(t, err)
 			activeRT.WaitForReplicationStatus(replName, db.ReplicationStateStopped)
 			err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(replName)
@@ -8138,7 +8138,7 @@ function (doc) {
 			base.RequireWaitForStat(t, receiverRT.GetDatabase().DbStats.Database().NumDocWrites.Value, 10)
 
 			// Stop and remove replicator
-			_, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(activeRT.Context(), replName, "stop")
+			_, _, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(activeRT.Context(), replName, "stop")
 			require.NoError(t, err)
 			activeRT.WaitForReplicationStatus(replName, db.ReplicationStateStopped)
 			err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(replName)
