@@ -94,17 +94,14 @@ func BootstrapAdminRequestWithHeaders(t *testing.T, sc *ServerContext, method, p
 	return doBootstrapAdminRequest(t, sc, method, path, body, headers)
 }
 
-// getServerAddr returns the address as assigned by the listener. This will return an addressable address, whereas ":0" is a valid value to pass to server.
-func (sc *ServerContext) getServerAddr(t *testing.T, s serverType) string {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
-	server := sc._httpServers[s]
-	require.NotNil(t, server, "Server %s not found in server context", s)
-	return server.addr.String()
+func mustGetServerAddr(t *testing.T, sc *ServerContext, s serverType) string {
+	addr, err := sc.getServerAddr(s)
+	require.NoError(t, err, "Server %s not found in server context", s)
+	return addr
 }
 
 func doBootstrapAdminRequest(t *testing.T, sc *ServerContext, method, path, body string, headers map[string]string) boostrapResponse {
-	host := "http://" + sc.getServerAddr(t, adminServer)
+	host := "http://" + mustGetServerAddr(t, sc, adminServer)
 	url := host + path
 
 	buf := bytes.NewBufferString(body)
@@ -134,7 +131,7 @@ func doBootstrapAdminRequest(t *testing.T, sc *ServerContext, method, path, body
 }
 
 func doBootstrapRequest(t *testing.T, sc *ServerContext, method, path, body string, headers map[string]string, server serverType) boostrapResponse {
-	host := "http://" + sc.getServerAddr(t, server)
+	host := "http://" + mustGetServerAddr(t, sc, server)
 	url := host + path
 
 	buf := bytes.NewBufferString(body)

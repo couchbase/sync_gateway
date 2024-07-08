@@ -204,13 +204,21 @@ func newHandler(server *ServerContext, privs handlerPrivs, serverType serverType
 func (h *handler) ctx() context.Context {
 	if h.rqCtx == nil {
 		ctx := base.CorrelationIDLogCtx(h.rq.Context(), h.formatSerialNumber())
+		serverAddr, err := h.getServerAddr()
+		if err != nil {
+			base.AssertfCtx(ctx, "Error getting server address: %v", err)
+		}
 		ctx = base.RequestLogCtx(ctx, base.RequestData{
-			RequestHost:       h.rq.Host, // FIXME: This is client-supplied data (Host header); replace with actual server listener address for API serving request!
+			RequestHost:       serverAddr,
 			RequestRemoteAddr: h.rq.RemoteAddr,
 		})
 		h.rqCtx = ctx
 	}
 	return h.rqCtx
+}
+
+func (h *handler) getServerAddr() (string, error) {
+	return h.server.getServerAddr(h.serverType)
 }
 
 func (h *handler) addDatabaseLogContext(dbName string, logConfig *base.DbLogConfig) {
