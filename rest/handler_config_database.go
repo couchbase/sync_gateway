@@ -35,9 +35,7 @@ func (h *handler) getDBConfig() (config *DbConfig, etagVersion string, err error
 	}
 }
 
-// Updates the database config via a callback function that can modify a `DbConfig`.
-// Note: This always returns a non-nil error; on success it's an HTTPError with status OK.
-// The calling handler method is expected to simply return the result.
+// Updates the database config via a callback function that can modify a `DbConfig`
 func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 	h.assertAdminOnly()
 
@@ -93,5 +91,6 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 		return err
 	}
 	h.setEtag(updatedDbConfig.Version)
+	h.setStatus(http.StatusOK, "updated")
 	return nil
 }
