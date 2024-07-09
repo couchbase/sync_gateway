@@ -10,7 +10,6 @@ package base
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -66,6 +65,7 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	if logCtx.Bucket != "" && logCtx.Scope != "" && logCtx.Collection != "" {
 		fields[auditFieldKeyspace] = FullyQualifiedCollectionName(logCtx.Bucket, logCtx.Scope, logCtx.Collection)
 	}
+	// TODO: CBG-3973 - set fields in ctx
 	userDomain := logCtx.UserDomain
 	userID := logCtx.Username
 	if userDomain != "" || userID != "" {
@@ -77,11 +77,7 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	if logCtx.RequestHost != "" {
 		host, port, err := net.SplitHostPort(logCtx.RequestHost)
 		if err != nil {
-			if IsDevMode() {
-				panic(fmt.Sprintf("couldn't parse request host: %v", err))
-			} else {
-				WarnfCtx(ctx, "couldn't parse request host %q for audit log: %v", logCtx.RequestHost, err)
-			}
+			AssertfCtx(ctx, "couldn't parse request host %q: %v", logCtx.RequestHost, err)
 		} else {
 			fields[auditFieldLocal] = map[string]any{
 				"ip":   host,
@@ -89,14 +85,11 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 			}
 		}
 	}
+
 	if logCtx.RequestRemoteAddr != "" {
 		host, port, err := net.SplitHostPort(logCtx.RequestRemoteAddr)
 		if err != nil {
-			if IsDevMode() {
-				panic(fmt.Sprintf("couldn't parse request remote addr: %v", err))
-			} else {
-				WarnfCtx(ctx, "couldn't parse request remote addr %q for audit log: %v", logCtx.RequestRemoteAddr, err)
-			}
+			AssertfCtx(ctx, "couldn't parse request remote addr %q: %v", logCtx.RequestRemoteAddr, err)
 		} else {
 			fields[auditFieldRemote] = map[string]any{
 				"ip":   host,
