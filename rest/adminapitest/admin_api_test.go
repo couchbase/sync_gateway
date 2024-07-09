@@ -4263,3 +4263,28 @@ func TestDatabaseCreationWithEnvVariableWithBackticks(t *testing.T) {
 	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/backticks/", string(input), rest.MobileSyncGatewayRole.RoleName, "password")
 	rest.RequireStatus(t, resp, http.StatusCreated)
 }
+
+func TestDatabaseConfigAuditAPI(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	// check default audit config
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/_config/audit", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	resp.DumpBody()
+	var responseBody map[string]interface{}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
+	assert.Equal(t, false, responseBody["enabled"].(bool))
+
+	// enable audit on the database
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", `{"enabled":true}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// check audit config
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config/audit", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	resp.DumpBody()
+	responseBody = nil
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
+	assert.Equal(t, true, responseBody["enabled"].(bool))
+}

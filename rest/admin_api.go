@@ -707,9 +707,15 @@ func (h *handler) handleGetDbAuditConfig() error {
 
 		etagVersion = dbConfig.Version
 
-		if dbConfig.Logging != nil && dbConfig.Logging.Audit != nil {
-			dbAuditEnabled = base.BoolDefault(dbConfig.Logging.Audit.Enabled, false)
-			for _, event := range dbConfig.Logging.Audit.EnabledEvents {
+		runtimeConfig, err := MergeDatabaseConfigWithDefaults(h.server.Config, &dbConfig.DbConfig)
+		if err != nil {
+			return err
+		}
+
+		// grab runtime version of config, so that we can see what events would be enabled
+		if runtimeConfig.Logging != nil && runtimeConfig.Logging.Audit != nil {
+			dbAuditEnabled = base.BoolDefault(runtimeConfig.Logging.Audit.Enabled, false)
+			for _, event := range runtimeConfig.Logging.Audit.EnabledEvents {
 				enabledEvents[base.AuditID(event)] = struct{}{}
 			}
 		}

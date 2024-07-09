@@ -192,7 +192,6 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		if base.IsEnterpriseEdition() {
 			dbConfig.ImportPartitions = base.Uint16Ptr(base.GetDefaultImportPartitions(sc.IsServerless()))
 		}
-
 	} else {
 		dbConfig.AutoImport = base.BoolPtr(false)
 	}
