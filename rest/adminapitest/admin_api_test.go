@@ -562,7 +562,7 @@ func TestDBGetConfigNamesAndDefaultLogging(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 
 	assert.Equal(t, len(rt.DatabaseConfig.Users), len(body.Users))
-	emptyCnf := &rest.DbLoggingConfig{}
+	emptyCnf := rest.DefaultPerDBLogging(rt.ServerContext().Config.Logging)
 	assert.Equal(t, body.Logging, emptyCnf)
 
 	for k, v := range body.Users {
