@@ -77,12 +77,24 @@ var AuditEvents = events{
 // DefaultAuditEventIDs is a list of audit event IDs that are enabled by default.
 var DefaultAuditEventIDs = buildDefaultAuditIDList(AuditEvents)
 
-func buildDefaultAuditIDList(e events) []uint {
-	var ids []uint
-	for id, event := range e {
-		if event.EnabledByDefault {
-			ids = append(ids, uint(id))
+func buildDefaultAuditIDList(e events) (ids []uint) {
+	for k, v := range e {
+		if v.EnabledByDefault {
+			ids = append(ids, uint(k))
 		}
 	}
 	return ids
+}
+
+// NonFilterableEvents is a map of audit events that are not permitted to be filtered.
+var NonFilterableEvents = buildNonFilterableEvents(AuditEvents)
+
+func buildNonFilterableEvents(e events) events {
+	nonFilterable := make(events)
+	for k, v := range e {
+		if !v.FilteringPermitted {
+			nonFilterable[k] = v
+		}
+	}
+	return nonFilterable
 }

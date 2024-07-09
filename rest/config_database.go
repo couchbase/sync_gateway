@@ -99,11 +99,9 @@ func DefaultPerDBLogging(bootstrapLoggingCnf base.LoggingConfig) *DbLoggingConfi
 			}
 		}
 	}
-	if bootstrapLoggingCnf.Audit != nil {
-		dblc.Audit = &DbAuditLoggingConfig{
-			Enabled:       base.BoolPtr(false),
-			EnabledEvents: base.DefaultAuditEventIDs,
-		}
+	dblc.Audit = &DbAuditLoggingConfig{
+		Enabled:       base.BoolPtr(false),
+		EnabledEvents: base.DefaultAuditEventIDs,
 	}
 	return dblc
 }
@@ -192,7 +190,6 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		if base.IsEnterpriseEdition() {
 			dbConfig.ImportPartitions = base.Uint16Ptr(base.GetDefaultImportPartitions(sc.IsServerless()))
 		}
-
 	} else {
 		dbConfig.AutoImport = base.BoolPtr(false)
 	}
