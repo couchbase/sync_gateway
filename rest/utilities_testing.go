@@ -1673,14 +1673,11 @@ func GetUserPayload(t testing.TB, username, password, email string, collection *
 	return string(marshalledConfig)
 }
 
-// GetRolePayload will take roleName, password and channels you want to assign a particular role and return the appropriate payload for the _role endpoint
-func GetRolePayload(t *testing.T, roleName, password string, collection *db.DatabaseCollection, chans []string) string {
+// GetRolePayload will take roleName and channels you want to assign a particular role and return the appropriate payload for the _role endpoint
+func GetRolePayload(t *testing.T, roleName string, collection *db.DatabaseCollection, chans []string) string {
 	config := auth.PrincipalConfig{}
 	if roleName != "" {
 		config.Name = &roleName
-	}
-	if password != "" {
-		config.Password = &password
 	}
 	marshalledConfig, err := addChannelsToPrincipal(config, collection, chans)
 	require.NoError(t, err)

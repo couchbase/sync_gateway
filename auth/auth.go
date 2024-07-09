@@ -441,11 +441,11 @@ func (auth *Authenticator) UpdateSequenceNumber(p Principal, seq uint64) error {
 }
 
 func (auth *Authenticator) InvalidateDefaultChannels(name string, isUser bool, invalSeq uint64) error {
-	return auth.InvalidateChannels(name, isUser, base.DefaultScope, base.DefaultCollection, invalSeq)
+	return auth.InvalidateChannels(name, isUser, base.ScopeAndCollectionNames{base.DefaultScopeAndCollectionName()}, invalSeq)
 }
 
 // Invalidates the channel list of a user/role by setting the ChannelInvalSeq to a non-zero value
-func (auth *Authenticator) InvalidateChannels(name string, isUser bool, scope string, collection string, invalSeq uint64) error {
+func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collections base.ScopeAndCollectionNames, invalSeq uint64) error {
 	var princ Principal
 	var docID string
 
@@ -465,17 +465,23 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, scope st
 
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate access of %q", base.UD(name))
 
-	subdocPath := "channel_inval_seq"
-	if scope != base.DefaultScope || collection != base.DefaultCollection {
-		subdocPath = "collection_access." + scope + "." + collection + "." + subdocPath
-	}
+	// Attempt to use subdoc if we're only modifying a single collection
+	if len(collections) == 1 {
+		scope := collections[0].ScopeName()
+		collection := collections[0].CollectionName()
 
-	if subdocStore, ok := base.AsSubdocStore(auth.datastore); ok {
-		err := subdocStore.SubdocInsert(auth.LogCtx, docID, subdocPath, 0, invalSeq)
-		if err != nil && err != base.ErrAlreadyExists && err != base.ErrPathExists && err != base.ErrPathNotFound && !base.IsDocNotFoundError(err) {
-			return err
+		subdocPath := "channel_inval_seq"
+		if scope != base.DefaultScope || collection != base.DefaultCollection {
+			subdocPath = "collection_access." + scope + "." + collection + "." + subdocPath
 		}
-		return nil
+
+		if subdocStore, ok := base.AsSubdocStore(auth.datastore); ok {
+			err := subdocStore.SubdocInsert(auth.LogCtx, docID, subdocPath, 0, invalSeq)
+			if err != nil && err != base.ErrAlreadyExists && err != base.ErrPathExists && err != base.ErrPathNotFound && !base.IsDocNotFoundError(err) {
+				return err
+			}
+			return nil
+		}
 	}
 
 	_, err := auth.datastore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
@@ -489,14 +495,21 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, scope st
 			return nil, nil, false, err
 		}
 
-		if princ.CollectionChannels(scope, collection) == nil {
+		changed := false
+		for _, collectionName := range collections {
+			scope := collectionName.ScopeName()
+			collection := collectionName.CollectionName()
+			if princ.CollectionChannels(scope, collection) != nil {
+				princ.setCollectionChannelInvalSeq(scope, collection, invalSeq)
+				changed = true
+			}
+		}
+
+		if !changed {
 			return nil, nil, false, base.ErrUpdateCancel
 		}
 
-		princ.setCollectionChannelInvalSeq(scope, collection, invalSeq)
-
 		updated, err = base.JSONMarshal(princ)
-
 		return updated, nil, false, err
 	})
 
@@ -538,6 +551,56 @@ func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) err
 		}
 
 		user.SetRoleInvalSeq(invalSeq)
+
+		updated, err = base.JSONMarshal(&user)
+		return updated, nil, false, err
+	})
+
+	if err == base.ErrUpdateCancel {
+		return nil
+	}
+
+	return err
+}
+
+// Invalidates the computed roles and channels of a user by setting the ChannelInvalSeq to a non-zero value for all specified collections.
+func (auth *Authenticator) InvalidateRolesAndChannels(username string, collections base.ScopeAndCollectionNames, invalSeq uint64) error {
+
+	docID := auth.DocIDForUser(username)
+	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate computed role and channel access of %q for collections %v", base.UD(username), collections)
+
+	_, err := auth.datastore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		// If user/role doesn't exist cancel update
+		if current == nil {
+			return nil, nil, false, base.ErrUpdateCancel
+		}
+
+		var user userImpl
+		err = base.JSONUnmarshal(current, &user)
+		if err != nil {
+			return nil, nil, false, base.ErrUpdateCancel
+		}
+
+		changed := false
+		// Invalidate channel access per collection
+		for _, collection := range collections {
+			scope := collection.ScopeName()
+			collection := collection.CollectionName()
+			if user.CollectionChannels(scope, collection) != nil {
+				user.setCollectionChannelInvalSeq(scope, collection, invalSeq)
+				changed = true
+			}
+		}
+
+		// Invalidate role access
+		if user.RoleNames() != nil {
+			user.SetRoleInvalSeq(invalSeq)
+			changed = true
+		}
+
+		if !changed {
+			return nil, nil, false, base.ErrUpdateCancel
+		}
 
 		updated, err = base.JSONMarshal(&user)
 		return updated, nil, false, err

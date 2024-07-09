@@ -325,6 +325,37 @@ func (c *DatabaseCollection) UpdateSyncFun(ctx context.Context, syncFun string) 
 	return
 }
 
+// DatabaseCollection helper methods for channel and role invalidation - invoke the multi-collection version on
+// the databaseContext for a single collection.
+// invalUserOrRoleChannels invalidates a user or role's channels for collection c
+func (c *DatabaseCollection) invalUserOrRoleChannels(ctx context.Context, name string, invalSeq uint64) {
+	principalName, isRole := channels.AccessNameToPrincipalName(name)
+	if isRole {
+		c.invalRoleChannels(ctx, principalName, invalSeq)
+	} else {
+		c.invalUserChannels(ctx, principalName, invalSeq)
+	}
+}
+
+// invalRoleChannels invalidates a user's computed channels for collection c
+func (c *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
+	c.dbCtx.invalUserChannels(ctx, username, base.ScopeAndCollectionNames{c.ScopeAndCollectionName()}, invalSeq)
+}
+
+// invalRoleChannels invalidates a role's computed channels for collection c
+func (c *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
+	c.dbCtx.invalRoleChannels(ctx, rolename, base.ScopeAndCollectionNames{c.ScopeAndCollectionName()}, invalSeq)
+}
+
+// invalidateAllPrincipals invalidates computed channels and roles for collection c, for all users and roles
+func (c *DatabaseCollection) invalidateAllPrincipals(ctx context.Context, endSeq uint64) {
+	c.dbCtx.invalidateAllPrincipals(ctx, base.ScopeAndCollectionNames{c.ScopeAndCollectionName()}, endSeq)
+}
+
 func (c *DatabaseCollection) useMou() bool {
 	return c.dbCtx.UseMou()
+}
+
+func (c *DatabaseCollection) ScopeAndCollectionName() base.ScopeAndCollectionName {
+	return base.NewScopeAndCollectionName(c.ScopeName, c.Name)
 }
