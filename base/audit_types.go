@@ -61,6 +61,17 @@ type eventType string
 // E.g. Username, IPs, request parameters, etc.
 type AuditFields map[string]any
 
+// withCommonMandatoryFields adds fields that must be present on ALL audit events.
+func (f AuditFields) withCommonMandatoryFields() {
+	if f == nil {
+		f = make(AuditFields)
+	}
+	f[auditFieldTimestamp] = ""
+	f[auditFieldID] = 1
+	f[auditFieldName] = ""
+	f[auditFieldDescription] = ""
+}
+
 func (i AuditID) MustValidateFields(f AuditFields) {
 	if err := i.ValidateFields(f); err != nil {
 		panic(fmt.Errorf("audit event %s invalid:\n%v", i, err))

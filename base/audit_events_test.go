@@ -70,8 +70,11 @@ func generateCSVModuleDescriptor(e events) ([]byte, error) {
 
 		mandatoryFields := event.MandatoryFields
 		mandatoryFields.withCommonMandatoryFields()
+		mandatoryFieldKeys := maps.Keys(mandatoryFields)
+		slices.Sort(mandatoryFieldKeys)
 		optionalFields := event.OptionalFields
-		//optionalFields.withCommonOptionalFields()
+		optionalFieldKeys := maps.Keys(optionalFields)
+		slices.Sort(optionalFieldKeys)
 		if err := w.Write([]string{
 			id.String(),
 			event.Name,
@@ -79,8 +82,8 @@ func generateCSVModuleDescriptor(e events) ([]byte, error) {
 			strconv.FormatBool(event.EnabledByDefault),
 			strconv.FormatBool(event.FilteringPermitted),
 			string(event.EventType),
-			strings.Join(maps.Keys(mandatoryFields), ", "),
-			strings.Join(maps.Keys(optionalFields), ", "),
+			strings.Join(mandatoryFieldKeys, ", "),
+			strings.Join(optionalFieldKeys, ", "),
 		}); err != nil {
 			return nil, err
 		}
