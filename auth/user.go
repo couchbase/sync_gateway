@@ -28,8 +28,9 @@ import (
 type userImpl struct {
 	roleImpl // userImpl "inherits from" Role
 	userImplBody
-	auth  *Authenticator
-	roles []Role
+	auth         *Authenticator
+	roles        []Role
+	deletedRoles []Role // Roles that are granted to the user, but have been deleted
 
 	// warnChanThresholdOnce ensures that the check for channels
 	// per user threshold is only performed exactly once.
@@ -384,7 +385,7 @@ func (user *userImpl) RevokedCollectionChannels(scope string, collection string,
 
 	// Iterate over current roles and revoke any revoked channels inside role provided that channel isn't accessible
 	// from another grant
-	for _, role := range user.GetRoles() {
+	for _, role := range user.GetRolesIncDeleted() {
 		revokeChannelHistoryProcessing(role)
 	}
 
@@ -562,18 +563,31 @@ func (user *userImpl) SetPassword(password string) error {
 func (user *userImpl) GetRoles() []Role {
 	if user.roles == nil {
 		roles := make([]Role, 0, len(user.RoleNames()))
+		deletedRoles := make([]Role, 0)
 		for name := range user.RoleNames() {
-			role, err := user.auth.GetRole(name)
+			role, err := user.auth.GetRoleIncDeleted(name)
 			// base.InfofCtx(user.auth.LogCtx, base.KeyAccess, "User %s role %q = %v", base.UD(user.Name_), base.UD(name), base.UD(role))
 			if err != nil {
 				panic(fmt.Sprintf("Error getting user role %q: %v", name, err))
 			} else if role != nil {
-				roles = append(roles, role)
+				if role.IsDeleted() {
+					deletedRoles = append(deletedRoles, role)
+				} else {
+					roles = append(roles, role)
+				}
 			}
 		}
 		user.roles = roles
+		user.deletedRoles = deletedRoles
 	}
 	return user.roles
+}
+
+func (user *userImpl) GetRolesIncDeleted() []Role {
+	// Use GetRoles to retrieve active roles (will fetch roles if needed)
+	allRoles := user.GetRoles()
+	allRoles = append(allRoles, user.deletedRoles...)
+	return allRoles
 }
 
 func (user *userImpl) InitializeRoles() {
