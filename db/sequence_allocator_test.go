@@ -862,7 +862,7 @@ func multiNodeUpdate(t *testing.T, ctx context.Context, importAllocator *sequenc
 			require.NoError(t, err, "nextSequenceGreaterThan error: %v", err)
 			log.Printf("allocator %d released %d sequences because next < current (%d < %d)", numReleased, allocatorIndex, prevNext, currentSequence)
 			// At most clientAllocator should only need to release the current batch
-			assert.LessOrEqual(t, numReleased, clientAllocator.sequenceBatchSize)
+			assert.LessOrEqual(t, numReleased, getClientSequenceBatchSize(clientAllocator))
 			releasedCount += numReleased
 		}
 		currentSequence = nextSequence
@@ -887,4 +887,10 @@ func runAllocator(ctx context.Context, a *sequenceAllocator, frequency time.Dura
 			return allocationCount
 		}
 	}
+}
+
+func getClientSequenceBatchSize(allocator *sequenceAllocator) uint64 {
+	allocator.mutex.Lock()
+	defer allocator.mutex.Unlock()
+	return allocator.sequenceBatchSize
 }
