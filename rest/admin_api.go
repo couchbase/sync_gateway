@@ -719,6 +719,8 @@ func (h *handler) handleGetDbAuditConfig() error {
 				enabledEvents[base.AuditID(event)] = struct{}{}
 			}
 		}
+	} else {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "audit config not available in non-persistent mode")
 	}
 
 	events := make(map[string]any, len(base.AuditEvents))
