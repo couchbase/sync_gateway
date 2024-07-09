@@ -4265,6 +4265,10 @@ func TestDatabaseCreationWithEnvVariableWithBackticks(t *testing.T) {
 }
 
 func TestDatabaseConfigAuditAPI(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Audit logging is an EE-only feature")
+	}
+
 	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
