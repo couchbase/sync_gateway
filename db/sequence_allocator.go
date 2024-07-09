@@ -187,6 +187,19 @@ func (s *sequenceAllocator) nextSequence(ctx context.Context) (sequence uint64, 
 	return sequence, nil
 }
 
+// _releaseCurrentBatch releases any unused sequences currently held by the allocator.
+// Writes unused sequence document while holding s.lock, shouldn't be used by high-throughput operations.
+func (s *sequenceAllocator) _releaseCurrentBatch(ctx context.Context) (numReleased uint64, err error) {
+	if s.max > s.last {
+		numReleased, err = s.releaseSequenceRange(ctx, s.last+1, s.max)
+		if err != nil {
+			return 0, err
+		}
+		s.last = s.max
+	}
+	return numReleased, nil
+}
+
 // nextSequenceGreaterThan increments _sync:seq such that it's greater than existingSequence + s.sequenceBatchSize
 // In the case where our local s.max < _sync:seq (another node has incremented _sync:seq), we may be releasing
 // sequences greater than existingSequence, but we will only ever release sequences allocated by this node's incr operation
@@ -226,19 +239,51 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 
 	}
 
-	// If the target sequence is greater than the highest in our batch (s.max), we want to:
-	// (a) Reserve n sequences past _sync:seq, where n = existingSequence - s.max.  It's ok if the resulting sequence exceeds targetSequence (if other nodes have allocated sequences and
-	//   updated _sync:seq since we last updated s.max.), then
+	// At this point we need to allocate a sequence that's larger than what's in our current batch, so we first need to release the current batch.
+	var numReleasedBatch uint64
+	numReleasedBatch, err = s._releaseCurrentBatch(ctx)
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyCache, "Unable to release current batch during nextSequenceGreaterThan for existing sequence %d. Will be handled by skipped sequence handling. %v", existingSequence, err)
+	}
+	releasedSequenceCount += numReleasedBatch
+
+	syncSeq, err := s.getSequence()
+	if err != nil {
+		base.WarnfCtx(ctx, "Unable to fetch current sequence during nextSequenceGreaterThan for existing sequence %d. Error:%v", existingSequence, err)
+		s.mutex.Unlock()
+		return 0, 0, err
+	}
+
+	// check for rollback of _sync:seq before continuing
+	if syncSeq < s.last {
+		// rollback of _sync:seq detected
+		syncSeq, err = s._fixSyncSeqRollback(ctx, syncSeq, s.last)
+		if err != nil {
+			s.mutex.Unlock()
+			return 0, 0, err
+		}
+	}
+
+	// If the target sequence is less than the current syncSeq, allocate as normal using _nextSequence
+	if syncSeq >= targetSequence {
+		sequence, sequencesReserved, err := s._nextSequence(ctx)
+		s.mutex.Unlock()
+		if err != nil {
+			return 0, 0, err
+		}
+		if sequencesReserved {
+			s.reserveNotify <- struct{}{}
+		}
+		s.dbStats.SequenceAssignedCount.Add(1)
+		return sequence, releasedSequenceCount, nil
+	}
+
+	// If the target sequence is greater than the current _sync:seq, we want to:
+	// (a) Reserve n sequences past _sync:seq, where n = existingSequence - syncSeq.  It's ok if the resulting sequence exceeds targetSequence (if other nodes have allocated sequences and
+	//   updated _sync:seq since we last updated s.max.)
 	// (b) Allocate a standard batch of sequences, and assign a sequence from that batch in the usual way.
-	// (c) Release any previously allocated sequences (s.last to s.max)
-	// (d) Release the reserved sequences from part (a)
-	// We can perform (a) and (b) as a single increment operation, but (c) and (d) aren't necessarily contiguous blocks and must be released
-	// separately
-
-	prevAllocReleaseFrom := s.last + 1
-	prevAllocReleaseTo := s.max
-
-	numberToRelease := existingSequence - s.max
+	// (c) Release the reserved sequences from part (a)
+	numberToRelease := existingSequence - syncSeq
 	numberToAllocate := s.sequenceBatchSize
 	incrVal := numberToRelease + numberToAllocate
 	allocatedToSeq, err := s.incrementSequence(incrVal)
@@ -246,17 +291,6 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 		base.WarnfCtx(ctx, "Error from incrementSequence in nextSequenceGreaterThan(%d): %v", existingSequence, err)
 		s.mutex.Unlock()
 		return 0, 0, err
-	}
-
-	// check for rollback of _sync:seq before continuing
-	minimumExpectedValue := incrVal + prevAllocReleaseTo
-	if allocatedToSeq < minimumExpectedValue {
-		// rollback of _sync:seq detected
-		allocatedToSeq, err = s._fixSyncSeqRollback(ctx, allocatedToSeq, minimumExpectedValue)
-		if err != nil {
-			s.mutex.Unlock()
-			return 0, 0, err
-		}
 	}
 
 	s.max = allocatedToSeq
@@ -267,15 +301,9 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 	// Perform standard batch handling and stats updates
 	s.lastSequenceReserveTime = time.Now()
 	s.reserveNotify <- struct{}{}
-	s.dbStats.SequenceReservedCount.Add(int64(numberToRelease + numberToAllocate))
+	s.dbStats.SequenceReservedCount.Add(int64(incrVal))
 	s.dbStats.SequenceAssignedCount.Add(1)
 
-	// Release previously allocated sequences (c), if any
-	released, err := s.releaseSequenceRange(ctx, prevAllocReleaseFrom, prevAllocReleaseTo)
-	if err != nil {
-		base.WarnfCtx(ctx, "Error returned when releasing sequence range [%d-%d] for previously allocated sequences. Will be handled by skipped sequence handling.  Error:%v", prevAllocReleaseFrom, prevAllocReleaseTo, err)
-	}
-	releasedSequenceCount += released
 	// Release the newly allocated sequences that were used to catch up to existingSequence (d)
 	if numberToRelease > 0 {
 		releaseTo := allocatedToSeq - numberToAllocate

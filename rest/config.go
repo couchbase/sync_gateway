@@ -80,13 +80,13 @@ type serverType string
 
 const (
 	// serverTypePublic indicates the public interface for sync gateway
-	publicServer = "public"
+	publicServer serverType = "public"
 	// serverTypeAdmin indicates the admin interface for sync gateway
-	adminServer = "admin"
+	adminServer serverType = "admin"
 	// serverTypeMetrics indicates the metrics interface for sync gateway
-	metricsServer = "metrics"
+	metricsServer serverType = "metrics"
 	// serverTypeDiagnostic indicates the diagnostic interface for sync gateway
-	diagnosticServer = "diagnostic"
+	diagnosticServer serverType = "diagnostic"
 )
 
 // Bucket configuration elements - used by db, index

@@ -51,7 +51,7 @@ type vendor struct {
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
 	resp := rootResponse{
-		Admin:   h.privs == adminPrivs,
+		Admin:   h.serverType == adminServer,
 		CouchDB: "Welcome",
 		Vendor: vendor{
 			Name: base.ProductNameString,
