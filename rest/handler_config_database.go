@@ -40,58 +40,58 @@ func (h *handler) getDBConfig() (config *DbConfig, etagVersion string, err error
 // The calling handler method is expected to simply return the result.
 func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 	h.assertAdminOnly()
+
+	if !h.server.persistentConfig {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "persistent config is disabled")
+	}
+
 	dbName := h.db.Name
 	validateOIDC := !h.getBoolQuery(paramDisableOIDCValidation)
 
-	if h.server.persistentConfig {
-		// Update persistently-stored config:
-		bucket := h.db.Bucket.GetName()
-		var updatedDbConfig *DatabaseConfig
-		cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+	// Update persistently-stored config:
+	bucket := h.db.Bucket.GetName()
+	var updatedDbConfig *DatabaseConfig
+	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 
-			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
-				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-			}
+		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+		}
 
-			// Now call the mutator function:
-			if err := mutator(&bucketDbConfig.DbConfig); err != nil {
-				return nil, err
-			}
+		// Now call the mutator function:
+		if err := mutator(&bucketDbConfig.DbConfig); err != nil {
+			return nil, err
+		}
 
-			validateReplications := false
-			if err := bucketDbConfig.validate(h.ctx(), validateOIDC, validateReplications); err != nil {
-				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
-			}
+		validateReplications := false
+		if err := bucketDbConfig.validate(h.ctx(), validateOIDC, validateReplications); err != nil {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
 
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-			if err != nil {
-				return nil, err
-			}
-			updatedDbConfig = bucketDbConfig
-			return bucketDbConfig, nil
-		})
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		updatedDbConfig.cfgCas = cas
-
-		dbCreds := h.server.Config.DatabaseCredentials[dbName]
-		bucketCreds := h.server.Config.BucketCredentials[bucket]
-		if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
-			return err
-		}
-
-		h.server.lock.Lock()
-		defer h.server.lock.Unlock()
-
-		// TODO: Dynamic update instead of reload
-		if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
-			return err
-		}
-		h.setEtag(updatedDbConfig.Version)
-		return base.HTTPErrorf(http.StatusOK, "updated")
-
-	} else {
-		return base.HTTPErrorf(http.StatusServiceUnavailable, "Unavailable")
+		updatedDbConfig = bucketDbConfig
+		return bucketDbConfig, nil
+	})
+	if err != nil {
+		return err
 	}
+	updatedDbConfig.cfgCas = cas
+
+	dbCreds := h.server.Config.DatabaseCredentials[dbName]
+	bucketCreds := h.server.Config.BucketCredentials[bucket]
+	if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+		return err
+	}
+
+	h.server.lock.Lock()
+	defer h.server.lock.Unlock()
+
+	// TODO: Dynamic update instead of reload
+	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false); err != nil {
+		return err
+	}
+	h.setEtag(updatedDbConfig.Version)
+	return nil
 }
