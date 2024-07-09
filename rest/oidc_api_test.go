@@ -1549,7 +1549,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 
 	t.Run("new user authentication with future time nbf claim", func(t *testing.T) {
 		claimSet := claimsAuthentic()
-		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(5 * time.Minute))
+		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(10 * time.Minute))
 		runBadAuthTest(claimSet)
 	})
 
@@ -1570,7 +1570,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	t.Run("registered user authentication with future time nbf claim", func(t *testing.T) {
 		createUser(t, restTester, username)
 		claimSet := claimsAuthentic()
-		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(5 * time.Minute))
+		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(10 * time.Minute))
 		runBadAuthTest(claimSet)
 		deleteUser(t, restTester, username)
 	})
