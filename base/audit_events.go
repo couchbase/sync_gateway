@@ -18,13 +18,105 @@ const (
 	auditdIDBlockSize = 0xFFF
 )
 
+// Audit IDs for Sync Gateway.
+// The IDs and grouping is arbitrary, but are spaced to allow for some additions in each area.
 const (
-	AuditIDAuditEnabled AuditID = 53248
+	// Audit events
+	AuditIDAuditEnabled       AuditID = 53248
+	AuditIDAuditDisabled      AuditID = 53249
+	AuditIDAuditConfigChanged AuditID = 53250
 
-	AuditIDPublicUserAuthenticated        AuditID = 53260
-	AuditIDPublicUserAuthenticationFailed AuditID = 53261
+	// SG events
+	AuditIDSyncGatewayStartup AuditID = 53260
 
-	AuditIDReadDatabase AuditID = 53301
+	// API events
+	AuditIDPublicHTTPAPIRequest  AuditID = 53270
+	AuditIDAdminHTTPAPIRequest   AuditID = 53271
+	AuditIDMetricsHTTPAPIRequest AuditID = 53272
+	//AuditIDBLIPMessage           AuditID = 0 // TODO: Is this required? What info should the event contain?
+
+	// Auth (public) events
+	AuditIDPublicUserAuthenticated        AuditID = 53280
+	AuditIDPublicUserAuthenticationFailed AuditID = 53281
+	AuditIDPublicUserSessionCreated       AuditID = 53282
+	AuditIDPublicUserSessionDeleted       AuditID = 53283
+	// Auth (admin) events
+	AuditIDAdminUserAuthenticated        AuditID = 53290
+	AuditIDAdminUserAuthenticationFailed AuditID = 53291
+	AuditIDAdminUserAuthorizationFailed  AuditID = 53292
+
+	// SG node events
+	AuditIDSyncGatewayCollectInfoStatus AuditID = 53300
+	AuditIDSyncGatewayCollectInfoStart  AuditID = 53301
+	AuditIDSyncGatewayCollectInfoStop   AuditID = 53302
+	AuditIDSyncGatewayStats             AuditID = 53303
+	AuditIDSyncGatewayProfiling         AuditID = 53304
+
+	// SG cluster events
+	AuditIDClusterInfoRead AuditID = 53350
+
+	// Database events
+	AuditIDCreateDatabase  AuditID = 54000
+	AuditIDReadDatabase    AuditID = 54001
+	AuditIDDeleteDatabase  AuditID = 54002
+	AuditIDDatabaseAllRead AuditID = 54003
+	// Database config events
+	AuditIDReadDatabaseConfig   AuditID = 54010
+	AuditIDUpdateDatabaseConfig AuditID = 54011
+	// Database operation events
+	AuditIDDatabaseOffline       AuditID = 54020
+	AuditIDDatabaseOnline        AuditID = 54021
+	AuditIDDatabaseCompactStatus AuditID = 54030
+	AuditIDDatabaseCompactStart  AuditID = 54031
+	AuditIDDatabaseCompactStop   AuditID = 54032
+	AuditIDDatabaseResyncStatus  AuditID = 54040
+	AuditIDDatabaseResyncStart   AuditID = 54041
+	AuditIDDatabaseResyncStop    AuditID = 54042
+	AuditIDDatabasePostUpgrade   AuditID = 54043
+	AuditIDDatabaseRepair        AuditID = 54044
+	AuditIDDatabaseFlush         AuditID = 54045
+
+	// User principal events
+	AuditIDUserCreate AuditID = 54100
+	AuditIDUserRead   AuditID = 54101
+	AuditIDUserUpdate AuditID = 54102
+	AuditIDUserDelete AuditID = 54103
+	// Role principal events
+	AuditIDRoleCreate AuditID = 54110
+	AuditIDRoleRead   AuditID = 54111
+	AuditIDRoleUpdate AuditID = 54112
+	AuditIDRoleDelete AuditID = 54113
+
+	// Changes feeds events
+	AuditIDChangesFeedStarted AuditID = 54200
+
+	// BLIP Replication events
+	AuditIDReplicationConnect    AuditID = 54300
+	AuditIDReplicationDisconnect AuditID = 54301
+
+	// ISGR events
+	AuditIDISGRCreate    AuditID = 54400
+	AuditIDISGRRead      AuditID = 54401
+	AuditIDISGRUpdate    AuditID = 54402
+	AuditIDISGRDelete    AuditID = 54403
+	AuditIDISGRStatus    AuditID = 54410
+	AuditIDISGRStart     AuditID = 54411
+	AuditIDISGRStop      AuditID = 54412
+	AuditIDISGRReset     AuditID = 54413
+	AuditIDISGRAllStatus AuditID = 54420
+	AuditIDISGRAllRead   AuditID = 54421
+
+	// Documents events
+	AuditIDDocumentCreate       AuditID = 55000
+	AuditIDDocumentRead         AuditID = 55001
+	AuditIDDocumentUpdate       AuditID = 55002
+	AuditIDDocumentMetadataRead AuditID = 55004
+	// Document attachments events
+	AuditIDDocumentDelete   AuditID = 55003
+	AuditIDAttachmentCreate AuditID = 55010
+	AuditIDAttachmentRead   AuditID = 55011
+	AuditIDAttachmentUpdate AuditID = 55012
+	AuditIDAttachmentDelete AuditID = 55013
 )
 
 // AuditEvents is a table of audit events created by Sync Gateway.
@@ -34,23 +126,99 @@ const (
 //   - a kv-auditd-compatible descriptor with TestGenerateAuditdModuleDescriptor
 //   - CSV output for each event to be used to document
 var AuditEvents = events{
-	AuditIDAuditEnabled: {}, // TODO: unreferenced event - somehow find this mistake via test or lint!
-	AuditIDReadDatabase: {
-		Name:        "Read database",
-		Description: "Information about this database was read.",
+	AuditIDAuditEnabled: {
+		Name:               "Auditing enabled",
+		Description:        "Audit logging was enabled",
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
 		MandatoryFields: AuditFields{
-			"db": "database_name",
+			"audit_scope": "global or db",
 		},
-		OptionalFields:     AuditFields{},
+		OptionalFields: AuditFields{
+			"db": "database name",
+		},
+		EventType: eventTypeAdmin,
+	},
+	AuditIDAuditDisabled: {
+		Name:               "Auditing disabled",
+		Description:        "Audit logging was disabled",
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		MandatoryFields: AuditFields{
+			"audit_scope": "global or db",
+		},
+		EventType: eventTypeAdmin,
+	},
+	AuditIDAuditConfigChanged: {
+		Name:               "Auditing configuration changed",
+		Description:        "Audit logging configuration was changed",
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		MandatoryFields: AuditFields{
+			"db":          "database name",
+			"audit_scope": "global or db",
+			"new_config":  "JSON representation of new db audit config",
+		},
+		EventType: eventTypeAdmin,
+	},
+	AuditIDSyncGatewayStartup: {
+		Name:               "Sync Gateway startup",
+		Description:        "Sync Gateway started",
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		MandatoryFields: AuditFields{
+			"sg_version": "version string",
+			"config":     "JSON representation of startup config",
+		},
+		EventType: eventTypeAdmin,
+	},
+	AuditIDPublicHTTPAPIRequest: {
+		Name:        "Public HTTP API request",
+		Description: "Public HTTP API request was made",
+		MandatoryFields: AuditFields{
+			"method": "GET, POST, etc.",
+			"path":   "request_path",
+		},
+		OptionalFields: AuditFields{
+			"request_body": "request_body",
+		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		EventType:          eventTypeUser,
 	},
-	AuditIDPublicUserAuthenticated: {
-		Name:        "User authenticated",
-		Description: "User successfully authenticated",
+	AuditIDAdminHTTPAPIRequest: {
+		Name:        "Admin HTTP API request",
+		Description: "Admin HTTP API request was made",
 		MandatoryFields: AuditFields{
-			"method": "auth_method", // e.g. "basic", "oidc", "cookie", ...
+			"method": "GET, POST, etc.",
+			"path":   "request_path",
+		},
+		OptionalFields: AuditFields{
+			"request_body": "request_body",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDMetricsHTTPAPIRequest: {
+		Name:        "Metrics HTTP API request",
+		Description: "Metrics HTTP API request was made",
+		MandatoryFields: AuditFields{
+			"method": "GET, POST, etc.",
+			"path":   "request_path",
+		},
+		OptionalFields: AuditFields{
+			"request_body": "request_body",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDPublicUserAuthenticated: {
+		Name:        "Public API user authenticated",
+		Description: "Public API user successfully authenticated",
+		MandatoryFields: AuditFields{
+			"method": "basic, oidc, cookie, etc.",
 		},
 		OptionalFields: AuditFields{
 			"oidc_issuer": "issuer",
@@ -60,10 +228,10 @@ var AuditEvents = events{
 		EventType:          eventTypeUser,
 	},
 	AuditIDPublicUserAuthenticationFailed: {
-		Name:        "User authentication failed",
-		Description: "User authentication failed",
+		Name:        "Public API user authentication failed",
+		Description: "Public API user failed to authenticate",
 		MandatoryFields: AuditFields{
-			"method": "auth_method", // e.g. "basic", "oidc", "cookie", ...
+			"method": "basic, oidc, cookie, etc.",
 		},
 		OptionalFields: AuditFields{
 			"username": "username",
@@ -71,6 +239,638 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		EventType:          eventTypeUser,
+	},
+	AuditIDPublicUserSessionCreated: {
+		Name:        "Public API user session created",
+		Description: "Public API user session was created",
+		MandatoryFields: AuditFields{
+			"session_id": "session_id",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeUser,
+	},
+	AuditIDPublicUserSessionDeleted: {
+		Name:        "Public API user session deleted",
+		Description: "Public API user session was deleted",
+		MandatoryFields: AuditFields{
+			"session_id": "session_id",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeUser,
+	},
+	AuditIDAdminUserAuthenticated: {
+		Name:               "Admin API user authenticated",
+		Description:        "Admin API user successfully authenticated",
+		MandatoryFields:    AuditFields{},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDAdminUserAuthenticationFailed: {
+		Name:        "Admin API user authentication failed",
+		Description: "Admin API user failed to authenticate",
+		MandatoryFields: AuditFields{
+			"username": "username",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDAdminUserAuthorizationFailed: {
+		Name:        "Admin API user authorization failed",
+		Description: "Admin API user failed to authorize",
+		MandatoryFields: AuditFields{
+			"username": "username",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDSyncGatewayCollectInfoStatus: {
+		Name:               "sgcollect_info status",
+		Description:        "sgcollect_info status was viewed",
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		MandatoryFields:    AuditFields{},
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDSyncGatewayCollectInfoStart: {
+		Name:               "sgcollect_info start",
+		Description:        "sgcollect_info was started",
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		MandatoryFields: AuditFields{
+			"output_dir":   "output_directory",
+			"upload_host":  "upload_host",
+			"customer":     "customer",
+			"ticket":       "ticket",
+			"keep_zip":     true,
+			"zip_filename": "zip_filename",
+		},
+		EventType: eventTypeAdmin,
+	},
+	AuditIDSyncGatewayCollectInfoStop: {
+		Name:               "sgcollect_info stop",
+		Description:        "sgcollect_info was stopped",
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		MandatoryFields:    AuditFields{},
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDSyncGatewayStats: {
+		Name:               "stats requested",
+		Description:        "stats were requested",
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDSyncGatewayProfiling: {
+		Name:        "profiling requested",
+		Description: "profiling was requested",
+		MandatoryFields: AuditFields{
+			"profile_type": "cpu, memory, etc.",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDClusterInfoRead: {
+		Name:               "Sync Gateway cluster info read",
+		Description:        "Sync Gateway cluster info was viewed",
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDCreateDatabase: {
+		Name:        "Create database",
+		Description: "A new database was created",
+		MandatoryFields: AuditFields{
+			"db":     "database name",
+			"config": "JSON representation of db config",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDReadDatabase: {
+		Name:        "Read database",
+		Description: "Information about this database was viewed.",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		OptionalFields:     AuditFields{},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeUser,
+	},
+	AuditIDDeleteDatabase: {
+		Name:        "Delete database",
+		Description: "A database was deleted",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDReadDatabaseConfig: {
+		Name:        "Read database config",
+		Description: "Database configuration was viewed",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDUpdateDatabaseConfig: {
+		Name:        "Update database config",
+		Description: "Database configuration was updated",
+		MandatoryFields: AuditFields{
+			"db":     "database name",
+			"config": "JSON representation of new db config",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseOffline: {
+		Name:        "Database offline",
+		Description: "Database was taken offline",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseOnline: {
+		Name:        "Database online",
+		Description: "Database was brought online",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseCompactStatus: {
+		Name:        "Database compaction status",
+		Description: "Database compaction status was viewed",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseCompactStart: {
+		Name:        "Database compaction start",
+		Description: "Database compaction was started",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseCompactStop: {
+		Name:        "Database compaction stop",
+		Description: "Database compaction was stopped",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseResyncStatus: {
+		Name:        "Database resync status",
+		Description: "Database resync status was viewed",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseResyncStart: {
+		Name:        "Database resync start",
+		Description: "Database resync was started",
+		MandatoryFields: AuditFields{
+			"db":                   "database name",
+			"collections":          []string{"list", "of", "collections"},
+			"regenerate_sequences": true,
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseResyncStop: {
+		Name:        "Database resync stop",
+		Description: "Database resync was stopped",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabasePostUpgrade: {
+		Name:        "Database post-upgrade",
+		Description: "Database post-upgrade was run",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseRepair: {
+		Name:        "Database repair",
+		Description: "Database repair was run",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseFlush: {
+		Name:        "Database flush",
+		Description: "Database flush was run",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDUserCreate: {
+		Name:        "Create user",
+		Description: "A new user was created",
+		MandatoryFields: AuditFields{
+			"username": "username",
+			"db":       "database name",
+			"roles":    []string{"list", "of", "roles"},
+			"channels": []string{"list", "of", "channels"},
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDUserRead: {
+		Name:        "Read user",
+		Description: "Information about this user was viewed",
+		MandatoryFields: AuditFields{
+			"username": "username",
+			"db":       "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDUserUpdate: {
+		Name:        "Update user",
+		Description: "User was updated",
+		MandatoryFields: AuditFields{
+			"username": "username",
+			"db":       "database name",
+			"roles":    []string{"list", "of", "roles"},
+			"channels": []string{"list", "of", "channels"},
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDUserDelete: {
+		Name:        "Delete user",
+		Description: "User was deleted",
+		MandatoryFields: AuditFields{
+			"username": "username",
+			"db":       "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDRoleCreate: {
+		Name:        "Create role",
+		Description: "A new role was created",
+		MandatoryFields: AuditFields{
+			"role":           "role_name",
+			"db":             "database name",
+			"admin_channels": []string{"list", "of", "channels"},
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDRoleRead: {
+		Name:        "Read role",
+		Description: "Information about this role was viewed",
+
+		MandatoryFields: AuditFields{
+			"role": "role_name",
+			"db":   "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDRoleUpdate: {
+		Name:        "Update role",
+		Description: "Role was updated",
+
+		MandatoryFields: AuditFields{
+			"role":           "role_name",
+			"db":             "database name",
+			"admin_channels": []string{"list", "of", "channels"},
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDRoleDelete: {
+		Name:        "Delete role",
+		Description: "Role was deleted",
+		MandatoryFields: AuditFields{
+			"role": "role_name",
+			"db":   "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDChangesFeedStarted: {
+		Name:        "Changes feed started",
+		Description: "Changes feed was started",
+		MandatoryFields: AuditFields{
+			"db":    "database name",
+			"ks":    "keyspace",
+			"since": "since",
+		},
+		OptionalFields: AuditFields{
+			"filter":    "filter",
+			"doc_ids":   []string{"list", "of", "doc_ids"},
+			"channels":  []string{"list", "of", "channels"},
+			"feed_type": "continuous, normal, longpoll, websocket, etc.",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDReplicationConnect: {
+		Name:        "Replication connect",
+		Description: "A client connected using WebSocket/BLIP for replication",
+		MandatoryFields: AuditFields{
+			"db":  "database name",
+			"cid": "context id",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeUser,
+	},
+	AuditIDReplicationDisconnect: {
+		Name:        "Replication disconnect",
+		Description: "A client disconnected from WebSocket/BLIP replication",
+		MandatoryFields: AuditFields{
+			"db":  "database name",
+			"cid": "context id",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeUser,
+	},
+	AuditIDISGRCreate: {
+		Name:        "Create Inter-Sync Gateway Replication",
+		Description: "A new Inter-Sync Gateway Replication was created",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+			"config":         "JSON representation of replication config",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDISGRRead: {
+		Name:        "Read Inter-Sync Gateway Replication",
+		Description: "Information about this Inter-Sync Gateway Replication was viewed",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDISGRUpdate: {
+		Name:        "Update Inter-Sync Gateway Replication",
+		Description: "Inter-Sync Gateway Replication was updated",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+			"config":         "JSON representation of new replication config",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+	},
+	AuditIDISGRDelete: {
+		Name:        "Delete Inter-Sync Gateway Replication",
+		Description: "Inter-Sync Gateway Replication was deleted",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDISGRStatus: {
+		Name:        "Inter-Sync Gateway Replication status",
+		Description: "Inter-Sync Gateway Replication status was document viewed",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+	},
+	AuditIDISGRStart: {
+		Name:        "Inter-Sync Gateway Replication start",
+		Description: "Inter-Sync Gateway Replication was started",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+	},
+	AuditIDISGRStop: {
+		Name:        "Inter-Sync Gateway Replication stop",
+		Description: "Inter-Sync Gateway Replication was stopped",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+	},
+	AuditIDISGRReset: {
+		Name:        "Inter-Sync Gateway Replication reset",
+		Description: "Inter-Sync Gateway Replication was reset",
+		MandatoryFields: AuditFields{
+			"db":             "database name",
+			"replication_id": "replication id",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+	},
+	AuditIDISGRAllStatus: {
+		Name:        "All Inter-Sync Gateway Replication status",
+		Description: "All Inter-Sync Gateway Replication statuses were viewed",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+	},
+	AuditIDISGRAllRead: {
+		Name:        "Read all Inter-Sync Gateway Replications",
+		Description: "All Inter-Sync Gateway Replications were viewed",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+	},
+	AuditIDDocumentCreate: {
+		Name:        "Create document",
+		Description: "A new document was created",
+		MandatoryFields: AuditFields{
+			"db":          "database name",
+			"ks":          "keyspace",
+			"doc_id":      "document id",
+			"doc_version": "revision ID or version",
+			"channels":    []string{"list", "of", "channels"},
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDDocumentRead: {
+		Name:        "Read document",
+		Description: "A document was viewed",
+		MandatoryFields: AuditFields{
+			"db":          "database name",
+			"ks":          "keyspace",
+			"doc_id":      "document id",
+			"doc_version": "revision ID or version",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDDocumentUpdate: {
+		Name:        "Update document",
+		Description: "A document was updated",
+		MandatoryFields: AuditFields{
+			"db":          "database name",
+			"ks":          "keyspace",
+			"doc_id":      "document id",
+			"doc_version": "revision ID or version",
+			"channels":    []string{"list", "of", "channels"},
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDDocumentMetadataRead: {
+		Name:        "Read document metadata",
+		Description: "Document metadata was viewed",
+		MandatoryFields: AuditFields{
+			"db":     "database name",
+			"ks":     "keyspace",
+			"doc_id": "document id",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDDocumentDelete: {
+		Name:        "Delete document",
+		Description: "A document was deleted",
+		MandatoryFields: AuditFields{
+			"db":          "database name",
+			"ks":          "keyspace",
+			"doc_id":      "document id",
+			"doc_version": "revision ID or version",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDAttachmentCreate: {
+		Name:        "Create attachment",
+		Description: "A new attachment was created",
+		MandatoryFields: AuditFields{
+			"db":            "database name",
+			"ks":            "keyspace",
+			"doc_id":        "document id",
+			"doc_version":   "revision ID or version",
+			"attachment_id": "attachment name",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDAttachmentRead: {
+
+		Name:        "Read attachment",
+		Description: "An attachment was viewed",
+		MandatoryFields: AuditFields{
+			"db":            "database name",
+			"ks":            "keyspace",
+			"doc_id":        "document id",
+			"doc_version":   "revision ID or version",
+			"attachment_id": "attachment name",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+
+		EventType: eventTypeData,
+	},
+	AuditIDAttachmentUpdate: {
+		Name:        "Update attachment",
+		Description: "An attachment was updated",
+		MandatoryFields: AuditFields{
+			"db":            "database name",
+			"ks":            "keyspace",
+			"doc_id":        "document id",
+			"doc_version":   "revision ID or version",
+			"attachment_id": "attachment name",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDAttachmentDelete: {
+		Name:        "Delete attachment",
+		Description: "An attachment was deleted",
+
+		MandatoryFields: AuditFields{
+			"db":          "database name",
+			"ks":          "keyspace",
+			"doc_id":      "document id",
+			"doc_version": "revision ID or version",
+			"attachment":  "attachment_name",
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
 	},
 }
 
