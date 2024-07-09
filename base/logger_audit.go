@@ -88,7 +88,7 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	fields[auditFieldTimestamp] = time.Now()
 
 	fields.merge(ctx, globalFields)
-	fields.merge(ctx, logCtx.AuditFields)
+	fields.merge(ctx, logCtx.RequestAdditionalAuditFields)
 
 	return fields
 }
