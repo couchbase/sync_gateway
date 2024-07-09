@@ -10,7 +10,6 @@ package base
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 )
@@ -130,12 +129,8 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	}
 	fieldsJSON, err := JSONMarshal(fields)
 	if err != nil {
-		if IsDevMode() {
-			panic(fmt.Sprintf("failed to marshal audit fields: %v", err))
-		} else {
-			WarnfCtx(ctx, "failed to marshal audit fields: %v", err)
-			return
-		}
+		AssertfCtx(ctx, "failed to marshal audit fields: %v", err)
+		return
 	}
 	auditLogger.logf(string(fieldsJSON))
 }

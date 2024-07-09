@@ -12,3 +12,5 @@
 package base
 
 const cbSGDevModeBuildTagSet = false
+
+var assertLogFn logFn = WarnfCtx
