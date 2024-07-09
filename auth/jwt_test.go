@@ -17,9 +17,9 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/go-jose/go-jose/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/square/go-jose.v2"
 )
 
 func dummyCallbackURL(_ string, _ bool) string {
@@ -185,9 +185,9 @@ func TestJWTVerifyToken(t *testing.T) {
 	}), anyError))
 
 	// header: alg=none
-	t.Run("valid JWT with alg none", test(baseProvider, `eyJhbGciOiJub25lIn0.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzdWVyIn0.`, "id token signed with unsupported algorithm"))
+	t.Run("valid JWT with alg none", test(baseProvider, `eyJhbGciOiJub25lIn0.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzdWVyIn0.`, "unexpected signature algorithm"))
 	// header: alg=HS256
-	t.Run("valid JWT with alg HS256", test(baseProvider, `eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzdWVyIn0.aPSuXUVKN1FNS53mw0Xw3a-SU2GVS98gHWEVrzTnQYM`, "id token signed with unsupported algorithm"))
+	t.Run("valid JWT with alg HS256", test(baseProvider, `eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzdWVyIn0.aPSuXUVKN1FNS53mw0Xw3a-SU2GVS98gHWEVrzTnQYM`, "unexpected signature algorithm"))
 	// header: alg=RS256, kid=rsa
 	t.Run("valid JWT with no signature", test(baseProvider, `eyJhbGciOiJSUzI1NiIsImtpZCI6InJzYSJ9.eyJhdWQiOlsidGVzdEF1ZCJdLCJpc3MiOiJ0ZXN0SXNzdWVyIn0.`, "failed to verify signature"))
 

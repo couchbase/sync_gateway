@@ -25,13 +25,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/coreos/go-oidc"
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 func TestCreateJWTToken(t *testing.T) {
@@ -86,7 +86,7 @@ func TestCreateJWTToken(t *testing.T) {
 			rawToken, err := createJWT(subject, issueURL, authState)
 			assert.NoError(t, err, "Couldn't to create JSON Web Token")
 			assert.NotEmpty(t, rawToken, "Empty token received")
-			token, err := jwt.ParseSigned(rawToken)
+			token, err := jwt.ParseSigned(rawToken, auth.SupportedAlgorithmsSlice)
 			require.NoError(t, err, "Error parsing signed token")
 			claims := &jwt.Claims{}
 			customClaims := &CustomClaims{}
@@ -360,7 +360,7 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 			assert.NotEmpty(t, authResponseActual.RefreshToken, "refresh_token mismatch")
 
 			// Check token header
-			token, err := jwt.ParseSigned(authResponseActual.IDToken)
+			token, err := jwt.ParseSigned(authResponseActual.IDToken, auth.SupportedAlgorithmsSlice)
 			require.NoError(t, err, "Error parsing signed token")
 			claims := &jwt.Claims{}
 			customClaims := &CustomClaims{}

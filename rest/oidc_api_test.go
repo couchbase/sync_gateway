@@ -31,11 +31,11 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/square/go-jose.v2"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 // A forceError is being used when you want to force an error of type 'forceErrorType'
@@ -336,7 +336,7 @@ func (s *mockAuthServer) makeToken(claimSet claimSet) (string, error) {
 		primaryClaims.Issuer = s.options.issuer
 	}
 	builder := jwt.Signed(s.signer).Claims(primaryClaims).Claims(secondaryClaims)
-	token, err := builder.CompactSerialize()
+	token, err := builder.Serialize()
 	if err != nil {
 		return "", err
 	}

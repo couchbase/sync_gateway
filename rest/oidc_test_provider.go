@@ -24,8 +24,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"gopkg.in/square/go-jose.v2"
-	"gopkg.in/square/go-jose.v2/jwt"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 )
 
 // This is the private RSA Key that will be used to sign all tokens
@@ -433,7 +433,7 @@ func createJWTWithExtraClaims(subject, issuerUrl string, authState AuthState, ex
 		Audience: jwt.Audience{testProviderAud},
 	}
 
-	token, err = jwt.Signed(signer).Claims(claims).Claims(extraClaims).CompactSerialize()
+	token, err = jwt.Signed(signer).Claims(claims).Claims(extraClaims).Serialize()
 	if err != nil {
 		return "", err
 	}

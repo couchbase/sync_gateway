@@ -32,8 +32,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"golang.org/x/crypto/bcrypt"
-	"gopkg.in/square/go-jose.v2"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
