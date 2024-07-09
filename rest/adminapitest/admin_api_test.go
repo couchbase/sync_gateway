@@ -4272,15 +4272,17 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
-	// check default audit config
-	resp := rt.SendAdminRequest(http.MethodGet, "/db/_config/audit", "")
+	// check default audit config - verbose to read event names, etc.
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/_config/audit?verbose=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	resp.DumpBody()
 	var responseBody map[string]interface{}
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
 	assert.Equal(t, false, responseBody["enabled"].(bool))
+	// check we got the verbose output
+	assert.NotEmpty(t, responseBody["events"].(map[string]interface{})[base.AuditIDPublicUserAuthenticated.String()].(map[string]interface{})["description"].(string), "expected verbose output (event description, etc.)")
 
-	// enable audit on the database
+	// enable auditing on the database (upsert)
 	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", `{"enabled":true}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
@@ -4291,4 +4293,21 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	responseBody = nil
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
 	assert.Equal(t, true, responseBody["enabled"].(bool))
+	assert.False(t, responseBody["events"].(map[string]interface{})[base.AuditIDAuditEnabled.String()].(bool), "audit enabled event should be disabled by default") // TODO: This will change - replace with an actual non-default event.
+	assert.True(t, responseBody["events"].(map[string]interface{})[base.AuditIDPublicUserAuthenticated.String()].(bool), "public user authenticated event should be enabled by default")
+
+	// do a PUT to completely replace the full config (events not declared here will be disabled)
+	// enable AuditEnabled event, but implicitly others
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDAuditEnabled))
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// check audit config
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config/audit", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	resp.DumpBody()
+	responseBody = nil
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
+	assert.Equal(t, true, responseBody["enabled"].(bool))
+	assert.True(t, responseBody["events"].(map[string]interface{})[base.AuditIDAuditEnabled.String()].(bool), "audit enabled event should've been enabled via PUT")
+	assert.False(t, responseBody["events"].(map[string]interface{})[base.AuditIDPublicUserAuthenticated.String()].(bool), "public user authenticated event should've been disabled via PUT")
 }
