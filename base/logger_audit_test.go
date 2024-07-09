@@ -74,7 +74,7 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 			startWarnCount := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 			output := AuditLogContents(t, func() {
 				// Test basic audit event
-				audit(ctx, AuditIDPublicUserAuthenticated, map[string]any{"method": "basic"})
+				Audit(ctx, AuditIDPublicUserAuthenticated, map[string]any{"method": "basic"})
 			},
 			)
 			var event map[string]any
