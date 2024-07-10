@@ -26,18 +26,22 @@ const (
 
 	AuditIDReadDatabase AuditID = 53301
 
+	AuditIDPostUpgrade AuditID = 53501
+
 	// Database operation events
-	AuditIDDatabaseOffline       AuditID = 54020
-	AuditIDDatabaseOnline        AuditID = 54021
-	AuditIDDatabaseCompactStatus AuditID = 54030
-	AuditIDDatabaseCompactStart  AuditID = 54031
-	AuditIDDatabaseCompactStop   AuditID = 54032
-	AuditIDDatabaseResyncStatus  AuditID = 54040
-	AuditIDDatabaseResyncStart   AuditID = 54041
-	AuditIDDatabaseResyncStop    AuditID = 54042
-	AuditIDDatabasePostUpgrade   AuditID = 54043
-	AuditIDDatabaseRepair        AuditID = 54044
-	AuditIDDatabaseFlush         AuditID = 54045
+	AuditIDDatabaseOffline                 AuditID = 54020
+	AuditIDDatabaseOnline                  AuditID = 54021
+	AuditIDDatabaseAttachmentCompactStatus AuditID = 54030
+	AuditIDDatabaseAttachmentCompactStart  AuditID = 54031
+	AuditIDDatabaseAttachmentCompactStop   AuditID = 54032
+	AuditIDDatabaseTombstoneCompactStatus  AuditID = 54033
+	AuditIDDatabaseTombstoneCompactStart   AuditID = 54034
+	AuditIDDatabaseTombstoneCompactStop    AuditID = 54035
+	AuditIDDatabaseResyncStatus            AuditID = 54040
+	AuditIDDatabaseResyncStart             AuditID = 54041
+	AuditIDDatabaseResyncStop              AuditID = 54042
+	AuditIDDatabaseRepair                  AuditID = 54044
+	AuditIDDatabaseFlush                   AuditID = 54045
 )
 
 // AuditEvents is a table of audit events created by Sync Gateway.
@@ -105,43 +109,69 @@ var AuditEvents = events{
 		FilteringPermitted: false,
 		EventType:          eventTypeAdmin,
 	},
-	AuditIDDatabaseCompactStatus: {
-		Name:        "Database compaction status",
-		Description: "Database compaction status was viewed",
+	AuditIDDatabaseAttachmentCompactStatus: {
+		Name:        "Database attachment compaction status",
+		Description: "Database attachment compaction status was viewed",
 		MandatoryFields: AuditFields{
-			"db":              "database name",
-			"compaction_type": "tombstone or attachment",
+			"db": "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		EventType:          eventTypeAdmin,
 	},
-	AuditIDDatabaseCompactStart: {
-		Name:        "Database compaction start",
-		Description: "Database compaction was started",
+	AuditIDDatabaseAttachmentCompactStart: {
+		Name:        "Database attachment compaction start",
+		Description: "Database attachment compaction was started",
 		MandatoryFields: AuditFields{
-			"db":              "database name",
-			"compaction_type": "tombstone or attachment",
+			"db":      "database name",
+			"dry_run": false,
+			"reset":   false,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		EventType:          eventTypeAdmin,
 	},
-	AuditIDDatabaseCompactStop: {
-		Name:        "Database compaction stop",
-		Description: "Database compaction was stopped",
+	AuditIDDatabaseAttachmentCompactStop: {
+		Name:        "Database attachment compaction stop",
+		Description: "Database attachment compaction was stopped",
 		MandatoryFields: AuditFields{
-			"db":              "database name",
-			"compaction_type": "tombstone or attachment",
-		},
-		OptionalFields: AuditFields{
-			"dry_run": "true or false",
-			"reset":   "true, false, or none (resume when able)",
+			"db": "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		EventType:          eventTypeAdmin,
 	},
+	AuditIDDatabaseTombstoneCompactStatus: {
+		Name:        "Database tombstone compaction status",
+		Description: "Database tombstone compaction status was viewed",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseTombstoneCompactStart: {
+		Name:        "Database tombstone compaction start",
+		Description: "Database tombstone compaction was started from REST",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseTombstoneCompactStop: {
+		Name:        "Database tombstone compaction stop",
+		Description: "Database tombstone compaction was stopped from REST",
+		MandatoryFields: AuditFields{
+			"db": "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+
 	AuditIDDatabaseResyncStatus: {
 		Name:        "Database resync status",
 		Description: "Database resync status was viewed",
@@ -158,8 +188,8 @@ var AuditEvents = events{
 		MandatoryFields: AuditFields{
 			"db":                   "database name",
 			"collections":          map[string][]string{"scopeName": []string{"list", "of", "collections"}},
-			"regenerate_sequences": true,
-			"reset":                "true, false, or none (resume when able)",
+			"regenerate_sequences": false,
+			"reset":                false,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -175,12 +205,11 @@ var AuditEvents = events{
 		FilteringPermitted: false,
 		EventType:          eventTypeAdmin,
 	},
-	AuditIDDatabasePostUpgrade: {
-		Name:        "Database post-upgrade",
-		Description: "Database post-upgrade was run",
+	AuditIDPostUpgrade: {
+		Name:        "Post-upgrade",
+		Description: "Post-upgrade was run for Sync Gateway databases",
 		MandatoryFields: AuditFields{
-			"db":      "database name",
-			"preview": "true or false",
+			"preview": false,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,

@@ -33,9 +33,6 @@ var blockProfileRunning uint32
 const (
 	profileStopped uint32 = iota
 	profileRunning
-
-	compactionTypeTombstone  = "tombstone"
-	compactionTypeAttachment = "attachment"
 )
 
 type rootResponse struct {
@@ -89,28 +86,32 @@ func (h *handler) handleAllDbs() error {
 func (h *handler) handleGetCompact() error {
 	compactionType := h.getQuery("type")
 	if compactionType == "" {
-		compactionType = compactionTypeTombstone
+		compactionType = "tombstone"
 	}
 
-	if compactionType != compactionTypeTombstone && compactionType != compactionTypeAttachment {
+	if compactionType != "tombstone" && compactionType != "attachment" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'type'. Must be 'tombstone' or 'attachment'")
 	}
 
 	var status []byte
 	var err error
-	if compactionType == compactionTypeTombstone {
+	if compactionType == "tombstone" {
 		status, err = h.db.TombstoneCompactionManager.GetStatus(h.ctx())
+		if err != nil {
+			return err
+		}
+		base.Audit(h.ctx(), base.AuditIDDatabaseTombstoneCompactStatus, nil)
 	}
 
-	if compactionType == compactionTypeAttachment {
+	if compactionType == "attachment" {
 		status, err = h.db.AttachmentCompactionManager.GetStatus(h.ctx())
+		if err != nil {
+			return err
+		}
+		base.Audit(h.ctx(), base.AuditIDDatabaseAttachmentCompactStatus, nil)
 	}
 
-	if err != nil {
-		return err
-	}
 	h.writeRawJSON(status)
-	base.Audit(h.ctx(), base.AuditIDDatabaseCompactStatus, base.AuditFields{"compaction_type": compactionType})
 
 	return nil
 }
@@ -127,14 +128,14 @@ func (h *handler) handleCompact() error {
 
 	compactionType := h.getQuery("type")
 	if compactionType == "" {
-		compactionType = compactionTypeTombstone
+		compactionType = "tombstone"
 	}
 
-	if compactionType != compactionTypeTombstone && compactionType != compactionTypeAttachment {
+	if compactionType != "tombstone" && compactionType != "attachment" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'type'. Must be 'tombstone' or 'attachment'")
 	}
 
-	if compactionType == compactionTypeTombstone {
+	if compactionType == "tombstone" {
 		if action == string(db.BackgroundProcessActionStart) {
 			if atomic.CompareAndSwapUint32(&h.db.CompactState, db.DBCompactNotRunning, db.DBCompactRunning) {
 				err := h.db.TombstoneCompactionManager.Start(h.ctx(), map[string]interface{}{
@@ -149,7 +150,7 @@ func (h *handler) handleCompact() error {
 					return err
 				}
 				h.writeRawJSON(status)
-				base.Audit(h.ctx(), base.AuditIDDatabaseCompactStart, base.AuditFields{"compaction_type": compactionTypeTombstone})
+				base.Audit(h.ctx(), base.AuditIDDatabaseTombstoneCompactStart, nil)
 			} else {
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "Database compact already in progress")
 
@@ -169,11 +170,11 @@ func (h *handler) handleCompact() error {
 				return err
 			}
 			h.writeRawJSON(status)
-			base.Audit(h.ctx(), base.AuditIDDatabaseCompactStop, base.AuditFields{"compaction_type": compactionTypeTombstone})
+			base.Audit(h.ctx(), base.AuditIDDatabaseTombstoneCompactStop, nil)
 		}
 	}
 
-	if compactionType == compactionTypeAttachment {
+	if compactionType == "attachment" {
 		if action == string(db.BackgroundProcessActionStart) {
 			err := h.db.AttachmentCompactionManager.Start(h.ctx(), map[string]interface{}{
 				"database": h.db,
@@ -189,10 +190,9 @@ func (h *handler) handleCompact() error {
 				return err
 			}
 			h.writeRawJSON(status)
-			base.Audit(h.ctx(), base.AuditIDDatabaseCompactStart, base.AuditFields{
-				"dryRun":          h.getBoolQuery("dry_run"),
-				"reset":           h.getBoolQuery("reset"),
-				"compaction_type": compactionTypeAttachment,
+			base.Audit(h.ctx(), base.AuditIDDatabaseAttachmentCompactStart, base.AuditFields{
+				"dry_run": h.getBoolQuery("dry_run"),
+				"reset":   h.getBoolQuery("reset"),
 			})
 		} else if action == string(db.BackgroundProcessActionStop) {
 			err := h.db.AttachmentCompactionManager.Stop()
@@ -205,7 +205,7 @@ func (h *handler) handleCompact() error {
 				return err
 			}
 			h.writeRawJSON(status)
-			base.Audit(h.ctx(), base.AuditIDDatabaseCompactStop, base.AuditFields{"compaction_type": compactionTypeAttachment})
+			base.Audit(h.ctx(), base.AuditIDDatabaseAttachmentCompactStop, nil)
 		}
 	}
 
@@ -273,7 +273,7 @@ func (h *handler) handleFlush() error {
 		h.server.RemoveDatabase(h.ctx(), name)
 		err := bucket.CloseAndDelete(h.ctx())
 		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), config.DatabaseConfig)
-		if err == nil && err2 != nil {
+		if err2 != nil {
 			return err2
 		} else if err != nil {
 			return err
@@ -410,11 +410,7 @@ func (h *handler) handlePostUpgrade() error {
 	}
 
 	h.writeJSON(result)
-	for dbName, result := range postUpgradeResults {
-		if result.err != nil {
-			base.Audit(h.ctx(), base.AuditIDDatabasePostUpgrade, base.AuditFields{"preview": preview, "db": dbName})
-		}
-	}
+	base.Audit(h.ctx(), base.AuditIDPostUpgrade, base.AuditFields{"preview": preview})
 	return nil
 }
 
