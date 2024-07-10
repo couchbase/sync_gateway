@@ -103,6 +103,7 @@ type handler struct {
 	authScopeFunc         authScopeFunc
 	httpLogLevel          *base.LogLevel // if set, always log HTTP information at this level, instead of the default
 	rqCtx                 context.Context
+	serverType            serverType
 }
 
 type authScopeFunc func(context.Context, *handler) (string, error)
@@ -121,7 +122,8 @@ type handlerMethod func(*handler) error
 // makeHandlerWithOptions creates an http.Handler that will run a handler with the given method handlerOptions
 func makeHandlerWithOptions(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, options handlerOptions) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		h := newHandler(server, privs, r, rq, options)
+		serverType := getCtxServerType(rq.Context())
+		h := newHandler(server, privs, serverType, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		if !options.skipLogDuration {
@@ -176,7 +178,7 @@ type handlerOptions struct {
 	httpLogLevel      *base.LogLevel // if set, log HTTP requests to this handler at this level, instead of the usual info level
 }
 
-func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request, options handlerOptions) *handler {
+func newHandler(server *ServerContext, privs handlerPrivs, serverType serverType, r http.ResponseWriter, rq *http.Request, options handlerOptions) *handler {
 	h := &handler{
 		server:            server,
 		privs:             privs,
@@ -189,6 +191,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		allowNilDBContext: options.allowNilDBContext,
 		authScopeFunc:     options.authScopeFunc,
 		httpLogLevel:      options.httpLogLevel,
+		serverType:        serverType,
 	}
 
 	// initialize h.rqCtx
@@ -288,6 +291,19 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			}
 		}
 	}()
+
+	if h.server.Config.Unsupported.AuditInfoProvider != nil && h.server.Config.Unsupported.AuditInfoProvider.RequestInfoHeaderName != nil {
+		auditLoggingFields := h.rq.Header.Get(*h.server.Config.Unsupported.AuditInfoProvider.RequestInfoHeaderName)
+		if auditLoggingFields != "" {
+			var fields base.AuditFields
+			err := base.JSONUnmarshal([]byte(auditLoggingFields), &fields)
+			if err != nil {
+				base.WarnfCtx(h.ctx(), "Error unmarshalling audit logging fields: %v", err)
+			} else {
+				h.rqCtx = base.AuditLogCtx(h.ctx(), fields)
+			}
+		}
+	}
 
 	switch h.rq.Header.Get("Content-Encoding") {
 	case "":
@@ -625,7 +641,7 @@ func (h *handler) shouldUpdateBytesTransferredStats() bool {
 	if h.db == nil {
 		return false
 	}
-	if h.privs != publicPrivs && h.privs != regularPrivs {
+	if h.serverType != publicServer {
 		return false
 	}
 	if h.isBlipSync() {
@@ -679,7 +695,7 @@ func (h *handler) logRESTCount() {
 	if h.db == nil {
 		return
 	}
-	if h.privs != publicPrivs && h.privs != regularPrivs {
+	if h.serverType != publicServer {
 		return
 	}
 	if h.isBlipSync() {
@@ -746,7 +762,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	// If oidc enabled, check for bearer ID token
 	if dbCtx.Options.OIDCOptions != nil || len(dbCtx.LocalJWTProviders) > 0 {
 		if token := h.getBearerToken(); token != "" {
-			auditFields = base.AuditFields{"method": "bearer"}
+			auditFields = base.AuditFields{"auth_method": "bearer"}
 			var updates auth.PrincipalConfig
 			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.LocalJWTProviders, h.getOIDCCallbackURL)
 			if h.user == nil || err != nil {
@@ -791,7 +807,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	// Check basic auth first
 	if !dbCtx.Options.DisablePasswordAuthentication {
 		if userName, password := h.getBasicAuth(); userName != "" {
-			auditFields = base.AuditFields{"method": "basic"}
+			auditFields = base.AuditFields{"auth_method": "basic"}
 			h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateUser(userName, password)
 			if err != nil {
 				return err
@@ -809,7 +825,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	// Check cookie
-	auditFields = base.AuditFields{"method": "cookie"}
+	auditFields = base.AuditFields{"auth_method": "cookie"}
 	h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateCookie(h.rq, h.response)
 	if err != nil && h.privs != publicPrivs {
 		return err
@@ -818,7 +834,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	// No auth given -- check guest access
-	auditFields = base.AuditFields{"method": "guest"}
+	auditFields = base.AuditFields{"auth_method": "guest"}
 	if h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(""); err != nil {
 		return err
 	}
@@ -1579,7 +1595,7 @@ func (h *handler) formatSerialNumber() string {
 // Admin requests can always see this, regardless of the HideProductVersion setting.
 func (h *handler) shouldShowProductVersion() bool {
 	hideProductVersion := base.BoolDefault(h.server.Config.API.HideProductVersion, false)
-	return h.privs == adminPrivs || !hideProductVersion
+	return h.serverType == adminServer || !hideProductVersion
 }
 
 func requiresWritePermission(accessPermissions []Permission) bool {

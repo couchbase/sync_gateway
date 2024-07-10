@@ -598,6 +598,52 @@ func SetUpTestLogging(tb testing.TB, logLevel LogLevel, logKeys ...LogKey) {
 	tb.Cleanup(cleanup)
 }
 
+// ResetGlobalTestLogging will ensure that the loggers are replaced at the endof the the test. This is only safe to call with go:build !race since swapping the global loggers can trigger a race condition from background processes of the test harness.
+func ResetGlobalTestLogging(t *testing.T) {
+	oldErrorLogger := errorLogger
+	oldWarnLogger := warnLogger
+	oldInfoLogger := infoLogger
+	oldDebugLogger := debugLogger
+	oldTraceLogger := traceLogger
+	oldStatsLogger := statsLogger
+	oldAuditLogger := auditLogger
+	oldConsoleLogger := consoleLogger
+	t.Cleanup(func() {
+		if errorLogger != nil {
+			assert.NoError(t, errorLogger.Close())
+		}
+		errorLogger = oldErrorLogger
+		if warnLogger != nil {
+			assert.NoError(t, warnLogger.Close())
+		}
+		warnLogger = oldWarnLogger
+		if infoLogger != nil {
+			assert.NoError(t, infoLogger.Close())
+		}
+		infoLogger = oldInfoLogger
+		if debugLogger != nil {
+			assert.NoError(t, debugLogger.Close())
+		}
+		debugLogger = oldDebugLogger
+		if traceLogger != nil {
+			assert.NoError(t, traceLogger.Close())
+		}
+		traceLogger = oldTraceLogger
+		if statsLogger != nil {
+			assert.NoError(t, statsLogger.Close())
+		}
+		statsLogger = oldStatsLogger
+		if auditLogger != nil {
+			assert.NoError(t, auditLogger.Close())
+		}
+		auditLogger = oldAuditLogger
+		if consoleLogger != nil {
+			assert.NoError(t, consoleLogger.Close())
+		}
+		consoleLogger = oldConsoleLogger
+	})
+}
+
 // DisableTestLogging is an alias for SetUpTestLogging(LevelNone, KeyNone)
 // This function will panic if called multiple times in the same test.
 func DisableTestLogging(tb testing.TB) {

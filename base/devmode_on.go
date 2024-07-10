@@ -12,3 +12,5 @@
 package base
 
 const cbSGDevModeBuildTagSet = true
+
+var assertLogFn logFn = PanicfCtx

@@ -330,7 +330,7 @@ func TestUserAPI(t *testing.T) {
 
 	// Create a role
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
-	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", GetRolePayload(t, "", "", collection, []string{"fedoras", "fixies"}))
+	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", GetRolePayload(t, "", collection, []string{"fedoras", "fixies"}))
 	RequireStatus(t, response, 201)
 
 	// Give the user that role
@@ -517,12 +517,12 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
 	// Create a role 'developer' through POST request
-	response = rt.SendAdminRequest(http.MethodPost, "/db/_role/", GetRolePayload(t, "developer", "", collection, []string{"channel1", "channel2"}))
+	response = rt.SendAdminRequest(http.MethodPost, "/db/_role/", GetRolePayload(t, "developer", collection, []string{"channel1", "channel2"}))
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
 	// Create another role 'coder' through PUT request.
-	response = rt.SendAdminRequest(http.MethodPut, "/db/_role/coder", GetRolePayload(t, "", "", collection, []string{"channel3", "channel4"}))
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_role/coder", GetRolePayload(t, "", collection, []string{"channel3", "channel4"}))
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
@@ -591,7 +591,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 			s := collection.ScopeName
 
 			// Create role
-			resp := rt.SendAdminRequest("PUT", "/db/_role/role", GetRolePayload(t, "", "", collection, []string{"channel"}))
+			resp := rt.SendAdminRequest("PUT", "/db/_role/role", GetRolePayload(t, "", collection, []string{"channel"}))
 			RequireStatus(t, resp, http.StatusCreated)
 
 			// Create user
@@ -1579,4 +1579,57 @@ func TestUserMultipleDBs(t *testing.T) {
 
 		})
 	}
+}
+
+func TestDeletedRoleChanHistory(t *testing.T) {
+	tests := []struct {
+		defaultCollection bool
+	}{
+		{defaultCollection: true},
+		{defaultCollection: false},
+	}
+
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("defaultCollection:%v", test.defaultCollection), func(t *testing.T) {
+			ctx := base.TestCtx(t)
+
+			var rt *RestTester
+			if test.defaultCollection {
+				rt = NewRestTesterDefaultCollection(t, nil)
+			} else {
+				rt = NewRestTesterMultipleCollections(t, nil, 1)
+			}
+
+			collection := rt.GetSingleTestDatabaseCollection()
+			defer rt.Close()
+
+			const roleName = "role"
+			response := rt.SendAdminRequest("PUT", "/db/_role/role", GetUserPayload(t, "role", "letmein", "", collection, []string{"channel"}, nil))
+			RequireStatus(t, response, 201)
+
+			a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+
+			// Get role - ensure accessible
+			role, err := a.GetRole(roleName)
+			assert.NoError(t, err)
+			assert.NotNil(t, role)
+			channels := role.CollectionChannels(collection.ScopeName, collection.Name)
+			assert.Len(t, channels, 2)
+			assert.True(t, channels.Contains("channel"))
+
+			// Delete role
+			err = a.DeleteRole(role, false, 2)
+			assert.NoError(t, err)
+
+			// get deleted role and assert channel is in channel history
+			role, err = a.GetRoleIncDeleted(roleName)
+			assert.NoError(t, err)
+			channelHistory := role.CollectionChannelHistory(collection.ScopeName, collection.Name)
+			assert.Len(t, channelHistory, 2)
+			_, ok := channelHistory["channel"]
+			require.True(t, ok)
+			assert.Truef(t, ok, "Channel history should contain 'channel'")
+		})
+	}
+
 }

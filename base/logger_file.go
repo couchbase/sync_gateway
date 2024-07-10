@@ -150,10 +150,15 @@ func (l *FileLogger) Rotate() error {
 	return errors.New("can't rotate non-lumberjack log output")
 }
 
+// Close cancels the log rotation rotation and the underlying file descriptor for the active log file.
 func (l *FileLogger) Close() error {
 	// cancel the log rotation goroutine and wait for it to stop
-	l.cancelFunc()
-	<-l.rotationDoneChan
+	if l.cancelFunc != nil {
+		l.cancelFunc()
+	}
+	if l.rotationDoneChan != nil {
+		<-l.rotationDoneChan
+	}
 	if c, ok := l.output.(io.Closer); ok {
 		return c.Close()
 	}
@@ -167,6 +172,9 @@ func (l *FileLogger) String() string {
 // logf will put the given message into the collation buffer if it exists,
 // otherwise will log the message directly.
 func (l *FileLogger) logf(format string, args ...interface{}) {
+	if l == nil {
+		return
+	}
 	if l.collateBuffer != nil {
 		l.collateBufferWg.Add(1)
 		l.collateBuffer <- fmt.Sprintf(format, args...)

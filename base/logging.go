@@ -128,8 +128,10 @@ func init() {
 	initExternalLoggers()
 }
 
+type logFn func(ctx context.Context, format string, args ...any)
+
 // PanicfCtx logs the given formatted string and args to the error log level and given log key and then panics.
-func PanicfCtx(ctx context.Context, format string, args ...interface{}) {
+func PanicfCtx(ctx context.Context, format string, args ...any) {
 	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
 	if errorLogger == nil {
 		log.Panicf(format, args...)
@@ -141,7 +143,7 @@ func PanicfCtx(ctx context.Context, format string, args ...interface{}) {
 }
 
 // FatalfCtx logs the given formatted string and args to the error log level and given log key and then exits.
-func FatalfCtx(ctx context.Context, format string, args ...interface{}) {
+func FatalfCtx(ctx context.Context, format string, args ...any) {
 	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
 	if errorLogger == nil {
 		log.Fatalf(format, args...)
@@ -153,32 +155,32 @@ func FatalfCtx(ctx context.Context, format string, args ...interface{}) {
 }
 
 // ErrorfCtx logs the given formatted string and args to the error log level and given log key.
-func ErrorfCtx(ctx context.Context, format string, args ...interface{}) {
+func ErrorfCtx(ctx context.Context, format string, args ...any) {
 	logTo(ctx, LevelError, KeyAll, format, args...)
 }
 
 // WarnfCtx logs the given formatted string and args to the warn log level and given log key.
-func WarnfCtx(ctx context.Context, format string, args ...interface{}) {
+func WarnfCtx(ctx context.Context, format string, args ...any) {
 	logTo(ctx, LevelWarn, KeyAll, format, args...)
 }
 
 // InfofCtx logs the given formatted string and args to the info log level and given log key.
-func InfofCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+func InfofCtx(ctx context.Context, logKey LogKey, format string, args ...any) {
 	logTo(ctx, LevelInfo, logKey, format, args...)
 }
 
 // DebugfCtx logs the given formatted string and args to the debug log level with an optional log key.
-func DebugfCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+func DebugfCtx(ctx context.Context, logKey LogKey, format string, args ...any) {
 	logTo(ctx, LevelDebug, logKey, format, args...)
 }
 
 // TracefCtx logs the given formatted string and args to the trace log level with an optional log key.
-func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...any) {
 	logTo(ctx, LevelTrace, logKey, format, args...)
 }
 
 // LogLevelCtx allows logging where the level can be set via parameter.
-func LogLevelCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+func LogLevelCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...any) {
 	logTo(ctx, logLevel, logKey, format, args...)
 }
 
@@ -192,7 +194,7 @@ func RecordStats(statsJson string) {
 
 // logTo is the "core" logging function. All other logging functions (like Debugf(), WarnfCtx(), etc.) end up here.
 // The function will fan out the log to all of the various outputs for them to decide if they should log it or not.
-func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...any) {
 	// Defensive bounds-check for log level. All callers of this function should be within this range.
 	if logLevel < LevelNone || logLevel >= levelCount {
 		return
@@ -256,7 +258,7 @@ var consoleFOutput io.Writer = os.Stderr
 
 // ConsolefCtx logs the given formatted string and args to the given log level and log key,
 // as well as making sure the message is *always* logged to stdout.
-func ConsolefCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+func ConsolefCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...any) {
 	logTo(ctx, logLevel, logKey, format, args...)
 
 	// If the above logTo didn't already log to stderr, do it directly here
@@ -401,4 +403,20 @@ func AssertLogContains(t *testing.T, s string, f func()) {
 	FlushLogBuffers()
 	consoleLogger.FlushBufferToLog()
 	assert.Contains(t, b.String(), s)
+}
+
+// AuditLogContents returns that the audit logs produced by function f.
+func AuditLogContents(t *testing.T, f func()) []byte {
+	// Temporarily override logger output
+	b := &bytes.Buffer{}
+	mw := io.MultiWriter(b, os.Stderr)
+	auditLogger.logger.SetOutput(mw)
+	defer func() { auditLogger.logger.SetOutput(os.Stderr) }()
+
+	// Call the given function
+	f()
+
+	FlushLogBuffers()
+	auditLogger.FlushBufferToLog()
+	return b.Bytes()
 }

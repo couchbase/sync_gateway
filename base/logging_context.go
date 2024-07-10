@@ -44,6 +44,8 @@ type LogContext struct {
 	// TestName can be a unit test name (see TestCtx)
 	TestName string
 
+	// RequestAdditionalAuditFields is a map of fields to be included in audit logs
+	RequestAdditionalAuditFields map[string]any
 	// TODO: CBG-3973 - Add request data (user, ips, etc.) - to be used by auditFieldsFromContext
 	//// Username is the name of the authenticated user
 	//Username string
@@ -119,13 +121,14 @@ func (lc *LogContext) getContextKey() LogContextKey {
 
 func (lc *LogContext) getCopy() LogContext {
 	return LogContext{
-		CorrelationID: lc.CorrelationID,
-		Database:      lc.Database,
-		DbLogConfig:   lc.DbLogConfig,
-		Bucket:        lc.Bucket,
-		Scope:         lc.Scope,
-		Collection:    lc.Collection,
-		TestName:      lc.TestName,
+		CorrelationID:                lc.CorrelationID,
+		Database:                     lc.Database,
+		DbLogConfig:                  lc.DbLogConfig,
+		Bucket:                       lc.Bucket,
+		Scope:                        lc.Scope,
+		Collection:                   lc.Collection,
+		TestName:                     lc.TestName,
+		RequestAdditionalAuditFields: lc.RequestAdditionalAuditFields,
 	}
 }
 
@@ -184,6 +187,13 @@ func DatabaseLogCtx(parent context.Context, databaseName string, config *DbLogCo
 	newCtx := getLogCtx(parent)
 	newCtx.Database = databaseName
 	newCtx.DbLogConfig = config
+	return LogContextWith(parent, &newCtx)
+}
+
+// AuditLogCtx extends the parent context with additional audit fields
+func AuditLogCtx(parent context.Context, additionalAuditFields map[string]any) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.RequestAdditionalAuditFields = additionalAuditFields
 	return LogContextWith(parent, &newCtx)
 }
 

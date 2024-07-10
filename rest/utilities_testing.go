@@ -719,6 +719,14 @@ func (rt *RestTester) SendMetricsRequest(method, resource, body string) *TestRes
 	return rt.sendMetrics(Request(method, rt.mustTemplateResource(resource), body))
 }
 
+func (rt *RestTester) SendMetricsRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
+	request := Request(method, rt.mustTemplateResource(resource), body)
+	for k, v := range headers {
+		request.Header.Set(k, v)
+	}
+	return rt.sendMetrics(request)
+}
+
 func (rt *RestTester) sendMetrics(request *http.Request) *TestResponse {
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
 	rt.TestMetricsHandler().ServeHTTP(response, request)
@@ -730,6 +738,18 @@ func (rt *RestTester) SendDiagnosticRequest(method, resource, body string) *Test
 	request := Request(method, rt.mustTemplateResource(resource), body)
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
 	rt.TestDiagnosticHandler().ServeHTTP(response, Request(method, rt.mustTemplateResource(resource), body))
+	return response
+}
+
+// SendDiagnosticRequestWithHeaders runs a request against the diagnostic handler with headers.
+func (rt *RestTester) SendDiagnosticRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
+	request := Request(method, rt.mustTemplateResource(resource), body)
+	for k, v := range headers {
+		request.Header.Set(k, v)
+	}
+	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
+
+	rt.TestDiagnosticHandler().ServeHTTP(response, request)
 	return response
 }
 
@@ -1673,14 +1693,11 @@ func GetUserPayload(t testing.TB, username, password, email string, collection *
 	return string(marshalledConfig)
 }
 
-// GetRolePayload will take roleName, password and channels you want to assign a particular role and return the appropriate payload for the _role endpoint
-func GetRolePayload(t *testing.T, roleName, password string, collection *db.DatabaseCollection, chans []string) string {
+// GetRolePayload will take roleName and channels you want to assign a particular role and return the appropriate payload for the _role endpoint
+func GetRolePayload(t *testing.T, roleName string, collection *db.DatabaseCollection, chans []string) string {
 	config := auth.PrincipalConfig{}
 	if roleName != "" {
 		config.Name = &roleName
-	}
-	if password != "" {
-		config.Password = &password
 	}
 	marshalledConfig, err := addChannelsToPrincipal(config, collection, chans)
 	require.NoError(t, err)

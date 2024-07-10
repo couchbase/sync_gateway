@@ -103,6 +103,9 @@ func NewConsoleLogger(ctx context.Context, shouldLogLocation bool, config *Conso
 }
 
 func (l *ConsoleLogger) logf(format string, args ...interface{}) {
+	if l == nil {
+		return
+	}
 	if l.collateBuffer != nil {
 		l.collateBufferWg.Add(1)
 		l.collateBuffer <- fmt.Sprintf(format, args...)

@@ -80,13 +80,13 @@ type serverType string
 
 const (
 	// serverTypePublic indicates the public interface for sync gateway
-	publicServer = "public"
+	publicServer serverType = "public"
 	// serverTypeAdmin indicates the admin interface for sync gateway
-	adminServer = "admin"
+	adminServer serverType = "admin"
 	// serverTypeMetrics indicates the metrics interface for sync gateway
-	metricsServer = "metrics"
+	metricsServer serverType = "metrics"
 	// serverTypeDiagnostic indicates the diagnostic interface for sync gateway
-	diagnosticServer = "diagnostic"
+	diagnosticServer serverType = "diagnostic"
 )
 
 // Bucket configuration elements - used by db, index
@@ -1065,6 +1065,21 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			}
 		}
 	}
+
+	if dbConfig.Logging != nil {
+		if dbConfig.Logging.Audit != nil {
+			if !isEnterpriseEdition && dbConfig.Logging.Audit.Enabled != nil {
+				base.WarnfCtx(ctx, eeOnlyWarningMsg, "logging.audit.enabled", *dbConfig.Logging.Audit.Enabled, false)
+				dbConfig.Logging.Audit.Enabled = nil
+			}
+			for _, id := range dbConfig.Logging.Audit.EnabledEvents {
+				if _, ok := base.AuditEvents[base.AuditID(id)]; !ok {
+					multiError = multiError.Append(fmt.Errorf("unknown audit event ID %q", id))
+				}
+			}
+		}
+	}
+
 	return multiError.ErrorOrNil()
 }
 
@@ -1305,6 +1320,14 @@ func (sc *StartupConfig) SetupAndValidateLogging(ctx context.Context) (err error
 		sc.Logging.LogFilePath = defaultLogFilePath
 	}
 
+	var auditLoggingFields map[string]any
+	if sc.Unsupported.AuditInfoProvider != nil && sc.Unsupported.AuditInfoProvider.GlobalInfoEnvVarName != nil {
+		v := os.Getenv(*sc.Unsupported.AuditInfoProvider.GlobalInfoEnvVarName)
+		err := base.JSONUnmarshal([]byte(v), &auditLoggingFields)
+		if err != nil {
+			return fmt.Errorf("Unable to unmarshal audit info from environment variable %s=%s %w", *sc.Unsupported.AuditInfoProvider.GlobalInfoEnvVarName, v, err)
+		}
+	}
 	return base.InitLogging(ctx,
 		sc.Logging.LogFilePath,
 		sc.Logging.Console,
@@ -1315,6 +1338,7 @@ func (sc *StartupConfig) SetupAndValidateLogging(ctx context.Context) (err error
 		sc.Logging.Trace,
 		sc.Logging.Stats,
 		sc.Logging.Audit,
+		auditLoggingFields,
 	)
 }
 
@@ -2197,6 +2221,7 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 			enabledEvents[base.AuditID(event)] = struct{}{}
 		}
 		aud = &base.DbAuditLogConfig{
+			Enabled:       base.BoolDefault(l.Audit.Enabled, false),
 			EnabledEvents: enabledEvents,
 		}
 	}
