@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -26,13 +27,19 @@ func TestValidateAuditEvents(t *testing.T) {
 }
 
 func validateAuditEvents(e events) error {
+	multiError := &MultiError{}
+	seenIDs := make(map[AuditID]struct{})
 	for id, descriptor := range e {
 		if id < auditdSyncGatewayStartID || id > auditdSyncGatewayEndID {
-			return fmt.Errorf("invalid audit event ID: %d %q (allowed range: %d-%d)",
-				id, descriptor.Name, auditdSyncGatewayStartID, auditdSyncGatewayEndID)
+			multiError = multiError.Append(fmt.Errorf("invalid audit event ID: %d %q (allowed range: %d-%d)",
+				id, descriptor.Name, auditdSyncGatewayStartID, auditdSyncGatewayEndID))
 		}
+		if _, ok := seenIDs[id]; ok {
+			multiError = multiError.Append(fmt.Errorf("duplicate audit event ID: %d %q", id, descriptor.Name))
+		}
+		seenIDs[id] = struct{}{}
 	}
-	return nil
+	return multiError.ErrorOrNil()
 }
 
 // TestGenerateAuditDescriptorCSV outputs a CSV of AuditEvents.
@@ -52,7 +59,21 @@ func generateCSVModuleDescriptor(e events) ([]byte, error) {
 		return nil, err
 	}
 
-	for id, event := range e {
+	keys := make([]AuditID, 0, len(e))
+	for k := range e {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+
+	for _, id := range keys {
+		event := e[id]
+
+		mandatoryFields := event.MandatoryFields
+		mandatoryFieldKeys := maps.Keys(mandatoryFields)
+		slices.Sort(mandatoryFieldKeys)
+		optionalFields := event.OptionalFields
+		optionalFieldKeys := maps.Keys(optionalFields)
+		slices.Sort(optionalFieldKeys)
 		if err := w.Write([]string{
 			id.String(),
 			event.Name,
@@ -60,8 +81,8 @@ func generateCSVModuleDescriptor(e events) ([]byte, error) {
 			strconv.FormatBool(event.EnabledByDefault),
 			strconv.FormatBool(event.FilteringPermitted),
 			string(event.EventType),
-			strings.Join(maps.Keys(event.MandatoryFields), ", "),
-			strings.Join(maps.Keys(event.OptionalFields), ", "),
+			strings.Join(mandatoryFieldKeys, ", "),
+			strings.Join(optionalFieldKeys, ", "),
 		}); err != nil {
 			return nil, err
 		}
