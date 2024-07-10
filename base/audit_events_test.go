@@ -69,7 +69,6 @@ func generateCSVModuleDescriptor(e events) ([]byte, error) {
 		event := e[id]
 
 		mandatoryFields := event.MandatoryFields
-		mandatoryFields.withCommonMandatoryFields()
 		mandatoryFieldKeys := maps.Keys(mandatoryFields)
 		slices.Sort(mandatoryFieldKeys)
 		optionalFields := event.OptionalFields

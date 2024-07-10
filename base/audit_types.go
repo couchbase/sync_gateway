@@ -41,12 +41,61 @@ type EventDescriptor struct {
 	FilteringPermitted bool
 	// MandatoryFields describe field(s) required for a valid instance of the event
 	MandatoryFields AuditFields
+	// mandatoryFieldGroups is used to automatically fill MandatoryFields with groups of common fields
+	mandatoryFieldGroups []fieldGroup
 
 	// The following fields are for documentation-use only.
 	// OptionalFields describe optional field(s) valid in an instance of the event
 	OptionalFields AuditFields
 	// EventType represents a type of event
 	EventType eventType
+
+	// isDatabaseEvent indicates whether the event is a database event or a global (SG) event
+	// this controls where this event can be configured (startup config (false) vs. db config (true))
+	isDatabaseEvent bool
+}
+
+type fieldGroup string
+
+const (
+	fieldGroupGlobal        fieldGroup = "global"
+	fieldGroupRequest       fieldGroup = "request"
+	fieldGroupAuthenticated fieldGroup = "authenticated"
+	fieldGroupDatabase      fieldGroup = "database"
+	fieldGroupKeyspace      fieldGroup = "keyspace"
+)
+
+// mandatoryFieldsByGroup defines which fields are mandatory for each group.
+var mandatoryFieldsByGroup = map[fieldGroup]map[string]any{
+	fieldGroupGlobal: {
+		auditFieldTimestamp:   "timestamp",
+		auditFieldID:          123,
+		auditFieldName:        "event name",
+		auditFieldDescription: "event description",
+	},
+	fieldGroupRequest: {
+		auditFieldLocal: map[string]any{
+			"ip":   "local ip",
+			"port": "1234"},
+		auditFieldRemote: map[string]any{
+			"ip":   "remote ip",
+			"port": "5678",
+		},
+		auditFieldCorrelationID: "correlation_id",
+	},
+	fieldGroupAuthenticated: {
+		auditFieldRealUserID: map[string]any{
+			"domain": "user domain",
+			"name":   "user name",
+		},
+	},
+	fieldGroupDatabase: {
+		auditFieldDatabase: "database name",
+	},
+	fieldGroupKeyspace: {
+		auditFieldDatabase: "database name",
+		auditFieldKeyspace: "keyspace",
+	},
 }
 
 const (
@@ -61,15 +110,25 @@ type eventType string
 // E.g. Username, IPs, request parameters, etc.
 type AuditFields map[string]any
 
-// withCommonMandatoryFields adds fields that must be present on ALL audit events.
-func (f AuditFields) withCommonMandatoryFields() {
+// expandMandatoryFields adds fields that must be present on events, of the types determined by eventFieldTypes.
+func (f AuditFields) expandMandatoryFieldGroups(groups []fieldGroup) {
 	if f == nil {
 		f = make(AuditFields)
 	}
-	f[auditFieldTimestamp] = ""
-	f[auditFieldID] = 1
-	f[auditFieldName] = ""
-	f[auditFieldDescription] = ""
+
+	// common global fields
+	fields := mandatoryFieldsByGroup[fieldGroupGlobal]
+	for k, v := range fields {
+		f[k] = v
+	}
+
+	// event-specific field groups
+	for _, group := range groups {
+		groupFields := mandatoryFieldsByGroup[group]
+		for k, v := range groupFields {
+			f[k] = v
+		}
+	}
 }
 
 func (i AuditID) MustValidateFields(f AuditFields) {

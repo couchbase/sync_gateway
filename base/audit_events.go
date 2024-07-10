@@ -81,11 +81,13 @@ const (
 	AuditIDUserRead   AuditID = 54101
 	AuditIDUserUpdate AuditID = 54102
 	AuditIDUserDelete AuditID = 54103
+	AuditIDUsersAll           = 54110
 	// Role principal events
 	AuditIDRoleCreate AuditID = 54110
 	AuditIDRoleRead   AuditID = 54111
 	AuditIDRoleUpdate AuditID = 54112
 	AuditIDRoleDelete AuditID = 54113
+	AuditIDRolesAll           = 54120
 
 	// Changes feeds events
 	AuditIDChangesFeedStarted AuditID = 54200
@@ -110,9 +112,9 @@ const (
 	AuditIDDocumentCreate       AuditID = 55000
 	AuditIDDocumentRead         AuditID = 55001
 	AuditIDDocumentUpdate       AuditID = 55002
+	AuditIDDocumentDelete       AuditID = 55003
 	AuditIDDocumentMetadataRead AuditID = 55004
 	// Document attachments events
-	AuditIDDocumentDelete   AuditID = 55003
 	AuditIDAttachmentCreate AuditID = 55010
 	AuditIDAttachmentRead   AuditID = 55011
 	AuditIDAttachmentUpdate AuditID = 55012
@@ -176,8 +178,8 @@ var AuditEvents = events{
 		Name:        "Public HTTP API request",
 		Description: "Public HTTP API request was made",
 		MandatoryFields: AuditFields{
-			"method": "GET, POST, etc.",
-			"path":   "request_path",
+			"http_method": "GET, POST, etc.",
+			"http_path":   "request_path",
 		},
 		OptionalFields: AuditFields{
 			"request_body": "request_body",
@@ -190,8 +192,8 @@ var AuditEvents = events{
 		Name:        "Admin HTTP API request",
 		Description: "Admin HTTP API request was made",
 		MandatoryFields: AuditFields{
-			"method": "GET, POST, etc.",
-			"path":   "request_path",
+			"http_method": "GET, POST, etc.",
+			"http_path":   "request_path",
 		},
 		OptionalFields: AuditFields{
 			"request_body": "request_body",
@@ -204,8 +206,8 @@ var AuditEvents = events{
 		Name:        "Metrics HTTP API request",
 		Description: "Metrics HTTP API request was made",
 		MandatoryFields: AuditFields{
-			"method": "GET, POST, etc.",
-			"path":   "request_path",
+			"http_method": "GET, POST, etc.",
+			"http_path":   "request_path",
 		},
 		OptionalFields: AuditFields{
 			"request_body": "request_body",
@@ -218,7 +220,7 @@ var AuditEvents = events{
 		Name:        "Public API user authenticated",
 		Description: "Public API user successfully authenticated",
 		MandatoryFields: AuditFields{
-			"method": "basic, oidc, cookie, etc.",
+			"auth_method": "basic, oidc, cookie, etc.",
 		},
 		OptionalFields: AuditFields{
 			"oidc_issuer": "issuer",
@@ -231,7 +233,7 @@ var AuditEvents = events{
 		Name:        "Public API user authentication failed",
 		Description: "Public API user failed to authenticate",
 		MandatoryFields: AuditFields{
-			"method": "basic, oidc, cookie, etc.",
+			"auth_method": "basic, oidc, cookie, etc.",
 		},
 		OptionalFields: AuditFields{
 			"username": "username",
@@ -324,13 +326,19 @@ var AuditEvents = events{
 		Description:        "stats were requested",
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
-		EventType:          eventTypeAdmin,
+		MandatoryFields: AuditFields{
+			"stats_format": "expvar, prometheus, etc.",
+		},
+		EventType: eventTypeAdmin,
 	},
 	AuditIDSyncGatewayProfiling: {
 		Name:        "profiling requested",
 		Description: "profiling was requested",
 		MandatoryFields: AuditFields{
 			"profile_type": "cpu, memory, etc.",
+		},
+		OptionalFields: AuditFields{
+			"filename": "filename",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -461,8 +469,9 @@ var AuditEvents = events{
 		Description: "Database resync was started",
 		MandatoryFields: AuditFields{
 			"db":                   "database name",
-			"collections":          []string{"list", "of", "collections"},
+			"collections":          map[string][]string{"scopeName": {"collectionA", "collectionB"}},
 			"regenerate_sequences": true,
+			"reset":                true,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -482,7 +491,8 @@ var AuditEvents = events{
 		Name:        "Database post-upgrade",
 		Description: "Database post-upgrade was run",
 		MandatoryFields: AuditFields{
-			"db": "database name",
+			"db":      "database name",
+			"preview": true,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -624,10 +634,14 @@ var AuditEvents = events{
 	},
 	AuditIDReplicationConnect: {
 		Name:        "Replication connect",
-		Description: "A client connected using WebSocket/BLIP for replication",
+		Description: "A replication client connected",
 		MandatoryFields: AuditFields{
 			"db":  "database name",
 			"cid": "context id",
+		},
+		OptionalFields: AuditFields{
+			"client_type":    "isgr, cbl, other",
+			"client_version": "client version",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -635,7 +649,7 @@ var AuditEvents = events{
 	},
 	AuditIDReplicationDisconnect: {
 		Name:        "Replication disconnect",
-		Description: "A client disconnected from WebSocket/BLIP replication",
+		Description: "A replication client disconnected",
 		MandatoryFields: AuditFields{
 			"db":  "database name",
 			"cid": "context id",
@@ -817,8 +831,6 @@ var AuditEvents = events{
 		Name:        "Create attachment",
 		Description: "A new attachment was created",
 		MandatoryFields: AuditFields{
-			"db":            "database name",
-			"ks":            "keyspace",
 			"doc_id":        "document id",
 			"doc_version":   "revision ID or version",
 			"attachment_id": "attachment name",
@@ -832,8 +844,6 @@ var AuditEvents = events{
 		Name:        "Read attachment",
 		Description: "An attachment was viewed",
 		MandatoryFields: AuditFields{
-			"db":            "database name",
-			"ks":            "keyspace",
 			"doc_id":        "document id",
 			"doc_version":   "revision ID or version",
 			"attachment_id": "attachment name",
@@ -847,8 +857,6 @@ var AuditEvents = events{
 		Name:        "Update attachment",
 		Description: "An attachment was updated",
 		MandatoryFields: AuditFields{
-			"db":            "database name",
-			"ks":            "keyspace",
 			"doc_id":        "document id",
 			"doc_version":   "revision ID or version",
 			"attachment_id": "attachment name",
@@ -860,18 +868,31 @@ var AuditEvents = events{
 	AuditIDAttachmentDelete: {
 		Name:        "Delete attachment",
 		Description: "An attachment was deleted",
-
 		MandatoryFields: AuditFields{
-			"db":          "database name",
-			"ks":          "keyspace",
-			"doc_id":      "document id",
-			"doc_version": "revision ID or version",
-			"attachment":  "attachment_name",
+			"doc_id":        "document id",
+			"doc_version":   "revision ID or version",
+			"attachment_id": "attachment name",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupKeyspace,
+			fieldGroupRequest,
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
 		EventType:          eventTypeData,
 	},
+}
+
+func init() {
+	AuditEvents.expandMandatoryFieldGroups()
+}
+
+func (e events) expandMandatoryFieldGroups() {
+	for _, descriptor := range e {
+		descriptor.MandatoryFields.expandMandatoryFieldGroups(descriptor.mandatoryFieldGroups)
+	}
 }
 
 // DefaultAuditEventIDs is a list of audit event IDs that are enabled by default.
