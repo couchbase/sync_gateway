@@ -240,11 +240,14 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 	var importErr error
 
 	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, isDelete, cas, nil, ImportOnDemand)
+
 	if importErr == base.ErrImportCancelledFilter {
-		// If the import was cancelled due to filter, treat as not found
-		return nil, base.HTTPErrorf(404, "Not imported")
+		// If the import was cancelled due to filter, treat as 404 not imported
+		return nil, base.HTTPErrorf(http.StatusNotFound, "Not imported")
 	} else if importErr != nil {
-		return nil, importErr
+		// Treat any other failure to perform an on-demand import as not found
+		base.DebugfCtx(ctx, base.KeyImport, "Unable to import doc %q during on demand import for get - will be treated as not found.  Reason: %v", base.UD(docid), err)
+		return nil, base.HTTPErrorf(http.StatusNotFound, "Not found")
 	}
 	return docOut, nil
 }
