@@ -52,7 +52,7 @@ type EventDescriptor struct {
 
 	// isDatabaseEvent indicates whether the event is a database event or a global (SG) event
 	// this controls where this event can be configured (startup config (false) vs. db config (true))
-	isDatabaseEvent bool
+	//isDatabaseEvent bool
 }
 
 type fieldGroup string
