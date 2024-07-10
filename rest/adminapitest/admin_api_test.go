@@ -4293,12 +4293,12 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	responseBody = nil
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
 	assert.Equal(t, true, responseBody["enabled"].(bool))
-	assert.False(t, responseBody["events"].(map[string]interface{})[base.AuditIDAuditEnabled.String()].(bool), "audit enabled event should be disabled by default") // TODO: This will change - replace with an actual non-default event.
+	assert.False(t, responseBody["events"].(map[string]interface{})[base.AuditIDISGRStatus.String()].(bool), "audit enabled event should be disabled by default")
 	assert.True(t, responseBody["events"].(map[string]interface{})[base.AuditIDPublicUserAuthenticated.String()].(bool), "public user authenticated event should be enabled by default")
 
 	// do a PUT to completely replace the full config (events not declared here will be disabled)
 	// enable AuditEnabled event, but implicitly others
-	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDAuditEnabled))
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDISGRStatus))
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// check audit config
@@ -4308,6 +4308,6 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	responseBody = nil
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
 	assert.Equal(t, true, responseBody["enabled"].(bool))
-	assert.True(t, responseBody["events"].(map[string]interface{})[base.AuditIDAuditEnabled.String()].(bool), "audit enabled event should've been enabled via PUT")
+	assert.True(t, responseBody["events"].(map[string]interface{})[base.AuditIDISGRStatus.String()].(bool), "audit enabled event should've been enabled via PUT")
 	assert.False(t, responseBody["events"].(map[string]interface{})[base.AuditIDPublicUserAuthenticated.String()].(bool), "public user authenticated event should've been disabled via PUT")
 }
