@@ -262,7 +262,7 @@ func (h *handler) handleDump() error {
 
 // HTTP handler for _repair
 func (h *handler) handleRepair() error {
-
+	base.Audit(h.ctx(), base.AuditIDDatabaseRepair, nil)
 	// TODO: If repair is re-enabled, it may need to be modified to support xattrs and GSI
 	return errors.New("_repair endpoint disabled")
 

@@ -408,6 +408,7 @@ type PostUpgradeResult map[string]PostUpgradeDatabaseResult
 type PostUpgradeDatabaseResult struct {
 	RemovedDDocs   []string `json:"removed_design_docs"`
 	RemovedIndexes []string `json:"removed_indexes"`
+	err            error    // this is not exported, to be used for additional information
 }
 
 // PostUpgrade performs post-upgrade processing for each database
@@ -418,18 +419,27 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 	postUpgradeResults = make(map[string]PostUpgradeDatabaseResult, len(sc.databases_))
 
 	for name, database := range sc.databases_ {
+		var multiError *base.MultiError
 		// View cleanup
-		removedDDocs, _ := database.RemoveObsoleteDesignDocs(ctx, preview)
+		removedDDocs, err := database.RemoveObsoleteDesignDocs(ctx, preview)
+		if err != nil {
+			multiError = multiError.Append(err)
+		}
 
 		// Index cleanup
 		var removedIndexes []string
 		if !base.TestsDisableGSI() {
-			removedIndexes, _ = database.RemoveObsoleteIndexes(ctx, preview)
+			var indexError error
+			removedIndexes, indexError = database.RemoveObsoleteIndexes(ctx, preview)
+			if indexError != nil {
+				multiError = multiError.Append(indexError)
+			}
 		}
 
 		postUpgradeResults[name] = PostUpgradeDatabaseResult{
 			RemovedDDocs:   removedDDocs,
 			RemovedIndexes: removedIndexes,
+			err:            multiError,
 		}
 	}
 	return postUpgradeResults, nil
