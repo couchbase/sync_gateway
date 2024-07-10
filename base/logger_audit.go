@@ -111,11 +111,6 @@ func (f *AuditFields) merge(ctx context.Context, overwrites AuditFields) {
 
 // Audit creates and logs an audit event for the given ID and a set of additional data associated with the request.
 func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
-	audit(ctx, id, additionalData)
-}
-
-// audit creates and logs an audit event for the given ID and a set of additional data associated with the request, but allows passing a devmode field.
-func audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	var fields AuditFields
 
 	if IsDevMode() {
