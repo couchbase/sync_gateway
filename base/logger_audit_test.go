@@ -25,8 +25,9 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 		name           string
 		functionFields AuditFields
 		globalFields   AuditFields
+		contextFields  AuditFields
 		finalFields    AuditFields
-		hasError       bool
+		warningCount   int64
 	}{
 		{
 			name: "no global fields",
@@ -62,12 +63,76 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 			finalFields: AuditFields{
 				"method": "basic",
 			},
-			hasError: true,
+			warningCount: 1,
+		},
+		{
+			name: "context fields only",
+			functionFields: AuditFields{
+				"method": "basic",
+			},
+			globalFields: nil,
+			contextFields: AuditFields{
+				"context": "field",
+			},
+			finalFields: AuditFields{
+				"method":  "basic",
+				"context": "field",
+			},
+		},
+		{
+			name: "context fields overwrite fields",
+			functionFields: AuditFields{
+				"method": "basic",
+			},
+			globalFields: nil,
+			contextFields: AuditFields{
+				"method": "context",
+			},
+			finalFields: AuditFields{
+				"method": "basic",
+			},
+			warningCount: 1,
+		},
+		{
+			name: "global fields and context fields",
+			functionFields: AuditFields{
+				"method": "basic",
+			},
+			globalFields: AuditFields{
+				"global": "field",
+			},
+			contextFields: AuditFields{
+				"context": "field",
+			},
+			finalFields: AuditFields{
+				"method":  "basic",
+				"global":  "field",
+				"context": "field",
+			},
+		},
+		{
+			name: "global fields and context fields overwrite fields",
+			functionFields: AuditFields{
+				"method": "basic",
+			},
+			globalFields: AuditFields{
+				"method": "global",
+			},
+			contextFields: AuditFields{
+				"method": "context",
+			},
+			finalFields: AuditFields{
+				"method": "basic",
+			},
+			warningCount: 2, // error from global and error from context
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			ctx := TestCtx(t)
+			if testCase.contextFields != nil {
+				ctx = AuditLogCtx(ctx, testCase.contextFields)
+			}
 			var err error
 			auditLogger, err = NewAuditLogger(ctx, &AuditLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true)}}, tmpdir, 0, nil, testCase.globalFields)
 			require.NoError(t, err)
@@ -83,11 +148,7 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 			for k, v := range testCase.finalFields {
 				require.Equal(t, v, event[k])
 			}
-			if testCase.hasError {
-				require.Equal(t, startWarnCount+1, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
-			} else {
-				require.Equal(t, startWarnCount, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
-			}
+			require.Equal(t, startWarnCount+testCase.warningCount, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
 		})
 	}
 
