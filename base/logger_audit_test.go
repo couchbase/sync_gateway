@@ -32,71 +32,71 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 		{
 			name: "no global fields",
 			functionFields: AuditFields{
-				"method": "basic",
+				"auth_method": "basic",
 			},
 			globalFields: nil,
 			finalFields: AuditFields{
-				"method": "basic",
+				"auth_method": "basic",
 			},
 		},
 		{
 			name: "with global fields",
 			functionFields: AuditFields{
-				"method": "basic",
+				"auth_method": "basic",
 			},
 			globalFields: AuditFields{
 				"global": "field",
 			},
 			finalFields: AuditFields{
-				"method": "basic",
-				"global": "field",
+				"auth_method": "basic",
+				"global":      "field",
 			},
 		},
 		{
 			name: "overwrite global fields",
 			functionFields: AuditFields{
-				"method": "basic",
+				"auth_method": "basic",
 			},
 			globalFields: AuditFields{
-				"method": "global",
+				"auth_method": "global",
 			},
 			finalFields: AuditFields{
-				"method": "basic",
+				"auth_method": "basic",
 			},
 			warningCount: 1,
 		},
 		{
 			name: "context fields only",
 			functionFields: AuditFields{
-				"method": "basic",
+				"auth_method": "basic",
 			},
 			globalFields: nil,
 			contextFields: AuditFields{
 				"context": "field",
 			},
 			finalFields: AuditFields{
-				"method":  "basic",
-				"context": "field",
+				"auth_method": "basic",
+				"context":     "field",
 			},
 		},
 		{
 			name: "context fields overwrite fields",
 			functionFields: AuditFields{
-				"method": "basic",
+				"auth_method": "basic",
 			},
 			globalFields: nil,
 			contextFields: AuditFields{
-				"method": "context",
+				"auth_method": "context",
 			},
 			finalFields: AuditFields{
-				"method": "basic",
+				"auth_method": "basic",
 			},
 			warningCount: 1,
 		},
 		{
 			name: "global fields and context fields",
 			functionFields: AuditFields{
-				"method": "basic",
+				"auth_method": "basic",
 			},
 			globalFields: AuditFields{
 				"global": "field",
@@ -105,24 +105,24 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 				"context": "field",
 			},
 			finalFields: AuditFields{
-				"method":  "basic",
-				"global":  "field",
-				"context": "field",
+				"auth_method": "basic",
+				"global":      "field",
+				"context":     "field",
 			},
 		},
 		{
 			name: "global fields and context fields overwrite fields",
 			functionFields: AuditFields{
-				"method": "basic",
+				"auth_method": "basic",
 			},
 			globalFields: AuditFields{
-				"method": "global",
+				"auth_method": "global",
 			},
 			contextFields: AuditFields{
-				"method": "context",
+				"auth_method": "context",
 			},
 			finalFields: AuditFields{
-				"method": "basic",
+				"auth_method": "basic",
 			},
 			warningCount: 2, // error from global and error from context
 		},
@@ -139,7 +139,7 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 			startWarnCount := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 			output := AuditLogContents(t, func() {
 				// Test basic audit event
-				Audit(ctx, AuditIDPublicUserAuthenticated, map[string]any{"method": "basic"})
+				Audit(ctx, AuditIDPublicUserAuthenticated, map[string]any{"auth_method": "basic"})
 			},
 			)
 			var event map[string]any
