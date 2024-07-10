@@ -636,12 +636,16 @@ var AuditEvents = events{
 		Name:        "Replication connect",
 		Description: "A replication client connected",
 		MandatoryFields: AuditFields{
-			"db":  "database name",
-			"cid": "context id",
+			"cid":         "context id", // this is blip context id
+			"client_type": "isgr, cbl, other",
 		},
 		OptionalFields: AuditFields{
-			"client_type":    "isgr, cbl, other",
 			"client_version": "client version",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -651,8 +655,13 @@ var AuditEvents = events{
 		Name:        "Replication disconnect",
 		Description: "A replication client disconnected",
 		MandatoryFields: AuditFields{
-			"db":  "database name",
-			"cid": "context id",
+			"cid":         "context id", // this is blip context id
+			"client_type": "isgr, cbl, other",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
