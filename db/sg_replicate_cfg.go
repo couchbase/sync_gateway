@@ -1471,23 +1471,27 @@ func (m *sgReplicateManager) GetReplicationStatus(ctx context.Context, replicati
 	return status, nil
 }
 
-func (m *sgReplicateManager) PutReplicationStatus(ctx context.Context, replicationID, action string) (status *ReplicationStatus, err error) {
+// PutReplicationStatus updates the state of a replication.
+func (m *sgReplicateManager) PutReplicationStatus(ctx context.Context, replicationID, action string) (status *ReplicationStatus, auditEvent base.AuditID, err error) {
 
 	targetState := ""
 	switch action {
 	case "reset":
+		auditEvent = base.AuditIDISGRReset
 		targetState = ReplicationStateResetting
 	case "stop":
+		auditEvent = base.AuditIDISGRStop
 		targetState = ReplicationStateStopped
 	case "start":
+		auditEvent = base.AuditIDISGRStart
 		targetState = ReplicationStateRunning
 	default:
-		return nil, base.HTTPErrorf(http.StatusBadRequest, "Unrecognized action %q.  Valid values are start/stop/reset.", action)
+		return nil, 0, base.HTTPErrorf(http.StatusBadRequest, "Unrecognized action %q.  Valid values are start/stop/reset.", action)
 	}
 
 	err = m.UpdateReplicationState(replicationID, targetState)
 	if err != nil {
-		return nil, err
+		return nil, auditEvent, err
 	}
 
 	updatedStatus, err := m.GetReplicationStatus(ctx, replicationID, DefaultReplicationStatusOptions())
@@ -1499,15 +1503,15 @@ func (m *sgReplicateManager) PutReplicationStatus(ctx context.Context, replicati
 				ID:     replicationID,
 				Status: "removed",
 			}
-			return replicationStatus, nil
+			return replicationStatus, auditEvent, nil
 		} else {
-			return nil, err
+			return nil, auditEvent, err
 		}
 	}
 
 	// Modify the returned replication state to align with the requested state
 	updatedStatus.Status = transitionStateName(updatedStatus.Status, targetState)
-	return updatedStatus, nil
+	return updatedStatus, auditEvent, nil
 }
 
 func (m *sgReplicateManager) GetReplicationStatusAll(ctx context.Context, options ReplicationStatusOptions) ([]*ReplicationStatus, error) {

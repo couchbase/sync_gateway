@@ -30,8 +30,10 @@ const (
 	auditFieldLocal              = "local"
 	auditFieldRemote             = "remote"
 	auditFieldDatabase           = "db"
-	auditFieldCorrelationID      = "cid"
+	auditFieldCorrelationID      = "cid" // FIXME: how to distinguish between this field (http) and blip id below
 	auditFieldKeyspace           = "ks"
+	AuditFieldReplicationID      = "replication_id"
+	AuditFieldPayload            = "payload"
 	AuditFieldCompactionType     = "type"
 	AuditFieldCompactionDryRun   = "dry_run"
 	AuditFieldCompactionReset    = "reset"

@@ -60,16 +60,23 @@ func (h *handler) handleBLIPSync() error {
 	// Overwrite the existing logging context with the blip context ID
 	h.rqCtx = base.CorrelationIDLogCtx(h.ctx(), base.FormatBlipContextID(blipContext.ID))
 	h.response.Header().Set(db.BLIPCorrelationIDResponseHeader, blipContext.ID)
-
 	// Create a new BlipSyncContext attached to the given blipContext.
 	ctx := db.NewBlipSyncContext(h.rqCtx, blipContext, h.db, h.formatSerialNumber(), db.BlipSyncStatsForCBL(h.db.DbStats))
 	defer ctx.Close()
 
+	auditFields := base.AuditFields{base.AuditFieldReplicationID: base.FormatBlipContextID(blipContext.ID)}
 	if string(db.BLIPClientTypeSGR2) == h.getQuery(db.BLIPSyncClientTypeQueryParam) {
 		ctx.SetClientType(db.BLIPClientTypeSGR2)
+		auditFields["client_type"] = db.BLIPClientTypeSGR2
 	} else {
+		// we could pull the exact CBL client and version from User-Agent
 		ctx.SetClientType(db.BLIPClientTypeCBL2)
+		auditFields["client_type"] = db.BLIPClientTypeCBL2
 	}
+	base.Audit(h.rqCtx, base.AuditIDReplicationConnect, auditFields)
+	defer func() {
+		base.Audit(h.rqCtx, base.AuditIDReplicationDisconnect, auditFields)
+	}()
 
 	// Create a BLIP WebSocket handler and have it handle the request:
 	server := blipContext.WebSocketServer()

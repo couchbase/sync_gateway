@@ -158,9 +158,13 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		MandatoryFields: AuditFields{
-			"db":          "database name",
-			"audit_scope": "global or db",
-			"new_config":  "JSON representation of new db audit config",
+			"audit_scope":     "global or db",
+			AuditFieldPayload: "JSON representation of new db audit config",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EventType: eventTypeAdmin,
 	},
@@ -356,8 +360,8 @@ var AuditEvents = events{
 		Name:        "Create database",
 		Description: "A new database was created",
 		MandatoryFields: AuditFields{
-			"db":     "database name",
-			"config": "JSON representation of db config",
+			"db":              "database name",
+			AuditFieldPayload: "JSON representation of db config",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -398,8 +402,8 @@ var AuditEvents = events{
 		Name:        "Update database config",
 		Description: "Database configuration was updated",
 		MandatoryFields: AuditFields{
-			"db":     "database name",
-			"config": "JSON representation of new db config",
+			"db":              "database name",
+			AuditFieldPayload: "payload",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -675,12 +679,15 @@ var AuditEvents = events{
 		Name:        "Replication connect",
 		Description: "A replication client connected",
 		MandatoryFields: AuditFields{
-			"db":  "database name",
-			"cid": "context id",
+			"client_type": "isgr, cbl, other",
 		},
 		OptionalFields: AuditFields{
-			"client_type":    "isgr, cbl, other",
 			"client_version": "client version",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -690,8 +697,12 @@ var AuditEvents = events{
 		Name:        "Replication disconnect",
 		Description: "A replication client disconnected",
 		MandatoryFields: AuditFields{
-			"db":  "database name",
-			"cid": "context id",
+			"client_type": "isgr, cbl, other",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -701,9 +712,13 @@ var AuditEvents = events{
 		Name:        "Create Inter-Sync Gateway Replication",
 		Description: "A new Inter-Sync Gateway Replication was created",
 		MandatoryFields: AuditFields{
-			"db":             "database name",
-			"replication_id": "replication id",
-			"config":         "JSON representation of replication config",
+			AuditFieldReplicationID: "replication id",
+			AuditFieldPayload:       "payload",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -713,8 +728,12 @@ var AuditEvents = events{
 		Name:        "Read Inter-Sync Gateway Replication",
 		Description: "Information about this Inter-Sync Gateway Replication was viewed",
 		MandatoryFields: AuditFields{
-			"db":             "database name",
-			"replication_id": "replication id",
+			AuditFieldReplicationID: "replication id",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -724,9 +743,13 @@ var AuditEvents = events{
 		Name:        "Update Inter-Sync Gateway Replication",
 		Description: "Inter-Sync Gateway Replication was updated",
 		MandatoryFields: AuditFields{
-			"db":             "database name",
-			"replication_id": "replication id",
-			"config":         "JSON representation of new replication config",
+			AuditFieldReplicationID: "replication id",
+			AuditFieldPayload:       "payload",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -735,8 +758,12 @@ var AuditEvents = events{
 		Name:        "Delete Inter-Sync Gateway Replication",
 		Description: "Inter-Sync Gateway Replication was deleted",
 		MandatoryFields: AuditFields{
-			"db":             "database name",
-			"replication_id": "replication id",
+			AuditFieldReplicationID: "replication id",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -746,8 +773,12 @@ var AuditEvents = events{
 		Name:        "Inter-Sync Gateway Replication status",
 		Description: "Inter-Sync Gateway Replication status was document viewed",
 		MandatoryFields: AuditFields{
-			"db":             "database name",
-			"replication_id": "replication id",
+			AuditFieldReplicationID: "replication id",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -756,8 +787,12 @@ var AuditEvents = events{
 		Name:        "Inter-Sync Gateway Replication start",
 		Description: "Inter-Sync Gateway Replication was started",
 		MandatoryFields: AuditFields{
-			"db":             "database name",
-			"replication_id": "replication id",
+			AuditFieldReplicationID: "replication id",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -766,8 +801,12 @@ var AuditEvents = events{
 		Name:        "Inter-Sync Gateway Replication stop",
 		Description: "Inter-Sync Gateway Replication was stopped",
 		MandatoryFields: AuditFields{
-			"db":             "database name",
-			"replication_id": "replication id",
+			AuditFieldReplicationID: "replication id",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -776,8 +815,12 @@ var AuditEvents = events{
 		Name:        "Inter-Sync Gateway Replication reset",
 		Description: "Inter-Sync Gateway Replication was reset",
 		MandatoryFields: AuditFields{
-			"db":             "database name",
-			"replication_id": "replication id",
+			AuditFieldReplicationID: "replication id",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -785,8 +828,10 @@ var AuditEvents = events{
 	AuditIDISGRAllStatus: {
 		Name:        "All Inter-Sync Gateway Replication status",
 		Description: "All Inter-Sync Gateway Replication statuses were viewed",
-		MandatoryFields: AuditFields{
-			"db": "database name",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -794,8 +839,10 @@ var AuditEvents = events{
 	AuditIDISGRAllRead: {
 		Name:        "Read all Inter-Sync Gateway Replications",
 		Description: "All Inter-Sync Gateway Replications were viewed",
-		MandatoryFields: AuditFields{
-			"db": "database name",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,

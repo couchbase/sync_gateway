@@ -1824,7 +1824,7 @@ func (h *handler) getReplication() error {
 		}
 		return err
 	}
-
+	base.Audit(h.ctx(), base.AuditIDISGRRead, base.AuditFields{base.AuditFieldReplicationID: replicationID})
 	h.writeJSON(replication.Redacted(h.ctx()))
 	return nil
 }
@@ -1844,6 +1844,7 @@ func (h *handler) putReplication() error {
 
 	if h.rq.Method == "PUT" {
 		replicationID := mux.Vars(h.rq)["replicationID"]
+
 		if replicationConfig.ID != "" && replicationConfig.ID != replicationID {
 			return base.HTTPErrorf(http.StatusBadRequest, "Replication ID in body %q does not match request URI", replicationConfig.ID)
 		}
@@ -1854,16 +1855,24 @@ func (h *handler) putReplication() error {
 	if err != nil {
 		return err
 	}
+	auditFields := base.AuditFields{base.AuditFieldReplicationID: replicationConfig.ID, base.AuditFieldPayload: body}
 	if created {
 		h.writeStatus(http.StatusCreated, "Created")
+		base.Audit(h.ctx(), base.AuditIDISGRCreate, auditFields)
+	} else {
+		base.Audit(h.ctx(), base.AuditIDISGRUpdate, auditFields)
 	}
-
 	return nil
 }
 
 func (h *handler) deleteReplication() error {
 	replicationID := mux.Vars(h.rq)["replicationID"]
-	return h.db.SGReplicateMgr.DeleteReplication(replicationID)
+	err := h.db.SGReplicateMgr.DeleteReplication(replicationID)
+	if err != nil {
+		return err
+	}
+	base.Audit(h.ctx(), base.AuditIDISGRDelete, base.AuditFields{base.AuditFieldReplicationID: replicationID})
+	return nil
 }
 
 func (h *handler) getReplicationsStatus() error {
@@ -1871,6 +1880,7 @@ func (h *handler) getReplicationsStatus() error {
 	if err != nil {
 		return err
 	}
+	base.Audit(h.ctx(), base.AuditIDISGRAllRead, nil)
 	h.writeJSON(replicationsStatus)
 	return nil
 }
@@ -1881,6 +1891,7 @@ func (h *handler) getReplicationStatus() error {
 	if err != nil {
 		return err
 	}
+	base.Audit(h.ctx(), base.AuditIDISGRStatus, base.AuditFields{base.AuditFieldReplicationID: replicationID})
 	h.writeJSON(status)
 	return nil
 }
@@ -1906,10 +1917,11 @@ func (h *handler) putReplicationStatus() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Query parameter 'action' must be specified")
 	}
 
-	updatedStatus, err := h.db.SGReplicateMgr.PutReplicationStatus(h.ctx(), replicationID, action)
+	updatedStatus, auditEventID, err := h.db.SGReplicateMgr.PutReplicationStatus(h.ctx(), replicationID, action)
 	if err != nil {
 		return err
 	}
+	base.Audit(h.ctx(), auditEventID, base.AuditFields{base.AuditFieldReplicationID: replicationID})
 	h.writeJSON(updatedStatus)
 	return nil
 }
