@@ -3077,63 +3077,53 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 			ImportFilter: importFilter,
 			AutoImport:   base.BoolPtr(false),
 		})
-		rt.Bucket()
 		defer rt.Close()
 
 		testCases := []struct {
 			name        string
 			channel     string // used to avoid cross-traffic between tests
 			updatedBody []byte
-			expectNoRev bool
 		}{
 
 			{
 				name:        "_id property",
 				channel:     "a",
 				updatedBody: []byte(`{"_id": "doc1"}`),
-				expectNoRev: true,
 			},
 			{
 				name:        "_exp property",
 				channel:     "b",
 				updatedBody: []byte(`{"_exp": 1}`),
-				expectNoRev: true,
 			},
 			{
 				name:        "_rev property",
 				channel:     "c",
 				updatedBody: []byte(`{"_rev": "abc1"}`),
-				expectNoRev: true,
 			},
 			{
 				name:        "_revisions property",
 				channel:     "d",
 				updatedBody: []byte(`{"_revisions": {"start": 0, "ids": ["foo", "def]"}}`),
-				expectNoRev: true,
 			},
 			{
 				name:        "_purged property",
 				channel:     "e",
 				updatedBody: []byte(`{"_purged": true}`),
-				expectNoRev: true,
 			},
 			{
 				name:        "invalid json",
 				channel:     "f",
 				updatedBody: []byte(``),
-				expectNoRev: true,
 			},
 			{
 				name:        "rejected by sync function",
 				channel:     "g",
 				updatedBody: []byte(`{"invalid": true}`),
-				expectNoRev: true,
 			},
 			{
 				name:        "rejected by import filter",
 				channel:     "h",
 				updatedBody: []byte(`{"doNotImport": true}`),
-				expectNoRev: true,
 			},
 		}
 		for i, testCase := range testCases {
@@ -3169,7 +3159,6 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				})
 				defer btc2.Close()
 
-				log.Printf("IDs: %v %q", btc.id, btc2.id)
 				require.NoError(t, btcRunner.StartOneshotPull(btc2.id))
 
 				btcRunner.WaitForDoc(btc2.id, markerDoc)
