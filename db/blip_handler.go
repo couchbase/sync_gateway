@@ -1013,7 +1013,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	newDoc.UpdateBodyBytes(bodyBytes)
 
 	injectedAttachmentsForDelta := false
-	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta {
+	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta && !revMessage.Deleted() {
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
 		}
@@ -1049,19 +1049,17 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			injectedAttachmentsForDelta = true
 		}
 
-		if !revMessage.Deleted() {
-			deltaSrcMap := map[string]interface{}(deltaSrcBody)
-			err = base.Patch(&deltaSrcMap, newDoc.Body(bh.loggingCtx))
-			// err should only ever be a FleeceDeltaError here - but to be defensive, handle other errors too (e.g. somehow reaching this code in a CE build)
-			if err != nil {
-				// Something went wrong in the diffing library. We want to know about this!
-				base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for doc %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-				return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error patching deltaSrc with delta: %s", err)
-			}
-
-			newDoc.UpdateBody(deltaSrcMap)
-			base.TracefCtx(bh.loggingCtx, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
+		deltaSrcMap := map[string]interface{}(deltaSrcBody)
+		err = base.Patch(&deltaSrcMap, newDoc.Body(bh.loggingCtx))
+		// err should only ever be a FleeceDeltaError here - but to be defensive, handle other errors too (e.g. somehow reaching this code in a CE build)
+		if err != nil {
+			// Something went wrong in the diffing library. We want to know about this!
+			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for doc %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error patching deltaSrc with delta: %s", err)
 		}
+
+		newDoc.UpdateBody(deltaSrcMap)
+		base.TracefCtx(bh.loggingCtx, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
 		stats.deltaRecvCount.Add(1)
 	}
 
