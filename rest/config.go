@@ -1073,7 +1073,8 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 				dbConfig.Logging.Audit.Enabled = nil
 			}
 			for _, id := range dbConfig.Logging.Audit.EnabledEvents {
-				if _, ok := base.AuditEvents[base.AuditID(id)]; !ok {
+				id := base.AuditID(id)
+				if _, ok := base.AuditEvents[id]; !ok {
 					multiError = multiError.Append(fmt.Errorf("unknown audit event ID %q", id))
 				}
 			}
