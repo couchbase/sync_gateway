@@ -2217,7 +2217,11 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 	var aud *base.DbAuditLogConfig
 	if l.Audit != nil {
 		enabledEvents := make(map[base.AuditID]struct{}, len(l.Audit.EnabledEvents))
-		for _, event := range l.Audit.EnabledEvents {
+		events := l.Audit.EnabledEvents
+		if events == nil {
+			events = base.DefaultAuditEventIDs
+		}
+		for _, event := range events {
 			enabledEvents[base.AuditID(event)] = struct{}{}
 		}
 		aud = &base.DbAuditLogConfig{
