@@ -1093,23 +1093,23 @@ func (h *handler) readJSONInto(into interface{}) error {
 
 // readSanitizeJSONInto reads and sanitizes a JSON request body and returns DatabaseConfig.
 // Expands environment variables (if any) referenced in the config.
-func (h *handler) readSanitizeJSON(val interface{}) error {
+func (h *handler) readSanitizeJSON(val interface{}) ([]byte, error) {
 	// Performs the Content-Type validation and Content-Encoding check.
 	input, err := processContentEncoding(h.rq.Header, h.requestBody, "application/json")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Read body bytes to sanitize the content and substitute environment variables.
 	defer func() { _ = input.Close() }()
-	content, err := io.ReadAll(input)
+	raw, err := io.ReadAll(input)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	content, err = sanitiseConfig(h.ctx(), content, h.server.Config.Unsupported.AllowDbConfigEnvVars)
+	content, err := sanitiseConfig(h.ctx(), raw, h.server.Config.Unsupported.AllowDbConfigEnvVars)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Decode the body bytes into target structure.
@@ -1124,7 +1124,7 @@ func (h *handler) readSanitizeJSON(val interface{}) error {
 			err = base.HTTPErrorf(http.StatusBadRequest, "Bad JSON: %s", err.Error())
 		}
 	}
-	return err
+	return raw, err
 }
 
 // readJavascript reads a javascript function from a request body.
@@ -1144,17 +1144,17 @@ func (h *handler) readJavascript() (string, error) {
 	return string(jsBytes), nil
 }
 
-// readSanitizeJSONInto reads and sanitizes a JSON request body and returns DbConfig.
+// readSanitizeJSONInto reads and sanitizes a JSON request body and returns raw bytes and DbConfig.
 // Expands environment variables (if any) referenced in the config.
-func (h *handler) readSanitizeDbConfigJSON() (*DbConfig, error) {
+func (h *handler) readSanitizeDbConfigJSON() ([]byte, *DbConfig, error) {
 	var config DbConfig
-	err := h.readSanitizeJSON(&config)
+	rawBytes, err := h.readSanitizeJSON(&config)
 	if err != nil {
 		if errors.Cause(base.WrapJSONUnknownFieldErr(err)) == base.ErrUnknownField {
 			err = base.HTTPErrorf(http.StatusBadRequest, "JSON Unknown Field: %s", err.Error())
 		}
 	}
-	return &config, err
+	return rawBytes, &config, err
 }
 
 // Reads & parses the request body, handling either JSON or multipart.

@@ -43,7 +43,7 @@ func (h *handler) handleCreateDB() error {
 	contextNoCancel := base.NewNonCancelCtx()
 	h.assertAdminOnly()
 	dbName := h.PathVar("newdb")
-	config, err := h.readSanitizeDbConfigJSON()
+	rawBytes, config, err := h.readSanitizeDbConfigJSON()
 	if err != nil {
 		return err
 	}
@@ -162,6 +162,12 @@ func (h *handler) handleCreateDB() error {
 		}
 	}
 
+	base.Audit(h.ctx(), base.AuditIDCreateDatabase,
+		base.AuditFields{
+			base.AuditFieldDatabase: dbName,
+			base.AuditFieldPayload:  rawBytes,
+		},
+	)
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
@@ -331,6 +337,7 @@ func (h *handler) handleGetDbConfig() error {
 		}
 	}
 
+	base.Audit(h.ctx(), base.AuditIDReadDatabaseConfig, nil)
 	h.writeJSON(responseConfig)
 	return nil
 }
@@ -509,23 +516,28 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	var dbConfig *DbConfig
 
+	auditFields := base.AuditFields{}
 	if h.permissionsResults[PermUpdateDb.PermissionName] {
 		// user authorized to change all fields
-		dbConfig, err = h.readSanitizeDbConfigJSON()
+		var err error
+		var rawBytes []byte
+		rawBytes, dbConfig, err = h.readSanitizeDbConfigJSON()
 		if err != nil {
 			return err
 		}
+		auditFields[base.AuditFieldPayload] = rawBytes
 	} else {
 		hasAuthPerm := h.permissionsResults[PermConfigureAuth.PermissionName]
 		hasSyncPerm := h.permissionsResults[PermConfigureSyncFn.PermissionName]
-
-		bodyContents, err := io.ReadAll(h.requestBody)
+		var rawBytes []byte
+		rawBytes, err := io.ReadAll(h.requestBody)
 		if err != nil {
 			return err
 		}
+		auditFields[base.AuditFieldPayload] = rawBytes
 
 		var mapDbConfig map[string]interface{}
-		err = ReadJSONFromMIMERawErr(h.rq.Header, io.NopCloser(bytes.NewReader(bodyContents)), &mapDbConfig)
+		err = ReadJSONFromMIMERawErr(h.rq.Header, io.NopCloser(bytes.NewReader(rawBytes)), &mapDbConfig)
 		if err != nil {
 			return err
 		}
@@ -542,7 +554,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 			return base.HTTPErrorf(http.StatusForbidden, "not authorized to update field: %s", strings.Join(unknownFileKeys, ","))
 		}
 
-		err = ReadJSONFromMIMERawErr(h.rq.Header, io.NopCloser(bytes.NewReader(bodyContents)), &dbConfig)
+		err = ReadJSONFromMIMERawErr(h.rq.Header, io.NopCloser(bytes.NewReader(rawBytes)), &dbConfig)
 		if err != nil {
 			return err
 		}
@@ -588,6 +600,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		if err := h.server.ReloadDatabaseWithConfig(contextNoCancel, *updatedDbConfig); err != nil {
 			return err
 		}
+		base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, auditFields)
 		return base.HTTPErrorf(http.StatusCreated, "updated")
 	}
 
@@ -667,6 +680,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 	defer h.server.lock.Unlock()
 	h.server.dbConfigs[dbName].cfgCas = cas
 
+	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, auditFields)
 	return base.HTTPErrorf(http.StatusCreated, "updated")
 }
 
@@ -878,6 +892,7 @@ func (h *handler) handleGetCollectionConfigSync() error {
 
 	h.setEtag(etagVersion)
 	h.writeJavascript(syncFunction)
+	base.Audit(h.ctx(), base.AuditIDReadDatabaseConfig, nil)
 	return nil
 }
 
@@ -890,6 +905,7 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 	}
 
 	bucket := h.db.Bucket.GetName()
+	var updatedConfigStr string
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, h.db.Name, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
@@ -899,8 +915,10 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 			config.SyncFn = nil
 			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+			updatedConfigStr = fmt.Sprintf(`{"scopes": {"%s": {"collections": { "%s": { "sync": ""}}}}}`, h.collection.ScopeName, h.collection.Name)
 		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 			bucketDbConfig.Sync = nil
+			updatedConfigStr = `{"sync": ""}`
 		}
 
 		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
@@ -933,6 +951,7 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 		return err
 	}
 
+	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, base.AuditFields{base.AuditFieldPayload: updatedConfigStr})
 	return base.HTTPErrorf(http.StatusOK, "sync function removed")
 }
 
@@ -951,6 +970,7 @@ func (h *handler) handlePutCollectionConfigSync() error {
 	bucket := h.db.Bucket.GetName()
 	dbName := h.db.Name
 
+	var updatedConfigStr string
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
@@ -961,8 +981,10 @@ func (h *handler) handlePutCollectionConfigSync() error {
 			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 			config.SyncFn = &js
 			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+			updatedConfigStr = fmt.Sprintf(`{"scopes": {"%s": {"collections": { "%s": { "sync": "%s"}}}}}`, h.collection.ScopeName, h.collection.Name, js)
 		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 			bucketDbConfig.Sync = &js
+			updatedConfigStr = fmt.Sprintf(`{"sync": "%s"}`, js)
 		}
 
 		validateReplications := false
@@ -998,6 +1020,7 @@ func (h *handler) handlePutCollectionConfigSync() error {
 		return err
 	}
 
+	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, base.AuditFields{base.AuditFieldPayload: updatedConfigStr})
 	return base.HTTPErrorf(http.StatusOK, "updated")
 }
 
@@ -1036,6 +1059,7 @@ func (h *handler) handleGetCollectionConfigImportFilter() error {
 
 	h.setEtag(etagVersion)
 	h.writeJavascript(importFilterFunction)
+	base.Audit(h.ctx(), base.AuditIDReadDatabaseConfig, nil)
 	return nil
 }
 
@@ -1050,6 +1074,7 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 	bucket := h.db.Bucket.GetName()
 	dbName := h.db.Name
 
+	updatedConfigStr := ""
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 
@@ -1061,8 +1086,10 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 			config.ImportFilter = nil
 			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+			updatedConfigStr = fmt.Sprintf(`{"scopes": {"%s": {"collections": { "%s": { "import_filter": ""}}}}}`, h.collection.ScopeName, h.collection.Name)
 		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 			bucketDbConfig.ImportFilter = nil
+			updatedConfigStr = `{"import_filter":""}`
 		}
 
 		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
@@ -1093,6 +1120,7 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 		return err
 	}
 
+	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, base.AuditFields{base.AuditFieldPayload: updatedConfigStr})
 	return base.HTTPErrorf(http.StatusOK, "import filter removed")
 }
 
@@ -1111,6 +1139,7 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 	bucket := h.db.Bucket.GetName()
 	dbName := h.db.Name
 
+	var updatedConfigStr string
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 
@@ -1122,8 +1151,10 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 			config.ImportFilter = &js
 			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+			updatedConfigStr = fmt.Sprintf(`{"scopes":{"%s":{"collections":{"%s":{"import_filter": ""}}}}}`, h.collection.ScopeName, h.collection.Name)
 		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 			bucketDbConfig.ImportFilter = &js
+			updatedConfigStr = `{"import_filter":""}`
 		}
 
 		validateReplications := false
@@ -1159,6 +1190,7 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 		return err
 	}
 
+	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, base.AuditFields{base.AuditFieldPayload: updatedConfigStr})
 	return base.HTTPErrorf(http.StatusOK, "updated")
 }
 
@@ -1178,6 +1210,7 @@ func (h *handler) handleDeleteDB() error {
 		}
 		h.server.RemoveDatabase(h.ctx(), dbName) // unhandled 404 to allow broken config deletion (CBG-2420)
 		_, _ = h.response.Write([]byte("{}"))
+		base.Audit(h.ctx(), base.AuditIDDeleteDatabase, nil)
 		return nil
 	}
 
@@ -1185,6 +1218,7 @@ func (h *handler) handleDeleteDB() error {
 		return base.HTTPErrorf(http.StatusNotFound, "no such database %q", dbName)
 	}
 	_, _ = h.response.Write([]byte("{}"))
+	base.Audit(h.ctx(), base.AuditIDDeleteDatabase, nil)
 	return nil
 }
 

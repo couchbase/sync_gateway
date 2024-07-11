@@ -357,10 +357,14 @@ var AuditEvents = events{
 	},
 	AuditIDCreateDatabase: {
 		Name:        "Create database",
-		Description: "A new database was created",
+		Description: "A new database was created from REST API",
 		MandatoryFields: AuditFields{
-			"db":              "database name",
 			AuditFieldPayload: "JSON representation of db config",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -368,20 +372,35 @@ var AuditEvents = events{
 	},
 	AuditIDReadDatabase: {
 		Name:        "Read database",
-		Description: "Information about this database was viewed.",
-		MandatoryFields: AuditFields{
-			"db": "database name",
+		Description: "Information about this database was viewed from REST API",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
-		OptionalFields:     AuditFields{},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		EventType:          eventTypeUser,
 	},
 	AuditIDDeleteDatabase: {
 		Name:        "Delete database",
-		Description: "A database was deleted",
-		MandatoryFields: AuditFields{
-			"db": "database name",
+		Description: "A database was deleted from REST API",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseAllRead: {
+		Name:        "Read all databases",
+		Description: "All databases were viewed from REST API",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -389,9 +408,11 @@ var AuditEvents = events{
 	},
 	AuditIDReadDatabaseConfig: {
 		Name:        "Read database config",
-		Description: "Database configuration was viewed",
-		MandatoryFields: AuditFields{
-			"db": "database name",
+		Description: "Database configuration was viewed from REST API",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -399,10 +420,14 @@ var AuditEvents = events{
 	},
 	AuditIDUpdateDatabaseConfig: {
 		Name:        "Update database config",
-		Description: "Database configuration was updated",
+		Description: "Database configuration was updated from REST API",
 		MandatoryFields: AuditFields{
-			"db":              "database name",
 			AuditFieldPayload: "payload",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,

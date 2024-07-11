@@ -29,7 +29,7 @@ const (
 	auditFieldRealUserID    = "real_userid"
 	auditFieldLocal         = "local"
 	auditFieldRemote        = "remote"
-	auditFieldDatabase      = "db"
+	AuditFieldDatabase      = "db"
 	auditFieldCorrelationID = "cid" // FIXME: how to distinguish between this field (http) and blip id below
 	auditFieldKeyspace      = "ks"
 	AuditFieldReplicationID = "replication_id"
@@ -53,7 +53,7 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	// context data
 	logCtx := getLogCtx(ctx)
 	if logCtx.Database != "" {
-		fields[auditFieldDatabase] = logCtx.Database
+		fields[AuditFieldDatabase] = logCtx.Database
 	}
 	if logCtx.CorrelationID != "" {
 		fields[auditFieldCorrelationID] = logCtx.CorrelationID

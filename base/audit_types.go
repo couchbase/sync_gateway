@@ -90,10 +90,10 @@ var mandatoryFieldsByGroup = map[fieldGroup]map[string]any{
 		},
 	},
 	fieldGroupDatabase: {
-		auditFieldDatabase: "database name",
+		AuditFieldDatabase: "database name",
 	},
 	fieldGroupKeyspace: {
-		auditFieldDatabase: "database name",
+		AuditFieldDatabase: "database name",
 		auditFieldKeyspace: "keyspace",
 	},
 }

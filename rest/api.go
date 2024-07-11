@@ -75,6 +75,7 @@ func (h *handler) handlePing() error {
 }
 
 func (h *handler) handleAllDbs() error {
+	base.Audit(h.ctx(), base.AuditIDDatabaseAllRead, nil)
 	if h.getBoolQuery("verbose") {
 		h.writeJSON(h.server.allDatabaseSummaries())
 		return nil
@@ -416,8 +417,6 @@ type DbSummary struct {
 }
 
 func (h *handler) handleGetDB() error {
-	base.Audit(h.ctx(), base.AuditIDReadDatabase, nil)
-
 	if h.rq.Method == "HEAD" {
 		return nil
 	}
@@ -443,6 +442,7 @@ func (h *handler) handleGetDB() error {
 		InitializationActive:          h.server.DatabaseInitManager.HasActiveInitialization(h.db.Name),
 	}
 
+	base.Audit(h.ctx(), base.AuditIDReadDatabase, nil)
 	h.writeJSON(response)
 	return nil
 }

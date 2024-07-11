@@ -101,3 +101,106 @@ func TestAuditInjectableHeader(t *testing.T) {
 		})
 	}
 }
+
+func TestAuditDatabaseUpdate(t *testing.T) {
+	// get tempdir before resetting global loggers, since the logger cleanup needs to happen before deletion
+	tempdir := t.TempDir()
+	base.ResetGlobalTestLogging(t)
+	base.InitializeMemoryLoggers()
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			config.Logging = base.LoggingConfig{
+				LogFilePath: tempdir,
+				Audit: &base.AuditLoggerConfig{
+					FileLoggerConfig: base.FileLoggerConfig{
+						Enabled:             base.BoolPtr(true),
+						CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
+					},
+				},
+				Console: &base.ConsoleLoggerConfig{
+					FileLoggerConfig: base.FileLoggerConfig{
+						Enabled: base.BoolPtr(true),
+					},
+				},
+				Info: &base.FileLoggerConfig{
+					Enabled:             base.BoolPtr(false),
+					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
+				},
+				Debug: &base.FileLoggerConfig{
+					Enabled:             base.BoolPtr(false),
+					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
+				},
+				Trace: &base.FileLoggerConfig{
+					Enabled:             base.BoolPtr(false),
+					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
+				},
+			}
+			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
+		},
+	})
+	defer rt.Close()
+
+	// initialize RestTester
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	testCases := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{
+			name:   "update sync function",
+			method: http.MethodPut,
+			path:   "/{{.keyspace}}/_config/sync",
+			body:   `function(doc){}`,
+		},
+		{
+			name:   "update import filter",
+			method: http.MethodPut,
+			path:   "/{{.keyspace}}/_config/import_filter",
+			body:   `function(doc){}`,
+		},
+		{
+			name:   "delete sync function",
+			method: http.MethodDelete,
+			path:   "/{{.keyspace}}/_config/sync",
+			body:   ``,
+		},
+		{
+			name:   "delete import filter",
+			method: http.MethodDelete,
+			path:   "/{{.keyspace}}/_config/import_filter",
+			body:   ``,
+		},
+	}
+	for _, testCase := range testCases {
+		rt.Run(testCase.name, func(t *testing.T) {
+			output := base.AuditLogContents(t, func() {
+				resp := rt.SendAdminRequest(testCase.method, testCase.path, testCase.body)
+				RequireStatus(t, resp, http.StatusOK)
+			})
+			requireValidDatabaseUpdatedEventPayload(rt, output)
+		})
+	}
+}
+
+// requireValidDatabaseUpdatedEventPayload checks the audit log output for at least one database updated event, and validates that each payload can be used validly
+func requireValidDatabaseUpdatedEventPayload(rt *RestTester, output []byte) {
+	events := bytes.Split(output, []byte("\n"))
+	foundEvent := false
+	for _, rawEvent := range events {
+		if bytes.TrimSpace(rawEvent) == nil {
+			continue
+		}
+		var event struct {
+			Payload string `json:"payload"`
+		}
+		require.NoError(rt.TB(), base.JSONUnmarshal(rawEvent, &event))
+		require.NotEmpty(rt.TB(), event.Payload)
+		RequireStatus(rt.TB(), rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", event.Payload), http.StatusCreated)
+		foundEvent = true
+	}
+	require.True(rt.TB(), foundEvent, "expected audit event not found")
+}
