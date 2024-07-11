@@ -22,16 +22,20 @@ const (
 
 // commonly used fields for audit events
 const (
-	auditFieldID            = "id"
-	auditFieldTimestamp     = "timestamp"
-	auditFieldName          = "name"
-	auditFieldDescription   = "description"
-	auditFieldRealUserID    = "real_userid"
-	auditFieldLocal         = "local"
-	auditFieldRemote        = "remote"
-	auditFieldDatabase      = "db"
-	auditFieldCorrelationID = "cid"
-	auditFieldKeyspace      = "ks"
+	auditFieldID                 = "id"
+	auditFieldTimestamp          = "timestamp"
+	auditFieldName               = "name"
+	auditFieldDescription        = "description"
+	auditFieldRealUserID         = "real_userid"
+	auditFieldLocal              = "local"
+	auditFieldRemote             = "remote"
+	auditFieldDatabase           = "db"
+	auditFieldCorrelationID      = "cid"
+	auditFieldKeyspace           = "ks"
+	AuditFieldCompactionType     = "type"
+	AuditFieldCompactionDryRun   = "dry_run"
+	AuditFieldCompactionReset    = "reset"
+	AuditFieldPostUpgradePreview = "preview"
 )
 
 // expandFields populates data with information from the id, context and additionalData.

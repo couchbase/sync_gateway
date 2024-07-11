@@ -247,6 +247,7 @@ func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	if err := h.db.TakeDbOffline(base.NewNonCancelCtx(), "ADMIN Request"); err != nil {
 		base.InfofCtx(h.ctx(), base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
+		return err
 	}
 	base.Audit(h.ctx(), base.AuditIDDatabaseOffline, nil)
 	return nil
