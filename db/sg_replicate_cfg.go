@@ -1086,9 +1086,9 @@ func (m *sgReplicateManager) PutReplications(ctx context.Context, replications m
 }
 
 // PUT _replication/replicationID
-func (m *sgReplicateManager) UpsertReplication(ctx context.Context, replication *ReplicationUpsertConfig) (created bool, auditEvents []base.AuditID, err error) {
+func (m *sgReplicateManager) UpsertReplication(ctx context.Context, replication *ReplicationUpsertConfig) (created bool, err error) {
 	if replication.ID == "" {
-		return false, nil, base.HTTPErrorf(http.StatusBadRequest, "Replication ID is required")
+		return false, base.HTTPErrorf(http.StatusBadRequest, "Replication ID is required")
 	}
 	created = true
 	addReplicationCallback := func(cluster *SGRCluster) (cancel bool, err error) {
@@ -1103,7 +1103,6 @@ func (m *sgReplicateManager) UpsertReplication(ctx context.Context, replication 
 			if state.Status != ReplicationStateStopped {
 				return true, base.HTTPErrorf(http.StatusBadRequest, "Replication must be stopped before updating config")
 			}
-			auditEvents = append(auditEvents, base.AuditIDISGRUpdate)
 		} else {
 			// Add a new replication to the cfg.  Set targetState based on initialState when specified.
 			replicationConfig := DefaultReplicationConfig()
@@ -1116,7 +1115,6 @@ func (m *sgReplicateManager) UpsertReplication(ctx context.Context, replication 
 				ReplicationConfig: replicationConfig,
 				TargetState:       targetState,
 			}
-			auditEvents = append(auditEvents, base.AuditIDISGRCreate)
 		}
 
 		cluster.Replications[replication.ID].Upsert(ctx, replication)
@@ -1125,21 +1123,11 @@ func (m *sgReplicateManager) UpsertReplication(ctx context.Context, replication 
 		if validateErr != nil {
 			return true, validateErr
 		}
-		switch cluster.Replications[replication.ID].TargetState {
-		case ReplicationStateRunning:
-			// by default a replication will be created running, or an existing replication can go from stopped to running
-			auditEvents = append(auditEvents, base.AuditIDISGRStart)
-		case ReplicationStateStopped:
-			// if initial creation, then there is no starting
-		case ReplicationStateResetting:
-			// a replication can start in a resetting state, or go from stop->reset
-			auditEvents = append(auditEvents, base.AuditIDISGRReset)
-		}
 
 		cluster.RebalanceReplications()
 		return false, nil
 	}
-	return created, auditEvents, m.updateCluster(addReplicationCallback)
+	return created, m.updateCluster(addReplicationCallback)
 }
 
 func (m *sgReplicateManager) UpdateReplicationState(replicationID string, state string) error {

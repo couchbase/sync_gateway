@@ -157,9 +157,13 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		MandatoryFields: AuditFields{
-			"db":          "database name",
-			"audit_scope": "global or db",
-			"new_config":  "JSON representation of new db audit config",
+			"audit_scope":     "global or db",
+			AuditFieldPayload: "JSON representation of new db audit config",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EventType: eventTypeAdmin,
 	},
@@ -355,8 +359,8 @@ var AuditEvents = events{
 		Name:        "Create database",
 		Description: "A new database was created",
 		MandatoryFields: AuditFields{
-			"db":     "database name",
-			"config": "JSON representation of db config",
+			"db":              "database name",
+			AuditFieldPayload: "JSON representation of db config",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -397,8 +401,8 @@ var AuditEvents = events{
 		Name:        "Update database config",
 		Description: "Database configuration was updated",
 		MandatoryFields: AuditFields{
-			"db":     "database name",
-			"config": "JSON representation of new db config",
+			"db":              "database name",
+			AuditFieldPayload: "payload",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -636,7 +640,6 @@ var AuditEvents = events{
 		Name:        "Replication connect",
 		Description: "A replication client connected",
 		MandatoryFields: AuditFields{
-			"cid":         "context id", // this is blip context id
 			"client_type": "isgr, cbl, other",
 		},
 		OptionalFields: AuditFields{
@@ -655,7 +658,6 @@ var AuditEvents = events{
 		Name:        "Replication disconnect",
 		Description: "A replication client disconnected",
 		MandatoryFields: AuditFields{
-			"cid":         "context id", // this is blip context id
 			"client_type": "isgr, cbl, other",
 		},
 		mandatoryFieldGroups: []fieldGroup{
@@ -672,7 +674,7 @@ var AuditEvents = events{
 		Description: "A new Inter-Sync Gateway Replication was created",
 		MandatoryFields: AuditFields{
 			AuditFieldReplicationID: "replication id",
-			"config":                "JSON representation of replication config",
+			AuditFieldPayload:       "payload",
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
@@ -703,7 +705,7 @@ var AuditEvents = events{
 		Description: "Inter-Sync Gateway Replication was updated",
 		MandatoryFields: AuditFields{
 			AuditFieldReplicationID: "replication id",
-			"config":                "JSON representation of new replication config",
+			AuditFieldPayload:       "payload",
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,

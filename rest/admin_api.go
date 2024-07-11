@@ -1850,19 +1850,16 @@ func (h *handler) putReplication() error {
 		replicationConfig.ID = replicationID
 	}
 
-	created, auditEvents, err := h.db.SGReplicateMgr.UpsertReplication(h.ctx(), replicationConfig)
+	created, err := h.db.SGReplicateMgr.UpsertReplication(h.ctx(), replicationConfig)
 	if err != nil {
 		return err
 	}
+	auditFields := base.AuditFields{base.AuditFieldReplicationID: replicationConfig.ID, base.AuditFieldPayload: body}
 	if created {
 		h.writeStatus(http.StatusCreated, "Created")
-	}
-	for _, auditID := range auditEvents {
-		auditFields := base.AuditFields{base.AuditFieldReplicationID: replicationConfig.ID}
-		if auditID == base.AuditIDISGRCreate || auditID == base.AuditIDISGRUpdate {
-			auditFields["config"] = body
-		}
-		base.Audit(h.ctx(), auditID, auditFields)
+		base.Audit(h.ctx(), base.AuditIDISGRCreate, auditFields)
+	} else {
+		base.Audit(h.ctx(), base.AuditIDISGRUpdate, auditFields)
 	}
 	return nil
 }

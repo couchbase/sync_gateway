@@ -33,6 +33,7 @@ const (
 	auditFieldCorrelationID = "cid" // FIXME: how to distinguish between this field (http) and blip id below
 	auditFieldKeyspace      = "ks"
 	AuditFieldReplicationID = "replication_id"
+	AuditFieldPayload       = "payload"
 )
 
 // expandFields populates data with information from the id, context and additionalData.
