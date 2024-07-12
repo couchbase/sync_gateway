@@ -1568,11 +1568,63 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	if err != nil {
 		return err
 	} else if replaced {
+		// update event
+		if isUser {
+			base.Audit(h.ctx(), base.AuditIDUserUpdate, base.AuditFields{
+				"username": internalName,
+				"roles":    newInfo.ExplicitRoleNames.ToArray(),
+				"channels": GetAuditEventAccess(h.db, isUser, newInfo),
+				"db":       h.db.Name,
+			})
+		} else {
+			base.Audit(h.ctx(), base.AuditIDRoleUpdate, base.AuditFields{
+				"role":           internalName,
+				"admin_channels": GetAuditEventAccess(h.db, isUser, newInfo),
+				"db":             h.db.Name,
+			})
+		}
 		h.writeStatus(http.StatusOK, "OK")
 	} else {
+		// create event
+		if isUser {
+			base.Audit(h.ctx(), base.AuditIDUserCreate, base.AuditFields{
+				"username": internalName,
+				"roles":    newInfo.ExplicitRoleNames.ToArray(),
+				"channels": GetAuditEventAccess(h.db, isUser, newInfo),
+				"db":       h.db.Name,
+			})
+		} else {
+			base.Audit(h.ctx(), base.AuditIDRoleCreate, base.AuditFields{
+				"role":           internalName,
+				"admin_channels": GetAuditEventAccess(h.db, isUser, newInfo),
+				"db":             h.db.Name,
+			})
+		}
 		h.writeStatus(http.StatusCreated, "Created")
 	}
 	return nil
+}
+
+func GetAuditEventAccess(db *db.Database, isUser bool, cnf auth.PrincipalConfig) map[string]map[string][]string {
+	auditEventAccess := make(map[string]map[string][]string)
+	collectionAccess := make(map[string][]string)
+	if isUser {
+		if db.OnlyDefaultCollection() {
+			collectionAccess[base.DefaultCollection] = cnf.ExplicitChannels.ToArray()
+			auditEventAccess[base.DefaultScope] = collectionAccess
+		} else {
+			auditEventAccess = auth.GetExplicitCollectionChannelsForAuditEvent(cnf.CollectionAccess)
+		}
+	} else {
+		if db.OnlyDefaultCollection() {
+			collectionAccess[base.DefaultCollection] = cnf.ExplicitChannels.ToArray()
+			auditEventAccess[base.DefaultScope] = collectionAccess
+		} else {
+			auditEventAccess = auth.GetExplicitCollectionChannelsForAuditEvent(cnf.CollectionAccess)
+		}
+
+	}
+	return auditEventAccess
 }
 
 // Handles PUT or POST to /_user/*
@@ -1604,19 +1656,35 @@ func (h *handler) deleteUser() error {
 		}
 		return err
 	}
-	return h.db.Authenticator(h.ctx()).DeleteUser(user)
+	err = h.db.Authenticator(h.ctx()).DeleteUser(user)
+	if err == nil {
+		base.Audit(h.ctx(), base.AuditIDUserDelete, base.AuditFields{
+			"db":       h.db.Name,
+			"username": username,
+		})
+	}
+	return err
 }
 
 func (h *handler) deleteRole() error {
 	h.assertAdminOnly()
 	purge := h.getBoolQuery("purge")
-	return h.db.DeleteRole(h.ctx(), mux.Vars(h.rq)["name"], purge)
+	roleName := mux.Vars(h.rq)["name"]
+	err := h.db.DeleteRole(h.ctx(), roleName, purge)
+	if err == nil {
+		base.Audit(h.ctx(), base.AuditIDRoleDelete, base.AuditFields{
+			"db":   h.db.Name,
+			"role": roleName,
+		})
+	}
+	return err
 
 }
 
 func (h *handler) getUserInfo() error {
 	h.assertAdminOnly()
-	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	username := internalUserName(mux.Vars(h.rq)["name"])
+	user, err := h.db.Authenticator(h.ctx()).GetUser(username)
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -1644,13 +1712,20 @@ func (h *handler) getUserInfo() error {
 		}
 	}
 	bytes, err := base.JSONMarshal(info)
+	if err == nil {
+		base.Audit(h.ctx(), base.AuditIDUserRead, base.AuditFields{
+			"db":       h.db.Name,
+			"username": username,
+		})
+	}
 	h.writeRawJSON(bytes)
 	return err
 }
 
 func (h *handler) getRoleInfo() error {
 	h.assertAdminOnly()
-	role, err := h.db.Authenticator(h.ctx()).GetRole(mux.Vars(h.rq)["name"])
+	name := mux.Vars(h.rq)["name"]
+	role, err := h.db.Authenticator(h.ctx()).GetRole(name)
 	if role == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -1661,6 +1736,12 @@ func (h *handler) getRoleInfo() error {
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
 	info := marshalPrincipal(h.db, role, includeDynamicGrantInfo)
 	bytes, err := base.JSONMarshal(info)
+	if err == nil {
+		base.Audit(h.ctx(), base.AuditIDRoleRead, base.AuditFields{
+			"db":   h.db.Name,
+			"role": name,
+		})
+	}
 	_, _ = h.response.Write(bytes)
 	return err
 }
