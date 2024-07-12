@@ -3133,16 +3133,8 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				validBody := fmt.Sprintf(`{"foo":"bar", "channel":%q}`, testCase.channel)
 				revID := rt.PutDoc(docID, validBody)
 
-				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-					Username:               fmt.Sprintf("user_%d", i),
-					Channels:               []string{testCase.channel},
-					SupportedBLIPProtocols: SupportedBLIPProtocols,
-				})
-				defer btc.Close()
-				require.NoError(t, btcRunner.StartOneshotPull(btc.id))
-
-				output := btcRunner.WaitForDoc(btc.id, docID)
-				require.JSONEq(t, validBody, string(output))
+				// Wait for initial revision to arrive over DCP before mutating
+				require.NoError(t, rt.WaitForPendingChanges())
 
 				err := rt.GetSingleDataStore().SetRaw(docID, 0, nil, testCase.updatedBody)
 				require.NoError(t, err)
