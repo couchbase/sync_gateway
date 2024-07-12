@@ -237,6 +237,7 @@ func (h *handler) handleDbOnline() error {
 		time.Sleep(time.Duration(input.Delay) * time.Second)
 		h.server.TakeDbOnline(base.NewNonCancelCtx(), h.db.DatabaseContext)
 	}()
+	base.Audit(h.ctx(), base.AuditIDDatabaseOnline, nil)
 
 	return nil
 }
@@ -244,12 +245,12 @@ func (h *handler) handleDbOnline() error {
 // Take a DB offline
 func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
-	var err error
-	if err = h.db.TakeDbOffline(base.NewNonCancelCtx(), "ADMIN Request"); err != nil {
+	if err := h.db.TakeDbOffline(base.NewNonCancelCtx(), "ADMIN Request"); err != nil {
 		base.InfofCtx(h.ctx(), base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
+		return err
 	}
-
-	return err
+	base.Audit(h.ctx(), base.AuditIDDatabaseOffline, nil)
+	return nil
 }
 
 // Get admin database info

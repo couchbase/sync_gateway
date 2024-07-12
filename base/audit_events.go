@@ -54,6 +54,7 @@ const (
 
 	// SG cluster events
 	AuditIDClusterInfoRead AuditID = 53350
+	AuditIDPostUpgrade     AuditID = 54043
 
 	// Database events
 	AuditIDCreateDatabase  AuditID = 54000
@@ -69,12 +70,12 @@ const (
 	AuditIDDatabaseCompactStatus AuditID = 54030
 	AuditIDDatabaseCompactStart  AuditID = 54031
 	AuditIDDatabaseCompactStop   AuditID = 54032
-	AuditIDDatabaseResyncStatus  AuditID = 54040
-	AuditIDDatabaseResyncStart   AuditID = 54041
-	AuditIDDatabaseResyncStop    AuditID = 54042
-	AuditIDDatabasePostUpgrade   AuditID = 54043
-	AuditIDDatabaseRepair        AuditID = 54044
-	AuditIDDatabaseFlush         AuditID = 54045
+
+	AuditIDDatabaseResyncStatus AuditID = 54040
+	AuditIDDatabaseResyncStart  AuditID = 54041
+	AuditIDDatabaseResyncStop   AuditID = 54042
+	AuditIDDatabaseRepair       AuditID = 54044
+	AuditIDDatabaseFlush        AuditID = 54045
 
 	// User principal events
 	AuditIDUserCreate AuditID = 54100
@@ -411,8 +412,10 @@ var AuditEvents = events{
 	AuditIDDatabaseOffline: {
 		Name:        "Database offline",
 		Description: "Database was taken offline",
-		MandatoryFields: AuditFields{
-			"db": "database name",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			//fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -421,28 +424,29 @@ var AuditEvents = events{
 	AuditIDDatabaseOnline: {
 		Name:        "Database online",
 		Description: "Database was brought online",
-		MandatoryFields: AuditFields{
-			"db": "database name",
-		},
-		EnabledByDefault:   true,
-		FilteringPermitted: false,
-		EventType:          eventTypeAdmin,
-	},
-	AuditIDDatabaseCompactStatus: {
-		Name:        "Database compaction status",
-		Description: "Database compaction status was viewed",
-		MandatoryFields: AuditFields{
-			"db": "database name",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			//fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseCompactStart: {
-		Name:        "Database compaction start",
-		Description: "Database compaction was started",
+		Name:        "Database attachment compaction start",
+		Description: "Database attachment compaction was started",
 		MandatoryFields: AuditFields{
-			"db": "database name",
+			AuditFieldCompactionType: "attachment or tombstone",
+		},
+		OptionalFields: AuditFields{
+			AuditFieldCompactionDryRun: false,
+			AuditFieldCompactionReset:  false,
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			//fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -452,7 +456,27 @@ var AuditEvents = events{
 		Name:        "Database compaction stop",
 		Description: "Database compaction was stopped",
 		MandatoryFields: AuditFields{
-			"db": "database name",
+			AuditFieldCompactionType: "attachment or tombstone",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			//fieldGroupAuthenticated, // FIXME: CBG-3973
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseCompactStatus: {
+		Name:        "Database compaction status",
+		Description: "Database compaction status was viewed",
+		MandatoryFields: AuditFields{
+			AuditFieldCompactionType: "attachment or tombstone",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			//fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -461,8 +485,10 @@ var AuditEvents = events{
 	AuditIDDatabaseResyncStatus: {
 		Name:        "Database resync status",
 		Description: "Database resync status was viewed",
-		MandatoryFields: AuditFields{
-			"db": "database name",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			//fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -472,10 +498,14 @@ var AuditEvents = events{
 		Name:        "Database resync start",
 		Description: "Database resync was started",
 		MandatoryFields: AuditFields{
-			"db":                   "database name",
 			"collections":          map[string][]string{"scopeName": {"collectionA", "collectionB"}},
 			"regenerate_sequences": true,
 			"reset":                true,
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			//fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -484,19 +514,24 @@ var AuditEvents = events{
 	AuditIDDatabaseResyncStop: {
 		Name:        "Database resync stop",
 		Description: "Database resync was stopped",
-		MandatoryFields: AuditFields{
-			"db": "database name",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			//fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		EventType:          eventTypeAdmin,
 	},
-	AuditIDDatabasePostUpgrade: {
-		Name:        "Database post-upgrade",
-		Description: "Database post-upgrade was run",
+	AuditIDPostUpgrade: {
+		Name:        "Post-upgrade",
+		Description: "Post-upgrade was run for Sync Gateway databases",
 		MandatoryFields: AuditFields{
-			"db":      "database name",
-			"preview": true,
+			AuditFieldPostUpgradePreview: true,
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupRequest,
+			//fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -505,8 +540,10 @@ var AuditEvents = events{
 	AuditIDDatabaseRepair: {
 		Name:        "Database repair",
 		Description: "Database repair was run",
-		MandatoryFields: AuditFields{
-			"db": "database name",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			//fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -515,8 +552,10 @@ var AuditEvents = events{
 	AuditIDDatabaseFlush: {
 		Name:        "Database flush",
 		Description: "Database flush was run",
-		MandatoryFields: AuditFields{
-			"db": "database name",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			//fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
