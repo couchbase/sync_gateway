@@ -101,7 +101,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		roles := []string{"roleA", "roleB"}
 
 		for _, role := range roles {
-			response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+role, rest.GetRolePayload(t, role, rest.RestTesterDefaultUserPassword, rt.GetSingleTestDatabaseCollection(), []string{"ChannelA"}))
+			response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+role, rest.GetRolePayload(t, role, rt.GetSingleTestDatabaseCollection(), []string{"ChannelA"}))
 			rest.RequireStatus(t, response, http.StatusCreated)
 		}
 		response := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_role/", "")

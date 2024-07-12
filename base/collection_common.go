@@ -42,6 +42,13 @@ func DefaultScopeAndCollectionName() ScopeAndCollectionName {
 	return ScopeAndCollectionName{Scope: DefaultScope, Collection: DefaultCollection}
 }
 
+func NewScopeAndCollectionName(scope, collection string) ScopeAndCollectionName {
+	return ScopeAndCollectionName{
+		Scope:      scope,
+		Collection: collection,
+	}
+}
+
 type ScopeAndCollectionNames []ScopeAndCollectionName
 
 // ScopeAndCollectionNames returns a dot-separated formatted slice of scope and collection names.

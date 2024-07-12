@@ -2154,7 +2154,7 @@ func (db *DatabaseCollectionWithUser) MarkPrincipalsChanged(ctx context.Context,
 	if len(changedRoleUsers) > 0 {
 		base.InfofCtx(ctx, base.KeyAccess, "Rev %q / %q invalidates roles of %s", base.UD(docid), newRevID, base.UD(changedRoleUsers))
 		for _, name := range changedRoleUsers {
-			db.invalUserRoles(ctx, name, invalSeq)
+			db.dbCtx.invalUserRoles(ctx, name, invalSeq)
 			// If this is the current in memory db.user, reload to generate updated roles
 			if db.user != nil && db.user.Name() == name {
 				base.DebugfCtx(ctx, base.KeyAccess, "Role set for active user has been modified - user %q will be reloaded.", base.UD(db.user.Name()))
