@@ -1573,13 +1573,13 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 			base.Audit(h.ctx(), base.AuditIDUserUpdate, base.AuditFields{
 				"username": internalName,
 				"roles":    newInfo.ExplicitRoleNames.ToArray(),
-				"channels": GetAuditEventAccess(h.db, isUser, newInfo),
+				"channels": getAuditEventAccess(h.db, isUser, newInfo),
 				"db":       h.db.Name,
 			})
 		} else {
 			base.Audit(h.ctx(), base.AuditIDRoleUpdate, base.AuditFields{
 				"role":           internalName,
-				"admin_channels": GetAuditEventAccess(h.db, isUser, newInfo),
+				"admin_channels": getAuditEventAccess(h.db, isUser, newInfo),
 				"db":             h.db.Name,
 			})
 		}
@@ -1590,13 +1590,13 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 			base.Audit(h.ctx(), base.AuditIDUserCreate, base.AuditFields{
 				"username": internalName,
 				"roles":    newInfo.ExplicitRoleNames.ToArray(),
-				"channels": GetAuditEventAccess(h.db, isUser, newInfo),
+				"channels": getAuditEventAccess(h.db, isUser, newInfo),
 				"db":       h.db.Name,
 			})
 		} else {
 			base.Audit(h.ctx(), base.AuditIDRoleCreate, base.AuditFields{
 				"role":           internalName,
-				"admin_channels": GetAuditEventAccess(h.db, isUser, newInfo),
+				"admin_channels": getAuditEventAccess(h.db, isUser, newInfo),
 				"db":             h.db.Name,
 			})
 		}
@@ -1605,7 +1605,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	return nil
 }
 
-func GetAuditEventAccess(db *db.Database, isUser bool, cnf auth.PrincipalConfig) map[string]map[string][]string {
+func getAuditEventAccess(db *db.Database, isUser bool, cnf auth.PrincipalConfig) map[string]map[string][]string {
 	auditEventAccess := make(map[string]map[string][]string)
 	collectionAccess := make(map[string][]string)
 	if isUser {
