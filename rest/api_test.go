@@ -78,28 +78,6 @@ func TestRoot(t *testing.T) {
 	assert.Equal(t, "GET, HEAD", response.Header().Get("Allow"))
 }
 
-func TestGreg(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		PersistentConfig: true,
-	})
-	defer rt.Close()
-
-	cbCfg := rt.NewDbConfig()
-	resp := rt.CreateDatabase("db1", cbCfg)
-	RequireStatus(t, resp, http.StatusCreated)
-
-	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/greg", GetUserPayload(t, "greg", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"ABC"}, nil))
-	RequireStatus(t, resp, http.StatusCreated)
-
-	fmt.Println("herllo")
-
-	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", "greg")
-	RequireStatus(t, resp, http.StatusOK)
-
-	fmt.Println("herllo")
-
-}
-
 func TestPublicRESTStatCount(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
