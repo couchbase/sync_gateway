@@ -2880,7 +2880,7 @@ func TestPutDBConfigOIDC(t *testing.T) {
 				}
 			}
 		}`,
-		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), sc.getServerAddr(t, publicServer),
+		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), mustGetServerAddr(t, sc, publicServer),
 	)
 
 	resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/db/_config", validOIDCConfig)

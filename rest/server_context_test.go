@@ -356,7 +356,7 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 	sc, closeFn := StartBootstrapServer(t)
 	defer closeFn()
 
-	resp, err := http.Get("http://" + sc.getServerAddr(t, publicServer))
+	resp, err := http.Get("http://" + mustGetServerAddr(t, sc, publicServer))
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
