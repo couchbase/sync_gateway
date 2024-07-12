@@ -1608,21 +1608,11 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 func getAuditEventAccess(db *db.Database, isUser bool, cnf auth.PrincipalConfig) map[string]map[string][]string {
 	auditEventAccess := make(map[string]map[string][]string)
 	collectionAccess := make(map[string][]string)
-	if isUser {
-		if db.OnlyDefaultCollection() {
-			collectionAccess[base.DefaultCollection] = cnf.ExplicitChannels.ToArray()
-			auditEventAccess[base.DefaultScope] = collectionAccess
-		} else {
-			auditEventAccess = auth.GetExplicitCollectionChannelsForAuditEvent(cnf.CollectionAccess)
-		}
+	if db.OnlyDefaultCollection() {
+		collectionAccess[base.DefaultCollection] = cnf.ExplicitChannels.ToArray()
+		auditEventAccess[base.DefaultScope] = collectionAccess
 	} else {
-		if db.OnlyDefaultCollection() {
-			collectionAccess[base.DefaultCollection] = cnf.ExplicitChannels.ToArray()
-			auditEventAccess[base.DefaultScope] = collectionAccess
-		} else {
-			auditEventAccess = auth.GetExplicitCollectionChannelsForAuditEvent(cnf.CollectionAccess)
-		}
-
+		auditEventAccess = auth.GetExplicitCollectionChannelsForAuditEvent(cnf.CollectionAccess)
 	}
 	return auditEventAccess
 }
