@@ -222,6 +222,13 @@ func KeyspaceLogCtx(parent context.Context, bucketName, scopeName, collectionNam
 	return LogContextWith(parent, &newCtx)
 }
 
+func UserLogCtx(parent context.Context, user, domain string) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.Username = user
+	newCtx.UserDomain = domain
+	return LogContextWith(parent, &newCtx)
+}
+
 type RequestData struct {
 	RequestHost       string
 	RequestRemoteAddr string

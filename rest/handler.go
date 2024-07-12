@@ -279,6 +279,10 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		return err
 	}
 
+	if h.user != nil {
+		h.rqCtx = base.UserLogCtx(h.ctx(), h.user.Name(), "sgw")
+	}
+
 	return method(h) // Call the actual handler code
 }
 
