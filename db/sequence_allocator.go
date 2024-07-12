@@ -237,13 +237,15 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 	var numReleasedBatch uint64
 	numReleasedBatch, err = s._releaseCurrentBatch(ctx)
 	if err != nil {
-		base.WarnfCtx(ctx, "Error returned when releasing sequence range [%d-%d] for existing batch. Will be handled by skipped sequence handling.  Error:%v", err)
+		base.InfofCtx(ctx, base.KeyCache, "Unable to release current batch during nextSequenceGreaterThan for existing sequence %d. Will be handled by skipped sequence handling. %v", existingSequence, err)
 	}
 	releasedSequenceCount += numReleasedBatch
 
 	syncSeq, err := s.getSequence()
 	if err != nil {
-		base.WarnfCtx(ctx, "Error returned when fetching current sequence during nextSequenceGreaterThan. Will be handled by skipped sequence handling.  Error:%v", err)
+		base.WarnfCtx(ctx, "Unable to fetch current sequence during nextSequenceGreaterThan for existing sequence %d. Error:%v", existingSequence, err)
+		s.mutex.Unlock()
+		return 0, 0, err
 	}
 
 	// If the target sequence is less than the current _sync:seq, allocate as normal using _nextSequence
