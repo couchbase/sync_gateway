@@ -767,6 +767,7 @@ func (rt *RestTester) TestAdminHandlerNoConflictsMode() http.Handler {
 func (rt *RestTester) TestAdminHandler() http.Handler {
 	rt.adminHandlerOnce.Do(func() {
 		rt.AdminHandler = CreateAdminHandler(rt.ServerContext())
+		rt.ServerContext().addHTTPServer(adminServer, &serverInfo{nil, &net.TCPAddr{}})
 	})
 	return rt.AdminHandler
 }
@@ -774,6 +775,7 @@ func (rt *RestTester) TestAdminHandler() http.Handler {
 func (rt *RestTester) TestPublicHandler() http.Handler {
 	rt.publicHandlerOnce.Do(func() {
 		rt.PublicHandler = CreatePublicHandler(rt.ServerContext())
+		rt.ServerContext().addHTTPServer(publicServer, &serverInfo{nil, &net.TCPAddr{}})
 	})
 	return rt.PublicHandler
 }
@@ -781,6 +783,7 @@ func (rt *RestTester) TestPublicHandler() http.Handler {
 func (rt *RestTester) TestMetricsHandler() http.Handler {
 	rt.metricsHandlerOnce.Do(func() {
 		rt.MetricsHandler = CreateMetricHandler(rt.ServerContext())
+		rt.ServerContext().addHTTPServer(metricsServer, &serverInfo{nil, &net.TCPAddr{}})
 	})
 	return rt.MetricsHandler
 }
@@ -789,6 +792,7 @@ func (rt *RestTester) TestMetricsHandler() http.Handler {
 func (rt *RestTester) TestDiagnosticHandler() http.Handler {
 	rt.diagnosticHandlerOnce.Do(func() {
 		rt.DiagnosticHandler = createDiagnosticHandler(rt.ServerContext())
+		rt.ServerContext().addHTTPServer(diagnosticServer, &serverInfo{nil, &net.TCPAddr{}})
 	})
 	return rt.DiagnosticHandler
 }
@@ -1199,6 +1203,7 @@ func Request(method, resource, body string) *http.Request {
 	if err != nil {
 		panic(fmt.Sprintf("http.NewRequest failed: %v", err))
 	}
+	request.RemoteAddr = ":0"     // usually populated by actual HTTP requests going into a HTTP Server
 	request.RequestURI = resource // This doesn't get filled in by NewRequest
 	FixQuotedSlashes(request)
 	return request

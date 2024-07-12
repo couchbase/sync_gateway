@@ -280,9 +280,11 @@ func (sc *ServerContext) Close(ctx context.Context) {
 	sc.invalidDatabaseConfigTracking.dbNames = nil
 
 	for _, s := range sc._httpServers {
-		base.InfofCtx(ctx, base.KeyHTTP, "Closing HTTP Server: %v", s.addr)
-		if err := s.server.Close(); err != nil {
-			base.WarnfCtx(ctx, "Error closing HTTP server %q: %v", s.addr, err)
+		if s.server != nil {
+			base.InfofCtx(ctx, base.KeyHTTP, "Closing HTTP Server: %v", s.addr)
+			if err := s.server.Close(); err != nil {
+				base.WarnfCtx(ctx, "Error closing HTTP server %q: %v", s.addr, err)
+			}
 		}
 	}
 	sc._httpServers = nil
