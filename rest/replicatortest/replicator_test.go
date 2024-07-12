@@ -7323,10 +7323,27 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	// Delete active document
 	deletedVersion := activeRT.DeleteDocReturnVersion("test", version)
 
-	// Replicate tombstone to passive
+	// Assert that the tombstone is replicated to passive
+	// Get revision 2 on passive peer to assert it has been (a) replicated and (b) deleted
+	var rawResponse *rest.TestResponse
 	err = passiveRT.WaitForCondition(func() bool {
-		rawResponse := passiveRT.SendAdminRequest("GET", "/{{.keyspace}}/test?rev="+deletedVersion.RevID, "")
-		return rawResponse.Code == 404
+		rawResponse = passiveRT.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/test?rev="+deletedVersion.RevID, "")
+		return rawResponse.Code == http.StatusOK
+	})
+	require.NoError(t, err)
+
+	// assert we have deleted revision
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(rawResponse.BodyBytes(), &body))
+	assert.True(t, body[db.BodyDeleted].(bool))
+	// assert the prev body is no longer there
+	assert.Nil(t, body["field1"])
+	assert.Nil(t, body["field2"])
+
+	// Perform get on docID on passive peer and assert that we get 404 code
+	err = passiveRT.WaitForCondition(func() bool {
+		rawResponse = passiveRT.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/test", "")
+		return rawResponse.Code == http.StatusNotFound
 	})
 	require.NoError(t, err)
 
