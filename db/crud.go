@@ -246,7 +246,7 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 		return nil, base.HTTPErrorf(http.StatusNotFound, "Not imported")
 	} else if importErr != nil {
 		// Treat any other failure to perform an on-demand import as not found
-		base.DebugfCtx(ctx, base.KeyImport, "Unable to import doc %q during on demand import for get - will be treated as not found.  Reason: %v", base.UD(docid), err)
+		base.DebugfCtx(ctx, base.KeyImport, "Unable to import doc %q during on demand import for get - will be treated as not found.  Reason: %v", base.UD(docid), importErr)
 		return nil, base.HTTPErrorf(http.StatusNotFound, "Not found")
 	}
 	return docOut, nil
