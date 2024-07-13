@@ -3056,7 +3056,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("Test performs import, not valid for non-xattr mode")
 	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyCache, base.KeyChanges)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		syncFn := `function(doc) {
@@ -3131,10 +3131,16 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				docID := fmt.Sprintf("doc%d_%s,", i, testCase.name)
 				markerDoc := fmt.Sprintf("markerDoc%d_%s", i, testCase.name)
 				validBody := fmt.Sprintf(`{"foo":"bar", "channel":%q}`, testCase.channel)
+				username := fmt.Sprintf("user_%d", i)
+
 				revID := rt.PutDoc(docID, validBody)
 
 				// Wait for initial revision to arrive over DCP before mutating
 				require.NoError(t, rt.WaitForPendingChanges())
+
+				// Issue a changes request for the channel before updating the document, to ensure the valid revision is
+				// resident in the channel cache (query results may be unreliable in the case of the 'invalid json' update)
+				RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+testCase.channel, ""), 200)
 
 				err := rt.GetSingleDataStore().SetRaw(docID, 0, nil, testCase.updatedBody)
 				require.NoError(t, err)
@@ -3145,7 +3151,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				rt.GetDatabase().FlushRevisionCacheForTest()
 
 				btc2 := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-					Username:               fmt.Sprintf("user_%d", i),
+					Username:               username,
 					Channels:               []string{testCase.channel},
 					SupportedBLIPProtocols: SupportedBLIPProtocols,
 				})
