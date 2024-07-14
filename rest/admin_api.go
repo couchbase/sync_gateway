@@ -162,10 +162,14 @@ func (h *handler) handleCreateDB() error {
 		}
 	}
 
+	configStr, err := redactConfigAsStr(h.ctx(), string(rawBytes))
+	if err != nil {
+		base.WarnfCtx(h.ctx(), "Error redacting config for audit logging: %v", err)
+	}
 	base.Audit(h.ctx(), base.AuditIDCreateDatabase,
 		base.AuditFields{
 			base.AuditFieldDatabase: dbName,
-			base.AuditFieldPayload:  rawBytes,
+			base.AuditFieldPayload:  configStr,
 		},
 	)
 	return base.HTTPErrorf(http.StatusCreated, "created")
@@ -525,7 +529,11 @@ func (h *handler) handlePutDbConfig() (err error) {
 		if err != nil {
 			return err
 		}
-		auditFields[base.AuditFieldPayload] = rawBytes
+		configStr, err := redactConfigAsStr(h.ctx(), string(rawBytes))
+		if err != nil {
+			base.WarnfCtx(h.ctx(), "Error redacting config for audit logging: %v", err)
+		}
+		auditFields[base.AuditFieldPayload] = configStr
 	} else {
 		hasAuthPerm := h.permissionsResults[PermConfigureAuth.PermissionName]
 		hasSyncPerm := h.permissionsResults[PermConfigureSyncFn.PermissionName]
@@ -534,7 +542,11 @@ func (h *handler) handlePutDbConfig() (err error) {
 		if err != nil {
 			return err
 		}
-		auditFields[base.AuditFieldPayload] = rawBytes
+		configStr, err := redactConfigAsStr(h.ctx(), string(rawBytes))
+		if err != nil {
+			base.WarnfCtx(h.ctx(), "Error redacting config for audit logging: %v", err)
+		}
+		auditFields[base.AuditFieldPayload] = configStr
 
 		var mapDbConfig map[string]interface{}
 		err = ReadJSONFromMIMERawErr(h.rq.Header, io.NopCloser(bytes.NewReader(rawBytes)), &mapDbConfig)
@@ -915,10 +927,10 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 			config.SyncFn = nil
 			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
-			updatedConfigStr = fmt.Sprintf(`{"scopes": {"%s": {"collections": { "%s": { "sync": ""}}}}}`, h.collection.ScopeName, h.collection.Name)
+			updatedConfigStr = fmt.Sprintf(`{"scopes": {"%s": {"collections": { "%s": { "sync": null}}}}}`, h.collection.ScopeName, h.collection.Name)
 		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 			bucketDbConfig.Sync = nil
-			updatedConfigStr = `{"sync": ""}`
+			updatedConfigStr = `{"sync": null}`
 		}
 
 		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
@@ -1086,10 +1098,10 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 			config.ImportFilter = nil
 			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
-			updatedConfigStr = fmt.Sprintf(`{"scopes": {"%s": {"collections": { "%s": { "import_filter": ""}}}}}`, h.collection.ScopeName, h.collection.Name)
+			updatedConfigStr = fmt.Sprintf(`{"scopes": {"%s": {"collections": { "%s": { "import_filter": null}}}}}`, h.collection.ScopeName, h.collection.Name)
 		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 			bucketDbConfig.ImportFilter = nil
-			updatedConfigStr = `{"import_filter":""}`
+			updatedConfigStr = `{"import_filter":null}`
 		}
 
 		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
@@ -1151,10 +1163,10 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 			config.ImportFilter = &js
 			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
-			updatedConfigStr = fmt.Sprintf(`{"scopes":{"%s":{"collections":{"%s":{"import_filter": ""}}}}}`, h.collection.ScopeName, h.collection.Name)
+			updatedConfigStr = fmt.Sprintf(`{"scopes":{"%s":{"collections":{"%s":{"import_filter": "%s"}}}}}`, h.collection.ScopeName, h.collection.Name, js)
 		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 			bucketDbConfig.ImportFilter = &js
-			updatedConfigStr = `{"import_filter":""}`
+			updatedConfigStr = fmt.Sprintf(`{"import_filter":"%s"}`, js)
 		}
 
 		validateReplications := false

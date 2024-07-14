@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -1222,6 +1223,50 @@ func (config *DbConfig) redactInPlace(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func redactConfigAsStr(ctx context.Context, dbConfig string) (string, error) {
+	var config map[string]*json.RawMessage
+	err := base.JSONUnmarshal([]byte(dbConfig), &config)
+	if err != nil {
+		return "", err
+	}
+	redactedConfig := make(map[string]any, len(config))
+	fmt.Printf("config: %+v\n", config)
+	for k, v := range config {
+		if _, ok := config["password"]; ok {
+			redactedConfig["password"] = base.RedactedStr
+		} else if _, ok := config["users"]; ok {
+			var users map[string]*auth.PrincipalConfig
+			err := base.JSONUnmarshal(*v, &users)
+			if err != nil {
+				return "", err
+			}
+			for i := range users {
+				if users[i].Password != nil && *users[i].Password != "" {
+					users[i].Password = base.StringPtr(base.RedactedStr)
+				}
+			}
+			redactedConfig["users"] = users
+		} else if _, ok := config["replications"]; ok {
+			var replications map[string]*db.ReplicationConfig
+			err := base.JSONUnmarshal(*v, &replications)
+			if err != nil {
+				return "", err
+			}
+			for i := range replications {
+				replications[i] = replications[i].Redacted(ctx)
+			}
+			redactedConfig["replications"] = replications
+		} else {
+			redactedConfig[k] = v
+		}
+	}
+	output, err := base.JSONMarshal(redactedConfig)
+	if err != nil {
+		return "", err
+	}
+	return string(output), nil
 }
 
 // DecodeAndSanitiseStartupConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
