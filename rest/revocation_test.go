@@ -70,6 +70,7 @@ func (tester *ChannelRevocationTester) removeRole(user, role string) {
 	tester.roleRev = tester.restTester.CreateDocReturnRev(tester.test, "userRoles", tester.roleRev, tester.roles)
 }
 
+// addRoleChannel grants a channel for the default collection to a role
 func (tester *ChannelRevocationTester) addRoleChannel(role, channel string) {
 	if tester.roleChannels.Channels == nil {
 		tester.roleChannels.Channels = map[string][]string{}
@@ -117,6 +118,7 @@ func (tester *ChannelRevocationTester) removeUserChannel(user, channel string) {
 	tester.userChannelRev = tester.restTester.CreateDocReturnRev(tester.test, "userChannels", tester.userChannelRev, tester.userChannels)
 }
 
+// fillToSeq writes filler documents (with empty bodies) for each sequence between the current db sequence and the requested sequence
 func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
 	ctx := base.DatabaseLogCtx(base.TestCtx(tester.restTester.TB), tester.restTester.GetDatabase().Name, nil)
 	currentSeq, err := tester.restTester.GetDatabase().LastSequence(ctx)
@@ -2652,4 +2654,35 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	// Shutdown replicator to close out
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+}
+
+func TestRevocationDeletedRole(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+	revocationTester, rt := InitScenario(t, nil)
+	defer rt.Close()
+
+	// Add a document in channel a
+	const docID = "doc"
+	_ = rt.PutDoc(docID, `{"channels": "a"}`)
+
+	// Grant role "foo" channel "a"
+	revocationTester.addRoleChannel(revocationTestRole, "a")
+
+	// Grant user "user" role "foo"
+	revocationTester.addRole(revocationTestUser, revocationTestRole)
+
+	// Expect two changes - pseudo-user doc and "doc"
+	changes := revocationTester.getChanges(0, 2)
+	require.Len(t, changes.Results, 2)
+	require.Equal(t, "doc", changes.Results[1].ID)
+
+	// Delete the role
+	resp := rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.db}}/_role/%s", revocationTestRole), "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	// Issue new changes request, confirm revocation for "doc"
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
+	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
 }
