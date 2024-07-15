@@ -1878,18 +1878,28 @@ Database-audit:
   title: Database-audit
   description: A map of audit events and whether they are enabled or not.
   type: object
-  additionalProperties:
-    x-additionalPropertiesName: audit_id
-    description: The audit event ID and whether it is enabled or not.
-    type: boolean
+  properties:
+    enabled:
+      type: boolean
+    events:
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: audit_id
+        description: The audit event ID and whether it is enabled or not.
+        type: boolean
 Database-audit-verbose:
   title: Database-audit-verbose
   description: A map of detailed audit events.
   type: object
-  additionalProperties:
-    x-additionalPropertiesName: audit_id
-    description: The audit event ID and whether it is enabled or not.
-    $ref: '#/AuditEventVerbose'
+  properties:
+    enabled:
+      type: boolean
+    events:
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: audit_id
+        description: The audit event ID and whether it is enabled or not.
+        $ref: '#/AuditEventVerbose'
 AuditEventVerbose:
   title: audit-event-verbose
   description: Detailed information about an audit event.
