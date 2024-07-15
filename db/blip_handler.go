@@ -1013,7 +1013,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	newDoc.UpdateBodyBytes(bodyBytes)
 
 	injectedAttachmentsForDelta := false
-	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta {
+	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta && !revMessage.Deleted() {
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
 		}

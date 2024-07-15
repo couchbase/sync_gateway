@@ -1074,7 +1074,8 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 				dbConfig.Logging.Audit.Enabled = nil
 			}
 			for _, id := range dbConfig.Logging.Audit.EnabledEvents {
-				if _, ok := base.AuditEvents[base.AuditID(id)]; !ok {
+				id := base.AuditID(id)
+				if _, ok := base.AuditEvents[id]; !ok {
 					multiError = multiError.Append(fmt.Errorf("unknown audit event ID %q", id))
 				}
 			}
@@ -2262,7 +2263,11 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 	var aud *base.DbAuditLogConfig
 	if l.Audit != nil {
 		enabledEvents := make(map[base.AuditID]struct{}, len(l.Audit.EnabledEvents))
-		for _, event := range l.Audit.EnabledEvents {
+		events := l.Audit.EnabledEvents
+		if events == nil {
+			events = base.DefaultAuditEventIDs
+		}
+		for _, event := range events {
 			enabledEvents[base.AuditID(event)] = struct{}{}
 		}
 		aud = &base.DbAuditLogConfig{
