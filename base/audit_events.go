@@ -357,7 +357,7 @@ var AuditEvents = events{
 	},
 	AuditIDCreateDatabase: {
 		Name:        "Create database",
-		Description: "A new database was created from REST API",
+		Description: "A new database was created",
 		MandatoryFields: AuditFields{
 			AuditFieldPayload: "JSON representation of db config",
 		},
@@ -372,7 +372,7 @@ var AuditEvents = events{
 	},
 	AuditIDReadDatabase: {
 		Name:        "Read database",
-		Description: "Information about this database was viewed from REST API",
+		Description: "Information about this database was viewed",
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
@@ -384,7 +384,7 @@ var AuditEvents = events{
 	},
 	AuditIDDeleteDatabase: {
 		Name:        "Delete database",
-		Description: "A database was deleted from REST API",
+		Description: "A database was deleted",
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
@@ -396,7 +396,7 @@ var AuditEvents = events{
 	},
 	AuditIDDatabaseAllRead: {
 		Name:        "Read all databases",
-		Description: "All databases were viewed from REST API",
+		Description: "All databases were viewed",
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
@@ -408,7 +408,7 @@ var AuditEvents = events{
 	},
 	AuditIDReadDatabaseConfig: {
 		Name:        "Read database config",
-		Description: "Database configuration was viewed from REST API",
+		Description: "Database configuration was viewed",
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
@@ -420,7 +420,7 @@ var AuditEvents = events{
 	},
 	AuditIDUpdateDatabaseConfig: {
 		Name:        "Update database config",
-		Description: "Database configuration was updated from REST API",
+		Description: "Database configuration was updated",
 		MandatoryFields: AuditFields{
 			AuditFieldPayload: "payload",
 		},
