@@ -134,7 +134,7 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	if fields == nil {
 		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData)
 	}
-	fieldsJSON, err := JSONMarshal(fields)
+	fieldsJSON, err := JSONMarshalCanonical(fields)
 	if err != nil {
 		AssertfCtx(ctx, "failed to marshal audit fields: %v", err)
 		return
