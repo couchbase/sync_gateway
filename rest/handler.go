@@ -279,6 +279,19 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		return err
 	}
 
+	auditFields := base.AuditFields{
+		"http_method": h.rq.Method,
+		"http_path":   h.rq.URL.Path,
+	}
+	switch h.serverType {
+	case publicServer:
+		base.Audit(h.ctx(), base.AuditIDPublicHTTPAPIRequest, auditFields)
+	case adminServer:
+		base.Audit(h.ctx(), base.AuditIDAdminHTTPAPIRequest, auditFields)
+	case metricsServer:
+		base.Audit(h.ctx(), base.AuditIDMetricsHTTPAPIRequest, auditFields)
+	}
+
 	return method(h) // Call the actual handler code
 }
 

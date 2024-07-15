@@ -159,6 +159,11 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	auditLogger.logf(string(fieldsJSON))
 }
 
+// IsAuditEnabled checks if auditing is enabled for the SG node
+func IsAuditEnabled() bool {
+	return auditLogger.FileLogger.shouldLog(LevelNone)
+}
+
 // AuditLogger is a file logger with audit-specific behaviour.
 type AuditLogger struct {
 	FileLogger
@@ -199,6 +204,10 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 		FileLogger:   *fl,
 		config:       *config,
 		globalFields: globalFields,
+	}
+
+	if *config.FileLoggerConfig.Enabled {
+		Audit(ctx, AuditIDAuditEnabled, AuditFields{"audit_scope": "global"})
 	}
 
 	return logger, nil

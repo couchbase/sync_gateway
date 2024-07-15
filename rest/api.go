@@ -497,7 +497,7 @@ func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 }
 
 // ADMIN API to turn Go CPU profiling on/off
-func (h *handler) handleProfiling() error {
+func (h *handler) handleProfiling() (err error) {
 	profileName := h.PathVar("profilename")
 	isCPUProfile := profileName == ""
 
@@ -520,6 +520,7 @@ func (h *handler) handleProfiling() error {
 			base.InfofCtx(h.ctx(), base.KeyAll, "... ending CPU profile")
 			pprof.StopCPUProfile()
 			h.server.CloseCpuPprofFile(h.ctx())
+			base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{"profile_type": "cpu"})
 			return nil
 		}
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing JSON 'file' parameter")
@@ -532,6 +533,7 @@ func (h *handler) handleProfiling() error {
 
 	if isCPUProfile {
 		base.InfofCtx(h.ctx(), base.KeyAll, "Starting CPU profile to %s ...", base.UD(params.File))
+		base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{"profile_type": "cpu (start)", "filename": params.File})
 		if err = pprof.StartCPUProfile(f); err != nil {
 			if fileError := os.Remove(params.File); fileError != nil {
 				base.InfofCtx(h.ctx(), base.KeyAll, "Error removing file: %s", base.UD(params.File))
@@ -543,6 +545,7 @@ func (h *handler) handleProfiling() error {
 	} else if profile := pprof.Lookup(profileName); profile != nil {
 		base.InfofCtx(h.ctx(), base.KeyAll, "Writing %q profile to %s ...", profileName, base.UD(params.File))
 		err = profile.WriteTo(f, 0)
+		base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{"profile_type": profileName, "filename": params.File})
 	} else {
 		err = base.HTTPErrorf(http.StatusNotFound, "No such profile %q", profileName)
 	}
@@ -568,6 +571,7 @@ func (h *handler) handleHeapProfiling() error {
 	}
 
 	base.InfofCtx(h.ctx(), base.KeyAll, "Dumping heap profile to %s ...", base.UD(params.File))
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{"profile_type": "heap", "filename": params.File})
 	f, err := os.Create(params.File)
 	if err != nil {
 		return err
@@ -583,32 +587,38 @@ func (h *handler) handleHeapProfiling() error {
 
 func (h *handler) handlePprofGoroutine() error {
 	httpprof.Handler("goroutine").ServeHTTP(h.response, h.rq)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{"profile_type": "goroutine"})
 	return nil
 }
 
 // Go execution tracer
 func (h *handler) handlePprofTrace() error {
 	httpprof.Trace(h.response, h.rq)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{"profile_type": "trace"})
 	return nil
 }
 
 func (h *handler) handlePprofCmdline() error {
 	httpprof.Cmdline(h.response, h.rq)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{"profile_type": "cmdline"})
 	return nil
 }
 
 func (h *handler) handlePprofSymbol() error {
 	httpprof.Symbol(h.response, h.rq)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{"profile_type": "symbol"})
 	return nil
 }
 
 func (h *handler) handlePprofHeap() error {
 	httpprof.Handler("heap").ServeHTTP(h.response, h.rq)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{"profile_type": "heap"})
 	return nil
 }
 
 func (h *handler) handlePprofProfile() error {
 	httpprof.Profile(h.response, h.rq)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{"profile_type": "cpu"})
 	return nil
 }
 
@@ -622,6 +632,8 @@ func (h *handler) handleFgprof() error {
 	case <-time.After(time.Duration(sec) * time.Second):
 	case <-h.rq.Context().Done():
 	}
+
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{"profile_type": "fgprof"})
 	return stopFn()
 }
 
@@ -638,11 +650,13 @@ func (h *handler) handlePprofBlock() error {
 	httpprof.Handler("block").ServeHTTP(h.response, h.rq)
 	runtime.SetBlockProfileRate(0)
 	atomic.StoreUint32(&blockProfileRunning, profileStopped)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{"profile_type": "block"})
 	return nil
 }
 
 func (h *handler) handlePprofThreadcreate() error {
 	httpprof.Handler("threadcreate").ServeHTTP(h.response, h.rq)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{"profile_type": "threadcreate"})
 	return nil
 }
 
@@ -659,6 +673,7 @@ func (h *handler) handlePprofMutex() error {
 	httpprof.Handler("mutex").ServeHTTP(h.response, h.rq)
 	runtime.SetMutexProfileFraction(0)
 	atomic.StoreUint32(&mutexProfileRunning, profileStopped)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayProfiling, base.AuditFields{"profile_type": "mutex"})
 	return nil
 }
 
@@ -679,13 +694,14 @@ func sleep(rq *http.Request, d time.Duration) {
 func (h *handler) handleStats() error {
 	st := stats{}
 	runtime.ReadMemStats(&st.MemStats)
-
 	h.writeJSON(st)
+
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayStats, base.AuditFields{"stats_format": "memstats"})
 	return nil
 }
 
 func (h *handler) handleMetrics() error {
 	promhttp.Handler().ServeHTTP(h.response, h.rq)
-
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayStats, base.AuditFields{"stats_format": "prometheus"})
 	return nil
 }
