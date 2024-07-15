@@ -3044,75 +3044,115 @@ func TestBlipRefreshUser(t *testing.T) {
 	})
 }
 
+// TestOnDemandImportBlipFailure turns off feed-based import to be able to trigger on-demand import
+// during a blip pull replication, by:
+//  1. Write a document that's accessible to the client, and force import of this doc
+//  2. Update the document
+//  3. Flush the rev cache
+//  4. Perform a pull replication.  Client will get a changes message for the initial revision of the document,
+//     then SGW will detect the document needs to be imported when the rev is requested.  Should triggers norev handling
+//     in the case where the import was unsuccessful
 func TestOnDemandImportBlipFailure(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("Test performs import, not valid for non-xattr mode")
 	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyCache, base.KeyChanges)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
-		rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true, GuestEnabled: true})
+		syncFn := `function(doc) {
+						if (doc.invalid) {
+							throw("invalid document")
+						}
+						channel(doc.channel)
+					}`
+		importFilter := `function(doc) {
+						if (doc.doNotImport) {
+							return false
+						}
+						return true
+					}`
+
+		rt := NewRestTester(t, &RestTesterConfig{
+			SyncFn:       syncFn,
+			ImportFilter: importFilter,
+			AutoImport:   base.BoolPtr(false),
+		})
 		defer rt.Close()
-		config := rt.NewDbConfig()
-		config.AutoImport = false
-		RequireStatus(t, rt.CreateDatabase("db", config), http.StatusCreated)
+
 		testCases := []struct {
 			name        string
-			invalidBody []byte
+			channel     string // used to avoid cross-traffic between tests
+			updatedBody []byte
 		}{
+
 			{
 				name:        "_id property",
-				invalidBody: []byte(`{"_id": "doc1"}`),
+				channel:     "a",
+				updatedBody: []byte(`{"_id": "doc1"}`),
 			},
 			{
 				name:        "_exp property",
-				invalidBody: []byte(`{"_exp": 1}`),
+				channel:     "b",
+				updatedBody: []byte(`{"_exp": 1}`),
 			},
 			{
 				name:        "_rev property",
-				invalidBody: []byte(`{"_rev": "abc1"}`),
+				channel:     "c",
+				updatedBody: []byte(`{"_rev": "abc1"}`),
 			},
 			{
 				name:        "_revisions property",
-				invalidBody: []byte(`{"_revisions": {"start": 0, "ids": ["foo", "def]"}}`),
+				channel:     "d",
+				updatedBody: []byte(`{"_revisions": {"start": 0, "ids": ["foo", "def]"}}`),
 			},
-
 			{
 				name:        "_purged property",
-				invalidBody: []byte(`{"_purged": true}`),
+				channel:     "e",
+				updatedBody: []byte(`{"_purged": true}`),
 			},
 			{
 				name:        "invalid json",
-				invalidBody: []byte(``),
+				channel:     "f",
+				updatedBody: []byte(``),
+			},
+			{
+				name:        "rejected by sync function",
+				channel:     "g",
+				updatedBody: []byte(`{"invalid": true}`),
+			},
+			{
+				name:        "rejected by import filter",
+				channel:     "h",
+				updatedBody: []byte(`{"doNotImport": true}`),
 			},
 		}
 		for i, testCase := range testCases {
 			rt.Run(testCase.name, func(t *testing.T) {
 				docID := fmt.Sprintf("doc%d_%s,", i, testCase.name)
 				markerDoc := fmt.Sprintf("markerDoc%d_%s", i, testCase.name)
-				validBody := `{"foo":"bar"}`
-				_ = rt.PutDoc(docID, validBody)
-				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-					Username:               "user",
-					Channels:               []string{"*"},
-					SupportedBLIPProtocols: SupportedBLIPProtocols,
-				})
-				defer btc.Close()
-				require.NoError(t, btcRunner.StartOneshotPull(btc.id))
+				validBody := fmt.Sprintf(`{"foo":"bar", "channel":%q}`, testCase.channel)
+				username := fmt.Sprintf("user_%d", i)
 
-				output := btcRunner.WaitForDoc(btc.id, docID)
-				require.JSONEq(t, validBody, string(output))
+				revID := rt.PutDoc(docID, validBody)
 
-				err := rt.GetSingleDataStore().SetRaw(docID, 0, nil, testCase.invalidBody)
+				// Wait for initial revision to arrive over DCP before mutating
+				require.NoError(t, rt.WaitForPendingChanges())
+
+				// Issue a changes request for the channel before updating the document, to ensure the valid revision is
+				// resident in the channel cache (query results may be unreliable in the case of the 'invalid json' update)
+				RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+testCase.channel, ""), 200)
+
+				err := rt.GetSingleDataStore().SetRaw(docID, 0, nil, testCase.updatedBody)
 				require.NoError(t, err)
 
-				rt.CreateTestDoc(markerDoc)
+				markerDocBody := fmt.Sprintf(`{"channel":%q}`, testCase.channel)
+				_ = rt.PutDoc(markerDoc, markerDocBody)
 
 				rt.GetDatabase().FlushRevisionCacheForTest()
 
 				btc2 := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-					Username:               "user",
-					Channels:               []string{"*"},
+					Username:               username,
+					Channels:               []string{testCase.channel},
 					SupportedBLIPProtocols: SupportedBLIPProtocols,
 				})
 				defer btc2.Close()
@@ -3120,6 +3160,12 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				require.NoError(t, btcRunner.StartOneshotPull(btc2.id))
 
 				btcRunner.WaitForDoc(btc2.id, markerDoc)
+
+				// Validate that the latest client message for the requested doc/rev was a norev
+				msg, ok := btcRunner.SingleCollection(btc2.id).GetBlipRevMessage(docID, revID.RevID)
+				require.True(t, ok)
+				require.Equal(t, db.MessageNoRev, msg.Profile())
+
 			})
 		}
 	})

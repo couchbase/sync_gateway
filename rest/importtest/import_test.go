@@ -1152,7 +1152,7 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 
 	// Attempt to get the doc via Sync Gateway, triggering a cancelled on-demand import of the null document
 	response := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+key, "")
-	rest.RequireStatus(t, response, http.StatusBadRequest) // import attempted with empty body
+	rest.RequireStatus(t, response, http.StatusNotFound) // import attempted with empty body
 
 	// Attempt to update the doc via Sync Gateway, triggering on-demand import of the null document - should ignore empty body error and proceed with write
 	mobileBody := make(map[string]interface{})
@@ -2064,7 +2064,7 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 			name:               "_purged true",
 			importBody:         map[string]interface{}{"_purged": true},
 			expectReject:       true,
-			expectedStatusCode: base.IntPtr(200), // Import gets cancelled and returns 200 and blank body
+			expectedStatusCode: base.IntPtr(404), // Import gets cancelled and returns not found
 		},
 		{
 			name:               "_removed",

@@ -62,6 +62,7 @@ type RestTesterConfig struct {
 	leakyBucketConfig               *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
 	adminInterface                  string                      // adminInterface overrides the default admin interface.
 	SgReplicateEnabled              bool                        // SgReplicateManager disabled by default for RestTester
+	AutoImport                      *bool
 	HideProductInfo                 bool
 	AdminInterfaceAuthentication    bool
 	metricsInterfaceAuthentication  bool
@@ -346,6 +347,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.SgReplicateEnabled)
 
+		// Check for override of AutoImport in the rt config
+		if rt.AutoImport != nil {
+			rt.DatabaseConfig.AutoImport = *rt.AutoImport
+		}
 		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled(ctx)
 		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
