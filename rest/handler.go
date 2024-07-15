@@ -279,10 +279,6 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		return err
 	}
 
-	if h.user != nil {
-		h.rqCtx = base.UserLogCtx(h.ctx(), h.user.Name(), "sgw")
-	}
-
 	return method(h) // Call the actual handler code
 }
 
@@ -466,6 +462,11 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 				return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
 			}
 		}
+		if h.isGuest() {
+			h.rqCtx = base.UserLogCtx(h.ctx(), base.GuestUsername, base.UserDomainSyncGateway)
+		} else if h.user != nil {
+			h.rqCtx = base.UserLogCtx(h.ctx(), h.user.Name(), base.UserDomainSyncGateway)
+		}
 	}
 
 	// If the user has OIDC roles/channels configured, we need to check if the OIDC issuer they came from is still valid.
@@ -546,6 +547,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
+		h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainCBServer)
 
 		base.DebugfCtx(h.ctx(), base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
 	} else {
@@ -1287,7 +1289,7 @@ func (h *handler) taggedEffectiveUserName() string {
 		return base.UD(name).Redact()
 	}
 
-	return "GUEST"
+	return base.GuestUsername
 }
 
 // formattedEffectiveUserName formats an effective name for appending to logs.

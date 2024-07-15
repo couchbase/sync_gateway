@@ -49,7 +49,7 @@ type LogContext struct {
 	// Username is the name of the authenticated user
 	Username string
 	// UserDomain can be syncgateway or couchbase depending on whether the authenticated user is a sync gateway user or a couchbase RBAC user
-	UserDomain string
+	UserDomain userIDDomain
 	// RequestHost is the HTTP Host of the request associated with this log.
 	RequestHost string
 	// RequestRemoteAddr is the IP and port of the remote client making the request associated with this log
@@ -222,9 +222,16 @@ func KeyspaceLogCtx(parent context.Context, bucketName, scopeName, collectionNam
 	return LogContextWith(parent, &newCtx)
 }
 
-func UserLogCtx(parent context.Context, user, domain string) context.Context {
+type userIDDomain string
+
+const (
+	UserDomainSyncGateway userIDDomain = "sgw"
+	UserDomainCBServer    userIDDomain = "cbs"
+)
+
+func UserLogCtx(parent context.Context, username string, domain userIDDomain) context.Context {
 	newCtx := getLogCtx(parent)
-	newCtx.Username = user
+	newCtx.Username = username
 	newCtx.UserDomain = domain
 	return LogContextWith(parent, &newCtx)
 }

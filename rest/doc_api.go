@@ -649,6 +649,11 @@ func (h *handler) handleDelLocalDoc() error {
 	return h.collection.DeleteSpecial(db.DocTypeLocal, docid, h.getQuery("rev"))
 }
 
+// isGuest returns true if the current user is a guest
+func (h *handler) isGuest() bool {
+	return h.user != nil && h.user.Name() == ""
+}
+
 // helper for read only check
 func (h *handler) isReadOnlyGuest() bool {
 	if h.db.IsGuestReadOnly() && h.db.User() != nil && h.db.User().Name() == "" {

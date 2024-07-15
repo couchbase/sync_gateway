@@ -66,13 +66,12 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	if logCtx.Bucket != "" && logCtx.Scope != "" && logCtx.Collection != "" {
 		fields[auditFieldKeyspace] = FullyQualifiedCollectionName(logCtx.Bucket, logCtx.Scope, logCtx.Collection)
 	}
-	// TODO: CBG-3973 - set fields in ctx
 	userDomain := logCtx.UserDomain
-	userID := logCtx.Username
-	if userDomain != "" || userID != "" {
+	userName := logCtx.Username
+	if userDomain != "" || userName != "" {
 		fields[auditFieldRealUserID] = map[string]any{
 			"domain": userDomain,
-			"user":   userID,
+			"user":   userName,
 		}
 	}
 	if logCtx.RequestHost != "" {
