@@ -176,6 +176,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 				bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.loggingCtx, bh.collection.DatabaseCollection))
 				bh.collectionCtx, _ = bh.collections.get(nil)
 			}
+			bh.loggingCtx = bh.collection.AddCollectionContext(bh.BlipSyncContext.loggingCtx)
 			return next(bh, bm)
 		}
 		if !bh.collections.hasNamedCollections() {
@@ -196,7 +197,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			DatabaseCollection: bh.collectionCtx.dbCollection,
 			user:               bh.db.user,
 		}
-		bh.loggingCtx = base.CollectionLogCtx(bh.BlipSyncContext.loggingCtx, bh.collection.Name)
+		bh.loggingCtx = bh.collection.AddCollectionContext(bh.BlipSyncContext.loggingCtx)
 		// Call down to the underlying handler and return it's value
 		return next(bh, bm)
 	}

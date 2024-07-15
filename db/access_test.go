@@ -24,7 +24,7 @@ func TestDynamicChannelGrant(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	dbCollection := GetSingleDatabaseCollectionWithUser(t, db)
-
+	ctx = dbCollection.AddCollectionContext(ctx)
 	syncFn := `
 	function(doc) {
 		if(doc.type == "setaccess") {

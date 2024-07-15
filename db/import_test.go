@@ -96,6 +96,7 @@ func TestOnDemandImportMou(t *testing.T) {
 		err := body.Unmarshal(bodyBytes)
 		assert.NoError(t, err, "Error unmarshalling body")
 		collection := GetSingleDatabaseCollectionWithUser(t, db)
+		ctx = collection.AddCollectionContext(ctx)
 		writeCas, err := collection.dataStore.WriteCas(getKey, 0, 0, bodyBytes, 0)
 		require.NoError(t, err)
 
@@ -242,6 +243,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx = collection.AddCollectionContext(ctx)
 
 	type testcase struct {
 		docBody            []byte
@@ -844,6 +846,7 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 	}
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx = collection.AddCollectionContext(ctx)
 
 	bodyBytes := []byte(`{"foo":"bar"}`)
 	body := Body{}
@@ -899,6 +902,7 @@ func TestImportResurrectionMou(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx = collection.AddCollectionContext(ctx)
 
 	docID := "mouResurrection"
 
@@ -956,6 +960,7 @@ func TestImportConflictWithTombstone(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx = collection.AddCollectionContext(ctx)
 
 	docID := t.Name()
 

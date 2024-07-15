@@ -168,9 +168,10 @@ func BucketNameCtx(parent context.Context, bucketName string) context.Context {
 	return LogContextWith(parent, &newCtx)
 }
 
-// CollectionCtx extends the parent context with a collection name. Used when bucket and scope are implicit (e.g. in the context of a SG database)
-func CollectionLogCtx(parent context.Context, collectionName string) context.Context {
+// CollectionCtx extends the parent context with a collection name.
+func CollectionLogCtx(parent context.Context, scopeName, collectionName string) context.Context {
 	newCtx := getLogCtx(parent)
+	newCtx.Scope = scopeName
 	newCtx.Collection = collectionName
 	return LogContextWith(parent, &newCtx)
 }

@@ -209,13 +209,13 @@ func TestBucketNameCtx(t *testing.T) {
 	RequireLogMessage(t, BucketNameCtx(TestCtx(t), "fooBucket"), "[INF] t:TestBucketNameCtx b:fooBucket foobar\n", standardMessage)
 }
 
-// Tests the typical request workflow for a database request. Makes sure each level of context does not modify earlier levels.
 func TestCollectionLogCtx(t *testing.T) {
 	ctx := TestCtx(t)
-	collectionCtx := CollectionLogCtx(ctx, "fooCollection")
+	collectionCtx := CollectionLogCtx(ctx, "fooScope", "fooCollection")
 	RequireLogMessage(t, collectionCtx, "[INF] t:TestCollectionLogCtx col:fooCollection foobar\n", standardMessage)
 }
 
+// Tests the typical request workflow for a database request. Makes sure each level of context does not modify earlier levels.
 func TestCtxWorkflow(t *testing.T) {
 	ctx := TestCtx(t)
 	RequireLogMessage(t, ctx, "[INF] t:TestCtxWorkflow foobar\n", standardMessage)

@@ -359,3 +359,8 @@ func (c *DatabaseCollection) useMou() bool {
 func (c *DatabaseCollection) ScopeAndCollectionName() base.ScopeAndCollectionName {
 	return base.NewScopeAndCollectionName(c.ScopeName, c.Name)
 }
+
+// AddCollectionContext adds the collection name to a context.
+func (c *DatabaseCollection) AddCollectionContext(ctx context.Context) context.Context {
+	return base.CollectionLogCtx(ctx, c.ScopeName, c.Name)
+}

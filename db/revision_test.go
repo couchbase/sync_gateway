@@ -109,6 +109,7 @@ func TestBackupOldRevision(t *testing.T) {
 	}})
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx = collection.AddCollectionContext(ctx)
 
 	docID := t.Name()
 

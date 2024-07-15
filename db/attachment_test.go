@@ -49,7 +49,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal([]byte(rev1Data), &rev1Body))
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-
+	ctx = collection.AddCollectionContext(ctx)
 	rev1ID, _, err := collection.Put(ctx, docID, rev1Body)
 	require.NoError(t, err)
 	assert.Equal(t, "1-12ff9ce1dd501524378fe092ce9aee8f", rev1ID)
@@ -102,7 +102,7 @@ func TestAttachments(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-
+	ctx = collection.AddCollectionContext(ctx)
 	revid, _, err := collection.Put(ctx, "doc1", body)
 	rev1id := revid
 	assert.NoError(t, err, "Couldn't create document")
@@ -226,6 +226,7 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx = collection.AddCollectionContext(ctx)
 
 	// Test creating & updating a document:
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},
@@ -295,6 +296,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx = collection.AddCollectionContext(ctx)
 
 	// Test creating & updating a document:
 
@@ -358,6 +360,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx = collection.AddCollectionContext(ctx)
 
 	// Test creating & updating a document:
 
@@ -556,6 +559,7 @@ func TestRetrieveAncestorAttachments(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx = collection.AddCollectionContext(ctx)
 
 	var body Body
 	db.RevsLimit = 3
@@ -622,6 +626,7 @@ func TestStoreAttachments(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx = collection.AddCollectionContext(ctx)
 
 	var revBody Body
 	// Simulate Invalid _attachments scenario; try to put a document with bad
@@ -729,6 +734,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		db, ctx := setupTestDB(t)
 
 		collection := GetSingleDatabaseCollectionWithUser(t, db)
+		ctx = collection.AddCollectionContext(ctx)
 
 		// Put a document with hello.txt attachment, to write attachment to the bucket
 		rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
@@ -825,6 +831,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		ctx := db.AddDatabaseLogContext(base.TestCtx(t))
 		defer db.Close(ctx)
 		collection := GetSingleDatabaseCollectionWithUser(t, db)
+		ctx = collection.AddCollectionContext(ctx)
 
 		rev, err := collection.GetRev(ctx, docKey, "", true, nil)
 		require.NoError(t, err)
@@ -887,6 +894,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		ctx := db.AddDatabaseLogContext(base.TestCtx(t))
 		defer db.Close(ctx)
 		collection := GetSingleDatabaseCollectionWithUser(t, db)
+		ctx = collection.AddCollectionContext(ctx)
 
 		// Update the doc with a the same body as rev 3-a, and make sure attachments are migrated.
 		newBody := Body{
@@ -932,6 +940,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		ctx := db.AddDatabaseLogContext(base.TestCtx(t))
 		defer db.Close(ctx)
 		collection := GetSingleDatabaseCollectionWithUser(t, db)
+		ctx = collection.AddCollectionContext(ctx)
 
 		rev, err := collection.GetRev(ctx, docKey, "3-a", true, nil)
 		require.NoError(t, err)
@@ -997,6 +1006,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx = collection.AddCollectionContext(ctx)
 
 	// Put a document 2 attachments, to write attachment to the bucket
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},"bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
@@ -1141,6 +1151,7 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx = collection.AddCollectionContext(ctx)
 
 	// Put a document with 3 attachments, to write attachments to the bucket
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},"bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="},"new.txt": {"data":"bmV3IGRhdGE="}}}`
@@ -1484,6 +1495,7 @@ func TestLargeAttachments(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx = collection.AddCollectionContext(ctx)
 
 	normalAttachment := base.FastRandBytes(t, 15*1024*1024)   // permissible size
 	oversizeAttachment := base.FastRandBytes(t, 25*1024*1024) // memcached would send an E2BIG

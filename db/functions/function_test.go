@@ -331,22 +331,23 @@ func testUserFunctionsAsUser(t *testing.T, ctx context.Context, db *db.Database)
 // Test CRUD operations
 func TestUserFunctionsCRUD(t *testing.T) {
 	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig)
-	defer db.Close(ctx)
+	dbCtx, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig)
+	defer dbCtx.Close(ctx)
 
+	ctx = db.GetSingleDatabaseCollection(t, dbCtx.DatabaseContext).AddCollectionContext(ctx)
 	body := map[string]any{"key": "value"}
 
 	// Create a doc with random ID:
-	result, err := db.CallUserFunction(ctx, "putDoc", map[string]any{"docID": nil, "doc": body}, true)
+	result, err := dbCtx.CallUserFunction(ctx, "putDoc", map[string]any{"docID": nil, "doc": body}, true)
 	assert.NoError(t, err)
 	assert.IsType(t, "", result)
-	_, err = db.CallUserFunction(ctx, "getDoc", map[string]any{"docID": result}, true)
+	_, err = dbCtx.CallUserFunction(ctx, "getDoc", map[string]any{"docID": result}, true)
 	assert.NoError(t, err)
 
 	docID := "foo"
 
 	// Missing document:
-	result, err = db.CallUserFunction(ctx, "getDoc", map[string]any{"docID": docID}, true)
+	result, err = dbCtx.CallUserFunction(ctx, "getDoc", map[string]any{"docID": docID}, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, nil, result)
 
@@ -356,16 +357,16 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	}
 
 	// Illegal mutation (passing mutationAllowed = false):
-	_, err = db.CallUserFunction(ctx, "putDoc", docParams, false)
+	_, err = dbCtx.CallUserFunction(ctx, "putDoc", docParams, false)
 	assertHTTPError(t, err, 403)
 
 	// Successful save (as admin):
-	result, err = db.CallUserFunction(ctx, "putDoc", docParams, true)
+	result, err = dbCtx.CallUserFunction(ctx, "putDoc", docParams, true)
 	assert.NoError(t, err)
 	assert.EqualValues(t, docID, result) // save() returns docID
 
 	// Existing document:
-	result, err = db.CallUserFunction(ctx, "getDoc", map[string]any{"docID": docID}, true)
+	result, err = dbCtx.CallUserFunction(ctx, "getDoc", map[string]any{"docID": docID}, true)
 	assert.NoError(t, err)
 	revID, ok := result.(map[string]any)["_rev"].(string)
 	assert.True(t, ok)
@@ -377,25 +378,25 @@ func TestUserFunctionsCRUD(t *testing.T) {
 
 	// Update document with revID:
 	body["key2"] = 2
-	_, err = db.CallUserFunction(ctx, "putDoc", docParams, true)
+	_, err = dbCtx.CallUserFunction(ctx, "putDoc", docParams, true)
 	assert.NoError(t, err)
 
 	// Save fails with conflict:
 	body["key3"] = 3
 	body["_rev"] = "9-9999"
-	result, err = db.CallUserFunction(ctx, "putDoc", docParams, true)
+	result, err = dbCtx.CallUserFunction(ctx, "putDoc", docParams, true)
 	assert.NoError(t, err)
 	assert.Nil(t, result)
 
 	// Update document without revID:
 	body["key3"] = 4
 	delete(body, "_revid")
-	result, err = db.CallUserFunction(ctx, "putDoc", docParams, true)
+	result, err = dbCtx.CallUserFunction(ctx, "putDoc", docParams, true)
 	assert.NoError(t, err)
 	assert.Equal(t, docID, result)
 
 	// Get doc again to verify revision:
-	result, err = db.CallUserFunction(ctx, "getDoc", map[string]any{"docID": docID}, true)
+	result, err = dbCtx.CallUserFunction(ctx, "getDoc", map[string]any{"docID": docID}, true)
 	assert.NoError(t, err)
 	revID, ok = result.(map[string]any)["_rev"].(string)
 	assert.True(t, ok)
@@ -403,15 +404,15 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	assert.True(t, strings.HasPrefix(revID, "3-"))
 
 	// Illegal mutation (a non-mutating function calling putDoc)
-	_, err = db.CallUserFunction(ctx, "illegal_putDoc", docParams, true)
+	_, err = dbCtx.CallUserFunction(ctx, "illegal_putDoc", docParams, true)
 	assertHTTPError(t, err, 403)
 
 	// Legal mutation (a non-mutating function calling putDoc, but via 'admin')
-	_, err = db.CallUserFunction(ctx, "legal_putDoc", docParams, true)
+	_, err = dbCtx.CallUserFunction(ctx, "legal_putDoc", docParams, true)
 	assert.NoError(t, err)
 
 	// Delete doc:
-	_, err = db.CallUserFunction(ctx, "delDoc", map[string]any{"docID": docID}, true)
+	_, err = dbCtx.CallUserFunction(ctx, "delDoc", map[string]any{"docID": docID}, true)
 	assert.NoError(t, err)
 }
 

@@ -214,9 +214,9 @@ func (h *handler) addDatabaseLogContext(dbName string, logConfig *base.DbLogConf
 	}
 }
 
-func (h *handler) addCollectionLogContext(collectionName string) {
-	if collectionName != "" {
-		h.rqCtx = base.CollectionLogCtx(h.ctx(), collectionName)
+func (h *handler) addCollectionLogContext(scopeName, collectionName string) {
+	if scopeName != "" && collectionName != "" {
+		h.rqCtx = base.CollectionLogCtx(h.ctx(), scopeName, collectionName)
 	}
 }
 
@@ -343,8 +343,10 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		if err != nil {
 			return err
 		}
-		if keyspaceCollection != nil {
-			h.addCollectionLogContext(*keyspaceCollection)
+		if keyspaceScope != nil && keyspaceCollection != nil {
+			h.addCollectionLogContext(*keyspaceScope, *keyspaceCollection)
+		} else {
+			h.addCollectionLogContext(base.DefaultScope, base.DefaultCollection)
 		}
 	}
 

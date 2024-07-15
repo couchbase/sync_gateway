@@ -62,8 +62,8 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	if logCtx.CorrelationID != "" {
 		fields[auditFieldCorrelationID] = logCtx.CorrelationID
 	}
-	if logCtx.Bucket != "" && logCtx.Scope != "" && logCtx.Collection != "" {
-		fields[auditFieldKeyspace] = FullyQualifiedCollectionName(logCtx.Bucket, logCtx.Scope, logCtx.Collection)
+	if logCtx.Database != "" && logCtx.Scope != "" && logCtx.Collection != "" {
+		fields[auditFieldKeyspace] = FullyQualifiedCollectionName(logCtx.Database, logCtx.Scope, logCtx.Collection)
 	}
 	// TODO: CBG-3973 - Pull fields from ctx
 	userDomain := "placeholder"

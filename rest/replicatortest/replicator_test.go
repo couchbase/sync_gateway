@@ -6425,8 +6425,9 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 					// resurrect doc via SDK on local
 					err = localActiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
+					collection := localActiveRT.GetSingleTestDatabaseCollection()
 					// force on-demand import
-					_, getErr := localActiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+					_, getErr := collection.GetDocument(collection.AddCollectionContext(localActiveRT.Context()), "docid2", db.DocUnmarshalSync)
 					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
 					resp = localActiveRT.SendAdminRequest("PUT", "/{{.keyspace}}/docid2", `{"resurrection": true}`)
@@ -6438,7 +6439,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 					err = remotePassiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
-					_, getErr := remotePassiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), doc2ID, db.DocUnmarshalSync)
+					collection := remotePassiveRT.GetSingleTestDatabaseCollection()
+					_, getErr := collection.GetDocument(collection.AddCollectionContext(remotePassiveRT.Context()), doc2ID, db.DocUnmarshalSync)
 					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
 					resp = remotePassiveRT.SendAdminRequest("PUT", "/{{.keyspace}}/docid2", `{"resurrection": true}`)
@@ -7826,7 +7828,8 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	// interval during the running of the test
 	defer reduceTestCheckpointInterval(9999 * time.Hour)()
 
-	rev, doc, err := activeRT.GetSingleTestDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
+	collection := activeRT.GetSingleTestDatabaseCollectionWithUser()
+	rev, doc, err := collection.Put(collection.AddCollectionContext(activeCtx), "test", db.Body{})
 	require.NoError(t, err)
 	seq := strconv.FormatUint(doc.Sequence, 10)
 

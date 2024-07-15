@@ -56,6 +56,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 			db, ctx := setupTestDB(t)
 			defer db.Close(ctx)
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			ctx = collection.AddCollectionContext(ctx)
 			collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 			auth := db.Authenticator(base.TestCtx(t))
@@ -377,6 +378,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx = collection.AddCollectionContext(ctx)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 	// Create 10 documents
