@@ -1650,21 +1650,9 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 	base.InfofCtx(ctx, base.KeyAll, "Finished re-running sync function; %d/%d docs changed", docsChanged, docsProcessed)
 
 	if docsChanged > 0 {
-		db.invalidateAllPrincipalsCache(ctx, endSeq)
+		db.invalidateAllPrincipals(ctx, endSeq)
 	}
 	return docsChanged, nil
-}
-
-// invalidate channel cache of all users/roles:
-func (c *DatabaseCollection) invalidateAllPrincipalsCache(ctx context.Context, endSeq uint64) {
-	base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
-	users, roles, _ := c.allPrincipalIDs(ctx)
-	for _, name := range users {
-		c.invalUserChannels(ctx, name, endSeq)
-	}
-	for _, name := range roles {
-		c.invalRoleChannels(ctx, name, endSeq)
-	}
 }
 
 func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {
@@ -1848,34 +1836,48 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 	return updatedHighSeq, unusedSequences, err
 }
 
-func (c *DatabaseCollection) invalUserRoles(ctx context.Context, username string, invalSeq uint64) {
-	authr := c.Authenticator(ctx)
+// invalidateAllPrincipals invalidates computed channels and roles for all users/roles, for the specified collections:
+func (dbCtx *DatabaseContext) invalidateAllPrincipals(ctx context.Context, collectionNames base.ScopeAndCollectionNames, endSeq uint64) {
+	base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
+	users, roles, _ := dbCtx.AllPrincipalIDs(ctx)
+	for _, name := range users {
+		dbCtx.invalUserRolesAndChannels(ctx, name, collectionNames, endSeq)
+	}
+	for _, name := range roles {
+		dbCtx.invalRoleChannels(ctx, name, collectionNames, endSeq)
+	}
+}
+
+// invalUserChannels invalidates a user's computed channels for the specified collections
+func (dbCtx *DatabaseContext) invalUserChannels(ctx context.Context, username string, collections base.ScopeAndCollectionNames, invalSeq uint64) {
+	authr := dbCtx.Authenticator(ctx)
+	if err := authr.InvalidateChannels(username, true, collections, invalSeq); err != nil {
+		base.WarnfCtx(ctx, "Error invalidating channels for user %s: %v", base.UD(username), err)
+	}
+}
+
+// invalRoleChannels invalidates a role's computed channels for the specified collections
+func (dbCtx *DatabaseContext) invalRoleChannels(ctx context.Context, rolename string, collections base.ScopeAndCollectionNames, invalSeq uint64) {
+	authr := dbCtx.Authenticator(ctx)
+	if err := authr.InvalidateChannels(rolename, false, collections, invalSeq); err != nil {
+		base.WarnfCtx(ctx, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
+	}
+}
+
+// invalUserRoles invalidates a user's computed roles
+func (dbCtx *DatabaseContext) invalUserRoles(ctx context.Context, username string, invalSeq uint64) {
+
+	authr := dbCtx.Authenticator(ctx)
 	if err := authr.InvalidateRoles(username, invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating roles for user %s: %v", base.UD(username), err)
 	}
 }
 
-func (c *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
-	authr := c.Authenticator(ctx)
-	if err := authr.InvalidateChannels(username, true, c.ScopeName, c.Name, invalSeq); err != nil {
-		base.WarnfCtx(ctx, "Error invalidating channels for user %s: %v", base.UD(username), err)
-	}
-}
-
-func (c *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
-	authr := c.Authenticator(ctx)
-	if err := authr.InvalidateChannels(rolename, false, c.ScopeName, c.Name, invalSeq); err != nil {
-		base.WarnfCtx(ctx, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
-	}
-}
-
-func (c *DatabaseCollection) invalUserOrRoleChannels(ctx context.Context, name string, invalSeq uint64) {
-
-	principalName, isRole := channels.AccessNameToPrincipalName(name)
-	if isRole {
-		c.invalRoleChannels(ctx, principalName, invalSeq)
-	} else {
-		c.invalUserChannels(ctx, principalName, invalSeq)
+// invalUserRolesAndChannels invalidates the user's computed roles, and invalidates the computed channels for all specified collections
+func (dbCtx *DatabaseContext) invalUserRolesAndChannels(ctx context.Context, username string, collections base.ScopeAndCollectionNames, invalSeq uint64) {
+	authr := dbCtx.Authenticator(ctx)
+	if err := authr.InvalidateRolesAndChannels(username, collections, invalSeq); err != nil {
+		base.WarnfCtx(ctx, "Error invalidating roles for user %s: %v", base.UD(username), err)
 	}
 }
 
