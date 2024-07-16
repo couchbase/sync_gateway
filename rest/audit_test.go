@@ -169,12 +169,12 @@ func TestAuditLoggingFields(t *testing.T) {
 		},
 	}
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
+		rt.Run(testCase.name, func(t *testing.T) {
 			output := base.AuditLogContents(t, testCase.auditableAction)
 			events := jsonLines(t, output)
 
 			// for each event, check the fields match what we expected
-			seenEvents := make(map[base.AuditID]struct{})
+			numEventInvocations := make(map[base.AuditID]uint)
 			for _, event := range events {
 				id, ok := event["id"]
 				if !assert.Truef(t, ok, "audit event did not contain \"id\" field: %v", event) {
@@ -182,7 +182,7 @@ func TestAuditLoggingFields(t *testing.T) {
 				}
 
 				auditID := base.AuditID(id.(float64))
-				seenEvents[auditID] = struct{}{}
+				numEventInvocations[auditID]++
 
 				for k, expectedVal := range testCase.expectedAuditEventFields[auditID] {
 					eventField, ok := event[k]
@@ -197,8 +197,7 @@ func TestAuditLoggingFields(t *testing.T) {
 
 			// catch missing events
 			for expectedID := range testCase.expectedAuditEventFields {
-				_, ok := seenEvents[expectedID]
-				assert.Truef(t, ok, "expected audit event with id %q (%s) to be present", expectedID, base.AuditEvents[expectedID].Name)
+				assert.Equalf(t, uint(1), numEventInvocations[expectedID], "expected audit event with id %q (%s) to only be called once", expectedID, base.AuditEvents[expectedID].Name)
 			}
 		})
 	}
