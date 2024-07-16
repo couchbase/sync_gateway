@@ -37,7 +37,8 @@ func TestAuditLoggingFields(t *testing.T) {
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		PersistentConfig: true,
+		AdminInterfaceAuthentication: true,
+		PersistentConfig:             true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Unsupported.AuditInfoProvider = &AuditInfoProviderConfig{
 				RequestInfoHeaderName: base.StringPtr(requestInfoHeaderName),
@@ -131,9 +132,26 @@ func TestAuditLoggingFields(t *testing.T) {
 			},
 		},
 		{
-			name: "admin request",
+			name: "anon admin request",
 			auditableAction: func(t testing.TB) {
 				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/db/", ""), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				// TODO: Admin auth event
+				//base.AuditIDAdminUserAuthenticated: {
+				//	"cid":         auditFieldValueIgnored,
+				//	"real_userid": map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
+				//},
+				base.AuditIDReadDatabase: {
+					"cid":         auditFieldValueIgnored,
+					"real_userid": map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
+				},
+			},
+		},
+		{
+			name: "authed admin request",
+			auditableAction: func(t testing.TB) {
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", base.TestClusterPassword(), base.TestClusterPassword()), http.StatusOK)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				// TODO: Admin auth event
