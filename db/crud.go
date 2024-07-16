@@ -293,7 +293,15 @@ func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Contex
 		_, requestedHistory = trimEncodedRevisionsToAncestor(ctx, requestedHistory, historyFrom, maxHistory)
 	}
 
-	return rev.Mutable1xBody(ctx, db, requestedHistory, attachmentsSince, showExp)
+	body, err := rev.Mutable1xBody(ctx, db, requestedHistory, attachmentsSince, showExp)
+	if err != nil {
+		return body, err
+	}
+	base.Audit(ctx, base.AuditIDDocumentRead, base.AuditFields{
+		base.AuditFieldDocID:      docid,
+		base.AuditFieldDocVersion: revid,
+	})
+	return body, err
 }
 
 // Underlying revision retrieval used by Get1xRevBody, Get1xRevBodyWithHistory, GetRevCopy.
@@ -361,7 +369,10 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 	if revision.Deleted && revid == "" {
 		return DocumentRevision{}, ErrDeleted
 	}
-
+	base.Audit(ctx, base.AuditIDDocumentRead, base.AuditFields{
+		base.AuditFieldDocID:      docid,
+		base.AuditFieldDocVersion: revid,
+	})
 	return revision, nil
 }
 
@@ -1931,6 +1942,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	docBytes := 0   // Track size of document written, for write stats
 	xattrBytes := 0 // Track size of xattr written, for write stats
 	skipObsoleteAttachmentsRemoval := false
+	var createdNewDoc bool
 
 	if !db.UseXattrs() {
 		// Update the document, storing metadata in _sync property
@@ -1950,6 +1962,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 			prevCurrentRev = doc.CurrentRev
 			docExists := currentValue != nil
+			createdNewDoc = !docExists
 			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
@@ -2005,6 +2018,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			docExists := currentValue != nil
+			createdNewDoc = !docExists
 			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
@@ -2107,6 +2121,28 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	db.dbStats().Database().DocWritesXattrBytes.Add(int64(xattrBytes))
 	if inConflict {
 		db.dbStats().Database().ConflictWriteCount.Add(1)
+	}
+	if createdNewDoc {
+		base.Audit(ctx, base.AuditIDDocumentCreate, base.AuditFields{
+
+			base.AuditFieldDocID:      docid,
+			base.AuditFieldDocVersion: newRevID,
+			base.AuditFieldChannels:   storedDoc.Channels.KeySet(),
+		})
+	} else if storedDoc.IsDeleted() {
+		base.Audit(ctx, base.AuditIDDocumentDelete, base.AuditFields{
+			base.AuditFieldDocID:      docid,
+			base.AuditFieldDocVersion: newRevID,
+			base.AuditFieldChannels:   storedDoc.Channels.KeySet(),
+		})
+	} else {
+		base.Audit(ctx, base.AuditIDDocumentUpdate, base.AuditFields{
+
+			base.AuditFieldDocID:      docid,
+			base.AuditFieldDocVersion: newRevID,
+			base.AuditFieldChannels:   storedDoc.Channels.KeySet(),
+		})
+
 	}
 
 	if doc.History[newRevID] != nil {
@@ -2374,10 +2410,24 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) err
 	}
 
 	if db.UseXattrs() {
-		return db.dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName})
+		err := db.dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName})
+		if err != nil {
+			return err
+		}
 	} else {
-		return db.dataStore.Delete(key)
+		err := db.dataStore.Delete(key)
+		if err != nil {
+			return err
+		}
 	}
+	base.Audit(ctx, base.AuditIDDocumentDelete, base.AuditFields{
+		base.AuditFieldDocID: key,
+		// unlike a non purge deletion we log the version before we do the deletion
+		base.AuditFieldDocVersion: doc.CurrentRev, // FIXME
+		base.AuditFieldPurged:     true,
+		base.AuditFieldChannels:   nil, // FIXME
+	})
+	return nil
 }
 
 // ////// CHANNELS:

@@ -38,6 +38,11 @@ const (
 	AuditFieldCompactionDryRun   = "dry_run"
 	AuditFieldCompactionReset    = "reset"
 	AuditFieldPostUpgradePreview = "preview"
+	AuditFieldDocID              = "doc_id"
+	AuditFieldDocVersion         = "doc_version"
+	AuditFieldPurged             = "purged"
+	AuditFieldChannels           = "channels"
+	AuditFieldAttachmentID       = "attachment_id"
 )
 
 // expandFields populates data with information from the id, context and additionalData.

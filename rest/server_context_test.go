@@ -829,8 +829,8 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 	RequireStatus(t, resp, http.StatusServiceUnavailable)
 
 	// put doc2 bypassing offline checks (this step will begin to fail with Elixir - since we're making offline more comprehensive)
-	collection := rt.GetSingleTestDatabaseCollectionWithUser()
-	_, _, err = collection.Put(collection.AddCollectionContext(rt.Context()), "doc2", db.Body{"type": "doc2"})
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser(rt.Context())
+	_, _, err = collection.Put(ctx, "doc2", db.Body{"type": "doc2"})
 	require.NoError(t, err)
 
 	// wait long enough to be confident that import isn't running...

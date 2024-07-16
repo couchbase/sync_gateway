@@ -50,6 +50,7 @@ func (apr *ActivePushReplicator) _startPushWithCollections() error {
 		bh := newBlipHandler(apr.ctx, apr.blipSyncContext, apr.config.ActiveDB, apr.blipSyncContext.incrementSerialNumber())
 		bh.collection = dbCollectionWithUser
 		bh.collectionIdx = collectionIdx
+		bh.loggingCtx = bh.collection.AddCollectionContext(bh.BlipSyncContext.loggingCtx)
 
 		var channels base.Set
 		if filteredChannels := apr.config.getFilteredChannels(collectionIdx); len(filteredChannels) > 0 {

@@ -590,13 +590,15 @@ func TestRevCacheHitMultiCollectionLoadFromBucket(t *testing.T) {
 
 	// at this point the second doc added should be the only doc in the cache, the first one being evicted
 	// perform a get on the first doc to trigger load from bucket and assert its correct document
-	docRev, err := collectionList[0].GetRev(ctx, "doc0", revList[0], false, nil)
+	collection0Ctx := collectionList[0].AddCollectionContext(ctx)
+	docRev, err := collectionList[0].GetRev(collection0Ctx, "doc0", revList[0], false, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "doc0", docRev.DocID)
 	assert.Equal(t, revList[0], docRev.RevID)
 
 	// now do the same with doc1 and assert it is correctly loaded
-	docRev, err = collectionList[1].GetRev(ctx, "doc1", revList[1], false, nil)
+	collection1Ctx := collectionList[1].AddCollectionContext(ctx)
+	docRev, err = collectionList[1].GetRev(collection1Ctx, "doc1", revList[1], false, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "doc1", docRev.DocID)
 	assert.Equal(t, revList[1], docRev.RevID)
