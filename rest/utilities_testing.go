@@ -1212,8 +1212,8 @@ func Request(method, resource, body string) *http.Request {
 	if err != nil {
 		panic(fmt.Sprintf("http.NewRequest failed: %v", err))
 	}
-	request.RemoteAddr = ":0"     // usually populated by actual HTTP requests going into a HTTP Server
-	request.RequestURI = resource // This doesn't get filled in by NewRequest
+	request.RemoteAddr = "test.client.addr:99999" // usually populated by actual HTTP requests going into a HTTP Server
+	request.RequestURI = resource                 // This doesn't get filled in by NewRequest
 	FixQuotedSlashes(request)
 	return request
 }
