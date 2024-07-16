@@ -227,6 +227,7 @@ type userIDDomain string
 const (
 	UserDomainSyncGateway userIDDomain = "sgw"
 	UserDomainCBServer    userIDDomain = "cbs"
+	UserDomainBuiltin                  = "builtin" // internal users (e.g. SG bootstrap user)
 )
 
 func UserLogCtx(parent context.Context, username string, domain userIDDomain) context.Context {

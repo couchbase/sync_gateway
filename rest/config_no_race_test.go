@@ -105,7 +105,7 @@ func TestAuditLoggingGlobals(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			output := base.AuditLogContents(t, func() {
+			output := base.AuditLogContents(t, func(tb testing.TB) {
 				base.Audit(ctx, base.AuditIDPublicUserAuthenticated, map[string]any{"auth_method": "basic"})
 			})
 			var event map[string]any

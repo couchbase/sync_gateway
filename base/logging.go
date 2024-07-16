@@ -406,7 +406,7 @@ func AssertLogContains(t *testing.T, s string, f func()) {
 }
 
 // AuditLogContents returns that the audit logs produced by function f.
-func AuditLogContents(t *testing.T, f func()) []byte {
+func AuditLogContents(t testing.TB, f func(t testing.TB)) []byte {
 	// Temporarily override logger output
 	b := &bytes.Buffer{}
 	mw := io.MultiWriter(b, os.Stderr)
@@ -414,7 +414,7 @@ func AuditLogContents(t *testing.T, f func()) []byte {
 	defer func() { auditLogger.logger.SetOutput(os.Stderr) }()
 
 	// Call the given function
-	f()
+	f(t)
 
 	FlushLogBuffers()
 	auditLogger.FlushBufferToLog()

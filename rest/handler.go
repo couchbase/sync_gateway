@@ -462,11 +462,6 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 				return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
 			}
 		}
-		if h.isGuest() {
-			h.rqCtx = base.UserLogCtx(h.ctx(), base.GuestUsername, base.UserDomainSyncGateway)
-		} else if h.user != nil {
-			h.rqCtx = base.UserLogCtx(h.ctx(), h.user.Name(), base.UserDomainSyncGateway)
-		}
 	}
 
 	// If the user has OIDC roles/channels configured, we need to check if the OIDC issuer they came from is still valid.
@@ -793,6 +788,12 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 			}
 		} else {
 			dbCtx.DbStats.Security().AuthSuccessCount.Add(1)
+
+			if h.isGuest() {
+				h.rqCtx = base.UserLogCtx(h.ctx(), base.GuestUsername, base.UserDomainSyncGateway)
+			} else if h.user != nil {
+				h.rqCtx = base.UserLogCtx(h.ctx(), h.user.Name(), base.UserDomainSyncGateway)
+			}
 			base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticated, auditFields)
 		}
 	}(time.Now())
