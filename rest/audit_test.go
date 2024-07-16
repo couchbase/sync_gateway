@@ -153,7 +153,7 @@ func TestAuditLoggingFields(t *testing.T) {
 					// Skip this subtest if running with walrus - it has no support for admin auth
 					t.Skip("Skipping test that requires admin auth - Walrus not supported")
 				}
-				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", base.TestClusterPassword(), base.TestClusterPassword()), http.StatusOK)
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", base.TestClusterUsername(), base.TestClusterPassword()), http.StatusOK)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				// TODO: Admin auth event
