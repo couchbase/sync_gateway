@@ -186,3 +186,9 @@ All_user_channels_response:
     application/json:
       schema:
         $ref: ./schemas.yaml#/all_user_channels
+user_access_span_response:
+  description: Grant history entries for a user, showing which documents the user had access to, through which channels and for which sequence spans..
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas.yaml#/doc_access_spans

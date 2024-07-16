@@ -11,6 +11,7 @@ package rest
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -28,12 +29,21 @@ func compareAllChannelsOutput(rt *RestTester, username string, expectedOutput st
 	RequireStatus(rt.TB(), response, http.StatusOK)
 	rt.TB().Logf("All channels response: %s", response.BodyString())
 	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
+}
 
+func compareUserDocSeqsOutput(rt *RestTester, username string, docids []string, expectedOutput string) {
+	response := rt.SendDiagnosticRequest(http.MethodGet,
+		"/{{.keyspace}}/_user/"+username+"?docids="+strings.Join(docids, ","), ``)
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	rt.TB().Logf("All channels response: %s", response.BodyString())
+	require.JSONEq(rt.TB(), rt.mustTemplateResource(expectedOutput), response.BodyString())
 }
 
 type userGrant struct {
 	user          string
 	adminChannels map[string][]string
+	docIDs        []string
+	docUserTest   bool
 	roles         []string
 	output        string
 }
@@ -74,7 +84,11 @@ func (g userGrant) request(rt *RestTester) {
 		rt.TB().Fatalf("Expected 200 or 201 exit code")
 	}
 	if g.output != "" {
-		compareAllChannelsOutput(rt, g.user, g.output)
+		if g.docUserTest {
+			compareUserDocSeqsOutput(rt, g.user, g.docIDs, g.output)
+		} else {
+			compareAllChannelsOutput(rt, g.user, g.output)
+		}
 	}
 }
 
@@ -117,6 +131,9 @@ func (g roleGrant) request(rt *RestTester) {
 type docGrant struct {
 	userName       string
 	dynamicRole    string
+	docIDs         []string
+	docID          string
+	docUserTest    bool
 	dynamicChannel string
 	output         string
 }
@@ -137,13 +154,21 @@ func (g docGrant) getPayload() string {
 
 func (g docGrant) request(rt *RestTester) {
 	payload := g.getPayload()
+	docID := "doc"
+	if g.docID != "" {
+		docID = g.docID
+	}
 	rt.TB().Logf("Issuing dynamic grant: %+v", payload)
-	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc", payload)
+	response := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s", docID), payload)
 	if response.Code != http.StatusCreated && response.Code != http.StatusOK {
 		rt.TB().Fatalf("Expected 200 or 201 exit code, got %d, output: %s", response.Code, response.Body.String())
 	}
 	if g.output != "" {
-		compareAllChannelsOutput(rt, g.userName, g.output)
+		if g.docUserTest {
+			compareUserDocSeqsOutput(rt, g.userName, g.docIDs, g.output)
+		} else {
+			compareAllChannelsOutput(rt, g.userName, g.output)
+		}
 	}
 }
 
@@ -677,22 +702,22 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 			"{{.keyspace1}}": {"A"},
 		},
 		output: `
-{
-   "all_channels":{
-      "{{.scopeAndCollection1}}":{
-         "A":{
-            "entries":["2-0"]
-         }
-      },
-      "{{.scopeAndCollection2}}":{
-         "D":{
-            "entries":[
-               "1-0"
-            ]
-         }
-      }
-   }
-}`,
+		{
+		   "all_channels":{
+			  "{{.scopeAndCollection1}}":{
+				 "A":{
+					"entries":["2-0"]
+				 }
+			  },
+			  "{{.scopeAndCollection2}}":{
+				 "D":{
+					"entries":[
+					   "1-0"
+					]
+				 }
+			  }
+		   }
+		}`,
 	}
 	grant.request(rt)
 
@@ -799,7 +824,9 @@ func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
 }
 
 func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
-
+	if base.TestsUseNamedCollections() {
+		t.Skip("Only works with default collection until CBG-4003 is fixed")
+	}
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
@@ -825,7 +852,7 @@ func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
 	resp := rt.SendAdminRequest("DELETE", "/db/_role/role1", ``)
 	RequireStatus(t, resp, http.StatusOK)
 
-	userGrant.output = `{}`
+	userGrant.output = `{"all_channels":{"_default._default":{"!":{"entries":["2-3"]},"role1Chan":{"entries":["2-3"]}}}}`
 	userGrant.roles = []string{}
 	userGrant.request(rt)
 

@@ -179,7 +179,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		changed := false
 		if !princ.IsDeleted() {
 			// Check whether any collection's channel list has been invalidated by a doc update -- if so, rebuild it:
-			channelsChanged, err := auth.rebuildChannels(princ)
+			channelsChanged, err := auth.RebuildChannels(princ)
 			if err != nil {
 				base.WarnfCtx(auth.LogCtx, "RebuildChannels returned error: %v", err)
 				return nil, nil, false, err
@@ -190,7 +190,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		}
 		if user, ok := princ.(User); ok {
 			if user.RoleNames() == nil {
-				if err := auth.rebuildRoles(user); err != nil {
+				if err := auth.RebuildRoles(user); err != nil {
 					base.WarnfCtx(auth.LogCtx, "RebuildRoles returned error: %v", err)
 					return nil, nil, false, err
 				}
@@ -227,7 +227,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 // For each collection in Authenticator.collections:
 //   - if there is no CollectionAccess on the principal for the collection, rebuilds channels for that collection
 //   - If CollectionAccess on the principal has been invalidated, rebuilds channels for that collection
-func (auth *Authenticator) rebuildChannels(princ Principal) (changed bool, err error) {
+func (auth *Authenticator) RebuildChannels(princ Principal) (changed bool, err error) {
 
 	changed = false
 	for scope, collections := range auth.Collections {
@@ -323,7 +323,7 @@ func (auth *Authenticator) calculateHistory(princName string, invalSeq uint64, i
 	}
 
 	if prunedHistory := currentHistory.PruneHistory(auth.ClientPartitionWindow); len(prunedHistory) > 0 {
-		base.DebugfCtx(auth.LogCtx, base.KeyCRUD, "rebuildChannels: Pruned principal history on %s for %s", base.UD(princName), base.UD(prunedHistory))
+		base.DebugfCtx(auth.LogCtx, base.KeyCRUD, "RebuildChannels: Pruned principal history on %s for %s", base.UD(princName), base.UD(prunedHistory))
 	}
 
 	// Ensure no entries are larger than the allowed threshold
@@ -355,7 +355,7 @@ func CalculateMaxHistoryEntriesPerGrant(channelCount int) int {
 	return maxEntries
 }
 
-func (auth *Authenticator) rebuildRoles(user User) error {
+func (auth *Authenticator) RebuildRoles(user User) error {
 	var roles ch.TimedSet
 	if auth.channelComputer != nil {
 		var err error
