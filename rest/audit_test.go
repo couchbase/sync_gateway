@@ -140,17 +140,19 @@ func TestAuditLoggingFields(t *testing.T) {
 				// TODO: Admin auth event
 				//base.AuditIDAdminUserAuthenticated: {
 				//	"cid":         auditFieldValueIgnored,
-				//	"real_userid": map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
 				//},
 				base.AuditIDReadDatabase: {
-					"cid":         auditFieldValueIgnored,
-					"real_userid": map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
+					"cid": auditFieldValueIgnored,
 				},
 			},
 		},
 		{
 			name: "authed admin request",
 			auditableAction: func(t testing.TB) {
+				if base.UnitTestUrlIsWalrus() {
+					// Skip this subtest if running with walrus - it has no support for admin auth
+					t.Skip("Skipping test that requires admin auth - Walrus not supported")
+				}
 				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", base.TestClusterPassword(), base.TestClusterPassword()), http.StatusOK)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{

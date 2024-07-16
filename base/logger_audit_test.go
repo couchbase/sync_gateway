@@ -137,7 +137,7 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 			auditLogger, err = NewAuditLogger(ctx, &AuditLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true)}}, tmpdir, 0, nil, testCase.globalFields)
 			require.NoError(t, err)
 			startWarnCount := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
-			output := AuditLogContents(t, func() {
+			output := AuditLogContents(t, func(tb testing.TB) {
 				// Test basic audit event
 				Audit(ctx, AuditIDPublicUserAuthenticated, map[string]any{"auth_method": "basic"})
 			},
