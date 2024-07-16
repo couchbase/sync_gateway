@@ -1622,7 +1622,7 @@ func getAuditEventAccess(db *db.Database, princ auth.Principal) map[string]map[s
 		// we support specifying both collection access and legacy way for default collection, if there are some channels
 		// specified for default collection in legacy way, add them here
 		defaultChannels := princ.ExplicitChannels().AsSet().ToArray()
-		if len(auditEventAccess[base.DefaultScope][base.DefaultCollection]) == 0 {
+		if len(auditEventAccess[base.DefaultScope][base.DefaultCollection]) == 0 && db.HasDefaultCollection() {
 			auditEventAccess[base.DefaultScope][base.DefaultCollection] = defaultChannels
 		}
 	}
