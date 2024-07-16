@@ -78,8 +78,8 @@ func TestAuditLoggingFields(t *testing.T) {
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDPublicUserAuthenticated: {
-					"cid":         auditFieldValueIgnored,
-					"auth_method": "guest",
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldAuthMethod:    "guest",
 				},
 				// TODO: GUEST view session event?
 			},
@@ -91,12 +91,12 @@ func TestAuditLoggingFields(t *testing.T) {
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDPublicUserAuthenticated: {
-					"cid":         auditFieldValueIgnored,
-					"real_userid": map[string]any{"domain": "sgw", "user": "alice"},
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": "alice"},
 				},
 				base.AuditIDReadDatabase: {
-					"cid":         auditFieldValueIgnored,
-					"real_userid": map[string]any{"domain": "sgw", "user": "alice"},
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": "alice"},
 				},
 			},
 		},
@@ -111,9 +111,9 @@ func TestAuditLoggingFields(t *testing.T) {
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDPublicUserAuthenticated: {
-					"cid":         auditFieldValueIgnored,
-					"real_userid": map[string]any{"domain": "sgw", "user": "alice"},
-					"extra":       "field",
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": "alice"},
+					"extra":                      "field",
 				},
 			},
 		},
@@ -124,10 +124,10 @@ func TestAuditLoggingFields(t *testing.T) {
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDPublicUserAuthenticationFailed: {
-					"cid":         auditFieldValueIgnored,
-					"auth_method": "basic",
-					"db":          "db",
-					"username":    "incorrect",
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldAuthMethod:    "basic",
+					base.AuditFieldDatabase:      "db",
+					"username":                   "incorrect",
 				},
 			},
 		},
@@ -139,10 +139,10 @@ func TestAuditLoggingFields(t *testing.T) {
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				// TODO: Admin auth event
 				//base.AuditIDAdminUserAuthenticated: {
-				//	"cid":         auditFieldValueIgnored,
+				//	base.AuditFieldCorrelationID:         auditFieldValueIgnored,
 				//},
 				base.AuditIDReadDatabase: {
-					"cid": auditFieldValueIgnored,
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
 				},
 			},
 		},
@@ -158,12 +158,12 @@ func TestAuditLoggingFields(t *testing.T) {
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				// TODO: Admin auth event
 				//base.AuditIDAdminUserAuthenticated: {
-				//	"cid":         auditFieldValueIgnored,
-				//	"real_userid": map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
+				//	base.AuditFieldCorrelationID:         auditFieldValueIgnored,
+				//	base.AuditFieldRealUserID: map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
 				//},
 				base.AuditIDReadDatabase: {
-					"cid":         auditFieldValueIgnored,
-					"real_userid": map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
 				},
 			},
 		},

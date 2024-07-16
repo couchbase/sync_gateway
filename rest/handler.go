@@ -801,7 +801,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	// If oidc enabled, check for bearer ID token
 	if dbCtx.Options.OIDCOptions != nil || len(dbCtx.LocalJWTProviders) > 0 {
 		if token := h.getBearerToken(); token != "" {
-			auditFields = base.AuditFields{"auth_method": "bearer"}
+			auditFields = base.AuditFields{base.AuditFieldAuthMethod: "bearer"}
 			var updates auth.PrincipalConfig
 			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.LocalJWTProviders, h.getOIDCCallbackURL)
 			if h.user == nil || err != nil {
@@ -846,7 +846,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	// Check basic auth first
 	if !dbCtx.Options.DisablePasswordAuthentication {
 		if userName, password := h.getBasicAuth(); userName != "" {
-			auditFields = base.AuditFields{"auth_method": "basic"}
+			auditFields = base.AuditFields{base.AuditFieldAuthMethod: "basic"}
 			h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateUser(userName, password)
 			if err != nil {
 				return err
@@ -864,7 +864,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	// Check cookie
-	auditFields = base.AuditFields{"auth_method": "cookie"}
+	auditFields = base.AuditFields{base.AuditFieldAuthMethod: "cookie"}
 	h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateCookie(h.rq, h.response)
 	if err != nil && h.privs != publicPrivs {
 		return err
@@ -873,7 +873,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	// No auth given -- check guest access
-	auditFields = base.AuditFields{"auth_method": "guest"}
+	auditFields = base.AuditFields{base.AuditFieldAuthMethod: "guest"}
 	if h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(""); err != nil {
 		return err
 	}
