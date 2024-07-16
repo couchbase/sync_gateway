@@ -791,7 +791,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 
 			if h.isGuest() {
 				h.rqCtx = base.UserLogCtx(h.ctx(), base.GuestUsername, base.UserDomainSyncGateway)
-			} else if h.user != nil {
+			} else {
 				h.rqCtx = base.UserLogCtx(h.ctx(), h.user.Name(), base.UserDomainSyncGateway)
 			}
 			base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticated, auditFields)
