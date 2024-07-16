@@ -1832,7 +1832,6 @@ func TestGetRemovedDoc(t *testing.T) {
 func TestMissingNoRev(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
-	ctx := rt.Context()
 
 	bt, err := NewBlipTesterFromSpecWithRT(t, nil, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")

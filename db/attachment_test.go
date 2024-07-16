@@ -224,7 +224,6 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	ctx = collection.AddCollectionContext(ctx)
 
 	// Test creating & updating a document:
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},

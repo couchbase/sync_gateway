@@ -55,6 +55,8 @@ type LogContext struct {
 	//RequestPort string
 	//// RemoteAddr is the IP and port of the remote client making the request associated with this log
 	//RemoteAddr string
+
+	implicitDefaultCollection bool
 }
 
 // DbLogConfig can be used to customise the logging for logs associated with this database.
@@ -83,7 +85,7 @@ func (lc *LogContext) addContext(format string) string {
 
 	if lc.Bucket != "" {
 		if lc.Database != "" {
-			if lc.Collection != "" {
+			if !lc.implicitDefaultCollection && lc.Collection != "" {
 				format = "col:" + lc.Collection + " " + format
 			}
 
@@ -97,7 +99,7 @@ func (lc *LogContext) addContext(format string) string {
 			}
 			format = keyspace + " " + format
 		}
-	} else if lc.Collection != "" {
+	} else if !lc.implicitDefaultCollection && lc.Collection != "" {
 		format = "col:" + lc.Collection + " " + format
 	}
 
@@ -173,6 +175,15 @@ func CollectionLogCtx(parent context.Context, scopeName, collectionName string) 
 	newCtx := getLogCtx(parent)
 	newCtx.Scope = scopeName
 	newCtx.Collection = collectionName
+	return LogContextWith(parent, &newCtx)
+}
+
+// ImplicitDefaultCollectionCtx extends the parent context with _default._default collection. When logging, col:_default will not be shown.
+func ImplicitDefaultCollectionLogCtx(parent context.Context) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.implicitDefaultCollection = true
+	newCtx.Scope = DefaultScope
+	newCtx.Collection = DefaultCollection
 	return LogContextWith(parent, &newCtx)
 }
 

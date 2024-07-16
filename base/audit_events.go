@@ -851,13 +851,11 @@ var AuditEvents = events{
 		Name:        "Create document",
 		Description: "A new document was created",
 		MandatoryFields: AuditFields{
+			"db":          "database name",
+			"ks":          "keyspace",
 			"doc_id":      "document id",
 			"doc_version": "revision ID or version",
 			"channels":    []string{"list", "of", "channels"},
-		},
-		mandatoryFieldGroups: []fieldGroup{
-			fieldGroupKeyspace,
-			// FIXME fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -867,12 +865,10 @@ var AuditEvents = events{
 		Name:        "Read document",
 		Description: "A document was viewed",
 		MandatoryFields: AuditFields{
+			"db":          "database name",
+			"ks":          "keyspace",
 			"doc_id":      "document id",
 			"doc_version": "revision ID or version",
-		},
-		mandatoryFieldGroups: []fieldGroup{
-			fieldGroupKeyspace,
-			// FIXME fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -888,10 +884,6 @@ var AuditEvents = events{
 			"doc_version": "revision ID or version",
 			"channels":    []string{"list", "of", "channels"},
 		},
-		mandatoryFieldGroups: []fieldGroup{
-			fieldGroupKeyspace,
-			// FIXME fieldGroupAuthenticated,
-		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
 		EventType:          eventTypeData,
@@ -900,11 +892,9 @@ var AuditEvents = events{
 		Name:        "Read document metadata",
 		Description: "Document metadata was viewed",
 		MandatoryFields: AuditFields{
+			"db":     "database name",
+			"ks":     "keyspace",
 			"doc_id": "document id",
-		},
-		mandatoryFieldGroups: []fieldGroup{
-			fieldGroupKeyspace,
-			// FIXME fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -914,16 +904,10 @@ var AuditEvents = events{
 		Name:        "Delete document",
 		Description: "A document was deleted",
 		MandatoryFields: AuditFields{
+			"db":          "database name",
+			"ks":          "keyspace",
 			"doc_id":      "document id",
 			"doc_version": "revision ID or version",
-			"channels":    []string{"list", "of", "channels"},
-		},
-		OptionalFields: AuditFields{
-			"purged": true,
-		},
-		mandatoryFieldGroups: []fieldGroup{
-			fieldGroupKeyspace,
-			// FIXME fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -933,9 +917,9 @@ var AuditEvents = events{
 		Name:        "Create attachment",
 		Description: "A new attachment was created",
 		MandatoryFields: AuditFields{
-			AuditFieldDocID:        "document id",
-			AuditFieldDocVersion:   "revision ID or version",
-			AuditFieldAttachmentID: "attachment name",
+			"doc_id":        "document id",
+			"doc_version":   "revision ID or version",
+			"attachment_id": "attachment name",
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,

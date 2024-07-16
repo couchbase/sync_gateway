@@ -337,16 +337,22 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	// If there is a "keyspace" path variable in the route, parse the keyspace:
 	ks := h.PathVar("keyspace")
+	explicitCollectionLogging := false
 	if ks != "" {
 		var err error
 		keyspaceDb, keyspaceScope, keyspaceCollection, err = ParseKeyspace(ks)
 		if err != nil {
 			return err
 		}
-		if keyspaceScope != nil && keyspaceCollection != nil {
-			h.addCollectionLogContext(*keyspaceScope, *keyspaceCollection)
-		} else {
-			h.addCollectionLogContext(base.DefaultScope, base.DefaultCollection)
+		// If the collection is known, add it to the context before getting the db. If we do not know it, or don't know scope, we'll add this information later.
+		if keyspaceCollection != nil {
+			explicitCollectionLogging = true
+			// /db.collectionName/foo is valid since Sync Gateway only has one scope
+			scope := ""
+			if keyspaceScope != nil {
+				scope = *keyspaceScope
+			}
+			h.addCollectionLogContext(scope, *keyspaceCollection)
 		}
 	}
 
@@ -573,6 +579,11 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			// Set these for handlers that expect a scope/collection to be set, even if not using named collections.
 			keyspaceScope = base.StringPtr(base.DefaultScope)
 			keyspaceCollection = base.StringPtr(base.DefaultCollection)
+		}
+		if explicitCollectionLogging {
+			h.addCollectionLogContext(*keyspaceScope, *keyspaceCollection)
+		} else {
+			h.rqCtx = base.ImplicitDefaultCollectionLogCtx(h.ctx())
 		}
 	}
 

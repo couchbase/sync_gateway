@@ -38,11 +38,6 @@ const (
 	AuditFieldCompactionDryRun   = "dry_run"
 	AuditFieldCompactionReset    = "reset"
 	AuditFieldPostUpgradePreview = "preview"
-	AuditFieldDocID              = "doc_id"
-	AuditFieldDocVersion         = "doc_version"
-	AuditFieldPurged             = "purged"
-	AuditFieldChannels           = "channels"
-	AuditFieldAttachmentID       = "attachment_id"
 )
 
 // expandFields populates data with information from the id, context and additionalData.
@@ -67,8 +62,8 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	if logCtx.CorrelationID != "" {
 		fields[auditFieldCorrelationID] = logCtx.CorrelationID
 	}
-	if logCtx.Database != "" && logCtx.Scope != "" && logCtx.Collection != "" {
-		fields[auditFieldKeyspace] = FullyQualifiedCollectionName(logCtx.Database, logCtx.Scope, logCtx.Collection)
+	if logCtx.Bucket != "" && logCtx.Scope != "" && logCtx.Collection != "" {
+		fields[auditFieldKeyspace] = FullyQualifiedCollectionName(logCtx.Bucket, logCtx.Scope, logCtx.Collection)
 	}
 	// TODO: CBG-3973 - Pull fields from ctx
 	userDomain := "placeholder"
