@@ -671,12 +671,12 @@ func (h *handler) handlePutDbConfig() (err error) {
 	return base.HTTPErrorf(http.StatusCreated, "updated")
 }
 
-type handleDbAuditConfigBody struct {
+type HandleDbAuditConfigBody struct {
 	Enabled *bool          `json:"enabled,omitempty"`
 	Events  map[string]any `json:"events,omitempty"`
 }
 
-type handleDbAuditConfigBodyVerboseEvent struct {
+type HandleDbAuditConfigBodyVerboseEvent struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
@@ -734,7 +734,7 @@ func (h *handler) handleGetDbAuditConfig() error {
 		_, eventEnabled := enabledEvents[id]
 
 		if verbose {
-			events[idStr] = handleDbAuditConfigBodyVerboseEvent{
+			events[idStr] = HandleDbAuditConfigBodyVerboseEvent{
 				Name:        stringPtrOrNil(descriptor.Name),
 				Description: stringPtrOrNil(descriptor.Description),
 				Enabled:     &eventEnabled,
@@ -745,7 +745,7 @@ func (h *handler) handleGetDbAuditConfig() error {
 		}
 	}
 
-	resp := handleDbAuditConfigBody{
+	resp := HandleDbAuditConfigBody{
 		Enabled: &dbAuditEnabled,
 		Events:  events,
 	}
@@ -758,7 +758,7 @@ func (h *handler) handleGetDbAuditConfig() error {
 // PUT/POST audit config for database
 func (h *handler) handlePutDbAuditConfig() error {
 	return h.mutateDbConfig(func(config *DbConfig) error {
-		var body handleDbAuditConfigBody
+		var body HandleDbAuditConfigBody
 		if err := h.readJSONInto(&body); err != nil {
 			return err
 		}
@@ -824,7 +824,6 @@ func (h *handler) handlePutDbAuditConfig() error {
 				if shouldEnable, ok := toChange[base.AuditID(event)]; ok {
 					if shouldEnable {
 						// already enabled
-						continue
 					} else {
 						// disable by removing
 						config.Logging.Audit.EnabledEvents = append(config.Logging.Audit.EnabledEvents[:i], config.Logging.Audit.EnabledEvents[i+1:]...)
