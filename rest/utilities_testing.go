@@ -466,10 +466,14 @@ func (rt *RestTester) ServerContext() *ServerContext {
 }
 
 // CreateDatabase is a utility function to create a database through the REST API
-func (rt *RestTester) CreateDatabase(dbName string, config DbConfig) *TestResponse {
+func (rt *RestTester) CreateDatabase(dbName string, config DbConfig) (resp *TestResponse) {
 	dbcJSON, err := base.JSONMarshal(config)
 	require.NoError(rt.TB(), err)
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/", dbName), string(dbcJSON))
+	if rt.AdminInterfaceAuthentication {
+		resp = rt.SendAdminRequestWithAuth(http.MethodPut, fmt.Sprintf("/%s/", dbName), string(dbcJSON), base.TestClusterUsername(), base.TestClusterPassword())
+	} else {
+		resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/", dbName), string(dbcJSON))
+	}
 	return resp
 }
 
@@ -500,7 +504,12 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 
 // CreateUser creates a user with the default password and channels scoped to a single test collection.
 func (rt *RestTester) CreateUser(username string, channels []string) {
-	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), channels, nil))
+	var response *TestResponse
+	if rt.AdminInterfaceAuthentication {
+		response = rt.SendAdminRequestWithAuth(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), channels, nil), base.TestClusterUsername(), base.TestClusterPassword())
+	} else {
+		response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), channels, nil))
+	}
 	RequireStatus(rt.TB(), response, http.StatusCreated)
 }
 
