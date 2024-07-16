@@ -51,6 +51,7 @@ import (
 type RestTesterConfig struct {
 	GuestEnabled                    bool                        // If this is true, Admin Party is in full effect
 	SyncFn                          string                      // put the sync() function source in here (optional)
+	ImportFilter                    string                      // put the import filter function source in here (optional)
 	DatabaseConfig                  *DatabaseConfig             // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	MutateStartupConfig             func(config *StartupConfig) // Function to mutate the startup configuration before the server context gets created. This overrides options the RT sets.
 	InitSyncSeq                     uint64                      // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
@@ -60,6 +61,7 @@ type RestTesterConfig struct {
 	leakyBucketConfig               *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
 	adminInterface                  string                      // adminInterface overrides the default admin interface.
 	SgReplicateEnabled              bool                        // SgReplicateManager disabled by default for RestTester
+	AutoImport                      *bool
 	HideProductInfo                 bool
 	AdminInterfaceAuthentication    bool
 	metricsInterfaceAuthentication  bool
@@ -303,11 +305,14 @@ func (rt *RestTester) Bucket() base.Bucket {
 			// If scopes is already set, assume the caller has a plan
 			if rt.DatabaseConfig.Scopes == nil {
 				// Configure non default collections by default
-				var syncFn *string
+				var syncFn, importFilter *string
 				if rt.SyncFn != "" {
 					syncFn = base.StringPtr(rt.SyncFn)
 				}
-				rt.DatabaseConfig.Scopes = GetCollectionsConfigWithSyncFn(rt.TB, testBucket, syncFn, rt.numCollections)
+				if rt.ImportFilter != "" {
+					importFilter = base.StringPtr(rt.ImportFilter)
+				}
+				rt.DatabaseConfig.Scopes = GetCollectionsConfigWithFiltering(rt.TB, testBucket, rt.numCollections, syncFn, importFilter)
 			}
 		}
 
@@ -333,6 +338,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.SgReplicateEnabled)
 
+		// Check for override of AutoImport in the rt config
+		if rt.AutoImport != nil {
+			rt.DatabaseConfig.AutoImport = *rt.AutoImport
+		}
 		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled(ctx)
 		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
@@ -387,6 +396,39 @@ func GetCollectionsConfigWithSyncFn(t testing.TB, testBucket *base.TestBucket, s
 	if syncFn != nil {
 		defaultCollectionConfig.SyncFn = syncFn
 	}
+	scopesConfig := ScopesConfig{}
+	for i := 0; i < numCollections; i++ {
+		dataStoreName := stores[i]
+		if scopeConfig, ok := scopesConfig[dataStoreName.ScopeName()]; ok {
+			if _, ok := scopeConfig.Collections[dataStoreName.CollectionName()]; ok {
+				// already present
+			} else {
+				scopeConfig.Collections[dataStoreName.CollectionName()] = defaultCollectionConfig
+			}
+		} else {
+			scopesConfig[dataStoreName.ScopeName()] = ScopeConfig{
+				Collections: map[string]*CollectionConfig{
+					dataStoreName.CollectionName(): defaultCollectionConfig,
+				}}
+		}
+
+	}
+	return scopesConfig
+}
+
+// GetCollectionsConfigWithFiltering sets up a ScopesConfig from a TestBucket for use with non default collections. The sync function will be passed for all collections.
+func GetCollectionsConfigWithFiltering(t testing.TB, testBucket *base.TestBucket, numCollections int, syncFn *string, importFilter *string) ScopesConfig {
+	// Get a datastore as provided by the test
+	stores := testBucket.GetNonDefaultDatastoreNames()
+	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
+	defaultCollectionConfig := &CollectionConfig{}
+	if syncFn != nil {
+		defaultCollectionConfig.SyncFn = syncFn
+	}
+	if importFilter != nil {
+		defaultCollectionConfig.ImportFilter = importFilter
+	}
+
 	scopesConfig := ScopesConfig{}
 	for i := 0; i < numCollections; i++ {
 		dataStoreName := stores[i]

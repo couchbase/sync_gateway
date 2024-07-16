@@ -465,8 +465,23 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	}
 
 	btr.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
-		// TODO: Support norev messages
 		btr.storeMessage(msg)
+
+		btcr := btc.getCollectionClientFromMessage(msg)
+
+		docID := msg.Properties[db.NorevMessageId]
+		revID := msg.Properties[db.NorevMessageRev]
+
+		btcr.docsLock.Lock()
+		defer btcr.docsLock.Unlock()
+
+		if _, ok := btcr.docs[docID]; ok {
+			bodyMessagePair := &BodyMessagePair{message: msg}
+			btcr.docs[docID][revID] = bodyMessagePair
+		} else {
+			bodyMessagePair := &BodyMessagePair{message: msg}
+			btcr.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
+		}
 	}
 
 	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
