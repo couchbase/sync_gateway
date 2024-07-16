@@ -56,6 +56,7 @@ type LogContext struct {
 	//// RemoteAddr is the IP and port of the remote client making the request associated with this log
 	//RemoteAddr string
 
+	// implicitDefaultCollection is set to true when the context represents the default collection, but we want to omit that value from logging to prevent verbosity.
 	implicitDefaultCollection bool
 }
 

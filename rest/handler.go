@@ -580,7 +580,13 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			keyspaceScope = base.StringPtr(base.DefaultScope)
 			keyspaceCollection = base.StringPtr(base.DefaultCollection)
 		}
+		// explicitCollectionLogging is true if the collection was explicitly set in the keyspace string. When it is used, the log context will add a col:collection in log lines. If it is implicit, in the case of /db/doc, col: is omitted from the log information, but retained for audit logging purposes.
 		if explicitCollectionLogging {
+			// matches the following:
+			//  - /db.scopeName.collectionName/doc
+			//  - /db.collectionName/doc
+			//  - /db._default/doc
+			//  - /db._default._default/doc
 			h.addCollectionLogContext(*keyspaceScope, *keyspaceCollection)
 		} else {
 			h.rqCtx = base.ImplicitDefaultCollectionLogCtx(h.ctx())
