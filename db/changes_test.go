@@ -55,8 +55,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			db, ctx := setupTestDB(t)
 			defer db.Close(ctx)
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
-			ctx = collection.AddCollectionContext(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 			collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 			auth := db.Authenticator(base.TestCtx(t))
@@ -92,28 +91,24 @@ func TestFilterToAvailableChannels(t *testing.T) {
 
 // Unit test for bug #314
 func TestChangesAfterChannelAdded(t *testing.T) {
-
-	if base.TestsUseNamedCollections() {
-		t.Skip("Disabled for non-default collection based on use of GetPrincipalForTest")
-	}
-
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
-
-	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	db, ctx := setupTestDBDefaultCollection(t)
+	defer db.Close(ctx)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(base.TestCtx(t))
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	_, _, err := collection.Put(ctx, "doc1", Body{"channels": []string{"ABC", "PBS"}})
+	_, _, err = collection.Put(ctx, "doc1", Body{"channels": []string{"ABC", "PBS"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
@@ -212,15 +207,15 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
-
-	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator(base.TestCtx(t))
 	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
@@ -298,15 +293,15 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
-
-	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create a user with access to channel A
-	authenticator := db.Authenticator(base.TestCtx(t))
+	authenticator := db.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
@@ -377,8 +372,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	ctx = collection.AddCollectionContext(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 	// Create 10 documents
@@ -444,7 +438,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 
 	db, ctx := setupTestDB(b)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(b, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
 	fieldVal := func(valSizeBytes int) string {
 		buffer := bytes.Buffer{}

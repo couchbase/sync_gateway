@@ -723,11 +723,12 @@ func GetScopesOptionsDefaultCollectionOnly(_ testing.TB) ScopesOptions {
 	}
 }
 
-func GetSingleDatabaseCollectionWithUser(tb testing.TB, database *Database) *DatabaseCollectionWithUser {
-	return &DatabaseCollectionWithUser{
+func GetSingleDatabaseCollectionWithUser(ctx context.Context, tb testing.TB, database *Database) (*DatabaseCollectionWithUser, context.Context) {
+	c := &DatabaseCollectionWithUser{
 		DatabaseCollection: GetSingleDatabaseCollection(tb, database.DatabaseContext),
 		user:               database.user,
 	}
+	return c, c.AddCollectionContext(ctx)
 }
 
 func GetSingleDatabaseCollection(tb testing.TB, database *DatabaseContext) *DatabaseCollection {

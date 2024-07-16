@@ -950,10 +950,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
 	// we do it now because we can't close and re-open an ephemeral Walrus database.
-	dbc := rt.ServerContext().Database(ctx, "db")
-	database, _ := db.GetDatabase(dbc, nil)
-
-	collectionWithUser := db.GetSingleDatabaseCollectionWithUser(t, database)
+	collectionWithUser := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	changed, err := collection.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)

@@ -417,7 +417,7 @@ function sync(doc, oldDoc){
 	channel("channel.ABC");
 }
 `
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	_, err := collection.UpdateSyncFun(ctx, syncFn)
 	require.NoError(t, err)
@@ -462,7 +462,7 @@ func TestResyncMou(t *testing.T) {
 	db.Options.QueryPaginationLimit = 100 // Required for principal ID query to not deadlock
 
 	initialImportCount := db.DbStats.SharedBucketImport().ImportCount.Value()
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	docBody := Body{"foo": "bar"}
 
 	// Create a document via SGW.  mou should not be updated

@@ -193,8 +193,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	ctx = collection.AddCollectionContext(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Invalid _revisions property will be stripped.  Should also not be present in the rev cache.
 	rev1body := Body{
@@ -245,8 +244,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	ctx = collection.AddCollectionContext(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	backingStoreMap := CreateTestSingleBackingStoreMap(collection, testCollectionID)
 
 	docBody := Body{
@@ -309,8 +307,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	ctx = collection.AddCollectionContext(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	rev1body := Body{
 		"value":         1234,
@@ -353,8 +350,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	ctx = collection.AddCollectionContext(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	docKey := "doc1"
 	rev1body := Body{
@@ -470,8 +466,7 @@ func TestConcurrentLoad(t *testing.T) {
 func TestRevisionCacheRemove(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	ctx = collection.AddCollectionContext(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	rev1id, _, err := collection.Put(ctx, "doc", Body{"val": 123})
 	assert.NoError(t, err)
