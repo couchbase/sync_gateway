@@ -4298,7 +4298,7 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 
 	// do a PUT to completely replace the full config (events not declared here will be disabled)
 	// enable AuditEnabled event, but implicitly others
-	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDISGRStatus))
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDISGRStatus))
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// check audit config
@@ -4310,4 +4310,76 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	assert.Equal(t, true, responseBody["enabled"].(bool))
 	assert.True(t, responseBody["events"].(map[string]interface{})[base.AuditIDISGRStatus.String()].(bool), "audit enabled event should've been enabled via PUT")
 	assert.False(t, responseBody["events"].(map[string]interface{})[base.AuditIDPublicUserAuthenticated.String()].(bool), "public user authenticated event should've been disabled via PUT")
+
+	// Verify the audit config on the database
+	runtimeConfig := rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 1)
+	RequireEventCount(t, runtimeConfig, base.AuditIDPublicUserAuthenticated, 0)
+
+	// Repeat the PUT for the same event, ensure the event isn't duplicated
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDISGRStatus))
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// Verify the audit config on the database hasn't changed
+	runtimeConfig = rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 1)
+	RequireEventCount(t, runtimeConfig, base.AuditIDPublicUserAuthenticated, 0)
+
+	// Perform a POST for the same event, ensure it's not duplicated
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDISGRStatus))
+	rest.RequireStatus(t, resp, http.StatusOK)
+	runtimeConfig = rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 1)
+	RequireEventCount(t, runtimeConfig, base.AuditIDPublicUserAuthenticated, 0)
+
+	// Perform a POST for another event, ensure previous POST is retained
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDAttachmentCreate))
+	rest.RequireStatus(t, resp, http.StatusOK)
+	runtimeConfig = rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 1)
+	RequireEventCount(t, runtimeConfig, base.AuditIDAttachmentCreate, 1)
+
+	// Perform a POST to disable an event
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":false}}`, base.AuditIDAttachmentCreate))
+	rest.RequireStatus(t, resp, http.StatusOK)
+	runtimeConfig = rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 1)
+	RequireEventCount(t, runtimeConfig, base.AuditIDAttachmentCreate, 0)
+
+	// Duplicate the  POST to disable an event
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":false}}`, base.AuditIDAttachmentCreate))
+	rest.RequireStatus(t, resp, http.StatusOK)
+	runtimeConfig = rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 1)
+	RequireEventCount(t, runtimeConfig, base.AuditIDAttachmentCreate, 0)
+
+	// Re-enable the event via PUT, should remove other events
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDAttachmentCreate))
+	rest.RequireStatus(t, resp, http.StatusOK)
+	runtimeConfig = rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 0)
+	RequireEventCount(t, runtimeConfig, base.AuditIDAttachmentCreate, 1)
+
+	// Remove the only event via PUT
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":false}}`, base.AuditIDAttachmentCreate))
+	rest.RequireStatus(t, resp, http.StatusOK)
+	runtimeConfig = rt.RestTesterServerContext.GetDatabaseConfig("db")
+	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 0)
+	RequireEventCount(t, runtimeConfig, base.AuditIDAttachmentCreate, 0)
+}
+
+func RequireEventCount(t *testing.T, runtimeConfig *rest.RuntimeDatabaseConfig, auditID base.AuditID, expectedCount int) {
+	require.NotNil(t, runtimeConfig)
+
+	loggingConfig := runtimeConfig.DbConfig.Logging
+	if loggingConfig == nil || loggingConfig.Audit == nil {
+		require.Zero(t, expectedCount)
+	}
+	actualCount := 0
+	for _, configID := range loggingConfig.Audit.EnabledEvents {
+		if configID == uint(auditID) {
+			actualCount++
+		}
+	}
+	require.Equal(t, expectedCount, actualCount)
 }
