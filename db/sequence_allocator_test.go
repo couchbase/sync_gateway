@@ -11,7 +11,12 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
+	"fmt"
+	"log"
+	"math/rand"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -378,14 +383,154 @@ func TestNextSequenceGreaterThanMultiNode(t *testing.T) {
 	assertNewAllocatorStats(t, dbStatsB, 1, 10, 2, 4)
 
 	// calling nextSequenceGreaterThan(15) on A will increment _sync:seq by 5 on it's previously allocated sequence (10).
-	// Since node B has already updated _sync:seq to 20, will result in:
+	// Since node B has already updated _sync:seq to 20, calling nextSequenceGreaterThan(15) on A will result in:
 	//   node A releasing sequences 2-10 from it's existing buffer
-	//   node A allocating and releasing sequences 21-24
-	//   node A adding sequences 25-35 to its buffer, and assigning 25 to the current request
+	//   node A adding sequences 21-30 to its buffer, and assigning 21 to the current request
 	nextSequence, releasedSequenceCount, err = a.nextSequenceGreaterThan(ctx, 15)
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(26), nextSequence)
-	assert.Equal(t, 14, int(releasedSequenceCount))
-	assertNewAllocatorStats(t, dbStatsA, 2, 25, 2, 14)
+	assert.Equal(t, uint64(21), nextSequence)
+	assert.Equal(t, 9, int(releasedSequenceCount))
+	assertNewAllocatorStats(t, dbStatsA, 2, 20, 2, 9)
 
+}
+
+// TestVariableRateAllocators simulates the following scenario:
+//   - import nodes have high sequence allocation rate
+//   - client-facing nodes have low sequence allocation rate
+//   - documents are imported, then the same documents are immediately updated by clients
+//     (including sequence validation triggering nextSequenceGreaterThan)
+//
+// Ensures we don't release more sequences than would be expected based on allocator batch size
+func TestVariableRateAllocators(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	var expectedAllocations uint64
+
+	dataStore := bucket.GetSingleDataStore()
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+
+	importStats, err := stats.NewDBStats("import", false, false, false, nil, nil)
+	require.NoError(t, err)
+
+	importFeedAllocator, err := newSequenceAllocator(ctx, dataStore, importStats.DatabaseStats, base.DefaultMetadataKeys)
+	require.NoError(t, err)
+
+	// All test allocators are stopped when allocatorCtx is closed
+	allocatorCtx, cancelFunc := context.WithCancel(ctx)
+
+	// Start import node allocator, performing 10000 allocations/second.
+	var allocatorWg sync.WaitGroup
+	allocatorWg.Add(1)
+	go func() {
+		count := runAllocator(allocatorCtx, importFeedAllocator, 100*time.Microsecond) // 10000 writes/second
+		atomic.AddUint64(&expectedAllocations, count)
+		allocatorWg.Done()
+	}()
+
+	// Start multiple client node allocators, performing 100 allocations/second
+	clientAllocators := make([]*sequenceAllocator, 0)
+	clientAllocatorCount := 10
+	for i := 0; i <= clientAllocatorCount; i++ {
+		clientStats, err := stats.NewDBStats(fmt.Sprintf("client%d", i), false, false, false, nil, nil)
+		require.NoError(t, err)
+		clientAllocator, err := newSequenceAllocator(ctx, dataStore, clientStats.DatabaseStats, base.DefaultMetadataKeys)
+		require.NoError(t, err)
+		clientAllocators = append(clientAllocators, clientAllocator)
+		allocatorWg.Add(1)
+		go func() {
+			count := runAllocator(allocatorCtx, clientAllocator, 10*time.Millisecond) // 100 writes/second
+			atomic.AddUint64(&expectedAllocations, count)
+			allocatorWg.Done()
+		}()
+	}
+
+	// Wait for allocators to get up to maximum batch size
+	time.Sleep(500 * time.Millisecond)
+	documentCount := 10
+	var updateWg sync.WaitGroup
+	updateWg.Add(documentCount)
+	for i := 0; i < documentCount; i++ {
+		go func() {
+			_ = multiNodeUpdate(t, ctx, importFeedAllocator, clientAllocators, 5, 10*time.Millisecond)
+			updateWg.Done()
+			atomic.AddUint64(&expectedAllocations, 6)
+		}()
+	}
+
+	updateWg.Wait()
+
+	// Stop background allocation goroutines, wait for them to close
+	cancelFunc()
+	allocatorWg.Wait()
+
+	log.Printf("expectedSequence (num allocations):%v", atomic.LoadUint64(&expectedAllocations))
+
+	importFeedAllocator.Stop(ctx)
+	numAssigned := importFeedAllocator.dbStats.SequenceAssignedCount.Value()
+	numReleased := importFeedAllocator.dbStats.SequenceReleasedCount.Value()
+	for _, allocator := range clientAllocators {
+		allocator.Stop(ctx)
+		numAssigned += allocator.dbStats.SequenceAssignedCount.Value()
+		clientSequencesReleased := allocator.dbStats.SequenceReleasedCount.Value()
+		numReleased += clientSequencesReleased
+
+	}
+
+	log.Printf("Total sequences released + assigned: %v", numReleased+numAssigned)
+	actualSequence, err := importFeedAllocator.getSequence()
+	log.Printf("actual sequence (getSequence): %v", actualSequence)
+	require.NoError(t, err)
+}
+
+// multiNodeUpdate obtains an initial sequence from an import allocator (import node), then performs repeated updates to the doc using random pool of iterators (random SG node).
+// Performs sequenceGreaterThan, then ensures that allocator doesn't release more than the sequence batch size
+func multiNodeUpdate(t *testing.T, ctx context.Context, importAllocator *sequenceAllocator, clientAllocators []*sequenceAllocator, updateCount int, interval time.Duration) (releasedCount uint64) {
+	currentSequence, _ := importAllocator.nextSequence(ctx)
+
+	for i := 0; i < updateCount; i++ {
+		allocatorIndex := rand.Intn(len(clientAllocators))
+		clientAllocator := clientAllocators[allocatorIndex]
+		nextSequence, err := clientAllocator.nextSequence(ctx)
+		require.NoError(t, err, "nextSequence error: %v", err)
+		if nextSequence < currentSequence {
+			prevNext := nextSequence
+			var numReleased uint64
+			nextSequence, numReleased, err = clientAllocator.nextSequenceGreaterThan(ctx, currentSequence)
+			require.NoError(t, err, "nextSequenceGreaterThan error: %v", err)
+			log.Printf("allocator %d released %d sequences because next < current (%d < %d)", numReleased, allocatorIndex, prevNext, currentSequence)
+			// At most clientAllocator should only need to release the current batch
+			assert.LessOrEqual(t, numReleased, getClientSequenceBatchSize(clientAllocator))
+			releasedCount += numReleased
+		}
+		currentSequence = nextSequence
+		time.Sleep(interval)
+	}
+
+	return releasedCount
+}
+
+func runAllocator(ctx context.Context, a *sequenceAllocator, frequency time.Duration) (allocationCount uint64) {
+
+	allocationCount = 0
+	ticker := time.NewTicker(frequency)
+	for {
+		select {
+		case <-ticker.C:
+			_, _ = a.nextSequence(ctx)
+			allocationCount++
+		case <-ctx.Done():
+			ticker.Stop()
+			log.Printf("allocator count: %v", allocationCount)
+			return allocationCount
+		}
+	}
+}
+
+func getClientSequenceBatchSize(allocator *sequenceAllocator) uint64 {
+	allocator.mutex.Lock()
+	defer allocator.mutex.Unlock()
+	return allocator.sequenceBatchSize
 }
