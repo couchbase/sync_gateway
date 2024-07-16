@@ -39,6 +39,9 @@ func TestBadCORSValuesConfig(t *testing.T) {
 
 // TestAuditLoggingGlobals modifies all the global loggers
 func TestAuditLoggingGlobals(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test can panic with gocb logging CBG-4076")
+	}
 	globalFields := map[string]any{
 		"global":  "field",
 		"global2": "field2",
