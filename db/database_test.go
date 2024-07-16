@@ -995,7 +995,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
 	require.NoError(t, err)
 	userInfo.ExplicitChannels = base.SetOf("ABC")
-	_, err = db.UpdatePrincipal(ctx, userInfo, true, true)
+	_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
 	nextSeq, err := db.sequences.nextSequence(ctx)
@@ -1006,7 +1006,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	userInfo, err = db.GetPrincipalForTest(t, "naomi", true)
 	require.NoError(t, err)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
-	_, err = db.UpdatePrincipal(ctx, userInfo, true, true)
+	_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
 	nextSeq, err = db.sequences.nextSequence(ctx)

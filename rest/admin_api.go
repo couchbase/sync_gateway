@@ -1564,22 +1564,25 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	}
 
 	newInfo.Name = &internalName
-	replaced, err := h.db.UpdatePrincipal(h.ctx(), &newInfo, isUser, h.rq.Method != "POST")
+	replaced, princ, err := h.db.UpdatePrincipal(h.ctx(), &newInfo, isUser, h.rq.Method != "POST")
 	if err != nil {
 		return err
 	} else if replaced {
 		// update event
 		if isUser {
-			base.Audit(h.ctx(), base.AuditIDUserUpdate, base.AuditFields{
-				"username": internalName,
-				"roles":    newInfo.ExplicitRoleNames.ToArray(),
-				"channels": getAuditEventAccess(h.db, isUser, newInfo),
-				"db":       h.db.Name,
-			})
+			user := princ.(auth.User)
+			if user != nil {
+				base.Audit(h.ctx(), base.AuditIDUserUpdate, base.AuditFields{
+					"username": internalName,
+					"roles":    user.ExplicitRoles().AsSet().ToArray(),
+					"channels": getAuditEventAccess(h.db, princ),
+					"db":       h.db.Name,
+				})
+			}
 		} else {
 			base.Audit(h.ctx(), base.AuditIDRoleUpdate, base.AuditFields{
 				"role":           internalName,
-				"admin_channels": getAuditEventAccess(h.db, isUser, newInfo),
+				"admin_channels": getAuditEventAccess(h.db, princ),
 				"db":             h.db.Name,
 			})
 		}
@@ -1587,16 +1590,19 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	} else {
 		// create event
 		if isUser {
-			base.Audit(h.ctx(), base.AuditIDUserCreate, base.AuditFields{
-				"username": internalName,
-				"roles":    newInfo.ExplicitRoleNames.ToArray(),
-				"channels": getAuditEventAccess(h.db, isUser, newInfo),
-				"db":       h.db.Name,
-			})
+			user := princ.(auth.User)
+			if user != nil {
+				base.Audit(h.ctx(), base.AuditIDUserCreate, base.AuditFields{
+					"username": internalName,
+					"roles":    user.ExplicitRoles().AsSet().ToArray(),
+					"channels": getAuditEventAccess(h.db, princ),
+					"db":       h.db.Name,
+				})
+			}
 		} else {
 			base.Audit(h.ctx(), base.AuditIDRoleCreate, base.AuditFields{
 				"role":           internalName,
-				"admin_channels": getAuditEventAccess(h.db, isUser, newInfo),
+				"admin_channels": getAuditEventAccess(h.db, princ),
 				"db":             h.db.Name,
 			})
 		}
@@ -1605,14 +1611,20 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	return nil
 }
 
-func getAuditEventAccess(db *db.Database, isUser bool, cnf auth.PrincipalConfig) map[string]map[string][]string {
+func getAuditEventAccess(db *db.Database, princ auth.Principal) map[string]map[string][]string {
 	auditEventAccess := make(map[string]map[string][]string)
 	collectionAccess := make(map[string][]string)
 	if db.OnlyDefaultCollection() {
-		collectionAccess[base.DefaultCollection] = cnf.ExplicitChannels.ToArray()
+		collectionAccess[base.DefaultCollection] = princ.ExplicitChannels().AsSet().ToArray()
 		auditEventAccess[base.DefaultScope] = collectionAccess
 	} else {
-		auditEventAccess = auth.GetExplicitCollectionChannelsForAuditEvent(cnf.CollectionAccess)
+		auditEventAccess = auth.GetExplicitCollectionChannelsForAuditEvent(princ.GetCollectionsAccess())
+		// we support specifying both collection access and legacy way for default collection, if there are some channels
+		// specified for default collection in legacy way, add them here
+		defaultChannels := princ.ExplicitChannels().AsSet().ToArray()
+		if len(auditEventAccess[base.DefaultScope][base.DefaultCollection]) == 0 {
+			auditEventAccess[base.DefaultScope][base.DefaultCollection] = defaultChannels
+		}
 	}
 	return auditEventAccess
 }

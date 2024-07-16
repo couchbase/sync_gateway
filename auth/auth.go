@@ -968,12 +968,12 @@ func (a *Authenticator) DocIDForSession(sessionID string) string {
 	return a.MetaKeys.SessionKey(sessionID)
 }
 
-func GetExplicitCollectionChannelsForAuditEvent(collAccess map[string]map[string]*CollectionAccessConfig) map[string]map[string][]string {
+func GetExplicitCollectionChannelsForAuditEvent(collAccess map[string]map[string]*CollectionAccess) map[string]map[string][]string {
 	channelAccess := make(map[string]map[string][]string)
 	for scopeName, scope := range collAccess {
 		explicitChans := make(map[string][]string)
 		for collectionName, collection := range scope {
-			explicitChans[collectionName] = collection.ExplicitChannels_.ToArray()
+			explicitChans[collectionName] = collection.ExplicitChannels().AsSet().ToArray()
 		}
 		channelAccess[scopeName] = explicitChans
 	}

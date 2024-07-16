@@ -449,7 +449,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	if h.user != nil && h.user.JWTIssuer() != "" {
 		updates := checkJWTIssuerStillValid(h.ctx(), dbContext, h.user)
 		if updates != nil {
-			_, err := dbContext.UpdatePrincipal(h.ctx(), updates, true, true)
+			_, _, err := dbContext.UpdatePrincipal(h.ctx(), updates, true, true)
 			if err != nil {
 				return fmt.Errorf("failed to revoke stale OIDC roles/channels: %w", err)
 			}
@@ -774,7 +774,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 			if changes := checkJWTIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
 				updates = updates.Merge(*changes)
 			}
-			_, err := dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
+			_, _, err := dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
 			if err != nil {
 				return fmt.Errorf("failed to update OIDC user after sign-in: %w", err)
 			}
