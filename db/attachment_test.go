@@ -395,7 +395,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 func TestForEachStubAttachmentErrors(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	var body Body
 	callbackCount := 0

@@ -683,7 +683,7 @@ func TestImportNonZeroStart(t *testing.T) {
 		return db.DbStats.Database().DCPReceivedCount.Value()
 	}, 1)
 
-	doc, err := collection.GetDocument(base.TestCtx(t), doc1, DocUnmarshalAll)
+	doc, err := collection.GetDocument(ctx, doc1, DocUnmarshalAll)
 	require.NoError(t, err)
 	require.Equal(t, revID1, doc.SyncData.CurrentRev)
 }

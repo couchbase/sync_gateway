@@ -1208,7 +1208,7 @@ func TestChannelRace(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	ctx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
+	ctx, changesCtxCancel := context.WithCancel(ctx)
 	options.ChangesCtx = ctx
 	options.Continuous = true
 	options.Wait = true

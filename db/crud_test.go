@@ -1547,7 +1547,7 @@ func TestMergeAttachments(t *testing.T) {
 func TestGetChannelsAndAccess(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	require.Nil(t, collection.ChannelMapper)
 
 	doc := &Document{
