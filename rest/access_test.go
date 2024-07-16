@@ -328,7 +328,7 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"channels": ["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	collection := rt.GetSingleTestDatabaseCollectionWithUser()
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser(ctx)
 	userHasDocAccess, err := db.UserHasDocAccess(ctx, collection, "doc")
 	assert.NoError(t, err)
 	assert.True(t, userHasDocAccess)
@@ -950,10 +950,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
 	// we do it now because we can't close and re-open an ephemeral Walrus database.
-	dbc := rt.ServerContext().Database(ctx, "db")
-	database, _ := db.GetDatabase(dbc, nil)
-
-	collectionWithUser := db.GetSingleDatabaseCollectionWithUser(t, database)
+	collectionWithUser, ctx := rt.GetSingleTestDatabaseCollectionWithUser(rt.Context())
 
 	changed, err := collection.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)

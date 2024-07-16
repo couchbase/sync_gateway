@@ -227,13 +227,13 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	require.NoError(t, err, "Error creating new user")
 	require.NoError(t, authenticator.Save(user))
 
-	dbCollection := GetSingleDatabaseCollectionWithUser(t, db)
+	dbCollection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Start continuous changes feed
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
-	options.ChangesCtx = changesCtx
+	ctx, changesCtxCancel := context.WithCancel(ctx)
+	options.ChangesCtx = ctx
 	defer changesCtxCancel()
 	options.Continuous = true
 	options.Wait = true
@@ -370,10 +370,10 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 			options.Wait = true
 			channelName := fmt.Sprintf("chan_%d", i)
 			perRequestDb, err := CreateDatabase(db.DatabaseContext)
-			dbCollection := GetSingleDatabaseCollectionWithUser(t, perRequestDb)
+			dbCollection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, perRequestDb)
 			assert.NoError(t, err)
-			perRequestCtx := base.CorrelationIDLogCtx(ctx, fmt.Sprintf("context_%s", channelName))
-			feed, err := dbCollection.MultiChangesFeed(perRequestCtx, base.SetOf(channelName), options)
+			ctx = base.CorrelationIDLogCtx(ctx, fmt.Sprintf("context_%s", channelName))
+			feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf(channelName), options)
 			require.NoError(t, err, "Feed initialization error")
 
 			// Process feed until closed by terminator in main goroutine
@@ -458,7 +458,7 @@ func WriteDirect(t *testing.T, db *Database, channelArray []string, sequence uin
 
 func WriteUserDirect(t *testing.T, db *Database, username string, sequence uint64) {
 	docId := db.MetadataKeys.UserKey(username)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, _ := GetSingleDatabaseCollectionWithUser(base.TestCtx(t), t, db)
 	_, _ = collection.dataStore.Add(docId, 0, Body{"sequence": sequence, "name": username})
 }
 
@@ -478,9 +478,10 @@ func WriteDirectWithKey(t *testing.T, db *Database, key string, channelArray []s
 		TimeSaved:  time.Now(),
 	}
 	body := fmt.Sprintf(`{"key": "%s"}`, key)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	ctx := base.TestCtx(t)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	if base.TestUseXattrs() {
-		_, err := collection.dataStore.WriteWithXattrs(base.TestCtx(t), key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil, nil)
+		_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil, nil)
 		require.NoError(t, err)
 	} else {
 		_, err := collection.dataStore.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
@@ -515,7 +516,10 @@ func WriteDirectWithChannelGrant(t *testing.T, db *Database, channelArray []stri
 		Channels:   chanMap,
 		Access:     accessMap,
 	}
-	_, _ = GetSingleDatabaseCollectionWithUser(t, db).dataStore.Add(docId, 0, Body{base.SyncPropertyName: syncData, "key": docId})
+	ctx := base.TestCtx(t)
+	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	_, err := collection.dataStore.Add(docId, 0, Body{base.SyncPropertyName: syncData, "key": docId})
+	require.NoError(t, err)
 }
 
 // Test notification when buffered entries are processed after a user doc arrives.
@@ -530,7 +534,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collectionID := collection.GetCollectionID()
 
 	// Simulate seq 1 (user doc) being delayed - write 2 first
@@ -572,7 +576,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC", "PBS", "NBC", "TBS"))
@@ -665,13 +669,13 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	// Start changes feed
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
-	options.ChangesCtx = changesCtx
+	ctx, changesCtxCancel := context.WithCancel(ctx)
+	options.ChangesCtx = ctx
 	options.Continuous = true
 	options.Wait = true
 	defer changesCtxCancel()
 
-	dbCollection := GetSingleDatabaseCollectionWithUser(t, db)
+	dbCollection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
@@ -762,7 +766,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	WriteDirect(t, db, []string{"ABC", "PBS"}, 5)
 	WriteDirect(t, db, []string{"ABC", "PBS"}, 6)
 
-	dbCollection := GetSingleDatabaseCollectionWithUser(t, db)
+	dbCollection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	require.NoError(t, dbCollection.changeCache().waitForSequence(ctx, 6, base.DefaultWaitForSequence))
 	dbCollection.user, _ = authenticator.GetUser("naomi")
 
@@ -782,7 +786,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	assert.True(t, err == nil)
 	require.Len(t, changes, 4)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collectionID := collection.GetCollectionID()
 
 	require.Equal(t, &ChangeEntry{
@@ -838,11 +842,11 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
-	options.ChangesCtx = changesCtx
+	ctx, changesCtxCancel := context.WithCancel(ctx)
+	options.ChangesCtx = ctx
 	options.Continuous = true
 	options.Wait = true
-	dbCollection := GetSingleDatabaseCollectionWithUser(t, db)
+	dbCollection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
@@ -863,17 +867,18 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 // user gets added to a new channel with existing entries (and existing backfill)
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
-	if base.TestsUseNamedCollections() {
-		t.Skip("Disabled for non-default collection based on use of GetPrincipalForTest")
-	}
-
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyQuery)
 
-	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
+	cacheOptions := shortWaitCache()
+	dbcOptions := DatabaseContextOptions{
+		CacheOptions: &cacheOptions, // use default collection based on use of GetPrincipalForTest
+		Scopes:       GetScopesOptionsDefaultCollectionOnly(t),
+	}
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
 	defer db.Close(ctx)
 
 	// Create a user with access to channel ABC
@@ -892,13 +897,14 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	// Start changes feed
 
+	dbCollection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
-	options.ChangesCtx = changesCtx
+	ctx, changesCtxCancel := context.WithCancel(ctx)
+	options.ChangesCtx = ctx
 	options.Continuous = true
 	options.Wait = true
-	dbCollection := GetSingleDatabaseCollectionWithUser(t, db)
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	require.NoError(t, err)
 
@@ -993,7 +999,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 
 	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Write a handful of docs/sequences to the bucket
@@ -1107,14 +1113,14 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 
 	// Start changes feed
 
+	dbCollection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
-	options.ChangesCtx = changesCtx
+	ctx, changesCtxCancel := context.WithCancel(ctx)
+	options.ChangesCtx = ctx
 	defer changesCtxCancel()
 	options.Continuous = true
 	options.Wait = true
-	dbCollection := GetSingleDatabaseCollectionWithUser(t, db)
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
@@ -1198,14 +1204,14 @@ func TestChannelRace(t *testing.T) {
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
+	dbCollection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
-	options.ChangesCtx = changesCtx
+	ctx, changesCtxCancel := context.WithCancel(ctx)
+	options.ChangesCtx = ctx
 	options.Continuous = true
 	options.Wait = true
-	dbCollection := GetSingleDatabaseCollectionWithUser(t, db)
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("Even", "Odd"), options)
 	assert.True(t, err == nil)
 	feedClosed := false
@@ -1311,11 +1317,10 @@ func TestChannelCacheSize(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, options)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
-
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
 	// Write 750 docs to channel ABC
@@ -1325,7 +1330,9 @@ func TestChannelCacheSize(t *testing.T) {
 
 	// Validate that retrieval returns expected sequences
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 750, base.DefaultWaitForSequence))
-	collection.user, _ = authenticator.GetUser("naomi")
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection.user, err = authenticator.GetUser("naomi")
+	require.NoError(t, err)
 	changes, err := collection.GetChanges(ctx, base.SetOf("ABC"), getChangesOptionsWithZeroSeq(t))
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Len(t, changes, 750)
@@ -1586,7 +1593,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
@@ -1638,7 +1645,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Writes [docCount] documents.  Use wait group (writesDone)to identify when all docs have been written.
@@ -1694,7 +1701,7 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 	collectionID := collection.GetCollectionID()
 

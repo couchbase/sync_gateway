@@ -519,10 +519,11 @@ func (rt *RestTester) GetSingleTestDatabaseCollection() *db.DatabaseCollection {
 }
 
 // GetSingleTestDatabaseCollectionWithUser will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
-func (rt *RestTester) GetSingleTestDatabaseCollectionWithUser() *db.DatabaseCollectionWithUser {
-	return &db.DatabaseCollectionWithUser{
+func (rt *RestTester) GetSingleTestDatabaseCollectionWithUser(ctx context.Context) (*db.DatabaseCollectionWithUser, context.Context) {
+	c := &db.DatabaseCollectionWithUser{
 		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),
 	}
+	return c, c.AddCollectionContext(ctx)
 }
 
 // GetSingleDataStore will return a datastore if there is only one collection configured on the RestTester database.

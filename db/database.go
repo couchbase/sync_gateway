@@ -495,7 +495,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			// intentional shadow - we want each collection to have its own context inside this loop body
 			ctx := ctx
 			if !base.IsDefaultCollection(scopeName, collName) {
-				ctx = base.CollectionLogCtx(ctx, collName)
+				ctx = base.CollectionLogCtx(ctx, scopeName, collName)
 			}
 			dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 			if err != nil {
@@ -1462,8 +1462,8 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 
 	purgeBody := Body{"_purged": true}
 	for _, c := range db.CollectionByID {
-		// shadow ctx, sot that we can't misuse the parent's inside the loop
-		ctx := base.CollectionLogCtx(ctx, c.Name)
+		// shadow ctx, so that we can't misuse the parent's inside the loop
+		ctx := c.AddCollectionContext(ctx)
 
 		// create admin collection interface
 		collection, err := db.GetDatabaseCollectionWithUser(c.ScopeName, c.Name)

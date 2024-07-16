@@ -49,8 +49,8 @@ func (apr *ActivePushReplicator) Start(ctx context.Context) error {
 	}
 
 	apr.setState(ReplicationStateStarting)
-	// intentionally reset the context from having db information on it?
-	logCtx := base.LogContextWith(ctx, &base.LogContext{CorrelationID: apr.config.ID + "-" + string(ActiveReplicatorTypePush)})
+	logCtx := base.CorrelationIDLogCtx(ctx,
+		apr.config.ID+"-"+string(ActiveReplicatorTypePush))
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
 
 	err := apr._connect()

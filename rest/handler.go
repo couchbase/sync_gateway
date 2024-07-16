@@ -214,9 +214,9 @@ func (h *handler) addDatabaseLogContext(dbName string, logConfig *base.DbLogConf
 	}
 }
 
-func (h *handler) addCollectionLogContext(collectionName string) {
-	if collectionName != "" {
-		h.rqCtx = base.CollectionLogCtx(h.ctx(), collectionName)
+func (h *handler) addCollectionLogContext(scopeName, collectionName string) {
+	if scopeName != "" && collectionName != "" {
+		h.rqCtx = base.CollectionLogCtx(h.ctx(), scopeName, collectionName)
 	}
 }
 
@@ -337,14 +337,22 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	// If there is a "keyspace" path variable in the route, parse the keyspace:
 	ks := h.PathVar("keyspace")
+	explicitCollectionLogging := false
 	if ks != "" {
 		var err error
 		keyspaceDb, keyspaceScope, keyspaceCollection, err = ParseKeyspace(ks)
 		if err != nil {
 			return err
 		}
+		// If the collection is known, add it to the context before getting the db. If we do not know it, or don't know scope, we'll add this information later.
 		if keyspaceCollection != nil {
-			h.addCollectionLogContext(*keyspaceCollection)
+			explicitCollectionLogging = true
+			// /db.collectionName/foo is valid since Sync Gateway only has one scope
+			scope := ""
+			if keyspaceScope != nil {
+				scope = *keyspaceScope
+			}
+			h.addCollectionLogContext(scope, *keyspaceCollection)
 		}
 	}
 
@@ -571,6 +579,17 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			// Set these for handlers that expect a scope/collection to be set, even if not using named collections.
 			keyspaceScope = base.StringPtr(base.DefaultScope)
 			keyspaceCollection = base.StringPtr(base.DefaultCollection)
+		}
+		// explicitCollectionLogging is true if the collection was explicitly set in the keyspace string. When it is used, the log context will add a col:collection in log lines. If it is implicit, in the case of /db/doc, col: is omitted from the log information, but retained for audit logging purposes.
+		if explicitCollectionLogging {
+			// matches the following:
+			//  - /db.scopeName.collectionName/doc
+			//  - /db.collectionName/doc
+			//  - /db._default/doc
+			//  - /db._default._default/doc
+			h.addCollectionLogContext(*keyspaceScope, *keyspaceCollection)
+		} else {
+			h.rqCtx = base.ImplicitDefaultCollectionLogCtx(h.ctx())
 		}
 	}
 

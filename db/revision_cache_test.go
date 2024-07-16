@@ -193,7 +193,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Invalid _revisions property will be stripped.  Should also not be present in the rev cache.
 	rev1body := Body{
@@ -244,7 +244,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	backingStoreMap := CreateTestSingleBackingStoreMap(collection, testCollectionID)
 
 	docBody := Body{
@@ -307,7 +307,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	rev1body := Body{
 		"value":         1234,
@@ -350,7 +350,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	docKey := "doc1"
 	rev1body := Body{
@@ -466,7 +466,7 @@ func TestConcurrentLoad(t *testing.T) {
 func TestRevisionCacheRemove(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	rev1id, _, err := collection.Put(ctx, "doc", Body{"val": 123})
 	assert.NoError(t, err)
@@ -528,6 +528,7 @@ func TestRevCacheHitMultiCollection(t *testing.T) {
 
 	// add a doc to each collection on the db with the same document id (testing the cache still gets unique keys)
 	for i, collection := range collectionList {
+		ctx := collection.AddCollectionContext(ctx)
 		docRevID, _, err := collection.Put(ctx, "doc", Body{"test": fmt.Sprintf("doc%d", i)})
 		require.NoError(t, err)
 		revList = append(revList, docRevID)
@@ -535,6 +536,7 @@ func TestRevCacheHitMultiCollection(t *testing.T) {
 
 	// Perform a get for the doc in each collection
 	for i, collection := range collectionList {
+		ctx := collection.AddCollectionContext(ctx)
 		docRev, err := collection.GetRev(ctx, "doc", revList[i], false, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "doc", docRev.DocID)
@@ -580,6 +582,7 @@ func TestRevCacheHitMultiCollectionLoadFromBucket(t *testing.T) {
 
 	// add a doc to each collection on the db with the same document id (testing the cache still gets unique keys)
 	for i, collection := range collectionList {
+		ctx := collection.AddCollectionContext(ctx)
 		docRevID, _, err := collection.Put(ctx, fmt.Sprintf("doc%d", i), Body{"test": fmt.Sprintf("doc%d", i)})
 		require.NoError(t, err)
 		revList = append(revList, docRevID)
@@ -587,13 +590,15 @@ func TestRevCacheHitMultiCollectionLoadFromBucket(t *testing.T) {
 
 	// at this point the second doc added should be the only doc in the cache, the first one being evicted
 	// perform a get on the first doc to trigger load from bucket and assert its correct document
-	docRev, err := collectionList[0].GetRev(ctx, "doc0", revList[0], false, nil)
+	collection0Ctx := collectionList[0].AddCollectionContext(ctx)
+	docRev, err := collectionList[0].GetRev(collection0Ctx, "doc0", revList[0], false, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "doc0", docRev.DocID)
 	assert.Equal(t, revList[0], docRev.RevID)
 
 	// now do the same with doc1 and assert it is correctly loaded
-	docRev, err = collectionList[1].GetRev(ctx, "doc1", revList[1], false, nil)
+	collection1Ctx := collectionList[1].AddCollectionContext(ctx)
+	docRev, err = collectionList[1].GetRev(collection1Ctx, "doc1", revList[1], false, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "doc1", docRev.DocID)
 	assert.Equal(t, revList[1], docRev.RevID)

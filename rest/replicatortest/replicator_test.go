@@ -3861,7 +3861,6 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	// Active
 	rt1 := rest.NewRestTester(t, nil)
 	defer rt1.Close()
-	ctx1 := rt1.Context()
 
 	docID := t.Name() + "rt1doc1"
 	version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
@@ -3884,6 +3883,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
+	ctx1 := rt1.Context()
 	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
@@ -3915,8 +3915,9 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	}
 	assert.True(t, replicationStopped, "One-shot replication status should go to stopped on completion")
 
-	doc, err := rt2.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
+	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollectionWithUser(rt2.Context())
+	doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
+	require.NoError(t, err)
 
 	requireDocumentVersion(t, version, doc)
 
@@ -4830,7 +4831,8 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err = rt1.GetSingleTestDatabaseCollectionWithUser().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+	rt1collection, ctx := rt1.GetSingleTestDatabaseCollectionWithUser(rt1.Context())
+	doc, err = rt1collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
 	body, err = doc.GetDeepMutableBody()
@@ -5159,7 +5161,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	err = rt2.GetSingleDataStore().Set(checkpointDocID, 0, nil, firstCheckpoint)
 	assert.NoError(t, err)
 
-	rt2collection := rt2.GetSingleTestDatabaseCollectionWithUser()
+	rt2collection, ctx2 := rt2.GetSingleTestDatabaseCollectionWithUser(ctx2)
 	err = rt2collection.Purge(ctx2, docID+"2")
 	assert.NoError(t, err)
 
@@ -6425,8 +6427,9 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 					// resurrect doc via SDK on local
 					err = localActiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
+					collection := localActiveRT.GetSingleTestDatabaseCollection()
 					// force on-demand import
-					_, getErr := localActiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+					_, getErr := collection.GetDocument(collection.AddCollectionContext(localActiveRT.Context()), "docid2", db.DocUnmarshalSync)
 					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
 					resp = localActiveRT.SendAdminRequest("PUT", "/{{.keyspace}}/docid2", `{"resurrection": true}`)
@@ -6438,7 +6441,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 					err = remotePassiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
-					_, getErr := remotePassiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), doc2ID, db.DocUnmarshalSync)
+					collection := remotePassiveRT.GetSingleTestDatabaseCollection()
+					_, getErr := collection.GetDocument(collection.AddCollectionContext(remotePassiveRT.Context()), doc2ID, db.DocUnmarshalSync)
 					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
 					resp = remotePassiveRT.SendAdminRequest("PUT", "/{{.keyspace}}/docid2", `{"resurrection": true}`)
@@ -7826,7 +7830,8 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	// interval during the running of the test
 	defer reduceTestCheckpointInterval(9999 * time.Hour)()
 
-	rev, doc, err := activeRT.GetSingleTestDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
+	collection, ctx := activeRT.GetSingleTestDatabaseCollectionWithUser(activeCtx)
+	rev, doc, err := collection.Put(ctx, "test", db.Body{})
 	require.NoError(t, err)
 	seq := strconv.FormatUint(doc.Sequence, 10)
 

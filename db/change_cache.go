@@ -374,7 +374,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		return
 	}
 
-	ctx = base.CollectionLogCtx(ctx, collection.Name)
+	ctx = collection.AddCollectionContext(ctx)
 
 	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
 	if event.Opcode == sgbucket.FeedOpDeletion && len(docJSON) == 0 {

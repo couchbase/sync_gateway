@@ -1832,7 +1832,6 @@ func TestGetRemovedDoc(t *testing.T) {
 func TestMissingNoRev(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
-	ctx := rt.Context()
 
 	bt, err := NewBlipTesterFromSpecWithRT(t, nil, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
@@ -1856,7 +1855,8 @@ func TestMissingNoRev(t *testing.T) {
 
 	// Purge one doc
 	doc0Id := fmt.Sprintf("doc-%d", 0)
-	err = rt.GetSingleTestDatabaseCollectionWithUser().Purge(ctx, doc0Id)
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser(rt.Context())
+	err = collection.Purge(ctx, doc0Id)
 	assert.NoError(t, err, "failed")
 
 	// Flush rev cache

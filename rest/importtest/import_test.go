@@ -179,9 +179,8 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	docID := t.Name()
 	version := rt.PutDoc(docID, `{"val":-1}`)
 	revID := version.RevID
-	collection := rt.GetSingleTestDatabaseCollectionWithUser()
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser(rt.Context())
 
-	ctx := rt.Context()
 	for i := 0; i < 10; i++ {
 		version = rt.UpdateDoc(docID, version, fmt.Sprintf(`{"val":%d}`, i))
 		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals

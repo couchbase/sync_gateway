@@ -34,7 +34,7 @@ func TestFeedImport(t *testing.T) {
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	key := t.Name()
 	bodyBytes := []byte(`{"foo":"bar"}`)
@@ -95,7 +95,7 @@ func TestOnDemandImportMou(t *testing.T) {
 		body := Body{}
 		err := body.Unmarshal(bodyBytes)
 		assert.NoError(t, err, "Error unmarshalling body")
-		collection := GetSingleDatabaseCollectionWithUser(t, db)
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 		writeCas, err := collection.dataStore.WriteCas(getKey, 0, 0, bodyBytes, 0)
 		require.NoError(t, err)
 
@@ -120,7 +120,7 @@ func TestOnDemandImportMou(t *testing.T) {
 		body := Body{}
 		err := body.Unmarshal(bodyBytes)
 		assert.NoError(t, err, "Error unmarshalling body")
-		collection := GetSingleDatabaseCollectionWithUser(t, db)
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 		writeCas, err := collection.dataStore.WriteCas(writeKey, 0, 0, bodyBytes, 0)
 		require.NoError(t, err)
 
@@ -169,7 +169,7 @@ func TestMigrateMetadata(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	key := "TestMigrateMetadata"
 	bodyBytes := rawDocWithSyncMeta()
@@ -241,7 +241,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	type testcase struct {
 		docBody            []byte
@@ -369,7 +369,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 				}
 			}`
 
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 			cas, _ := collection.dataStore.Get(key, &body)
 			_, err := collection.dataStore.WriteCas(key, 0, cas, []byte(valStr), sgbucket.Raw)
 			assert.NoError(t, err)
@@ -409,7 +409,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 				"time_saved": "2017-11-29T12:46:13.456631-08:00"
 			}`
 
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 			_, _, cas, _ := collection.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
 			_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, cas, []byte(valStr), map[string][]byte{base.SyncXattrName: []byte(xattrStr)}, nil, DefaultMutateInOpts())
@@ -433,7 +433,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{WriteWithXattrCallback: testcase.callback})
 			defer db.Close(ctx)
 
-			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 			bodyBytes := rawDocWithSyncMeta()
 			body := Body{}
@@ -520,7 +520,7 @@ func TestImportNullDoc(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	key := "TestImportNullDoc"
 	var body Body
 	rawNull := []byte("null")
@@ -538,7 +538,7 @@ func TestImportNullDocRaw(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Feed import of null doc
 	exp := uint32(0)
@@ -628,7 +628,7 @@ func TestImportStampClusterUUID(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	key := "doc1"
 	bodyBytes := rawDocNoMeta()
@@ -674,7 +674,7 @@ func TestImportNonZeroStart(t *testing.T) {
 	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	base.RequireWaitForStat(t, func() int64 {
 		return collection.collectionStats.ImportCount.Value()
 	}, 1)
@@ -683,7 +683,7 @@ func TestImportNonZeroStart(t *testing.T) {
 		return db.DbStats.Database().DCPReceivedCount.Value()
 	}, 1)
 
-	doc, err := collection.GetDocument(base.TestCtx(t), doc1, DocUnmarshalAll)
+	doc, err := collection.GetDocument(ctx, doc1, DocUnmarshalAll)
 	require.NoError(t, err)
 	require.Equal(t, revID1, doc.SyncData.CurrentRev)
 }
@@ -843,7 +843,7 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 		t.Skip("Test requires multi-xattr subdoc operations, CBS 7.6 or higher")
 	}
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	bodyBytes := []byte(`{"foo":"bar"}`)
 	body := Body{}
@@ -898,7 +898,7 @@ func TestImportResurrectionMou(t *testing.T) {
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	docID := "mouResurrection"
 
@@ -955,7 +955,7 @@ func TestImportConflictWithTombstone(t *testing.T) {
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
 
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	docID := t.Name()
 
