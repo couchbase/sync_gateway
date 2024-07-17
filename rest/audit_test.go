@@ -37,6 +37,7 @@ func TestAuditLoggingFields(t *testing.T) {
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
+		GuestEnabled:                 true,
 		AdminInterfaceAuthentication: true,
 		PersistentConfig:             true,
 		MutateStartupConfig: func(config *StartupConfig) {
@@ -79,16 +80,31 @@ func TestAuditLoggingFields(t *testing.T) {
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{},
 		},
 		{
-			name: "guest request",
+			name: "public request",
 			auditableAction: func(t testing.TB) {
-				RequireStatus(t, rt.SendRequest(http.MethodGet, "/db/_session", ""), http.StatusOK)
+				RequireStatus(t, rt.SendRequest(http.MethodGet, "/", ""), http.StatusOK)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDPublicUserAuthenticated: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
 					base.AuditFieldAuthMethod:    "guest",
 				},
-				// TODO: GUEST view session event?
+			},
+		},
+		{
+			name: "guest request",
+			auditableAction: func(t testing.TB) {
+				RequireStatus(t, rt.SendRequest(http.MethodGet, "/db/", ""), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDPublicUserAuthenticated: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldAuthMethod:    "guest",
+				},
+				base.AuditIDReadDatabase: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": base.GuestUsername},
+				},
 			},
 		},
 		{

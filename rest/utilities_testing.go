@@ -2662,7 +2662,27 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 		config.ImportFilter = stringPtrOrNil(rt.ImportFilter)
 	}
 
+	if rt.GuestEnabled {
+		config.Guest = &auth.PrincipalConfig{
+			Name:     stringPtrOrNil(base.GuestUsername),
+			Disabled: base.BoolPtr(false),
+		}
+		setChannelsAllCollections(config, config.Guest, "*")
+	}
+
 	return config
+}
+
+func setChannelsAllCollections(dbConfig DbConfig, principal *auth.PrincipalConfig, channels ...string) {
+	if dbConfig.Scopes == nil {
+		principal.ExplicitChannels = base.SetOf(channels...)
+		return
+	}
+	for scope, scopeConfig := range dbConfig.Scopes {
+		for collection := range scopeConfig.Collections {
+			principal.SetExplicitChannels(scope, collection, "*")
+		}
+	}
 }
 
 // stringPtrOrNil returns a stringPtr for the given string, or nil if the string is empty
