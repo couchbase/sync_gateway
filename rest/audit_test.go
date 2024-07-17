@@ -84,12 +84,7 @@ func TestAuditLoggingFields(t *testing.T) {
 			auditableAction: func(t testing.TB) {
 				RequireStatus(t, rt.SendRequest(http.MethodGet, "/", ""), http.StatusOK)
 			},
-			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
-				base.AuditIDPublicUserAuthenticated: {
-					base.AuditFieldCorrelationID: auditFieldValueIgnored,
-					base.AuditFieldAuthMethod:    "guest",
-				},
-			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{},
 		},
 		{
 			name: "guest request",
