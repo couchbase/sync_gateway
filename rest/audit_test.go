@@ -38,7 +38,7 @@ func TestAuditLoggingFields(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled:                 true,
-		AdminInterfaceAuthentication: true,
+		AdminInterfaceAuthentication: !base.UnitTestUrlIsWalrus(), // disable admin auth for walrus so we can get coverage of both subtests
 		PersistentConfig:             true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Unsupported.AuditInfoProvider = &AuditInfoProviderConfig{
@@ -163,6 +163,9 @@ func TestAuditLoggingFields(t *testing.T) {
 		{
 			name: "anon admin request",
 			auditableAction: func(t testing.TB) {
+				if rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth to be disabled")
+				}
 				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/db/", ""), http.StatusOK)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
@@ -178,9 +181,8 @@ func TestAuditLoggingFields(t *testing.T) {
 		{
 			name: "authed admin request",
 			auditableAction: func(t testing.TB) {
-				if base.UnitTestUrlIsWalrus() {
-					// Skip this subtest if running with walrus - it has no support for admin auth
-					t.Skip("Skipping test that requires admin auth - Walrus not supported")
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth")
 				}
 				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", base.TestClusterUsername(), base.TestClusterPassword()), http.StatusOK)
 			},
