@@ -1574,7 +1574,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 			if user != nil {
 				base.Audit(h.ctx(), base.AuditIDUserUpdate, base.AuditFields{
 					"username": internalName,
-					"roles":    user.ExplicitRoles().AsSet().ToArray(),
+					"roles":    user.ExplicitRoles().AllKeys(),
 					"channels": getAuditEventAccess(h.db, princ),
 					"db":       h.db.Name,
 				})
@@ -1594,7 +1594,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 			if user != nil {
 				base.Audit(h.ctx(), base.AuditIDUserCreate, base.AuditFields{
 					"username": internalName,
-					"roles":    user.ExplicitRoles().AsSet().ToArray(),
+					"roles":    user.ExplicitRoles().AllKeys(),
 					"channels": getAuditEventAccess(h.db, princ),
 					"db":       h.db.Name,
 				})
@@ -1613,16 +1613,16 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 
 func getAuditEventAccess(db *db.Database, princ auth.Principal) map[string]map[string][]string {
 	auditEventAccess := make(map[string]map[string][]string)
-	collectionAccess := make(map[string][]string)
 	if db.OnlyDefaultCollection() {
-		collectionAccess[base.DefaultCollection] = princ.ExplicitChannels().AsSet().ToArray()
+		collectionAccess := make(map[string][]string)
+		collectionAccess[base.DefaultCollection] = princ.ExplicitChannels().AllKeys()
 		auditEventAccess[base.DefaultScope] = collectionAccess
 	} else {
 		auditEventAccess = auth.GetExplicitCollectionChannelsForAuditEvent(princ.GetCollectionsAccess())
 		// we support specifying both collection access and legacy way for default collection, if there are some channels
 		// specified for default collection in legacy way, add them here
-		defaultChannels := princ.ExplicitChannels().AsSet().ToArray()
-		if len(auditEventAccess[base.DefaultScope][base.DefaultCollection]) == 0 && db.HasDefaultCollection() {
+		defaultChannels := princ.ExplicitChannels().AllKeys()
+		if db.HasDefaultCollection() && len(auditEventAccess[base.DefaultScope][base.DefaultCollection]) == 0 {
 			auditEventAccess[base.DefaultScope][base.DefaultCollection] = defaultChannels
 		}
 	}

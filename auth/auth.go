@@ -973,7 +973,7 @@ func GetExplicitCollectionChannelsForAuditEvent(collAccess map[string]map[string
 	for scopeName, scope := range collAccess {
 		explicitChans := make(map[string][]string)
 		for collectionName, collection := range scope {
-			explicitChans[collectionName] = collection.ExplicitChannels().AsSet().ToArray()
+			explicitChans[collectionName] = collection.ExplicitChannels().AllKeys()
 		}
 		channelAccess[scopeName] = explicitChans
 	}
