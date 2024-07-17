@@ -894,6 +894,10 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 }
 
 func TestImportResurrectionMou(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test requires xattrs because it relies on import")
+	}
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport, base.KeyCRUD)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
@@ -951,6 +955,10 @@ func TestImportResurrectionMou(t *testing.T) {
 // update, even though it originated with an SDK delete, because the existing non-winning revision body will be
 // promoted to winning.
 func TestImportConflictWithTombstone(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test requires xattrs because it relies on import")
+	}
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport, base.KeyCRUD)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
