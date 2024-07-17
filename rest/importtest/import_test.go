@@ -179,7 +179,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	docID := t.Name()
 	version := rt.PutDoc(docID, `{"val":-1}`)
 	revID := version.RevID
-	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser(rt.Context())
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	for i := 0; i < 10; i++ {
 		version = rt.UpdateDoc(docID, version, fmt.Sprintf(`{"val":%d}`, i))
@@ -524,7 +524,8 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	// Attempt to retrieve via view.  Above operations were all synchronous (on-demand import of SDK delete, SG delete), so
 	// stale=false view results should be immediately updated.
-	results, err := rt.GetDatabase().CollectionChannelViewForTest(t, rt.GetSingleTestDatabaseCollection(), "ABC", 0, 1000)
+	collection, _ := rt.GetSingleTestDatabaseCollection()
+	results, err := rt.GetDatabase().CollectionChannelViewForTest(t, collection, "ABC", 0, 1000)
 	require.NoError(t, err, "Error issuing channel view query")
 	for _, entry := range results {
 		log.Printf("Got view result: %v", entry)

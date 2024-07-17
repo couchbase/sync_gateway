@@ -506,9 +506,9 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 func (rt *RestTester) CreateUser(username string, channels []string) {
 	var response *TestResponse
 	if rt.AdminInterfaceAuthentication {
-		response = rt.SendAdminRequestWithAuth(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), channels, nil), base.TestClusterUsername(), base.TestClusterPassword())
+		response = rt.SendAdminRequestWithAuth(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), channels, nil), base.TestClusterUsername(), base.TestClusterPassword())
 	} else {
-		response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), channels, nil))
+		response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), channels, nil))
 	}
 	RequireStatus(rt.TB(), response, http.StatusCreated)
 }
@@ -523,21 +523,20 @@ func (rt *RestTester) GetUserAdminAPI(username string) auth.PrincipalConfig {
 }
 
 // GetSingleTestDatabaseCollection will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
-func (rt *RestTester) GetSingleTestDatabaseCollection() *db.DatabaseCollection {
-	return db.GetSingleDatabaseCollection(rt.TB(), rt.GetDatabase())
+func (rt *RestTester) GetSingleTestDatabaseCollection() (*db.DatabaseCollection, context.Context) {
+	c := db.GetSingleDatabaseCollection(rt.TB(), rt.GetDatabase())
+	return c, c.AddCollectionContext(rt.Context())
 }
 
 // GetSingleTestDatabaseCollectionWithUser will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
-func (rt *RestTester) GetSingleTestDatabaseCollectionWithUser(ctx context.Context) (*db.DatabaseCollectionWithUser, context.Context) {
-	c := &db.DatabaseCollectionWithUser{
-		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),
-	}
-	return c, c.AddCollectionContext(ctx)
+func (rt *RestTester) GetSingleTestDatabaseCollectionWithUser() (*db.DatabaseCollectionWithUser, context.Context) {
+	c, ctx := rt.GetSingleTestDatabaseCollection()
+	return &db.DatabaseCollectionWithUser{DatabaseCollection: c}, ctx
 }
 
 // GetSingleDataStore will return a datastore if there is only one collection configured on the RestTester database.
 func (rt *RestTester) GetSingleDataStore() base.DataStore {
-	collection := rt.GetSingleTestDatabaseCollection()
+	collection, _ := rt.GetSingleTestDatabaseCollection()
 	ds, err := rt.GetDatabase().Bucket.NamedDataStore(base.ScopeAndCollectionName{
 		Scope:      collection.ScopeName,
 		Collection: collection.Name,
@@ -560,8 +559,8 @@ func (rt *RestTester) WaitForDoc(docid string) (err error) {
 }
 
 func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
-	collection := rt.GetSingleTestDatabaseCollection()
-	doc, err := collection.GetDocument(base.TestCtx(rt.TB()), docid, db.DocUnmarshalAll)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	doc, err := collection.GetDocument(ctx, docid, db.DocUnmarshalAll)
 	if err != nil {
 		return 0, err
 	}
@@ -570,7 +569,8 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 
 // Wait for sequence to be buffered by the channel cache
 func (rt *RestTester) WaitForSequence(seq uint64) error {
-	return rt.GetSingleTestDatabaseCollection().WaitForSequence(base.TestCtx(rt.TB()), seq)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	return collection.WaitForSequence(ctx, seq)
 }
 
 func (rt *RestTester) WaitForPendingChanges() error {
@@ -1468,7 +1468,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 			adminChannels = append(adminChannels, spec.connectingUserChannelGrants...)
 		}
 
-		userDocBody, err := getUserBodyDoc(spec.connectingUsername, spec.connectingPassword, bt.restTester.GetSingleTestDatabaseCollection(), adminChannels)
+		userDocBody, err := getUserBodyDoc(spec.connectingUsername, spec.connectingPassword, bt.restTester.GetSingleDataStore(), adminChannels)
 		if err != nil {
 			return nil, err
 		}
@@ -1558,7 +1558,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 
 }
 
-func getUserBodyDoc(username, password string, collection *db.DatabaseCollection, adminChans []string) (string, error) {
+func getUserBodyDoc(username, password string, collection sgbucket.DataStore, adminChans []string) (string, error) {
 	config := auth.PrincipalConfig{}
 	if username != "" {
 		config.Name = &username
@@ -1694,7 +1694,7 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 }
 
 // GetUserPayload will take username, password, email, channels and roles you want to assign a user and create the appropriate payload for the _user endpoint
-func GetUserPayload(t testing.TB, username, password, email string, collection *db.DatabaseCollection, chans, roles []string) string {
+func GetUserPayload(t testing.TB, username, password, email string, collection sgbucket.DataStore, chans, roles []string) string {
 	config := auth.PrincipalConfig{}
 	if username != "" {
 		config.Name = &username
@@ -1714,7 +1714,7 @@ func GetUserPayload(t testing.TB, username, password, email string, collection *
 }
 
 // GetRolePayload will take roleName and channels you want to assign a particular role and return the appropriate payload for the _role endpoint
-func GetRolePayload(t *testing.T, roleName string, collection *db.DatabaseCollection, chans []string) string {
+func GetRolePayload(t *testing.T, roleName string, collection sgbucket.DataStore, chans []string) string {
 	config := auth.PrincipalConfig{}
 	if roleName != "" {
 		config.Name = &roleName
@@ -1725,11 +1725,11 @@ func GetRolePayload(t *testing.T, roleName string, collection *db.DatabaseCollec
 }
 
 // add channels to principal depending if running with collections or not. then marshal the principal config
-func addChannelsToPrincipal(config auth.PrincipalConfig, collection *db.DatabaseCollection, chans []string) ([]byte, error) {
-	if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
+func addChannelsToPrincipal(config auth.PrincipalConfig, ds sgbucket.DataStore, chans []string) ([]byte, error) {
+	if base.IsDefaultCollection(ds.ScopeName(), ds.CollectionName()) {
 		config.ExplicitChannels = base.SetFromArray(chans)
 	} else {
-		config.SetExplicitChannels(collection.ScopeName, collection.Name, chans...)
+		config.SetExplicitChannels(ds.ScopeName(), ds.CollectionName(), chans...)
 	}
 	payload, err := json.Marshal(config)
 	if err != nil {

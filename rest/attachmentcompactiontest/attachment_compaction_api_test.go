@@ -75,18 +75,16 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	require.NoError(t, err)
 
 	dataStore := rt.GetSingleDataStore()
-	collection := &db.DatabaseCollectionWithUser{
-		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),
-	}
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
 	// Create some legacy attachments to be marked but not compacted
-	ctx := rt.Context()
 	for i := 0; i < 20; i++ {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attID := fmt.Sprintf("testAtt-%d", i)
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		require.NoError(t, err)
-		rest.CreateLegacyAttachmentDoc(t, ctx, collection, dataStore, docID, []byte("{}"), attID, attJSONBody)
+		rest.CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attID, attJSONBody)
 	}
 
 	// Create some 'unmarked' attachments
@@ -308,7 +306,6 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 	// attachment compaction has to run on default collection, we can't run on multiple scopes right now for SG_TEST_USE_DEFAULT_COLLECTION = false
 	rt := rest.NewRestTesterDefaultCollection(t, nil)
 	defer rt.Close()
-	ctx := rt.Context()
 
 	dataStore := rt.GetSingleDataStore()
 	// Create a raw binary doc
@@ -321,12 +318,10 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 	err = dataStore.Delete("deleted")
 	assert.NoError(t, err)
 
-	collection := &db.DatabaseCollectionWithUser{
-		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),
-	}
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	// Also create an actual legacy attachment to ensure they are still processed
-	rest.CreateLegacyAttachmentDoc(t, ctx, collection, dataStore, "docID", []byte("{}"), "attKey", []byte("{}"))
+	rest.CreateLegacyAttachmentDoc(t, ctx, collection, "docID", []byte("{}"), "attKey", []byte("{}"))
 
 	// Create attachment with no doc reference
 	err = dataStore.SetRaw(base.AttPrefix+"test", 0, nil, []byte("{}"))
@@ -392,19 +387,15 @@ func TestAttachmentCompactionAbort(t *testing.T) {
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
-	ctx := rt.Context()
 
-	dataStore := rt.GetSingleDataStore()
-	collection := &db.DatabaseCollectionWithUser{
-		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),
-	}
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 	for i := 0; i < 1000; i++ {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attID := fmt.Sprintf("testAtt-%d", i)
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		require.NoError(t, err)
-		rest.CreateLegacyAttachmentDoc(t, ctx, collection, dataStore, docID, []byte("{}"), attID, attJSONBody)
+		rest.CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attID, attJSONBody)
 	}
 
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")

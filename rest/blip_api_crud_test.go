@@ -828,7 +828,6 @@ function(doc, oldDoc) {
 	var rt = NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	ctx := rt.Context()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -857,7 +856,7 @@ function(doc, oldDoc) {
 	userWaiter := userDb.NewUserWaiter()
 
 	// Update the user to grant them access to ABC
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "", "", collection, []string{"ABC"}, nil))
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "", "", rt.GetSingleDataStore(), []string{"ABC"}, nil))
 	RequireStatus(t, response, 200)
 
 	// Wait for notification
@@ -1481,7 +1480,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	})
 	require.NoError(t, err)
 	defer bt.Close()
-	collection := bt.restTester.GetSingleTestDatabaseCollection()
+	dataStore := bt.restTester.GetSingleDataStore()
 
 	// Add a doc in the PBS channel
 	_, _, _, _ = bt.SendRev(
@@ -1492,7 +1491,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	)
 
 	// Update the user doc to grant access to PBS
-	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "", "", collection, []string{"user1", "PBS"}, nil))
+	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "", "", dataStore, []string{"user1", "PBS"}, nil))
 	RequireStatus(t, response, 200)
 
 	// Add another doc in the PBS channel
@@ -1855,7 +1854,7 @@ func TestMissingNoRev(t *testing.T) {
 
 	// Purge one doc
 	doc0Id := fmt.Sprintf("doc-%d", 0)
-	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser(rt.Context())
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 	err = collection.Purge(ctx, doc0Id)
 	assert.NoError(t, err, "failed")
 
@@ -1923,6 +1922,7 @@ func TestSendReplacementRevision(t *testing.T) {
 				docID := test.name
 				version1 := rt.PutDoc(docID, fmt.Sprintf(`{"foo":"bar","channels":["%s"]}`, rev1Channel))
 				updatedVersion := make(chan DocVersion)
+				collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 				// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 				changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
@@ -1930,7 +1930,7 @@ func TestSendReplacementRevision(t *testing.T) {
 						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
-						err := rt.GetSingleTestDatabaseCollection().PurgeOldRevisionJSON(base.TestCtx(t), docID, version1.RevID)
+						err := collection.PurgeOldRevisionJSON(ctx, docID, version1.RevID)
 						require.NoError(t, err)
 						rt.GetDatabase().FlushRevisionCacheForTest()
 					}
@@ -2135,10 +2135,8 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 		defer rt.Close()
-		collection := rt.GetSingleTestDatabaseCollection()
 
-		resp := rt.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", collection, []string{"A", "B"}, nil))
-		RequireStatus(t, resp, http.StatusCreated)
+		rt.CreateUser("user", []string{"A", "B"})
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 			Username:               "user",
@@ -2244,10 +2242,8 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 		defer rt.Close()
-		collection := rt.GetSingleTestDatabaseCollection()
 
-		resp := rt.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", collection, []string{"A", "B"}, nil))
-		RequireStatus(t, resp, http.StatusCreated)
+		rt.CreateUser("user", []string{"A", "B"})
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 			Username:               "user",
@@ -3008,8 +3004,7 @@ func TestBlipRefreshUser(t *testing.T) {
 		defer btc.Close()
 
 		// add chan1 explicitly
-		response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"chan1"}, nil))
-		RequireStatus(t, response, http.StatusOK)
+		rt.CreateUser(username, []string{"chan1"})
 
 		version := rt.PutDoc(docID, `{"channels":["chan1"]}`)
 
@@ -3023,7 +3018,7 @@ func TestBlipRefreshUser(t *testing.T) {
 		require.True(t, ok)
 
 		// delete user with an active blip connection
-		response = rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_user/"+username, "")
+		response := rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_user/"+username, "")
 		RequireStatus(t, response, http.StatusOK)
 
 		require.NoError(t, rt.WaitForPendingChanges())

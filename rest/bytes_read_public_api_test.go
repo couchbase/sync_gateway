@@ -370,7 +370,7 @@ func TestBytesReadAuthFailed(t *testing.T) {
 	defer rt.Close()
 
 	// create a user with different password to the default one
-	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", GetUserPayload(t, "alice", "pass", "", rt.GetSingleTestDatabaseCollection(), []string{"ABC"}, nil))
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", GetUserPayload(t, "alice", "pass", "", rt.GetSingleDataStore(), []string{"ABC"}, nil))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// make a request that will fail on auth

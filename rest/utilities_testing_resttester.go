@@ -362,8 +362,7 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
 	passiveRT = NewRestTester(t, passiveRTConfig)
-	response := passiveRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", GetUserPayload(t, "", RestTesterDefaultUserPassword, "", passiveRT.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
-	RequireStatus(t, response, http.StatusCreated)
+	passiveRT.CreateUser("alice", []string{"*"})
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(passiveRT.TestPublicHandler())

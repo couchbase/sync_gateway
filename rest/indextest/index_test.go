@@ -84,8 +84,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		users := []string{"alice", "bob"}
 
 		for _, user := range users {
-			response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+user, rest.GetUserPayload(t, user, rest.RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"ChannelA"}, nil))
-			rest.RequireStatus(t, response, http.StatusCreated)
+			rt.CreateUser(user, []string{"ChannelA"})
 		}
 		response := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/", "")
 		rest.RequireStatus(t, response, http.StatusOK)
@@ -101,7 +100,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		roles := []string{"roleA", "roleB"}
 
 		for _, role := range roles {
-			response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+role, rest.GetRolePayload(t, role, rt.GetSingleTestDatabaseCollection(), []string{"ChannelA"}))
+			response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+role, rest.GetRolePayload(t, role, rt.GetSingleDataStore(), []string{"ChannelA"}))
 			rest.RequireStatus(t, response, http.StatusCreated)
 		}
 		response := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_role/", "")

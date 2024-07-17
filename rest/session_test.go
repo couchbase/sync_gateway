@@ -147,17 +147,13 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create two users
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", GetUserPayload(t, "bernard", "letmein", "", collection, []string{"bernard"}, nil))
-	RequireStatus(t, response, 201)
-
-	response = rt.SendAdminRequest("PUT", "/db/_user/manny", GetUserPayload(t, "manny", "letmein", "", collection, []string{"manny"}, nil))
-	RequireStatus(t, response, 201)
+	rt.CreateUser("bernard", []string{"bernard"})
+	rt.CreateUser("manny", []string{"manny"})
 
 	// Create a session for the first user
-	response = rt.Send(RequestByUser("POST", "/db/_session", `{"name":"bernard", "password":"letmein"}`, "bernard"))
+	response := rt.Send(RequestByUser("POST", "/db/_session", `{"name":"bernard", "password":"letmein"}`, "bernard"))
 	log.Println("response.Header()", response.Header())
 	assert.True(t, response.Header().Get("Set-Cookie") != "")
 
@@ -191,11 +187,8 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 func TestSessionFail(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
-	// Create user
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "letmein", "", collection, []string{"user1"}, nil))
-	RequireStatus(t, response, http.StatusCreated)
+	rt.CreateUser("user1", []string{"user1"})
 
 	id, err := base.GenerateRandomSecret()
 	require.NoError(t, err)
@@ -213,7 +206,7 @@ func TestSessionFail(t *testing.T) {
 	}
 
 	// Attempt to create session with invalid cert but valid login
-	response = rt.SendRequestWithHeaders("POST", "/db/_session", `{"name":"user1", "password":"letmein"}`, reqHeaders)
+	response := rt.SendRequestWithHeaders("POST", "/db/_session", `{"name":"user1", "password":"letmein"}`, reqHeaders)
 	RequireStatus(t, response, http.StatusOK)
 }
 
@@ -510,7 +503,7 @@ func TestSessionPasswordInvalidation(t *testing.T) {
 			originalPassword := test.password
 
 			// create session test users
-			response := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_user/", GetUserPayload(t, username, originalPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
+			response := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_user/", GetUserPayload(t, username, originalPassword, "", rt.GetSingleDataStore(), []string{"*"}, nil))
 			RequireStatus(t, response, http.StatusCreated)
 
 			originalPasswordHeaders := map[string]string{
@@ -536,7 +529,7 @@ func TestSessionPasswordInvalidation(t *testing.T) {
 			altPassword := "someotherpassword"
 			// TODO CBG-3790: Add POST (upsert) support on User API, and specify only password here.
 			// This test was relying on a bug (CBG-3610) which allowed only the password to be specified without wiping channels.
-			response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(t, username, altPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
+			response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(t, username, altPassword, "", rt.GetSingleDataStore(), []string{"*"}, nil))
 			RequireStatus(t, response, http.StatusOK)
 
 			// make sure session is invalid
@@ -562,14 +555,12 @@ func TestAllSessionDeleteInvalidation(t *testing.T) {
 
 	const username = "user1"
 
-	// create session test user
-	response := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_user/", GetUserPayload(t, username, RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
-	RequireStatus(t, response, http.StatusCreated)
+	rt.CreateUser(username, []string{"*"})
 
 	const numSessions = 3
 	cookies := make([]string, numSessions)
 	for i := 0; i < 3; i++ {
-		response = rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "", username)
+		response := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "", username)
 		RequireStatus(t, response, http.StatusOK)
 		cookie := response.Header().Get("Set-Cookie")
 		require.NotEqual(t, "", cookie)
@@ -579,7 +570,7 @@ func TestAllSessionDeleteInvalidation(t *testing.T) {
 	firstCookieHeaders := map[string]string{
 		"Cookie": cookies[0],
 	}
-	response = rt.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc1", `{"hi": "there"}`, firstCookieHeaders)
+	response := rt.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc1", `{"hi": "there"}`, firstCookieHeaders)
 	RequireStatus(t, response, http.StatusCreated)
 
 	// make sure all sessions work to GET doc

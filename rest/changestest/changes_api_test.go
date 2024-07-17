@@ -58,7 +58,8 @@ func TestReproduce2383(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	cacheWaiter.Wait()
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	collection, _ := rt.GetSingleTestDatabaseCollection()
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 
 	var changes struct {
 		Results  []db.ChangeEntry
@@ -199,10 +200,9 @@ func TestChangesFeedOnInheritedChannelsFromRoles(t *testing.T) {
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	// create role with collection channel access set to channel A
-	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/role", rest.GetRolePayload(t, "", collection, []string{"A"}))
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/role", rest.GetRolePayload(t, "", rt.GetSingleDataStore(), []string{"A"}))
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// create user and assign the role create above to that user
@@ -232,10 +232,9 @@ func TestChangesFeedOnInheritedChannelsFromRolesDefaultCollection(t *testing.T) 
 
 	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	// create role with collection channel access set to channel A
-	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/role", rest.GetRolePayload(t, "", collection, []string{"A"}))
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/role", rest.GetRolePayload(t, "", rt.GetSingleDataStore(), []string{"A"}))
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// create user and assign the role create above to that user
@@ -401,16 +400,12 @@ func TestPostChangesWithQueryString(t *testing.T) {
 
 // Basic _changes test with since value
 func postChangesSince(t *testing.T, rt *rest.RestTester) {
-	collection := rt.GetSingleTestDatabaseCollection()
-
-	// Create user
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "letmein", "bernard@bb.com", collection, []string{"PBS"}, nil))
-	rest.RequireStatus(t, response, 201)
+	rt.CreateUser("bernard", []string{"PBS"})
 
 	cacheWaiter := rt.GetDatabase().NewDCPCachingCountWaiter(t)
 
 	// Put several documents
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs1-0000609", `{"channel":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs1-0000609", `{"channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/samevbdiffchannel-0000609", `{"channel":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
@@ -529,7 +524,6 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 			SyncFn: `function(doc) {channel(doc.channel);}`,
 		})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user with access to channel ABC:
 	ctx := rt.Context()
@@ -568,7 +562,7 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	require.Len(t, changes.Results, 1)
 
 	// Update the user doc to grant access to PBS
-	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "", "", collection, []string{"ABC", "PBS"}, nil))
+	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "", "", rt.GetSingleDataStore(), []string{"ABC", "PBS"}, nil))
 	rest.RequireStatus(t, response, 200)
 
 	time.Sleep(500 * time.Millisecond)
@@ -617,7 +611,6 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user with access to channel ABC:
 	ctx := rt.Context()
@@ -719,7 +712,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	}
 
 	// Update the user doc to grant access to PBS, HBO in addition to ABC
-	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/bernard", rest.GetUserPayload(t, "", "", "", collection, []string{"ABC", "PBS", "HBO"}, nil))
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/bernard", rest.GetUserPayload(t, "", "", "", rt.GetSingleDataStore(), []string{"ABC", "PBS", "HBO"}, nil))
 	rest.RequireStatus(t, response, http.StatusOK)
 
 	// Issue a new changes request with since=last_seq ensure that user receives all records for channels PBS, HBO.
@@ -789,7 +782,6 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user with access to channel ABC:
 	ctx := rt.Context()
@@ -820,7 +812,7 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	// Grant user access to channel PBS
-	userResponse := rt.SendAdminRequest("PUT", "/{{.db}}/_user/bernard", rest.GetUserPayload(t, "", "", "", collection, []string{"ABC", "PBS"}, nil))
+	userResponse := rt.SendAdminRequest("PUT", "/{{.db}}/_user/bernard", rest.GetUserPayload(t, "", "", "", rt.GetSingleDataStore(), []string{"ABC", "PBS"}, nil))
 	rest.RequireStatus(t, userResponse, 200)
 
 	// Put several documents in channel ABC
@@ -1073,13 +1065,9 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	ctx := rt.Context()
-	collection := rt.GetSingleTestDatabaseCollection()
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
-	// Create user:
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "letmein", "bernard@couchbase.com", collection, []string{"PBS"}, nil))
-	rest.RequireStatus(t, response, 201)
+	rt.CreateUser("bernard", []string{"PBS"})
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
 	WriteDirect(t, []string{"PBS"}, 2, collection)
@@ -1092,7 +1080,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq db.SequenceID
 	}
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
+	response := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 4)
@@ -1165,13 +1153,9 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	ctx := rt.Context()
-	collection := rt.GetSingleTestDatabaseCollection()
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
-	// Create user:
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "letmein", "bernard@couchbase.com", collection, []string{"PBS"}, nil))
-	rest.RequireStatus(t, response, 201)
+	rt.CreateUser("bernard", []string{"PBS"})
 
 	// Simulate 4 non-skipped writes (seq 2,3,4,5)
 	WriteDirect(t, []string{"PBS"}, 2, collection)
@@ -1185,7 +1169,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq string
 	}
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
+	response := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
 	log.Printf("_changes 1 looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 5) // Includes user doc
@@ -1299,9 +1283,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
-
-	ctx := rt.Context()
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 	// Simulate 5 non-skipped writes (seq 1,2,3,4,5)
 	WriteDirect(t, []string{"PBS"}, 1, collection)
@@ -1431,13 +1413,9 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	ctx := rt.Context()
-	collection := rt.GetSingleTestDatabaseCollection()
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
-	// Create user:
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "letmein", "bernard@couchbase.com", collection, []string{"PBS"}, nil))
-	rest.RequireStatus(t, response, 201)
+	rt.CreateUser("bernard", []string{"PBS"})
 
 	// Simulate 4 non-skipped writes (seq 2,3,4,5)
 	WriteDirect(t, []string{"PBS"}, 2, collection)
@@ -1451,7 +1429,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq string
 	}
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
+	response := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
 	log.Printf("_changes 1 looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 5) // Includes user doc
@@ -1831,27 +1809,12 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig)
 	defer rt.Close()
 
-	collection := rt.GetSingleTestDatabaseCollection()
-
 	// Create user1
-	response := rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", rest.GetUserPayload(t, "", "letmein", "user1@couchbase.com", collection, []string{"alpha"}, nil))
-	rest.RequireStatus(t, response, 201)
-
-	// Create user2
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user2", rest.GetUserPayload(t, "", "letmein", "user2@couchbase.com", collection, []string{"beta"}, nil))
-	rest.RequireStatus(t, response, 201)
-
-	// Create user3
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user3", rest.GetUserPayload(t, "", "letmein", "user3@couchbase.com", collection, []string{"alpha", "beta"}, nil))
-	rest.RequireStatus(t, response, 201)
-
-	// Create user4
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user4", `{"email":"user4@couchbase.com", "password":"letmein"}`)
-	rest.RequireStatus(t, response, 201)
-
-	// Create user5
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user5", rest.GetUserPayload(t, "", "letmein", "user5@couchbase.com", collection, []string{"*"}, nil))
-	rest.RequireStatus(t, response, 201)
+	rt.CreateUser("user1", []string{"alpha"})
+	rt.CreateUser("user2", []string{"beta"})
+	rt.CreateUser("user3", []string{"alpha", "beta"})
+	rt.CreateUser("user4", nil)
+	rt.CreateUser("user5", []string{"*"})
 
 	// Create docs
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels":["alpha"]}`), 201)
@@ -1872,7 +1835,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	// User has access to single channel
 	body := `{"filter":"_doc_ids", "doc_ids":["doc4", "doc1", "docA", "b0gus"]}`
-	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", body, "user1")
+	response := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", body, "user1")
 	rest.RequireStatus(t, response, 200)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 2)
@@ -2003,11 +1966,9 @@ func TestChangesIncludeDocs(t *testing.T) {
 	testDB := rt.GetDatabase()
 	testDB.RevsLimit = 3
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
+	collection, _ := rt.GetSingleTestDatabaseCollection()
 
-	// Create user1
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", rest.GetUserPayload(t, "", "letmein", "user1@couchbase.com", collection, []string{"alpha", "beta"}, nil))
-	rest.RequireStatus(t, response, 201)
+	rt.CreateUser("user1", []string{"alpha", "beta"})
 
 	// Create docs for each scenario
 	// Active
@@ -2024,7 +1985,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	// Tombstoned
 	revid, err = updateTestDoc(rt, "doc_tombstone", "", `{"type": "tombstone", "channels":["alpha"]}`)
 	assert.NoError(t, err, "Error updating doc")
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/doc_tombstone?rev=%s", revid), "")
+	response := rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/doc_tombstone?rev=%s", revid), "")
 	rest.RequireStatus(t, response, 200)
 
 	// Removed
@@ -2258,8 +2219,9 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 
 	cacheWaiter.Wait()
 
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	// Flush the channel cache
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 
 	var changes struct {
 		Results  []db.ChangeEntry
@@ -2332,8 +2294,9 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 	}
 	cacheWaiter.Wait()
 
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	// Flush the channel cache
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 
 	// Issue a since=0 changes request, with limit less than the number of PBS documents
 	var changes struct {
@@ -2433,8 +2396,9 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 
 	cacheWaiter.Wait()
 
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	// Flush the channel cache
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 
 	// Issue a since=n changes request, where n > 0 and is a non-PBS sequence.  Validate that there's a view-based backfill
 	var changes struct {
@@ -2518,8 +2482,9 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 
 	cacheWaiter.Wait()
 
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	// Flush the channel cache
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 
 	// Write some more docs to the bucket, with a gap before the first PBS sequence
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/abc11", `{"channels":["ABC"]}`)
@@ -2599,8 +2564,9 @@ func TestChangesViewBackfill(t *testing.T) {
 
 	cacheWaiter.AddAndWait(3)
 
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	// Flush the channel cache
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 
 	// Add a few more docs (to increment the channel cache's validFrom)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc4", `{"channels":["PBS"]}`)
@@ -2671,8 +2637,9 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	cacheWaiter.Add(3)
 	cacheWaiter.Wait()
 
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	// Flush the channel cache
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 
 	// Add a few more docs (to increment the channel cache's validFrom)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"channels":["PBS"]}`)
@@ -2859,8 +2826,9 @@ func TestChangesQueryBackfillWithLimit(t *testing.T) {
 			}
 			cacheWaiter.AddAndWait(test.totalDocuments * 2)
 
+			collection, ctx := rt.GetSingleTestDatabaseCollection()
 			// Flush the channel cache
-			assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+			assert.NoError(t, collection.FlushChannelCache(ctx))
 			startQueryCount := testDb.GetChannelQueryCount()
 
 			// Issue a since=0 changes request.
@@ -2923,8 +2891,9 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	}
 	cacheWaiter.AddAndWait(50)
 
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	// Flush the channel cache
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 
 	// 1. Issue a since=0 changes request, validate results
 	var changes struct {
@@ -2944,7 +2913,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	}
 
 	// 2. Same again, but with limit on the changes request
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 	changes.Results = nil
 	changesJSON = fmt.Sprintf(`{"since":0, "limit":25}`)
 	changes.Results = nil
@@ -2990,8 +2959,9 @@ func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
 
 	cacheWaiter.AddAndWait(10)
 
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	// Flush the channel cache
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 	startQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 
 	// Issue a since=0 changes request.  Validate that there's a view-based backfill
@@ -3044,8 +3014,9 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
 	cacheWaiter.Wait()
 
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	// Flush the channel cache
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 
 	// Write another doc, to initialize the cache (and guarantee overlap)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"channels":["PBS"]}`)
@@ -3406,8 +3377,9 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 		}
 	}
 
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	// Active only NO Limit, POST
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 
 	changesJSON = `{"style":"all_docs", "active_only":true}`
 	changes.Results = nil
@@ -3424,7 +3396,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only with Limit, POST
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":5}`
 	changes.Results = nil
 	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
@@ -3440,7 +3412,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only with Limit, GET
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 	changes.Results = nil
 	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?style=all_docs&active_only=true&limit=5", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
@@ -3454,7 +3426,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only with Limit set higher than number of revisions, POST
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":15}`
 	changes.Results = nil
 	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
@@ -3470,7 +3442,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// No limit active only, GET, followed by normal (https://github.com/couchbase/sync_gateway/issues/2955)
-	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, collection.FlushChannelCache(ctx))
 	changes.Results = nil
 	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?style=all_docs&active_only=true", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
@@ -3757,19 +3729,15 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 
 	ctx := rt.Context()
 	testDb := rt.ServerContext().Database(ctx, "db")
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Put users
-	response := rt.SendAdminRequest("PUT", "/db/_user/includeDocsUser", rest.GetUserPayload(t, "includeDocsUser", "letmein", "", collection, []string{"*"}, nil))
-	rest.RequireStatus(t, response, 201)
-
-	response = rt.SendAdminRequest("PUT", "/db/_user/includeDocsUser2", rest.GetUserPayload(t, "includeDocsUser2", "letmein", "", collection, []string{"*"}, nil))
-	rest.RequireStatus(t, response, 201)
+	rt.CreateUser("includeDocsUser", []string{"*"})
+	rt.CreateUser("includeDocsUserr2", []string{"*"})
 
 	// Put several documents
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
@@ -3810,7 +3778,6 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user with access to channel ABC:
 	ctx := rt.Context()
@@ -3852,7 +3819,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
 
 	// Update the user doc to grant access to PBS
-	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "", "", collection, []string{"ABC", "PBS"}, nil))
+	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "", "", rt.GetSingleDataStore(), []string{"ABC", "PBS"}, nil))
 	rest.RequireStatus(t, response, 200)
 
 	// Wait for longpoll to return

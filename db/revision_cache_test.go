@@ -263,38 +263,38 @@ func TestBypassRevisionCache(t *testing.T) {
 	rc := NewBypassRevisionCache(backingStoreMap, &bypassStat)
 
 	// Peek always returns false for BypassRevisionCache
-	_, ok := rc.Peek(base.TestCtx(t), key, rev1, 0)
+	_, ok := rc.Peek(ctx, key, rev1, 0)
 	assert.False(t, ok)
-	_, ok = rc.Peek(base.TestCtx(t), key, rev2, 0)
+	_, ok = rc.Peek(ctx, key, rev2, 0)
 	assert.False(t, ok)
 
 	// Get non-existing doc
-	_, err = rc.Get(base.TestCtx(t), "invalid", rev1, testCollectionID, RevCacheOmitBody, RevCacheOmitDelta)
+	_, err = rc.Get(ctx, "invalid", rev1, testCollectionID, RevCacheOmitBody, RevCacheOmitDelta)
 	assert.True(t, base.IsDocNotFoundError(err))
 
 	// Get non-existing revision
-	_, err = rc.Get(base.TestCtx(t), key, "3-abc", testCollectionID, RevCacheOmitBody, RevCacheOmitDelta)
+	_, err = rc.Get(ctx, key, "3-abc", testCollectionID, RevCacheOmitBody, RevCacheOmitDelta)
 	assertHTTPError(t, err, 404)
 
 	// Get specific revision
-	doc, err := rc.Get(base.TestCtx(t), key, rev1, testCollectionID, RevCacheOmitBody, RevCacheOmitDelta)
+	doc, err := rc.Get(ctx, key, rev1, testCollectionID, RevCacheOmitBody, RevCacheOmitDelta)
 	assert.NoError(t, err)
 	require.NotNil(t, doc)
 	assert.Equal(t, `{"value":1234}`, string(doc.BodyBytes))
 
 	// Check peek is still returning false for "Get"
-	_, ok = rc.Peek(base.TestCtx(t), key, rev1, testCollectionID)
+	_, ok = rc.Peek(ctx, key, rev1, testCollectionID)
 	assert.False(t, ok)
 
 	// Put no-ops
-	rc.Put(base.TestCtx(t), doc, testCollectionID)
+	rc.Put(ctx, doc, testCollectionID)
 
 	// Check peek is still returning false for "Put"
-	_, ok = rc.Peek(base.TestCtx(t), key, rev1, testCollectionID)
+	_, ok = rc.Peek(ctx, key, rev1, testCollectionID)
 	assert.False(t, ok)
 
 	// Get active revision
-	doc, err = rc.GetActive(base.TestCtx(t), key, testCollectionID, false)
+	doc, err = rc.GetActive(ctx, key, testCollectionID, false)
 	assert.NoError(t, err)
 	assert.Equal(t, `{"value":5678}`, string(doc.BodyBytes))
 
@@ -325,7 +325,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)
 
 	// Get the raw document directly from the revcache, validate _attachments property isn't found
-	docRevision, ok := collection.revisionCache.Peek(base.TestCtx(t), rev1key, rev1id)
+	docRevision, ok := collection.revisionCache.Peek(ctx, rev1key, rev1id)
 	assert.True(t, ok)
 	assert.NotContains(t, docRevision.BodyBytes, BodyAttachments, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
 	_, ok = docRevision.Attachments["myatt"]
@@ -375,7 +375,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)
 
 	// Get the raw document directly from the revcache, validate _attachments property isn't found
-	docRevision, err := collection.revisionCache.Get(base.TestCtx(t), docKey, rev2id, RevCacheOmitBody, RevCacheOmitDelta)
+	docRevision, err := collection.revisionCache.Get(ctx, docKey, rev2id, RevCacheOmitBody, RevCacheOmitDelta)
 	assert.NoError(t, err, "Unexpected error calling collection.revisionCache.Get")
 	assert.NotContains(t, docRevision.BodyBytes, BodyAttachments, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
 	_, ok = docRevision.Attachments["myatt"]
@@ -471,19 +471,19 @@ func TestRevisionCacheRemove(t *testing.T) {
 	rev1id, _, err := collection.Put(ctx, "doc", Body{"val": 123})
 	assert.NoError(t, err)
 
-	docRev, err := collection.revisionCache.Get(base.TestCtx(t), "doc", rev1id, true, true)
+	docRev, err := collection.revisionCache.Get(ctx, "doc", rev1id, true, true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.Equal(t, int64(0), db.DbStats.Cache().RevisionCacheMisses.Value())
 
 	collection.revisionCache.Remove("doc", rev1id)
 
-	docRev, err = collection.revisionCache.Get(base.TestCtx(t), "doc", rev1id, true, true)
+	docRev, err = collection.revisionCache.Get(ctx, "doc", rev1id, true, true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
 
-	docRev, err = collection.revisionCache.GetActive(base.TestCtx(t), "doc", true)
+	docRev, err = collection.revisionCache.GetActive(ctx, "doc", true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())

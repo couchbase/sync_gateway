@@ -36,13 +36,14 @@ func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.B
 	return response
 }
 
-func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser, dataStore base.DataStore, docID string, body []byte, attID string, attBody []byte) string {
+func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser, docID string, body []byte, attID string, attBody []byte) string {
 	if !base.TestUseXattrs() {
 		t.Skip("Requires xattrs")
 	}
 	attDigest := db.Sha1DigestKey(attBody)
 
 	attDocID := db.MakeAttachmentKey(db.AttVersion1, docID, attDigest)
+	dataStore := collection.GetCollectionDatastore()
 	_, err := dataStore.AddRaw(attDocID, 0, attBody)
 	require.NoError(t, err)
 

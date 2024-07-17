@@ -59,7 +59,8 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	require.Contains(t, xattrs, base.SyncXattrName)
 	assert.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
-	docRev, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	docRev, err := collection.GetRevisionCacheForTest().Get(ctx, docKey, syncData.CurrentRev, true, false)
 	assert.NoError(t, err)
 	assert.Len(t, docRev.Channels.ToArray(), 0)
 	assert.Equal(t, syncData.CurrentRev, docRev.RevID)
@@ -76,12 +77,12 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	// Ensure import worked and sequence incremented but that sequence did not
 	var syncData2 db.SyncData
-	xattrs, _, err = dataStore.GetXattrs(rt.Context(), docKey, []string{base.SyncXattrName})
+	xattrs, _, err = dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	require.NoError(t, err)
 	require.Contains(t, xattrs, base.SyncXattrName)
 	assert.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData2))
 
-	docRev2, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
+	docRev2, err := collection.GetRevisionCacheForTest().Get(ctx, docKey, syncData.CurrentRev, true, false)
 	assert.NoError(t, err)
 	assert.Equal(t, syncData2.CurrentRev, docRev2.RevID)
 

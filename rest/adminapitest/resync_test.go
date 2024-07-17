@@ -127,7 +127,8 @@ func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
 			require.NotEqual(t, 0, originalUserSeq)
 
 			rt.CreateTestDoc(standardDoc)
-			doc, err := rt.GetSingleTestDatabaseCollection().GetDocument(ctx, standardDoc, db.DocUnmarshalSync)
+			collection, ctx := rt.GetSingleTestDatabaseCollection()
+			doc, err := collection.GetDocument(ctx, standardDoc, db.DocUnmarshalSync)
 			require.NoError(t, err)
 			oldDocSeq := doc.Sequence
 			require.NotEqual(t, 0, oldDocSeq)
@@ -157,7 +158,7 @@ func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
 			}
 
 			// regular doc will always change sequence
-			doc, err = rt.GetSingleTestDatabaseCollection().GetDocument(ctx, standardDoc, db.DocUnmarshalSync)
+			doc, err = collection.GetDocument(ctx, standardDoc, db.DocUnmarshalSync)
 			require.NoError(t, err)
 			require.NotEqual(t, 0, doc.Sequence)
 			require.NotEqual(t, oldDocSeq, doc.Sequence)
@@ -207,7 +208,7 @@ func TestResyncInvalidatePrincipals(t *testing.T) {
 	}`
 	rt.CreateUser(username, nil)
 
-	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+rolename, rest.GetRolePayload(t, rolename, rt.GetSingleTestDatabaseCollection(), nil))
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+rolename, rest.GetRolePayload(t, rolename, rt.GetSingleDataStore(), nil))
 	rest.RequireStatus(t, response, http.StatusCreated)
 
 	// Write doc to perform dynamic grants

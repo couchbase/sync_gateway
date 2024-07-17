@@ -2299,9 +2299,10 @@ func TestUpdateExistingAttachment(t *testing.T) {
 		assert.NoError(t, rt.WaitForVersion(doc1ID, doc1Version))
 		assert.NoError(t, rt.WaitForVersion(doc2ID, doc2Version))
 
-		_, err = rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+		collection, ctx := rt.GetSingleTestDatabaseCollection()
+		_, err = collection.GetDocument(ctx, "doc1", db.DocUnmarshalAll)
 		require.NoError(t, err)
-		_, err = rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
+		_, err = collection.GetDocument(ctx, "doc2", db.DocUnmarshalAll)
 		require.NoError(t, err)
 
 		doc1Version, err = btcRunner.PushRev(btc.id, doc1ID, doc1Version, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":3}}}`))
@@ -2309,7 +2310,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 
 		assert.NoError(t, rt.WaitForVersion(doc1ID, doc1Version))
 
-		doc1, err := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+		doc1, err := collection.GetDocument(ctx, "doc1", db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
 		assert.Equal(t, "sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=", doc1.Attachments["attachment"].(map[string]interface{})["digest"])
@@ -2631,9 +2632,10 @@ func TestCBLRevposHandling(t *testing.T) {
 		assert.NoError(t, btc.rt.WaitForVersion(doc1ID, doc1Version))
 		assert.NoError(t, btc.rt.WaitForVersion(doc2ID, doc2Version))
 
-		_, err = btc.rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+		collection, ctx := btc.rt.GetSingleTestDatabaseCollection()
+		_, err = collection.GetDocument(ctx, "doc1", db.DocUnmarshalAll)
 		require.NoError(t, err)
-		_, err = btc.rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
+		_, err = collection.GetDocument(ctx, "doc2", db.DocUnmarshalAll)
 		require.NoError(t, err)
 
 		// Update doc1, don't change attachment, use correct revpos

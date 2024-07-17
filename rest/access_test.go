@@ -36,9 +36,8 @@ func TestPublicChanGuestAccess(t *testing.T) {
 			}},
 		})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name
-	s := collection.ScopeName
+	c := rt.GetSingleDataStore().CollectionName()
+	s := rt.GetSingleDataStore().ScopeName()
 
 	// Create a document on the public channel
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc", `{"channels": ["!"], "foo": "bar"}`)
@@ -323,12 +322,11 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 		}},
 	})
 	defer rt.Close()
-	ctx := rt.Context()
 
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"channels": ["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser(ctx)
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 	userHasDocAccess, err := db.UserHasDocAccess(ctx, collection, "doc")
 	assert.NoError(t, err)
 	assert.True(t, userHasDocAccess)
@@ -395,11 +393,12 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 					}},
 				})
 			defer rt.Close()
-			collection := rt.GetSingleTestDatabaseCollection()
-			c := collection.Name
-			s := collection.ScopeName
+			dataStore := rt.GetSingleDataStore()
+			c := dataStore.CollectionName()
+			s := dataStore.ScopeName()
 
-			resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/Perms", GetUserPayload(t, "Perms", "password", "", collection, []string{"chan"}, nil))
+			// update the user to add chan
+			resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/Perms", GetUserPayload(t, "Perms", "password", "", dataStore, []string{"chan"}, nil))
 			RequireStatus(t, resp, http.StatusOK)
 
 			// Create the initial document
@@ -796,9 +795,9 @@ func TestChannelAccessChanges(t *testing.T) {
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name
-	s := collection.ScopeName
+	dataStore := rt.GetSingleDataStore()
+	c := dataStore.CollectionName()
+	s := dataStore.ScopeName()
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -950,9 +949,9 @@ func TestChannelAccessChanges(t *testing.T) {
 	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
 	// we do it now because we can't close and re-open an ephemeral Walrus database.
-	collectionWithUser, ctx := rt.GetSingleTestDatabaseCollectionWithUser(rt.Context())
+	collectionWithUser, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
-	changed, err := collection.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
+	changed, err := collectionWithUser.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)
 	assert.True(t, changed)
 	changeCount, err := collectionWithUser.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
@@ -1115,9 +1114,9 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
-	collection := rt.GetSingleTestDatabaseCollection()
-	scopeName := collection.ScopeName
-	collectionName := collection.Name
+	dataStore := rt.GetSingleDataStore()
+	scopeName := dataStore.ScopeName()
+	collectionName := dataStore.CollectionName()
 
 	user, err := a.GetUser("")
 	assert.NoError(t, err)

@@ -60,7 +60,8 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 		version, err = btcRunner.PushRev(btc.id, docID, version, []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"`+attData+`"}}}`))
 		require.NoError(t, err)
 
-		syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
+		collection, ctx := rt.GetSingleTestDatabaseCollection()
+		syncData, err := collection.GetDocSyncData(ctx, docID)
 		require.NoError(t, err)
 
 		assert.Len(t, syncData.Attachments, 1)
@@ -80,7 +81,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 		_, err = btcRunner.PushRev(btc.id, docID, version, newBody)
 		require.NoError(t, err)
 
-		syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
+		syncData, err = collection.GetDocSyncData(ctx, docID)
 		require.NoError(t, err)
 
 		assert.Len(t, syncData.Attachments, 1)
@@ -814,7 +815,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()
-		collection := rt.GetSingleTestDatabaseCollection()
+		collection, _ := rt.GetSingleTestDatabaseCollection()
 
 		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
@@ -844,8 +845,9 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
 
+			collection, ctx := rt.GetSingleTestDatabaseCollection()
 			// Validate that generation of a delta didn't mutate the revision body in the revision cache
-			docRev, cacheErr := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), "doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.RevCacheOmitBody, db.RevCacheOmitDelta)
+			docRev, cacheErr := collection.GetRevisionCacheForTest().Get(ctx, "doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.RevCacheOmitBody, db.RevCacheOmitDelta)
 			assert.NoError(t, cacheErr)
 			assert.NotContains(t, docRev.BodyBytes, "bob")
 		} else {
@@ -920,7 +922,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		rt := NewRestTester(t,
 			&rtConfig)
 		defer rt.Close()
-		collection := rt.GetSingleTestDatabaseCollection()
+		collection, _ := rt.GetSingleTestDatabaseCollection()
 
 		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
