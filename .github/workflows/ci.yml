@@ -111,6 +111,45 @@ jobs:
         uses: guyarb/golang-test-annotations@v0.6.0
         with:
           test-results: test.json
+
+  test-default-collection:
+    runs-on: ubuntu-latest
+    env:
+      GOPRIVATE: github.com/couchbaselabs
+      SG_TEST_USE_DEFAULT_COLLECTION: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.22.5
+      - name: Run Tests
+        run: go test -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
+        shell: bash
+      - name: Annotate Failures
+        if: always()
+        uses: guyarb/golang-test-annotations@v0.6.0
+        with:
+          test-results: test.json
+
+  test-no-xattrs:
+    runs-on: ubuntu-latest
+    env:
+      GOPRIVATE: github.com/couchbaselabs
+      SG_TEST_USE_XATTRS: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.22.5
+      - name: Run Tests
+        run: go test -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
+        shell: bash
+      - name: Annotate Failures
+        if: always()
+        uses: guyarb/golang-test-annotations@v0.6.0
+        with:
+          test-results: test.json
+
   python-format:
     runs-on: ubuntu-latest
     steps:
