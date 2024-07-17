@@ -1572,15 +1572,69 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	}
 
 	newInfo.Name = &internalName
-	replaced, err := h.db.UpdatePrincipal(h.ctx(), &newInfo, isUser, h.rq.Method != "POST")
+	replaced, princ, err := h.db.UpdatePrincipal(h.ctx(), &newInfo, isUser, h.rq.Method != "POST")
 	if err != nil {
 		return err
 	} else if replaced {
+		// update event
+		if isUser {
+			user := princ.(auth.User)
+			if user != nil {
+				base.Audit(h.ctx(), base.AuditIDUserUpdate, base.AuditFields{
+					"username": internalName,
+					"roles":    user.ExplicitRoles().AllKeys(),
+					"channels": getAuditEventAccess(h.db, princ),
+					"db":       h.db.Name,
+				})
+			}
+		} else {
+			base.Audit(h.ctx(), base.AuditIDRoleUpdate, base.AuditFields{
+				"role":           internalName,
+				"admin_channels": getAuditEventAccess(h.db, princ),
+				"db":             h.db.Name,
+			})
+		}
 		h.writeStatus(http.StatusOK, "OK")
 	} else {
+		// create event
+		if isUser {
+			user := princ.(auth.User)
+			if user != nil {
+				base.Audit(h.ctx(), base.AuditIDUserCreate, base.AuditFields{
+					"username": internalName,
+					"roles":    user.ExplicitRoles().AllKeys(),
+					"channels": getAuditEventAccess(h.db, princ),
+					"db":       h.db.Name,
+				})
+			}
+		} else {
+			base.Audit(h.ctx(), base.AuditIDRoleCreate, base.AuditFields{
+				"role":           internalName,
+				"admin_channels": getAuditEventAccess(h.db, princ),
+				"db":             h.db.Name,
+			})
+		}
 		h.writeStatus(http.StatusCreated, "Created")
 	}
 	return nil
+}
+
+func getAuditEventAccess(db *db.Database, princ auth.Principal) map[string]map[string][]string {
+	auditEventAccess := make(map[string]map[string][]string)
+	if db.OnlyDefaultCollection() {
+		collectionAccess := make(map[string][]string)
+		collectionAccess[base.DefaultCollection] = princ.ExplicitChannels().AllKeys()
+		auditEventAccess[base.DefaultScope] = collectionAccess
+	} else {
+		auditEventAccess = auth.GetExplicitCollectionChannelsForAuditEvent(princ.GetCollectionsAccess())
+		// we support specifying both collection access and legacy way for default collection, if there are some channels
+		// specified for default collection in legacy way, add them here
+		defaultChannels := princ.ExplicitChannels().AllKeys()
+		if db.HasDefaultCollection() && len(auditEventAccess[base.DefaultScope][base.DefaultCollection]) == 0 {
+			auditEventAccess[base.DefaultScope][base.DefaultCollection] = defaultChannels
+		}
+	}
+	return auditEventAccess
 }
 
 // Handles PUT or POST to /_user/*
@@ -1612,19 +1666,35 @@ func (h *handler) deleteUser() error {
 		}
 		return err
 	}
-	return h.db.Authenticator(h.ctx()).DeleteUser(user)
+	err = h.db.Authenticator(h.ctx()).DeleteUser(user)
+	if err == nil {
+		base.Audit(h.ctx(), base.AuditIDUserDelete, base.AuditFields{
+			"db":       h.db.Name,
+			"username": username,
+		})
+	}
+	return err
 }
 
 func (h *handler) deleteRole() error {
 	h.assertAdminOnly()
 	purge := h.getBoolQuery("purge")
-	return h.db.DeleteRole(h.ctx(), mux.Vars(h.rq)["name"], purge)
+	roleName := mux.Vars(h.rq)["name"]
+	err := h.db.DeleteRole(h.ctx(), roleName, purge)
+	if err == nil {
+		base.Audit(h.ctx(), base.AuditIDRoleDelete, base.AuditFields{
+			"db":   h.db.Name,
+			"role": roleName,
+		})
+	}
+	return err
 
 }
 
 func (h *handler) getUserInfo() error {
 	h.assertAdminOnly()
-	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	username := internalUserName(mux.Vars(h.rq)["name"])
+	user, err := h.db.Authenticator(h.ctx()).GetUser(username)
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -1652,13 +1722,20 @@ func (h *handler) getUserInfo() error {
 		}
 	}
 	bytes, err := base.JSONMarshal(info)
+	if err == nil {
+		base.Audit(h.ctx(), base.AuditIDUserRead, base.AuditFields{
+			"db":       h.db.Name,
+			"username": username,
+		})
+	}
 	h.writeRawJSON(bytes)
 	return err
 }
 
 func (h *handler) getRoleInfo() error {
 	h.assertAdminOnly()
-	role, err := h.db.Authenticator(h.ctx()).GetRole(mux.Vars(h.rq)["name"])
+	name := mux.Vars(h.rq)["name"]
+	role, err := h.db.Authenticator(h.ctx()).GetRole(name)
 	if role == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -1669,6 +1746,12 @@ func (h *handler) getRoleInfo() error {
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
 	info := marshalPrincipal(h.db, role, includeDynamicGrantInfo)
 	bytes, err := base.JSONMarshal(info)
+	if err == nil {
+		base.Audit(h.ctx(), base.AuditIDRoleRead, base.AuditFields{
+			"db":   h.db.Name,
+			"role": name,
+		})
+	}
 	_, _ = h.response.Write(bytes)
 	return err
 }

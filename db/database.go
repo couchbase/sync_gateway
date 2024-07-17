@@ -2464,7 +2464,7 @@ func (dbc *DatabaseContext) InstallPrincipals(ctx context.Context, spec map[stri
 
 		createdPrincipal := true
 		worker := func() (shouldRetry bool, err error, value interface{}) {
-			_, err = dbc.UpdatePrincipal(ctx, princ, (what == "user"), isGuest)
+			_, _, err = dbc.UpdatePrincipal(ctx, princ, (what == "user"), isGuest)
 			if err != nil {
 				if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
 					// Ignore and absorb this error if it's a conflict error, which just means that updatePrincipal didn't overwrite an existing user.
