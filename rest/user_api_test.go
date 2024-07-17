@@ -1308,7 +1308,7 @@ func TestPutUserUnsetAdminChannelsDefaultCollection(t *testing.T) {
 	assert.Equal(t, base.SetFromArray(userRoles), userConfig.ExplicitRoleNames)
 
 	// Update the user with an empty admin channels to remove them
-	payload = GetUserPayload(t, "demo", "", "", collection, []string{}, userRoles)
+	payload = GetUserPayload(t, "demo", "", "", ds, []string{}, userRoles)
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
 	RequireStatus(t, response, http.StatusOK)
 
