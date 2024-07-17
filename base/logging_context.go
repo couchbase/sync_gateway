@@ -238,12 +238,14 @@ func UserLogCtx(parent context.Context, username string, domain userIDDomain) co
 }
 
 type RequestData struct {
+	CorrelationID     string
 	RequestHost       string
 	RequestRemoteAddr string
 }
 
 func RequestLogCtx(parent context.Context, d RequestData) context.Context {
 	newCtx := getLogCtx(parent)
+	newCtx.CorrelationID = d.CorrelationID
 	newCtx.RequestHost = d.RequestHost
 	newCtx.RequestRemoteAddr = d.RequestRemoteAddr
 	return LogContextWith(parent, &newCtx)

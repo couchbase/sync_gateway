@@ -203,12 +203,12 @@ func newHandler(server *ServerContext, privs handlerPrivs, serverType serverType
 // ctx returns the request-scoped context for logging/cancellation.
 func (h *handler) ctx() context.Context {
 	if h.rqCtx == nil {
-		ctx := base.CorrelationIDLogCtx(h.rq.Context(), h.formatSerialNumber())
 		serverAddr, err := h.getServerAddr()
 		if err != nil {
-			base.AssertfCtx(ctx, "Error getting server address: %v", err)
+			base.AssertfCtx(h.rq.Context(), "Error getting server address: %v", err)
 		}
-		ctx = base.RequestLogCtx(ctx, base.RequestData{
+		ctx := base.RequestLogCtx(h.rq.Context(), base.RequestData{
+			CorrelationID:     h.formatSerialNumber(),
 			RequestHost:       serverAddr,
 			RequestRemoteAddr: h.rq.RemoteAddr,
 		})
