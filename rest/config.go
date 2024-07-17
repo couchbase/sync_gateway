@@ -1233,7 +1233,6 @@ func redactConfigAsStr(ctx context.Context, dbConfig string) (string, error) {
 		return "", err
 	}
 	redactedConfig := make(map[string]any, len(config))
-	fmt.Printf("config: %+v\n", config)
 	for k, v := range config {
 		if _, ok := config["password"]; ok {
 			redactedConfig["password"] = base.RedactedStr

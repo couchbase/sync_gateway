@@ -279,7 +279,7 @@ func TestRedactConfigAsStr(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, testCase.expected, output)
+			require.JSONEq(t, testCase.expected, output)
 
 		})
 	}
