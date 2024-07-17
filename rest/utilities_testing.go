@@ -466,10 +466,14 @@ func (rt *RestTester) ServerContext() *ServerContext {
 }
 
 // CreateDatabase is a utility function to create a database through the REST API
-func (rt *RestTester) CreateDatabase(dbName string, config DbConfig) *TestResponse {
+func (rt *RestTester) CreateDatabase(dbName string, config DbConfig) (resp *TestResponse) {
 	dbcJSON, err := base.JSONMarshal(config)
 	require.NoError(rt.TB(), err)
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/", dbName), string(dbcJSON))
+	if rt.AdminInterfaceAuthentication {
+		resp = rt.SendAdminRequestWithAuth(http.MethodPut, fmt.Sprintf("/%s/", dbName), string(dbcJSON), base.TestClusterUsername(), base.TestClusterPassword())
+	} else {
+		resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/", dbName), string(dbcJSON))
+	}
 	return resp
 }
 
@@ -500,7 +504,12 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 
 // CreateUser creates a user with the default password and channels scoped to a single test collection.
 func (rt *RestTester) CreateUser(username string, channels []string) {
-	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), channels, nil))
+	var response *TestResponse
+	if rt.AdminInterfaceAuthentication {
+		response = rt.SendAdminRequestWithAuth(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), channels, nil), base.TestClusterUsername(), base.TestClusterPassword())
+	} else {
+		response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), channels, nil))
+	}
 	RequireStatus(rt.TB(), response, http.StatusCreated)
 }
 
@@ -767,6 +776,7 @@ func (rt *RestTester) TestAdminHandlerNoConflictsMode() http.Handler {
 func (rt *RestTester) TestAdminHandler() http.Handler {
 	rt.adminHandlerOnce.Do(func() {
 		rt.AdminHandler = CreateAdminHandler(rt.ServerContext())
+		rt.ServerContext().addHTTPServer(adminServer, &serverInfo{nil, &net.TCPAddr{}})
 	})
 	return rt.AdminHandler
 }
@@ -774,6 +784,7 @@ func (rt *RestTester) TestAdminHandler() http.Handler {
 func (rt *RestTester) TestPublicHandler() http.Handler {
 	rt.publicHandlerOnce.Do(func() {
 		rt.PublicHandler = CreatePublicHandler(rt.ServerContext())
+		rt.ServerContext().addHTTPServer(publicServer, &serverInfo{nil, &net.TCPAddr{}})
 	})
 	return rt.PublicHandler
 }
@@ -781,6 +792,7 @@ func (rt *RestTester) TestPublicHandler() http.Handler {
 func (rt *RestTester) TestMetricsHandler() http.Handler {
 	rt.metricsHandlerOnce.Do(func() {
 		rt.MetricsHandler = CreateMetricHandler(rt.ServerContext())
+		rt.ServerContext().addHTTPServer(metricsServer, &serverInfo{nil, &net.TCPAddr{}})
 	})
 	return rt.MetricsHandler
 }
@@ -789,6 +801,7 @@ func (rt *RestTester) TestMetricsHandler() http.Handler {
 func (rt *RestTester) TestDiagnosticHandler() http.Handler {
 	rt.diagnosticHandlerOnce.Do(func() {
 		rt.DiagnosticHandler = createDiagnosticHandler(rt.ServerContext())
+		rt.ServerContext().addHTTPServer(diagnosticServer, &serverInfo{nil, &net.TCPAddr{}})
 	})
 	return rt.DiagnosticHandler
 }
@@ -1199,7 +1212,8 @@ func Request(method, resource, body string) *http.Request {
 	if err != nil {
 		panic(fmt.Sprintf("http.NewRequest failed: %v", err))
 	}
-	request.RequestURI = resource // This doesn't get filled in by NewRequest
+	request.RemoteAddr = "test.client.addr:99999" // usually populated by actual HTTP requests going into a HTTP Server
+	request.RequestURI = resource                 // This doesn't get filled in by NewRequest
 	FixQuotedSlashes(request)
 	return request
 }
@@ -2648,7 +2662,27 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 		config.ImportFilter = stringPtrOrNil(rt.ImportFilter)
 	}
 
+	if rt.GuestEnabled {
+		config.Guest = &auth.PrincipalConfig{
+			Name:     stringPtrOrNil(base.GuestUsername),
+			Disabled: base.BoolPtr(false),
+		}
+		setChannelsAllCollections(config, config.Guest, "*")
+	}
+
 	return config
+}
+
+func setChannelsAllCollections(dbConfig DbConfig, principal *auth.PrincipalConfig, channels ...string) {
+	if dbConfig.Scopes == nil {
+		principal.ExplicitChannels = base.SetOf(channels...)
+		return
+	}
+	for scope, scopeConfig := range dbConfig.Scopes {
+		for collection := range scopeConfig.Collections {
+			principal.SetExplicitChannels(scope, collection, "*")
+		}
+	}
 }
 
 // stringPtrOrNil returns a stringPtr for the given string, or nil if the string is empty

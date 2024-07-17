@@ -18,23 +18,31 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestAuditInjectableHeader(t *testing.T) {
+func TestAuditLoggingFields(t *testing.T) {
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test can panic with gocb logging CBG-4076")
 	}
+
 	// get tempdir before resetting global loggers, since the logger cleanup needs to happen before deletion
 	tempdir := t.TempDir()
 	base.ResetGlobalTestLogging(t)
 	base.InitializeMemoryLoggers()
-	const headerName = "extra-audit-logging-header"
+	const (
+		requestInfoHeaderName = "extra-audit-logging-header"
+		requestUser           = "alice"
+	)
+
 	rt := NewRestTester(t, &RestTesterConfig{
-		PersistentConfig: true,
+		GuestEnabled:                 true,
+		AdminInterfaceAuthentication: !base.UnitTestUrlIsWalrus(), // disable admin auth for walrus so we can get coverage of both subtests
+		PersistentConfig:             true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Unsupported.AuditInfoProvider = &AuditInfoProviderConfig{
-				RequestInfoHeaderName: base.StringPtr(headerName),
+				RequestInfoHeaderName: base.StringPtr(requestInfoHeaderName),
 			}
 			config.Logging = base.LoggingConfig{
 				LogFilePath: tempdir,
@@ -51,60 +59,183 @@ func TestAuditInjectableHeader(t *testing.T) {
 
 	// initialize RestTester
 	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	rt.CreateUser(requestUser, nil)
 
-	rt.CreateUser("alice", nil)
+	// auditFieldValueIgnored is a special value for an audit field to skip value-specific checks whilst still ensuring the field property is set
+	// used for unpredictable values, for example timestamps or request IDs (when the test is making concurrent or unordered requests)
+	const auditFieldValueIgnored = "sg_test_audit_field_value_ignored"
+
 	testCases := []struct {
 		name string
-		fn   func(method, resource, body string, headers map[string]string) *TestResponse
+		// auditableAction is a function that performs an action that should've been audited
+		auditableAction func(t testing.TB)
+		// expectedAuditEvents is a list of expected audit events and their fields for the given action... can be more than one event produced for a given action
+		expectedAuditEventFields map[base.AuditID]base.AuditFields
 	}{
-		/* FIXME: admin requests are not currently audited
 		{
-			name: "admin request",
-			fn:   rt.SendAdminRequestWithHeaders,
+			name: "public silent request",
+			auditableAction: func(t testing.TB) {
+				RequireStatus(t, rt.SendRequest(http.MethodGet, "/_ping", ""), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{},
 		},
-		*/
+		{
+			name: "public request",
+			auditableAction: func(t testing.TB) {
+				RequireStatus(t, rt.SendRequest(http.MethodGet, "/", ""), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{},
+		},
+		{
+			name: "guest request",
+			auditableAction: func(t testing.TB) {
+				RequireStatus(t, rt.SendRequest(http.MethodGet, "/db/", ""), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDPublicUserAuthenticated: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldAuthMethod:    "guest",
+				},
+				base.AuditIDReadDatabase: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": base.GuestUsername},
+				},
+			},
+		},
 		{
 			name: "user request",
-			fn:   rt.SendRequestWithHeaders,
+			auditableAction: func(t testing.TB) {
+				RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/db/", "", requestUser), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDPublicUserAuthenticated: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": "alice"},
+				},
+				base.AuditIDReadDatabase: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": "alice"},
+				},
+			},
 		},
-		/* FIXME: diagnostic requests are not currently audited
 		{
-			name: "diagnostic request",
-			fn:   rt.SendDiagnosticRequestWithHeaders,
+			name: "injected request data",
+			auditableAction: func(t testing.TB) {
+				headers := map[string]string{
+					requestInfoHeaderName: `{"extra":"field"}`,
+					"Authorization":       getBasicAuthHeader(requestUser, RestTesterDefaultUserPassword),
+				}
+				RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/db/", "", headers), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDPublicUserAuthenticated: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": "alice"},
+					"extra":                      "field",
+				},
+				base.AuditIDReadDatabase: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldDatabase:      "db",
+					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": "alice"},
+					"extra":                      "field",
+				},
+			},
 		},
-		*/
-		/* FIXME: metrics requests are not currently audited
 		{
-			name: "metrics request",
-			fn:   rt.SendMetricsRequestWithHeaders,
+			name: "rejected public request",
+			auditableAction: func(t testing.TB) {
+				RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/db/", "", "incorrect"), http.StatusUnauthorized)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDPublicUserAuthenticationFailed: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldAuthMethod:    "basic",
+					base.AuditFieldDatabase:      "db",
+					"username":                   "incorrect",
+				},
+			},
 		},
-		*/
+		{
+			name: "anon admin request",
+			auditableAction: func(t testing.TB) {
+				if rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth to be disabled")
+				}
+				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/db/", ""), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				// TODO: Admin auth event
+				//base.AuditIDAdminUserAuthenticated: {
+				//	base.AuditFieldCorrelationID:         auditFieldValueIgnored,
+				//},
+				base.AuditIDReadDatabase: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+				},
+			},
+		},
+		{
+			name: "authed admin request",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth")
+				}
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", base.TestClusterUsername(), base.TestClusterPassword()), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				// TODO: Admin auth event
+				//base.AuditIDAdminUserAuthenticated: {
+				//	base.AuditFieldCorrelationID:         auditFieldValueIgnored,
+				//	base.AuditFieldRealUserID: map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
+				//},
+				base.AuditIDReadDatabase: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
+				},
+			},
+		},
 	}
 	for _, testCase := range testCases {
-		headers := map[string]string{
-			headerName:      `{"extra":"field"}`,
-			"Authorization": getBasicAuthHeader("alice", RestTesterDefaultUserPassword),
-		}
-		t.Run(testCase.name, func(t *testing.T) {
-			output := base.AuditLogContents(t, func() {
-				// FIXME: this test only works with /db because not all http requests are logged
-				RequireStatus(t, testCase.fn(http.MethodGet, "/db/", "", headers), http.StatusOK)
-			})
-			events := bytes.Split(output, []byte("\n"))
-			foundEvent := false
-			for _, rawEvent := range events {
-				if bytes.TrimSpace(rawEvent) == nil {
+		rt.Run(testCase.name, func(t *testing.T) {
+			output := base.AuditLogContents(t, testCase.auditableAction)
+			events := jsonLines(t, output)
+
+			assert.Equalf(t, len(testCase.expectedAuditEventFields), len(events), "expected exactly %d audit events, got %d", len(testCase.expectedAuditEventFields), len(events))
+
+			// for each event, check the fields match what we expected
+			for _, event := range events {
+				id, ok := event["id"]
+				if !assert.Truef(t, ok, "audit event did not contain \"id\" field: %v", event) {
 					continue
 				}
-				var event map[string]any
-				require.NoError(t, base.JSONUnmarshal(rawEvent, &event))
-				require.Contains(t, event, "extra")
-				require.Contains(t, "field", event["extra"].(string))
-				foundEvent = true
+
+				auditID := base.AuditID(id.(float64))
+				for k, expectedVal := range testCase.expectedAuditEventFields[auditID] {
+					eventField, ok := event[k]
+					if !assert.Truef(t, ok, "missing field %q in audit event %q (%s)", k, auditID, base.AuditEvents[auditID].Name) {
+						continue
+					}
+					if expectedVal != auditFieldValueIgnored {
+						assert.Equalf(t, expectedVal, eventField, "unexpected value for field %q in audit event %q (%s)", k, auditID, base.AuditEvents[auditID].Name)
+					}
+				}
 			}
-			require.True(t, foundEvent, "expected audit event not found")
 		})
 	}
+}
+
+// jsonLines unmarshals each line in data as JSON
+func jsonLines(t testing.TB, data []byte) []map[string]any {
+	lines := bytes.Split(data, []byte("\n"))
+	output := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		if bytes.TrimSpace(line) == nil {
+			continue
+		}
+		var data map[string]any
+		require.NoError(t, base.JSONUnmarshal(line, &data))
+		output = append(output, data)
+	}
+	return output
 }
 
 func TestAuditDatabaseUpdate(t *testing.T) {
@@ -182,7 +313,7 @@ func TestAuditDatabaseUpdate(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		rt.Run(testCase.name, func(t *testing.T) {
-			output := base.AuditLogContents(t, func() {
+			output := base.AuditLogContents(t, func(t testing.TB) {
 				resp := rt.SendAdminRequest(testCase.method, testCase.path, testCase.body)
 				RequireStatus(t, resp, http.StatusOK)
 			})
@@ -283,5 +414,4 @@ func TestRedactConfigAsStr(t *testing.T) {
 
 		})
 	}
-
 }

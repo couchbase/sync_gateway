@@ -46,15 +46,14 @@ type LogContext struct {
 
 	// RequestAdditionalAuditFields is a map of fields to be included in audit logs
 	RequestAdditionalAuditFields map[string]any
-	// TODO: CBG-3973 - Add request data (user, ips, etc.) - to be used by auditFieldsFromContext
-	//// Username is the name of the authenticated user
-	//Username string
-	//// UserDomain can be syncgateway or couchbase depending on whether the authenticated user is a sync gateway user or a couchbase RBAC user
-	//UserDomain string
-	//// RequestPort is the HTTP port of the request associated with this log.
-	//RequestPort string
-	//// RemoteAddr is the IP and port of the remote client making the request associated with this log
-	//RemoteAddr string
+	// Username is the name of the authenticated user
+	Username string
+	// UserDomain can be syncgateway or couchbase depending on whether the authenticated user is a sync gateway user or a couchbase RBAC user
+	UserDomain userIDDomain
+	// RequestHost is the HTTP Host of the request associated with this log.
+	RequestHost string
+	// RequestRemoteAddr is the IP and port of the remote client making the request associated with this log
+	RequestRemoteAddr string
 
 	// implicitDefaultCollection is set to true when the context represents the default collection, but we want to omit that value from logging to prevent verbosity.
 	implicitDefaultCollection bool
@@ -132,6 +131,10 @@ func (lc *LogContext) getCopy() LogContext {
 		Collection:                   lc.Collection,
 		TestName:                     lc.TestName,
 		RequestAdditionalAuditFields: lc.RequestAdditionalAuditFields,
+		Username:                     lc.Username,
+		UserDomain:                   lc.UserDomain,
+		RequestHost:                  lc.RequestHost,
+		RequestRemoteAddr:            lc.RequestRemoteAddr,
 	}
 }
 
@@ -216,6 +219,35 @@ func KeyspaceLogCtx(parent context.Context, bucketName, scopeName, collectionNam
 	newCtx.Bucket = bucketName
 	newCtx.Collection = collectionName
 	newCtx.Scope = scopeName
+	return LogContextWith(parent, &newCtx)
+}
+
+type userIDDomain string
+
+const (
+	UserDomainSyncGateway userIDDomain = "sgw"
+	UserDomainCBServer    userIDDomain = "cbs"
+	UserDomainBuiltin                  = "builtin" // internal users (e.g. SG bootstrap user)
+)
+
+func UserLogCtx(parent context.Context, username string, domain userIDDomain) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.Username = username
+	newCtx.UserDomain = domain
+	return LogContextWith(parent, &newCtx)
+}
+
+type RequestData struct {
+	CorrelationID     string
+	RequestHost       string
+	RequestRemoteAddr string
+}
+
+func RequestLogCtx(parent context.Context, d RequestData) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.CorrelationID = d.CorrelationID
+	newCtx.RequestHost = d.RequestHost
+	newCtx.RequestRemoteAddr = d.RequestRemoteAddr
 	return LogContextWith(parent, &newCtx)
 }
 

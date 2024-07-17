@@ -203,9 +203,22 @@ func newHandler(server *ServerContext, privs handlerPrivs, serverType serverType
 // ctx returns the request-scoped context for logging/cancellation.
 func (h *handler) ctx() context.Context {
 	if h.rqCtx == nil {
-		h.rqCtx = base.CorrelationIDLogCtx(h.rq.Context(), h.formatSerialNumber())
+		serverAddr, err := h.getServerAddr()
+		if err != nil {
+			base.AssertfCtx(h.rq.Context(), "Error getting server address: %v", err)
+		}
+		ctx := base.RequestLogCtx(h.rq.Context(), base.RequestData{
+			CorrelationID:     h.formatSerialNumber(),
+			RequestHost:       serverAddr,
+			RequestRemoteAddr: h.rq.RemoteAddr,
+		})
+		h.rqCtx = ctx
 	}
 	return h.rqCtx
+}
+
+func (h *handler) getServerAddr() (string, error) {
+	return h.server.getServerAddr(h.serverType)
 }
 
 func (h *handler) addDatabaseLogContext(dbName string, logConfig *base.DbLogConfig) {
@@ -529,6 +542,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
+		h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainCBServer)
 
 		base.DebugfCtx(h.ctx(), base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
 	} else {
@@ -774,6 +788,12 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 			}
 		} else {
 			dbCtx.DbStats.Security().AuthSuccessCount.Add(1)
+
+			if h.isGuest() {
+				h.rqCtx = base.UserLogCtx(h.ctx(), base.GuestUsername, base.UserDomainSyncGateway)
+			} else {
+				h.rqCtx = base.UserLogCtx(h.ctx(), h.user.Name(), base.UserDomainSyncGateway)
+			}
 			base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticated, auditFields)
 		}
 	}(time.Now())
@@ -781,7 +801,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	// If oidc enabled, check for bearer ID token
 	if dbCtx.Options.OIDCOptions != nil || len(dbCtx.LocalJWTProviders) > 0 {
 		if token := h.getBearerToken(); token != "" {
-			auditFields = base.AuditFields{"auth_method": "bearer"}
+			auditFields = base.AuditFields{base.AuditFieldAuthMethod: "bearer"}
 			var updates auth.PrincipalConfig
 			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.LocalJWTProviders, h.getOIDCCallbackURL)
 			if h.user == nil || err != nil {
@@ -826,7 +846,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	// Check basic auth first
 	if !dbCtx.Options.DisablePasswordAuthentication {
 		if userName, password := h.getBasicAuth(); userName != "" {
-			auditFields = base.AuditFields{"auth_method": "basic"}
+			auditFields = base.AuditFields{base.AuditFieldAuthMethod: "basic"}
 			h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateUser(userName, password)
 			if err != nil {
 				return err
@@ -844,7 +864,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	// Check cookie
-	auditFields = base.AuditFields{"auth_method": "cookie"}
+	auditFields = base.AuditFields{base.AuditFieldAuthMethod: "cookie"}
 	h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateCookie(h.rq, h.response)
 	if err != nil && h.privs != publicPrivs {
 		return err
@@ -853,7 +873,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	// No auth given -- check guest access
-	auditFields = base.AuditFields{"auth_method": "guest"}
+	auditFields = base.AuditFields{base.AuditFieldAuthMethod: "guest"}
 	if h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(""); err != nil {
 		return err
 	}
@@ -1270,7 +1290,7 @@ func (h *handler) taggedEffectiveUserName() string {
 		return base.UD(name).Redact()
 	}
 
-	return "GUEST"
+	return base.GuestUsername
 }
 
 // formattedEffectiveUserName formats an effective name for appending to logs.

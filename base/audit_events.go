@@ -225,7 +225,7 @@ var AuditEvents = events{
 		Name:        "Public API user authenticated",
 		Description: "Public API user successfully authenticated",
 		MandatoryFields: AuditFields{
-			"auth_method": "basic, oidc, cookie, etc.",
+			AuditFieldAuthMethod: "basic, oidc, cookie, etc.",
 		},
 		OptionalFields: AuditFields{
 			"oidc_issuer": "issuer",
@@ -238,7 +238,7 @@ var AuditEvents = events{
 		Name:        "Public API user authentication failed",
 		Description: "Public API user failed to authenticate",
 		MandatoryFields: AuditFields{
-			"auth_method": "basic, oidc, cookie, etc.",
+			AuditFieldAuthMethod: "basic, oidc, cookie, etc.",
 		},
 		OptionalFields: AuditFields{
 			"username": "username",

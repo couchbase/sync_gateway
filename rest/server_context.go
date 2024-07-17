@@ -213,6 +213,32 @@ func (sc *ServerContext) WaitForRESTAPIs(ctx context.Context) error {
 	return err
 }
 
+// getServerAddr returns the address as assigned by the listener. This will return an addressable address, whereas ":0" is a valid value to pass to server.
+func (sc *ServerContext) getServerAddr(s serverType) (string, error) {
+	server, err := sc.getHTTPServer(s)
+	if err != nil {
+		return "", err
+	}
+	return server.addr.String(), nil
+}
+
+func (sc *ServerContext) addHTTPServer(t serverType, s *serverInfo) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	sc._httpServers[t] = s
+}
+
+// getHTTPServer returns information about the given HTTP server.
+func (sc *ServerContext) getHTTPServer(t serverType) (*serverInfo, error) {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	s, ok := sc._httpServers[t]
+	if !ok {
+		return nil, fmt.Errorf("server type %q not found running in server context", t)
+	}
+	return s, nil
+}
+
 // PostStartup runs anything that relies on SG being fully started (i.e. sgreplicate)
 func (sc *ServerContext) PostStartup() {
 	// Delay DatabaseContext processes starting up, e.g. to avoid replication reassignment churn when a Sync Gateway Cluster is being initialized
@@ -254,9 +280,11 @@ func (sc *ServerContext) Close(ctx context.Context) {
 	sc.invalidDatabaseConfigTracking.dbNames = nil
 
 	for _, s := range sc._httpServers {
-		base.InfofCtx(ctx, base.KeyHTTP, "Closing HTTP Server: %v", s.addr)
-		if err := s.server.Close(); err != nil {
-			base.WarnfCtx(ctx, "Error closing HTTP server %q: %v", s.addr, err)
+		if s.server != nil {
+			base.InfofCtx(ctx, base.KeyHTTP, "Closing HTTP Server: %v", s.addr)
+			if err := s.server.Close(); err != nil {
+				base.WarnfCtx(ctx, "Error closing HTTP server %q: %v", s.addr, err)
+			}
 		}
 	}
 	sc._httpServers = nil

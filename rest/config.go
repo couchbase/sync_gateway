@@ -1432,12 +1432,6 @@ func (sc *ServerContext) Serve(ctx context.Context, config *StartupConfig, t ser
 	return serveFn()
 }
 
-func (sc *ServerContext) addHTTPServer(t serverType, s *serverInfo) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
-	sc._httpServers[t] = s
-}
-
 // Validate returns errors errors if invalid config is present
 func (sc *StartupConfig) Validate(ctx context.Context, isEnterpriseEdition bool) (errorMessages error) {
 	var multiError *base.MultiError

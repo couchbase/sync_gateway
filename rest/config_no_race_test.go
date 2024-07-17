@@ -105,12 +105,12 @@ func TestAuditLoggingGlobals(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			output := base.AuditLogContents(t, func() {
-				base.Audit(ctx, base.AuditIDPublicUserAuthenticated, map[string]any{"auth_method": "basic"})
+			output := base.AuditLogContents(t, func(tb testing.TB) {
+				base.Audit(ctx, base.AuditIDPublicUserAuthenticated, map[string]any{base.AuditFieldAuthMethod: "basic"})
 			})
 			var event map[string]any
 			require.NoError(t, json.Unmarshal(output, &event))
-			require.Contains(t, event, "auth_method")
+			require.Contains(t, event, base.AuditFieldAuthMethod)
 			for k, v := range globalFields {
 				if testCase.globalAuditEvents != nil {
 					require.Equal(t, v, event[k])

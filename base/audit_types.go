@@ -68,23 +68,23 @@ const (
 // mandatoryFieldsByGroup defines which fields are mandatory for each group.
 var mandatoryFieldsByGroup = map[fieldGroup]map[string]any{
 	fieldGroupGlobal: {
-		auditFieldTimestamp:   "timestamp",
-		auditFieldID:          123,
-		auditFieldName:        "event name",
-		auditFieldDescription: "event description",
+		AuditFieldTimestamp:   "timestamp",
+		AuditFieldID:          123,
+		AuditFieldName:        "event name",
+		AuditFieldDescription: "event description",
 	},
 	fieldGroupRequest: {
-		auditFieldLocal: map[string]any{
+		AuditFieldLocal: map[string]any{
 			"ip":   "local ip",
 			"port": "1234"},
-		auditFieldRemote: map[string]any{
+		AuditFieldRemote: map[string]any{
 			"ip":   "remote ip",
 			"port": "5678",
 		},
-		auditFieldCorrelationID: "correlation_id",
+		AuditFieldCorrelationID: "correlation_id",
 	},
 	fieldGroupAuthenticated: {
-		auditFieldRealUserID: map[string]any{
+		AuditFieldRealUserID: map[string]any{
 			"domain": "user domain",
 			"name":   "user name",
 		},
@@ -94,7 +94,7 @@ var mandatoryFieldsByGroup = map[fieldGroup]map[string]any{
 	},
 	fieldGroupKeyspace: {
 		AuditFieldDatabase: "database name",
-		auditFieldKeyspace: "keyspace",
+		AuditFieldKeyspace: "keyspace",
 	},
 }
 

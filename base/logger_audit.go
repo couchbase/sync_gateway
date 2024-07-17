@@ -11,6 +11,7 @@ package base
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 )
@@ -22,22 +23,23 @@ const (
 
 // commonly used fields for audit events
 const (
-	auditFieldID                 = "id"
-	auditFieldTimestamp          = "timestamp"
-	auditFieldName               = "name"
-	auditFieldDescription        = "description"
-	auditFieldRealUserID         = "real_userid"
-	auditFieldLocal              = "local"
-	auditFieldRemote             = "remote"
+	AuditFieldID                 = "id"
+	AuditFieldTimestamp          = "timestamp"
+	AuditFieldName               = "name"
+	AuditFieldDescription        = "description"
+	AuditFieldRealUserID         = "real_userid"
+	AuditFieldLocal              = "local"
+	AuditFieldRemote             = "remote"
 	AuditFieldDatabase           = "db"
-	auditFieldCorrelationID      = "cid" // FIXME: how to distinguish between this field (http) and blip id below
-	auditFieldKeyspace           = "ks"
+	AuditFieldCorrelationID      = "cid" // FIXME: how to distinguish between this field (http) and blip id below
+	AuditFieldKeyspace           = "ks"
 	AuditFieldReplicationID      = "replication_id"
 	AuditFieldPayload            = "payload"
 	AuditFieldCompactionType     = "type"
 	AuditFieldCompactionDryRun   = "dry_run"
 	AuditFieldCompactionReset    = "reset"
 	AuditFieldPostUpgradePreview = "preview"
+	AuditFieldAuthMethod         = "auth_method"
 )
 
 // expandFields populates data with information from the id, context and additionalData.
@@ -50,9 +52,9 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	}
 
 	// static event data
-	fields[auditFieldID] = uint64(id)
-	fields[auditFieldName] = AuditEvents[id].Name
-	fields[auditFieldDescription] = AuditEvents[id].Description
+	fields[AuditFieldID] = uint64(id)
+	fields[AuditFieldName] = AuditEvents[id].Name
+	fields[AuditFieldDescription] = AuditEvents[id].Description
 
 	// context data
 	logCtx := getLogCtx(ctx)
@@ -60,38 +62,44 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 		fields[AuditFieldDatabase] = logCtx.Database
 	}
 	if logCtx.CorrelationID != "" {
-		fields[auditFieldCorrelationID] = logCtx.CorrelationID
+		fields[AuditFieldCorrelationID] = logCtx.CorrelationID
 	}
 	if logCtx.Bucket != "" && logCtx.Scope != "" && logCtx.Collection != "" {
-		fields[auditFieldKeyspace] = FullyQualifiedCollectionName(logCtx.Bucket, logCtx.Scope, logCtx.Collection)
+		fields[AuditFieldKeyspace] = FullyQualifiedCollectionName(logCtx.Bucket, logCtx.Scope, logCtx.Collection)
 	}
-	// TODO: CBG-3973 - Pull fields from ctx
-	userDomain := "placeholder"
-	userID := "placeholder"
-	if userDomain != "" && userID != "" {
-		fields[auditFieldRealUserID] = map[string]any{
+	userDomain := logCtx.UserDomain
+	userName := logCtx.Username
+	if userDomain != "" || userName != "" {
+		fields[AuditFieldRealUserID] = map[string]any{
 			"domain": userDomain,
-			"user":   userID,
+			"user":   userName,
 		}
 	}
-	localIP := "192.0.2.1"
-	localPort := "4984"
-	if localIP != "" && localPort != "" {
-		fields[auditFieldLocal] = map[string]any{
-			"ip":   localIP,
-			"port": localPort,
-		}
-	}
-	remoteIP := "203.0.113.1"
-	remotePort := "12345"
-	if remoteIP != "" && remotePort != "" {
-		fields[auditFieldRemote] = map[string]any{
-			"ip":   remoteIP,
-			"port": remotePort,
+	if logCtx.RequestHost != "" {
+		host, port, err := net.SplitHostPort(logCtx.RequestHost)
+		if err != nil {
+			AssertfCtx(ctx, "couldn't parse request host %q: %v", logCtx.RequestHost, err)
+		} else {
+			fields[AuditFieldLocal] = map[string]any{
+				"ip":   host,
+				"port": port,
+			}
 		}
 	}
 
-	fields[auditFieldTimestamp] = time.Now()
+	if logCtx.RequestRemoteAddr != "" {
+		host, port, err := net.SplitHostPort(logCtx.RequestRemoteAddr)
+		if err != nil {
+			AssertfCtx(ctx, "couldn't parse request remote addr %q: %v", logCtx.RequestRemoteAddr, err)
+		} else {
+			fields[AuditFieldRemote] = map[string]any{
+				"ip":   host,
+				"port": port,
+			}
+		}
+	}
+
+	fields[AuditFieldTimestamp] = time.Now()
 
 	fields.merge(ctx, globalFields)
 	fields.merge(ctx, logCtx.RequestAdditionalAuditFields)
