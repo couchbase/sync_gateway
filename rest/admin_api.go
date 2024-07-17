@@ -791,6 +791,14 @@ func (h *handler) handlePutDbAuditConfig() error {
 				eventEnabled = valT["enabled"].(bool)
 			}
 
+			// check if explicitly disabled events are allowed to be filtered
+			// we'll ensure that non-filterable events are always considered enabled at runtime instead of at config persistence time
+			// this will ensure we are able to add events in the future that are non-filterable and have them work correctly
+			if _, ok := base.NonFilterableEvents[auditID]; ok && !eventEnabled {
+				multiError = multiError.Append(fmt.Errorf("event %q is not filterable", id))
+				continue
+			}
+
 			toChange[auditID] = eventEnabled
 		}
 		if err := multiError.ErrorOrNil(); err != nil {

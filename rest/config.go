@@ -2222,6 +2222,11 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 		if events == nil {
 			events = base.DefaultAuditEventIDs
 		}
+		// always enable the non-filterable events
+		for id := range base.NonFilterableEvents {
+			enabledEvents[id] = struct{}{}
+		}
+		// enable the events specified in the config
 		for _, event := range events {
 			enabledEvents[base.AuditID(event)] = struct{}{}
 		}
