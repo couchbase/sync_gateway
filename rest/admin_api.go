@@ -848,12 +848,13 @@ func (h *handler) handlePutDbAuditConfig() error {
 		return nil
 	})
 	if err != nil {
-		base.Audit(h.ctx(), base.AuditIDAuditConfigChanged, base.AuditFields{
-			"audit_scope":          "db",
-			base.AuditFieldPayload: body,
-		})
+		return err
 	}
-	return err
+	base.Audit(h.ctx(), base.AuditIDAuditConfigChanged, base.AuditFields{
+		base.AuditFieldAuditScope: "db",
+		base.AuditFieldPayload:    body,
+	})
+	return nil
 }
 
 func mutateConfigFromDbAuditConfigBody(isReplace bool, existingAuditConfig *DbAuditLoggingConfig, requestAuditConfig *HandleDbAuditConfigBody, eventsToChange map[base.AuditID]bool) {

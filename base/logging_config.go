@@ -226,11 +226,11 @@ func EnableStatsLogger(enabled bool) {
 func EnableAuditLogger(ctx context.Context, enabled bool) {
 	if auditLogger != nil {
 		if !enabled {
-			Audit(ctx, AuditIDAuditDisabled, AuditFields{"audit_scope": "global"})
+			Audit(ctx, AuditIDAuditDisabled, AuditFields{AuditFieldAuditScope: "global"})
 		}
 		auditLogger.Enabled.Set(enabled)
 		if enabled {
-			Audit(ctx, AuditIDAuditEnabled, AuditFields{"audit_scope": "global"})
+			Audit(ctx, AuditIDAuditEnabled, AuditFields{AuditFieldAuditScope: "global"})
 		}
 	}
 

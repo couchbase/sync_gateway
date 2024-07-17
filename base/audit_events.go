@@ -307,7 +307,11 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		MandatoryFields:    AuditFields{},
-		EventType:          eventTypeAdmin,
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupRequest,
+			fieldGroupAuthenticated,
+		},
+		EventType: eventTypeAdmin,
 	},
 	AuditIDSyncGatewayCollectInfoStart: {
 		Name:               "sgcollect_info start",
@@ -322,6 +326,10 @@ var AuditEvents = events{
 			"keep_zip":     true,
 			"zip_filename": "zip_filename",
 		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupRequest,
+			fieldGroupAuthenticated,
+		},
 		EventType: eventTypeAdmin,
 	},
 	AuditIDSyncGatewayCollectInfoStop: {
@@ -330,7 +338,11 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		MandatoryFields:    AuditFields{},
-		EventType:          eventTypeAdmin,
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupRequest,
+			fieldGroupAuthenticated,
+		},
+		EventType: eventTypeAdmin,
 	},
 	AuditIDSyncGatewayStats: {
 		Name:               "stats requested",
@@ -338,7 +350,11 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		MandatoryFields: AuditFields{
-			"stats_format": "expvar, prometheus, etc.",
+			AuditFieldStatsFormat: "expvar, prometheus, etc.",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupRequest,
+			fieldGroupAuthenticated,
 		},
 		EventType: eventTypeAdmin,
 	},
@@ -346,10 +362,10 @@ var AuditEvents = events{
 		Name:        "profiling requested",
 		Description: "profiling was requested",
 		MandatoryFields: AuditFields{
-			"profile_type": "cpu, memory, etc.",
+			AuditEventPprofProfileType: "cpu, memory, etc.",
 		},
 		OptionalFields: AuditFields{
-			"filename": "filename",
+			AuditFieldFileName: "filename",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,

@@ -27,6 +27,8 @@ const (
 	AuditFieldCompactionDryRun   = "dry_run"
 	AuditFieldCompactionReset    = "reset"
 	AuditFieldPostUpgradePreview = "preview"
+	AuditFieldAuditScope         = "audit_scope"
+	AuditFieldFileName           = "filename"
 
 	// AuditIDSyncGatewayStartup AuditID = 53260
 	AuditFieldSGVersion                      = "sg_version"
@@ -37,4 +39,10 @@ const (
 	AuditFieldLogFilePath                    = "log_file_path"
 	AuditFieldBcryptCost                     = "bcrypt_cost"
 	AuditFieldDisablePersistentConfig        = "disable_persistent_config"
+
+	// AuditIDSyncGatewayStats             AuditID = 53303
+	AuditFieldStatsFormat = "stats_format"
+
+	//AuditIDSyncGatewayProfiling         AuditID = 53304
+	AuditEventPprofProfileType = "profile_type"
 )
