@@ -1559,7 +1559,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 }
 
 func getUserBodyDoc(username, password string, collection sgbucket.DataStore, adminChans []string) (string, error) {
-	config := auth.PrincipalConfig{}
+	config := PrincipalConfigForWrite{}
 	if username != "" {
 		config.Name = &username
 	}
@@ -1693,9 +1693,22 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 }
 
-// GetUserPayload will take username, password, email, channels and roles you want to assign a user and create the appropriate payload for the _user endpoint
+// PrincipalConfigForWrite is used by GetUserPayload, GetRolePayload to remove the omitempty for ExplicitRoleNames
+// and ExplicitChannels, to build payloads with explicit removal of channels and roles after changes made in CBG-3883
+type PrincipalConfigForWrite struct {
+	auth.PrincipalConfig
+	ExplicitChannels  *base.Set `json:"admin_channels,omitempty"`
+	ExplicitRoleNames *base.Set `json:"admin_roles,omitempty"`
+}
+
+// GetUserPayload will take username, password, email, channels and roles you want to assign a user and create the appropriate payload for the _user endpoint.
+// When using the default collection, chans and roles are handled as follows to align with CBG-3883:
+//
+//	nil: omitted from payload
+//	empty slice: "[]"
+//	populated slice: "["ABC"]"
 func GetUserPayload(t testing.TB, username, password, email string, collection sgbucket.DataStore, chans, roles []string) string {
-	config := auth.PrincipalConfig{}
+	config := PrincipalConfigForWrite{}
 	if username != "" {
 		config.Name = &username
 	}
@@ -1705,17 +1718,21 @@ func GetUserPayload(t testing.TB, username, password, email string, collection s
 	if email != "" {
 		config.Email = &email
 	}
-	if len(roles) != 0 {
-		config.ExplicitRoleNames = base.SetOf(roles...)
+
+	if roles != nil {
+		roleSet := base.SetOf(roles...)
+		config.ExplicitRoleNames = &roleSet
 	}
+
 	marshalledConfig, err := addChannelsToPrincipal(config, collection, chans)
 	require.NoError(t, err)
 	return string(marshalledConfig)
 }
 
 // GetRolePayload will take roleName and channels you want to assign a particular role and return the appropriate payload for the _role endpoint
+// For default collection, follows same handling as GetUserPayload for chans.
 func GetRolePayload(t *testing.T, roleName string, collection sgbucket.DataStore, chans []string) string {
-	config := auth.PrincipalConfig{}
+	config := PrincipalConfigForWrite{}
 	if roleName != "" {
 		config.Name = &roleName
 	}
@@ -1725,9 +1742,12 @@ func GetRolePayload(t *testing.T, roleName string, collection sgbucket.DataStore
 }
 
 // add channels to principal depending if running with collections or not. then marshal the principal config
-func addChannelsToPrincipal(config auth.PrincipalConfig, ds sgbucket.DataStore, chans []string) ([]byte, error) {
+func addChannelsToPrincipal(config PrincipalConfigForWrite, ds sgbucket.DataStore, chans []string) ([]byte, error) {
 	if base.IsDefaultCollection(ds.ScopeName(), ds.CollectionName()) {
-		config.ExplicitChannels = base.SetFromArray(chans)
+		if chans != nil {
+			adminChannels := base.SetFromArray(chans)
+			config.ExplicitChannels = &adminChannels
+		}
 	} else {
 		config.SetExplicitChannels(ds.ScopeName(), ds.CollectionName(), chans...)
 	}
