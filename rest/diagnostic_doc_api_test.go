@@ -961,10 +961,11 @@ func TestGetUserDocAccessDynamicRoleChanRemoval2(t *testing.T) {
 	// create doc in channel A, assign chan A to role1
 	version := rt.PutDoc("doc1", `{"channel":["A"], "user":"role:role1", "dynamicChan":"A"}`)
 
+	ks := rt.GetSingleDataStore().ScopeName() + "." + rt.GetSingleDataStore().CollectionName()
 	userGrant1 := userGrant{
 		user:   "alice",
 		roles:  []string{"role1"},
-		output: `{"all_channels":{"sg_test_0.sg_test_0":{"A":{"entries":["3-0"]}}}}`,
+		output: fmt.Sprintf(`{"all_channels":{"%s":{"A":{"entries":["3-0"]}}}}`, ks),
 	}
 	userGrant1.request(rt)
 
