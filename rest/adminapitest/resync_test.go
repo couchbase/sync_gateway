@@ -71,6 +71,10 @@ func TestResyncRollback(t *testing.T) {
 
 func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
 	base.TestRequiresDCPResync(t)
+	if !base.TestsUseNamedCollections() {
+		t.Skip("Test requires named collections, performs default collection handling independently")
+	}
+
 	testCases := []struct {
 		name                  string
 		defaultCollectionOnly bool
