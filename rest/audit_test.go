@@ -72,6 +72,13 @@ func TestAuditLoggingFields(t *testing.T) {
 		expectedAuditEventFields map[base.AuditID]base.AuditFields
 	}{
 		{
+			name: "public silent request",
+			auditableAction: func(t testing.TB) {
+				RequireStatus(t, rt.SendRequest(http.MethodGet, "/_ping", ""), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{},
+		},
+		{
 			name: "guest request",
 			auditableAction: func(t testing.TB) {
 				RequireStatus(t, rt.SendRequest(http.MethodGet, "/db/_session", ""), http.StatusOK)
@@ -112,6 +119,12 @@ func TestAuditLoggingFields(t *testing.T) {
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDPublicUserAuthenticated: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": "alice"},
+					"extra":                      "field",
+				},
+				base.AuditIDReadDatabase: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldDatabase:      "db",
 					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": "alice"},
 					"extra":                      "field",
 				},
@@ -173,8 +186,9 @@ func TestAuditLoggingFields(t *testing.T) {
 			output := base.AuditLogContents(t, testCase.auditableAction)
 			events := jsonLines(t, output)
 
+			assert.Equalf(t, len(testCase.expectedAuditEventFields), len(events), "expected exactly %d audit events, got %d", len(testCase.expectedAuditEventFields), len(events))
+
 			// for each event, check the fields match what we expected
-			numEventInvocations := make(map[base.AuditID]uint)
 			for _, event := range events {
 				id, ok := event["id"]
 				if !assert.Truef(t, ok, "audit event did not contain \"id\" field: %v", event) {
@@ -182,8 +196,6 @@ func TestAuditLoggingFields(t *testing.T) {
 				}
 
 				auditID := base.AuditID(id.(float64))
-				numEventInvocations[auditID]++
-
 				for k, expectedVal := range testCase.expectedAuditEventFields[auditID] {
 					eventField, ok := event[k]
 					if !assert.Truef(t, ok, "missing field %q in audit event %q (%s)", k, auditID, base.AuditEvents[auditID].Name) {
@@ -193,11 +205,6 @@ func TestAuditLoggingFields(t *testing.T) {
 						assert.Equalf(t, expectedVal, eventField, "unexpected value for field %q in audit event %q (%s)", k, auditID, base.AuditEvents[auditID].Name)
 					}
 				}
-			}
-
-			// catch missing events
-			for expectedID := range testCase.expectedAuditEventFields {
-				assert.Equalf(t, uint(1), numEventInvocations[expectedID], "expected audit event with id %q (%s) to only be called once", expectedID, base.AuditEvents[expectedID].Name)
 			}
 		})
 	}
