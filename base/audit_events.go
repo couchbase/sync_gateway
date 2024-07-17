@@ -360,8 +360,12 @@ var AuditEvents = events{
 		Name:        "Create database",
 		Description: "A new database was created",
 		MandatoryFields: AuditFields{
-			"db":              "database name",
 			AuditFieldPayload: "JSON representation of db config",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -369,11 +373,12 @@ var AuditEvents = events{
 	},
 	AuditIDReadDatabase: {
 		Name:        "Read database",
-		Description: "Information about this database was viewed.",
-		MandatoryFields: AuditFields{
-			"db": "database name",
+		Description: "Information about this database was viewed",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
-		OptionalFields:     AuditFields{},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		EventType:          eventTypeUser,
@@ -381,8 +386,22 @@ var AuditEvents = events{
 	AuditIDDeleteDatabase: {
 		Name:        "Delete database",
 		Description: "A database was deleted",
-		MandatoryFields: AuditFields{
-			"db": "database name",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: false,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDDatabaseAllRead: {
+		Name:        "Read all databases",
+		Description: "All databases were viewed",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -391,8 +410,10 @@ var AuditEvents = events{
 	AuditIDReadDatabaseConfig: {
 		Name:        "Read database config",
 		Description: "Database configuration was viewed",
-		MandatoryFields: AuditFields{
-			"db": "database name",
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -402,8 +423,12 @@ var AuditEvents = events{
 		Name:        "Update database config",
 		Description: "Database configuration was updated",
 		MandatoryFields: AuditFields{
-			"db":              "database name",
 			AuditFieldPayload: "payload",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
