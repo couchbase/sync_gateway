@@ -2532,7 +2532,8 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err := json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(ctx, "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 1)
@@ -2545,7 +2546,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err = collection.GetDocSyncData(ctx, "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 1)
@@ -2558,7 +2559,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err = collection.GetDocSyncData(ctx, "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 2)
@@ -2623,7 +2624,8 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(ctx, "doc1")
 	assert.NoError(t, err)
 	require.Len(t, syncData.ChannelSet, 1)
 	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{
@@ -2734,7 +2736,8 @@ func TestDocChannelSetPruning(t *testing.T) {
 		version = rt.UpdateDoc(docID, version, `{"channels": ["a"]}`)
 	}
 
-	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(ctx, "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSetHistory, db.DocumentHistoryMaxEntriesPerChannel)
@@ -2746,7 +2749,7 @@ func TestDocChannelSetPruning(t *testing.T) {
 func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser(rt.Context())
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	documentRev := db.DocumentRevision{DocID: "doc1", BodyBytes: []byte("null")}
 

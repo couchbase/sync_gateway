@@ -567,7 +567,7 @@ func (btc *BlipTesterCollectionClient) getLastReplicatedRev(docID string) (revID
 
 func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, skipCollectionsInitialization bool) (*BlipTesterReplicator, error) {
 	bt, err := NewBlipTesterFromSpecWithRT(tb, &BlipTesterSpec{
-		connectingPassword:            "test",
+		connectingPassword:            RestTesterDefaultUserPassword,
 		connectingUsername:            btc.Username,
 		connectingUserChannelGrants:   btc.Channels,
 		blipProtocols:                 btc.SupportedBLIPProtocols,

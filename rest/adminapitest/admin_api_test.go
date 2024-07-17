@@ -252,8 +252,7 @@ func TestServerlessChangesEndpointLimit(t *testing.T) {
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
-	resp = rt.SendAdminRequest("PUT", "/db/_user/alice", rest.GetUserPayload(t, "alice", "letmein", "", rt.GetSingleTestDatabaseCollection(), []string{"ABC"}, nil))
-	rest.RequireStatus(t, resp, 201)
+	rt.CreateUser("alice", []string{"ABC"})
 
 	// Put several documents in channel PBS
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs1", `{"value":1, "channel":["PBS"]}`)

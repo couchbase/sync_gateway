@@ -483,7 +483,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 
 	const docID = "doc1"
 
-	collection := rt.GetSingleTestDatabaseCollection()
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"test":true}`)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -494,7 +494,6 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	require.True(t, ok)
 
 	idxName := t.Name() + "_primary"
-	ctx := base.TestCtx(t)
 	require.NoError(t, n1qlStore.CreatePrimaryIndex(ctx, idxName, nil))
 	require.NoError(t, n1qlStore.WaitForIndexesOnline(ctx, []string{idxName}, base.WaitForIndexesDefault))
 

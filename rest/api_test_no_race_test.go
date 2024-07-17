@@ -89,15 +89,11 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 		})
 	defer rt.Close()
 
-	collection := rt.GetSingleTestDatabaseCollection()
-
-	// Create user:
-	userResponse := rt.SendAdminRequest("PUT", "/db/_user/bernard", GetUserPayload(t, "bernard", "letmein", "", collection, []string{"ABC"}, nil))
-	RequireStatus(t, userResponse, 201)
+	rt.CreateUser("bernard", []string{"ABC"})
 
 	// Get user, to trigger all_channels calculation and bump the user change count BEFORE we write the PBS docs - otherwise the user key count
 	// will still be higher than the latest change count.
-	userResponse = rt.SendAdminRequest("GET", "/db/_user/bernard", "")
+	userResponse := rt.SendAdminRequest("GET", "/db/_user/bernard", "")
 	RequireStatus(t, userResponse, 200)
 
 	/*
