@@ -4353,6 +4353,12 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	RequireEventCount(t, runtimeConfig, base.AuditIDISGRStatus, 1)
 	RequireEventCount(t, runtimeConfig, base.AuditIDAttachmentCreate, 0)
 
+	// Try disabling a non-filterable event
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled": true,"events":{"%s":false}}"`, base.AuditIDAuditEnabled))
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	assert.Contains(t, resp.Body.String(), "couldn't update audit configuration")
+	assert.Contains(t, resp.Body.String(), fmt.Sprintf(`event \"%s\" is not filterable`, base.AuditIDAuditEnabled))
+
 	// Re-enable the event via PUT, should remove other events
 	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDAttachmentCreate))
 	rest.RequireStatus(t, resp, http.StatusOK)
