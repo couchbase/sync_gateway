@@ -4370,7 +4370,7 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	// Set a non-existent audit ID
 	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", `{"events":{"123":true}}`)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
-	assert.Contains(t, resp.Body.String(), `unknown audit event ID: "123"`)
+	assert.Contains(t, resp.Body.String(), `unknown audit event ID: \"123\"`)
 }
 
 func RequireEventCount(t *testing.T, runtimeConfig *rest.RuntimeDatabaseConfig, auditID base.AuditID, expectedCount int) {
