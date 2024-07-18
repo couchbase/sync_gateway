@@ -46,10 +46,12 @@ type LogContext struct {
 
 	// RequestAdditionalAuditFields is a map of fields to be included in audit logs
 	RequestAdditionalAuditFields map[string]any
+
 	// Username is the name of the authenticated user
 	Username string
-	// UserDomain can be syncgateway or couchbase depending on whether the authenticated user is a sync gateway user or a couchbase RBAC user
+	// UserDomain can determine whether the authenticated user is a sync gateway user or a couchbase RBAC user
 	UserDomain userIDDomain
+
 	// RequestHost is the HTTP Host of the request associated with this log.
 	RequestHost string
 	// RequestRemoteAddr is the IP and port of the remote client making the request associated with this log
@@ -72,9 +74,16 @@ type DbConsoleLogConfig struct {
 }
 
 // DbAuditLogConfig can be used to customise the audit logging for events associated with this database.
+// These properties are evaluated at logging time and are expected to have O(1) lookup time.
 type DbAuditLogConfig struct {
 	Enabled       bool
 	EnabledEvents map[AuditID]struct{}
+	DisabledUsers map[AuditLoggingPrincipal]struct{}
+}
+
+type AuditLoggingPrincipal struct {
+	Domain string `json:"domain,omitempty"`
+	Name   string `json:"name,omitempty"`
 }
 
 // addContext returns a string format with additional log context if present.

@@ -278,15 +278,10 @@ type DbConsoleLoggingConfig struct {
 
 // DbAuditLoggingConfig are per-db options configurable for audit logging
 type DbAuditLoggingConfig struct {
-	Enabled       *bool                   `json:"enabled,omitempty"`        // Whether audit logging is enabled for this database
-	EnabledEvents []uint                  `json:"enabled_events,omitempty"` // List of audit event IDs that are enabled
-	DisabledUsers []AuditLoggingPrincipal `json:"disabled_users,omitempty"` // List of users to disable audit logging for
-	DisabledRoles []AuditLoggingPrincipal `json:"disabled_roles,omitempty"` // List of roles to disable audit logging for
-}
-
-type AuditLoggingPrincipal struct {
-	Domain string `json:"domain,omitempty"`
-	Name   string `json:"name,omitempty"`
+	Enabled       *bool                        `json:"enabled,omitempty"`        // Whether audit logging is enabled for this database
+	EnabledEvents []uint                       `json:"enabled_events,omitempty"` // List of audit event IDs that are enabled
+	DisabledUsers []base.AuditLoggingPrincipal `json:"disabled_users,omitempty"` // List of users to disable audit logging for
+	DisabledRoles []base.AuditLoggingPrincipal `json:"disabled_roles,omitempty"` // List of roles to disable audit logging for
 }
 
 func GetTLSVersionFromString(stringV *string) uint16 {
@@ -2237,7 +2232,8 @@ func RegisterSignalHandler(ctx context.Context) {
 	}()
 }
 
-// toDbLogConfig converts the logging from a DbConfig to a DbLogConfig
+// toDbLogConfig converts the stored logging in a DbConfig to a runtime DbLogConfig for evaluation at log time.
+// This is required to turn the stored config (which does not have data stored in a O(1)-compatible format) into a data structure that has O(1) lookups for checking if we should log.
 func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 	l := c.Logging
 	if l == nil || (l.Console == nil && l.Audit == nil) {
@@ -2255,6 +2251,7 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 
 	var aud *base.DbAuditLogConfig
 	if l.Audit != nil {
+		// per-event configuration
 		enabledEvents := make(map[base.AuditID]struct{}, len(l.Audit.EnabledEvents))
 		events := l.Audit.EnabledEvents
 		if events == nil {
@@ -2268,9 +2265,17 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 		for _, event := range events {
 			enabledEvents[base.AuditID(event)] = struct{}{}
 		}
+
+		// user/role filtering
+		disabledUsers := make(map[base.AuditLoggingPrincipal]struct{}, len(c.Logging.Audit.DisabledUsers))
+		for _, user := range c.Logging.Audit.DisabledUsers {
+			disabledUsers[user] = struct{}{}
+		}
+
 		aud = &base.DbAuditLogConfig{
 			Enabled:       base.BoolDefault(l.Audit.Enabled, false),
 			EnabledEvents: enabledEvents,
+			DisabledUsers: disabledUsers,
 		}
 	}
 
