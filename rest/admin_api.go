@@ -1305,9 +1305,14 @@ func (h *handler) handleGetRawDoc() error {
 		}
 	}
 	base.Audit(h.ctx(), base.AuditIDDocumentMetadataRead, base.AuditFields{
-		base.AuditFieldDocID:      docid,
-		base.AuditFieldDocVersion: doc.SyncData.CurrentRev,
+		base.AuditFieldDocID: docid,
 	})
+	if includeDoc {
+		base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+			base.AuditFieldDocID:      docid,
+			base.AuditFieldDocVersion: doc.SyncData.CurrentRev,
+		})
+	}
 	h.writeRawJSON(rawBytes)
 	return nil
 }

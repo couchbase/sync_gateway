@@ -877,7 +877,7 @@ var AuditEvents = events{
 		Description: "A new document was created",
 		MandatoryFields: AuditFields{
 			AuditFieldDocID:      "document id",
-			AuditFieldDocVersion: "revision ID or version",
+			AuditFieldDocVersion: "revision ID",
 			AuditFieldChannels:   []string{"list", "of", "channels"},
 		},
 		mandatoryFieldGroups: []fieldGroup{
@@ -894,7 +894,7 @@ var AuditEvents = events{
 		Description: "A document was viewed",
 		MandatoryFields: AuditFields{
 			AuditFieldDocID:      "document id",
-			AuditFieldDocVersion: "revision ID or version",
+			AuditFieldDocVersion: "revision ID",
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973
@@ -910,7 +910,7 @@ var AuditEvents = events{
 		Description: "A document was updated",
 		MandatoryFields: AuditFields{
 			AuditFieldDocID:      "document id",
-			AuditFieldDocVersion: "revision ID or version",
+			AuditFieldDocVersion: "revision ID",
 			AuditFieldChannels:   []string{"list", "of", "channels"},
 		},
 		mandatoryFieldGroups: []fieldGroup{
@@ -944,7 +944,7 @@ var AuditEvents = events{
 			AuditFieldDocID: "document id",
 		},
 		OptionalFields: AuditFields{
-			AuditFieldDocVersion: "revision ID or version",           // these are set when purged: false
+			AuditFieldDocVersion: "revision ID",                      // these are set when purged: false
 			AuditFieldChannels:   []string{"list", "of", "channels"}, // these are set when purged: false
 			AuditFieldPurged:     true,
 		},
@@ -962,7 +962,7 @@ var AuditEvents = events{
 		Description: "A new attachment was created",
 		MandatoryFields: AuditFields{
 			AuditFieldDocID:        "document id",
-			AuditFieldDocVersion:   "revision ID or version",
+			AuditFieldDocVersion:   "revision ID",
 			AuditFieldAttachmentID: "attachment name",
 		},
 		mandatoryFieldGroups: []fieldGroup{
@@ -982,7 +982,7 @@ var AuditEvents = events{
 		Description: "An attachment was viewed",
 		MandatoryFields: AuditFields{
 			AuditFieldDocID:        "document id",
-			AuditFieldDocVersion:   "revision ID or version",
+			AuditFieldDocVersion:   "revision ID",
 			AuditFieldAttachmentID: "attachment name",
 		},
 		mandatoryFieldGroups: []fieldGroup{
@@ -1000,7 +1000,7 @@ var AuditEvents = events{
 		Description: "An attachment was updated",
 		MandatoryFields: AuditFields{
 			AuditFieldDocID:        "document id",
-			AuditFieldDocVersion:   "revision ID or version",
+			AuditFieldDocVersion:   "revision ID",
 			AuditFieldAttachmentID: "attachment name",
 		},
 		mandatoryFieldGroups: []fieldGroup{
@@ -1018,7 +1018,7 @@ var AuditEvents = events{
 		Description: "An attachment was deleted",
 		MandatoryFields: AuditFields{
 			AuditFieldDocID:        "document id",
-			AuditFieldDocVersion:   "revision ID or version",
+			AuditFieldDocVersion:   "revision ID",
 			AuditFieldAttachmentID: "attachment name",
 		},
 		mandatoryFieldGroups: []fieldGroup{

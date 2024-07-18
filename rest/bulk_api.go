@@ -184,9 +184,15 @@ func (h *handler) handleAllDocs() error {
 			}
 			totalRows++
 			var err error
+			fmt.Printf("row: %+v value=%+v\n", row, row.Value)
 			err = h.addJSON(row)
 			if err != nil {
 				return false, err
+			}
+			if includeAccess || includeChannels || includeRevs || includeSeqs {
+				base.Audit(h.ctx(), base.AuditIDDocumentMetadataRead, base.AuditFields{
+					base.AuditFieldDocID: row.ID,
+				})
 			}
 			if row.Doc != nil {
 				base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{

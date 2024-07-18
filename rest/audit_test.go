@@ -479,19 +479,51 @@ func TestAuditDocumentRead(t *testing.T) {
 			docReadVersions: nil,
 		},
 		{
-			name:            "all_docs without body",
-			method:          http.MethodGet,
-			path:            "/{{.keyspace}}/_all_docs",
-			docID:           "doc1",
-			docReadVersions: nil,
+			name:                 "all_docs without body",
+			method:               http.MethodGet,
+			path:                 "/{{.keyspace}}/_all_docs",
+			docID:                "doc1",
+			docReadVersions:      nil,
+			docMetadataReadCount: 0,
 		},
-
 		{
 			name:            "all_docs",
 			method:          http.MethodGet,
 			path:            "/{{.keyspace}}/_all_docs?include_docs=true",
 			docID:           "doc1",
 			docReadVersions: []string{docVersion.RevID},
+		},
+		{
+			name:                 "all_docs with include_docs=true&channels=true",
+			method:               http.MethodGet,
+			path:                 "/{{.keyspace}}/_all_docs?include_docs=true&channels=true",
+			docID:                "doc1",
+			docReadVersions:      []string{docVersion.RevID},
+			docMetadataReadCount: 1,
+		},
+		{
+			name:                 "all_docs with channels=true",
+			method:               http.MethodGet,
+			path:                 "/{{.keyspace}}/_all_docs?channels=true",
+			docID:                "doc1",
+			docReadVersions:      nil,
+			docMetadataReadCount: 1,
+		},
+		{
+			name:                 "all_docs with update_seq=true",
+			method:               http.MethodGet,
+			path:                 "/{{.keyspace}}/_all_docs?update_seq=true",
+			docID:                "doc1",
+			docReadVersions:      nil,
+			docMetadataReadCount: 1,
+		},
+		{
+			name:                 "all_docs with revs=true",
+			method:               http.MethodGet,
+			path:                 "/{{.keyspace}}/_all_docs?revs=true",
+			docID:                "doc1",
+			docReadVersions:      nil,
+			docMetadataReadCount: 1,
 		},
 		{
 			name:   "changes no bodies, no audit",
@@ -506,22 +538,12 @@ func TestAuditDocumentRead(t *testing.T) {
 			docID:           "doc1",
 			docReadVersions: []string{docVersion.RevID},
 		},
-		/* FIXME local endpoint not valid for normal docs?
 		{
-			name:            "local",
-			method:          http.MethodGet,
-			path:            "/{{.keyspace}}/_local/doc1",
-			docID:           "doc1",
-			docReadVersions: []string{docVersion.RevID},
-		},
-		*/
-		{
-			name:   "raw",
-			method: http.MethodGet,
-			path:   "/{{.keyspace}}/_raw/doc1",
-			docID:  "doc1",
-			// raw endpoint issues metadata and not doc read events
-			docReadVersions:      nil,
+			name:                 "raw",
+			method:               http.MethodGet,
+			path:                 "/{{.keyspace}}/_raw/doc1",
+			docID:                "doc1",
+			docReadVersions:      []string{docVersion.RevID},
 			docMetadataReadCount: 1,
 		},
 		{
@@ -591,7 +613,7 @@ func requireDocumentReadEvents(rt *RestTester, output []byte, docID string, docV
 		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
 		docVersionsFound = append(docVersionsFound, event[base.AuditFieldDocVersion].(string))
 	}
-	require.Len(rt.TB(), docVersions, len(docVersionsFound))
+	require.Len(rt.TB(), docVersions, len(docVersionsFound), "expected exactly %d document read events, got %d", len(docVersions), len(docVersionsFound))
 	require.Equal(rt.TB(), docVersions, docVersionsFound)
 }
 

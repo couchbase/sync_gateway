@@ -376,10 +376,6 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 			if err != nil {
 				return err
 			}
-			base.Audit(ctx, base.AuditIDDocumentRead, base.AuditFields{
-				base.AuditFieldDocID:      docID,
-				base.AuditFieldDocVersion: revID,
-			})
 			revSendTimeLatency += time.Since(changesResponseReceived).Nanoseconds()
 			revSendCount++
 
