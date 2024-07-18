@@ -10,7 +10,7 @@ require (
 	github.com/couchbase/go-blip v0.0.0-20240501145814-259ec718b442
 	github.com/couchbase/go-couchbase v0.1.1
 	github.com/couchbase/gocb/v2 v2.6.5
-	github.com/couchbase/gocbcore/v10 v10.2.10
+	github.com/couchbase/gocbcore/v10 v10.2.13
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20230921135347-7836915124be
