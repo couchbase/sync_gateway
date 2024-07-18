@@ -962,7 +962,7 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		var response *TestResponse
 		if user != nil {
-			request, _ := http.NewRequest("GET", viewUrlPath, nil)
+			request := Request("GET", viewUrlPath, "")
 			request.SetBasicAuth(user.Name(), password)
 			response = rt.Send(request)
 		} else {
