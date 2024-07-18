@@ -949,7 +949,7 @@ var AuditEvents = events{
 			AuditFieldPurged:     true,
 		},
 		mandatoryFieldGroups: []fieldGroup{
-			fieldGroupAuthenticated,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 			fieldGroupDatabase,
 			fieldGroupKeyspace,
 		},
@@ -966,7 +966,7 @@ var AuditEvents = events{
 			AuditFieldAttachmentID: "attachment name",
 		},
 		mandatoryFieldGroups: []fieldGroup{
-			fieldGroupAuthenticated,
+			// fieldGroupAuthenticated, FIXME: CBG-3973
 			fieldGroupDatabase,
 			fieldGroupKeyspace,
 			fieldGroupRequest,
@@ -986,7 +986,7 @@ var AuditEvents = events{
 			AuditFieldAttachmentID: "attachment name",
 		},
 		mandatoryFieldGroups: []fieldGroup{
-			fieldGroupAuthenticated,
+			// fieldGroupAuthenticated, FIXME: CBG-3973
 			fieldGroupDatabase,
 			fieldGroupKeyspace,
 			fieldGroupRequest,
@@ -1004,7 +1004,7 @@ var AuditEvents = events{
 			AuditFieldAttachmentID: "attachment name",
 		},
 		mandatoryFieldGroups: []fieldGroup{
-			fieldGroupAuthenticated,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 			fieldGroupDatabase,
 			fieldGroupKeyspace,
 			fieldGroupRequest,
@@ -1022,7 +1022,7 @@ var AuditEvents = events{
 			AuditFieldAttachmentID: "attachment name",
 		},
 		mandatoryFieldGroups: []fieldGroup{
-			fieldGroupAuthenticated,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 			fieldGroupDatabase,
 			fieldGroupKeyspace,
 			fieldGroupRequest,

@@ -581,13 +581,128 @@ func TestAuditDocumentRead(t *testing.T) {
 				RequireStatus(t, resp, http.StatusOK)
 			})
 			requireDocumentReadEvents(rt, output, testCase.docID, testCase.docReadVersions)
-			requireDocumentMetadataReadEvents(rt, output, testCase.docID, testCase.docMetadataReadCount)
+			requireDocumentMetadataReadEvents(rt, output, testCase.docID, docVersion.RevID, testCase.docMetadataReadCount)
+		})
+	}
+}
+
+func TestAuditAttachmentEvents(t *testing.T) {
+	rt := createAuditLoggingRestTester(t)
+	defer rt.Close()
+
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	const noAttachmentDoc = "doc1"
+	noAttachmentDocVersion := rt.CreateTestDoc(noAttachmentDoc)
+
+	const hasAttachmentDoc = "doc2"
+	hasAttachmentDocVersion := rt.CreateTestDoc(hasAttachmentDoc)
+	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2/attachment1?rev="+hasAttachmentDocVersion.RevID, "contentdoc2")
+	hasAttachmentDocVersion, _ = rt.GetDoc(hasAttachmentDoc)
+
+	const willUpdateAttachmentDoc = "doc3"
+	willUpdateAttachmentDocVersion := rt.CreateTestDoc(willUpdateAttachmentDoc)
+	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc3/attachment1?rev="+willUpdateAttachmentDocVersion.RevID, "contentdoc3")
+	willUpdateAttachmentDocVersion, _ = rt.GetDoc(willUpdateAttachmentDoc)
+
+	const bulkWillUpdateAttachmentDoc = "doc4"
+	bulkWillUpdateAttachmentDocVersion := rt.CreateTestDoc(bulkWillUpdateAttachmentDoc)
+	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc4/attachment1?rev="+bulkWillUpdateAttachmentDocVersion.RevID, "contentdoc4")
+	bulkWillUpdateAttachmentDocVersion, _ = rt.GetDoc(bulkWillUpdateAttachmentDoc)
+
+	const willDeleteAttachmentDoc = "doc5"
+	willDeleteAttachmentDocVersion := rt.CreateTestDoc(willDeleteAttachmentDoc)
+	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc5/attachment1?rev="+willDeleteAttachmentDocVersion.RevID, "contentdoc5")
+	willDeleteAttachmentDocVersion, _ = rt.GetDoc(willDeleteAttachmentDoc)
+
+	const bulkWillDeleteAttachmentDoc = "doc6"
+	bulkWillDeleteAttachmentDocVersion := rt.CreateTestDoc(willDeleteAttachmentDoc)
+	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc6/attachment1?rev="+bulkWillDeleteAttachmentDocVersion.RevID, "contentdoc5")
+	bulkWillDeleteAttachmentDocVersion, _ = rt.GetDoc(bulkWillDeleteAttachmentDoc)
+
+	testCases := []struct {
+		name                  string
+		method                string
+		path                  string
+		docID                 string
+		requestBody           string
+		status                int
+		attachmentCreateCount int
+		attachmentReadCount   int
+		attachmentUpdateCount int
+		attachmentDeleteCount int
+	}{
+		{
+			name:                  "add attachment",
+			method:                http.MethodPut,
+			path:                  "/{{.keyspace}}/doc1/attachment1?rev=" + noAttachmentDocVersion.RevID,
+			docID:                 noAttachmentDoc,
+			status:                http.StatusCreated,
+			requestBody:           "content",
+			attachmentCreateCount: 1,
+		},
+		{
+			name:                "get attachment with rev",
+			method:              http.MethodGet,
+			path:                "/{{.keyspace}}/doc2/attachment1?rev=" + hasAttachmentDocVersion.RevID,
+			docID:               hasAttachmentDoc,
+			status:              http.StatusOK,
+			attachmentReadCount: 1,
+		},
+		{
+			name:   "_bulk_get attachment with rev",
+			method: http.MethodPost,
+			path:   "/{{.keyspace}}/_bulk_get?attachments=true",
+			requestBody: string(base.MustJSONMarshal(t, db.Body{
+				"docs": []db.Body{
+					{"id": hasAttachmentDoc, "rev": hasAttachmentDocVersion.RevID},
+				},
+			})),
+			docID:               hasAttachmentDoc,
+			status:              http.StatusOK,
+			attachmentReadCount: 1,
+		},
+		{
+			name:   "_all_docs attachment with rev",
+			method: http.MethodGet,
+			path:   "/{{.keyspace}}/_all_docs?include_docs=true",
+			docID:  hasAttachmentDoc,
+			status: http.StatusOK,
+		},
+		{
+			name:                  "update attachment",
+			method:                http.MethodPut,
+			path:                  "/{{.keyspace}}/doc3/attachment1?rev=" + hasAttachmentDocVersion.RevID,
+			docID:                 willUpdateAttachmentDoc,
+			status:                http.StatusCreated,
+			requestBody:           "content-update",
+			attachmentUpdateCount: 1,
+		},
+		{
+			name:                  "delete attachment",
+			method:                http.MethodDelete,
+			path:                  "/{{.keyspace}}/doc4/attachment1?rev=" + willDeleteAttachmentDocVersion.RevID,
+			docID:                 willDeleteAttachmentDoc,
+			status:                http.StatusOK,
+			attachmentDeleteCount: 1,
+		},
+	}
+	for _, testCase := range testCases {
+		rt.Run(testCase.name, func(t *testing.T) {
+			output := base.AuditLogContents(t, func(t testing.TB) {
+				resp := rt.SendAdminRequest(testCase.method, testCase.path, testCase.requestBody)
+				RequireStatus(t, resp, testCase.status)
+			})
+			postAttachmentVersion, _ := rt.GetDoc(testCase.docID)
+			requireAttachmentEvents(rt, base.AuditIDAttachmentCreate, output, testCase.docID, postAttachmentVersion.RevID, testCase.attachmentCreateCount)
+			requireAttachmentEvents(rt, base.AuditIDAttachmentRead, output, testCase.docID, postAttachmentVersion.RevID, testCase.attachmentReadCount)
+			requireAttachmentEvents(rt, base.AuditIDAttachmentUpdate, output, testCase.docID, postAttachmentVersion.RevID, testCase.attachmentUpdateCount)
+			requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, testCase.docID, postAttachmentVersion.RevID, testCase.attachmentDeleteCount)
 		})
 	}
 }
 
 // requireDocumentMetadataReadEvents validates that there read events for each doc version specified. There should be only audit events for a given docid.
-func requireDocumentMetadataReadEvents(rt *RestTester, output []byte, docID string, count int) {
+func requireDocumentMetadataReadEvents(rt *RestTester, output []byte, docID string, revid string, count int) {
 	events := jsonLines(rt.TB(), output)
 	countFound := 0
 	for _, event := range events {
@@ -615,6 +730,22 @@ func requireDocumentReadEvents(rt *RestTester, output []byte, docID string, docV
 	}
 	require.Len(rt.TB(), docVersions, len(docVersionsFound), "expected exactly %d document read events, got %d", len(docVersions), len(docVersionsFound))
 	require.Equal(rt.TB(), docVersions, docVersionsFound)
+}
+
+// requireAttachmentEvents validates that create attachment events
+func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte, docID, docVersion string, count int) {
+	events := jsonLines(rt.TB(), output)
+	countFound := 0
+	for _, event := range events {
+		// skip events that are not document read events
+		if base.AuditID(event[base.AuditFieldID].(float64)) != eventID {
+			continue
+		}
+		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
+		require.Equal(rt.TB(), docVersion, event[base.AuditFieldDocVersion].(string))
+		countFound++
+	}
+	require.Equal(rt.TB(), count, countFound)
 }
 
 func createAuditLoggingRestTester(t *testing.T) *RestTester {

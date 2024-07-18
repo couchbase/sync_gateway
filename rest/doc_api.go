@@ -302,6 +302,11 @@ func (h *handler) handleGetAttachment() error {
 	h.db.DbStats.CBLReplicationPull().AttachmentPullBytes.Add(int64(len(data)))
 	h.response.WriteHeader(status)
 	_, _ = h.response.Write(data)
+	base.Audit(h.ctx(), base.AuditIDAttachmentRead, base.AuditFields{
+		base.AuditFieldDocID:        docid,
+		base.AuditFieldDocVersion:   revid,
+		base.AuditFieldAttachmentID: attachmentName,
+	})
 	return nil
 
 }
@@ -349,10 +354,13 @@ func (h *handler) handlePutAttachment() error {
 		}
 	}
 
+	attachmentUpdated := false
 	// find attachment (if it existed)
 	attachments := db.GetBodyAttachments(body)
 	if attachments == nil {
 		attachments = make(map[string]interface{})
+	} else {
+		_, attachmentUpdated = attachments[attachmentName]
 	}
 
 	// create new attachment
@@ -371,6 +379,16 @@ func (h *handler) handlePutAttachment() error {
 	h.setEtag(newRev)
 
 	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
+	auditFields := base.AuditFields{
+		base.AuditFieldDocID:        docid,
+		base.AuditFieldDocVersion:   newRev,
+		base.AuditFieldAttachmentID: attachmentName,
+	}
+	if attachmentUpdated {
+		base.Audit(h.ctx(), base.AuditIDAttachmentUpdate, auditFields)
+	} else {
+		base.Audit(h.ctx(), base.AuditIDAttachmentCreate, auditFields)
+	}
 	return nil
 }
 
@@ -426,6 +444,11 @@ func (h *handler) handleDeleteAttachment() error {
 	h.setEtag(newRev)
 
 	h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
+	base.Audit(h.ctx(), base.AuditIDAttachmentDelete, base.AuditFields{
+		base.AuditFieldDocID:        docid,
+		base.AuditFieldDocVersion:   newRev,
+		base.AuditFieldAttachmentID: attachmentName,
+	})
 
 	return nil
 }
