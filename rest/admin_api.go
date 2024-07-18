@@ -1304,7 +1304,10 @@ func (h *handler) handleGetRawDoc() error {
 			return err
 		}
 	}
-
+	base.Audit(h.ctx(), base.AuditIDDocumentMetadataRead, base.AuditFields{
+		base.AuditFieldDocID:      docid,
+		base.AuditFieldDocVersion: doc.SyncData.CurrentRev,
+	})
 	h.writeRawJSON(rawBytes)
 	return nil
 }
@@ -1316,6 +1319,7 @@ func (h *handler) handleGetRevTree() error {
 
 	if doc != nil {
 		h.writeText([]byte(doc.History.RenderGraphvizDot()))
+		base.Audit(h.ctx(), base.AuditIDDocumentMetadataRead, base.AuditFields{base.AuditFieldDocID: docid})
 	}
 	return err
 }

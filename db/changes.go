@@ -495,6 +495,20 @@ func makeRevocationChangeEntry(logEntry *LogEntry, seqID SequenceID, channel cha
 	return entry
 }
 
+// GetDocVersionForAudit returns the document version for audit logging if we should log an audit event.
+func (ce *ChangeEntry) NeedsDocReadAudit() (string, bool) {
+	if ce.Err != nil {
+		return "", false
+	}
+	if ce.Deleted {
+		return "", false
+	}
+	if ce.Doc == nil {
+		return "", false
+	}
+	return ce.Changes[0]["rev"], true
+}
+
 func (ce *ChangeEntry) SetBranched(isBranched bool) {
 	ce.branched = isBranched
 }

@@ -419,6 +419,13 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 					}
 					_ = encoder.Encode(entry)
 					lastSeq = entry.Seq
+					revid, readAudit := entry.NeedsDocReadAudit()
+					if readAudit {
+						base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+							base.AuditFieldDocID:      entry.ID,
+							base.AuditFieldDocVersion: revid,
+						})
+					}
 				}
 
 			case <-heartbeat:
@@ -485,6 +492,14 @@ func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.Ch
 				}
 				if _, err = h.response.Write([]byte("\n")); err != nil {
 					break
+				}
+
+				revid, readAudit := change.NeedsDocReadAudit()
+				if readAudit {
+					base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+						base.AuditFieldDocID:      change.ID,
+						base.AuditFieldDocVersion: revid,
+					})
 				}
 			}
 		} else {
@@ -558,6 +573,19 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 				conn.PayloadType = websocket.TextFrame
 			}
 			_, err := conn.Write(data)
+			if err != nil {
+				return err
+			}
+			// FIXME: there are no tests for this
+			for _, change := range changes {
+				revid, readAudit := change.NeedsDocReadAudit()
+				if readAudit {
+					base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+						base.AuditFieldDocID:      change.ID,
+						base.AuditFieldDocVersion: revid,
+					})
+				}
+			}
 			return err
 		})
 

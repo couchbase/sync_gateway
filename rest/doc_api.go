@@ -86,7 +86,8 @@ func (h *handler) handleGetDoc() error {
 			}
 			return kNotFoundError
 		}
-		h.setEtag(value[db.BodyRev].(string))
+		foundRev := value[db.BodyRev].(string)
+		h.setEtag(foundRev)
 
 		h.db.DbStats.Database().NumDocReadsRest.Add(1)
 		hasBodies := attachmentsSince != nil && value[db.BodyAttachments] != nil
@@ -99,6 +100,10 @@ func (h *handler) handleGetDoc() error {
 		} else {
 			h.writeJSON(value)
 		}
+		base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+			base.AuditFieldDocID:      docid,
+			base.AuditFieldDocVersion: foundRev,
+		})
 	} else {
 		var revids []string
 		attachmentsSince = []string{}
@@ -129,6 +134,12 @@ func (h *handler) handleGetDoc() error {
 						revBody = db.Body{"missing": revid} // TODO: More specific error
 					}
 					_ = WriteRevisionAsPart(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), revBody, err != nil, false, writer)
+
+					base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+						base.AuditFieldDocID:      docid,
+						base.AuditFieldDocVersion: revid,
+					})
+
 					h.db.DbStats.Database().NumDocReadsRest.Add(1)
 				}
 				return nil
@@ -152,6 +163,10 @@ func (h *handler) handleGetDoc() error {
 				if err != nil {
 					return err
 				}
+				base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+					base.AuditFieldDocID:      docid,
+					base.AuditFieldDocVersion: revid,
+				})
 			}
 			_, _ = h.response.Write([]byte(`]`))
 			h.db.DbStats.Database().NumDocReadsRest.Add(1)
@@ -182,7 +197,10 @@ func (h *handler) handleGetDocReplicator2(docid, revid string) error {
 	h.setHeader("Content-Type", "application/json")
 	_, _ = h.response.Write(bodyBytes)
 	h.db.DbStats.Database().NumDocReadsRest.Add(1)
-
+	base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+		base.AuditFieldDocID:      docid,
+		base.AuditFieldDocVersion: rev.RevID,
+	})
 	return nil
 }
 

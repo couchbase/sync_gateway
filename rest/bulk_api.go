@@ -188,6 +188,12 @@ func (h *handler) handleAllDocs() error {
 			if err != nil {
 				return false, err
 			}
+			if row.Doc != nil {
+				base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+					base.AuditFieldDocID:      row.ID,
+					base.AuditFieldDocVersion: row.Value.Rev,
+				})
+			}
 			return true, nil
 		}
 		return false, nil
@@ -442,7 +448,10 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			_ = WriteRevisionAsPart(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), body, err != nil, canCompressParts, writer)
-
+			base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+				base.AuditFieldDocID:      docid,
+				base.AuditFieldDocVersion: revid,
+			})
 			h.db.DbStats.Database().NumDocReadsRest.Add(1)
 		}
 		return nil
