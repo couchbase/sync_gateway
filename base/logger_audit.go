@@ -230,7 +230,7 @@ func shouldLogAuditEventForUserAndRole(logCtx *LogContext) bool {
 	}
 
 	// if any of the user's roles are disabled, then don't log the event
-	for role := range logCtx.UserRoles {
+	for role := range logCtx.UserRolesForAuditFiltering {
 		if _, isDisabled := logCtx.DbLogConfig.Audit.DisabledRoles[AuditLoggingPrincipal{
 			Domain: string(logCtx.UserDomain),
 			Name:   role,
