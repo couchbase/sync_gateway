@@ -1517,7 +1517,7 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
 
-	rt.CreateUser("alice", nil)
+	rt.CreateUser("alice", []string{})
 
 	// Make rt listen on an actual HTTP port, so it can receive the blipsync request.
 	srv := httptest.NewServer(rt.TestPublicHandler())
@@ -1530,7 +1530,8 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 		"remote": "%s",
 		"direction": "pushAndPull",
 		"conflict_resolution_type":"default",
-		"max_backoff":100
+		"max_backoff":100,
+        "continuous":true
 	}`, DBURL.String())
 
 	response := rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", replicationConfig)
@@ -1550,7 +1551,8 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 		"remote": "%s",
 		"direction": "push",
 		"conflict_resolution_type":"default",
-		"max_backoff":100
+		"max_backoff":100,
+        "continuous":true
 	}`, DBURL.String())
 
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", replicationConfigUpdate)
@@ -1563,7 +1565,6 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", replicationConfigUpdate)
 	rest.RequireStatus(t, response, http.StatusOK)
-
 }
 
 func TestReplicationMultiCollectionChannelFilter(t *testing.T) {

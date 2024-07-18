@@ -44,7 +44,7 @@ func TestResyncWithoutIndexes(t *testing.T) {
 	}
 
 	rt.TakeDbOffline()
-	// gocb pipeline boostrap errors can occur before this stage
+	// gocb pipeline bootstrap errors can occur before this stage
 	warningsBeforeResync := base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value()
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", ""), http.StatusOK)
 	resyncStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
@@ -67,8 +67,9 @@ func TestResyncWithoutIndexes(t *testing.T) {
 			require.NoError(t, err)
 			if collection.IsDefaultCollection() {
 				require.Len(t, numIndexes, 1, "Expected 1 index for default collection")
+			} else {
+				require.Len(t, numIndexes, 0, "Expected 0 indexes for non-default collection")
 			}
-			require.Len(t, numIndexes, 0, "Expected 0 indexes for non-default collection")
 		}
 	}
 }

@@ -1308,7 +1308,7 @@ func TestPutUserUnsetAdminChannelsDefaultCollection(t *testing.T) {
 	assert.Equal(t, base.SetFromArray(userRoles), userConfig.ExplicitRoleNames)
 
 	// Update the user with an empty admin channels to remove them
-	payload = `{"admin_channels":[]}`
+	payload = GetUserPayload(t, "demo", "", "", ds, []string{}, userRoles)
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
 	RequireStatus(t, response, http.StatusOK)
 
@@ -1338,7 +1338,7 @@ func TestPutUserUnsetAdminChannelsNamedCollection(t *testing.T) {
 
 	// Note: Password not a required field for updates (only creations)
 	// Update the user with empty admin channels, ensure channels are removed but roles are preserved
-	payload = GetUserPayload(t, "", "", "", ds, nil, nil)
+	payload = GetUserPayload(t, "", "", "", ds, []string{}, nil)
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/demo", payload)
 	RequireStatus(t, response, http.StatusOK)
 
