@@ -570,9 +570,16 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			base.Audit(h.ctx(), base.AuditIDAdminUserAuthorizationFailed, base.AuditFields{base.AuditFieldUserName: username})
 			return base.HTTPErrorf(statusCode, "")
 		}
+
+		// we already did the work to get the full list of user roles as part of the above check,
+		// but we only need to keep them stored if we want to filter based on CB Server roles.
+		var auditRoleNames []string
+		if needRolesForAudit(dbContext, base.UserDomainCBServer) {
+			auditRoleNames = roles
+		}
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
-		h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainCBServer, nil)
+		h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainCBServer, auditRoleNames)
 		base.Audit(h.ctx(), base.AuditIDAdminUserAuthenticated, base.AuditFields{})
 
 		base.DebugfCtx(h.ctx(), base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
@@ -797,6 +804,47 @@ func (h *handler) logStatus(status int, message string) {
 	h.logDuration(false) // don't track actual time
 }
 
+func needRolesForAudit(db *db.DatabaseContext, domain base.UserIDDomain) bool {
+	if db == nil ||
+		db.Options.LoggingConfig == nil ||
+		db.Options.LoggingConfig.Audit == nil ||
+		len(db.Options.LoggingConfig.Audit.DisabledRoles) == 0 {
+		return false
+	}
+
+	// if we have any matching domains then we need the given roles
+	for principal := range db.Options.LoggingConfig.Audit.DisabledRoles {
+		if principal.Domain == string(domain) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// getSGUserRolesForAudit returns a list of role names for the given user, if audit role filtering is enabled.
+func getSGUserRolesForAudit(db *db.DatabaseContext, user auth.User) []string {
+	if user == nil {
+		return nil
+	}
+
+	if !needRolesForAudit(db, base.UserDomainSyncGateway) {
+		return nil
+	}
+
+	roles := user.GetRoles()
+	if len(roles) == 0 {
+		return nil
+	}
+
+	roleNames := make([]string, 0, len(roles))
+	for _, role := range roles {
+		roleNames = append(roleNames, role.Name())
+	}
+
+	return roleNames
+}
+
 // checkPublicAuth verifies that the current request is authenticated for the given database.
 //
 // NOTE: checkPublicAuth is not used for the admin interface.
@@ -821,20 +869,12 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 		} else {
 			dbCtx.DbStats.Security().AuthSuccessCount.Add(1)
 
-			var roleNames []string
-			roles := h.user.GetRoles()
-			if len(roles) > 0 {
-				roleNames = make([]string, 0, len(roles))
-				for _, role := range roles {
-					roleNames = append(roleNames, role.Name())
-				}
+			username := base.GuestUsername
+			if !h.isGuest() {
+				username = h.user.Name()
 			}
-
-			if h.isGuest() {
-				h.rqCtx = base.UserLogCtx(h.ctx(), base.GuestUsername, base.UserDomainSyncGateway, roleNames)
-			} else {
-				h.rqCtx = base.UserLogCtx(h.ctx(), h.user.Name(), base.UserDomainSyncGateway, roleNames)
-			}
+			roleNames := getSGUserRolesForAudit(dbCtx, h.user)
+			h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainSyncGateway, roleNames)
 			base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticated, auditFields)
 		}
 	}(time.Now())
