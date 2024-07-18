@@ -24,9 +24,9 @@ import (
 )
 
 func TestAuditLoggingFields(t *testing.T) {
-	//if !base.UnitTestUrlIsWalrus() {
-	//	t.Skip("This test can panic with gocb logging CBG-4076")
-	//}
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test can panic with gocb logging CBG-4076")
+	}
 
 	// get tempdir before resetting global loggers, since the logger cleanup needs to happen before deletion
 	tempdir := t.TempDir()
