@@ -94,6 +94,9 @@ type User interface {
 	// Changes the user's password.
 	SetPassword(password string) error
 
+	// GetRoles returns the set of roles the user belongs to, initializing them if necessary.
+	GetRoles() []Role
+
 	// The set of Roles the user belongs to (including ones given to it by the sync function and by OIDC/JWT)
 	// Returns nil if invalidated
 	RoleNames() ch.TimedSet

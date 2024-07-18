@@ -160,6 +160,7 @@ func (lc *LogContext) getCopy() LogContext {
 		RequestAdditionalAuditFields: lc.RequestAdditionalAuditFields,
 		Username:                     lc.Username,
 		UserDomain:                   lc.UserDomain,
+		UserRoles:                    lc.UserRoles,
 		RequestHost:                  lc.RequestHost,
 		RequestRemoteAddr:            lc.RequestRemoteAddr,
 		EffectiveUserID:              lc.EffectiveUserID,
@@ -271,10 +272,16 @@ const (
 	UserDomainBuiltin                  = "builtin" // internal users (e.g. SG bootstrap user)
 )
 
-func UserLogCtx(parent context.Context, username string, domain userIDDomain) context.Context {
+func UserLogCtx(parent context.Context, username string, domain userIDDomain, roles []string) context.Context {
 	newCtx := getLogCtx(parent)
 	newCtx.Username = username
 	newCtx.UserDomain = domain
+	if len(roles) > 0 {
+		newCtx.UserRoles = make(map[string]struct{}, len(roles))
+		for _, role := range roles {
+			newCtx.UserRoles[role] = struct{}{}
+		}
+	}
 	return LogContextWith(parent, &newCtx)
 }
 

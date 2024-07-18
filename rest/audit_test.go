@@ -18,6 +18,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -95,6 +96,7 @@ func TestAuditLoggingFields(t *testing.T) {
 
 	rt.CreateUser(requestUser, nil)
 	rt.CreateUser(filteredPublicUsername, nil)
+	rt.CreateRole(filteredPublicRoleName, []string{channels.AllChannelWildcard})
 	rt.CreateUser(filteredPublicRoleUsername, nil, filteredPublicRoleName)
 	if runServerRBACTests {
 		eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()

@@ -513,6 +513,17 @@ func (rt *RestTester) CreateUser(username string, channels []string, roles ...st
 	RequireStatus(rt.TB(), response, http.StatusCreated)
 }
 
+// CreateRole creates a role with channels scoped to a single test collection.
+func (rt *RestTester) CreateRole(rolename string, channels []string) {
+	var response *TestResponse
+	if rt.AdminInterfaceAuthentication {
+		response = rt.SendAdminRequestWithAuth(http.MethodPut, "/{{.db}}/_role/"+rolename, GetRolePayload(rt.TB(), rolename, rt.GetSingleDataStore(), channels), base.TestClusterUsername(), base.TestClusterPassword())
+	} else {
+		response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+rolename, GetRolePayload(rt.TB(), rolename, rt.GetSingleDataStore(), channels))
+	}
+	RequireStatus(rt.TB(), response, http.StatusCreated)
+}
+
 func (rt *RestTester) GetUserAdminAPI(username string) auth.PrincipalConfig {
 	response := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/"+username, "")
 	RequireStatus(rt.TB(), response, http.StatusOK)
@@ -1731,7 +1742,7 @@ func GetUserPayload(t testing.TB, username, password, email string, collection s
 
 // GetRolePayload will take roleName and channels you want to assign a particular role and return the appropriate payload for the _role endpoint
 // For default collection, follows same handling as GetUserPayload for chans.
-func GetRolePayload(t *testing.T, roleName string, collection sgbucket.DataStore, chans []string) string {
+func GetRolePayload(t testing.TB, roleName string, collection sgbucket.DataStore, chans []string) string {
 	config := PrincipalConfigForWrite{}
 	if roleName != "" {
 		config.Name = &roleName

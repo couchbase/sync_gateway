@@ -572,7 +572,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		}
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
-		h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainCBServer)
+		h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainCBServer, nil)
 		base.Audit(h.ctx(), base.AuditIDAdminUserAuthenticated, base.AuditFields{})
 
 		base.DebugfCtx(h.ctx(), base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
@@ -821,10 +821,19 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 		} else {
 			dbCtx.DbStats.Security().AuthSuccessCount.Add(1)
 
+			var roleNames []string
+			roles := h.user.GetRoles()
+			if len(roles) > 0 {
+				roleNames = make([]string, 0, len(roles))
+				for _, role := range roles {
+					roleNames = append(roleNames, role.Name())
+				}
+			}
+
 			if h.isGuest() {
-				h.rqCtx = base.UserLogCtx(h.ctx(), base.GuestUsername, base.UserDomainSyncGateway)
+				h.rqCtx = base.UserLogCtx(h.ctx(), base.GuestUsername, base.UserDomainSyncGateway, roleNames)
 			} else {
-				h.rqCtx = base.UserLogCtx(h.ctx(), h.user.Name(), base.UserDomainSyncGateway)
+				h.rqCtx = base.UserLogCtx(h.ctx(), h.user.Name(), base.UserDomainSyncGateway, roleNames)
 			}
 			base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticated, auditFields)
 		}
