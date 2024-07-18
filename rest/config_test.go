@@ -2982,7 +2982,7 @@ func TestInvalidDbConfigNoLongerPresentInBucket(t *testing.T) {
 	}, time.Second*10, time.Millisecond*100)
 
 	// remove the invalid config from the bucket
-	rt.DeleteDbConfigInBucket(dbName, realBucketName)
+	rt.RemoveDbConfigFromBucket(dbName, realBucketName)
 
 	// force reload of configs from bucket
 	rt.ServerContext().ForceDbConfigsReload(t, ctx)

@@ -268,6 +268,25 @@ func IsXattrNotFoundError(err error) bool {
 	return false
 }
 
+func IsRecoverableReadError(err error) bool {
+
+	if err == nil {
+		return false
+	}
+	// SG timeout error
+	if errors.Is(err, ErrTimeout) {
+		return true
+	}
+	// gocb timeouts or transient errors
+	if errors.Is(err, gocb.ErrTemporaryFailure) ||
+		errors.Is(err, gocb.ErrOverload) ||
+		errors.Is(err, gocb.ErrTimeout) ||
+		errors.Is(err, gocb.ErrCircuitBreakerOpen) {
+		return true
+	}
+	return false
+}
+
 // MultiError manages a set of errors.  Callers must use ErrorOrNil when returning MultiError to callers
 // in order to properly handle nil checks on the returned MultiError
 //  Sample usage:
