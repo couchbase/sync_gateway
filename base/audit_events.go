@@ -164,7 +164,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EventType: eventTypeAdmin,
 	},
@@ -189,11 +189,15 @@ var AuditEvents = events{
 		Name:        "Public HTTP API request",
 		Description: "Public HTTP API request was made",
 		MandatoryFields: AuditFields{
-			"http_method": "GET, POST, etc.",
-			"http_path":   "request_path",
+			AuditFieldHTTPMethod: "GET, POST, etc.",
+			AuditFieldHTTPPath:   "request_path",
 		},
 		OptionalFields: AuditFields{
-			"request_body": "request_body",
+			AuditFieldRequestBody: "request_body",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupRequest,
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -203,11 +207,15 @@ var AuditEvents = events{
 		Name:        "Admin HTTP API request",
 		Description: "Admin HTTP API request was made",
 		MandatoryFields: AuditFields{
-			"http_method": "GET, POST, etc.",
-			"http_path":   "request_path",
+			AuditFieldHTTPMethod: "GET, POST, etc.",
+			AuditFieldHTTPPath:   "request_path",
 		},
 		OptionalFields: AuditFields{
-			"request_body": "request_body",
+			AuditFieldRequestBody: "request_body",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupRequest,
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -217,11 +225,15 @@ var AuditEvents = events{
 		Name:        "Metrics HTTP API request",
 		Description: "Metrics HTTP API request was made",
 		MandatoryFields: AuditFields{
-			"http_method": "GET, POST, etc.",
-			"http_path":   "request_path",
+			AuditFieldHTTPMethod: "GET, POST, etc.",
+			AuditFieldHTTPPath:   "request_path",
 		},
 		OptionalFields: AuditFields{
-			"request_body": "request_body",
+			AuditFieldRequestBody: "request_body",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupRequest,
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -235,6 +247,10 @@ var AuditEvents = events{
 		},
 		OptionalFields: AuditFields{
 			"oidc_issuer": "issuer",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupRequest,
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -362,7 +378,7 @@ var AuditEvents = events{
 		Name:        "profiling requested",
 		Description: "profiling was requested",
 		MandatoryFields: AuditFields{
-			AuditEventPprofProfileType: "cpu, memory, etc.",
+			AuditFieldPprofProfileType: "cpu, memory, etc.",
 		},
 		OptionalFields: AuditFields{
 			AuditFieldFileName: "filename",
@@ -387,7 +403,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -399,7 +415,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -411,7 +427,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -423,7 +439,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -435,7 +451,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -450,7 +466,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -462,7 +478,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			//fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -474,7 +490,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			//fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -493,7 +509,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			//fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -508,7 +524,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			//fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -523,7 +539,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			//fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -535,7 +551,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			//fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -552,7 +568,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			//fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -564,7 +580,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			//fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -578,7 +594,7 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupRequest,
-			//fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -590,7 +606,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			//fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -602,7 +618,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			//fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,

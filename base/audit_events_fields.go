@@ -11,22 +11,23 @@ package base
 const (
 
 	// Commonly used audit event fields
-	auditFieldID                 = "id"
-	auditFieldTimestamp          = "timestamp"
-	auditFieldName               = "name"
-	auditFieldDescription        = "description"
-	auditFieldRealUserID         = "real_userid"
-	auditFieldLocal              = "local"
-	auditFieldRemote             = "remote"
-	auditFieldDatabase           = "db"
-	auditFieldCorrelationID      = "cid" // FIXME: how to distinguish between this field (http) and blip id below
-	auditFieldKeyspace           = "ks"
+	AuditFieldID                 = "id"
+	AuditFieldTimestamp          = "timestamp"
+	AuditFieldName               = "name"
+	AuditFieldDescription        = "description"
+	AuditFieldRealUserID         = "real_userid"
+	AuditFieldLocal              = "local"
+	AuditFieldRemote             = "remote"
+	AuditFieldDatabase           = "db"
+	AuditFieldCorrelationID      = "cid" // FIXME: how to distinguish between this field (http) and blip id below
+	AuditFieldKeyspace           = "ks"
 	AuditFieldReplicationID      = "replication_id"
 	AuditFieldPayload            = "payload"
 	AuditFieldCompactionType     = "type"
 	AuditFieldCompactionDryRun   = "dry_run"
 	AuditFieldCompactionReset    = "reset"
 	AuditFieldPostUpgradePreview = "preview"
+	AuditFieldAuthMethod         = "auth_method"
 	AuditFieldAuditScope         = "audit_scope"
 	AuditFieldFileName           = "filename"
 
@@ -44,5 +45,10 @@ const (
 	AuditFieldStatsFormat = "stats_format"
 
 	//AuditIDSyncGatewayProfiling         AuditID = 53304
-	AuditEventPprofProfileType = "profile_type"
+	AuditFieldPprofProfileType = "profile_type"
+
+	// API events  AuditID = 53270, 53271, 53272
+	AuditFieldHTTPMethod  = "http_method"
+	AuditFieldHTTPPath    = "http_path"
+	AuditFieldRequestBody = "request_body"
 )

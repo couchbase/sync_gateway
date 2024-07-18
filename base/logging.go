@@ -389,6 +389,18 @@ func LogTraceEnabled(ctx context.Context, logKey LogKey) bool {
 	return consoleLogger.shouldLog(ctx, LevelTrace, logKey) || traceLogger.shouldLog(LevelTrace)
 }
 
+func LogLevelEnabled(ctx context.Context, level LogLevel, logKey LogKey) bool {
+	switch level {
+	case LevelInfo:
+		return LogInfoEnabled(ctx, logKey)
+	case LevelDebug:
+		return LogDebugEnabled(ctx, logKey)
+	case LevelTrace:
+		return LogTraceEnabled(ctx, logKey)
+	}
+	return true
+}
+
 // AssertLogContains asserts that the logs produced by function f contain string s.
 func AssertLogContains(t *testing.T, s string, f func()) {
 	// Temporarily override logger output
