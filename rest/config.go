@@ -1600,18 +1600,27 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 	for _, dbName := range deletedDatabases {
+		dbc, ok := sc.databases_[dbName]
+		if !ok {
+			base.DebugfCtx(ctx, base.KeyConfig, "Database %q already removed from server context after acquiring write lock - do not need to remove not removing database", base.MD(dbName))
+			continue
+		}
+		
 		// It's possible that the "deleted" database was not written to the server until after sc.FetchConfigs had returned...
 		// we'll need to pay for the cost of getting the config again now that we've got the write lock to double-check this db is definitely ok to remove...
-		found, _, err := sc._fetchDatabase(ctx, dbName)
-		if err != nil {
-			base.InfofCtx(ctx, base.KeyConfig, "Error fetching config for database %q to check whether we need to remove it: %v", dbName, err)
-		}
-		if !found {
-			base.InfofCtx(ctx, base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
-			sc._removeDatabase(ctx, dbName)
-		} else {
+		var cnf DatabaseConfig
+		_, getConfigErr := sc.BootstrapContext.GetConfig(ctx, dbc.Bucket.GetName(), sc.Config.Bootstrap.ConfigGroupID, dbName, &cnf)
+		if getConfigErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "Found config for database %q after acquiring write lock - not removing database", base.MD(dbName))
+			continue
 		}
+		if base.IsRecoverableReadError(getConfigErr) {
+			base.InfofCtx(ctx, base.KeyConfig, "Transient error fetching config for database %q to check whether we need to remove it, will not be removed: %v", base.MD(dbName), getConfigErr)
+			continue
+		}
+
+		base.InfofCtx(ctx, base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
+		sc._removeDatabase(ctx, dbName)
 	}
 
 	return sc._applyConfigs(ctx, fetchedConfigs, isInitialStartup), nil
