@@ -698,8 +698,9 @@ func (h *handler) handlePutDbConfig() (err error) {
 }
 
 type HandleDbAuditConfigBody struct {
-	Enabled *bool          `json:"enabled,omitempty"`
-	Events  map[string]any `json:"events,omitempty"`
+	Enabled       *bool                        `json:"enabled,omitempty"`
+	Events        map[string]any               `json:"events,omitempty"`
+	DisabledUsers []base.AuditLoggingPrincipal `json:"disabled_users,omitempty"`
 }
 
 type HandleDbAuditConfigBodyVerboseEvent struct {
@@ -717,9 +718,10 @@ func (h *handler) handleGetDbAuditConfig() error {
 	verbose := h.getBoolQuery("verbose")
 
 	var (
-		etagVersion    string
-		dbAuditEnabled bool
-		enabledEvents  = make(map[base.AuditID]struct{})
+		etagVersion          string
+		dbAuditEnabled       bool
+		dbAuditDisabledUsers []base.AuditLoggingPrincipal
+		enabledEvents        = make(map[base.AuditID]struct{})
 	)
 
 	if h.server.BootstrapContext.Connection != nil {
@@ -745,6 +747,7 @@ func (h *handler) handleGetDbAuditConfig() error {
 			for _, event := range runtimeConfig.Logging.Audit.EnabledEvents {
 				enabledEvents[base.AuditID(event)] = struct{}{}
 			}
+			dbAuditDisabledUsers = runtimeConfig.Logging.Audit.DisabledUsers
 		}
 	} else {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "audit config not available in non-persistent mode")
@@ -772,8 +775,9 @@ func (h *handler) handleGetDbAuditConfig() error {
 	}
 
 	resp := HandleDbAuditConfigBody{
-		Enabled: &dbAuditEnabled,
-		Events:  events,
+		Enabled:       &dbAuditEnabled,
+		Events:        events,
+		DisabledUsers: dbAuditDisabledUsers,
 	}
 
 	h.setEtag(etagVersion)
@@ -838,42 +842,53 @@ func (h *handler) handlePutDbAuditConfig() error {
 			config.Logging.Audit = &DbAuditLoggingConfig{}
 		}
 
-		if isReplace || body.Enabled != nil {
-			config.Logging.Audit.Enabled = body.Enabled
-		}
+		mutateConfigFromDbAuditConfigBody(isReplace, config.Logging.Audit, &body, toChange)
 
-		if isReplace {
-			// we don't need to do anything to "disable" events, other than not enable them
-			config.Logging.Audit.EnabledEvents = func() []uint {
-				enabledEvents := make([]uint, 0)
-				for event, shouldEnable := range toChange {
-					if shouldEnable {
-						enabledEvents = append(enabledEvents, uint(event))
-					}
-				}
-				return enabledEvents
-			}()
-		} else {
-			for i, event := range config.Logging.Audit.EnabledEvents {
-				if shouldEnable, ok := toChange[base.AuditID(event)]; ok {
-					if shouldEnable {
-						// already enabled
-					} else {
-						// disable by removing
-						config.Logging.Audit.EnabledEvents = append(config.Logging.Audit.EnabledEvents[:i], config.Logging.Audit.EnabledEvents[i+1:]...)
-					}
-					// drop from toChange so we don't duplicate IDs
-					delete(toChange, base.AuditID(event))
-				}
-			}
-			for id, enabled := range toChange {
-				if enabled {
-					config.Logging.Audit.EnabledEvents = append(config.Logging.Audit.EnabledEvents, uint(id))
-				}
-			}
-		}
 		return nil
 	})
+}
+
+func mutateConfigFromDbAuditConfigBody(isReplace bool, existingAuditConfig *DbAuditLoggingConfig, requestAuditConfig *HandleDbAuditConfigBody, eventsToChange map[base.AuditID]bool) {
+	if isReplace {
+		existingAuditConfig.Enabled = requestAuditConfig.Enabled
+		existingAuditConfig.DisabledUsers = requestAuditConfig.DisabledUsers
+
+		// we don't need to do anything to "disable" events, other than not enable them
+		existingAuditConfig.EnabledEvents = func() []uint {
+			enabledEvents := make([]uint, 0)
+			for event, shouldEnable := range eventsToChange {
+				if shouldEnable {
+					enabledEvents = append(enabledEvents, uint(event))
+				}
+			}
+			return enabledEvents
+		}()
+	} else {
+		if requestAuditConfig.Enabled != nil {
+			existingAuditConfig.Enabled = requestAuditConfig.Enabled
+		}
+		if requestAuditConfig.DisabledUsers != nil {
+			existingAuditConfig.DisabledUsers = requestAuditConfig.DisabledUsers
+		}
+
+		for i, event := range existingAuditConfig.EnabledEvents {
+			if shouldEnable, ok := eventsToChange[base.AuditID(event)]; ok {
+				if shouldEnable {
+					// already enabled
+				} else {
+					// disable by removing
+					existingAuditConfig.EnabledEvents = append(existingAuditConfig.EnabledEvents[:i], existingAuditConfig.EnabledEvents[i+1:]...)
+				}
+				// drop from toChange so we don't duplicate IDs
+				delete(eventsToChange, base.AuditID(event))
+			}
+		}
+		for id, enabled := range eventsToChange {
+			if enabled {
+				existingAuditConfig.EnabledEvents = append(existingAuditConfig.EnabledEvents, uint(id))
+			}
+		}
+	}
 }
 
 // GET collection config sync function

@@ -12,6 +12,7 @@ package rest
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -27,13 +28,21 @@ func TestAuditLoggingFields(t *testing.T) {
 		t.Skip("This test can panic with gocb logging CBG-4076")
 	}
 
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Audit logging only works in EE")
+	}
+
 	// get tempdir before resetting global loggers, since the logger cleanup needs to happen before deletion
 	tempdir := t.TempDir()
 	base.ResetGlobalTestLogging(t)
 	base.InitializeMemoryLoggers()
+
 	const (
-		requestInfoHeaderName = "extra-audit-logging-header"
-		requestUser           = "alice"
+		requestInfoHeaderName  = "extra-audit-logging-header"
+		requestUser            = "alice"
+		filteredPublicUsername = "bob"
+		filteredAdminUsername  = "TestAuditLoggingFields-charlie"
+		filteredAdminPassword  = "password"
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -57,9 +66,30 @@ func TestAuditLoggingFields(t *testing.T) {
 	})
 	defer rt.Close()
 
+	runServerRBACTests := base.TestCanUseMobileRBAC(t)
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.BoolPtr(true),
+			DisabledUsers: []base.AuditLoggingPrincipal{
+				{Name: filteredPublicUsername, Domain: string(base.UserDomainSyncGateway)},
+				{Name: filteredAdminUsername, Domain: string(base.UserDomainCBServer)},
+			},
+		},
+	}
+
 	// initialize RestTester
-	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
 	rt.CreateUser(requestUser, nil)
+	rt.CreateUser(filteredPublicUsername, nil)
+	if runServerRBACTests {
+		eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+		require.NoError(t, err)
+		MakeUser(t, httpClient, eps[0], filteredAdminUsername, filteredAdminPassword, []string{fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName())})
+		defer DeleteUser(t, httpClient, eps[0], filteredAdminUsername)
+	}
 
 	// auditFieldValueIgnored is a special value for an audit field to skip value-specific checks whilst still ensuring the field property is set
 	// used for unpredictable values, for example timestamps or request IDs (when the test is making concurrent or unordered requests)
@@ -191,6 +221,24 @@ func TestAuditLoggingFields(t *testing.T) {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
 					base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
 				},
+			},
+		},
+		{
+			name: "filtered public request",
+			auditableAction: func(t testing.TB) {
+				RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/db/", "", filteredPublicUsername), http.StatusOK)
+			},
+		},
+		{
+			name: "filtered admin request",
+			auditableAction: func(t testing.TB) {
+				if !runServerRBACTests {
+					t.Skip("Skipping subtest that requires admin RBAC")
+				}
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth")
+				}
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", filteredAdminUsername, filteredAdminPassword), http.StatusOK)
 			},
 		},
 	}
