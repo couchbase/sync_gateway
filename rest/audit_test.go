@@ -38,13 +38,17 @@ func TestAuditLoggingFields(t *testing.T) {
 	base.InitializeMemoryLoggers()
 
 	const (
-		requestInfoHeaderName     = "extra-audit-logging-header"
-		requestUser               = "alice"
-		filteredPublicUsername    = "bob"
-		filteredAdminUsername     = "TestAuditLoggingFields-charlie"
-		filteredAdminPassword     = "password"
-		unauthorizedAdminUsername = "TestAuditLoggingFields-alice"
-		unauthorizedAdminPassword = "password"
+		requestInfoHeaderName      = "extra-audit-logging-header"
+		requestUser                = "alice"
+		filteredPublicUsername     = "bob"
+		filteredPublicRoleUsername = "charlie"
+		filteredPublicRoleName     = "observer"
+		filteredAdminUsername      = "TestAuditLoggingFields-charlie"
+		filteredAdminRoleUsername  = "TestAuditLoggingFields-bob"
+		unauthorizedAdminUsername  = "TestAuditLoggingFields-alice"
+	)
+	var (
+		filteredAdminRoleName = BucketFullAccessRole.RoleName
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -79,6 +83,10 @@ func TestAuditLoggingFields(t *testing.T) {
 				{Name: filteredPublicUsername, Domain: string(base.UserDomainSyncGateway)},
 				{Name: filteredAdminUsername, Domain: string(base.UserDomainCBServer)},
 			},
+			DisabledRoles: []base.AuditLoggingPrincipal{
+				{Name: filteredPublicRoleName, Domain: string(base.UserDomainSyncGateway)},
+				{Name: filteredAdminRoleName, Domain: string(base.UserDomainCBServer)},
+			},
 		},
 	}
 
@@ -87,12 +95,16 @@ func TestAuditLoggingFields(t *testing.T) {
 
 	rt.CreateUser(requestUser, nil)
 	rt.CreateUser(filteredPublicUsername, nil)
+	rt.CreateUser(filteredPublicRoleUsername, nil, filteredPublicRoleName)
 	if runServerRBACTests {
 		eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 		require.NoError(t, err)
-		MakeUser(t, httpClient, eps[0], filteredAdminUsername, filteredAdminPassword, []string{fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName())})
+
+		MakeUser(t, httpClient, eps[0], filteredAdminUsername, RestTesterDefaultUserPassword, []string{fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName())})
 		defer DeleteUser(t, httpClient, eps[0], filteredAdminUsername)
-		MakeUser(t, httpClient, eps[0], unauthorizedAdminUsername, unauthorizedAdminPassword, []string{})
+		MakeUser(t, httpClient, eps[0], filteredAdminRoleUsername, RestTesterDefaultUserPassword, []string{fmt.Sprintf("%s[%s]", filteredAdminRoleName, rt.Bucket().GetName())})
+		defer DeleteUser(t, httpClient, eps[0], filteredAdminRoleUsername)
+		MakeUser(t, httpClient, eps[0], unauthorizedAdminUsername, RestTesterDefaultUserPassword, []string{})
 		defer DeleteUser(t, httpClient, eps[0], unauthorizedAdminUsername)
 
 	}
@@ -296,6 +308,12 @@ func TestAuditLoggingFields(t *testing.T) {
 			},
 		},
 		{
+			name: "filtered public role request",
+			auditableAction: func(t testing.TB) {
+				RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/db/", "", filteredPublicRoleUsername), http.StatusOK)
+			},
+		},
+		{
 			name: "filtered admin request",
 			auditableAction: func(t testing.TB) {
 				if !runServerRBACTests {
@@ -304,7 +322,19 @@ func TestAuditLoggingFields(t *testing.T) {
 				if !rt.AdminInterfaceAuthentication {
 					t.Skip("Skipping subtest that requires admin auth")
 				}
-				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", filteredAdminUsername, filteredAdminPassword), http.StatusOK)
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", filteredAdminUsername, RestTesterDefaultUserPassword), http.StatusOK)
+			},
+		},
+		{
+			name: "filtered admin role request",
+			auditableAction: func(t testing.TB) {
+				if !runServerRBACTests {
+					t.Skip("Skipping subtest that requires admin RBAC")
+				}
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth")
+				}
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", filteredAdminRoleUsername, RestTesterDefaultUserPassword), http.StatusOK)
 			},
 		},
 	}

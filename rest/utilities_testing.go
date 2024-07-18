@@ -503,12 +503,12 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 }
 
 // CreateUser creates a user with the default password and channels scoped to a single test collection.
-func (rt *RestTester) CreateUser(username string, channels []string) {
+func (rt *RestTester) CreateUser(username string, channels []string, roles ...string) {
 	var response *TestResponse
 	if rt.AdminInterfaceAuthentication {
-		response = rt.SendAdminRequestWithAuth(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), channels, nil), base.TestClusterUsername(), base.TestClusterPassword())
+		response = rt.SendAdminRequestWithAuth(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), channels, roles), base.TestClusterUsername(), base.TestClusterPassword())
 	} else {
-		response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), channels, nil))
+		response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), channels, roles))
 	}
 	RequireStatus(rt.TB(), response, http.StatusCreated)
 }
