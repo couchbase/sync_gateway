@@ -2286,14 +2286,19 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 
 		// user/role filtering
 		disabledUsers := make(map[base.AuditLoggingPrincipal]struct{}, len(c.Logging.Audit.DisabledUsers))
+		disabledRoles := make(map[base.AuditLoggingPrincipal]struct{}, len(c.Logging.Audit.DisabledRoles))
 		for _, user := range c.Logging.Audit.DisabledUsers {
 			disabledUsers[user] = struct{}{}
+		}
+		for _, role := range c.Logging.Audit.DisabledRoles {
+			disabledRoles[role] = struct{}{}
 		}
 
 		aud = &base.DbAuditLogConfig{
 			Enabled:       base.BoolDefault(l.Audit.Enabled, false),
 			EnabledEvents: enabledEvents,
 			DisabledUsers: disabledUsers,
+			DisabledRoles: disabledRoles,
 		}
 	}
 

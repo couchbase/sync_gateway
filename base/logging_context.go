@@ -51,6 +51,8 @@ type LogContext struct {
 	Username string
 	// UserDomain can determine whether the authenticated user is a sync gateway user or a couchbase RBAC user
 	UserDomain userIDDomain
+	// UserRoles is a list of the authenticated user's roles, the domain for these roles is the same as the UserDomain
+	UserRoles map[string]struct{}
 
 	// RequestHost is the HTTP Host of the request associated with this log.
 	RequestHost string
@@ -94,6 +96,7 @@ type DbAuditLogConfig struct {
 	Enabled       bool
 	EnabledEvents map[AuditID]struct{}
 	DisabledUsers map[AuditLoggingPrincipal]struct{}
+	DisabledRoles map[AuditLoggingPrincipal]struct{}
 }
 
 type AuditLoggingPrincipal struct {
