@@ -1605,7 +1605,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 			base.DebugfCtx(ctx, base.KeyConfig, "Database %q already removed from server context after acquiring write lock - do not need to remove not removing database", base.MD(dbName))
 			continue
 		}
-		
+
 		// It's possible that the "deleted" database was not written to the server until after sc.FetchConfigs had returned...
 		// we'll need to pay for the cost of getting the config again now that we've got the write lock to double-check this db is definitely ok to remove...
 		var cnf DatabaseConfig
