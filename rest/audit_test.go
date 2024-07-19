@@ -422,13 +422,16 @@ func TestEffectiveUserID(t *testing.T) {
 	base.ResetGlobalTestLogging(t)
 	base.InitializeMemoryLoggers()
 	const (
-		user      = "user"
-		domain    = "domain"
-		cnfDomain = "myDomain"
-		cnfUser   = "alice"
+		user       = "user"
+		domain     = "domain"
+		cnfDomain  = "myDomain"
+		cnfUser    = "bob"
+		authUser   = "alice"
+		realDomain = "sgw"
 	)
 	reqHeaders := map[string]string{
-		"user_header": fmt.Sprintf(`{"%s": "%s", "%s":"%s"}`, domain, cnfDomain, user, cnfUser),
+		"user_header":   fmt.Sprintf(`{"%s": "%s", "%s":"%s"}`, domain, cnfDomain, user, cnfUser),
+		"Authorization": getBasicAuthHeader(authUser, RestTesterDefaultUserPassword),
 	}
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -449,9 +452,10 @@ func TestEffectiveUserID(t *testing.T) {
 	})
 	defer rt.Close()
 	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	rt.CreateUser(authUser, nil)
 
 	action := func(t testing.TB) {
-		RequireStatus(t, rt.SendAdminRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", reqHeaders), http.StatusOK)
+		RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", reqHeaders), http.StatusOK)
 	}
 	output := base.AuditLogContents(t, action)
 	events := jsonLines(t, output)
@@ -460,5 +464,8 @@ func TestEffectiveUserID(t *testing.T) {
 		effective := event[base.AuditEffectiveUserID].(map[string]any)
 		assert.Equal(t, cnfDomain, effective[domain])
 		assert.Equal(t, cnfUser, effective[user])
+		realUser := event[base.AuditFieldRealUserID].(map[string]any)
+		assert.Equal(t, realDomain, realUser[domain])
+		assert.Equal(t, authUser, realUser[user])
 	}
 }
