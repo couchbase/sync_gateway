@@ -10,6 +10,7 @@ package base
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 )
 
@@ -133,7 +134,7 @@ func (f AuditFields) expandMandatoryFieldGroups(groups []fieldGroup) {
 
 func (i AuditID) MustValidateFields(f AuditFields) {
 	if err := i.ValidateFields(f); err != nil {
-		panic(fmt.Errorf("audit event %s(%s) invalid:\n%v", AuditEvents[i].Name, i, err))
+		panic(fmt.Errorf("audit event %q (%s) invalid:\n%v", i, AuditEvents[i].Name, err))
 	}
 }
 
@@ -151,15 +152,25 @@ func (i AuditID) ValidateFields(f AuditFields) error {
 func mandatoryFieldsPresent(fields, mandatoryFields AuditFields, baseName string) error {
 	me := &MultiError{}
 	for k, v := range mandatoryFields {
+		if _, ok := fields[k]; !ok {
+			me = me.Append(fmt.Errorf("missing mandatory field %s", baseName+k))
+			continue
+		}
+		if !matchingTypes(v, fields[k]) {
+			me = me.Append(fmt.Errorf("field value for %s%s must be of type %T but had %T", baseName, k, v, fields[k]))
+			continue
+		}
 		// recurse if map
 		if vv, ok := v.(map[string]any); ok {
 			if pv, ok := fields[k].(map[string]any); ok {
 				me = me.Append(mandatoryFieldsPresent(pv, vv, baseName+k+"."))
 			}
 		}
-		if _, ok := fields[k]; !ok {
-			me = me.Append(fmt.Errorf("missing mandatory field %s", baseName+k))
-		}
 	}
 	return me.ErrorOrNil()
+}
+
+// matchingTypes returns true if the types of a and b are the same.
+func matchingTypes(a, b any) bool {
+	return reflect.TypeOf(a).Kind() == reflect.TypeOf(b).Kind()
 }
