@@ -376,7 +376,6 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 			if err != nil {
 				return err
 			}
-
 			revSendTimeLatency += time.Since(changesResponseReceived).Nanoseconds()
 			revSendCount++
 
@@ -409,7 +408,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 }
 
 // Pushes a revision body to the client
-func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, collectionIdx *int,
+func (bsc *BlipSyncContext) sendRevisionWithProperties(ctx context.Context, sender *blip.Sender, docID string, revID string, collectionIdx *int,
 	bodyBytes []byte, attMeta []AttachmentStorageMeta, properties blip.Properties, seq SequenceID, resendFullRevisionFunc func() error) error {
 
 	outrq := NewRevMessage()
@@ -430,7 +429,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 		bsc.replicationStats.SendRevBytes.Add(int64(len(messageBody)))
 	}
 
-	base.TracefCtx(bsc.loggingCtx, base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), attMeta)
+	base.TracefCtx(ctx, base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), attMeta)
 
 	collectionCtx, err := bsc.collections.get(collectionIdx)
 	if err != nil {
@@ -459,7 +458,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 			defer func() {
 				if panicked := recover(); panicked != nil {
 					bsc.replicationStats.NumHandlersPanicked.Add(1)
-					base.WarnfCtx(bsc.loggingCtx, "PANIC handling 'sendRevision' response: %v\n%s", panicked, debug.Stack())
+					base.WarnfCtx(ctx, "PANIC handling 'sendRevision' response: %v\n%s", panicked, debug.Stack())
 					bsc.Close()
 				}
 			}()
@@ -468,14 +467,14 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 
 			respBody, err := resp.Body()
 			if err != nil {
-				base.WarnfCtx(bsc.loggingCtx, "couldn't get response body for rev: %v", err)
+				base.WarnfCtx(ctx, "couldn't get response body for rev: %v", err)
 			}
 
-			base.TracefCtx(bsc.loggingCtx, base.KeySync, "Received response for sendRevisionWithProperties rev message %s/%s", base.UD(docID), revID)
+			base.TracefCtx(ctx, base.KeySync, "Received response for sendRevisionWithProperties rev message %s/%s", base.UD(docID), revID)
 
 			if resp.Type() == blip.ErrorType {
 				bsc.replicationStats.SendRevErrorTotal.Add(1)
-				base.InfofCtx(bsc.loggingCtx, base.KeySync, "error %s in response to rev: %s", resp.Properties["Error-Code"], respBody)
+				base.InfofCtx(ctx, base.KeySync, "error %s in response to rev: %s", resp.Properties["Error-Code"], respBody)
 
 				if errorDomainIsHTTP(resp) {
 					switch resp.Properties["Error-Code"] {
@@ -486,9 +485,9 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 					case "422", "404":
 						// unprocessable entity, CBL has not been able to use the delta we sent, so we should re-send the revision in full
 						if resendFullRevisionFunc != nil {
-							base.DebugfCtx(bsc.loggingCtx, base.KeySync, "sending full body replication for doc %s/%s due to unprocessable entity", base.UD(docID), revID)
+							base.DebugfCtx(ctx, base.KeySync, "sending full body replication for doc %s/%s due to unprocessable entity", base.UD(docID), revID)
 							if err := resendFullRevisionFunc(); err != nil {
-								base.WarnfCtx(bsc.loggingCtx, "unable to resend revision: %v", err)
+								base.WarnfCtx(ctx, "unable to resend revision: %v", err)
 							}
 						}
 					case "500":
@@ -511,6 +510,10 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 			}
 		}(activeSubprotocol)
 	}
+	base.Audit(ctx, base.AuditIDDocumentRead, base.AuditFields{
+		base.AuditFieldDocID:      docID,
+		base.AuditFieldDocVersion: revID,
+	})
 
 	return nil
 }
@@ -558,13 +561,13 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 	}
 }
 
-func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
+func (bsc *BlipSyncContext) sendDelta(ctx context.Context, sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
 
 	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq, "")
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
-	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
-	return bsc.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, collectionIdx, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
+	base.DebugfCtx(ctx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
+	return bsc.sendRevisionWithProperties(ctx, sender, docID, revDelta.ToRevID, collectionIdx, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
 		properties, seq, resendFullRevisionFunc)
 }
 
@@ -637,7 +640,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		// try the active rev instead as a replacement
 		replacementRev, replacementRevErr := handleChangesResponseCollection.GetRev(ctx, docID, "", true, nil)
 		if replacementRevErr != nil {
-			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable active replacement revision: %v", base.UD(docID), revID, replacementRevErr)
+			base.DebugfCtx(ctx, base.KeySync, "Sending norev %q %s due to unavailable active replacement revision: %v", base.UD(docID), revID, replacementRevErr)
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, originalErr)
 		}
 
@@ -704,7 +707,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		base.DebugfCtx(ctx, base.KeySync, "Sending rev %q %s%s based on %d known, digests: %v", base.UD(docID), revID, replacedRevMsg, len(knownRevs), digests(attachmentStorageMeta))
 	}
 
-	return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, bodyBytes, attachmentStorageMeta, properties, seq, nil)
+	return bsc.sendRevisionWithProperties(ctx, sender, docID, revID, collectionIdx, bodyBytes, attachmentStorageMeta, properties, seq, nil)
 }
 
 // digests returns a slice of digest extracted from the given attachment meta.

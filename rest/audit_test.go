@@ -503,7 +503,6 @@ func TestRedactConfigAsStr(t *testing.T) {
 		})
 	}
 }
-
 func TestEffectiveUserID(t *testing.T) {
 	tempdir := t.TempDir()
 	base.ResetGlobalTestLogging(t)
@@ -555,4 +554,245 @@ func TestEffectiveUserID(t *testing.T) {
 		assert.Equal(t, realDomain, realUserEvent[domain])
 		assert.Equal(t, realUser, realUserEvent[user])
 	}
+}
+
+func TestAuditDocumentRead(t *testing.T) {
+	rt := createAuditLoggingRestTester(t)
+	defer rt.Close()
+
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	docVersion := rt.CreateTestDoc("doc1")
+
+	type testCase struct {
+		name                 string
+		method               string
+		path                 string
+		requestBody          string
+		docID                string
+		docReadVersions      []string
+		docMetadataReadCount int
+	}
+	testCases := []testCase{
+		{
+			name:            "get doc",
+			method:          http.MethodGet,
+			path:            "/{{.keyspace}}/doc1",
+			docID:           "doc1",
+			docReadVersions: []string{docVersion.RevID},
+		},
+		{
+			name:            "get doc with rev",
+			method:          http.MethodGet,
+			path:            "/{{.keyspace}}/doc1?rev=" + docVersion.RevID,
+			docID:           "doc1",
+			docReadVersions: []string{docVersion.RevID},
+		},
+		{
+			name:            "get doc with openrevs",
+			method:          http.MethodGet,
+			path:            "/{{.keyspace}}/doc1?open_revs=all",
+			docID:           "doc1",
+			docReadVersions: []string{docVersion.RevID},
+		},
+		{
+			name:   "_bulk_get",
+			method: http.MethodPost,
+			path:   "/{{.keyspace}}/_bulk_get",
+			requestBody: string(base.MustJSONMarshal(t, db.Body{
+				"docs": []db.Body{
+					{"id": "doc1", "rev": docVersion.RevID},
+				},
+			})),
+			docID:           "doc1",
+			docReadVersions: []string{docVersion.RevID},
+		},
+		{
+			// this doesn't actually provide the document body, no audit events
+			name:   "_revs_diff",
+			method: http.MethodPost,
+			path:   "/{{.keyspace}}/_revs_diff",
+			requestBody: string(base.MustJSONMarshal(t, db.Body{
+				"doc1": []string{docVersion.RevID},
+			})),
+			docID:           "doc1",
+			docReadVersions: nil,
+		},
+		{
+			name:                 "all_docs without body",
+			method:               http.MethodGet,
+			path:                 "/{{.keyspace}}/_all_docs",
+			docID:                "doc1",
+			docReadVersions:      nil,
+			docMetadataReadCount: 0,
+		},
+		{
+			name:            "all_docs",
+			method:          http.MethodGet,
+			path:            "/{{.keyspace}}/_all_docs?include_docs=true",
+			docID:           "doc1",
+			docReadVersions: []string{docVersion.RevID},
+		},
+		{
+			name:                 "all_docs with include_docs=true&channels=true",
+			method:               http.MethodGet,
+			path:                 "/{{.keyspace}}/_all_docs?include_docs=true&channels=true",
+			docID:                "doc1",
+			docReadVersions:      []string{docVersion.RevID},
+			docMetadataReadCount: 1,
+		},
+		{
+			name:                 "all_docs with channels=true",
+			method:               http.MethodGet,
+			path:                 "/{{.keyspace}}/_all_docs?channels=true",
+			docID:                "doc1",
+			docReadVersions:      nil,
+			docMetadataReadCount: 1,
+		},
+		{
+			name:                 "all_docs with update_seq=true",
+			method:               http.MethodGet,
+			path:                 "/{{.keyspace}}/_all_docs?update_seq=true",
+			docID:                "doc1",
+			docReadVersions:      nil,
+			docMetadataReadCount: 1,
+		},
+		{
+			name:                 "all_docs with revs=true",
+			method:               http.MethodGet,
+			path:                 "/{{.keyspace}}/_all_docs?revs=true",
+			docID:                "doc1",
+			docReadVersions:      nil,
+			docMetadataReadCount: 1,
+		},
+		{
+			name:   "changes no bodies, no audit",
+			method: http.MethodGet,
+			path:   "/{{.keyspace}}/_changes?since=0",
+			docID:  "doc1",
+		},
+		{
+			name:            "changes with include_docs",
+			method:          http.MethodGet,
+			path:            "/{{.keyspace}}/_changes?since=0&include_docs=true",
+			docID:           "doc1",
+			docReadVersions: []string{docVersion.RevID},
+		},
+		{
+			name:                 "raw",
+			method:               http.MethodGet,
+			path:                 "/{{.keyspace}}/_raw/doc1",
+			docID:                "doc1",
+			docReadVersions:      []string{docVersion.RevID},
+			docMetadataReadCount: 1,
+		},
+		{
+			name:   "raw, include doc=false",
+			method: http.MethodGet,
+			path:   "/{{.keyspace}}/_raw/doc1?include_doc=false",
+			docID:  "doc1",
+			// raw endpoint issues metadata and not doc read events
+			docReadVersions:      nil,
+			docMetadataReadCount: 1,
+		},
+		{
+			name:                 "revtree",
+			method:               http.MethodGet,
+			path:                 "/{{.keyspace}}/_revtree/doc1",
+			docID:                "doc1",
+			docReadVersions:      nil,
+			docMetadataReadCount: 1,
+		},
+	}
+	if base.IsEnterpriseEdition() {
+		testCases = append(testCases, testCase{
+			name:            "get doc with replicator2",
+			method:          http.MethodGet,
+			path:            "/{{.keyspace}}/doc1?replicator2=true",
+			docID:           "doc1",
+			docReadVersions: []string{docVersion.RevID},
+		},
+		)
+	}
+	for _, testCase := range testCases {
+		rt.Run(testCase.name, func(t *testing.T) {
+			output := base.AuditLogContents(t, func(t testing.TB) {
+				resp := rt.SendAdminRequest(testCase.method, testCase.path, testCase.requestBody)
+				RequireStatus(t, resp, http.StatusOK)
+			})
+			requireDocumentReadEvents(rt, output, testCase.docID, testCase.docReadVersions)
+			requireDocumentMetadataReadEvents(rt, output, testCase.docID, testCase.docMetadataReadCount)
+		})
+	}
+}
+
+// requireDocumentMetadataReadEvents validates that there read events for each doc version specified. There should be only audit events for a given docid.
+func requireDocumentMetadataReadEvents(rt *RestTester, output []byte, docID string, count int) {
+	events := jsonLines(rt.TB(), output)
+	countFound := 0
+	for _, event := range events {
+		// skip events that are not document read events
+		if base.AuditID(event[base.AuditFieldID].(float64)) != base.AuditIDDocumentMetadataRead {
+			continue
+		}
+		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
+		countFound++
+	}
+	require.Equal(rt.TB(), count, countFound)
+}
+
+// requireDocumentReadEvents validates that there read events for each doc version specified. There should be only audit events for a given docid and it should be revid specified.
+func requireDocumentReadEvents(rt *RestTester, output []byte, docID string, docVersions []string) {
+	events := jsonLines(rt.TB(), output)
+	var docVersionsFound []string
+	for _, event := range events {
+		// skip events that are not document read events
+		if base.AuditID(event[base.AuditFieldID].(float64)) != base.AuditIDDocumentRead {
+			continue
+		}
+		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
+		docVersionsFound = append(docVersionsFound, event[base.AuditFieldDocVersion].(string))
+	}
+	require.Len(rt.TB(), docVersions, len(docVersionsFound), "expected exactly %d document read events, got %d", len(docVersions), len(docVersionsFound))
+	require.Equal(rt.TB(), docVersions, docVersionsFound)
+}
+
+func createAuditLoggingRestTester(t *testing.T) *RestTester {
+	// get tempdir before resetting global loggers, since the logger cleanup needs to happen before deletion
+	tempdir := t.TempDir()
+	base.ResetGlobalTestLogging(t)
+	base.InitializeMemoryLoggers()
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			config.Logging = base.LoggingConfig{
+				LogFilePath: tempdir,
+				Audit: &base.AuditLoggerConfig{
+					FileLoggerConfig: base.FileLoggerConfig{
+						Enabled:             base.BoolPtr(true),
+						CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
+					},
+				},
+				Console: &base.ConsoleLoggerConfig{
+					FileLoggerConfig: base.FileLoggerConfig{
+						Enabled: base.BoolPtr(true),
+					},
+				},
+				Info: &base.FileLoggerConfig{
+					Enabled:             base.BoolPtr(false),
+					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
+				},
+				Debug: &base.FileLoggerConfig{
+					Enabled:             base.BoolPtr(false),
+					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
+				},
+				Trace: &base.FileLoggerConfig{
+					Enabled:             base.BoolPtr(false),
+					CollationBufferSize: base.IntPtr(0), // avoid data race in collation with FlushLogBuffers test code
+				},
+			}
+			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
+		},
+	})
+	return rt
 }

@@ -11,26 +11,28 @@ package base
 const (
 
 	// Commonly used audit event fields
-	AuditFieldID                 = "id"
-	AuditFieldTimestamp          = "timestamp"
-	AuditFieldName               = "name"
-	AuditFieldDescription        = "description"
-	AuditFieldRealUserID         = "real_userid"
-	AuditFieldLocal              = "local"
-	AuditFieldRemote             = "remote"
-	AuditFieldDatabase           = "db"
-	AuditFieldCorrelationID      = "cid" // FIXME: how to distinguish between this field (http) and blip id below
-	AuditFieldKeyspace           = "ks"
+	AuditFieldID            = "id"
+	AuditFieldTimestamp     = "timestamp"
+	AuditFieldName          = "name"
+	AuditFieldDescription   = "description"
+	AuditFieldRealUserID    = "real_userid"
+	AuditFieldLocal         = "local"
+	AuditFieldRemote        = "remote"
+	AuditFieldDatabase      = "db"
+	AuditFieldCorrelationID = "cid" // FIXME: how to distinguish between this field (http) and blip id below
+	AuditFieldKeyspace      = "ks"
+	AuditFieldAuthMethod    = "auth_method"
+
 	AuditFieldReplicationID      = "replication_id"
 	AuditFieldPayload            = "payload"
 	AuditFieldCompactionType     = "type"
 	AuditFieldCompactionDryRun   = "dry_run"
 	AuditFieldCompactionReset    = "reset"
 	AuditFieldPostUpgradePreview = "preview"
-	AuditFieldAuthMethod         = "auth_method"
-	AuditEffectiveUserID         = "effective_userid"
-	AuditFieldAuditScope         = "audit_scope"
-	AuditFieldFileName           = "filename"
+
+	AuditEffectiveUserID = "effective_userid"
+	AuditFieldAuditScope = "audit_scope"
+	AuditFieldFileName   = "filename"
 
 	// AuditIDSyncGatewayStartup AuditID = 53260
 	AuditFieldSGVersion                      = "sg_version"
@@ -52,4 +54,11 @@ const (
 	AuditFieldHTTPMethod  = "http_method"
 	AuditFieldHTTPPath    = "http_path"
 	AuditFieldRequestBody = "request_body"
+
+	// CRUD events
+	AuditFieldAttachmentID = "attachment_id"
+	AuditFieldChannels     = "channels"
+	AuditFieldDocID        = "doc_id"
+	AuditFieldDocVersion   = "doc_version"
+	AuditFieldPurged       = "purged"
 )

@@ -864,7 +864,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 	if redactedRev != nil {
 		history := toHistory(redactedRev.History, knownRevs, maxHistory)
 		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq, "")
-		return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, redactedRev.BodyBytes, nil, properties, seq, nil)
+		return bsc.sendRevisionWithProperties(ctx, sender, docID, revID, collectionIdx, redactedRev.BodyBytes, nil, properties, seq, nil)
 	}
 
 	if revDelta == nil {
@@ -878,7 +878,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 	}
 
 	base.TracefCtx(ctx, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
-	if err := bsc.sendDelta(sender, docID, collectionIdx, deltaSrcRevID, revDelta, seq, resendFullRevisionFunc); err != nil {
+	if err := bsc.sendDelta(ctx, sender, docID, collectionIdx, deltaSrcRevID, revDelta, seq, resendFullRevisionFunc); err != nil {
 		return err
 	}
 

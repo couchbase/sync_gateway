@@ -296,6 +296,7 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 	}
 	bh := newBlipHandler(apr.ctx, apr.blipSyncContext, apr.config.ActiveDB, apr.blipSyncContext.incrementSerialNumber())
 	bh.collection = dbCollectionWithUser
+	bh.loggingCtx = bh.collection.AddCollectionContext(bh.BlipSyncContext.loggingCtx)
 
 	var channels base.Set
 	if filteredChannels := apr.config.getFilteredChannels(nil); len(filteredChannels) > 0 {

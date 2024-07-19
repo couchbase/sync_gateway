@@ -43,8 +43,8 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	if logCtx.CorrelationID != "" {
 		fields[AuditFieldCorrelationID] = logCtx.CorrelationID
 	}
-	if logCtx.Bucket != "" && logCtx.Scope != "" && logCtx.Collection != "" {
-		fields[AuditFieldKeyspace] = FullyQualifiedCollectionName(logCtx.Bucket, logCtx.Scope, logCtx.Collection)
+	if logCtx.Database != "" && logCtx.Scope != "" && logCtx.Collection != "" {
+		fields[AuditFieldKeyspace] = FullyQualifiedCollectionName(logCtx.Database, logCtx.Scope, logCtx.Collection)
 	}
 	userDomain := logCtx.UserDomain
 	userName := logCtx.Username

@@ -495,6 +495,20 @@ func makeRevocationChangeEntry(logEntry *LogEntry, seqID SequenceID, channel cha
 	return entry
 }
 
+// AuditReadEvent issues a read event for this change entry. If there is no document body, there will be no event used.
+func (ce *ChangeEntry) AuditReadEvent(ctx context.Context) {
+	if ce.Err != nil {
+		return
+	}
+	if ce.Doc == nil {
+		return
+	}
+	base.Audit(ctx, base.AuditIDDocumentRead, base.AuditFields{
+		base.AuditFieldDocID:      ce.ID,
+		base.AuditFieldDocVersion: ce.Changes[0]["rev"],
+	})
+}
+
 func (ce *ChangeEntry) SetBranched(isBranched bool) {
 	ce.branched = isBranched
 }

@@ -419,6 +419,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 					}
 					_ = encoder.Encode(entry)
 					lastSeq = entry.Seq
+					entry.AuditReadEvent(h.ctx())
 				}
 
 			case <-heartbeat:
@@ -486,6 +487,8 @@ func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.Ch
 				if _, err = h.response.Write([]byte("\n")); err != nil {
 					break
 				}
+
+				change.AuditReadEvent(h.ctx())
 			}
 		} else {
 			_, err = h.response.Write([]byte("\n"))
@@ -558,6 +561,12 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 				conn.PayloadType = websocket.TextFrame
 			}
 			_, err := conn.Write(data)
+			if err != nil {
+				return err
+			}
+			for _, change := range changes {
+				change.AuditReadEvent(h.ctx())
+			}
 			return err
 		})
 
