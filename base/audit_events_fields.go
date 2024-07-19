@@ -11,23 +11,28 @@ package base
 const (
 
 	// Commonly used audit event fields
-	auditFieldID                 = "id"
-	auditFieldTimestamp          = "timestamp"
-	auditFieldName               = "name"
-	auditFieldDescription        = "description"
-	auditFieldRealUserID         = "real_userid"
-	AuditEffectiveUserID         = "effective_userid"
-	auditFieldLocal              = "local"
-	auditFieldRemote             = "remote"
-	auditFieldDatabase           = "db"
-	auditFieldCorrelationID      = "cid" // FIXME: how to distinguish between this field (http) and blip id below
-	auditFieldKeyspace           = "ks"
+	AuditFieldID            = "id"
+	AuditFieldTimestamp     = "timestamp"
+	AuditFieldName          = "name"
+	AuditFieldDescription   = "description"
+	AuditFieldRealUserID    = "real_userid"
+	AuditFieldLocal         = "local"
+	AuditFieldRemote        = "remote"
+	AuditFieldDatabase      = "db"
+	AuditFieldCorrelationID = "cid" // FIXME: how to distinguish between this field (http) and blip id below
+	AuditFieldKeyspace      = "ks"
+	AuditFieldAuthMethod    = "auth_method"
+
 	AuditFieldReplicationID      = "replication_id"
 	AuditFieldPayload            = "payload"
 	AuditFieldCompactionType     = "type"
 	AuditFieldCompactionDryRun   = "dry_run"
 	AuditFieldCompactionReset    = "reset"
 	AuditFieldPostUpgradePreview = "preview"
+
+	AuditEffectiveUserID = "effective_userid"
+	AuditFieldAuditScope = "audit_scope"
+	AuditFieldFileName   = "filename"
 
 	// AuditIDSyncGatewayStartup AuditID = 53260
 	AuditFieldSGVersion                      = "sg_version"
@@ -39,9 +44,21 @@ const (
 	AuditFieldBcryptCost                     = "bcrypt_cost"
 	AuditFieldDisablePersistentConfig        = "disable_persistent_config"
 
+	// AuditIDSyncGatewayStats             AuditID = 53303
+	AuditFieldStatsFormat = "stats_format"
+
+	//AuditIDSyncGatewayProfiling         AuditID = 53304
+	AuditFieldPprofProfileType = "profile_type"
+
+	// API events  AuditID = 53270, 53271, 53272
+	AuditFieldHTTPMethod  = "http_method"
+	AuditFieldHTTPPath    = "http_path"
+	AuditFieldRequestBody = "request_body"
+
+	// CRUD events
+	AuditFieldAttachmentID = "attachment_id"
+	AuditFieldChannels     = "channels"
 	AuditFieldDocID        = "doc_id"
 	AuditFieldDocVersion   = "doc_version"
 	AuditFieldPurged       = "purged"
-	AuditFieldChannels     = "channels"
-	AuditFieldAttachmentID = "attachment_id"
 )

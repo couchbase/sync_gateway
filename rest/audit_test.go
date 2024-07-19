@@ -107,14 +107,18 @@ func TestAuditLoggingFields(t *testing.T) {
 			auditableAction: func(t testing.TB) {
 				RequireStatus(t, rt.SendRequest(http.MethodGet, "/_ping", ""), http.StatusOK)
 			},
-			expectedAuditEventFields: map[base.AuditID]base.AuditFields{},
 		},
 		{
 			name: "public request",
 			auditableAction: func(t testing.TB) {
 				RequireStatus(t, rt.SendRequest(http.MethodGet, "/", ""), http.StatusOK)
 			},
-			expectedAuditEventFields: map[base.AuditID]base.AuditFields{},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDPublicHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/",
+				},
+			},
 		},
 		{
 			name: "guest request",
@@ -129,6 +133,10 @@ func TestAuditLoggingFields(t *testing.T) {
 				base.AuditIDReadDatabase: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
 					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": base.GuestUsername},
+				},
+				base.AuditIDPublicHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
 				},
 			},
 		},
@@ -145,6 +153,10 @@ func TestAuditLoggingFields(t *testing.T) {
 				base.AuditIDReadDatabase: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
 					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": "alice"},
+				},
+				base.AuditIDPublicHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
 				},
 			},
 		},
@@ -169,6 +181,10 @@ func TestAuditLoggingFields(t *testing.T) {
 					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": "alice"},
 					"extra":                      "field",
 				},
+				base.AuditIDPublicHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
+				},
 			},
 		},
 		{
@@ -182,6 +198,10 @@ func TestAuditLoggingFields(t *testing.T) {
 					base.AuditFieldAuthMethod:    "basic",
 					base.AuditFieldDatabase:      "db",
 					"username":                   "incorrect",
+				},
+				base.AuditIDPublicHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
 				},
 			},
 		},
@@ -200,6 +220,10 @@ func TestAuditLoggingFields(t *testing.T) {
 				//},
 				base.AuditIDReadDatabase: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+				},
+				base.AuditIDAdminHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
 				},
 			},
 		},
@@ -220,6 +244,10 @@ func TestAuditLoggingFields(t *testing.T) {
 				base.AuditIDReadDatabase: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
 					base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
+				},
+				base.AuditIDAdminHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
 				},
 			},
 		},
@@ -249,24 +277,32 @@ func TestAuditLoggingFields(t *testing.T) {
 
 			assert.Equalf(t, len(testCase.expectedAuditEventFields), len(events), "expected exactly %d audit events, got %d", len(testCase.expectedAuditEventFields), len(events))
 
-			// for each event, check the fields match what we expected
-			for _, event := range events {
-				id, ok := event["id"]
-				if !assert.Truef(t, ok, "audit event did not contain \"id\" field: %v", event) {
-					continue
-				}
-
-				auditID := base.AuditID(id.(float64))
-				for k, expectedVal := range testCase.expectedAuditEventFields[auditID] {
-					eventField, ok := event[k]
-					if !assert.Truef(t, ok, "missing field %q in audit event %q (%s)", k, auditID, base.AuditEvents[auditID].Name) {
+			// for each expected event, check that it's present and the fields match what we expected
+			for expectedAuditID, expectedEventFields := range testCase.expectedAuditEventFields {
+				eventFound := false
+				for _, event := range events {
+					id, ok := event["id"]
+					if !assert.Truef(t, ok, "audit event did not contain \"id\" field: %v", event) {
 						continue
 					}
-					if expectedVal != auditFieldValueIgnored {
-						assert.Equalf(t, expectedVal, eventField, "unexpected value for field %q in audit event %q (%s)", k, auditID, base.AuditEvents[auditID].Name)
+
+					auditID := base.AuditID(id.(float64))
+					if expectedAuditID == auditID {
+						eventFound = true
+						for k, expectedVal := range expectedEventFields {
+							eventField, ok := event[k]
+							if !assert.Truef(t, ok, "missing field %q in audit event %q (%s)", k, auditID, base.AuditEvents[auditID].Name) {
+								continue
+							}
+							if expectedVal != auditFieldValueIgnored {
+								assert.Equalf(t, expectedVal, eventField, "unexpected value for field %q in audit event %q (%s)", k, auditID, base.AuditEvents[auditID].Name)
+							}
+						}
 					}
 				}
+				assert.Truef(t, eventFound, "expected event %v not found in set of events", expectedAuditID)
 			}
+
 		})
 	}
 }
@@ -379,9 +415,13 @@ func requireValidDatabaseUpdatedEventPayload(rt *RestTester, output []byte) {
 			continue
 		}
 		var event struct {
-			Payload string `json:"payload"`
+			ID      base.AuditID `json:"id"`
+			Payload string       `json:"payload"`
 		}
 		require.NoError(rt.TB(), base.JSONUnmarshal(rawEvent, &event))
+		if event.ID != base.AuditIDUpdateDatabaseConfig {
+			continue
+		}
 		require.NotEmpty(rt.TB(), event.Payload)
 		RequireStatus(rt.TB(), rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", event.Payload), http.StatusCreated)
 		foundEvent = true

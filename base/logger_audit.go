@@ -21,21 +21,6 @@ const (
 	defaultAuditEnabled = false
 )
 
-// commonly used fields for audit events
-const (
-	AuditFieldID            = "id"
-	AuditFieldTimestamp     = "timestamp"
-	AuditFieldName          = "name"
-	AuditFieldDescription   = "description"
-	AuditFieldRealUserID    = "real_userid"
-	AuditFieldLocal         = "local"
-	AuditFieldRemote        = "remote"
-	AuditFieldDatabase      = "db"
-	AuditFieldCorrelationID = "cid" // FIXME: how to distinguish between this field (http) and blip id below
-	AuditFieldKeyspace      = "ks"
-	AuditFieldAuthMethod    = "auth_method"
-)
-
 // expandFields populates data with information from the id, context and additionalData.
 func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, additionalData AuditFields) AuditFields {
 	var fields AuditFields
@@ -152,6 +137,11 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	auditLogger.logf(string(fieldsJSON))
 }
 
+// IsAuditEnabled checks if auditing is enabled for the SG node
+func IsAuditEnabled() bool {
+	return auditLogger.FileLogger.shouldLog(LevelNone)
+}
+
 // AuditLogger is a file logger with audit-specific behaviour.
 type AuditLogger struct {
 	FileLogger
@@ -192,6 +182,10 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 		FileLogger:   *fl,
 		config:       *config,
 		globalFields: globalFields,
+	}
+
+	if *config.FileLoggerConfig.Enabled {
+		Audit(ctx, AuditIDAuditEnabled, AuditFields{"audit_scope": "global"})
 	}
 
 	return logger, nil

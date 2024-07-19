@@ -199,7 +199,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 
 	// Disable user view access, retry
 	rt.ServerContext().Database(ctx, "db").SetUserViewsEnabled(false)
-	request, _ := http.NewRequest(http.MethodGet, "/db/_design/foo/_view/bar?stale=false", nil)
+	request := Request(http.MethodGet, "/db/_design/foo/_view/bar?stale=false", "")
 	request.SetBasicAuth(testUser.Name(), password)
 	userResponse := rt.Send(request)
 	RequireStatus(t, userResponse, http.StatusForbidden)
@@ -298,7 +298,7 @@ func TestUserViewQuery(t *testing.T) {
 	assert.Equal(t, "ten", row.Value)
 
 	// Make sure users are not allowed to query internal views:
-	request, _ := http.NewRequest(http.MethodGet, "/db/_design/sync_gateway/_view/access", nil)
+	request := Request(http.MethodGet, "/db/_design/sync_gateway/_view/access", "")
 	request.SetBasicAuth(quinn.Name(), password)
 	response = rt.Send(request)
 	RequireStatus(t, response, http.StatusForbidden)
