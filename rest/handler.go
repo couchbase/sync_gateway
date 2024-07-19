@@ -290,6 +290,22 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			h.logRequestLine()
 		}
 		h.logRESTCount()
+
+		// Perform request logging unless it's a silent endpoint
+		if h.httpLogLevel == nil {
+			auditFields := base.AuditFields{
+				base.AuditFieldHTTPMethod: h.rq.Method,
+				base.AuditFieldHTTPPath:   h.rq.URL.Path,
+			}
+			switch h.serverType {
+			case publicServer:
+				base.Audit(h.ctx(), base.AuditIDPublicHTTPAPIRequest, auditFields)
+			case adminServer:
+				base.Audit(h.ctx(), base.AuditIDAdminHTTPAPIRequest, auditFields)
+			case metricsServer:
+				base.Audit(h.ctx(), base.AuditIDMetricsHTTPAPIRequest, auditFields)
+			}
+		}
 	}()
 
 	defer func() {
@@ -662,8 +678,14 @@ func (h *handler) removeCorruptConfigIfExists(ctx context.Context, bucket, confi
 }
 
 func (h *handler) logRequestLine() {
+
+	logLevel := base.LevelInfo
+	if h.httpLogLevel != nil {
+		logLevel = *h.httpLogLevel
+	}
+
 	// Check Log Level first, as SanitizeRequestURL is expensive to evaluate.
-	if !base.LogInfoEnabled(h.ctx(), base.KeyHTTP) {
+	if !base.LogLevelEnabled(h.ctx(), logLevel, base.KeyHTTP) {
 		return
 	}
 
@@ -673,11 +695,6 @@ func (h *handler) logRequestLine() {
 	}
 
 	queryValues := h.getQueryValues()
-
-	logLevel := base.LevelInfo
-	if h.httpLogLevel != nil {
-		logLevel = *h.httpLogLevel
-	}
 
 	base.LogLevelCtx(h.ctx(), logLevel, base.KeyHTTP, "%s %s%s%s", h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formattedEffectiveUserName())
 }

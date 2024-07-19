@@ -1544,6 +1544,7 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 	}
 
 	sc := NewServerContext(ctx, config, persistentConfig)
+
 	if !base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
 		err := sc.initializeGocbAdminConnection(ctx)
 		if err != nil {
@@ -1553,7 +1554,24 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 	if err := sc.initializeBootstrapConnection(ctx); err != nil {
 		return nil, err
 	}
+
+	// On successful server context creation, generate startup audit event
+	base.Audit(ctx, base.AuditIDSyncGatewayStartup, sc.StartupAuditFields())
+
 	return sc, nil
+}
+
+func (sc *ServerContext) StartupAuditFields() base.AuditFields {
+	return base.AuditFields{
+		base.AuditFieldSGVersion:                      base.LongVersionString,
+		base.AuditFieldUseTLSServer:                   sc.Config.Bootstrap.UseTLSServer,
+		base.AuditFieldServerTLSSkipVerify:            sc.Config.Bootstrap.ServerTLSSkipVerify,
+		base.AuditFieldAdminInterfaceAuthentication:   sc.Config.API.AdminInterfaceAuthentication,
+		base.AuditFieldMetricsInterfaceAuthentication: sc.Config.API.MetricsInterfaceAuthentication,
+		base.AuditFieldLogFilePath:                    sc.Config.Logging.LogFilePath,
+		base.AuditFieldBcryptCost:                     sc.Config.Auth.BcryptCost,
+		base.AuditFieldDisablePersistentConfig:        !sc.persistentConfig,
+	}
 }
 
 // fetchAndLoadConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and loads them into the ServerContext.

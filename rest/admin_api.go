@@ -498,7 +498,7 @@ func (h *handler) handlePutConfig() error {
 	}
 
 	if config.Logging.Audit.Enabled != nil {
-		base.EnableAuditLogger(*config.Logging.Audit.Enabled)
+		base.EnableAuditLogger(h.ctx(), *config.Logging.Audit.Enabled)
 	}
 
 	if config.ReplicationLimit != nil {
@@ -787,8 +787,9 @@ func (h *handler) handleGetDbAuditConfig() error {
 
 // PUT/POST audit config for database
 func (h *handler) handlePutDbAuditConfig() error {
-	return h.mutateDbConfig(func(config *DbConfig) error {
-		var body HandleDbAuditConfigBody
+
+	var body HandleDbAuditConfigBody
+	err := h.mutateDbConfig(func(config *DbConfig) error {
 		if err := h.readJSONInto(&body); err != nil {
 			return err
 		}
@@ -846,6 +847,14 @@ func (h *handler) handlePutDbAuditConfig() error {
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	base.Audit(h.ctx(), base.AuditIDAuditConfigChanged, base.AuditFields{
+		base.AuditFieldAuditScope: "db",
+		base.AuditFieldPayload:    body,
+	})
+	return nil
 }
 
 func mutateConfigFromDbAuditConfigBody(isReplace bool, existingAuditConfig *DbAuditLoggingConfig, requestAuditConfig *HandleDbAuditConfigBody, eventsToChange map[base.AuditID]bool) {
@@ -1467,6 +1476,7 @@ func (h *handler) handleSGCollectStatus() error {
 	}
 
 	h.writeRawJSONStatus(http.StatusOK, []byte(`{"status":"`+status+`"}`))
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayCollectInfoStatus, nil)
 	return nil
 }
 
@@ -1477,6 +1487,8 @@ func (h *handler) handleSGCollectCancel() error {
 	}
 
 	h.writeRawJSONStatus(http.StatusOK, []byte(`{"status":"cancelled"}`))
+
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayCollectInfoStop, nil)
 	return nil
 }
 
@@ -1507,6 +1519,16 @@ func (h *handler) handleSGCollect() error {
 	}
 
 	h.writeRawJSONStatus(http.StatusOK, []byte(`{"status":"started"}`))
+
+	auditFields := base.AuditFields{
+		"output_dir":   params.OutputDirectory,
+		"upload_host":  params.UploadHost,
+		"customer":     params.Customer,
+		"ticket":       params.Ticket,
+		"keep_zip":     params.KeepZip,
+		"zip_filename": zipFilename,
+	}
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayCollectInfoStop, auditFields)
 
 	return nil
 }
@@ -1596,6 +1618,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	h.assertAdminOnly()
 	// Unmarshal the request body into a PrincipalConfig struct:
 	body, _ := h.readBody()
+
 	var newInfo auth.PrincipalConfig
 	var err error
 	if err = base.JSONUnmarshal(body, &newInfo); err != nil {

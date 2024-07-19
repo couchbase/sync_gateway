@@ -135,13 +135,17 @@ func (sc *ServerContext) SetCpuPprofFile(file *os.File) {
 	sc.cpuPprofFileMutex.Unlock()
 }
 
-func (sc *ServerContext) CloseCpuPprofFile(ctx context.Context) {
+func (sc *ServerContext) CloseCpuPprofFile(ctx context.Context) (filename string) {
 	sc.cpuPprofFileMutex.Lock()
+	if sc.cpuPprofFile != nil {
+		filename = sc.cpuPprofFile.Name()
+	}
 	if err := sc.cpuPprofFile.Close(); err != nil {
 		base.WarnfCtx(ctx, "Error closing CPU profile file: %v", err)
 	}
 	sc.cpuPprofFile = nil
 	sc.cpuPprofFileMutex.Unlock()
+	return filename
 }
 
 func NewServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) *ServerContext {
@@ -840,6 +844,17 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	ctx = base.DatabaseLogCtx(ctx, dbName, contextOptions.LoggingConfig)
+
+	// If audit logging is enabled for the node, log the db setting.  This may not represent a change in
+	// auditing since the last time the db was running on this node, but we don't have any insight into the
+	// previous state.
+	if base.IsAuditEnabled() {
+		if contextOptions.LoggingConfig.DbAuditEnabled() {
+			base.Audit(ctx, base.AuditIDAuditEnabled, base.AuditFields{"audit_scope": "db", "db": dbName})
+		} else {
+			base.Audit(ctx, base.AuditIDAuditDisabled, base.AuditFields{"audit_scope": "db", "db": dbName})
+		}
+	}
 
 	contextOptions.UseViews = useViews
 
