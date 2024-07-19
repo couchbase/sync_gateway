@@ -38,11 +38,13 @@ func TestAuditLoggingFields(t *testing.T) {
 	base.InitializeMemoryLoggers()
 
 	const (
-		requestInfoHeaderName  = "extra-audit-logging-header"
-		requestUser            = "alice"
-		filteredPublicUsername = "bob"
-		filteredAdminUsername  = "TestAuditLoggingFields-charlie"
-		filteredAdminPassword  = "password"
+		requestInfoHeaderName     = "extra-audit-logging-header"
+		requestUser               = "alice"
+		filteredPublicUsername    = "bob"
+		filteredAdminUsername     = "TestAuditLoggingFields-charlie"
+		filteredAdminPassword     = "password"
+		unauthorizedAdminUsername = "TestAuditLoggingFields-alice"
+		unauthorizedAdminPassword = "password"
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -89,6 +91,9 @@ func TestAuditLoggingFields(t *testing.T) {
 		require.NoError(t, err)
 		MakeUser(t, httpClient, eps[0], filteredAdminUsername, filteredAdminPassword, []string{fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName())})
 		defer DeleteUser(t, httpClient, eps[0], filteredAdminUsername)
+		MakeUser(t, httpClient, eps[0], unauthorizedAdminUsername, unauthorizedAdminPassword, []string{})
+		defer DeleteUser(t, httpClient, eps[0], unauthorizedAdminUsername)
+
 	}
 
 	// auditFieldValueIgnored is a special value for an audit field to skip value-specific checks whilst still ensuring the field property is set
@@ -102,6 +107,7 @@ func TestAuditLoggingFields(t *testing.T) {
 		// expectedAuditEvents is a list of expected audit events and their fields for the given action... can be more than one event produced for a given action
 		expectedAuditEventFields map[base.AuditID]base.AuditFields
 	}{
+
 		{
 			name: "public silent request",
 			auditableAction: func(t testing.TB) {
@@ -214,10 +220,6 @@ func TestAuditLoggingFields(t *testing.T) {
 				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/db/", ""), http.StatusOK)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
-				// TODO: Admin auth event
-				//base.AuditIDAdminUserAuthenticated: {
-				//	base.AuditFieldCorrelationID:         auditFieldValueIgnored,
-				//},
 				base.AuditIDReadDatabase: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
 				},
@@ -236,14 +238,49 @@ func TestAuditLoggingFields(t *testing.T) {
 				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", base.TestClusterUsername(), base.TestClusterPassword()), http.StatusOK)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
-				// TODO: Admin auth event
-				//base.AuditIDAdminUserAuthenticated: {
-				//	base.AuditFieldCorrelationID:         auditFieldValueIgnored,
-				//	base.AuditFieldRealUserID: map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
-				//},
+				base.AuditIDAdminUserAuthenticated: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					//	base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
+				},
 				base.AuditIDReadDatabase: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
 					base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
+				},
+				base.AuditIDAdminHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
+				},
+			},
+		},
+		{
+			name: "admin request bad credentials",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth")
+				}
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", "not_a_user", "not_a_password"), http.StatusUnauthorized)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminUserAuthenticationFailed: {
+					base.AuditFieldUserName: "not_a_user",
+				},
+				base.AuditIDAdminHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
+				},
+			},
+		},
+		{
+			name: "admin request not authorized",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth")
+				}
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", unauthorizedAdminUsername, unauthorizedAdminPassword), http.StatusForbidden)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminUserAuthorizationFailed: {
+					base.AuditFieldUserName: unauthorizedAdminUsername,
 				},
 				base.AuditIDAdminHTTPAPIRequest: {
 					base.AuditFieldHTTPMethod: http.MethodGet,
@@ -726,6 +763,111 @@ func TestAuditDocumentRead(t *testing.T) {
 	}
 }
 
+func TestAuditChangesFeedStart(t *testing.T) {
+	rt := createAuditLoggingRestTester(t)
+	defer rt.Close()
+
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	_ = rt.CreateTestDoc("doc1")
+	const (
+		requestUser = "alice"
+	)
+
+	rt.CreateUser(requestUser, []string{"*"})
+
+	type testCase struct {
+		name           string
+		method         string
+		path           string
+		requestBody    string
+		adminAPI       bool
+		expectedFields map[string]any // expected fields on changes audit event
+	}
+	testCases := []testCase{
+		{
+			name:   "get changes",
+			method: http.MethodGet,
+			path:   "/{{.keyspace}}/_changes",
+			expectedFields: map[string]any{
+				base.AuditFieldSince: "0",
+			},
+		},
+		{
+			name:   "get changes since longpoll, feed type",
+			method: http.MethodGet,
+			path:   "/{{.keyspace}}/_changes?since=10&feed=normal",
+			expectedFields: map[string]any{
+				base.AuditFieldSince:    "10",
+				base.AuditFieldFeedType: "normal",
+			},
+		},
+		{
+			name:   "get changes compound since, include_docs",
+			method: http.MethodGet,
+			path:   "/{{.keyspace}}/_changes?since=5:10&include_docs=true",
+			expectedFields: map[string]any{
+				base.AuditFieldSince:       "5:10",
+				base.AuditFieldIncludeDocs: true,
+			},
+		},
+		{
+			name:   "get changes channel filters",
+			method: http.MethodGet,
+			path:   "/{{.keyspace}}/_changes?filter=" + base.ByChannelFilter + "&channels=A,B",
+			expectedFields: map[string]any{
+				base.AuditFieldSince:    "0",
+				base.AuditFieldFilter:   base.ByChannelFilter,
+				base.AuditFieldChannels: []any{"A", "B"},
+			},
+		},
+		{
+			name:   "get changes docid filters",
+			method: http.MethodGet,
+			path:   "/{{.keyspace}}/_changes?filter=" + base.DocIDsFilter + "&doc_ids=doc1,doc2",
+			expectedFields: map[string]any{
+				base.AuditFieldSince:  "0",
+				base.AuditFieldFilter: base.DocIDsFilter,
+				base.AuditFieldDocIDs: []any{"doc1", "doc2"},
+			},
+		},
+		{
+			name:        "post changes",
+			method:      http.MethodPost,
+			path:        "/{{.keyspace}}/_changes",
+			requestBody: `{"feed":"normal", "since":10,"filter":"sync_gateway/bychannel","channels":"A,B"}`,
+			expectedFields: map[string]any{
+				base.AuditFieldSince:    "10",
+				base.AuditFieldFilter:   base.ByChannelFilter,
+				base.AuditFieldChannels: []any{"A", "B"},
+				base.AuditFieldFeedType: "normal",
+			},
+		},
+		{
+			name:   "get changes admin",
+			method: http.MethodGet,
+			path:   "/{{.keyspace}}/_changes?since=10",
+			expectedFields: map[string]any{
+				base.AuditFieldSince: "10",
+			},
+			adminAPI: true,
+		},
+	}
+	for _, testCase := range testCases {
+		rt.Run(testCase.name, func(t *testing.T) {
+			output := base.AuditLogContents(t, func(t testing.TB) {
+				if testCase.adminAPI {
+					RequireStatus(t, rt.SendAdminRequestWithAuth(testCase.method, testCase.path, testCase.requestBody, base.TestClusterUsername(), base.TestClusterPassword()), http.StatusOK)
+				} else {
+					RequireStatus(t, rt.SendUserRequest(testCase.method, testCase.path, testCase.requestBody, requestUser), http.StatusOK)
+				}
+			})
+
+			requireChangesStartEvent(rt.TB(), output, testCase.expectedFields)
+		})
+	}
+}
+
 // requireDocumentMetadataReadEvents validates that there read events for each doc version specified. There should be only audit events for a given docid.
 func requireDocumentMetadataReadEvents(rt *RestTester, output []byte, docID string, count int) {
 	events := jsonLines(rt.TB(), output)
@@ -755,6 +897,27 @@ func requireDocumentReadEvents(rt *RestTester, output []byte, docID string, docV
 	}
 	require.Len(rt.TB(), docVersions, len(docVersionsFound), "expected exactly %d document read events, got %d", len(docVersions), len(docVersionsFound))
 	require.Equal(rt.TB(), docVersions, docVersionsFound)
+}
+
+// requireChangesStartEvent validates that there is a changes start event with the specified fields
+func requireChangesStartEvent(t testing.TB, output []byte, expectedFields map[string]any) {
+	events := jsonLines(t, output)
+	found := false
+	for _, event := range events {
+
+		if base.AuditID(event[base.AuditFieldID].(float64)) != base.AuditIDChangesFeedStarted {
+			continue
+		}
+		require.False(t, found, "Received more than one changes feed started event")
+		found = true
+
+		for fieldID, expectedValue := range expectedFields {
+			value, ok := event[fieldID]
+			require.True(t, ok, fmt.Sprintf("Expected field %v not present", fieldID))
+			require.Equal(t, expectedValue, value)
+		}
+	}
+	require.True(t, found, "Did not receive expected changeFeedStart audit event")
 }
 
 func createAuditLoggingRestTester(t *testing.T) *RestTester {

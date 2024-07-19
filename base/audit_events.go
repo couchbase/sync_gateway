@@ -40,6 +40,8 @@ const (
 	AuditIDPublicUserAuthenticationFailed AuditID = 53281
 	AuditIDPublicUserSessionCreated       AuditID = 53282
 	AuditIDPublicUserSessionDeleted       AuditID = 53283
+	AuditIDPublicUserSessionDeleteAll     AuditID = 53284
+
 	// Auth (admin) events
 	AuditIDAdminUserAuthenticated        AuditID = 53290
 	AuditIDAdminUserAuthenticationFailed AuditID = 53291
@@ -259,7 +261,7 @@ var AuditEvents = events{
 			AuditFieldAuthMethod: "basic, oidc, cookie, etc.",
 		},
 		OptionalFields: AuditFields{
-			"username": "username",
+			AuditFieldUserName: "username",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -269,7 +271,10 @@ var AuditEvents = events{
 		Name:        "Public API user session created",
 		Description: "Public API user session was created",
 		MandatoryFields: AuditFields{
-			"session_id": "session_id",
+			AuditFieldSessionID: "session_id",
+		},
+		OptionalFields: AuditFields{
+			AuditFieldUserName: "username",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -279,7 +284,20 @@ var AuditEvents = events{
 		Name:        "Public API user session deleted",
 		Description: "Public API user session was deleted",
 		MandatoryFields: AuditFields{
-			"session_id": "session_id",
+			AuditFieldSessionID: "session_id",
+		},
+		OptionalFields: AuditFields{
+			AuditFieldUserName: "username",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeUser,
+	},
+	AuditIDPublicUserSessionDeleteAll: {
+		Name:        "Public API user all sessions deleted",
+		Description: "All sessions were deleted for a Public API user",
+		MandatoryFields: AuditFields{
+			AuditFieldUserName: "username",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -297,7 +315,7 @@ var AuditEvents = events{
 		Name:        "Admin API user authentication failed",
 		Description: "Admin API user failed to authenticate",
 		MandatoryFields: AuditFields{
-			"username": "username",
+			AuditFieldUserName: "username",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -307,7 +325,7 @@ var AuditEvents = events{
 		Name:        "Admin API user authorization failed",
 		Description: "Admin API user failed to authorize",
 		MandatoryFields: AuditFields{
-			"username": "username",
+			AuditFieldUserName: "username",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -624,10 +642,10 @@ var AuditEvents = events{
 		Name:        "Create user",
 		Description: "A new user was created",
 		MandatoryFields: AuditFields{
-			"username": "username",
-			"db":       "database name",
-			"roles":    []string{"list", "of", "roles"},
-			"channels": map[string]map[string][]string{"scopeName": {"collectionName": {"list", "of", "channels"}}},
+			AuditFieldUserName: "username",
+			AuditFieldDatabase: "database name",
+			"roles":            []string{"list", "of", "roles"},
+			"channels":         map[string]map[string][]string{"scopeName": {"collectionName": {"list", "of", "channels"}}},
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -637,8 +655,8 @@ var AuditEvents = events{
 		Name:        "Read user",
 		Description: "Information about this user was viewed",
 		MandatoryFields: AuditFields{
-			"username": "username",
-			"db":       "database name",
+			AuditFieldUserName: "username",
+			AuditFieldDatabase: "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -648,10 +666,10 @@ var AuditEvents = events{
 		Name:        "Update user",
 		Description: "User was updated",
 		MandatoryFields: AuditFields{
-			"username": "username",
-			"db":       "database name",
-			"roles":    []string{"list", "of", "roles"},
-			"channels": map[string]map[string][]string{"scopeName": {"collectionName": {"list", "of", "channels"}}},
+			AuditFieldUserName: "username",
+			AuditFieldDatabase: "database name",
+			"roles":            []string{"list", "of", "roles"},
+			"channels":         map[string]map[string][]string{"scopeName": {"collectionName": {"list", "of", "channels"}}},
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -661,8 +679,8 @@ var AuditEvents = events{
 		Name:        "Delete user",
 		Description: "User was deleted",
 		MandatoryFields: AuditFields{
-			"username": "username",
-			"db":       "database name",
+			AuditFieldUserName: "username",
+			AuditFieldDatabase: "database name",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
@@ -720,15 +738,18 @@ var AuditEvents = events{
 		Name:        "Changes feed started",
 		Description: "Changes feed was started",
 		MandatoryFields: AuditFields{
-			"db":    "database name",
-			"ks":    "keyspace",
-			"since": "since",
+			AuditFieldSince: "since",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		OptionalFields: AuditFields{
-			"filter":           "filter",
-			"doc_ids":          []string{"list", "of", "doc_ids"},
-			AuditFieldChannels: []string{"list", "of", "channels"},
-			"feed_type":        "continuous, normal, longpoll, websocket, etc.",
+			AuditFieldFilter:      "filter",
+			AuditFieldDocIDs:      []string{"list", "of", "doc_ids"},
+			AuditFieldChannels:    []string{"list", "of", "channels"},
+			AuditFieldFeedType:    "continuous, normal, longpoll, websocket, etc.",
+			AuditFieldIncludeDocs: true,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,

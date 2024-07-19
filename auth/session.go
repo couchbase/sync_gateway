@@ -9,6 +9,7 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -76,7 +77,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	return user, err
 }
 
-func (auth *Authenticator) CreateSession(user User, ttl time.Duration) (*LoginSession, error) {
+func (auth *Authenticator) CreateSession(ctx context.Context, user User, ttl time.Duration) (*LoginSession, error) {
 	ttlSec := int(ttl.Seconds())
 	if ttlSec <= 0 {
 		return nil, base.HTTPErrorf(400, "Invalid session time-to-live")
@@ -103,6 +104,11 @@ func (auth *Authenticator) CreateSession(user User, ttl time.Duration) (*LoginSe
 	if err := auth.datastore.Set(auth.DocIDForSession(session.ID), base.DurationToCbsExpiry(ttl), nil, session); err != nil {
 		return nil, err
 	}
+	base.Audit(ctx, base.AuditIDPublicUserSessionCreated, base.AuditFields{
+		base.AuditFieldSessionID: session.ID,
+		base.AuditFieldUserName:  user.Name(),
+	})
+
 	return session, nil
 }
 
@@ -131,13 +137,13 @@ func (auth *Authenticator) MakeSessionCookie(session *LoginSession, secureCookie
 	}
 }
 
-func (auth Authenticator) DeleteSessionForCookie(rq *http.Request) *http.Cookie {
+func (auth Authenticator) DeleteSessionForCookie(ctx context.Context, rq *http.Request) *http.Cookie {
 	cookie, _ := rq.Cookie(auth.SessionCookieName)
 	if cookie == nil {
 		return nil
 	}
 
-	if err := auth.datastore.Delete(auth.DocIDForSession(cookie.Value)); err != nil {
+	if err := auth.DeleteSession(ctx, cookie.Value, ""); err != nil {
 		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error while deleting session for cookie %s, Error: %v", base.UD(cookie.Value), err)
 	}
 
@@ -147,6 +153,14 @@ func (auth Authenticator) DeleteSessionForCookie(rq *http.Request) *http.Cookie 
 	return &newCookie
 }
 
-func (auth Authenticator) DeleteSession(sessionID string) error {
-	return auth.datastore.Delete(auth.DocIDForSession(sessionID))
+func (auth Authenticator) DeleteSession(ctx context.Context, sessionID string, username string) error {
+	err := auth.datastore.Delete(auth.DocIDForSession(sessionID))
+	if err == nil {
+		auditFields := base.AuditFields{base.AuditFieldSessionID: sessionID}
+		if username != "" {
+			auditFields[base.AuditFieldUserName] = username
+		}
+		base.Audit(ctx, base.AuditIDPublicUserSessionDeleted, auditFields)
+	}
+	return err
 }
