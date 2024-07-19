@@ -591,34 +591,39 @@ func TestAuditAttachmentEvents(t *testing.T) {
 	defer rt.Close()
 
 	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
-	const noAttachmentDoc = "doc1"
+	const noAttachmentDoc = "noAttachmentDoc"
 	noAttachmentDocVersion := rt.CreateTestDoc(noAttachmentDoc)
 
-	const hasAttachmentDoc = "doc2"
+	const noInlineAttachmentDoc = "noInlineAttachmentDoc"
+	noInlineAttachmentDocVersion := rt.CreateTestDoc(noInlineAttachmentDoc)
+
+	const hasAttachmentDoc = "hasAttachmentDoc"
 	hasAttachmentDocVersion := rt.CreateTestDoc(hasAttachmentDoc)
-	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2/attachment1?rev="+hasAttachmentDocVersion.RevID, "contentdoc2")
+	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/hasAttachmentDoc/attachment1?rev="+hasAttachmentDocVersion.RevID, "contentdoc2")
 	hasAttachmentDocVersion, _ = rt.GetDoc(hasAttachmentDoc)
 
-	const willUpdateAttachmentDoc = "doc3"
+	const willUpdateAttachmentDoc = "willUpdateAttachmentDoc"
 	willUpdateAttachmentDocVersion := rt.CreateTestDoc(willUpdateAttachmentDoc)
-	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc3/attachment1?rev="+willUpdateAttachmentDocVersion.RevID, "contentdoc3")
+	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/willUpdateAttachmentDoc/attachment1?rev="+willUpdateAttachmentDocVersion.RevID, "contentdoc3")
 	willUpdateAttachmentDocVersion, _ = rt.GetDoc(willUpdateAttachmentDoc)
 
-	const bulkWillUpdateAttachmentDoc = "doc4"
-	bulkWillUpdateAttachmentDocVersion := rt.CreateTestDoc(bulkWillUpdateAttachmentDoc)
-	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc4/attachment1?rev="+bulkWillUpdateAttachmentDocVersion.RevID, "contentdoc4")
-	bulkWillUpdateAttachmentDocVersion, _ = rt.GetDoc(bulkWillUpdateAttachmentDoc)
+	const willUpdateInlineAttachmentDoc = "willUpdateInlineAttachmentDoc"
+	willUpdateInlineAttachmentDocVersion := rt.CreateTestDoc(willUpdateInlineAttachmentDoc)
+	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/willUpdateInlineAttachmentDoc/attachment1?rev="+willUpdateInlineAttachmentDocVersion.RevID, "contentdoc4")
+	willUpdateInlineAttachmentDocVersion, _ = rt.GetDoc(willUpdateInlineAttachmentDoc)
 
-	const willDeleteAttachmentDoc = "doc5"
+	const willDeleteAttachmentDoc = "willDeleteAttachmentDoc"
 	willDeleteAttachmentDocVersion := rt.CreateTestDoc(willDeleteAttachmentDoc)
-	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc5/attachment1?rev="+willDeleteAttachmentDocVersion.RevID, "contentdoc5")
+	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/willDeleteAttachmentDoc/attachment1?rev="+willDeleteAttachmentDocVersion.RevID, "contentdoc5")
 	willDeleteAttachmentDocVersion, _ = rt.GetDoc(willDeleteAttachmentDoc)
 
-	const bulkWillDeleteAttachmentDoc = "doc6"
-	bulkWillDeleteAttachmentDocVersion := rt.CreateTestDoc(willDeleteAttachmentDoc)
-	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc6/attachment1?rev="+bulkWillDeleteAttachmentDocVersion.RevID, "contentdoc5")
-	bulkWillDeleteAttachmentDocVersion, _ = rt.GetDoc(bulkWillDeleteAttachmentDoc)
+	const willDeleteInlineAttachmentDoc = "willDeleteInlineAttachmentDoc"
+	willDeleteInlineAttachmentDocVersion := rt.CreateTestDoc(willDeleteInlineAttachmentDoc)
+	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/willDeleteInlineAttachmentDoc/attachment1?rev="+willDeleteInlineAttachmentDocVersion.RevID, "contentdoc5")
+	willDeleteInlineAttachmentDocVersion, _ = rt.GetDoc(willDeleteInlineAttachmentDoc)
 
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal([]byte(`{"_attachments":{"attachment1":{"data": "foo"}}}`), &body))
 	testCases := []struct {
 		name                  string
 		method                string
@@ -634,16 +639,25 @@ func TestAuditAttachmentEvents(t *testing.T) {
 		{
 			name:                  "add attachment",
 			method:                http.MethodPut,
-			path:                  "/{{.keyspace}}/doc1/attachment1?rev=" + noAttachmentDocVersion.RevID,
+			path:                  "/{{.keyspace}}/noAttachmentDoc/attachment1?rev=" + noAttachmentDocVersion.RevID,
 			docID:                 noAttachmentDoc,
 			status:                http.StatusCreated,
 			requestBody:           "content",
 			attachmentCreateCount: 1,
 		},
 		{
+			name:                  "add inline attachment",
+			method:                http.MethodPut,
+			path:                  "/{{.keyspace}}/noInlineAttachmentDoc?rev=" + noInlineAttachmentDocVersion.RevID,
+			docID:                 noInlineAttachmentDoc,
+			status:                http.StatusCreated,
+			requestBody:           `{"_attachments":{"attachment1":{"data": "YQ=="}}}`,
+			attachmentCreateCount: 1,
+		},
+		{
 			name:                "get attachment with rev",
 			method:              http.MethodGet,
-			path:                "/{{.keyspace}}/doc2/attachment1?rev=" + hasAttachmentDocVersion.RevID,
+			path:                "/{{.keyspace}}/hasAttachmentDoc/attachment1?rev=" + hasAttachmentDocVersion.RevID,
 			docID:               hasAttachmentDoc,
 			status:              http.StatusOK,
 			attachmentReadCount: 1,
@@ -671,18 +685,36 @@ func TestAuditAttachmentEvents(t *testing.T) {
 		{
 			name:                  "update attachment",
 			method:                http.MethodPut,
-			path:                  "/{{.keyspace}}/doc3/attachment1?rev=" + hasAttachmentDocVersion.RevID,
+			path:                  "/{{.keyspace}}/willUpdateAttachmentDoc/attachment1?rev=" + hasAttachmentDocVersion.RevID,
 			docID:                 willUpdateAttachmentDoc,
 			status:                http.StatusCreated,
 			requestBody:           "content-update",
 			attachmentUpdateCount: 1,
 		},
 		{
+			name:                  "update inline attachment",
+			method:                http.MethodPut,
+			path:                  "/{{.keyspace}}/willUpdateInlineAttachmentDoc?rev=" + willUpdateInlineAttachmentDocVersion.RevID,
+			docID:                 willUpdateInlineAttachmentDoc,
+			status:                http.StatusCreated,
+			requestBody:           `{"_attachments":{"attachment1":{"data": "YQ=="}}}`,
+			attachmentUpdateCount: 1,
+		},
+		{
 			name:                  "delete attachment",
 			method:                http.MethodDelete,
-			path:                  "/{{.keyspace}}/doc4/attachment1?rev=" + willDeleteAttachmentDocVersion.RevID,
+			path:                  "/{{.keyspace}}/willDeleteAttachmentDoc/attachment1?rev=" + willDeleteAttachmentDocVersion.RevID,
 			docID:                 willDeleteAttachmentDoc,
 			status:                http.StatusOK,
+			attachmentDeleteCount: 1,
+		},
+		{
+			name:                  "delete inline attachment",
+			method:                http.MethodPut,
+			path:                  "/{{.keyspace}}/willDeleteInlineAttachmentDoc?rev=" + willDeleteInlineAttachmentDocVersion.RevID,
+			requestBody:           `{"foo": "bar", "_attachments":{}}`,
+			docID:                 willDeleteInlineAttachmentDoc,
+			status:                http.StatusCreated,
 			attachmentDeleteCount: 1,
 		},
 	}
@@ -745,7 +777,7 @@ func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte
 		require.Equal(rt.TB(), docVersion, event[base.AuditFieldDocVersion].(string))
 		countFound++
 	}
-	require.Equal(rt.TB(), count, countFound)
+	require.Equal(rt.TB(), count, countFound, "expected exactly %d %s events, got %d", count, base.AuditEvents[eventID].Name, countFound)
 }
 
 func createAuditLoggingRestTester(t *testing.T) *RestTester {

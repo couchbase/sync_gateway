@@ -1328,6 +1328,11 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	response.SetCompressed(rq.Properties[BlipCompress] == trueProperty)
 	bh.replicationStats.HandleGetAttachment.Add(1)
 	bh.replicationStats.HandleGetAttachmentBytes.Add(int64(len(attachment)))
+	base.Audit(bh.loggingCtx, base.AuditIDAttachmentRead, base.AuditFields{
+		base.AuditFieldDocID:        docID,
+		base.AuditFieldDocVersion:   allowedAttachment.docVersion,
+		base.AuditFieldAttachmentID: attachmentKey,
+	})
 
 	return nil
 }
@@ -1478,7 +1483,7 @@ func (bsc *BlipSyncContext) incrementSerialNumber() uint64 {
 	return atomic.AddUint64(&bsc.handlerSerialNumber, 1)
 }
 
-func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []AttachmentStorageMeta, activeSubprotocol CBMobileSubprotocolVersion) {
+func (bsc *BlipSyncContext) addAllowedAttachments(docID string, docVersion string, attMeta []AttachmentStorageMeta, activeSubprotocol CBMobileSubprotocolVersion) {
 	if len(attMeta) == 0 {
 		return
 	}
@@ -1497,9 +1502,10 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 			bsc.allowedAttachments[key] = att
 		} else {
 			bsc.allowedAttachments[key] = AllowedAttachment{
-				version: attachment.version,
-				counter: 1,
-				docID:   docID,
+				version:    attachment.version,
+				counter:    1,
+				docID:      docID,
+				docVersion: docVersion,
 			}
 		}
 	}

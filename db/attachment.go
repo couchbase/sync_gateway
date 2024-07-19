@@ -63,18 +63,26 @@ const maxAttachmentSizeBytes = 20 * 1024 * 1024
 // Given Attachments Meta to be stored in the database, storeAttachments goes through the map, finds attachments with
 // inline bodies, copies the bodies into the Couchbase db, and replaces the bodies with the 'digest' attributes which
 // are the keys to retrieving them.
-func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc *Document, newAttachmentsMeta AttachmentsMeta, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
+func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc *Document, newAttachmentsMeta AttachmentsMeta, generation int, parentRev string, docHistory []string) (*updatedAttachments, error) {
 	if len(newAttachmentsMeta) == 0 {
 		return nil, nil
 	}
 
 	var parentAttachments map[string]interface{}
-	newAttachmentData := make(AttachmentData, 0)
+	newAttachments := &updatedAttachments{
+		data: make(AttachmentData, 0),
+	}
 	atts := newAttachmentsMeta
 	for name, value := range atts {
 		meta, ok := value.(map[string]interface{})
 		if !ok {
 			return nil, base.HTTPErrorf(400, "Invalid _attachments")
+		}
+		_, ok = doc.SyncData.Attachments[name]
+		if ok {
+			newAttachments.updatedNames = append(newAttachments.updatedNames, name)
+		} else {
+			newAttachments.createdNames = append(newAttachments.createdNames, name)
 		}
 		data := meta["data"]
 		if data != nil {
@@ -85,7 +93,7 @@ func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc 
 			}
 			digest := Sha1DigestKey(attachment)
 			key := MakeAttachmentKey(AttVersion2, doc.ID, digest)
-			newAttachmentData[key] = attachment
+			newAttachments.data[key] = attachment
 
 			newMeta := map[string]interface{}{
 				"stub":   true,
@@ -130,14 +138,15 @@ func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc 
 			}
 		}
 	}
-	return newAttachmentData, nil
+
+	return newAttachments, nil
 }
 
-// retrieveV2AttachmentKeys returns the list of V2 attachment keys from the attachment metadata that can be used for
+// retrieveV2AttachmentIDs returns the list of V2 attachment keys from the attachment metadata that can be used for
 // identifying obsolete attachments and triggering subsequent removal of those attachments to reclaim the storage.
-func retrieveV2AttachmentKeys(docID string, docAttachments AttachmentsMeta) (attachments map[string]struct{}, err error) {
-	attachments = make(map[string]struct{})
-	for _, value := range docAttachments {
+func retrieveV2AttachmentKeys(docID string, docAttachments AttachmentsMeta) (attachments map[string]string, err error) {
+	attachments = make(map[string]string)
+	for name, value := range docAttachments {
 		meta, ok := value.(map[string]interface{})
 		if !ok {
 			return nil, ErrAttachmentMeta
@@ -151,7 +160,7 @@ func retrieveV2AttachmentKeys(docID string, docAttachments AttachmentsMeta) (att
 			continue
 		}
 		key := MakeAttachmentKey(version, docID, digest)
-		attachments[key] = struct{}{}
+		attachments[key] = name
 	}
 	return attachments, nil
 }

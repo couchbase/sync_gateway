@@ -1342,7 +1342,7 @@ func TestAllowedAttachments(t *testing.T) {
 			}
 			docID := "doc1"
 
-			ctx.addAllowedAttachments(docID, meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID, "fakeDocVersion", meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID, meta, tt.inputBlipProtocol)
 
 			ctx.removeAllowedAttachments(docID, meta, tt.inputBlipProtocol)
@@ -1360,7 +1360,7 @@ func TestAllowedAttachments(t *testing.T) {
 			}
 			docID := "doc1"
 
-			ctx.addAllowedAttachments(docID, meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID, "fakeDocVersion", meta, tt.inputBlipProtocol)
 			key := allowedAttachmentKey(docID, meta[0].digest, tt.inputBlipProtocol)
 			require.True(t, isAllowedAttachment(ctx, key))
 
@@ -1379,11 +1379,11 @@ func TestAllowedAttachments(t *testing.T) {
 			}
 
 			docID1 := "doc1"
-			ctx.addAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID1, "fakeDocVersion", meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
 
 			docID2 := "doc2"
-			ctx.addAllowedAttachments(docID2, meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID2, "fakeDocVersion", meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 
 			ctx.removeAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
@@ -1409,11 +1409,11 @@ func TestAllowedAttachments(t *testing.T) {
 			}
 
 			docID1 := "doc1"
-			ctx.addAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID1, "fakeDocVersion", meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
 
 			docID2 := "doc2"
-			ctx.addAllowedAttachments(docID2, meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID2, "fakeDocVersion", meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 
 			ctx.removeAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
@@ -1436,12 +1436,12 @@ func TestAllowedAttachments(t *testing.T) {
 
 			docID1 := "doc1"
 			att1Meta := []AttachmentStorageMeta{{digest: "att1", version: tt.inputAttVersion}}
-			ctx.addAllowedAttachments(docID1, att1Meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID1, "fakeDocVersion", att1Meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID1, att1Meta, tt.inputBlipProtocol)
 
 			docID2 := "doc2"
 			att2Meta := []AttachmentStorageMeta{{digest: "att2", version: tt.inputAttVersion}}
-			ctx.addAllowedAttachments(docID2, att2Meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID2, "fakeDocVersion", att2Meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, att2Meta, tt.inputBlipProtocol)
 
 			ctx.removeAllowedAttachments(docID1, att1Meta, tt.inputBlipProtocol)
