@@ -46,10 +46,12 @@ type LogContext struct {
 
 	// RequestAdditionalAuditFields is a map of fields to be included in audit logs
 	RequestAdditionalAuditFields map[string]any
+
 	// Username is the name of the authenticated user
 	Username string
-	// UserDomain can be syncgateway or couchbase depending on whether the authenticated user is a sync gateway user or a couchbase RBAC user
+	// UserDomain can determine whether the authenticated user is a sync gateway user or a couchbase RBAC user
 	UserDomain userIDDomain
+
 	// RequestHost is the HTTP Host of the request associated with this log.
 	RequestHost string
 	// RequestRemoteAddr is the IP and port of the remote client making the request associated with this log
@@ -57,12 +59,27 @@ type LogContext struct {
 
 	// implicitDefaultCollection is set to true when the context represents the default collection, but we want to omit that value from logging to prevent verbosity.
 	implicitDefaultCollection bool
+
+	// Effective user ID from HTTP header
+	EffectiveUserID string
+
+	// Domain defined in the HTTP request header
+	EffectiveDomain string
 }
+
+const defaultDbAuditEnabled = true
 
 // DbLogConfig can be used to customise the logging for logs associated with this database.
 type DbLogConfig struct {
 	Console *DbConsoleLogConfig
 	Audit   *DbAuditLogConfig
+}
+
+func (dlc *DbLogConfig) DbAuditEnabled() bool {
+	if dlc != nil && dlc.Audit != nil {
+		return dlc.Audit.Enabled
+	}
+	return defaultDbAuditEnabled
 }
 
 // DbConsoleLogConfig can be used to customise the console logging for logs associated with this database.
@@ -72,9 +89,16 @@ type DbConsoleLogConfig struct {
 }
 
 // DbAuditLogConfig can be used to customise the audit logging for events associated with this database.
+// These properties are evaluated at logging time and are expected to have O(1) lookup time.
 type DbAuditLogConfig struct {
 	Enabled       bool
 	EnabledEvents map[AuditID]struct{}
+	DisabledUsers map[AuditLoggingPrincipal]struct{}
+}
+
+type AuditLoggingPrincipal struct {
+	Domain string `json:"domain,omitempty"`
+	Name   string `json:"name,omitempty"`
 }
 
 // addContext returns a string format with additional log context if present.
@@ -135,6 +159,8 @@ func (lc *LogContext) getCopy() LogContext {
 		UserDomain:                   lc.UserDomain,
 		RequestHost:                  lc.RequestHost,
 		RequestRemoteAddr:            lc.RequestRemoteAddr,
+		EffectiveUserID:              lc.EffectiveUserID,
+		EffectiveDomain:              lc.EffectiveDomain,
 	}
 }
 
@@ -213,6 +239,13 @@ func AuditLogCtx(parent context.Context, additionalAuditFields map[string]any) c
 	return LogContextWith(parent, &newCtx)
 }
 
+func EffectiveUserIDLogCtx(parent context.Context, domain, userID string) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.EffectiveDomain = domain
+	newCtx.EffectiveUserID = userID
+	return LogContextWith(parent, &newCtx)
+}
+
 // KeyspaceLogCtx extends the parent context with a fully qualified keyspace (bucket.scope.collection)
 func KeyspaceLogCtx(parent context.Context, bucketName, scopeName, collectionName string) context.Context {
 	newCtx := getLogCtx(parent)
@@ -220,6 +253,11 @@ func KeyspaceLogCtx(parent context.Context, bucketName, scopeName, collectionNam
 	newCtx.Collection = collectionName
 	newCtx.Scope = scopeName
 	return LogContextWith(parent, &newCtx)
+}
+
+type EffectiveUserPair struct {
+	UserID string `json:"user"`
+	Domain string `json:"domain"`
 }
 
 type userIDDomain string

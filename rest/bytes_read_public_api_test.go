@@ -406,8 +406,7 @@ func TestBytesReadGzipRequest(t *testing.T) {
 	inputBytes := []byte(input)
 
 	// {{.keyspace}} isn't supported so use default collection
-	rq, err := http.NewRequest("PUT", "/db/doc", &buf)
-	require.NoError(t, err)
+	rq := Request("PUT", "/db/doc", buf.String())
 	rq.Header.Set("Content-Encoding", "gzip")
 	resp := rt.Send(rq)
 	RequireStatus(t, resp, http.StatusCreated)

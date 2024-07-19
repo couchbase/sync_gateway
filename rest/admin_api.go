@@ -498,7 +498,7 @@ func (h *handler) handlePutConfig() error {
 	}
 
 	if config.Logging.Audit.Enabled != nil {
-		base.EnableAuditLogger(*config.Logging.Audit.Enabled)
+		base.EnableAuditLogger(h.ctx(), *config.Logging.Audit.Enabled)
 	}
 
 	if config.ReplicationLimit != nil {
@@ -698,8 +698,9 @@ func (h *handler) handlePutDbConfig() (err error) {
 }
 
 type HandleDbAuditConfigBody struct {
-	Enabled *bool          `json:"enabled,omitempty"`
-	Events  map[string]any `json:"events,omitempty"`
+	Enabled       *bool                        `json:"enabled,omitempty"`
+	Events        map[string]any               `json:"events,omitempty"`
+	DisabledUsers []base.AuditLoggingPrincipal `json:"disabled_users,omitempty"`
 }
 
 type HandleDbAuditConfigBodyVerboseEvent struct {
@@ -717,9 +718,10 @@ func (h *handler) handleGetDbAuditConfig() error {
 	verbose := h.getBoolQuery("verbose")
 
 	var (
-		etagVersion    string
-		dbAuditEnabled bool
-		enabledEvents  = make(map[base.AuditID]struct{})
+		etagVersion          string
+		dbAuditEnabled       bool
+		dbAuditDisabledUsers []base.AuditLoggingPrincipal
+		enabledEvents        = make(map[base.AuditID]struct{})
 	)
 
 	if h.server.BootstrapContext.Connection != nil {
@@ -745,6 +747,7 @@ func (h *handler) handleGetDbAuditConfig() error {
 			for _, event := range runtimeConfig.Logging.Audit.EnabledEvents {
 				enabledEvents[base.AuditID(event)] = struct{}{}
 			}
+			dbAuditDisabledUsers = runtimeConfig.Logging.Audit.DisabledUsers
 		}
 	} else {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "audit config not available in non-persistent mode")
@@ -772,8 +775,9 @@ func (h *handler) handleGetDbAuditConfig() error {
 	}
 
 	resp := HandleDbAuditConfigBody{
-		Enabled: &dbAuditEnabled,
-		Events:  events,
+		Enabled:       &dbAuditEnabled,
+		Events:        events,
+		DisabledUsers: dbAuditDisabledUsers,
 	}
 
 	h.setEtag(etagVersion)
@@ -783,8 +787,9 @@ func (h *handler) handleGetDbAuditConfig() error {
 
 // PUT/POST audit config for database
 func (h *handler) handlePutDbAuditConfig() error {
-	return h.mutateDbConfig(func(config *DbConfig) error {
-		var body HandleDbAuditConfigBody
+
+	var body HandleDbAuditConfigBody
+	err := h.mutateDbConfig(func(config *DbConfig) error {
 		if err := h.readJSONInto(&body); err != nil {
 			return err
 		}
@@ -838,42 +843,61 @@ func (h *handler) handlePutDbAuditConfig() error {
 			config.Logging.Audit = &DbAuditLoggingConfig{}
 		}
 
-		if isReplace || body.Enabled != nil {
-			config.Logging.Audit.Enabled = body.Enabled
-		}
+		mutateConfigFromDbAuditConfigBody(isReplace, config.Logging.Audit, &body, toChange)
 
-		if isReplace {
-			// we don't need to do anything to "disable" events, other than not enable them
-			config.Logging.Audit.EnabledEvents = func() []uint {
-				enabledEvents := make([]uint, 0)
-				for event, shouldEnable := range toChange {
-					if shouldEnable {
-						enabledEvents = append(enabledEvents, uint(event))
-					}
-				}
-				return enabledEvents
-			}()
-		} else {
-			for i, event := range config.Logging.Audit.EnabledEvents {
-				if shouldEnable, ok := toChange[base.AuditID(event)]; ok {
-					if shouldEnable {
-						// already enabled
-					} else {
-						// disable by removing
-						config.Logging.Audit.EnabledEvents = append(config.Logging.Audit.EnabledEvents[:i], config.Logging.Audit.EnabledEvents[i+1:]...)
-					}
-					// drop from toChange so we don't duplicate IDs
-					delete(toChange, base.AuditID(event))
-				}
-			}
-			for id, enabled := range toChange {
-				if enabled {
-					config.Logging.Audit.EnabledEvents = append(config.Logging.Audit.EnabledEvents, uint(id))
-				}
-			}
-		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	base.Audit(h.ctx(), base.AuditIDAuditConfigChanged, base.AuditFields{
+		base.AuditFieldAuditScope: "db",
+		base.AuditFieldPayload:    body,
+	})
+	return nil
+}
+
+func mutateConfigFromDbAuditConfigBody(isReplace bool, existingAuditConfig *DbAuditLoggingConfig, requestAuditConfig *HandleDbAuditConfigBody, eventsToChange map[base.AuditID]bool) {
+	if isReplace {
+		existingAuditConfig.Enabled = requestAuditConfig.Enabled
+		existingAuditConfig.DisabledUsers = requestAuditConfig.DisabledUsers
+
+		// we don't need to do anything to "disable" events, other than not enable them
+		existingAuditConfig.EnabledEvents = func() []uint {
+			enabledEvents := make([]uint, 0)
+			for event, shouldEnable := range eventsToChange {
+				if shouldEnable {
+					enabledEvents = append(enabledEvents, uint(event))
+				}
+			}
+			return enabledEvents
+		}()
+	} else {
+		if requestAuditConfig.Enabled != nil {
+			existingAuditConfig.Enabled = requestAuditConfig.Enabled
+		}
+		if requestAuditConfig.DisabledUsers != nil {
+			existingAuditConfig.DisabledUsers = requestAuditConfig.DisabledUsers
+		}
+
+		for i, event := range existingAuditConfig.EnabledEvents {
+			if shouldEnable, ok := eventsToChange[base.AuditID(event)]; ok {
+				if shouldEnable {
+					// already enabled
+				} else {
+					// disable by removing
+					existingAuditConfig.EnabledEvents = append(existingAuditConfig.EnabledEvents[:i], existingAuditConfig.EnabledEvents[i+1:]...)
+				}
+				// drop from toChange so we don't duplicate IDs
+				delete(eventsToChange, base.AuditID(event))
+			}
+		}
+		for id, enabled := range eventsToChange {
+			if enabled {
+				existingAuditConfig.EnabledEvents = append(existingAuditConfig.EnabledEvents, uint(id))
+			}
+		}
+	}
 }
 
 // GET collection config sync function
@@ -1461,6 +1485,7 @@ func (h *handler) handleSGCollectStatus() error {
 	}
 
 	h.writeRawJSONStatus(http.StatusOK, []byte(`{"status":"`+status+`"}`))
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayCollectInfoStatus, nil)
 	return nil
 }
 
@@ -1471,6 +1496,8 @@ func (h *handler) handleSGCollectCancel() error {
 	}
 
 	h.writeRawJSONStatus(http.StatusOK, []byte(`{"status":"cancelled"}`))
+
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayCollectInfoStop, nil)
 	return nil
 }
 
@@ -1501,6 +1528,16 @@ func (h *handler) handleSGCollect() error {
 	}
 
 	h.writeRawJSONStatus(http.StatusOK, []byte(`{"status":"started"}`))
+
+	auditFields := base.AuditFields{
+		"output_dir":   params.OutputDirectory,
+		"upload_host":  params.UploadHost,
+		"customer":     params.Customer,
+		"ticket":       params.Ticket,
+		"keep_zip":     params.KeepZip,
+		"zip_filename": zipFilename,
+	}
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayCollectInfoStop, auditFields)
 
 	return nil
 }
@@ -1590,6 +1627,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	h.assertAdminOnly()
 	// Unmarshal the request body into a PrincipalConfig struct:
 	body, _ := h.readBody()
+
 	var newInfo auth.PrincipalConfig
 	var err error
 	if err = base.JSONUnmarshal(body, &newInfo); err != nil {

@@ -12,6 +12,7 @@ package rest
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -27,13 +28,21 @@ func TestAuditLoggingFields(t *testing.T) {
 		t.Skip("This test can panic with gocb logging CBG-4076")
 	}
 
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Audit logging only works in EE")
+	}
+
 	// get tempdir before resetting global loggers, since the logger cleanup needs to happen before deletion
 	tempdir := t.TempDir()
 	base.ResetGlobalTestLogging(t)
 	base.InitializeMemoryLoggers()
+
 	const (
-		requestInfoHeaderName = "extra-audit-logging-header"
-		requestUser           = "alice"
+		requestInfoHeaderName  = "extra-audit-logging-header"
+		requestUser            = "alice"
+		filteredPublicUsername = "bob"
+		filteredAdminUsername  = "TestAuditLoggingFields-charlie"
+		filteredAdminPassword  = "password"
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -57,9 +66,30 @@ func TestAuditLoggingFields(t *testing.T) {
 	})
 	defer rt.Close()
 
+	runServerRBACTests := base.TestCanUseMobileRBAC(t)
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.BoolPtr(true),
+			DisabledUsers: []base.AuditLoggingPrincipal{
+				{Name: filteredPublicUsername, Domain: string(base.UserDomainSyncGateway)},
+				{Name: filteredAdminUsername, Domain: string(base.UserDomainCBServer)},
+			},
+		},
+	}
+
 	// initialize RestTester
-	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
 	rt.CreateUser(requestUser, nil)
+	rt.CreateUser(filteredPublicUsername, nil)
+	if runServerRBACTests {
+		eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+		require.NoError(t, err)
+		MakeUser(t, httpClient, eps[0], filteredAdminUsername, filteredAdminPassword, []string{fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName())})
+		defer DeleteUser(t, httpClient, eps[0], filteredAdminUsername)
+	}
 
 	// auditFieldValueIgnored is a special value for an audit field to skip value-specific checks whilst still ensuring the field property is set
 	// used for unpredictable values, for example timestamps or request IDs (when the test is making concurrent or unordered requests)
@@ -77,14 +107,18 @@ func TestAuditLoggingFields(t *testing.T) {
 			auditableAction: func(t testing.TB) {
 				RequireStatus(t, rt.SendRequest(http.MethodGet, "/_ping", ""), http.StatusOK)
 			},
-			expectedAuditEventFields: map[base.AuditID]base.AuditFields{},
 		},
 		{
 			name: "public request",
 			auditableAction: func(t testing.TB) {
 				RequireStatus(t, rt.SendRequest(http.MethodGet, "/", ""), http.StatusOK)
 			},
-			expectedAuditEventFields: map[base.AuditID]base.AuditFields{},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDPublicHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/",
+				},
+			},
 		},
 		{
 			name: "guest request",
@@ -99,6 +133,10 @@ func TestAuditLoggingFields(t *testing.T) {
 				base.AuditIDReadDatabase: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
 					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": base.GuestUsername},
+				},
+				base.AuditIDPublicHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
 				},
 			},
 		},
@@ -115,6 +153,10 @@ func TestAuditLoggingFields(t *testing.T) {
 				base.AuditIDReadDatabase: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
 					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": "alice"},
+				},
+				base.AuditIDPublicHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
 				},
 			},
 		},
@@ -139,6 +181,10 @@ func TestAuditLoggingFields(t *testing.T) {
 					base.AuditFieldRealUserID:    map[string]any{"domain": "sgw", "user": "alice"},
 					"extra":                      "field",
 				},
+				base.AuditIDPublicHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
+				},
 			},
 		},
 		{
@@ -152,6 +198,10 @@ func TestAuditLoggingFields(t *testing.T) {
 					base.AuditFieldAuthMethod:    "basic",
 					base.AuditFieldDatabase:      "db",
 					"username":                   "incorrect",
+				},
+				base.AuditIDPublicHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
 				},
 			},
 		},
@@ -170,6 +220,10 @@ func TestAuditLoggingFields(t *testing.T) {
 				//},
 				base.AuditIDReadDatabase: {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+				},
+				base.AuditIDAdminHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
 				},
 			},
 		},
@@ -191,6 +245,28 @@ func TestAuditLoggingFields(t *testing.T) {
 					base.AuditFieldCorrelationID: auditFieldValueIgnored,
 					base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
 				},
+				base.AuditIDAdminHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
+				},
+			},
+		},
+		{
+			name: "filtered public request",
+			auditableAction: func(t testing.TB) {
+				RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/db/", "", filteredPublicUsername), http.StatusOK)
+			},
+		},
+		{
+			name: "filtered admin request",
+			auditableAction: func(t testing.TB) {
+				if !runServerRBACTests {
+					t.Skip("Skipping subtest that requires admin RBAC")
+				}
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth")
+				}
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", filteredAdminUsername, filteredAdminPassword), http.StatusOK)
 			},
 		},
 	}
@@ -201,24 +277,32 @@ func TestAuditLoggingFields(t *testing.T) {
 
 			assert.Equalf(t, len(testCase.expectedAuditEventFields), len(events), "expected exactly %d audit events, got %d", len(testCase.expectedAuditEventFields), len(events))
 
-			// for each event, check the fields match what we expected
-			for _, event := range events {
-				id, ok := event["id"]
-				if !assert.Truef(t, ok, "audit event did not contain \"id\" field: %v", event) {
-					continue
-				}
-
-				auditID := base.AuditID(id.(float64))
-				for k, expectedVal := range testCase.expectedAuditEventFields[auditID] {
-					eventField, ok := event[k]
-					if !assert.Truef(t, ok, "missing field %q in audit event %q (%s)", k, auditID, base.AuditEvents[auditID].Name) {
+			// for each expected event, check that it's present and the fields match what we expected
+			for expectedAuditID, expectedEventFields := range testCase.expectedAuditEventFields {
+				eventFound := false
+				for _, event := range events {
+					id, ok := event["id"]
+					if !assert.Truef(t, ok, "audit event did not contain \"id\" field: %v", event) {
 						continue
 					}
-					if expectedVal != auditFieldValueIgnored {
-						assert.Equalf(t, expectedVal, eventField, "unexpected value for field %q in audit event %q (%s)", k, auditID, base.AuditEvents[auditID].Name)
+
+					auditID := base.AuditID(id.(float64))
+					if expectedAuditID == auditID {
+						eventFound = true
+						for k, expectedVal := range expectedEventFields {
+							eventField, ok := event[k]
+							if !assert.Truef(t, ok, "missing field %q in audit event %q (%s)", k, auditID, base.AuditEvents[auditID].Name) {
+								continue
+							}
+							if expectedVal != auditFieldValueIgnored {
+								assert.Equalf(t, expectedVal, eventField, "unexpected value for field %q in audit event %q (%s)", k, auditID, base.AuditEvents[auditID].Name)
+							}
+						}
 					}
 				}
+				assert.Truef(t, eventFound, "expected event %v not found in set of events", expectedAuditID)
 			}
+
 		})
 	}
 }
@@ -331,9 +415,13 @@ func requireValidDatabaseUpdatedEventPayload(rt *RestTester, output []byte) {
 			continue
 		}
 		var event struct {
-			Payload string `json:"payload"`
+			ID      base.AuditID `json:"id"`
+			Payload string       `json:"payload"`
 		}
 		require.NoError(rt.TB(), base.JSONUnmarshal(rawEvent, &event))
+		if event.ID != base.AuditIDUpdateDatabaseConfig {
+			continue
+		}
 		require.NotEmpty(rt.TB(), event.Payload)
 		RequireStatus(rt.TB(), rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", event.Payload), http.StatusCreated)
 		foundEvent = true
@@ -413,6 +501,59 @@ func TestRedactConfigAsStr(t *testing.T) {
 			require.JSONEq(t, testCase.expected, output)
 
 		})
+	}
+}
+
+func TestEffectiveUserID(t *testing.T) {
+	tempdir := t.TempDir()
+	base.ResetGlobalTestLogging(t)
+	base.InitializeMemoryLoggers()
+	const (
+		user       = "user"
+		domain     = "domain"
+		cnfDomain  = "myDomain"
+		cnfUser    = "bob"
+		realUser   = "alice"
+		realDomain = "sgw"
+	)
+	reqHeaders := map[string]string{
+		"user_header":   fmt.Sprintf(`{"%s": "%s", "%s":"%s"}`, domain, cnfDomain, user, cnfUser),
+		"Authorization": getBasicAuthHeader(realUser, RestTesterDefaultUserPassword),
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		GuestEnabled:     true,
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			config.Unsupported.EffectiveUserHeaderName = base.StringPtr("user_header")
+			config.Logging = base.LoggingConfig{
+				LogFilePath: tempdir,
+				Audit: &base.AuditLoggerConfig{
+					FileLoggerConfig: base.FileLoggerConfig{
+						Enabled: base.BoolPtr(true),
+					},
+				},
+			}
+			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
+		},
+	})
+	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	rt.CreateUser(realUser, nil)
+
+	action := func(t testing.TB) {
+		RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", reqHeaders), http.StatusOK)
+	}
+	output := base.AuditLogContents(t, action)
+	events := jsonLines(t, output)
+
+	for _, event := range events {
+		effective := event[base.AuditEffectiveUserID].(map[string]any)
+		assert.Equal(t, cnfDomain, effective[domain])
+		assert.Equal(t, cnfUser, effective[user])
+		realUserEvent := event[base.AuditFieldRealUserID].(map[string]any)
+		assert.Equal(t, realDomain, realUserEvent[domain])
+		assert.Equal(t, realUser, realUserEvent[user])
 	}
 }
 

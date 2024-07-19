@@ -21,21 +21,6 @@ const (
 	defaultAuditEnabled = false
 )
 
-// commonly used fields for audit events
-const (
-	AuditFieldID            = "id"
-	AuditFieldTimestamp     = "timestamp"
-	AuditFieldName          = "name"
-	AuditFieldDescription   = "description"
-	AuditFieldRealUserID    = "real_userid"
-	AuditFieldLocal         = "local"
-	AuditFieldRemote        = "remote"
-	AuditFieldDatabase      = "db"
-	AuditFieldCorrelationID = "cid" // FIXME: how to distinguish between this field (http) and blip id below
-	AuditFieldKeyspace      = "ks"
-	AuditFieldAuthMethod    = "auth_method"
-)
-
 // expandFields populates data with information from the id, context and additionalData.
 func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, additionalData AuditFields) AuditFields {
 	var fields AuditFields
@@ -67,6 +52,14 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 		fields[AuditFieldRealUserID] = map[string]any{
 			"domain": userDomain,
 			"user":   userName,
+		}
+	}
+	effectiveDomain := logCtx.EffectiveDomain
+	effectiveUser := logCtx.EffectiveUserID
+	if effectiveDomain != "" || effectiveUser != "" {
+		fields[AuditEffectiveUserID] = map[string]any{
+			"domain": effectiveDomain,
+			"user":   effectiveUser,
 		}
 	}
 	if logCtx.RequestHost != "" {
@@ -144,6 +137,11 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	auditLogger.logf(string(fieldsJSON))
 }
 
+// IsAuditEnabled checks if auditing is enabled for the SG node
+func IsAuditEnabled() bool {
+	return auditLogger.FileLogger.shouldLog(LevelNone)
+}
+
 // AuditLogger is a file logger with audit-specific behaviour.
 type AuditLogger struct {
 	FileLogger
@@ -186,6 +184,10 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 		globalFields: globalFields,
 	}
 
+	if *config.FileLoggerConfig.Enabled {
+		Audit(ctx, AuditIDAuditEnabled, AuditFields{"audit_scope": "global"})
+	}
+
 	return logger, nil
 }
 
@@ -193,6 +195,7 @@ func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
 	if !auditLogger.FileLogger.shouldLog(LevelNone) {
 		return false
 	}
+
 	logCtx := getLogCtx(ctx)
 	if logCtx.DbLogConfig != nil && logCtx.DbLogConfig.Audit != nil {
 		if !logCtx.DbLogConfig.Audit.Enabled {
@@ -201,6 +204,30 @@ func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
 		if _, ok := logCtx.DbLogConfig.Audit.EnabledEvents[id]; !ok {
 			return false
 		}
+		if !shouldLogAuditEventForUserAndRole(&logCtx) {
+			return false
+		}
 	}
+
+	return true
+}
+
+// shouldLogAuditEventForUserAndRole returns true if the request should be logged
+func shouldLogAuditEventForUserAndRole(logCtx *LogContext) bool {
+	if logCtx.UserDomain == "" && logCtx.Username == "" ||
+		len(logCtx.DbLogConfig.Audit.DisabledUsers) == 0 {
+		// early return for common cases: no user on context or no disabled users or roles
+		return true
+	}
+
+	if logCtx.UserDomain != "" && logCtx.Username != "" {
+		if _, isDisabled := logCtx.DbLogConfig.Audit.DisabledUsers[AuditLoggingPrincipal{
+			Domain: string(logCtx.UserDomain),
+			Name:   logCtx.Username,
+		}]; isDisabled {
+			return false
+		}
+	}
+
 	return true
 }

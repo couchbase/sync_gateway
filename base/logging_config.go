@@ -223,10 +223,17 @@ func EnableStatsLogger(enabled bool) {
 	}
 }
 
-func EnableAuditLogger(enabled bool) {
+func EnableAuditLogger(ctx context.Context, enabled bool) {
 	if auditLogger != nil {
+		if !enabled {
+			Audit(ctx, AuditIDAuditDisabled, AuditFields{AuditFieldAuditScope: "global"})
+		}
 		auditLogger.Enabled.Set(enabled)
+		if enabled {
+			Audit(ctx, AuditIDAuditEnabled, AuditFields{AuditFieldAuditScope: "global"})
+		}
 	}
+
 }
 
 // === Used by tests only ===
