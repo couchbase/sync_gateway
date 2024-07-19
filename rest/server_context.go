@@ -137,7 +137,9 @@ func (sc *ServerContext) SetCpuPprofFile(file *os.File) {
 
 func (sc *ServerContext) CloseCpuPprofFile(ctx context.Context) (filename string) {
 	sc.cpuPprofFileMutex.Lock()
-	filename = sc.cpuPprofFile.Name()
+	if sc.cpuPprofFile != nil {
+		filename = sc.cpuPprofFile.Name()
+	}
 	if err := sc.cpuPprofFile.Close(); err != nil {
 		base.WarnfCtx(ctx, "Error closing CPU profile file: %v", err)
 	}
