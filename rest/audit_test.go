@@ -418,9 +418,6 @@ func TestRedactConfigAsStr(t *testing.T) {
 }
 
 func TestEffectiveUserID(t *testing.T) {
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test can panic with gocb logging CBG-4076")
-	}
 	tempdir := t.TempDir()
 	base.ResetGlobalTestLogging(t)
 	base.InitializeMemoryLoggers()
@@ -435,9 +432,8 @@ func TestEffectiveUserID(t *testing.T) {
 	}
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled:                 true,
-		AdminInterfaceAuthentication: !base.UnitTestUrlIsWalrus(), // disable admin auth for walrus so we can get coverage of both subtests
-		PersistentConfig:             true,
+		GuestEnabled:     true,
+		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Unsupported.EffectiveUserHeaderName = base.StringPtr("user_header")
 			config.Logging = base.LoggingConfig{
