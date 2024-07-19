@@ -12,6 +12,7 @@ package rest
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -413,5 +414,55 @@ func TestRedactConfigAsStr(t *testing.T) {
 			require.JSONEq(t, testCase.expected, output)
 
 		})
+	}
+}
+
+func TestEffectiveUserID(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test can panic with gocb logging CBG-4076")
+	}
+	tempdir := t.TempDir()
+	base.ResetGlobalTestLogging(t)
+	base.InitializeMemoryLoggers()
+	const (
+		user      = "user"
+		domain    = "domain"
+		cnfDomain = "myDomain"
+		cnfUser   = "alice"
+	)
+	reqHeaders := map[string]string{
+		"user_header": fmt.Sprintf(`{"%s": "%s", "%s":"%s"}`, domain, cnfDomain, user, cnfUser),
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		GuestEnabled:                 true,
+		AdminInterfaceAuthentication: !base.UnitTestUrlIsWalrus(), // disable admin auth for walrus so we can get coverage of both subtests
+		PersistentConfig:             true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			config.Unsupported.EffectiveUserHeaderName = base.StringPtr("user_header")
+			config.Logging = base.LoggingConfig{
+				LogFilePath: tempdir,
+				Audit: &base.AuditLoggerConfig{
+					FileLoggerConfig: base.FileLoggerConfig{
+						Enabled: base.BoolPtr(true),
+					},
+				},
+			}
+			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
+		},
+	})
+	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	action := func(t testing.TB) {
+		RequireStatus(t, rt.SendAdminRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", reqHeaders), http.StatusOK)
+	}
+	output := base.AuditLogContents(t, action)
+	events := jsonLines(t, output)
+
+	for _, event := range events {
+		effective := event[base.AuditEffectiveUserID].(map[string]any)
+		assert.Equal(t, cnfDomain, effective[domain])
+		assert.Equal(t, cnfUser, effective[user])
 	}
 }

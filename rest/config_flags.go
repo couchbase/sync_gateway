@@ -158,6 +158,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"unsupported.user_queries":                                 {&config.Unsupported.UserQueries, fs.Bool("unsupported.user_queries", false, "Whether user-query APIs are enabled")},
 		"unsupported.audit_info_provider.global_info_env_var_name": {&config.Unsupported.AuditInfoProvider.GlobalInfoEnvVarName, fs.String("unsupported.audit_info_provider.global_info_env_var_name", "", "Environment variable name to get global audit event info from")},
 		"unsupported.audit_info_provider.request_info_header_name": {&config.Unsupported.AuditInfoProvider.RequestInfoHeaderName, fs.String("unsupported.audit_info_provider.request_info_header_name", "", "Header name to get request audit event info from")},
+		"unsupported.effective_user_header_name":                   {&config.Unsupported.EffectiveUserHeaderName, fs.String("unsupported.effective_user_header_name", "", "HTTP header name to get effective user id from")},
 
 		"database_credentials": {&config.DatabaseCredentials, fs.String("database_credentials", "null", "JSON-encoded per-database credentials, that can be used instead of the bootstrap ones. This will override bucket_credentials that target the bucket that the database is in.")},
 		"bucket_credentials":   {&config.BucketCredentials, fs.String("bucket_credentials", "null", "JSON-encoded per-bucket credentials, that can be used instead of the bootstrap ones.")},

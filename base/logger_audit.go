@@ -40,6 +40,7 @@ const (
 	AuditFieldCompactionReset    = "reset"
 	AuditFieldPostUpgradePreview = "preview"
 	AuditFieldAuthMethod         = "auth_method"
+	AuditEffectiveUserID         = "effective_userid"
 )
 
 // expandFields populates data with information from the id, context and additionalData.
@@ -73,6 +74,14 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 		fields[AuditFieldRealUserID] = map[string]any{
 			"domain": userDomain,
 			"user":   userName,
+		}
+	}
+	effectiveDomain := logCtx.EffectiveDomain
+	effectiveUser := logCtx.EffectiveUserID
+	if effectiveDomain != "" || effectiveUser != "" {
+		fields[AuditEffectiveUserID] = map[string]any{
+			"domain": effectiveDomain,
+			"user":   effectiveUser,
 		}
 	}
 	if logCtx.RequestHost != "" {
