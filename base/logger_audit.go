@@ -69,6 +69,14 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 			"user":   userName,
 		}
 	}
+	effectiveDomain := logCtx.EffectiveDomain
+	effectiveUser := logCtx.EffectiveUserID
+	if effectiveDomain != "" || effectiveUser != "" {
+		fields[AuditEffectiveUserID] = map[string]any{
+			"domain": effectiveDomain,
+			"user":   effectiveUser,
+		}
+	}
 	if logCtx.RequestHost != "" {
 		host, port, err := net.SplitHostPort(logCtx.RequestHost)
 		if err != nil {
@@ -193,6 +201,7 @@ func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
 	if !auditLogger.FileLogger.shouldLog(LevelNone) {
 		return false
 	}
+
 	logCtx := getLogCtx(ctx)
 	if logCtx.DbLogConfig != nil && logCtx.DbLogConfig.Audit != nil {
 		if !logCtx.DbLogConfig.Audit.Enabled {
@@ -201,6 +210,30 @@ func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
 		if _, ok := logCtx.DbLogConfig.Audit.EnabledEvents[id]; !ok {
 			return false
 		}
+		if !shouldLogAuditEventForUserAndRole(&logCtx) {
+			return false
+		}
 	}
+
+	return true
+}
+
+// shouldLogAuditEventForUserAndRole returns true if the request should be logged
+func shouldLogAuditEventForUserAndRole(logCtx *LogContext) bool {
+	if logCtx.UserDomain == "" && logCtx.Username == "" ||
+		len(logCtx.DbLogConfig.Audit.DisabledUsers) == 0 {
+		// early return for common cases: no user on context or no disabled users or roles
+		return true
+	}
+
+	if logCtx.UserDomain != "" && logCtx.Username != "" {
+		if _, isDisabled := logCtx.DbLogConfig.Audit.DisabledUsers[AuditLoggingPrincipal{
+			Domain: string(logCtx.UserDomain),
+			Name:   logCtx.Username,
+		}]; isDisabled {
+			return false
+		}
+	}
+
 	return true
 }

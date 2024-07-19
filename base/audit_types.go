@@ -133,7 +133,7 @@ func (f AuditFields) expandMandatoryFieldGroups(groups []fieldGroup) {
 
 func (i AuditID) MustValidateFields(f AuditFields) {
 	if err := i.ValidateFields(f); err != nil {
-		panic(fmt.Errorf("audit event %s invalid:\n%v", i, err))
+		panic(fmt.Errorf("audit event %s(%s) invalid:\n%v", AuditEvents[i].Name, i, err))
 	}
 }
 
@@ -145,20 +145,20 @@ func (i AuditID) ValidateFields(f AuditFields) error {
 	if !ok {
 		return fmt.Errorf("unknown audit event ID %d", i)
 	}
-	return mandatoryFieldsPresent(f, event.MandatoryFields)
+	return mandatoryFieldsPresent(f, event.MandatoryFields, "")
 }
 
-func mandatoryFieldsPresent(fields, mandatoryFields AuditFields) error {
+func mandatoryFieldsPresent(fields, mandatoryFields AuditFields, baseName string) error {
 	me := &MultiError{}
 	for k, v := range mandatoryFields {
 		// recurse if map
 		if vv, ok := v.(map[string]any); ok {
 			if pv, ok := fields[k].(map[string]any); ok {
-				me = me.Append(mandatoryFieldsPresent(pv, vv))
+				me = me.Append(mandatoryFieldsPresent(pv, vv, baseName+k+"."))
 			}
 		}
 		if _, ok := fields[k]; !ok {
-			me = me.Append(fmt.Errorf("missing mandatory field %s", k))
+			me = me.Append(fmt.Errorf("missing mandatory field %s", baseName+k))
 		}
 	}
 	return me.ErrorOrNil()

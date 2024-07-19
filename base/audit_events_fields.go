@@ -16,6 +16,7 @@ const (
 	auditFieldName               = "name"
 	auditFieldDescription        = "description"
 	auditFieldRealUserID         = "real_userid"
+	AuditEffectiveUserID         = "effective_userid"
 	auditFieldLocal              = "local"
 	auditFieldRemote             = "remote"
 	auditFieldDatabase           = "db"
