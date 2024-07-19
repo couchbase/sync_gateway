@@ -8234,7 +8234,9 @@ func TestReplicatorWithCollectionsFailWithoutCollectionsEnabled(t *testing.T) {
 //   - Remove database context off os rt1
 //   - Call start on active replicator, this would normally hit panic in ticket CBG-4070, should now error instead
 func TestPanicInCheckpointHash(t *testing.T) {
-
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server bucket - walrus panics on db removal underneath replication")
+	}
 	// Create two rest testers
 	rt1 := rest.NewRestTester(t, nil)
 	defer rt1.Close()
