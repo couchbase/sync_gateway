@@ -200,7 +200,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeUser,
 	},
 	AuditIDAdminHTTPAPIRequest: {
@@ -218,7 +218,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDMetricsHTTPAPIRequest: {
@@ -235,8 +235,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
-		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDPublicUserAuthenticated: {
@@ -317,7 +317,7 @@ var AuditEvents = events{
 		Name:               "sgcollect_info status",
 		Description:        "sgcollect_info status was viewed",
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		MandatoryFields:    AuditFields{},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupRequest,
@@ -329,7 +329,7 @@ var AuditEvents = events{
 		Name:               "sgcollect_info start",
 		Description:        "sgcollect_info was started",
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		MandatoryFields: AuditFields{
 			"output_dir":   "output_directory",
 			"upload_host":  "upload_host",
@@ -348,7 +348,7 @@ var AuditEvents = events{
 		Name:               "sgcollect_info stop",
 		Description:        "sgcollect_info was stopped",
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		MandatoryFields:    AuditFields{},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupRequest,
@@ -380,7 +380,7 @@ var AuditEvents = events{
 			AuditFieldFileName: "filename",
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDClusterInfoRead: {
@@ -508,7 +508,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseCompactStop: {
@@ -523,7 +523,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseCompactStatus: {
@@ -538,7 +538,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseResyncStatus: {
