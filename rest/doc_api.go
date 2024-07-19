@@ -644,10 +644,6 @@ func (h *handler) handleGetLocalDoc() error {
 	}
 	value[db.BodyId] = "_local/" + docid
 	h.writeJSON(value)
-	base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
-		base.AuditFieldDocID:      docid,
-		base.AuditFieldDocVersion: value[db.BodyRev], // this value might not be populated if this is a doc that starts with _sync
-	})
 	return nil
 }
 
