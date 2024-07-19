@@ -8227,3 +8227,60 @@ func TestReplicatorWithCollectionsFailWithoutCollectionsEnabled(t *testing.T) {
 	}
 
 }
+
+// TestPanicInCheckpointHash:
+//   - Create two rest testers
+//   - Add active replicator for rt1 to push to rt2
+//   - Remove database context off os rt1
+//   - Call start on active replicator, this would normally hit panic in ticket CBG-4070, should now error instead
+func TestPanicInCheckpointHash(t *testing.T) {
+
+	// Create two rest testers
+	rt1 := rest.NewRestTester(t, nil)
+	defer rt1.Close()
+
+	rt2 := rest.NewRestTester(t, nil)
+	defer rt2.Close()
+
+	username := "alice"
+	rt2.CreateUser(username, []string{username})
+
+	// construct remote URL to have _blipsync connect to
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
+
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
+	ar, err := db.NewActiveReplicator(base.TestCtx(t), &db.ActiveReplicatorConfig{
+		ID:                  t.Name(),
+		Direction:           db.ActiveReplicatorTypePush,
+		ActiveDB:            &db.Database{DatabaseContext: rt1.GetDatabase()},
+		RemoteDBURL:         passiveDBURL,
+		ReplicationStatsMap: dbstats,
+		Continuous:          true,
+		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+	})
+	require.NoError(t, err)
+
+	// remove the db context for rt1 off the server context
+	ok := rt1.ServerContext().RemoveDatabase(base.TestCtx(t), "db")
+	require.True(t, ok)
+
+	// assert that the db context has been removed
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, 0, len(rt1.ServerContext().AllDatabases()))
+	}, time.Second*10, time.Millisecond*100)
+
+	// attempt to start active replicator, this will hit panic in CBG-4070 pre this work due to the bucket being nil
+	// on the active db context
+	replicatorErr := ar.Start(base.TestCtx(t))
+	assert.Error(t, replicatorErr)
+	assert.ErrorContains(t, replicatorErr, "cannot fetch bucket UUID")
+
+}
