@@ -463,3 +463,56 @@ func TestRedactConfigAsStr(t *testing.T) {
 		})
 	}
 }
+
+func TestEffectiveUserID(t *testing.T) {
+	tempdir := t.TempDir()
+	base.ResetGlobalTestLogging(t)
+	base.InitializeMemoryLoggers()
+	const (
+		user       = "user"
+		domain     = "domain"
+		cnfDomain  = "myDomain"
+		cnfUser    = "bob"
+		realUser   = "alice"
+		realDomain = "sgw"
+	)
+	reqHeaders := map[string]string{
+		"user_header":   fmt.Sprintf(`{"%s": "%s", "%s":"%s"}`, domain, cnfDomain, user, cnfUser),
+		"Authorization": getBasicAuthHeader(realUser, RestTesterDefaultUserPassword),
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		GuestEnabled:     true,
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			config.Unsupported.EffectiveUserHeaderName = base.StringPtr("user_header")
+			config.Logging = base.LoggingConfig{
+				LogFilePath: tempdir,
+				Audit: &base.AuditLoggerConfig{
+					FileLoggerConfig: base.FileLoggerConfig{
+						Enabled: base.BoolPtr(true),
+					},
+				},
+			}
+			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
+		},
+	})
+	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	rt.CreateUser(realUser, nil)
+
+	action := func(t testing.TB) {
+		RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", reqHeaders), http.StatusOK)
+	}
+	output := base.AuditLogContents(t, action)
+	events := jsonLines(t, output)
+
+	for _, event := range events {
+		effective := event[base.AuditEffectiveUserID].(map[string]any)
+		assert.Equal(t, cnfDomain, effective[domain])
+		assert.Equal(t, cnfUser, effective[user])
+		realUserEvent := event[base.AuditFieldRealUserID].(map[string]any)
+		assert.Equal(t, realDomain, realUserEvent[domain])
+		assert.Equal(t, realUser, realUserEvent[user])
+	}
+}

@@ -318,6 +318,19 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		}
 	}
 
+	if h.server.Config.Unsupported.EffectiveUserHeaderName != nil {
+		effectiveUserFields := h.rq.Header.Get(*h.server.Config.Unsupported.EffectiveUserHeaderName)
+		if effectiveUserFields != "" {
+			var fields base.EffectiveUserPair
+			err := base.JSONUnmarshal([]byte(effectiveUserFields), &fields)
+			if err != nil {
+				base.WarnfCtx(h.ctx(), "Error unmarshalling effective user header fields: %v", err)
+			} else {
+				h.rqCtx = base.EffectiveUserIDLogCtx(h.rqCtx, fields.Domain, fields.UserID)
+			}
+		}
+	}
+
 	switch h.rq.Header.Get("Content-Encoding") {
 	case "":
 		h.requestBody = NewReaderCounter(h.rq.Body)

@@ -59,6 +59,12 @@ type LogContext struct {
 
 	// implicitDefaultCollection is set to true when the context represents the default collection, but we want to omit that value from logging to prevent verbosity.
 	implicitDefaultCollection bool
+
+	// Effective user ID from HTTP header
+	EffectiveUserID string
+
+	// Domain defined in the HTTP request header
+	EffectiveDomain string
 }
 
 // DbLogConfig can be used to customise the logging for logs associated with this database.
@@ -144,6 +150,8 @@ func (lc *LogContext) getCopy() LogContext {
 		UserDomain:                   lc.UserDomain,
 		RequestHost:                  lc.RequestHost,
 		RequestRemoteAddr:            lc.RequestRemoteAddr,
+		EffectiveUserID:              lc.EffectiveUserID,
+		EffectiveDomain:              lc.EffectiveDomain,
 	}
 }
 
@@ -222,6 +230,13 @@ func AuditLogCtx(parent context.Context, additionalAuditFields map[string]any) c
 	return LogContextWith(parent, &newCtx)
 }
 
+func EffectiveUserIDLogCtx(parent context.Context, domain, userID string) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.EffectiveDomain = domain
+	newCtx.EffectiveUserID = userID
+	return LogContextWith(parent, &newCtx)
+}
+
 // KeyspaceLogCtx extends the parent context with a fully qualified keyspace (bucket.scope.collection)
 func KeyspaceLogCtx(parent context.Context, bucketName, scopeName, collectionName string) context.Context {
 	newCtx := getLogCtx(parent)
@@ -229,6 +244,11 @@ func KeyspaceLogCtx(parent context.Context, bucketName, scopeName, collectionNam
 	newCtx.Collection = collectionName
 	newCtx.Scope = scopeName
 	return LogContextWith(parent, &newCtx)
+}
+
+type EffectiveUserPair struct {
+	UserID string `json:"user"`
+	Domain string `json:"domain"`
 }
 
 type userIDDomain string
