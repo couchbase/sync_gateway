@@ -28,6 +28,7 @@ const (
 	AuditFieldCompactionReset    = "reset"
 	AuditFieldPostUpgradePreview = "preview"
 	AuditFieldAuthMethod         = "auth_method"
+	AuditEffectiveUserID         = "effective_userid"
 	AuditFieldAuditScope         = "audit_scope"
 	AuditFieldFileName           = "filename"
 

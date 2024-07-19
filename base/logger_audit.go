@@ -21,28 +21,6 @@ const (
 	defaultAuditEnabled = false
 )
 
-// commonly used fields for audit events
-const (
-	AuditFieldID                 = "id"
-	AuditFieldTimestamp          = "timestamp"
-	AuditFieldName               = "name"
-	AuditFieldDescription        = "description"
-	AuditFieldRealUserID         = "real_userid"
-	AuditFieldLocal              = "local"
-	AuditFieldRemote             = "remote"
-	AuditFieldDatabase           = "db"
-	AuditFieldCorrelationID      = "cid" // FIXME: how to distinguish between this field (http) and blip id below
-	AuditFieldKeyspace           = "ks"
-	AuditFieldReplicationID      = "replication_id"
-	AuditFieldPayload            = "payload"
-	AuditFieldCompactionType     = "type"
-	AuditFieldCompactionDryRun   = "dry_run"
-	AuditFieldCompactionReset    = "reset"
-	AuditFieldPostUpgradePreview = "preview"
-	AuditFieldAuthMethod         = "auth_method"
-	AuditEffectiveUserID         = "effective_userid"
-)
-
 // expandFields populates data with information from the id, context and additionalData.
 func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, additionalData AuditFields) AuditFields {
 	var fields AuditFields
