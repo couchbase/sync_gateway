@@ -669,7 +669,7 @@ func (h *handler) handleDelLocalDoc() error {
 
 // isGuest returns true if the current user is a guest
 func (h *handler) isGuest() bool {
-	return h.user == nil || h.user.Name() == ""
+	return h.user != nil && h.user.Name() == ""
 }
 
 // helper for read only check
