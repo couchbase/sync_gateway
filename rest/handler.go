@@ -573,20 +573,8 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 		// even though `checkAdminAuth` _can_ issue whoami to find user's roles, it doesn't always...
 		// to reduce code complexity, we'll potentially be making this whoami request twice if we need it for audit filtering
-		var auditRoleNames []string
-		if needRolesForAudit(dbContext, base.UserDomainCBServer) {
-			whoAmIResponse, whoAmIStatus, whoAmIErr := cbRBACWhoAmI(h.ctx(), httpClient, managementEndpoints, username, password)
-			if whoAmIErr != nil || whoAmIStatus != http.StatusOK {
-				base.WarnfCtx(h.ctx(), "An error occurred whilst fetching the user's roles for audit filtering - will not filter: %v", whoAmIErr)
-			} else {
-				for _, role := range whoAmIResponse.Roles {
-					// only filter roles applied to this bucket or cluster-scope
-					if bucketName == authScope || bucketName == "" {
-						auditRoleNames = append(auditRoleNames, role.RoleName)
-					}
-				}
-			}
-		}
+		auditRoleNames := getCBUserRolesForAudit(dbContext, authScope, h.ctx(), httpClient, managementEndpoints, username, password)
+
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
 		h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainCBServer, auditRoleNames)
@@ -676,6 +664,27 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	}
 	h.updateResponseWriter()
 	return nil
+}
+
+func getCBUserRolesForAudit(db *db.DatabaseContext, authScope string, ctx context.Context, httpClient *http.Client, managementEndpoints []string, username, password string) []string {
+	if !needRolesForAudit(db, base.UserDomainCBServer) {
+		return nil
+	}
+
+	whoAmIResponse, whoAmIStatus, whoAmIErr := cbRBACWhoAmI(ctx, httpClient, managementEndpoints, username, password)
+	if whoAmIErr != nil || whoAmIStatus != http.StatusOK {
+		base.WarnfCtx(ctx, "An error occurred whilst fetching the user's roles for audit filtering - will not filter: %v", whoAmIErr)
+		return nil
+	}
+
+	var auditRoleNames []string
+	for _, role := range whoAmIResponse.Roles {
+		// only filter roles applied to this bucket or cluster-scope
+		if role.BucketName == "" || role.BucketName == authScope {
+			auditRoleNames = append(auditRoleNames, role.RoleName)
+		}
+	}
+	return auditRoleNames
 }
 
 // removeCorruptConfigIfExists will remove the config from the bucket and remove it from the map if it exists on the invalid database config map

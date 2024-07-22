@@ -39,14 +39,15 @@ func TestAuditLoggingFields(t *testing.T) {
 	base.InitializeMemoryLoggers()
 
 	const (
-		requestInfoHeaderName      = "extra-audit-logging-header"
-		requestUser                = "alice"
-		filteredPublicUsername     = "bob"
-		filteredPublicRoleUsername = "charlie"
-		filteredPublicRoleName     = "observer"
-		filteredAdminUsername      = "TestAuditLoggingFields-charlie"
-		filteredAdminRoleUsername  = "TestAuditLoggingFields-bob"
-		unauthorizedAdminUsername  = "TestAuditLoggingFields-alice"
+		requestInfoHeaderName       = "extra-audit-logging-header"
+		requestUser                 = "alice"
+		filteredPublicUsername      = "bob"
+		filteredPublicRoleUsername  = "charlie"
+		filteredPublicRoleName      = "observer"
+		filteredAdminUsername       = "TestAuditLoggingFields-charlie"
+		unfilteredAdminRoleUsername = "TestAuditLoggingFields-diana"
+		filteredAdminRoleUsername   = "TestAuditLoggingFields-bob"
+		unauthorizedAdminUsername   = "TestAuditLoggingFields-alice"
 	)
 	var (
 		filteredAdminRoleName = BucketFullAccessRole.RoleName
@@ -102,13 +103,29 @@ func TestAuditLoggingFields(t *testing.T) {
 		eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 		require.NoError(t, err)
 
-		MakeUser(t, httpClient, eps[0], filteredAdminUsername, RestTesterDefaultUserPassword, []string{fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName())})
+		MakeUser(t, httpClient, eps[0], filteredAdminUsername, RestTesterDefaultUserPassword, []string{
+			fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName()),
+		})
 		defer DeleteUser(t, httpClient, eps[0], filteredAdminUsername)
-		MakeUser(t, httpClient, eps[0], filteredAdminRoleUsername, RestTesterDefaultUserPassword, []string{fmt.Sprintf("%s[%s]", filteredAdminRoleName, rt.Bucket().GetName())})
+		MakeUser(t, httpClient, eps[0], filteredAdminRoleUsername, RestTesterDefaultUserPassword, []string{
+			fmt.Sprintf("%s[%s]", filteredAdminRoleName, rt.Bucket().GetName()),
+		})
 		defer DeleteUser(t, httpClient, eps[0], filteredAdminRoleUsername)
 		MakeUser(t, httpClient, eps[0], unauthorizedAdminUsername, RestTesterDefaultUserPassword, []string{})
 		defer DeleteUser(t, httpClient, eps[0], unauthorizedAdminUsername)
 
+		// if we have another bucket available, use it to test cross-bucket role filtering (to ensure it doesn't)
+		if base.GTestBucketPool.NumUsableBuckets() >= 2 {
+			differentBucket := base.GetTestBucket(t)
+			defer differentBucket.Close(base.TestCtx(t))
+			differentBucketName := differentBucket.GetName()
+
+			MakeUser(t, httpClient, eps[0], unfilteredAdminRoleUsername, RestTesterDefaultUserPassword, []string{
+				fmt.Sprintf("%s[%s]", filteredAdminRoleName, differentBucketName),
+				fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName()),
+			})
+			defer DeleteUser(t, httpClient, eps[0], unfilteredAdminRoleUsername)
+		}
 	}
 
 	// auditFieldValueIgnored is a special value for an audit field to skip value-specific checks whilst still ensuring the field property is set
@@ -337,6 +354,30 @@ func TestAuditLoggingFields(t *testing.T) {
 					t.Skip("Skipping subtest that requires admin auth")
 				}
 				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", filteredAdminRoleUsername, RestTesterDefaultUserPassword), http.StatusOK)
+			},
+		},
+		{
+			name: "authed admin request role filtered on different bucket",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth")
+				}
+				base.RequireNumTestBuckets(t, 2)
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", unfilteredAdminRoleUsername, RestTesterDefaultUserPassword), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminUserAuthenticated: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					//	base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": unfilteredAdminRoleUsername},
+				},
+				base.AuditIDReadDatabase: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": unfilteredAdminRoleUsername},
+				},
+				base.AuditIDAdminHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
+				},
 			},
 		},
 	}
