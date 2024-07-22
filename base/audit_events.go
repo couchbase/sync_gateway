@@ -898,7 +898,7 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
-		EnabledByDefault:   false,
+		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
@@ -913,7 +913,7 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
-		EnabledByDefault:   false,
+		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
@@ -928,7 +928,7 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
-		EnabledByDefault:   false,
+		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
@@ -952,7 +952,7 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
-		EnabledByDefault:   false,
+		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
