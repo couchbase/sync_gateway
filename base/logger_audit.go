@@ -169,6 +169,9 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 	if config == nil {
 		config = &AuditLoggerConfig{}
 	}
+	if config.EnabledEvents == nil {
+		config.EnabledEvents = DefaultGlobalAuditEventIDs
+	}
 
 	if config.FileLoggerConfig.Enabled == nil {
 		config.FileLoggerConfig.Enabled = BoolPtr(defaultAuditEnabled)
@@ -179,7 +182,27 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 		return nil, err
 	}
 
+	var me *MultiError
 	enabledEvents := make(map[AuditID]struct{})
+	for _, id := range config.EnabledEvents {
+		auditID := AuditID(id)
+		if e, ok := AuditEvents[auditID]; !ok {
+			me = me.Append(fmt.Errorf("unknown audit event ID %d", auditID))
+		} else if !e.IsGlobalEvent {
+			me = me.Append(fmt.Errorf("audit event ID %d %q can only be configured at the database level", auditID, e.Name))
+		} else {
+			enabledEvents[auditID] = struct{}{}
+		}
+	}
+	if err := me.ErrorOrNil(); err != nil {
+		return nil, err
+	}
+
+	for id := range NonFilterableAuditEventsForGlobal {
+		// non-filterable events are always enabled by definition
+		enabledEvents[id] = struct{}{}
+	}
+
 	logger := &AuditLogger{
 		FileLogger:    *fl,
 		config:        *config,
@@ -199,13 +222,22 @@ func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
 		return false
 	}
 
+	isGlobal := AuditEvents[id].IsGlobalEvent
+	if isGlobal {
+		if _, ok := al.enabledEvents[id]; !ok {
+			return false
+		}
+	}
+
 	logCtx := getLogCtx(ctx)
 	if logCtx.DbLogConfig != nil && logCtx.DbLogConfig.Audit != nil {
 		if !logCtx.DbLogConfig.Audit.Enabled {
 			return false
 		}
-		if _, ok := logCtx.DbLogConfig.Audit.EnabledEvents[id]; !ok {
-			return false
+		if !isGlobal {
+			if _, ok := logCtx.DbLogConfig.Audit.EnabledEvents[id]; !ok {
+				return false
+			}
 		}
 		if !shouldLogAuditEventForUserAndRole(&logCtx) {
 			return false

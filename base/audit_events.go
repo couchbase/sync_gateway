@@ -1165,26 +1165,34 @@ func buildAllAuditIDList(e events) (ids []uint) {
 	return ids
 }
 
-// DefaultAuditEventIDs is a list of audit event IDs that are enabled by default.
-var DefaultAuditEventIDs = buildDefaultAuditIDList(AuditEvents)
+// DefaultDbAuditEventIDs is a list of audit event IDs that are enabled by default for the db config.
+var DefaultDbAuditEventIDs = buildDefaultAuditIDList(AuditEvents, false)
 
-func buildDefaultAuditIDList(e events) (ids []uint) {
+// DefaultGlobalAuditEventIDs is a list of audit event IDs that are enabled by default for the bootstrap config.
+var DefaultGlobalAuditEventIDs = buildDefaultAuditIDList(AuditEvents, true)
+
+func buildDefaultAuditIDList(e events, globalEvents bool) (ids []uint) {
+	ids = make([]uint, 0)
 	for k, v := range e {
-		if v.EnabledByDefault {
+		if v.EnabledByDefault && (globalEvents == v.IsGlobalEvent) {
 			ids = append(ids, uint(k))
 		}
 	}
 	return ids
 }
 
-// NonFilterableEvents is a map of audit events that are not permitted to be filtered.
-var NonFilterableEvents = buildNonFilterableEvents(AuditEvents)
+// NonFilterableAuditEventsForDb is a map of db-scoped audit events and whether they are filterable.
+var NonFilterableAuditEventsForDb map[AuditID]struct{} = nonFilterableAuditEventsForScope(AuditEvents, false)
 
-func buildNonFilterableEvents(e events) events {
-	nonFilterable := make(events)
+// NonFilterableGlobalEvents is a map of global audit events and whether they are filterable.
+var NonFilterableAuditEventsForGlobal map[AuditID]struct{} = nonFilterableAuditEventsForScope(AuditEvents, true)
+
+// nonFilterableAuditEventsForScope returns a map of audit events that are not allowed to be disabled for the given scope.
+func nonFilterableAuditEventsForScope(e events, scopeGlobal bool) map[AuditID]struct{} {
+	nonFilterable := make(map[AuditID]struct{})
 	for k, v := range e {
-		if !v.FilteringPermitted {
-			nonFilterable[k] = v
+		if scopeGlobal == v.IsGlobalEvent && !v.FilteringPermitted {
+			nonFilterable[k] = struct{}{}
 		}
 	}
 	return nonFilterable

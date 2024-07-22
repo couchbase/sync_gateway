@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/maps"
 )
@@ -97,4 +98,72 @@ func generateCSVModuleDescriptor(e events) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+func TestNonFilterableAuditEventsForScope(t *testing.T) {
+	tests := []struct {
+		name                    string
+		events                  events
+		wantGlobalNonFilterable map[AuditID]struct{}
+		wantDbNonFilterable     map[AuditID]struct{}
+	}{
+		{
+			name: "filterable events (db-scoped)",
+			events: events{
+				1: {Name: "event1", FilteringPermitted: true},
+				2: {Name: "event2", FilteringPermitted: true},
+			},
+			wantGlobalNonFilterable: map[AuditID]struct{}{},
+			wantDbNonFilterable:     map[AuditID]struct{}{},
+		},
+		{
+			name: "non-filterable events (db-scoped)",
+			events: events{
+				1: {Name: "event1", FilteringPermitted: false},
+				2: {Name: "event2", FilteringPermitted: false},
+			},
+			wantGlobalNonFilterable: map[AuditID]struct{}{},
+			wantDbNonFilterable:     map[AuditID]struct{}{1: {}, 2: {}},
+		},
+		{
+			name: "non-filterable events one global",
+			events: events{
+				1: {Name: "event1", FilteringPermitted: false, IsGlobalEvent: true},
+				2: {Name: "event2", FilteringPermitted: false},
+			},
+			wantGlobalNonFilterable: map[AuditID]struct{}{1: {}},
+			wantDbNonFilterable:     map[AuditID]struct{}{2: {}},
+		},
+		{
+			name: "two filterable events one global",
+			events: events{
+				1: {Name: "event1", FilteringPermitted: true, IsGlobalEvent: true},
+				2: {Name: "event2", FilteringPermitted: true},
+			},
+			wantGlobalNonFilterable: map[AuditID]struct{}{},
+			wantDbNonFilterable:     map[AuditID]struct{}{},
+		},
+		{
+			name: "two filterable global events",
+			events: events{
+				1: {Name: "event1", FilteringPermitted: true, IsGlobalEvent: true},
+				2: {Name: "event2", FilteringPermitted: true, IsGlobalEvent: true},
+			},
+			wantGlobalNonFilterable: map[AuditID]struct{}{},
+			wantDbNonFilterable:     map[AuditID]struct{}{},
+		},
+	}
+	for _, tt := range tests {
+		for _, global := range []bool{true, false} {
+			testName := tt.name + "-global=" + strconv.FormatBool(global)
+			t.Run(testName, func(t *testing.T) {
+				nonFilterable := nonFilterableAuditEventsForScope(tt.events, global)
+				if global {
+					assert.Equal(t, tt.wantGlobalNonFilterable, nonFilterable)
+				} else {
+					assert.Equal(t, tt.wantDbNonFilterable, nonFilterable)
+				}
+			})
+		}
+	}
 }
