@@ -1937,7 +1937,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	var unusedSequences []uint64                                 // Must be scoped outside callback, used over multiple iterations
 	var oldBodyJSON string                                       // Stores previous revision body for use by DocumentChangeEvent
 	var createNewRevIDSkipped bool
-	var previousAttachments map[string]string
+	var previousAttachments map[string][]string
 
 	// Update the document
 	inConflict := false
@@ -2175,7 +2175,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	// Now that the document has successfully been stored, we can make other db changes:
 	base.DebugfCtx(ctx, base.KeyCRUD, "Stored doc %q / %q as #%v", base.UD(docid), newRevID, doc.Sequence)
 
-	leafAttachments := make(map[string]string)
+	leafAttachments := make(map[string][]string)
 	if !skipObsoleteAttachmentsRemoval {
 		leafAttachments, err = getAttachmentIDsForLeafRevisions(ctx, db, doc, newRevID)
 		if err != nil {
@@ -2194,13 +2194,15 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				} else {
 					obsoleteAttachments = append(obsoleteAttachments, previousAttachmentID)
 					if !isImport {
-						_, exists := doc.SyncData.Attachments[previousAttachmentName]
-						if !exists {
-							base.Audit(ctx, base.AuditIDAttachmentDelete, base.AuditFields{
-								base.AuditFieldDocID:        doc.ID,
-								base.AuditFieldDocVersion:   newRevID,
-								base.AuditFieldAttachmentID: previousAttachmentName,
-							})
+						for _, previousAttachmentName := range previousAttachmentName {
+							_, exists := doc.SyncData.Attachments[previousAttachmentName]
+							if !exists {
+								base.Audit(ctx, base.AuditIDAttachmentDelete, base.AuditFields{
+									base.AuditFieldDocID:        doc.ID,
+									base.AuditFieldDocVersion:   newRevID,
+									base.AuditFieldAttachmentID: previousAttachmentName,
+								})
+							}
 						}
 					}
 				}
@@ -2220,16 +2222,16 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 }
 
 // getAttachmentIDsForLeafRevisions returns a map of attachment docids with values of attachment names.
-func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectionWithUser, doc *Document, newRevID string) (map[string]string, error) {
-	leafAttachments := make(map[string]string)
+func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectionWithUser, doc *Document, newRevID string) (map[string][]string, error) {
+	leafAttachments := make(map[string][]string)
 
-	currentAttachments, err := retrieveV2AttachmentKeys(doc.ID, doc.Attachments)
+	currentAttachments, err := retrieveV2Attachments(doc.ID, doc.Attachments)
 	if err != nil {
 		return nil, err
 	}
 
-	for docid, name := range currentAttachments {
-		leafAttachments[docid] = name
+	for docid, names := range currentAttachments {
+		leafAttachments[docid] = names
 	}
 
 	// Grab leaf revisions that have attachments and aren't the currently being added rev
@@ -2247,13 +2249,13 @@ func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectio
 			return nil, err
 		}
 
-		attachmentKeys, err := retrieveV2AttachmentKeys(doc.ID, attachmentMeta)
+		attachmentKeys, err := retrieveV2Attachments(doc.ID, attachmentMeta)
 		if err != nil {
 			return nil, err
 		}
 
-		for attachmentID, attachmentName := range attachmentKeys {
-			leafAttachments[attachmentID] = attachmentName
+		for attachmentID, attachmentNames := range attachmentKeys {
+			leafAttachments[attachmentID] = attachmentNames
 		}
 
 	}

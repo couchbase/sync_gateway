@@ -40,11 +40,10 @@ var (
 // updatedAttachment represents an attachment that has been modified by a create or update operation.
 type updatedAttachment struct {
 	body    []byte // The attachment data in bytes
-	updated bool   // If this attachment was an update of an existing attachments
-	created bool   // If this attachment was new on the body
+	created bool   // If true, this attachment is new on the document, otherwise it is an update.
 }
 
-// updatedAttachments holds the attachment key and contents of the attachment.
+// updatedAttachments holds the user facing attachment name and raw contents
 type updatedAttachments map[string]updatedAttachment
 
 // A map of keys -> DocAttachments.
@@ -97,7 +96,6 @@ func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc 
 			newAttachments[key] = updatedAttachment{
 				body:    attachment,
 				created: !updated,
-				updated: updated,
 			}
 
 			newMeta := map[string]interface{}{
@@ -147,10 +145,10 @@ func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc 
 	return newAttachments, nil
 }
 
-// retrieveV2AttachmentIDs returns the list of V2 attachment keys from the attachment metadata that can be used for
+// retrieveV2Attachments returns a map of attachment digests to attachment names. This attachment metadata that can be used for
 // identifying obsolete attachments and triggering subsequent removal of those attachments to reclaim the storage.
-func retrieveV2AttachmentKeys(docID string, docAttachments AttachmentsMeta) (attachments map[string]string, err error) {
-	attachments = make(map[string]string)
+func retrieveV2Attachments(docID string, docAttachments AttachmentsMeta) (map[string][]string, error) {
+	attachments := make(map[string][]string)
 	for name, value := range docAttachments {
 		meta, ok := value.(map[string]interface{})
 		if !ok {
@@ -165,7 +163,7 @@ func retrieveV2AttachmentKeys(docID string, docAttachments AttachmentsMeta) (att
 			continue
 		}
 		key := MakeAttachmentKey(version, docID, digest)
-		attachments[key] = name
+		attachments[key] = append(attachments[key], name)
 	}
 	return attachments, nil
 }
