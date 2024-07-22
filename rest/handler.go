@@ -342,7 +342,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			if err != nil {
 				base.WarnfCtx(h.ctx(), "Error unmarshalling effective user header fields: %v", err)
 			} else {
-				h.rqCtx = base.EffectiveUserIDLogCtx(h.rqCtx, fields.Domain, fields.UserID)
+				h.rqCtx = base.EffectiveUserIDLogCtx(h.ctx(), fields.Domain, fields.UserID)
 			}
 		}
 	}
@@ -564,14 +564,16 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		if statusCode != http.StatusOK {
 			base.InfofCtx(h.ctx(), base.KeyAuth, "%s: User %s failed to auth as an admin statusCode: %d", h.formatSerialNumber(), base.UD(username), statusCode)
 			if statusCode == http.StatusUnauthorized {
+				base.Audit(h.ctx(), base.AuditIDAdminUserAuthenticationFailed, base.AuditFields{base.AuditFieldUserName: username})
 				return ErrInvalidLogin
 			}
+			base.Audit(h.ctx(), base.AuditIDAdminUserAuthorizationFailed, base.AuditFields{base.AuditFieldUserName: username})
 			return base.HTTPErrorf(statusCode, "")
 		}
-
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
 		h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainCBServer)
+		base.Audit(h.ctx(), base.AuditIDAdminUserAuthenticated, base.AuditFields{})
 
 		base.DebugfCtx(h.ctx(), base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
 	} else {
@@ -971,6 +973,7 @@ func (h *handler) checkAdminAuthenticationOnly() (bool, error) {
 	}
 
 	if statusCode == http.StatusUnauthorized {
+		base.Audit(h.ctx(), base.AuditIDAdminUserAuthenticationFailed, base.AuditFields{base.AuditFieldUserName: username})
 		return false, nil
 	}
 

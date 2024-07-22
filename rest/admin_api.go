@@ -1994,6 +1994,7 @@ func (h *handler) getReplications() error {
 		replication.ReplicationConfig = *replication.Redacted(h.ctx())
 	}
 
+	base.Audit(h.ctx(), base.AuditIDISGRAllRead, nil)
 	h.writeJSON(replications)
 	return nil
 }
@@ -2063,7 +2064,7 @@ func (h *handler) getReplicationsStatus() error {
 	if err != nil {
 		return err
 	}
-	base.Audit(h.ctx(), base.AuditIDISGRAllRead, nil)
+	base.Audit(h.ctx(), base.AuditIDISGRAllStatus, nil)
 	h.writeJSON(replicationsStatus)
 	return nil
 }

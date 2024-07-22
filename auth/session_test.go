@@ -38,7 +38,7 @@ func TestCreateSession(t *testing.T) {
 	require.NoError(t, auth.Save(user))
 
 	// Create session with a username and valid TTL of 2 hours.
-	session, err := auth.CreateSession(user, 2*time.Hour)
+	session, err := auth.CreateSession(ctx, user, 2*time.Hour)
 	require.NoError(t, err)
 
 	assert.Equal(t, username, session.Username)
@@ -57,13 +57,13 @@ func TestCreateSession(t *testing.T) {
 	assert.NotEmpty(t, session.Expiration)
 
 	// Session must not be created with zero TTL; it's illegal.
-	session, err = auth.CreateSession(user, time.Duration(0))
+	session, err = auth.CreateSession(ctx, user, time.Duration(0))
 	assert.Nil(t, session)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), invalidSessionTTLError)
 
 	// Session must not be created with negative TTL; it's illegal.
-	session, err = auth.CreateSession(user, time.Duration(-1))
+	session, err = auth.CreateSession(ctx, user, time.Duration(-1))
 	assert.Nil(t, session)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), invalidSessionTTLError)
@@ -89,7 +89,7 @@ func TestDeleteSession(t *testing.T) {
 	}
 	const noSessionExpiry = 0
 	assert.NoError(t, dataStore.Set(auth.DocIDForSession(mockSession.ID), noSessionExpiry, nil, mockSession))
-	assert.NoError(t, auth.DeleteSession(mockSession.ID))
+	assert.NoError(t, auth.DeleteSession(ctx, mockSession.ID, ""))
 
 	// Just to verify the session has been deleted gracefully.
 	session, err := auth.GetSession(mockSession.ID)
@@ -183,7 +183,7 @@ func TestDeleteSessionForCookie(t *testing.T) {
 	}
 
 	request.AddCookie(cookie)
-	newCookie := auth.DeleteSessionForCookie(request)
+	newCookie := auth.DeleteSessionForCookie(ctx, request)
 
 	assert.NotEmpty(t, newCookie.Name)
 	assert.Empty(t, newCookie.Value)
@@ -199,7 +199,7 @@ func TestDeleteSessionForCookie(t *testing.T) {
 	}
 
 	request.AddCookie(cookie)
-	newCookie = auth.DeleteSessionForCookie(request)
+	newCookie = auth.DeleteSessionForCookie(ctx, request)
 	assert.Nil(t, newCookie)
 }
 
@@ -241,7 +241,7 @@ func TestCreateSessionChangePassword(t *testing.T) {
 			require.NoError(t, auth.Save(user))
 
 			// Create session with a username and valid TTL of 2 hours.
-			session, err := auth.CreateSession(user, 2*time.Hour)
+			session, err := auth.CreateSession(ctx, user, 2*time.Hour)
 			require.NoError(t, err)
 
 			session, err = auth.GetSession(session.ID)
@@ -297,7 +297,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.NotNil(t, user)
 
 	// Create session with a username and valid TTL of 2 hours.
-	session, err := auth.CreateSession(user, 2*time.Hour)
+	session, err := auth.CreateSession(ctx, user, 2*time.Hour)
 	require.NoError(t, err)
 
 	session, err = auth.GetSession(session.ID)
