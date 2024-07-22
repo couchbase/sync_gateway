@@ -211,7 +211,7 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 	}
 
 	if *config.FileLoggerConfig.Enabled {
-		Audit(ctx, AuditIDAuditEnabled, AuditFields{"audit_scope": "global"})
+		Audit(ctx, AuditIDAuditEnabled, AuditFields{AuditFieldAuditScope: "global", AuditFieldEnabledEvents: config.EnabledEvents})
 	}
 
 	return logger, nil

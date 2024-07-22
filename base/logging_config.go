@@ -233,7 +233,6 @@ func EnableAuditLogger(ctx context.Context, enabled bool) {
 			Audit(ctx, AuditIDAuditEnabled, AuditFields{AuditFieldAuditScope: "global"})
 		}
 	}
-
 }
 
 // === Used by tests only ===

@@ -1844,7 +1844,7 @@ Database:
               type: boolean
               default: false
             enabled_events:
-              description: List of enabled audit events
+              description: List of enabled audit events for this database.
               type: array
               items:
                 type: number
@@ -2248,7 +2248,7 @@ Startup-config:
         stats:
           $ref: '#/File-logging-config'
         audit:
-          $ref: '#/File-logging-config'
+          $ref: '#/Audit-logging-config'
     auth:
       type: object
       properties:
@@ -2432,11 +2432,18 @@ Audit-logging-config:
       description: The path to write audit log files to
       type: string
       readOnly: true
+    enabled_events:
+      description: List of enabled global audit events.
+      type: array
+      items:
+        type: number
+      example: [1234, 5678]
+      readOnly: true
     collation_buffer_size:
       description: The size of the log collation buffer
       type: integer
       readOnly: true
-  title: File-logging-config
+  title: Audit-logging-config
 Log-rotation-config-readonly:
   type: object
   properties:
