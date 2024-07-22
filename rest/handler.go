@@ -824,14 +824,16 @@ func (h *handler) logStatus(status int, message string) {
 }
 
 func needRolesForAudit(db *db.DatabaseContext, domain base.UserIDDomain) bool {
+	// early returns when auditing is disabled
 	if db == nil ||
 		db.Options.LoggingConfig == nil ||
 		db.Options.LoggingConfig.Audit == nil ||
-		len(db.Options.LoggingConfig.Audit.DisabledRoles) == 0 {
+		!db.Options.LoggingConfig.Audit.Enabled {
 		return false
 	}
 
 	// if we have any matching domains then we need the given roles
+	// this loop should be ~free for len(0)
 	for principal := range db.Options.LoggingConfig.Audit.DisabledRoles {
 		if principal.Domain == string(domain) {
 			return true
