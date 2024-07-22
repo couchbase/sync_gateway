@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -732,144 +733,141 @@ func TestAuditAttachmentEvents(t *testing.T) {
 	defer rt.Close()
 
 	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
-	const noAttachmentDoc = "noAttachmentDoc"
-	noAttachmentDocVersion := rt.CreateTestDoc(noAttachmentDoc)
-
-	const noInlineAttachmentDoc = "noInlineAttachmentDoc"
-	noInlineAttachmentDocVersion := rt.CreateTestDoc(noInlineAttachmentDoc)
-
-	const hasAttachmentDoc = "hasAttachmentDoc"
-	hasAttachmentDocVersion := rt.CreateTestDoc(hasAttachmentDoc)
-	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/hasAttachmentDoc/attachment1?rev="+hasAttachmentDocVersion.RevID, "contentdoc2")
-	hasAttachmentDocVersion, _ = rt.GetDoc(hasAttachmentDoc)
-
-	const willUpdateAttachmentDoc = "willUpdateAttachmentDoc"
-	willUpdateAttachmentDocVersion := rt.CreateTestDoc(willUpdateAttachmentDoc)
-	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/willUpdateAttachmentDoc/attachment1?rev="+willUpdateAttachmentDocVersion.RevID, "contentdoc3")
-	willUpdateAttachmentDocVersion, _ = rt.GetDoc(willUpdateAttachmentDoc)
-
-	const willUpdateInlineAttachmentDoc = "willUpdateInlineAttachmentDoc"
-	willUpdateInlineAttachmentDocVersion := rt.CreateTestDoc(willUpdateInlineAttachmentDoc)
-	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/willUpdateInlineAttachmentDoc/attachment1?rev="+willUpdateInlineAttachmentDocVersion.RevID, "contentdoc4")
-	willUpdateInlineAttachmentDocVersion, _ = rt.GetDoc(willUpdateInlineAttachmentDoc)
-
-	const willDeleteAttachmentDoc = "willDeleteAttachmentDoc"
-	willDeleteAttachmentDocVersion := rt.CreateTestDoc(willDeleteAttachmentDoc)
-	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/willDeleteAttachmentDoc/attachment1?rev="+willDeleteAttachmentDocVersion.RevID, "contentdoc5")
-	willDeleteAttachmentDocVersion, _ = rt.GetDoc(willDeleteAttachmentDoc)
-
-	const willDeleteInlineAttachmentDoc = "willDeleteInlineAttachmentDoc"
-	willDeleteInlineAttachmentDocVersion := rt.CreateTestDoc(willDeleteInlineAttachmentDoc)
-	rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/willDeleteInlineAttachmentDoc/attachment1?rev="+willDeleteInlineAttachmentDocVersion.RevID, "contentdoc5")
-	willDeleteInlineAttachmentDocVersion, _ = rt.GetDoc(willDeleteInlineAttachmentDoc)
-
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal([]byte(`{"_attachments":{"attachment1":{"data": "foo"}}}`), &body))
 	testCases := []struct {
 		name                  string
-		method                string
-		path                  string
-		docID                 string
-		requestBody           string
-		status                int
+		setupCode             func(t testing.TB, docID string) DocVersion
+		auditableCode         func(t testing.TB, docID string, docVersion DocVersion)
 		attachmentCreateCount int
 		attachmentReadCount   int
 		attachmentUpdateCount int
 		attachmentDeleteCount int
 	}{
 		{
-			name:                  "add attachment",
-			method:                http.MethodPut,
-			path:                  "/{{.keyspace}}/noAttachmentDoc/attachment1?rev=" + noAttachmentDocVersion.RevID,
-			docID:                 noAttachmentDoc,
-			status:                http.StatusCreated,
-			requestBody:           "content",
+			name: "add attachment",
+			setupCode: func(t testing.TB, docID string) DocVersion {
+				return rt.CreateTestDoc(docID)
+			},
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+docVersion.RevID, "content"), http.StatusCreated)
+			},
 			attachmentCreateCount: 1,
 		},
 		{
-			name:                  "add inline attachment",
-			method:                http.MethodPut,
-			path:                  "/{{.keyspace}}/noInlineAttachmentDoc?rev=" + noInlineAttachmentDocVersion.RevID,
-			docID:                 noInlineAttachmentDoc,
-			status:                http.StatusCreated,
-			requestBody:           `{"_attachments":{"attachment1":{"data": "YQ=="}}}`,
+			name: "add inline attachment",
+			setupCode: func(t testing.TB, docID string) DocVersion {
+				return rt.CreateTestDoc(docID)
+			},
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, `{"_attachments":{"attachment1":{"data": "YQ=="}}}`), http.StatusCreated)
+			},
 			attachmentCreateCount: 1,
 		},
 		{
-			name:                "get attachment with rev",
-			method:              http.MethodGet,
-			path:                "/{{.keyspace}}/hasAttachmentDoc/attachment1?rev=" + hasAttachmentDocVersion.RevID,
-			docID:               hasAttachmentDoc,
-			status:              http.StatusOK,
+			name: "get attachment with rev",
+			setupCode: func(t testing.TB, docID string) DocVersion {
+				initialDocVersion := rt.CreateTestDoc(docID)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevID, "contentdoc2"), http.StatusCreated)
+				docVersion, _ := rt.GetDoc(docID)
+				return docVersion
+			},
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"/attachment1?rev="+docVersion.RevID, ""), http.StatusOK)
+			},
 			attachmentReadCount: 1,
 		},
 		{
-			name:   "_bulk_get attachment with rev",
-			method: http.MethodPost,
-			path:   "/{{.keyspace}}/_bulk_get?attachments=true",
-			requestBody: string(base.MustJSONMarshal(t, db.Body{
-				"docs": []db.Body{
-					{"id": hasAttachmentDoc, "rev": hasAttachmentDocVersion.RevID},
-				},
-			})),
-			docID:               hasAttachmentDoc,
-			status:              http.StatusOK,
+			name: "bulk_get attachment with rev",
+			setupCode: func(t testing.TB, docID string) DocVersion {
+				initialDocVersion := rt.CreateTestDoc(docID)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevID, "contentdoc2"), http.StatusCreated)
+				docVersion, _ := rt.GetDoc(docID)
+				return docVersion
+			},
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				body := string(base.MustJSONMarshal(t, db.Body{
+					"docs": []db.Body{
+						{"id": docID, "rev": docVersion.RevID},
+					},
+				}))
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_get?attachments=true", body), http.StatusOK)
+			},
+
 			attachmentReadCount: 1,
 		},
 		{
-			name:   "_all_docs attachment with rev",
-			method: http.MethodGet,
-			path:   "/{{.keyspace}}/_all_docs?include_docs=true",
-			docID:  hasAttachmentDoc,
-			status: http.StatusOK,
+			name: "all_docs attachment with rev",
+			setupCode: func(t testing.TB, docID string) DocVersion {
+				return rt.CreateTestDoc(docID)
+			},
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_all_docs?include_docs=true", ""), http.StatusOK)
+			},
 		},
 		{
-			name:                  "update attachment",
-			method:                http.MethodPut,
-			path:                  "/{{.keyspace}}/willUpdateAttachmentDoc/attachment1?rev=" + hasAttachmentDocVersion.RevID,
-			docID:                 willUpdateAttachmentDoc,
-			status:                http.StatusCreated,
-			requestBody:           "content-update",
+			name: "update attachment",
+			setupCode: func(t testing.TB, docID string) DocVersion {
+				initialDocVersion := rt.CreateTestDoc(docID)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevID, "contentdoc2"), http.StatusCreated)
+				docVersion, _ := rt.GetDoc(docID)
+				return docVersion
+			},
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+docVersion.RevID, "content-update"), http.StatusCreated)
+			},
 			attachmentUpdateCount: 1,
 		},
 		{
-			name:                  "update inline attachment",
-			method:                http.MethodPut,
-			path:                  "/{{.keyspace}}/willUpdateInlineAttachmentDoc?rev=" + willUpdateInlineAttachmentDocVersion.RevID,
-			docID:                 willUpdateInlineAttachmentDoc,
-			status:                http.StatusCreated,
-			requestBody:           `{"_attachments":{"attachment1":{"data": "YQ=="}}}`,
+			name: "update inline attachment",
+			setupCode: func(t testing.TB, docID string) DocVersion {
+				initialDocVersion := rt.CreateTestDoc(docID)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevID, "contentdoc2"), http.StatusCreated)
+				docVersion, _ := rt.GetDoc(docID)
+				return docVersion
+			},
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, `{"_attachments":{"attachment1":{"data": "YQ=="}}}`), http.StatusCreated)
+			},
 			attachmentUpdateCount: 1,
 		},
 		{
-			name:                  "delete attachment",
-			method:                http.MethodDelete,
-			path:                  "/{{.keyspace}}/willDeleteAttachmentDoc/attachment1?rev=" + willDeleteAttachmentDocVersion.RevID,
-			docID:                 willDeleteAttachmentDoc,
-			status:                http.StatusOK,
+			name: "delete attachment",
+			setupCode: func(t testing.TB, docID string) DocVersion {
+				initialDocVersion := rt.CreateTestDoc(docID)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevID, "contentdoc2"), http.StatusCreated)
+				docVersion, _ := rt.GetDoc(docID)
+				return docVersion
+			},
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/"+docID+"/attachment1?rev="+docVersion.RevID, ""), http.StatusOK)
+			},
 			attachmentDeleteCount: 1,
 		},
 		{
-			name:                  "delete inline attachment",
-			method:                http.MethodPut,
-			path:                  "/{{.keyspace}}/willDeleteInlineAttachmentDoc?rev=" + willDeleteInlineAttachmentDocVersion.RevID,
-			requestBody:           `{"foo": "bar", "_attachments":{}}`,
-			docID:                 willDeleteInlineAttachmentDoc,
-			status:                http.StatusCreated,
+			name: "delete inline attachment",
+			setupCode: func(t testing.TB, docID string) DocVersion {
+				initialDocVersion := rt.CreateTestDoc(docID)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"/attachment1?rev="+initialDocVersion.RevID, "contentdoc2"), http.StatusCreated)
+				docVersion, _ := rt.GetDoc(docID)
+				return docVersion
+			},
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, `{"foo": "bar", "_attachments":{}}`), http.StatusCreated)
+			},
 			attachmentDeleteCount: 1,
 		},
 	}
 	for _, testCase := range testCases {
 		rt.Run(testCase.name, func(t *testing.T) {
+			docID := strings.ReplaceAll(testCase.name, " ", "_")
+			docVersion := testCase.setupCode(t, docID)
 			output := base.AuditLogContents(t, func(t testing.TB) {
-				resp := rt.SendAdminRequest(testCase.method, testCase.path, testCase.requestBody)
-				RequireStatus(t, resp, testCase.status)
+				testCase.auditableCode(t, docID, docVersion)
 			})
-			postAttachmentVersion, _ := rt.GetDoc(testCase.docID)
-			requireAttachmentEvents(rt, base.AuditIDAttachmentCreate, output, testCase.docID, postAttachmentVersion.RevID, testCase.attachmentCreateCount)
-			requireAttachmentEvents(rt, base.AuditIDAttachmentRead, output, testCase.docID, postAttachmentVersion.RevID, testCase.attachmentReadCount)
-			requireAttachmentEvents(rt, base.AuditIDAttachmentUpdate, output, testCase.docID, postAttachmentVersion.RevID, testCase.attachmentUpdateCount)
-			requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, testCase.docID, postAttachmentVersion.RevID, testCase.attachmentDeleteCount)
+			postAttachmentVersion, _ := rt.GetDoc(docID)
+			requireAttachmentEvents(rt, base.AuditIDAttachmentCreate, output, docID, postAttachmentVersion.RevID, testCase.attachmentCreateCount)
+			requireAttachmentEvents(rt, base.AuditIDAttachmentRead, output, docID, postAttachmentVersion.RevID, testCase.attachmentReadCount)
+			requireAttachmentEvents(rt, base.AuditIDAttachmentUpdate, output, docID, postAttachmentVersion.RevID, testCase.attachmentUpdateCount)
+			requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, postAttachmentVersion.RevID, testCase.attachmentDeleteCount)
 		})
 	}
 }
