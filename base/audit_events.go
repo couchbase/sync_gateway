@@ -1100,7 +1100,7 @@ func init() {
 
 func (e events) expandMandatoryFieldGroups() {
 	for _, descriptor := range e {
-		descriptor.MandatoryFields.expandMandatoryFieldGroups(descriptor.mandatoryFieldGroups)
+		descriptor.expandMandatoryFieldGroups(descriptor.mandatoryFieldGroups)
 	}
 }
 

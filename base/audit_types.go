@@ -27,7 +27,7 @@ func ParseAuditID(s string) (AuditID, error) {
 }
 
 // events is a map of audit event IDs to event descriptors.
-type events map[AuditID]EventDescriptor
+type events map[AuditID]*EventDescriptor
 
 // EventDescriptor is an audit event. The fields closely (but not exactly) follows kv_engine's auditd descriptor implementation.
 type EventDescriptor struct {
@@ -111,22 +111,22 @@ type eventType string
 type AuditFields map[string]any
 
 // expandMandatoryFields adds fields that must be present on events, of the types determined by eventFieldTypes.
-func (f AuditFields) expandMandatoryFieldGroups(groups []fieldGroup) {
-	if f == nil {
-		f = make(AuditFields)
+func (ed *EventDescriptor) expandMandatoryFieldGroups(groups []fieldGroup) {
+	if ed.MandatoryFields == nil {
+		ed.MandatoryFields = make(AuditFields)
 	}
 
 	// common global fields
 	fields := mandatoryFieldsByGroup[fieldGroupGlobal]
 	for k, v := range fields {
-		f[k] = v
+		ed.MandatoryFields[k] = v
 	}
 
 	// event-specific field groups
 	for _, group := range groups {
 		groupFields := mandatoryFieldsByGroup[group]
 		for k, v := range groupFields {
-			f[k] = v
+			ed.MandatoryFields[k] = v
 		}
 	}
 }
