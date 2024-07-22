@@ -80,7 +80,7 @@ func InitLogging(ctx context.Context, logFilePath string,
 		debugLogger = nil
 		traceLogger = nil
 		statsLogger = nil
-		auditLogger = &AuditLogger{}
+		auditLogger = nil
 
 		return nil
 	}
@@ -132,7 +132,7 @@ func InitLogging(ctx context.Context, logFilePath string,
 		return err
 	}
 
-	auditLogger, err = NewAuditLogger(ctx, audit, auditLogFilePath, auditMinage, &auditLogger.buffer, auditLogGlobalFields)
+	auditLogger, err = NewAuditLogger(ctx, audit, auditLogFilePath, auditMinage, auditLogGlobalFields)
 	if err != nil {
 		return err
 	}

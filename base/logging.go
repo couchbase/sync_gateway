@@ -88,7 +88,7 @@ var (
 	consoleLogger                                                              *ConsoleLogger
 	traceLogger, debugLogger, infoLogger, warnLogger, errorLogger, statsLogger *FileLogger
 
-	auditLogger = &AuditLogger{}
+	auditLogger *AuditLogger
 
 	// envColorCapable evaluated only once to prevent unnecessary
 	// overhead of checking os.Getenv on each colorEnabled() invocation

@@ -117,7 +117,7 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 	if IsDevMode() {
 		// NOTE: This check is expensive and indicates a dev-time mistake that needs addressing.
 		// Don't bother in production code, but also delay expandFields until we know we will log.
-		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData)
+		fields = expandFields(id, ctx, auditLogger.globalFields(), additionalData)
 		id.MustValidateFields(fields)
 	}
 
@@ -127,7 +127,7 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 
 	// delayed expansion until after enabled checks in non-dev mode
 	if fields == nil {
-		fields = expandFields(id, ctx, auditLogger.globalFields, additionalData)
+		fields = expandFields(id, ctx, auditLogger.globalFields(), additionalData)
 	}
 	fieldsJSON, err := JSONMarshalCanonical(fields)
 	if err != nil {
@@ -139,6 +139,9 @@ func Audit(ctx context.Context, id AuditID, additionalData AuditFields) {
 
 // IsAuditEnabled checks if auditing is enabled for the SG node
 func IsAuditEnabled() bool {
+	if auditLogger == nil {
+		return false
+	}
 	return auditLogger.FileLogger.shouldLog(LevelNone)
 }
 
@@ -147,24 +150,30 @@ type AuditLogger struct {
 	FileLogger
 
 	// AuditLoggerConfig stores the initial config used to instantiate AuditLogger
-	config       AuditLoggerConfig
-	globalFields map[string]any
+	config        AuditLoggerConfig
+	_globalFields map[string]any
+}
+
+func (l *AuditLogger) globalFields() AuditFields {
+	if l == nil {
+		return nil
+	}
+	return l._globalFields
 }
 
 func (l *AuditLogger) getAuditLoggerConfig() *AuditLoggerConfig {
-	c := AuditLoggerConfig{}
-	if l != nil {
-		// Copy config struct to avoid mutating running config
-		c = l.config
+	if l == nil {
+		return nil
 	}
-
+	c := AuditLoggerConfig{}
+	// Copy config struct to avoid mutating running config
+	c = l.config
 	c.FileLoggerConfig = *l.getFileLoggerConfig()
-
 	return &c
 }
 
 // NewAuditLogger returns a new AuditLogger from a config.
-func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath string, minAge int, buffer *strings.Builder, globalFields map[string]any) (*AuditLogger, error) {
+func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath string, minAge int, globalFields map[string]any) (*AuditLogger, error) {
 	if config == nil {
 		config = &AuditLoggerConfig{}
 	}
@@ -173,15 +182,15 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 		config.FileLoggerConfig.Enabled = BoolPtr(defaultAuditEnabled)
 	}
 
-	fl, err := NewFileLogger(ctx, &config.FileLoggerConfig, LevelNone, auditLogName, logFilePath, minAge, buffer)
+	fl, err := NewFileLogger(ctx, &config.FileLoggerConfig, LevelNone, auditLogName, logFilePath, minAge, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	logger := &AuditLogger{
-		FileLogger:   *fl,
-		config:       *config,
-		globalFields: globalFields,
+		FileLogger:    *fl,
+		config:        *config,
+		_globalFields: globalFields,
 	}
 
 	if *config.FileLoggerConfig.Enabled {
@@ -192,7 +201,7 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 }
 
 func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
-	if !auditLogger.FileLogger.shouldLog(LevelNone) {
+	if al == nil || !al.FileLogger.shouldLog(LevelNone) {
 		return false
 	}
 
