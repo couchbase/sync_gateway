@@ -701,6 +701,7 @@ type HandleDbAuditConfigBody struct {
 	Enabled       *bool                        `json:"enabled,omitempty"`
 	Events        map[string]any               `json:"events,omitempty"`
 	DisabledUsers []base.AuditLoggingPrincipal `json:"disabled_users,omitempty"`
+	DisabledRoles []base.AuditLoggingPrincipal `json:"disabled_roles,omitempty"`
 }
 
 type HandleDbAuditConfigBodyVerboseEvent struct {
@@ -721,6 +722,7 @@ func (h *handler) handleGetDbAuditConfig() error {
 		etagVersion          string
 		dbAuditEnabled       bool
 		dbAuditDisabledUsers []base.AuditLoggingPrincipal
+		dbAuditDisabledRoles []base.AuditLoggingPrincipal
 		enabledEvents        = make(map[base.AuditID]struct{})
 	)
 
@@ -748,6 +750,7 @@ func (h *handler) handleGetDbAuditConfig() error {
 				enabledEvents[base.AuditID(event)] = struct{}{}
 			}
 			dbAuditDisabledUsers = runtimeConfig.Logging.Audit.DisabledUsers
+			dbAuditDisabledRoles = runtimeConfig.Logging.Audit.DisabledRoles
 		}
 	} else {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "audit config not available in non-persistent mode")
@@ -778,6 +781,7 @@ func (h *handler) handleGetDbAuditConfig() error {
 		Enabled:       &dbAuditEnabled,
 		Events:        events,
 		DisabledUsers: dbAuditDisabledUsers,
+		DisabledRoles: dbAuditDisabledRoles,
 	}
 
 	h.setEtag(etagVersion)
@@ -861,6 +865,7 @@ func mutateConfigFromDbAuditConfigBody(isReplace bool, existingAuditConfig *DbAu
 	if isReplace {
 		existingAuditConfig.Enabled = requestAuditConfig.Enabled
 		existingAuditConfig.DisabledUsers = requestAuditConfig.DisabledUsers
+		existingAuditConfig.DisabledRoles = requestAuditConfig.DisabledRoles
 
 		// we don't need to do anything to "disable" events, other than not enable them
 		existingAuditConfig.EnabledEvents = func() []uint {
@@ -878,6 +883,9 @@ func mutateConfigFromDbAuditConfigBody(isReplace bool, existingAuditConfig *DbAu
 		}
 		if requestAuditConfig.DisabledUsers != nil {
 			existingAuditConfig.DisabledUsers = requestAuditConfig.DisabledUsers
+		}
+		if requestAuditConfig.DisabledRoles != nil {
+			existingAuditConfig.DisabledRoles = requestAuditConfig.DisabledRoles
 		}
 
 		for i, event := range existingAuditConfig.EnabledEvents {

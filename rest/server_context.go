@@ -2012,26 +2012,35 @@ func CheckPermissions(ctx context.Context, httpClient *http.Client, managementEn
 	return http.StatusForbidden, nil, nil
 }
 
-func CheckRoles(ctx context.Context, httpClient *http.Client, managementEndpoints []string, username, password string, requestedRoles []RouteRole, bucketName string) (statusCode int, err error) {
+type WhoAmIResponse struct {
+	Roles []struct {
+		RoleName   string `json:"role"`
+		BucketName string `json:"bucket_name"`
+	} `json:"roles"`
+}
+
+func cbRBACWhoAmI(ctx context.Context, httpClient *http.Client, managementEndpoints []string, username, password string) (response *WhoAmIResponse, statusCode int, err error) {
 	statusCode, bodyResponse, err := doHTTPAuthRequest(ctx, httpClient, username, password, "GET", "/whoami", managementEndpoints, nil)
 	if err != nil {
-		return http.StatusInternalServerError, err
+		return nil, http.StatusInternalServerError, err
 	}
 
 	if statusCode != http.StatusOK {
-		return statusCode, nil
+		return nil, statusCode, nil
 	}
 
-	var whoAmIResults struct {
-		Roles []struct {
-			RoleName   string `json:"role"`
-			BucketName string `json:"bucket_name"`
-		} `json:"roles"`
-	}
-
-	err = base.JSONUnmarshal(bodyResponse, &whoAmIResults)
+	err = base.JSONUnmarshal(bodyResponse, &response)
 	if err != nil {
-		return http.StatusInternalServerError, err
+		return nil, http.StatusInternalServerError, err
+	}
+
+	return response, statusCode, nil
+}
+
+func CheckRoles(ctx context.Context, httpClient *http.Client, managementEndpoints []string, username, password string, requestedRoles []RouteRole, bucketName string) (statusCode int, err error) {
+	whoAmIResults, statusCode, err := cbRBACWhoAmI(ctx, httpClient, managementEndpoints, username, password)
+	if err != nil || statusCode != http.StatusOK {
+		return statusCode, err
 	}
 
 	for _, roleResult := range whoAmIResults.Roles {

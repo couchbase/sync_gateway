@@ -18,6 +18,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,13 +39,18 @@ func TestAuditLoggingFields(t *testing.T) {
 	base.InitializeMemoryLoggers()
 
 	const (
-		requestInfoHeaderName     = "extra-audit-logging-header"
-		requestUser               = "alice"
-		filteredPublicUsername    = "bob"
-		filteredAdminUsername     = "TestAuditLoggingFields-charlie"
-		filteredAdminPassword     = "password"
-		unauthorizedAdminUsername = "TestAuditLoggingFields-alice"
-		unauthorizedAdminPassword = "password"
+		requestInfoHeaderName       = "extra-audit-logging-header"
+		requestUser                 = "alice"
+		filteredPublicUsername      = "bob"
+		filteredPublicRoleUsername  = "charlie"
+		filteredPublicRoleName      = "observer"
+		filteredAdminUsername       = "TestAuditLoggingFields-charlie"
+		unfilteredAdminRoleUsername = "TestAuditLoggingFields-diana"
+		filteredAdminRoleUsername   = "TestAuditLoggingFields-bob"
+		unauthorizedAdminUsername   = "TestAuditLoggingFields-alice"
+	)
+	var (
+		filteredAdminRoleName = BucketFullAccessRole.RoleName
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -79,6 +85,10 @@ func TestAuditLoggingFields(t *testing.T) {
 				{Name: filteredPublicUsername, Domain: string(base.UserDomainSyncGateway)},
 				{Name: filteredAdminUsername, Domain: string(base.UserDomainCBServer)},
 			},
+			DisabledRoles: []base.AuditLoggingPrincipal{
+				{Name: filteredPublicRoleName, Domain: string(base.UserDomainSyncGateway)},
+				{Name: filteredAdminRoleName, Domain: string(base.UserDomainCBServer)},
+			},
 		},
 	}
 
@@ -87,14 +97,35 @@ func TestAuditLoggingFields(t *testing.T) {
 
 	rt.CreateUser(requestUser, nil)
 	rt.CreateUser(filteredPublicUsername, nil)
+	rt.CreateRole(filteredPublicRoleName, []string{channels.AllChannelWildcard})
+	rt.CreateUser(filteredPublicRoleUsername, nil, filteredPublicRoleName)
 	if runServerRBACTests {
 		eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 		require.NoError(t, err)
-		MakeUser(t, httpClient, eps[0], filteredAdminUsername, filteredAdminPassword, []string{fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName())})
+
+		MakeUser(t, httpClient, eps[0], filteredAdminUsername, RestTesterDefaultUserPassword, []string{
+			fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName()),
+		})
 		defer DeleteUser(t, httpClient, eps[0], filteredAdminUsername)
-		MakeUser(t, httpClient, eps[0], unauthorizedAdminUsername, unauthorizedAdminPassword, []string{})
+		MakeUser(t, httpClient, eps[0], filteredAdminRoleUsername, RestTesterDefaultUserPassword, []string{
+			fmt.Sprintf("%s[%s]", filteredAdminRoleName, rt.Bucket().GetName()),
+		})
+		defer DeleteUser(t, httpClient, eps[0], filteredAdminRoleUsername)
+		MakeUser(t, httpClient, eps[0], unauthorizedAdminUsername, RestTesterDefaultUserPassword, []string{})
 		defer DeleteUser(t, httpClient, eps[0], unauthorizedAdminUsername)
 
+		// if we have another bucket available, use it to test cross-bucket role filtering (to ensure it doesn't)
+		if base.GTestBucketPool.NumUsableBuckets() >= 2 {
+			differentBucket := base.GetTestBucket(t)
+			defer differentBucket.Close(base.TestCtx(t))
+			differentBucketName := differentBucket.GetName()
+
+			MakeUser(t, httpClient, eps[0], unfilteredAdminRoleUsername, RestTesterDefaultUserPassword, []string{
+				fmt.Sprintf("%s[%s]", filteredAdminRoleName, differentBucketName),
+				fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName()),
+			})
+			defer DeleteUser(t, httpClient, eps[0], unfilteredAdminRoleUsername)
+		}
 	}
 
 	// auditFieldValueIgnored is a special value for an audit field to skip value-specific checks whilst still ensuring the field property is set
@@ -277,7 +308,7 @@ func TestAuditLoggingFields(t *testing.T) {
 				if !rt.AdminInterfaceAuthentication {
 					t.Skip("Skipping subtest that requires admin auth")
 				}
-				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", unauthorizedAdminUsername, unauthorizedAdminPassword), http.StatusForbidden)
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", unauthorizedAdminUsername, RestTesterDefaultUserPassword), http.StatusForbidden)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDAdminUserAuthorizationFailed: {
@@ -296,6 +327,12 @@ func TestAuditLoggingFields(t *testing.T) {
 			},
 		},
 		{
+			name: "filtered public role request",
+			auditableAction: func(t testing.TB) {
+				RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/db/", "", filteredPublicRoleUsername), http.StatusOK)
+			},
+		},
+		{
 			name: "filtered admin request",
 			auditableAction: func(t testing.TB) {
 				if !runServerRBACTests {
@@ -304,7 +341,43 @@ func TestAuditLoggingFields(t *testing.T) {
 				if !rt.AdminInterfaceAuthentication {
 					t.Skip("Skipping subtest that requires admin auth")
 				}
-				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", filteredAdminUsername, filteredAdminPassword), http.StatusOK)
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", filteredAdminUsername, RestTesterDefaultUserPassword), http.StatusOK)
+			},
+		},
+		{
+			name: "filtered admin role request",
+			auditableAction: func(t testing.TB) {
+				if !runServerRBACTests {
+					t.Skip("Skipping subtest that requires admin RBAC")
+				}
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth")
+				}
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", filteredAdminRoleUsername, RestTesterDefaultUserPassword), http.StatusOK)
+			},
+		},
+		{
+			name: "authed admin request role filtered on different bucket",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth")
+				}
+				base.RequireNumTestBuckets(t, 2)
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", unfilteredAdminRoleUsername, RestTesterDefaultUserPassword), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminUserAuthenticated: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					//	base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": unfilteredAdminRoleUsername},
+				},
+				base.AuditIDReadDatabase: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": unfilteredAdminRoleUsername},
+				},
+				base.AuditIDAdminHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
+				},
 			},
 		},
 	}

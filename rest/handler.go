@@ -570,9 +570,14 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			base.Audit(h.ctx(), base.AuditIDAdminUserAuthorizationFailed, base.AuditFields{base.AuditFieldUserName: username})
 			return base.HTTPErrorf(statusCode, "")
 		}
+
+		// even though `checkAdminAuth` _can_ issue whoami to find user's roles, it doesn't always...
+		// to reduce code complexity, we'll potentially be making this whoami request twice if we need it for audit filtering
+		auditRoleNames := getCBUserRolesForAudit(dbContext, authScope, h.ctx(), httpClient, managementEndpoints, username, password)
+
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
-		h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainCBServer)
+		h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainCBServer, auditRoleNames)
 		base.Audit(h.ctx(), base.AuditIDAdminUserAuthenticated, base.AuditFields{})
 
 		base.DebugfCtx(h.ctx(), base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
@@ -659,6 +664,27 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	}
 	h.updateResponseWriter()
 	return nil
+}
+
+func getCBUserRolesForAudit(db *db.DatabaseContext, authScope string, ctx context.Context, httpClient *http.Client, managementEndpoints []string, username, password string) []string {
+	if !needRolesForAudit(db, base.UserDomainCBServer) {
+		return nil
+	}
+
+	whoAmIResponse, whoAmIStatus, whoAmIErr := cbRBACWhoAmI(ctx, httpClient, managementEndpoints, username, password)
+	if whoAmIErr != nil || whoAmIStatus != http.StatusOK {
+		base.WarnfCtx(ctx, "An error occurred whilst fetching the user's roles for audit filtering - will not filter: %v", whoAmIErr)
+		return nil
+	}
+
+	var auditRoleNames []string
+	for _, role := range whoAmIResponse.Roles {
+		// only filter roles applied to this bucket or cluster-scope
+		if role.BucketName == "" || role.BucketName == authScope {
+			auditRoleNames = append(auditRoleNames, role.RoleName)
+		}
+	}
+	return auditRoleNames
 }
 
 // removeCorruptConfigIfExists will remove the config from the bucket and remove it from the map if it exists on the invalid database config map
@@ -797,6 +823,49 @@ func (h *handler) logStatus(status int, message string) {
 	h.logDuration(false) // don't track actual time
 }
 
+func needRolesForAudit(db *db.DatabaseContext, domain base.UserIDDomain) bool {
+	// early returns when auditing is disabled
+	if db == nil ||
+		db.Options.LoggingConfig == nil ||
+		db.Options.LoggingConfig.Audit == nil ||
+		!db.Options.LoggingConfig.Audit.Enabled {
+		return false
+	}
+
+	// if we have any matching domains then we need the given roles
+	// this loop should be ~free for len(0)
+	for principal := range db.Options.LoggingConfig.Audit.DisabledRoles {
+		if principal.Domain == string(domain) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// getSGUserRolesForAudit returns a list of role names for the given user, if audit role filtering is enabled.
+func getSGUserRolesForAudit(db *db.DatabaseContext, user auth.User) []string {
+	if user == nil {
+		return nil
+	}
+
+	if !needRolesForAudit(db, base.UserDomainSyncGateway) {
+		return nil
+	}
+
+	roles := user.GetRoles()
+	if len(roles) == 0 {
+		return nil
+	}
+
+	roleNames := make([]string, 0, len(roles))
+	for _, role := range roles {
+		roleNames = append(roleNames, role.Name())
+	}
+
+	return roleNames
+}
+
 // checkPublicAuth verifies that the current request is authenticated for the given database.
 //
 // NOTE: checkPublicAuth is not used for the admin interface.
@@ -821,11 +890,12 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 		} else {
 			dbCtx.DbStats.Security().AuthSuccessCount.Add(1)
 
-			if h.isGuest() {
-				h.rqCtx = base.UserLogCtx(h.ctx(), base.GuestUsername, base.UserDomainSyncGateway)
-			} else {
-				h.rqCtx = base.UserLogCtx(h.ctx(), h.user.Name(), base.UserDomainSyncGateway)
+			username := base.GuestUsername
+			if !h.isGuest() {
+				username = h.user.Name()
 			}
+			roleNames := getSGUserRolesForAudit(dbCtx, h.user)
+			h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainSyncGateway, roleNames)
 			base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticated, auditFields)
 		}
 	}(time.Now())
