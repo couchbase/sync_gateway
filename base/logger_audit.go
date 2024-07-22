@@ -50,16 +50,16 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	userName := logCtx.Username
 	if userDomain != "" || userName != "" {
 		fields[AuditFieldRealUserID] = map[string]any{
-			"domain": userDomain,
-			"user":   userName,
+			AuditFieldRealUserIDDomain: userDomain,
+			AuditFieldRealUserIDUser:   userName,
 		}
 	}
 	effectiveDomain := logCtx.EffectiveDomain
 	effectiveUser := logCtx.EffectiveUserID
 	if effectiveDomain != "" || effectiveUser != "" {
 		fields[AuditEffectiveUserID] = map[string]any{
-			"domain": effectiveDomain,
-			"user":   effectiveUser,
+			AuditFieldEffectiveUserIDDomain: effectiveDomain,
+			AuditFieldEffectiveUserIDUser:   effectiveUser,
 		}
 	}
 	if logCtx.RequestHost != "" {

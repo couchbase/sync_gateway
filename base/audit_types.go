@@ -85,8 +85,8 @@ var mandatoryFieldsByGroup = map[fieldGroup]map[string]any{
 	},
 	fieldGroupAuthenticated: {
 		AuditFieldRealUserID: map[string]any{
-			"domain": "user domain",
-			"name":   "user name",
+			AuditFieldRealUserIDDomain: "user domain",
+			AuditFieldRealUserIDUser:   "user name",
 		},
 	},
 	fieldGroupDatabase: {
