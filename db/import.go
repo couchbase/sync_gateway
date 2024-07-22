@@ -344,6 +344,10 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		db.collectionStats.ImportCount.Add(1)
 		db.dbStats().SharedBucketImport().ImportHighSeq.Set(int64(docOut.SyncData.Sequence))
 		db.dbStats().SharedBucketImport().ImportProcessingTime.Add(time.Since(importStartTime).Nanoseconds())
+		base.Audit(ctx, base.AuditIDDocumentImport, base.AuditFields{
+			base.AuditFieldDocID:      docid,
+			base.AuditFieldDocVersion: newRev,
+		})
 		base.DebugfCtx(ctx, base.KeyImport, "Imported %s (delete=%v) as rev %s", base.UD(newDoc.ID), isDelete, newRev)
 	case base.ErrImportCancelled:
 		// Import was cancelled (SG purge) - don't return error.
