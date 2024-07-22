@@ -701,10 +701,15 @@ var AuditEvents = events{
 	},
 	AuditIDUsersAll: {
 		Name:        "Read all users",
-		Description: "All users were viewed",
+		Description: "List of all users was viewed",
 		MandatoryFields: AuditFields{
-			"db":        "database name",
-			"usernames": []string{"list", "of", "usernames"},
+			AuditFieldNameOnly: true,
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+		},
+		OptionalFields: AuditFields{
+			AuditFieldLimit: 100,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -759,10 +764,15 @@ var AuditEvents = events{
 	},
 	AuditIDRolesAll: {
 		Name:        "Read all roles",
-		Description: "All roles were viewed",
+		Description: "List of all roles was viewed",
 		MandatoryFields: AuditFields{
-			"db":    "database name",
-			"roles": []string{"list", "of", "roles"},
+			AuditFieldIncludeDeleted: true,
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+		},
+		OptionalFields: AuditFields{
+			AuditFieldLimit: 100,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,

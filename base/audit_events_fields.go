@@ -73,6 +73,11 @@ const (
 	// Session events 53282, 53283
 	AuditFieldSessionID = "session_id"
 
+	// User and role events
+	AuditFieldNameOnly       = "name_only"
+	AuditFieldLimit          = "limit"
+	AuditFieldIncludeDeleted = "include_deleted"
+
 	// AuditIDChangesFeedStarted AuditID = 54200
 	AuditFieldSince       = "since"
 	AuditFieldFilter      = "filter"
