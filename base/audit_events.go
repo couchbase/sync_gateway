@@ -81,13 +81,13 @@ const (
 	AuditIDUserRead   AuditID = 54101
 	AuditIDUserUpdate AuditID = 54102
 	AuditIDUserDelete AuditID = 54103
-	AuditIDUsersAll           = 54104
+	AuditIDUsersAll   AuditID = 54104
 	// Role principal events
 	AuditIDRoleCreate AuditID = 54110
 	AuditIDRoleRead   AuditID = 54111
 	AuditIDRoleUpdate AuditID = 54112
 	AuditIDRoleDelete AuditID = 54113
-	AuditIDRolesAll           = 54114
+	AuditIDRolesAll   AuditID = 54114
 
 	// Changes feeds events
 	AuditIDChangesFeedStarted AuditID = 54200
@@ -832,6 +832,7 @@ var AuditEvents = events{
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRDelete: {
 		Name:        "Delete Inter-Sync Gateway Replication",
@@ -861,6 +862,7 @@ var AuditEvents = events{
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRStart: {
 		Name:        "Inter-Sync Gateway Replication start",
@@ -875,6 +877,7 @@ var AuditEvents = events{
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRStop: {
 		Name:        "Inter-Sync Gateway Replication stop",
@@ -889,6 +892,7 @@ var AuditEvents = events{
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRReset: {
 		Name:        "Inter-Sync Gateway Replication reset",
@@ -903,6 +907,7 @@ var AuditEvents = events{
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRAllStatus: {
 		Name:        "All Inter-Sync Gateway Replication status",
@@ -914,6 +919,7 @@ var AuditEvents = events{
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRAllRead: {
 		Name:        "Read all Inter-Sync Gateway Replications",
@@ -925,6 +931,7 @@ var AuditEvents = events{
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
 	},
 	AuditIDDocumentCreate: {
 		Name:        "Create document",
