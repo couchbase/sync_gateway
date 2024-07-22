@@ -431,8 +431,10 @@ var AuditEvents = events{
 	AuditIDDatabaseAllRead: {
 		Name:        "Read all databases",
 		Description: "All databases were viewed",
+		MandatoryFields: AuditFields{
+			AuditFieldDBNames: []string{"list", "of", "db", "names"},
+		},
 		mandatoryFieldGroups: []fieldGroup{
-			fieldGroupDatabase,
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},

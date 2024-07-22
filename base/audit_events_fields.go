@@ -33,6 +33,7 @@ const (
 	AuditEffectiveUserID = "effective_userid"
 	AuditFieldAuditScope = "audit_scope"
 	AuditFieldFileName   = "filename"
+	AuditFieldDBNames    = "db_names"
 
 	// AuditIDSyncGatewayStartup AuditID = 53260
 	AuditFieldSGVersion                      = "sg_version"
