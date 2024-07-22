@@ -1931,6 +1931,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	docBytes := 0   // Track size of document written, for write stats
 	xattrBytes := 0 // Track size of xattr written, for write stats
 	skipObsoleteAttachmentsRemoval := false
+	isNewDocCreation := false
 
 	if !db.UseXattrs() {
 		// Update the document, storing metadata in _sync property
@@ -1949,8 +1950,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				base.ErrorfCtx(ctx, "Error retrieving previous leaf attachments of doc: %s, Error: %v", base.UD(docid), err)
 			}
 			prevCurrentRev = doc.CurrentRev
-			docExists := currentValue != nil
-			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			isNewDocCreation = currentValue == nil
+			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
 			}
@@ -2004,8 +2005,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				base.ErrorfCtx(ctx, "Error retrieving previous leaf attachments of doc: %s, Error: %v", base.UD(docid), err)
 			}
 
-			docExists := currentValue != nil
-			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			isNewDocCreation = currentValue == nil
+			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
 			}
@@ -2027,7 +2028,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas))
 				}
 			} else {
-				if currentXattrs[base.MouXattrName] != nil && docExists {
+				if currentXattrs[base.MouXattrName] != nil && !isNewDocCreation {
 					updatedDoc.XattrsToDelete = append(updatedDoc.XattrsToDelete, base.MouXattrName)
 				}
 			}
@@ -2098,6 +2099,24 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		return nil, "", nil
 	} else if err != nil {
 		return nil, "", err
+	}
+
+	if doc.IsDeleted() {
+		base.Audit(ctx, base.AuditIDDocumentDelete, base.AuditFields{
+			base.AuditFieldDocID:      docid,
+			base.AuditFieldDocVersion: newRevID,
+		})
+	} else {
+		auditFields := base.AuditFields{
+			base.AuditFieldDocID:      docid,
+			base.AuditFieldDocVersion: newRevID,
+			base.AuditFieldChannels:   doc.SyncData.Channels,
+		}
+		if isNewDocCreation {
+			base.Audit(ctx, base.AuditIDDocumentCreate, auditFields)
+		} else {
+			base.Audit(ctx, base.AuditIDDocumentUpdate, auditFields)
+		}
 	}
 
 	db.collectionStats.NumDocWrites.Add(1)
