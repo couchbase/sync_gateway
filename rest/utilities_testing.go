@@ -773,10 +773,12 @@ func (rt *RestTester) TestAdminHandlerNoConflictsMode() http.Handler {
 	return rt.TestAdminHandler()
 }
 
+var fakeRestTesterIP = net.IPv4(127, 0, 0, 99)
+
 func (rt *RestTester) TestAdminHandler() http.Handler {
 	rt.adminHandlerOnce.Do(func() {
 		rt.AdminHandler = CreateAdminHandler(rt.ServerContext())
-		rt.ServerContext().addHTTPServer(adminServer, &serverInfo{nil, &net.TCPAddr{IP: net.IPv4zero, Port: 4985}})
+		rt.ServerContext().addHTTPServer(adminServer, &serverInfo{nil, &net.TCPAddr{IP: fakeRestTesterIP, Port: 4985}})
 	})
 	return rt.AdminHandler
 }
@@ -784,7 +786,7 @@ func (rt *RestTester) TestAdminHandler() http.Handler {
 func (rt *RestTester) TestPublicHandler() http.Handler {
 	rt.publicHandlerOnce.Do(func() {
 		rt.PublicHandler = CreatePublicHandler(rt.ServerContext())
-		rt.ServerContext().addHTTPServer(publicServer, &serverInfo{nil, &net.TCPAddr{IP: net.IPv4zero, Port: 4984}})
+		rt.ServerContext().addHTTPServer(publicServer, &serverInfo{nil, &net.TCPAddr{IP: fakeRestTesterIP, Port: 4984}})
 	})
 	return rt.PublicHandler
 }
@@ -792,7 +794,7 @@ func (rt *RestTester) TestPublicHandler() http.Handler {
 func (rt *RestTester) TestMetricsHandler() http.Handler {
 	rt.metricsHandlerOnce.Do(func() {
 		rt.MetricsHandler = CreateMetricHandler(rt.ServerContext())
-		rt.ServerContext().addHTTPServer(metricsServer, &serverInfo{nil, &net.TCPAddr{IP: net.IPv4zero, Port: 4986}})
+		rt.ServerContext().addHTTPServer(metricsServer, &serverInfo{nil, &net.TCPAddr{IP: fakeRestTesterIP, Port: 4986}})
 	})
 	return rt.MetricsHandler
 }
@@ -801,7 +803,7 @@ func (rt *RestTester) TestMetricsHandler() http.Handler {
 func (rt *RestTester) TestDiagnosticHandler() http.Handler {
 	rt.diagnosticHandlerOnce.Do(func() {
 		rt.DiagnosticHandler = createDiagnosticHandler(rt.ServerContext())
-		rt.ServerContext().addHTTPServer(diagnosticServer, &serverInfo{nil, &net.TCPAddr{IP: net.IPv4zero, Port: 4987}})
+		rt.ServerContext().addHTTPServer(diagnosticServer, &serverInfo{nil, &net.TCPAddr{IP: fakeRestTesterIP, Port: 4987}})
 	})
 	return rt.DiagnosticHandler
 }
