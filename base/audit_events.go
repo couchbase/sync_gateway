@@ -141,7 +141,8 @@ var AuditEvents = events{
 		OptionalFields: AuditFields{
 			"db": "database name",
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDAuditDisabled: {
 		Name:               "Auditing disabled",
@@ -151,7 +152,8 @@ var AuditEvents = events{
 		MandatoryFields: AuditFields{
 			"audit_scope": "global or db",
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDAuditConfigChanged: {
 		Name:               "Auditing configuration changed",
@@ -167,7 +169,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			fieldGroupAuthenticated,
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDSyncGatewayStartup: {
 		Name:               "Sync Gateway startup",
@@ -184,7 +187,8 @@ var AuditEvents = events{
 			AuditFieldBcryptCost:                     10,
 			AuditFieldDisablePersistentConfig:        false,
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDPublicHTTPAPIRequest: {
 		Name:        "Public HTTP API request",
@@ -207,6 +211,7 @@ var AuditEvents = events{
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
 		EventType:          eventTypeUser,
+		IsGlobalEvent:      true,
 	},
 	AuditIDAdminHTTPAPIRequest: {
 		Name:        "Admin HTTP API request",
@@ -229,6 +234,7 @@ var AuditEvents = events{
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
 	},
 	AuditIDMetricsHTTPAPIRequest: {
 		Name:        "Metrics HTTP API request",
@@ -251,6 +257,7 @@ var AuditEvents = events{
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
 	},
 	AuditIDPublicUserAuthenticated: {
 		Name:        "Public API user authenticated",
@@ -352,7 +359,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			fieldGroupAuthenticated,
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDSyncGatewayCollectInfoStart: {
 		Name:               "sgcollect_info start",
@@ -371,7 +379,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			fieldGroupAuthenticated,
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDSyncGatewayCollectInfoStop: {
 		Name:               "sgcollect_info stop",
@@ -383,7 +392,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			fieldGroupAuthenticated,
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDSyncGatewayStats: {
 		Name:               "stats requested",
@@ -397,7 +407,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			fieldGroupAuthenticated,
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDSyncGatewayProfiling: {
 		Name:        "profiling requested",
@@ -411,6 +422,7 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
 	},
 	AuditIDClusterInfoRead: {
 		Name:               "Sync Gateway cluster info read",
@@ -418,6 +430,7 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
 	},
 	AuditIDCreateDatabase: {
 		Name:        "Create database",
@@ -471,6 +484,7 @@ var AuditEvents = events{
 		EnabledByDefault:   false, // because high volume (Capella UI)
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
 	},
 	AuditIDReadDatabaseConfig: {
 		Name:        "Read database config",
@@ -626,6 +640,7 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
 	},
 	AuditIDDatabaseRepair: {
 		Name:        "Database repair",
