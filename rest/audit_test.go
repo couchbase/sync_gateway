@@ -71,7 +71,8 @@ func TestAuditLoggingFields(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Logging = &DbLoggingConfig{
 		Audit: &DbAuditLoggingConfig{
-			Enabled: base.BoolPtr(true),
+			Enabled:       base.BoolPtr(true),
+			EnabledEvents: base.AllAuditeventIDs, // enable everything for testing
 			DisabledUsers: []base.AuditLoggingPrincipal{
 				{Name: filteredPublicUsername, Domain: string(base.UserDomainSyncGateway)},
 				{Name: filteredAdminUsername, Domain: string(base.UserDomainCBServer)},

@@ -1097,6 +1097,17 @@ func (e events) expandMandatoryFieldGroups() {
 	}
 }
 
+// AllAuditEventIDs is a list of all audit event IDs.
+var AllAuditeventIDs = buildAllAuditIDList(AuditEvents)
+
+func buildAllAuditIDList(e events) (ids []uint) {
+	ids = make([]uint, 0, len(e))
+	for k := range e {
+		ids = append(ids, uint(k))
+	}
+	return ids
+}
+
 // DefaultAuditEventIDs is a list of audit event IDs that are enabled by default.
 var DefaultAuditEventIDs = buildDefaultAuditIDList(AuditEvents)
 
