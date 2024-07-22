@@ -571,11 +571,21 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			return base.HTTPErrorf(statusCode, "")
 		}
 
-		// we already did the work to get the full list of user roles as part of the above check,
-		// but we only need to keep them stored if we want to filter based on CB Server roles.
+		// even though `checkAdminAuth` _can_ issue whoami to find user's roles, it doesn't always...
+		// to reduce code complexity, we'll potentially be making this whoami request twice if we need it for audit filtering
 		var auditRoleNames []string
 		if needRolesForAudit(dbContext, base.UserDomainCBServer) {
-			auditRoleNames = roles
+			whoAmIResponse, whoAmIStatus, whoAmIErr := cbRBACWhoAmI(h.ctx(), httpClient, managementEndpoints, username, password)
+			if whoAmIErr != nil || whoAmIStatus != http.StatusOK {
+				base.WarnfCtx(h.ctx(), "An error occurred whilst fetching the user's roles for audit filtering - will not filter: %v", whoAmIErr)
+			} else {
+				for _, role := range whoAmIResponse.Roles {
+					// only filter roles applied to this bucket or cluster-scope
+					if bucketName == authScope || bucketName == "" {
+						auditRoleNames = append(auditRoleNames, role.RoleName)
+					}
+				}
+			}
 		}
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions

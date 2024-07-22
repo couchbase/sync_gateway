@@ -291,7 +291,7 @@ func TestAuditLoggingFields(t *testing.T) {
 				if !rt.AdminInterfaceAuthentication {
 					t.Skip("Skipping subtest that requires admin auth")
 				}
-				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", unauthorizedAdminUsername, unauthorizedAdminPassword), http.StatusForbidden)
+				RequireStatus(t, rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", unauthorizedAdminUsername, RestTesterDefaultUserPassword), http.StatusForbidden)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDAdminUserAuthorizationFailed: {
