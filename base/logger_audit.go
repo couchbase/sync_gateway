@@ -214,7 +214,7 @@ func (al *AuditLogger) shouldLog(id AuditID, ctx context.Context) bool {
 
 // shouldLogAuditEventForUserAndRole returns true if the request should be logged
 func shouldLogAuditEventForUserAndRole(logCtx *LogContext) bool {
-	if logCtx.UserDomain == "" && logCtx.Username == "" ||
+	if (logCtx.UserDomain == "" && logCtx.Username == "") ||
 		len(logCtx.DbLogConfig.Audit.DisabledRoles) == 0 && len(logCtx.DbLogConfig.Audit.DisabledUsers) == 0 {
 		// early return for common cases: no user on context or no disabled users or roles
 		return true
