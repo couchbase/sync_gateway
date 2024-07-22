@@ -619,15 +619,15 @@ func TestEffectiveUserID(t *testing.T) {
 	base.ResetGlobalTestLogging(t)
 	base.InitializeMemoryLoggers()
 	const (
-		user       = "user"
-		domain     = "domain"
-		cnfDomain  = "myDomain"
-		cnfUser    = "bob"
-		realUser   = "alice"
-		realDomain = "sgw"
+		headerUser   = "user"
+		headerDomain = "domain"
+		cnfDomain    = "myDomain"
+		cnfUser      = "bob"
+		realUser     = "alice"
+		realDomain   = "sgw"
 	)
 	reqHeaders := map[string]string{
-		"user_header":   fmt.Sprintf(`{"%s": "%s", "%s":"%s"}`, domain, cnfDomain, user, cnfUser),
+		"user_header":   fmt.Sprintf(`{"%s": "%s", "%s":"%s"}`, headerDomain, cnfDomain, headerUser, cnfUser),
 		"Authorization": getBasicAuthHeader(realUser, RestTesterDefaultUserPassword),
 	}
 
@@ -659,11 +659,11 @@ func TestEffectiveUserID(t *testing.T) {
 
 	for _, event := range events {
 		effective := event[base.AuditEffectiveUserID].(map[string]any)
-		assert.Equal(t, cnfDomain, effective[domain])
-		assert.Equal(t, cnfUser, effective[user])
+		assert.Equal(t, cnfDomain, effective[base.AuditFieldEffectiveUserIDDomain])
+		assert.Equal(t, cnfUser, effective[base.AuditFieldEffectiveUserIDUser])
 		realUserEvent := event[base.AuditFieldRealUserID].(map[string]any)
-		assert.Equal(t, realDomain, realUserEvent[domain])
-		assert.Equal(t, realUser, realUserEvent[user])
+		assert.Equal(t, realDomain, realUserEvent[base.AuditFieldRealUserIDDomain])
+		assert.Equal(t, realUser, realUserEvent[base.AuditFieldRealUserIDUser])
 	}
 }
 

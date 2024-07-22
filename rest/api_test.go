@@ -2672,7 +2672,7 @@ func TestMetricsHandler(t *testing.T) {
 		base.SkipPrometheusStatsRegistration = true
 	}()
 
-	// Create and remove a database
+	// Create and remove a databaseion
 	// This ensures that creation and removal of a DB is possible without a re-registration issue ( the below rest tester will re-register "db")
 	ctx := base.TestCtx(t)
 	tBucket := base.GetTestBucket(t)
