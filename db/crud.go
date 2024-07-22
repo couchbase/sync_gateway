@@ -887,7 +887,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	}
 
 	allowImport := db.UseXattrs()
-	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, nil, false, func(doc *Document) (resultDoc *Document, resultAttachmentData *updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, nil, false, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		var isSgWrite bool
 		var crc32Match bool
 
@@ -1012,7 +1012,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 	}
 
 	allowImport := db.UseXattrs()
-	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, existingDoc, false, func(doc *Document) (resultDoc *Document, resultAttachmentData *updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, existingDoc, false, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -1637,7 +1637,7 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 	return
 }
 
-func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAttachments AttachmentData) error {
+func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAttachments updatedAttachments) error {
 	// Need to check and add attachments here to ensure the attachment is within size constraints
 	err := db.setAttachments(ctx, newAttachments)
 	if err != nil {
@@ -1834,7 +1834,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 
 	prevCurrentRev := doc.CurrentRev
 	doc.updateWinningRevAndSetDocFlags(ctx)
-	newDocHasAttachments := newAttachments != nil && len(newAttachments.data) > 0
+	newDocHasAttachments := len(newAttachments) > 0
 	col.storeOldBodyInRevTreeAndUpdateCurrent(ctx, doc, prevCurrentRev, newRevID, newDoc, newDocHasAttachments)
 
 	syncExpiry, oldBodyJSON, channelSet, access, roles, err := col.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
@@ -1852,23 +1852,21 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 	}
 
 	if newAttachments != nil {
-		err = col.addAttachments(ctx, newAttachments.data)
+		err = col.addAttachments(ctx, newAttachments)
 		if err != nil {
 			return
 		}
-		for _, name := range newAttachments.createdNames {
-			base.Audit(ctx, base.AuditIDAttachmentCreate, base.AuditFields{
+		for name, att := range newAttachments {
+			auditFields := base.AuditFields{
 				base.AuditFieldDocID:        doc.ID,
 				base.AuditFieldDocVersion:   newRevID,
 				base.AuditFieldAttachmentID: name,
-			})
-		}
-		for _, name := range newAttachments.updatedNames {
-			base.Audit(ctx, base.AuditIDAttachmentUpdate, base.AuditFields{
-				base.AuditFieldDocID:        doc.ID,
-				base.AuditFieldDocVersion:   newRevID,
-				base.AuditFieldAttachmentID: name,
-			})
+			}
+			if att.created {
+				base.Audit(ctx, base.AuditIDAttachmentCreate, auditFields)
+			} else {
+				base.Audit(ctx, base.AuditIDAttachmentUpdate, auditFields)
+			}
 		}
 	}
 
@@ -1918,15 +1916,8 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err
 }
 
-// updatedAttachments is returned after processing attachments from an inline body
-type updatedAttachments struct {
-	data         AttachmentData // stores the AttachmentData from the changed attachments
-	createdNames []string       // names of the attachments that were created, for logging later
-	updatedNames []string       // names of the attachments that were updated, for logging later
-}
-
 // Function type for the callback passed into updateAndReturnDoc
-type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAttachmentData *updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error)
+type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error)
 
 // Calling updateAndReturnDoc directly allows callers to:
 //  1. Receive the updated document body in the response
