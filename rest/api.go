@@ -80,12 +80,19 @@ func (h *handler) handlePing() error {
 }
 
 func (h *handler) handleAllDbs() error {
-	base.Audit(h.ctx(), base.AuditIDDatabaseAllRead, nil)
-	if h.getBoolQuery("verbose") {
-		h.writeJSON(h.server.allDatabaseSummaries())
-		return nil
+	verbose := h.getBoolQuery("verbose")
+	var dbNames []string
+	if verbose {
+		summaries := h.server.allDatabaseSummaries()
+		for _, summary := range summaries {
+			dbNames = append(dbNames, summary.DBName)
+		}
+		h.writeJSON(summaries)
+	} else {
+		dbNames = h.server.AllDatabaseNames()
+		h.writeJSON(dbNames)
 	}
-	h.writeJSON(h.server.AllDatabaseNames())
+	base.Audit(h.ctx(), base.AuditIDDatabaseAllRead, base.AuditFields{base.AuditFieldDBNames: dbNames, "verbose": verbose})
 	return nil
 }
 

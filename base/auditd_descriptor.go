@@ -23,7 +23,7 @@ const (
 func generateAuditdModuleDescriptor(e events) ([]byte, error) {
 	auditEvents := make([]auditdEventDescriptor, 0, len(e))
 	for id, event := range e {
-		auditEvents = append(auditEvents, toAuditdEventDescriptor(id, event))
+		auditEvents = append(auditEvents, toAuditdEventDescriptor(id, *event))
 	}
 	m := auditdModuleDescriptor{
 		Version: auditdFormatVersion,
