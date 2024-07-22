@@ -283,7 +283,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 }
 
 // validateAndWriteHeaders sets up handler.db and validates the permission of the user and returns an error if there is not permission.
-func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
+func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) (err error) {
 	var isRequestLogged bool
 	defer func() {
 		if !isRequestLogged {
@@ -296,6 +296,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			auditFields := base.AuditFields{
 				base.AuditFieldHTTPMethod: h.rq.Method,
 				base.AuditFieldHTTPPath:   h.rq.URL.Path,
+				base.AuditFieldHTTPStatus: h.status,
 			}
 			switch h.serverType {
 			case publicServer:
@@ -373,6 +374,11 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	// If an Admin Request and admin auth enabled or a metrics request with metrics auth enabled we need to check the
 	// user credentials
 	shouldCheckAdminAuth := (h.privs == adminPrivs && *h.server.Config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.Config.API.MetricsInterfaceAuthentication)
+
+	// If admin/metrics endpoint but auth not enabled, set admin_noauth log ctx
+	if !shouldCheckAdminAuth && (h.serverType == adminServer || h.serverType == metricsServer) {
+		h.rqCtx = base.UserLogCtx(h.ctx(), base.UserSyncGatewayAdmin, base.UserDomainSyncGatewayAdmin, nil)
+	}
 
 	keyspaceDb := h.PathVar("db")
 	var keyspaceScope, keyspaceCollection *string

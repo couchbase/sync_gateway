@@ -267,10 +267,13 @@ type EffectiveUserPair struct {
 type UserIDDomain string
 
 const (
-	UserDomainSyncGateway UserIDDomain = "sgw"
-	UserDomainCBServer    UserIDDomain = "cbs"
-	UserDomainBuiltin                  = "builtin" // internal users (e.g. SG bootstrap user)
+	UserDomainSyncGateway      UserIDDomain = "sgw"
+	UserDomainCBServer         UserIDDomain = "cbs"
+	UserDomainSyncGatewayAdmin UserIDDomain = "sgw_admin" // domain for SGW admin API when admin auth disabled
+	UserDomainBuiltin                       = "builtin"   // internal users (e.g. SG bootstrap user)
 )
+
+const UserSyncGatewayAdmin = "admin_noauth" // real_userid for admin API requests when admin auth is disabled
 
 func UserLogCtx(parent context.Context, username string, domain UserIDDomain, roles []string) context.Context {
 	newCtx := getLogCtx(parent)

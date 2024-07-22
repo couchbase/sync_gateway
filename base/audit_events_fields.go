@@ -11,18 +11,21 @@ package base
 const (
 
 	// Commonly used audit event fields
-	AuditFieldID            = "id"
-	AuditFieldTimestamp     = "timestamp"
-	AuditFieldName          = "name"
-	AuditFieldDescription   = "description"
-	AuditFieldRealUserID    = "real_userid"
-	AuditFieldLocal         = "local"
-	AuditFieldRemote        = "remote"
-	AuditFieldDatabase      = "db"
-	AuditFieldCorrelationID = "cid" // FIXME: how to distinguish between this field (http) and blip id below
-	AuditFieldKeyspace      = "ks"
-	AuditFieldAuthMethod    = "auth_method"
-	AuditFieldUserName      = "username" // Name of a Sync Gateway user, not necessarily the same as real_userid
+
+	AuditFieldID               = "id"
+	AuditFieldTimestamp        = "timestamp"
+	AuditFieldName             = "name"
+	AuditFieldDescription      = "description"
+	AuditFieldRealUserID       = "real_userid"
+	AuditFieldRealUserIDDomain = "domain"
+	AuditFieldRealUserIDUser   = "user"
+	AuditFieldLocal            = "local"
+	AuditFieldRemote           = "remote"
+	AuditFieldDatabase         = "db"
+	AuditFieldCorrelationID    = "cid" // FIXME: how to distinguish between this field (http) and blip id below
+	AuditFieldKeyspace         = "ks"
+	AuditFieldAuthMethod       = "auth_method"
+	AuditFieldUserName         = "username"
 
 	AuditFieldReplicationID      = "replication_id"
 	AuditFieldPayload            = "payload"
@@ -31,10 +34,12 @@ const (
 	AuditFieldCompactionReset    = "reset"
 	AuditFieldPostUpgradePreview = "preview"
 
-	AuditEffectiveUserID = "effective_userid"
-	AuditFieldAuditScope = "audit_scope"
-	AuditFieldFileName   = "filename"
-	AuditFieldDBNames    = "db_names"
+	AuditEffectiveUserID            = "effective_userid"
+	AuditFieldEffectiveUserIDDomain = "domain"
+	AuditFieldEffectiveUserIDUser   = "user"
+	AuditFieldAuditScope            = "audit_scope"
+	AuditFieldFileName              = "filename"
+	AuditFieldDBNames               = "db_names"
 
 	// AuditIDSyncGatewayStartup AuditID = 53260
 	AuditFieldSGVersion                      = "sg_version"
@@ -55,6 +60,7 @@ const (
 	// API events  AuditID = 53270, 53271, 53272
 	AuditFieldHTTPMethod  = "http_method"
 	AuditFieldHTTPPath    = "http_path"
+	AuditFieldHTTPStatus  = "http_status"
 	AuditFieldRequestBody = "request_body"
 
 	// CRUD events
