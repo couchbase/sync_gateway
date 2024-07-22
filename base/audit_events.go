@@ -1154,13 +1154,18 @@ func (e events) expandMandatoryFieldGroups() {
 	}
 }
 
-// AllAuditEventIDs is a list of all audit event IDs.
-var AllAuditeventIDs = buildAllAuditIDList(AuditEvents)
+// AllDbAuditeventIDs is a list of all audit event IDs that are available for the db config.
+var AllDbAuditeventIDs = buildAllAuditIDList(AuditEvents, false)
 
-func buildAllAuditIDList(e events) (ids []uint) {
+// AllGlobalAuditeventIDs is a list of all audit event IDs that are available for the bootstrap config.
+var AllGlobalAuditeventIDs = buildAllAuditIDList(AuditEvents, true)
+
+func buildAllAuditIDList(e events, globalEvents bool) (ids []uint) {
 	ids = make([]uint, 0, len(e))
-	for k := range e {
-		ids = append(ids, uint(k))
+	for k, v := range e {
+		if globalEvents == v.IsGlobalEvent {
+			ids = append(ids, uint(k))
+		}
 	}
 	return ids
 }

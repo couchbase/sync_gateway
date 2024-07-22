@@ -1070,8 +1070,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			}
 			for _, id := range dbConfig.Logging.Audit.EnabledEvents {
 				id := base.AuditID(id)
-				if _, ok := base.AuditEvents[id]; !ok {
+				if e, ok := base.AuditEvents[id]; !ok {
 					multiError = multiError.Append(fmt.Errorf("unknown audit event ID %q", id))
+				} else if e.IsGlobalEvent {
+					multiError = multiError.Append(fmt.Errorf("event %q is not configurable at the database level", id))
 				}
 			}
 		}
