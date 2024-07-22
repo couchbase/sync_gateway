@@ -1894,6 +1894,15 @@ func (h *handler) getUsers() error {
 	if marshalErr != nil {
 		return marshalErr
 	}
+
+	auditFields := base.AuditFields{
+		base.AuditFieldNameOnly: nameOnly,
+	}
+	if limit > 0 {
+		auditFields[base.AuditFieldLimit] = limit
+	}
+	base.Audit(h.ctx(), base.AuditIDUsersAll, auditFields)
+
 	h.writeRawJSON(bytes)
 	return nil
 }
@@ -1908,6 +1917,8 @@ func (h *handler) getRoles() error {
 	}
 
 	bytes, err := base.JSONMarshal(roles)
+
+	base.Audit(h.ctx(), base.AuditIDRolesAll, base.AuditFields{base.AuditFieldIncludeDeleted: includeDeleted})
 	h.writeRawJSON(bytes)
 	return err
 }
