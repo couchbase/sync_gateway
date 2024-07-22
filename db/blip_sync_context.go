@@ -146,10 +146,12 @@ type blipSyncStats struct {
 // AllowedAttachment contains the metadata for handling allowed attachments
 // while replicating over BLIP protocol.
 type AllowedAttachment struct {
+	docID      string // docID, used for BlipCBMobileReplicationV2 retrieval of V2 attachments
+	name       string // name of the attachment, used for audit logging. This could be the name of any attachment on a given document, if multiple attachments share the same digest.
+	docVersion string // docVersion, used for audit logging
 	version    int    // Version of the attachment
 	counter    int    // Counter to track allowed attachments
-	docID      string // docID, used for BlipCBMobileReplicationV2 retrieval of V2 attachments
-	docVersion string // docVersion, used for audit logging
+
 }
 
 // SetActiveCBMobileSubprotocol returns the active subprotocol version

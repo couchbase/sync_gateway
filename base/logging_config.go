@@ -74,12 +74,12 @@ func InitLogging(ctx context.Context, logFilePath string,
 		ConsolefCtx(ctx, LevelError, KeyNone, ErrUnsetLogFilePath.Error())
 
 		// nil out other loggers
-		errorLogger = &FileLogger{}
-		warnLogger = &FileLogger{}
-		infoLogger = &FileLogger{}
-		debugLogger = &FileLogger{}
-		traceLogger = &FileLogger{}
-		statsLogger = &FileLogger{}
+		errorLogger = nil
+		warnLogger = nil
+		infoLogger = nil
+		debugLogger = nil
+		traceLogger = nil
+		statsLogger = nil
 		auditLogger = &AuditLogger{}
 
 		return nil

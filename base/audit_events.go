@@ -33,13 +33,14 @@ const (
 	AuditIDPublicHTTPAPIRequest  AuditID = 53270
 	AuditIDAdminHTTPAPIRequest   AuditID = 53271
 	AuditIDMetricsHTTPAPIRequest AuditID = 53272
-	//AuditIDBLIPMessage           AuditID = 0 // TODO: Is this required? What info should the event contain?
 
 	// Auth (public) events
 	AuditIDPublicUserAuthenticated        AuditID = 53280
 	AuditIDPublicUserAuthenticationFailed AuditID = 53281
 	AuditIDPublicUserSessionCreated       AuditID = 53282
 	AuditIDPublicUserSessionDeleted       AuditID = 53283
+	AuditIDPublicUserSessionDeleteAll     AuditID = 53284
+
 	// Auth (admin) events
 	AuditIDAdminUserAuthenticated        AuditID = 53290
 	AuditIDAdminUserAuthenticationFailed AuditID = 53291
@@ -82,13 +83,13 @@ const (
 	AuditIDUserRead   AuditID = 54101
 	AuditIDUserUpdate AuditID = 54102
 	AuditIDUserDelete AuditID = 54103
-	AuditIDUsersAll           = 54110
+	AuditIDUsersAll   AuditID = 54104
 	// Role principal events
 	AuditIDRoleCreate AuditID = 54110
 	AuditIDRoleRead   AuditID = 54111
 	AuditIDRoleUpdate AuditID = 54112
 	AuditIDRoleDelete AuditID = 54113
-	AuditIDRolesAll           = 54120
+	AuditIDRolesAll   AuditID = 54114
 
 	// Changes feeds events
 	AuditIDChangesFeedStarted AuditID = 54200
@@ -199,8 +200,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
-		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
 		EventType:          eventTypeUser,
 	},
 	AuditIDAdminHTTPAPIRequest: {
@@ -217,8 +218,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
-		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDMetricsHTTPAPIRequest: {
@@ -235,8 +236,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
-		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDPublicUserAuthenticated: {
@@ -249,7 +250,7 @@ var AuditEvents = events{
 			"oidc_issuer": "issuer",
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeUser,
 	},
 	AuditIDPublicUserAuthenticationFailed: {
@@ -259,17 +260,20 @@ var AuditEvents = events{
 			AuditFieldAuthMethod: "basic, oidc, cookie, etc.",
 		},
 		OptionalFields: AuditFields{
-			"username": "username",
+			AuditFieldUserName: "username",
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeUser,
 	},
 	AuditIDPublicUserSessionCreated: {
 		Name:        "Public API user session created",
 		Description: "Public API user session was created",
 		MandatoryFields: AuditFields{
-			"session_id": "session_id",
+			AuditFieldSessionID: "session_id",
+		},
+		OptionalFields: AuditFields{
+			AuditFieldUserName: "username",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -279,7 +283,20 @@ var AuditEvents = events{
 		Name:        "Public API user session deleted",
 		Description: "Public API user session was deleted",
 		MandatoryFields: AuditFields{
-			"session_id": "session_id",
+			AuditFieldSessionID: "session_id",
+		},
+		OptionalFields: AuditFields{
+			AuditFieldUserName: "username",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeUser,
+	},
+	AuditIDPublicUserSessionDeleteAll: {
+		Name:        "Public API user all sessions deleted",
+		Description: "All sessions were deleted for a Public API user",
+		MandatoryFields: AuditFields{
+			AuditFieldUserName: "username",
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -290,34 +307,34 @@ var AuditEvents = events{
 		Description:        "Admin API user successfully authenticated",
 		MandatoryFields:    AuditFields{},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDAdminUserAuthenticationFailed: {
 		Name:        "Admin API user authentication failed",
 		Description: "Admin API user failed to authenticate",
 		MandatoryFields: AuditFields{
-			"username": "username",
+			AuditFieldUserName: "username",
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDAdminUserAuthorizationFailed: {
 		Name:        "Admin API user authorization failed",
 		Description: "Admin API user failed to authorize",
 		MandatoryFields: AuditFields{
-			"username": "username",
+			AuditFieldUserName: "username",
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDSyncGatewayCollectInfoStatus: {
 		Name:               "sgcollect_info status",
 		Description:        "sgcollect_info status was viewed",
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		MandatoryFields:    AuditFields{},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupRequest,
@@ -329,7 +346,7 @@ var AuditEvents = events{
 		Name:               "sgcollect_info start",
 		Description:        "sgcollect_info was started",
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		MandatoryFields: AuditFields{
 			"output_dir":   "output_directory",
 			"upload_host":  "upload_host",
@@ -348,7 +365,7 @@ var AuditEvents = events{
 		Name:               "sgcollect_info stop",
 		Description:        "sgcollect_info was stopped",
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		MandatoryFields:    AuditFields{},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupRequest,
@@ -359,8 +376,8 @@ var AuditEvents = events{
 	AuditIDSyncGatewayStats: {
 		Name:               "stats requested",
 		Description:        "stats were requested",
-		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		EnabledByDefault:   false, // because low value high volume
+		FilteringPermitted: true,
 		MandatoryFields: AuditFields{
 			AuditFieldStatsFormat: "expvar, prometheus, etc.",
 		},
@@ -380,14 +397,14 @@ var AuditEvents = events{
 			AuditFieldFileName: "filename",
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDClusterInfoRead: {
 		Name:               "Sync Gateway cluster info read",
 		Description:        "Sync Gateway cluster info was viewed",
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDCreateDatabase: {
@@ -402,7 +419,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDReadDatabase: {
@@ -413,8 +430,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
-		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		EnabledByDefault:   false, // because high volume (Capella UI)
+		FilteringPermitted: true,
 		EventType:          eventTypeUser,
 	},
 	AuditIDDeleteDatabase: {
@@ -426,19 +443,21 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseAllRead: {
 		Name:        "Read all databases",
 		Description: "All databases were viewed",
+		MandatoryFields: AuditFields{
+			AuditFieldDBNames: []string{"list", "of", "db", "names"},
+		},
 		mandatoryFieldGroups: []fieldGroup{
-			fieldGroupDatabase,
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
-		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		EnabledByDefault:   false, // because high volume (Capella UI)
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDReadDatabaseConfig: {
@@ -450,7 +469,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDUpdateDatabaseConfig: {
@@ -465,7 +484,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseOffline: {
@@ -477,7 +496,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseOnline: {
@@ -489,7 +508,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseCompactStart: {
@@ -508,7 +527,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseCompactStop: {
@@ -523,7 +542,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseCompactStatus: {
@@ -538,7 +557,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseResyncStatus: {
@@ -549,8 +568,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
-		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		EnabledByDefault:   false, // because low value high volume (Capella UI)
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseResyncStart: {
@@ -567,7 +586,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseResyncStop: {
@@ -579,7 +598,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDPostUpgrade: {
@@ -593,7 +612,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseRepair: {
@@ -605,7 +624,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDDatabaseFlush: {
@@ -617,55 +636,66 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973,
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDUserCreate: {
 		Name:        "Create user",
 		Description: "A new user was created",
 		MandatoryFields: AuditFields{
-			"username": "username",
-			"db":       "database name",
-			"roles":    []string{"list", "of", "roles"},
-			"channels": map[string]map[string][]string{"scopeName": {"collectionName": {"list", "of", "channels"}}},
+			AuditFieldUserName: "username",
+			AuditFieldDatabase: "database name",
+			"roles":            []string{"list", "of", "roles"},
+			"channels":         map[string]map[string][]string{"scopeName": {"collectionName": {"list", "of", "channels"}}},
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDUserRead: {
 		Name:        "Read user",
 		Description: "Information about this user was viewed",
 		MandatoryFields: AuditFields{
-			"username": "username",
-			"db":       "database name",
+			AuditFieldUserName: "username",
+			AuditFieldDatabase: "database name",
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDUserUpdate: {
 		Name:        "Update user",
 		Description: "User was updated",
 		MandatoryFields: AuditFields{
-			"username": "username",
-			"db":       "database name",
-			"roles":    []string{"list", "of", "roles"},
-			"channels": map[string]map[string][]string{"scopeName": {"collectionName": {"list", "of", "channels"}}},
+			AuditFieldUserName: "username",
+			AuditFieldDatabase: "database name",
+			"roles":            []string{"list", "of", "roles"},
+			"channels":         map[string]map[string][]string{"scopeName": {"collectionName": {"list", "of", "channels"}}},
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDUserDelete: {
 		Name:        "Delete user",
 		Description: "User was deleted",
 		MandatoryFields: AuditFields{
-			"username": "username",
-			"db":       "database name",
+			AuditFieldUserName: "username",
+			AuditFieldDatabase: "database name",
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDUsersAll: {
+		Name:        "Read all users",
+		Description: "All users were viewed",
+		MandatoryFields: AuditFields{
+			"db":        "database name",
+			"usernames": []string{"list", "of", "usernames"},
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDRoleCreate: {
@@ -677,7 +707,7 @@ var AuditEvents = events{
 			"admin_channels": map[string]map[string][]string{"scopeName": {"collectionName": {"list", "of", "channels"}}},
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDRoleRead: {
@@ -689,20 +719,19 @@ var AuditEvents = events{
 			"db":   "database name",
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDRoleUpdate: {
 		Name:        "Update role",
 		Description: "Role was updated",
-
 		MandatoryFields: AuditFields{
 			"role":           "role_name",
 			"db":             "database name",
 			"admin_channels": map[string]map[string][]string{"scopeName": {"collectionName": {"list", "of", "channels"}}},
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDRoleDelete: {
@@ -713,22 +742,36 @@ var AuditEvents = events{
 			"db":   "database name",
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDRolesAll: {
+		Name:        "Read all roles",
+		Description: "All roles were viewed",
+		MandatoryFields: AuditFields{
+			"db":    "database name",
+			"roles": []string{"list", "of", "roles"},
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDChangesFeedStarted: {
 		Name:        "Changes feed started",
 		Description: "Changes feed was started",
 		MandatoryFields: AuditFields{
-			"db":    "database name",
-			"ks":    "keyspace",
-			"since": "since",
+			AuditFieldSince: "since",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupRequest,
+			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		OptionalFields: AuditFields{
-			"filter":           "filter",
-			"doc_ids":          []string{"list", "of", "doc_ids"},
-			AuditFieldChannels: []string{"list", "of", "channels"},
-			"feed_type":        "continuous, normal, longpoll, websocket, etc.",
+			AuditFieldFilter:      "filter",
+			AuditFieldDocIDs:      []string{"list", "of", "doc_ids"},
+			AuditFieldChannels:    []string{"list", "of", "channels"},
+			AuditFieldFeedType:    "continuous, normal, longpoll, websocket, etc.",
+			AuditFieldIncludeDocs: true,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -780,7 +823,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRRead: {
@@ -795,7 +838,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRUpdate: {
@@ -811,7 +854,8 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRDelete: {
 		Name:        "Delete Inter-Sync Gateway Replication",
@@ -825,7 +869,7 @@ var AuditEvents = events{
 			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
 		EnabledByDefault:   true,
-		FilteringPermitted: false,
+		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRStatus: {
@@ -841,6 +885,7 @@ var AuditEvents = events{
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRStart: {
 		Name:        "Inter-Sync Gateway Replication start",
@@ -853,8 +898,9 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
-		EnabledByDefault:   false,
+		EnabledByDefault:   true,
 		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRStop: {
 		Name:        "Inter-Sync Gateway Replication stop",
@@ -867,8 +913,9 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
-		EnabledByDefault:   false,
+		EnabledByDefault:   true,
 		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRReset: {
 		Name:        "Inter-Sync Gateway Replication reset",
@@ -881,8 +928,9 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
-		EnabledByDefault:   false,
+		EnabledByDefault:   true,
 		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRAllStatus: {
 		Name:        "All Inter-Sync Gateway Replication status",
@@ -894,6 +942,7 @@ var AuditEvents = events{
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
 	},
 	AuditIDISGRAllRead: {
 		Name:        "Read all Inter-Sync Gateway Replications",
@@ -903,8 +952,9 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			// fieldGroupAuthenticated, // FIXME: CBG-3973
 		},
-		EnabledByDefault:   false,
+		EnabledByDefault:   true,
 		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
 	},
 	AuditIDDocumentCreate: {
 		Name:        "Create document",
@@ -1073,8 +1123,19 @@ func init() {
 
 func (e events) expandMandatoryFieldGroups() {
 	for _, descriptor := range e {
-		descriptor.MandatoryFields.expandMandatoryFieldGroups(descriptor.mandatoryFieldGroups)
+		descriptor.expandMandatoryFieldGroups(descriptor.mandatoryFieldGroups)
 	}
+}
+
+// AllAuditEventIDs is a list of all audit event IDs.
+var AllAuditeventIDs = buildAllAuditIDList(AuditEvents)
+
+func buildAllAuditIDList(e events) (ids []uint) {
+	ids = make([]uint, 0, len(e))
+	for k := range e {
+		ids = append(ids, uint(k))
+	}
+	return ids
 }
 
 // DefaultAuditEventIDs is a list of audit event IDs that are enabled by default.

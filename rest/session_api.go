@@ -104,7 +104,7 @@ func (h *handler) handleSessionDELETE() error {
 		}
 	}
 
-	cookie := h.db.Authenticator(h.ctx()).DeleteSessionForCookie(h.rq)
+	cookie := h.db.Authenticator(h.ctx()).DeleteSessionForCookie(h.ctx(), h.rq)
 	if cookie == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no session")
 	}
@@ -128,7 +128,7 @@ func (h *handler) makeSessionWithTTL(user auth.User, expiry time.Duration) (sess
 	}
 	h.user = user
 	auth := h.db.Authenticator(h.ctx())
-	session, err := auth.CreateSession(h.user, expiry)
+	session, err := auth.CreateSession(h.ctx(), h.user, expiry)
 	if err != nil {
 		return "", err
 	}
@@ -214,7 +214,7 @@ func (h *handler) createUserSession() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid or missing ttl")
 	}
 
-	session, err := authenticator.CreateSession(user, ttl)
+	session, err := authenticator.CreateSession(h.ctx(), user, ttl)
 	if err != nil {
 		return err
 	}
@@ -253,7 +253,7 @@ func (h *handler) deleteUserSession() error {
 	if userName != "" {
 		return h.deleteUserSessionWithValidation(h.PathVar("sessionid"), userName)
 	} else {
-		return h.db.Authenticator(h.ctx()).DeleteSession(h.PathVar("sessionid"))
+		return h.db.Authenticator(h.ctx()).DeleteSession(h.ctx(), h.PathVar("sessionid"), "")
 	}
 }
 
@@ -270,7 +270,11 @@ func (h *handler) deleteUserSessions() error {
 		return nil
 	}
 	user.UpdateSessionUUID()
-	return auth.Save(user)
+	err = auth.Save(user)
+	if err == nil {
+		base.Audit(h.ctx(), base.AuditIDPublicUserSessionDeleteAll, base.AuditFields{base.AuditFieldUserName: userName})
+	}
+	return err
 }
 
 // Delete a session if associated with the user provided
@@ -288,7 +292,7 @@ func (h *handler) deleteUserSessionWithValidation(sessionId string, userName str
 
 	if getErr == nil {
 		if session.Username == userName {
-			delErr := h.db.Authenticator(h.ctx()).DeleteSession(sessionId)
+			delErr := h.db.Authenticator(h.ctx()).DeleteSession(h.ctx(), sessionId, userName)
 			if delErr != nil {
 				return delErr
 			}

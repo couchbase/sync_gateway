@@ -503,12 +503,23 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 }
 
 // CreateUser creates a user with the default password and channels scoped to a single test collection.
-func (rt *RestTester) CreateUser(username string, channels []string) {
+func (rt *RestTester) CreateUser(username string, channels []string, roles ...string) {
 	var response *TestResponse
 	if rt.AdminInterfaceAuthentication {
-		response = rt.SendAdminRequestWithAuth(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), channels, nil), base.TestClusterUsername(), base.TestClusterPassword())
+		response = rt.SendAdminRequestWithAuth(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), channels, roles), base.TestClusterUsername(), base.TestClusterPassword())
 	} else {
-		response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), channels, nil))
+		response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB(), "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), channels, roles))
+	}
+	RequireStatus(rt.TB(), response, http.StatusCreated)
+}
+
+// CreateRole creates a role with channels scoped to a single test collection.
+func (rt *RestTester) CreateRole(rolename string, channels []string) {
+	var response *TestResponse
+	if rt.AdminInterfaceAuthentication {
+		response = rt.SendAdminRequestWithAuth(http.MethodPut, "/{{.db}}/_role/"+rolename, GetRolePayload(rt.TB(), rolename, rt.GetSingleDataStore(), channels), base.TestClusterUsername(), base.TestClusterPassword())
+	} else {
+		response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+rolename, GetRolePayload(rt.TB(), rolename, rt.GetSingleDataStore(), channels))
 	}
 	RequireStatus(rt.TB(), response, http.StatusCreated)
 }
@@ -773,10 +784,12 @@ func (rt *RestTester) TestAdminHandlerNoConflictsMode() http.Handler {
 	return rt.TestAdminHandler()
 }
 
+var fakeRestTesterIP = net.IPv4(127, 0, 0, 99)
+
 func (rt *RestTester) TestAdminHandler() http.Handler {
 	rt.adminHandlerOnce.Do(func() {
 		rt.AdminHandler = CreateAdminHandler(rt.ServerContext())
-		rt.ServerContext().addHTTPServer(adminServer, &serverInfo{nil, &net.TCPAddr{}})
+		rt.ServerContext().addHTTPServer(adminServer, &serverInfo{nil, &net.TCPAddr{IP: fakeRestTesterIP, Port: 4985}})
 	})
 	return rt.AdminHandler
 }
@@ -784,7 +797,7 @@ func (rt *RestTester) TestAdminHandler() http.Handler {
 func (rt *RestTester) TestPublicHandler() http.Handler {
 	rt.publicHandlerOnce.Do(func() {
 		rt.PublicHandler = CreatePublicHandler(rt.ServerContext())
-		rt.ServerContext().addHTTPServer(publicServer, &serverInfo{nil, &net.TCPAddr{}})
+		rt.ServerContext().addHTTPServer(publicServer, &serverInfo{nil, &net.TCPAddr{IP: fakeRestTesterIP, Port: 4984}})
 	})
 	return rt.PublicHandler
 }
@@ -792,7 +805,7 @@ func (rt *RestTester) TestPublicHandler() http.Handler {
 func (rt *RestTester) TestMetricsHandler() http.Handler {
 	rt.metricsHandlerOnce.Do(func() {
 		rt.MetricsHandler = CreateMetricHandler(rt.ServerContext())
-		rt.ServerContext().addHTTPServer(metricsServer, &serverInfo{nil, &net.TCPAddr{}})
+		rt.ServerContext().addHTTPServer(metricsServer, &serverInfo{nil, &net.TCPAddr{IP: fakeRestTesterIP, Port: 4986}})
 	})
 	return rt.MetricsHandler
 }
@@ -801,7 +814,7 @@ func (rt *RestTester) TestMetricsHandler() http.Handler {
 func (rt *RestTester) TestDiagnosticHandler() http.Handler {
 	rt.diagnosticHandlerOnce.Do(func() {
 		rt.DiagnosticHandler = createDiagnosticHandler(rt.ServerContext())
-		rt.ServerContext().addHTTPServer(diagnosticServer, &serverInfo{nil, &net.TCPAddr{}})
+		rt.ServerContext().addHTTPServer(diagnosticServer, &serverInfo{nil, &net.TCPAddr{IP: fakeRestTesterIP, Port: 4987}})
 	})
 	return rt.DiagnosticHandler
 }
@@ -1731,7 +1744,7 @@ func GetUserPayload(t testing.TB, username, password, email string, collection s
 
 // GetRolePayload will take roleName and channels you want to assign a particular role and return the appropriate payload for the _role endpoint
 // For default collection, follows same handling as GetUserPayload for chans.
-func GetRolePayload(t *testing.T, roleName string, collection sgbucket.DataStore, chans []string) string {
+func GetRolePayload(t testing.TB, roleName string, collection sgbucket.DataStore, chans []string) string {
 	config := PrincipalConfigForWrite{}
 	if roleName != "" {
 		config.Name = &roleName

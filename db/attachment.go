@@ -397,14 +397,15 @@ func AttachmentDigests(attachments AttachmentsMeta) []string {
 // the key for attachment storage and retrieval.
 type AttachmentStorageMeta struct {
 	digest  string
-	version int
+	name    string // user facing attachment name
+	version int    // AttVersion2 or AttVersion1
 }
 
 // ToAttachmentStorageMeta returns a slice of AttachmentStorageMeta, which is contains the
 // necessary metadata properties to build the key for attachment storage and retrieval.
 func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMeta {
 	meta := make([]AttachmentStorageMeta, 0, len(attachments))
-	for _, att := range attachments {
+	for name, att := range attachments {
 		if attMap, ok := att.(map[string]interface{}); ok {
 			if digest, ok := attMap["digest"]; ok {
 				if digestString, ok := digest.(string); ok {
@@ -412,6 +413,7 @@ func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMet
 					m := AttachmentStorageMeta{
 						digest:  digestString,
 						version: version,
+						name:    name,
 					}
 					meta = append(meta, m)
 				}

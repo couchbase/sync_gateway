@@ -50,7 +50,9 @@ type LogContext struct {
 	// Username is the name of the authenticated user
 	Username string
 	// UserDomain can determine whether the authenticated user is a sync gateway user or a couchbase RBAC user
-	UserDomain userIDDomain
+	UserDomain UserIDDomain
+	// UserRolesForAuditFiltering is a list of the authenticated user's roles to be used to determine audit log filtering, the domain for these roles is the same as the UserDomain
+	UserRolesForAuditFiltering map[string]struct{}
 
 	// RequestHost is the HTTP Host of the request associated with this log.
 	RequestHost string
@@ -94,6 +96,7 @@ type DbAuditLogConfig struct {
 	Enabled       bool
 	EnabledEvents map[AuditID]struct{}
 	DisabledUsers map[AuditLoggingPrincipal]struct{}
+	DisabledRoles map[AuditLoggingPrincipal]struct{}
 }
 
 type AuditLoggingPrincipal struct {
@@ -157,6 +160,7 @@ func (lc *LogContext) getCopy() LogContext {
 		RequestAdditionalAuditFields: lc.RequestAdditionalAuditFields,
 		Username:                     lc.Username,
 		UserDomain:                   lc.UserDomain,
+		UserRolesForAuditFiltering:   lc.UserRolesForAuditFiltering,
 		RequestHost:                  lc.RequestHost,
 		RequestRemoteAddr:            lc.RequestRemoteAddr,
 		EffectiveUserID:              lc.EffectiveUserID,
@@ -260,18 +264,24 @@ type EffectiveUserPair struct {
 	Domain string `json:"domain"`
 }
 
-type userIDDomain string
+type UserIDDomain string
 
 const (
-	UserDomainSyncGateway userIDDomain = "sgw"
-	UserDomainCBServer    userIDDomain = "cbs"
+	UserDomainSyncGateway UserIDDomain = "sgw"
+	UserDomainCBServer    UserIDDomain = "cbs"
 	UserDomainBuiltin                  = "builtin" // internal users (e.g. SG bootstrap user)
 )
 
-func UserLogCtx(parent context.Context, username string, domain userIDDomain) context.Context {
+func UserLogCtx(parent context.Context, username string, domain UserIDDomain, roles []string) context.Context {
 	newCtx := getLogCtx(parent)
 	newCtx.Username = username
 	newCtx.UserDomain = domain
+	if len(roles) > 0 {
+		newCtx.UserRolesForAuditFiltering = make(map[string]struct{}, len(roles))
+		for _, role := range roles {
+			newCtx.UserRolesForAuditFiltering[role] = struct{}{}
+		}
+	}
 	return LogContextWith(parent, &newCtx)
 }
 

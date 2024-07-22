@@ -1307,6 +1307,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 		attachmentAllowedKey = docID + digest
 	}
 
+	// attachmentName should only be used for logging, it is one possible name of an attachment for a given document if multiple attachments share the same digest.
 	allowedAttachment := bh.allowedAttachment(attachmentAllowedKey)
 	if allowedAttachment.counter <= 0 {
 		return base.HTTPErrorf(http.StatusForbidden, "Attachment's doc not being synced")
@@ -1331,7 +1332,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	base.Audit(bh.loggingCtx, base.AuditIDAttachmentRead, base.AuditFields{
 		base.AuditFieldDocID:        docID,
 		base.AuditFieldDocVersion:   allowedAttachment.docVersion,
-		base.AuditFieldAttachmentID: attachmentKey,
+		base.AuditFieldAttachmentID: allowedAttachment.name,
 	})
 
 	return nil
@@ -1506,6 +1507,7 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, docVersion strin
 				counter:    1,
 				docID:      docID,
 				docVersion: docVersion,
+				name:       attachment.name,
 			}
 		}
 	}

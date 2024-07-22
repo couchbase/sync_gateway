@@ -287,7 +287,7 @@ func (h *handler) handleChanges() error {
 			if len(userChannels) == 0 {
 				return base.HTTPErrorf(http.StatusBadRequest, "Empty channel list")
 			}
-		} else if filter == "_doc_ids" {
+		} else if filter == base.DocIDsFilter {
 			if feed != "normal" {
 				return base.HTTPErrorf(http.StatusBadRequest, "Filter '_doc_ids' is only valid for feed=normal replications")
 			}
@@ -323,11 +323,12 @@ func (h *handler) handleChanges() error {
 
 	forceClose := false
 
-	var err error
+	h.auditChangesFeedStart(options, feed, filter, docIdsArray, channelsArray)
 
+	var err error
 	switch feed {
 	case feedTypeNormal:
-		if filter == "_doc_ids" {
+		if filter == base.DocIDsFilter {
 			err, forceClose = h.sendSimpleChanges(userChannels, options, docIdsArray)
 		} else {
 			err, forceClose = h.sendSimpleChanges(userChannels, options, nil)
@@ -655,6 +656,26 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		}
 	}
 	return
+}
+
+func (h *handler) auditChangesFeedStart(options db.ChangesOptions, feedType string, filter string, docIDs, channels []string) {
+	auditFields := base.AuditFields{
+		base.AuditFieldSince:    options.Since.String(),
+		base.AuditFieldFeedType: feedType,
+	}
+	if filter != "" {
+		auditFields[base.AuditFieldFilter] = filter
+		if len(docIDs) > 0 {
+			auditFields[base.AuditFieldDocIDs] = docIDs
+		}
+		if len(channels) > 0 {
+			auditFields[base.AuditFieldChannels] = channels
+		}
+	}
+	if options.IncludeDocs {
+		auditFields[base.AuditFieldIncludeDocs] = true
+	}
+	base.Audit(h.ctx(), base.AuditIDChangesFeedStarted, auditFields)
 }
 
 // Helper function to read a complete message from a WebSocket

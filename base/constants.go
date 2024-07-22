@@ -148,6 +148,7 @@ const (
 
 	// Replication filter constants
 	ByChannelFilter = "sync_gateway/bychannel"
+	DocIDsFilter    = "_doc_ids"
 
 	// Increase default gocbv2 op timeout to match the standard SG backoff retry timing used for gocb v1
 	DefaultGocbV2OperationTimeout = 10 * time.Second

@@ -22,6 +22,7 @@ const (
 	AuditFieldCorrelationID = "cid" // FIXME: how to distinguish between this field (http) and blip id below
 	AuditFieldKeyspace      = "ks"
 	AuditFieldAuthMethod    = "auth_method"
+	AuditFieldUserName      = "username" // Name of a Sync Gateway user, not necessarily the same as real_userid
 
 	AuditFieldReplicationID      = "replication_id"
 	AuditFieldPayload            = "payload"
@@ -33,6 +34,7 @@ const (
 	AuditEffectiveUserID = "effective_userid"
 	AuditFieldAuditScope = "audit_scope"
 	AuditFieldFileName   = "filename"
+	AuditFieldDBNames    = "db_names"
 
 	// AuditIDSyncGatewayStartup AuditID = 53260
 	AuditFieldSGVersion                      = "sg_version"
@@ -61,4 +63,14 @@ const (
 	AuditFieldDocID        = "doc_id"
 	AuditFieldDocVersion   = "doc_version"
 	AuditFieldPurged       = "purged"
+
+	// Session events 53282, 53283
+	AuditFieldSessionID = "session_id"
+
+	// AuditIDChangesFeedStarted AuditID = 54200
+	AuditFieldSince       = "since"
+	AuditFieldFilter      = "filter"
+	AuditFieldDocIDs      = "doc_ids"
+	AuditFieldFeedType    = "feed_type"
+	AuditFieldIncludeDocs = "include_docs"
 )
