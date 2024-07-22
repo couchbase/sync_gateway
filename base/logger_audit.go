@@ -147,8 +147,9 @@ type AuditLogger struct {
 	FileLogger
 
 	// AuditLoggerConfig stores the initial config used to instantiate AuditLogger
-	config       AuditLoggerConfig
-	globalFields map[string]any
+	config        AuditLoggerConfig
+	globalFields  map[string]any
+	enabledEvents map[AuditID]struct{}
 }
 
 func (l *AuditLogger) getAuditLoggerConfig() *AuditLoggerConfig {
@@ -178,10 +179,12 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 		return nil, err
 	}
 
+	enabledEvents := make(map[AuditID]struct{})
 	logger := &AuditLogger{
-		FileLogger:   *fl,
-		config:       *config,
-		globalFields: globalFields,
+		FileLogger:    *fl,
+		config:        *config,
+		globalFields:  globalFields,
+		enabledEvents: enabledEvents,
 	}
 
 	if *config.FileLoggerConfig.Enabled {

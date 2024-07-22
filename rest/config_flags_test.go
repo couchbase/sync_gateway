@@ -48,6 +48,8 @@ func TestAllConfigFlags(t *testing.T) {
 				val = `{"db1":{"password":"foo"}}`
 			case *base.PerBucketCredentialsConfig:
 				val = `{"bucket":{"password":"foo"}}`
+			case *[]uint:
+				val = `123,456,789`
 			}
 			flags = append(flags, "-"+name, val)
 		case bool:

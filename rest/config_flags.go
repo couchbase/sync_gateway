@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -135,6 +136,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"logging.audit.collation_buffer_size":            {&config.Logging.Audit.CollationBufferSize, fs.Int("logging.audit.collation_buffer_size", 0, "")},
 		"logging.audit.rotation.rotation_interval":       {&config.Logging.Audit.Rotation.RotationInterval, fs.String("logging.audit.rotation.rotation_interval", "", "")},
 		"logging.audit.audit_log_file_path":              {&config.Logging.Audit.AuditLogFilePath, fs.String("logging.audit.audit_log_file_path", "", "")},
+		"logging.audit.enabled_events":                   {&config.Logging.Audit.EnabledEvents, fs.String("logging.audit.enabled_events", "", "")},
 
 		"auth.bcrypt_cost": {&config.Auth.BcryptCost, fs.Int("auth.bcrypt_cost", 0, "Cost to use for bcrypt password hashes")},
 
@@ -194,6 +196,20 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) error {
 			case *[]string:
 				list := strings.Split(*val.flagValue.(*string), ",")
 				*val.config.(*[]string) = list
+			case *[]uint:
+				// split by comma and parse
+				strs := strings.Split(*val.flagValue.(*string), ",")
+				uints := make([]uint, 0, len(strs))
+				for _, s := range strs {
+					u, err := strconv.ParseUint(s, 10, 64)
+					if err != nil {
+						err = fmt.Errorf("flag %s error: %w", f.Name, err)
+						errorMessages = errorMessages.Append(err)
+						return
+					}
+					uints = append(uints, uint(u))
+				}
+				*val.config.(*[]uint) = uints
 			case *uint:
 				if pointer {
 					rval.Set(reflect.ValueOf(val.flagValue))
