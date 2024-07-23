@@ -648,9 +648,6 @@ func (h *handler) handleGetLocalDoc() error {
 	}
 	value[db.BodyId] = "_local/" + docid
 	h.writeJSON(value)
-	base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
-		base.AuditFieldDocID: docid,
-	})
 	return nil
 }
 
@@ -658,16 +655,14 @@ func (h *handler) handleGetLocalDoc() error {
 func (h *handler) handlePutLocalDoc() error {
 	docid := h.PathVar("docid")
 	body, err := h.readJSON()
-	if err != nil {
-		return err
+	if err == nil {
+		var revid string
+		revid, err = h.collection.PutSpecial(db.DocTypeLocal, docid, body)
+		if err == nil {
+			h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString("_local/"+docid)+`,"ok":true,"rev":"`+revid+`"}`))
+		}
 	}
-	var revid string
-	revid, err = h.collection.PutSpecial(db.DocTypeLocal, docid, body)
-	if err != nil {
-		return err
-	}
-	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString("_local/"+docid)+`,"ok":true,"rev":"`+revid+`"}`))
-	return nil
+	return err
 }
 
 // HTTP handler for a DELETE of a _local document
