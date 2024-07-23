@@ -1003,7 +1003,6 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
-			fieldGroupDatabase,
 			fieldGroupKeyspace,
 		},
 		EnabledByDefault:   false,
@@ -1018,8 +1017,7 @@ var AuditEvents = events{
 			AuditFieldDocVersion: "revision ID",
 		},
 		mandatoryFieldGroups: []fieldGroup{
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
-			fieldGroupDatabase,
+			fieldGroupAuthenticated,
 			fieldGroupKeyspace,
 		},
 		EnabledByDefault:   false,
@@ -1036,7 +1034,6 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
-			fieldGroupDatabase,
 			fieldGroupKeyspace,
 		},
 		EnabledByDefault:   false,
@@ -1050,8 +1047,7 @@ var AuditEvents = events{
 			AuditFieldDocID: "document id",
 		},
 		mandatoryFieldGroups: []fieldGroup{
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
-			fieldGroupDatabase,
+			fieldGroupAuthenticated,
 			fieldGroupKeyspace,
 		},
 		EnabledByDefault:   false,
@@ -1071,7 +1067,6 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
-			fieldGroupDatabase,
 			fieldGroupKeyspace,
 		},
 		EnabledByDefault:   false,
