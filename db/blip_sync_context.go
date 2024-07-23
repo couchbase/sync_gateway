@@ -146,9 +146,12 @@ type blipSyncStats struct {
 // AllowedAttachment contains the metadata for handling allowed attachments
 // while replicating over BLIP protocol.
 type AllowedAttachment struct {
-	version int    // Version of the attachment
-	counter int    // Counter to track allowed attachments
-	docID   string // docID, used for BlipCBMobileReplicationV2 retrieval of V2 attachments
+	docID      string // docID, used for BlipCBMobileReplicationV2 retrieval of V2 attachments
+	name       string // name of the attachment, used for audit logging. This could be the name of any attachment on a given document, if multiple attachments share the same digest.
+	docVersion string // docVersion, used for audit logging
+	version    int    // Version of the attachment
+	counter    int    // Counter to track allowed attachments
+
 }
 
 // SetActiveCBMobileSubprotocol returns the active subprotocol version
@@ -441,7 +444,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(ctx context.Context, send
 	activeSubprotocol := bsc.activeCBMobileSubprotocol
 	if awaitResponse {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
-		bsc.addAllowedAttachments(docID, attMeta, activeSubprotocol)
+		bsc.addAllowedAttachments(docID, revID, attMeta, activeSubprotocol)
 	} else {
 		bsc.replicationStats.SendRevCount.Add(1)
 		outrq.SetNoReply(true)

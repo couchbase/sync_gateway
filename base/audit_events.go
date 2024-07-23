@@ -1005,8 +1005,10 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
-			fieldGroupDatabase,
 			fieldGroupKeyspace,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this is not present on ISGR or import
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -1020,9 +1022,11 @@ var AuditEvents = events{
 			AuditFieldDocVersion: "revision ID",
 		},
 		mandatoryFieldGroups: []fieldGroup{
-			// fieldGroupAuthenticated, // FIXME: CBG-4046
-			fieldGroupDatabase,
+			fieldGroupAuthenticated,
 			fieldGroupKeyspace,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this is not present on ISGR or import
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -1037,8 +1041,10 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
-			fieldGroupDatabase,
 			fieldGroupKeyspace,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this is not present on ISGR or import
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -1052,8 +1058,8 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
-			fieldGroupDatabase,
 			fieldGroupKeyspace,
+			fieldGroupRequest,
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -1066,14 +1072,15 @@ var AuditEvents = events{
 			AuditFieldDocID: "document id",
 		},
 		OptionalFields: AuditFields{
-			AuditFieldDocVersion: "revision ID",                      // these are set when purged: false
-			AuditFieldChannels:   []string{"list", "of", "channels"}, // these are set when purged: false
+			AuditFieldDocVersion: "revision ID", // these are set when purged: false
 			AuditFieldPurged:     true,
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
-			fieldGroupDatabase,
 			fieldGroupKeyspace,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this is not present on ISGR or import
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -1118,17 +1125,16 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
-			fieldGroupDatabase,
 			fieldGroupKeyspace,
-			fieldGroupRequest,
 		},
-
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this will be present everywhere except tests,
+		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
 		EventType:          eventTypeData,
 	},
 	AuditIDAttachmentRead: {
-
 		Name:        "Read attachment",
 		Description: "An attachment was viewed",
 		MandatoryFields: AuditFields{
@@ -1138,9 +1144,10 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
-			fieldGroupDatabase,
 			fieldGroupKeyspace,
-			fieldGroupRequest,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this will be present everywhere except ISGR
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -1156,9 +1163,10 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
-			fieldGroupDatabase,
 			fieldGroupKeyspace,
-			fieldGroupRequest,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this will be present everywhere except tests and ISGR
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -1169,14 +1177,17 @@ var AuditEvents = events{
 		Description: "An attachment was deleted",
 		MandatoryFields: AuditFields{
 			AuditFieldDocID:        "document id",
-			AuditFieldDocVersion:   "revision ID",
 			AuditFieldAttachmentID: "attachment name",
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
-			fieldGroupDatabase,
 			fieldGroupKeyspace,
-			fieldGroupRequest,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this will be present everywhere except tests and ISGR
+		},
+		OptionalFields: AuditFields{
+			AuditFieldDocVersion: "revision ID", // this is not present if it occurs as part of a purge
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -1185,12 +1196,13 @@ var AuditEvents = events{
 }
 
 func init() {
-	AuditEvents.expandMandatoryFieldGroups()
+	AuditEvents.expandFieldGroups()
 }
 
-func (e events) expandMandatoryFieldGroups() {
+func (e events) expandFieldGroups() {
 	for _, descriptor := range e {
 		descriptor.expandMandatoryFieldGroups(descriptor.mandatoryFieldGroups)
+		descriptor.expandOptionalFieldGroups(descriptor.optionalFieldGroups)
 	}
 }
 

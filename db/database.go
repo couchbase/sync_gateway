@@ -1494,7 +1494,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 				resultCount++
 				base.DebugfCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
 				// First, attempt to purge.
-				purgeErr := collection.Purge(ctx, tombstonesRow.Id)
+				purgeErr := collection.Purge(ctx, tombstonesRow.Id, false)
 				if purgeErr == nil {
 					purgedDocs = append(purgedDocs, tombstonesRow.Id)
 				} else if base.IsDocNotFoundError(purgeErr) {
@@ -2135,6 +2135,18 @@ func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context
 	return ctx
 }
 
+// AddBucketUserLogContext adds bucket user to the parent context for logging. This is used to mark actions not caused by a user.
+func (dbCtx *DatabaseContext) AddBucketUserLogContext(ctx context.Context) context.Context {
+	spec := dbCtx.BucketSpec
+	// Server is empty in testing only
+	if spec.Server == "" || spec.IsWalrusBucket() {
+		return base.UserLogCtx(ctx, "rosmar_noauth", base.UserDomainBuiltin, nil)
+	}
+	username, _, _ := dbCtx.BucketSpec.Auth.GetCredentials()
+	return base.UserLogCtx(ctx, username, base.UserDomainBuiltin, nil)
+
+}
+
 // onlyDefaultCollection is true if the database is only configured with default collection.
 func (dbCtx *DatabaseContext) OnlyDefaultCollection() bool {
 	if len(dbCtx.CollectionByID) > 1 {
@@ -2342,6 +2354,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
 	// subscription relies on the caching feed.
 	if db.autoImport {
+		ctx := db.AddBucketUserLogContext(ctx)
 		db.ImportListener = NewImportListener(ctx, db.MetadataKeys.DCPVersionedCheckpointPrefix(db.Options.GroupID, db.Options.ImportVersion), db)
 		if importFeedErr := db.ImportListener.StartImportFeed(db); importFeedErr != nil {
 			return importFeedErr

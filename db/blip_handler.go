@@ -697,7 +697,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 		if bh.purgeOnRemoval && bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 &&
 			(deletedFlags.HasFlag(changesDeletedFlagRevoked) || deletedFlags.HasFlag(changesDeletedFlagRemoved)) {
-			err := bh.collection.Purge(bh.loggingCtx, docID)
+			err := bh.collection.Purge(bh.loggingCtx, docID, true)
 			if err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Failed to purge document: %v", err)
 			}
@@ -989,7 +989,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 		if removed, ok := body[BodyRemoved].(bool); ok && removed {
 			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), revID)
-			if err := bh.collection.Purge(bh.loggingCtx, docID); err != nil {
+			if err := bh.collection.Purge(bh.loggingCtx, docID, true); err != nil {
 				return err
 			}
 
@@ -1307,6 +1307,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 		attachmentAllowedKey = docID + digest
 	}
 
+	// attachmentName should only be used for logging, it is one possible name of an attachment for a given document if multiple attachments share the same digest.
 	allowedAttachment := bh.allowedAttachment(attachmentAllowedKey)
 	if allowedAttachment.counter <= 0 {
 		return base.HTTPErrorf(http.StatusForbidden, "Attachment's doc not being synced")
@@ -1328,6 +1329,11 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	response.SetCompressed(rq.Properties[BlipCompress] == trueProperty)
 	bh.replicationStats.HandleGetAttachment.Add(1)
 	bh.replicationStats.HandleGetAttachmentBytes.Add(int64(len(attachment)))
+	base.Audit(bh.loggingCtx, base.AuditIDAttachmentRead, base.AuditFields{
+		base.AuditFieldDocID:        docID,
+		base.AuditFieldDocVersion:   allowedAttachment.docVersion,
+		base.AuditFieldAttachmentID: allowedAttachment.name,
+	})
 
 	return nil
 }
@@ -1478,7 +1484,7 @@ func (bsc *BlipSyncContext) incrementSerialNumber() uint64 {
 	return atomic.AddUint64(&bsc.handlerSerialNumber, 1)
 }
 
-func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []AttachmentStorageMeta, activeSubprotocol CBMobileSubprotocolVersion) {
+func (bsc *BlipSyncContext) addAllowedAttachments(docID string, docVersion string, attMeta []AttachmentStorageMeta, activeSubprotocol CBMobileSubprotocolVersion) {
 	if len(attMeta) == 0 {
 		return
 	}
@@ -1497,9 +1503,11 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 			bsc.allowedAttachments[key] = att
 		} else {
 			bsc.allowedAttachments[key] = AllowedAttachment{
-				version: attachment.version,
-				counter: 1,
-				docID:   docID,
+				version:    attachment.version,
+				counter:    1,
+				docID:      docID,
+				docVersion: docVersion,
+				name:       attachment.name,
 			}
 		}
 	}

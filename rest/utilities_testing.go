@@ -356,7 +356,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
 			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
 		}
-
 		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
 		var err error
 		if rt.leakyBucketConfig != nil || isLeaky {
@@ -536,7 +535,8 @@ func (rt *RestTester) GetUserAdminAPI(username string) auth.PrincipalConfig {
 // GetSingleTestDatabaseCollection will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
 func (rt *RestTester) GetSingleTestDatabaseCollection() (*db.DatabaseCollection, context.Context) {
 	c := db.GetSingleDatabaseCollection(rt.TB(), rt.GetDatabase())
-	return c, c.AddCollectionContext(rt.Context())
+	ctx := base.UserLogCtx(c.AddCollectionContext(rt.Context()), "gotest", base.UserDomainBuiltin, nil)
+	return c, ctx
 }
 
 // GetSingleTestDatabaseCollectionWithUser will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.

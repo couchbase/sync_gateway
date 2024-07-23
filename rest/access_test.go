@@ -332,7 +332,7 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 	assert.True(t, userHasDocAccess)
 
 	// Purge the document from the bucket to force 'not found'
-	err = collection.Purge(ctx, "doc")
+	err = collection.Purge(ctx, "doc", true)
 	require.NoError(t, err)
 
 	userHasDocAccess, err = db.UserHasDocAccess(ctx, collection, "doc")

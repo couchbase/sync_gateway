@@ -887,7 +887,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	}
 
 	allowImport := db.UseXattrs()
-	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, nil, false, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, nil, false, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		var isSgWrite bool
 		var crc32Match bool
 
@@ -1012,7 +1012,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 	}
 
 	allowImport := db.UseXattrs()
-	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, existingDoc, false, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, existingDoc, false, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -1637,7 +1637,7 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 	return
 }
 
-func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAttachments AttachmentData) error {
+func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAttachments updatedAttachments) error {
 	// Need to check and add attachments here to ensure the attachment is within size constraints
 	err := db.setAttachments(ctx, newAttachments)
 	if err != nil {
@@ -1851,9 +1851,23 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 		doc.History[newRevID].Channels = channelSet
 	}
 
-	err = col.addAttachments(ctx, newAttachments)
-	if err != nil {
-		return
+	if newAttachments != nil {
+		err = col.addAttachments(ctx, newAttachments)
+		if err != nil {
+			return
+		}
+		for _, att := range newAttachments {
+			auditFields := base.AuditFields{
+				base.AuditFieldDocID:        doc.ID,
+				base.AuditFieldDocVersion:   newRevID,
+				base.AuditFieldAttachmentID: att.name,
+			}
+			if att.created {
+				base.Audit(ctx, base.AuditIDAttachmentCreate, auditFields)
+			} else {
+				base.Audit(ctx, base.AuditIDAttachmentUpdate, auditFields)
+			}
+		}
 	}
 
 	col.backupAncestorRevs(ctx, doc, newDoc)
@@ -1903,7 +1917,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 }
 
 // Function type for the callback passed into updateAndReturnDoc
-type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAttachmentData AttachmentData, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error)
+type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error)
 
 // Calling updateAndReturnDoc directly allows callers to:
 //  1. Receive the updated document body in the response
@@ -1923,7 +1937,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	var unusedSequences []uint64                                 // Must be scoped outside callback, used over multiple iterations
 	var oldBodyJSON string                                       // Stores previous revision body for use by DocumentChangeEvent
 	var createNewRevIDSkipped bool
-	var previousAttachments map[string]struct{}
+	var previousAttachments map[string][]string
 
 	// Update the document
 	inConflict := false
@@ -1931,6 +1945,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	docBytes := 0   // Track size of document written, for write stats
 	xattrBytes := 0 // Track size of xattr written, for write stats
 	skipObsoleteAttachmentsRemoval := false
+	isNewDocCreation := false
 
 	if !db.UseXattrs() {
 		// Update the document, storing metadata in _sync property
@@ -1949,8 +1964,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				base.ErrorfCtx(ctx, "Error retrieving previous leaf attachments of doc: %s, Error: %v", base.UD(docid), err)
 			}
 			prevCurrentRev = doc.CurrentRev
-			docExists := currentValue != nil
-			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			isNewDocCreation = currentValue == nil
+			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
 			}
@@ -2004,8 +2019,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				base.ErrorfCtx(ctx, "Error retrieving previous leaf attachments of doc: %s, Error: %v", base.UD(docid), err)
 			}
 
-			docExists := currentValue != nil
-			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			isNewDocCreation = currentValue == nil
+			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
 			}
@@ -2027,7 +2042,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas))
 				}
 			} else {
-				if currentXattrs[base.MouXattrName] != nil && docExists {
+				if currentXattrs[base.MouXattrName] != nil && !isNewDocCreation {
 					updatedDoc.XattrsToDelete = append(updatedDoc.XattrsToDelete, base.MouXattrName)
 				}
 			}
@@ -2100,6 +2115,22 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		return nil, "", err
 	}
 
+	if !isImport {
+		auditFields := base.AuditFields{
+			base.AuditFieldDocID:      docid,
+			base.AuditFieldDocVersion: newRevID,
+		}
+		if doc.IsDeleted() {
+			base.Audit(ctx, base.AuditIDDocumentDelete, auditFields)
+		} else {
+			if isNewDocCreation {
+				base.Audit(ctx, base.AuditIDDocumentCreate, auditFields)
+			} else {
+				base.Audit(ctx, base.AuditIDDocumentUpdate, auditFields)
+			}
+		}
+	}
+
 	db.collectionStats.NumDocWrites.Add(1)
 	db.collectionStats.DocWritesBytes.Add(int64(docBytes))
 	db.dbStats().Database().NumDocWrites.Add(1)
@@ -2161,7 +2192,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	// Now that the document has successfully been stored, we can make other db changes:
 	base.DebugfCtx(ctx, base.KeyCRUD, "Stored doc %q / %q as #%v", base.UD(docid), newRevID, doc.Sequence)
 
-	leafAttachments := make(map[string]struct{})
+	leafAttachments := make(map[string][]string)
 	if !skipObsoleteAttachmentsRemoval {
 		leafAttachments, err = getAttachmentIDsForLeafRevisions(ctx, db, doc, newRevID)
 		if err != nil {
@@ -2172,13 +2203,25 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 	if !skipObsoleteAttachmentsRemoval {
 		var obsoleteAttachments []string
-		for previousAttachmentID := range previousAttachments {
+		for previousAttachmentID, previousAttachmentName := range previousAttachments {
 			if _, found := leafAttachments[previousAttachmentID]; !found {
 				err = db.dataStore.Delete(previousAttachmentID)
 				if err != nil {
 					base.ErrorfCtx(ctx, "Error deleting obsolete attachment %q of doc %q, Error: %v", previousAttachmentID, base.UD(doc.ID), err)
 				} else {
 					obsoleteAttachments = append(obsoleteAttachments, previousAttachmentID)
+					if !isImport {
+						for _, previousAttachmentName := range previousAttachmentName {
+							_, exists := doc.SyncData.Attachments[previousAttachmentName]
+							if !exists {
+								base.Audit(ctx, base.AuditIDAttachmentDelete, base.AuditFields{
+									base.AuditFieldDocID:        doc.ID,
+									base.AuditFieldDocVersion:   newRevID,
+									base.AuditFieldAttachmentID: previousAttachmentName,
+								})
+							}
+						}
+					}
 				}
 			}
 		}
@@ -2195,16 +2238,17 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	return doc, newRevID, nil
 }
 
-func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectionWithUser, doc *Document, newRevID string) (map[string]struct{}, error) {
-	leafAttachments := make(map[string]struct{})
+// getAttachmentIDsForLeafRevisions returns a map of attachment docids with values of attachment names.
+func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectionWithUser, doc *Document, newRevID string) (map[string][]string, error) {
+	leafAttachments := make(map[string][]string)
 
-	currentAttachments, err := retrieveV2AttachmentKeys(doc.ID, doc.Attachments)
+	currentAttachments, err := retrieveV2Attachments(doc.ID, doc.Attachments)
 	if err != nil {
 		return nil, err
 	}
 
-	for attachmentID, _ := range currentAttachments {
-		leafAttachments[attachmentID] = struct{}{}
+	for docid, names := range currentAttachments {
+		leafAttachments[docid] = names
 	}
 
 	// Grab leaf revisions that have attachments and aren't the currently being added rev
@@ -2222,13 +2266,13 @@ func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectio
 			return nil, err
 		}
 
-		attachmentKeys, err := retrieveV2AttachmentKeys(doc.ID, attachmentMeta)
+		attachmentKeys, err := retrieveV2Attachments(doc.ID, attachmentMeta)
 		if err != nil {
 			return nil, err
 		}
 
-		for attachmentID, _ := range attachmentKeys {
-			leafAttachments[attachmentID] = struct{}{}
+		for attachmentID, attachmentNames := range attachmentKeys {
+			leafAttachments[attachmentID] = attachmentNames
 		}
 
 	}
@@ -2355,7 +2399,7 @@ func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid strin
 }
 
 // Purges a document from the bucket (no tombstone)
-func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) error {
+func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string, needsAudit bool) error {
 	doc, err := db.GetDocument(ctx, key, DocUnmarshalAll)
 	if err != nil {
 		return err
@@ -2366,18 +2410,38 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) err
 		return err
 	}
 
-	for attachmentID := range attachments {
+	for attachmentID, attachmentNames := range attachments {
 		err = db.dataStore.Delete(attachmentID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Unable to delete attachment %q. Error: %v", attachmentID, err)
 		}
+		for _, attachmentName := range attachmentNames {
+			base.Audit(ctx, base.AuditIDAttachmentDelete, base.AuditFields{
+				base.AuditFieldDocID:        doc.ID,
+				base.AuditFieldAttachmentID: attachmentName,
+			})
+		}
+
 	}
 
 	if db.UseXattrs() {
-		return db.dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName})
+		err := db.dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName})
+		if err != nil {
+			return err
+		}
 	} else {
-		return db.dataStore.Delete(key)
+		err := db.dataStore.Delete(key)
+		if err != nil {
+			return err
+		}
 	}
+	if needsAudit {
+		base.Audit(ctx, base.AuditIDDocumentDelete, base.AuditFields{
+			base.AuditFieldDocID:  key,
+			base.AuditFieldPurged: true,
+		})
+	}
+	return nil
 }
 
 // ////// CHANNELS:

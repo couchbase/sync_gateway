@@ -723,8 +723,8 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 	const docKey = "TestAttachmentMigrate"
 
-	setupFn := func(t *testing.T) (db *Database) {
-		db, ctx := setupTestDB(t)
+	setupFn := func(t *testing.T) (db *Database, ctx context.Context) {
+		db, ctx = setupTestDB(t)
 
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -814,13 +814,12 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Empty(t, docSyncData.Attachments)
 
-		return db
+		return db, ctx
 	}
 
 	// Reading the active rev of a doc containing pre 2.5 meta. Make sure the rev ID is not changed, and the metadata is appearing in syncData.
 	t.Run("2.1 meta, read active rev", func(t *testing.T) {
-		db := setupFn(t)
-		ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+		db, ctx := setupFn(t)
 		defer db.Close(ctx)
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -850,8 +849,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 	// Reading a non-active revision shouldn't perform an upgrade, but should transform the metadata in memory for the returned rev.
 	t.Run("2.1 meta, read non-active rev", func(t *testing.T) {
-		db := setupFn(t)
-		ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+		db, ctx := setupFn(t)
 		defer db.Close(ctx)
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -881,8 +879,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 	// Writing a new rev should migrate the metadata and write that upgrade back to the bucket.
 	t.Run("2.1 meta, write new rev", func(t *testing.T) {
-		db := setupFn(t)
-		ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+		db, ctx := setupFn(t)
 		defer db.Close(ctx)
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -926,8 +923,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 	// Adding a new attachment should migrate existing attachments, without losing any.
 	t.Run("2.1 meta, add new attachment", func(t *testing.T) {
-		db := setupFn(t)
-		ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+		db, ctx := setupFn(t)
 		defer db.Close(ctx)
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1342,7 +1338,7 @@ func TestAllowedAttachments(t *testing.T) {
 			}
 			docID := "doc1"
 
-			ctx.addAllowedAttachments(docID, meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID, "fakeDocVersion", meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID, meta, tt.inputBlipProtocol)
 
 			ctx.removeAllowedAttachments(docID, meta, tt.inputBlipProtocol)
@@ -1360,7 +1356,7 @@ func TestAllowedAttachments(t *testing.T) {
 			}
 			docID := "doc1"
 
-			ctx.addAllowedAttachments(docID, meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID, "fakeDocVersion", meta, tt.inputBlipProtocol)
 			key := allowedAttachmentKey(docID, meta[0].digest, tt.inputBlipProtocol)
 			require.True(t, isAllowedAttachment(ctx, key))
 
@@ -1379,11 +1375,11 @@ func TestAllowedAttachments(t *testing.T) {
 			}
 
 			docID1 := "doc1"
-			ctx.addAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID1, "fakeDocVersion", meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
 
 			docID2 := "doc2"
-			ctx.addAllowedAttachments(docID2, meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID2, "fakeDocVersion", meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 
 			ctx.removeAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
@@ -1409,11 +1405,11 @@ func TestAllowedAttachments(t *testing.T) {
 			}
 
 			docID1 := "doc1"
-			ctx.addAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID1, "fakeDocVersion", meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
 
 			docID2 := "doc2"
-			ctx.addAllowedAttachments(docID2, meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID2, "fakeDocVersion", meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 
 			ctx.removeAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
@@ -1436,12 +1432,12 @@ func TestAllowedAttachments(t *testing.T) {
 
 			docID1 := "doc1"
 			att1Meta := []AttachmentStorageMeta{{digest: "att1", version: tt.inputAttVersion}}
-			ctx.addAllowedAttachments(docID1, att1Meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID1, "fakeDocVersion", att1Meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID1, att1Meta, tt.inputBlipProtocol)
 
 			docID2 := "doc2"
 			att2Meta := []AttachmentStorageMeta{{digest: "att2", version: tt.inputAttVersion}}
-			ctx.addAllowedAttachments(docID2, att2Meta, tt.inputBlipProtocol)
+			ctx.addAllowedAttachments(docID2, "fakeDocVersion", att2Meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, att2Meta, tt.inputBlipProtocol)
 
 			ctx.removeAllowedAttachments(docID1, att1Meta, tt.inputBlipProtocol)

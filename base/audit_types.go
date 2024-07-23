@@ -44,6 +44,9 @@ type EventDescriptor struct {
 	// mandatoryFieldGroups is used to automatically fill MandatoryFields with groups of common fields
 	mandatoryFieldGroups []fieldGroup
 
+	// optionalFieldGroups is used to automatically fill OptionalFields with groups of common fields
+	optionalFieldGroups []fieldGroup
+
 	// The following fields are for documentation-use only.
 	// OptionalFields describe optional field(s) valid in an instance of the event
 	OptionalFields AuditFields
@@ -66,8 +69,8 @@ const (
 	fieldGroupKeyspace      fieldGroup = "keyspace"
 )
 
-// mandatoryFieldsByGroup defines which fields are mandatory for each group.
-var mandatoryFieldsByGroup = map[fieldGroup]map[string]any{
+// fieldsByGroup defines which fields are mandatory for each group.
+var fieldsByGroup = map[fieldGroup]map[string]any{
 	fieldGroupGlobal: {
 		AuditFieldTimestamp:   "timestamp",
 		AuditFieldID:          123,
@@ -118,16 +121,29 @@ func (ed *EventDescriptor) expandMandatoryFieldGroups(groups []fieldGroup) {
 	}
 
 	// common global fields
-	fields := mandatoryFieldsByGroup[fieldGroupGlobal]
+	fields := fieldsByGroup[fieldGroupGlobal]
 	for k, v := range fields {
 		ed.MandatoryFields[k] = v
 	}
 
 	// event-specific field groups
 	for _, group := range groups {
-		groupFields := mandatoryFieldsByGroup[group]
+		groupFields := fieldsByGroup[group]
 		for k, v := range groupFields {
 			ed.MandatoryFields[k] = v
+		}
+	}
+}
+
+func (ed *EventDescriptor) expandOptionalFieldGroups(groups []fieldGroup) {
+	if ed.OptionalFields == nil {
+		ed.OptionalFields = make(AuditFields)
+	}
+	// event-specific field groups
+	for _, group := range groups {
+		groupFields := fieldsByGroup[group]
+		for k, v := range groupFields {
+			ed.OptionalFields[k] = v
 		}
 	}
 }

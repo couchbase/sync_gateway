@@ -1965,7 +1965,7 @@ func (h *handler) handlePurge() error {
 			}
 
 			// Attempt to delete document, if successful add to response, otherwise log warning
-			err = h.collection.Purge(h.ctx(), key)
+			err = h.collection.Purge(h.ctx(), key, true)
 			if err == nil {
 
 				docIDs = append(docIDs, key)

@@ -677,7 +677,12 @@ func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, 
 	db, err := CreateDatabase(dbCtx)
 	require.NoError(t, err, "Couldn't create database 'db'")
 
-	return db, ctx
+	return db, addDatabaseAndTestUserContext(ctx, db)
+}
+
+// addDatabaseAndTestUserContext adds a fake user to the context
+func addDatabaseAndTestUserContext(ctx context.Context, db *Database) context.Context {
+	return db.AddDatabaseLogContext(base.UserLogCtx(ctx, "gotest", base.UserDomainBuiltin, nil))
 }
 
 // GetScopesOptions sets up a ScopesOptions from a TestBucket. This will set up default or non default collections depending on the test harness use of SG_TEST_USE_DEFAULT_COLLECTION and whether the backing store supports collections.
@@ -762,4 +767,23 @@ func DefaultMutateInOpts() *sgbucket.MutateInOptions {
 	return &sgbucket.MutateInOptions{
 		MacroExpansion: macroExpandSpec(base.SyncXattrName),
 	}
+}
+
+func RawDocWithInlineSyncData(_ testing.TB) string {
+	return `
+{
+  "_sync": {
+    "rev": "1-ca9ad22802b66f662ff171f226211d5c",
+    "sequence": 1,
+    "recent_sequences": [1],
+    "history": {
+      "revs": ["1-ca9ad22802b66f662ff171f226211d5c"],
+      "parents": [-1],
+      "channels": [null]
+    },
+    "cas": "",
+    "time_saved": "2017-11-29T12:46:13.456631-08:00"
+  }
+}
+`
 }

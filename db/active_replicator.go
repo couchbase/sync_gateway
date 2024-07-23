@@ -225,6 +225,11 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	bsc.loggingCtx = base.CorrelationIDLogCtx(
 		arc.config.ActiveDB.AddDatabaseLogContext(base.NewNonCancelCtx().Ctx),
 		arc.config.ID+idSuffix)
+	if arc.config.RunAs != "" {
+		bsc.loggingCtx = base.UserLogCtx(bsc.loggingCtx, arc.config.RunAs, base.UserDomainSyncGateway, nil)
+	} else {
+		bsc.loggingCtx = arc.config.ActiveDB.AddBucketUserLogContext(bsc.loggingCtx)
+	}
 
 	// NewBlipSyncContext has already set deltas as disabled/enabled based on config.ActiveDB.
 	// If deltas have been disabled in the replication config, override this value

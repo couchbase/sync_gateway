@@ -1101,7 +1101,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	// Create via the SDK with sync metadata intact
 	expirySeconds := time.Second * 30
 	testExpiry := uint32(time.Now().Add(expirySeconds).Unix())
-	bodyString := rawDocWithSyncMeta()
+	bodyString := db.RawDocWithInlineSyncData(t)
 	_, err := dataStore.Add(key, testExpiry, []byte(bodyString))
 	assert.NoError(t, err, "Error writing doc w/ expiry")
 
@@ -1343,7 +1343,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 			// Create via the SDK with sync metadata intact
 			expirySeconds := time.Second * 30
 			syncMetaExpiry := time.Now().Add(expirySeconds)
-			bodyString := rawDocWithSyncMeta()
+			bodyString := db.RawDocWithInlineSyncData(t)
 			_, err := dataStore.Add(key, uint32(syncMetaExpiry.Unix()), []byte(bodyString))
 			assert.NoError(t, err, "Error writing doc w/ expiry")
 
@@ -1869,35 +1869,6 @@ func assertDocProperty(t *testing.T, getDocResponse *rest.TestResponse, property
 	value, ok := responseBody[propertyName]
 	assert.True(t, ok, fmt.Sprintf("Expected property %s not found in response %s", propertyName, getDocResponse.Body.Bytes()))
 	assert.Equal(t, expectedPropertyValue, value)
-}
-
-func rawDocWithSyncMeta() string {
-
-	return `
-{
-    "_sync": {
-        "rev": "1-ca9ad22802b66f662ff171f226211d5c",
-        "sequence": 1,
-        "recent_sequences": [
-            1
-        ],
-        "history": {
-            "revs": [
-                "1-ca9ad22802b66f662ff171f226211d5c"
-            ],
-            "parents": [
-                -1
-            ],
-            "channels": [
-                null
-            ]
-        },
-        "cas": "",
-        "time_saved": "2017-11-29T12:46:13.456631-08:00"
-    }
-}
-`
-
 }
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {

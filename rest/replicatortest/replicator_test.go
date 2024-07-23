@@ -5187,7 +5187,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	err = rt2.GetSingleDataStore().Set(checkpointDocID, 0, nil, firstCheckpoint)
 	assert.NoError(t, err)
 
-	err = rt2collection.Purge(rt2ctx, docID+"2")
+	err = rt2collection.Purge(rt2ctx, docID+"2", true)
 	assert.NoError(t, err)
 
 	require.NoError(t, rt2collection.FlushChannelCache(ctx2))
