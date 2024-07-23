@@ -801,7 +801,7 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		OptionalFields: AuditFields{
 			AuditFieldFilter:      "filter",
@@ -826,7 +826,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -841,7 +841,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -857,7 +857,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -872,7 +872,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -888,7 +888,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -903,7 +903,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -918,7 +918,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -933,7 +933,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -948,7 +948,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -963,7 +963,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -975,7 +975,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -987,7 +987,7 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
 			fieldGroupRequest,
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -1018,7 +1018,7 @@ var AuditEvents = events{
 			AuditFieldDocVersion: "revision ID",
 		},
 		mandatoryFieldGroups: []fieldGroup{
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			// fieldGroupAuthenticated, // FIXME: CBG-4046
 			fieldGroupDatabase,
 			fieldGroupKeyspace,
 		},
@@ -1050,7 +1050,7 @@ var AuditEvents = events{
 			AuditFieldDocID: "document id",
 		},
 		mandatoryFieldGroups: []fieldGroup{
-			// fieldGroupAuthenticated, // FIXME: CBG-3973
+			fieldGroupAuthenticated,
 			fieldGroupDatabase,
 			fieldGroupKeyspace,
 		},
