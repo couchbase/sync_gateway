@@ -38,6 +38,7 @@ const (
 	AuditFieldEffectiveUserIDDomain = "domain"
 	AuditFieldEffectiveUserIDUser   = "user"
 	AuditFieldAuditScope            = "audit_scope"
+	AuditFieldEnabledEvents         = "enabled_events"
 	AuditFieldFileName              = "filename"
 	AuditFieldDBNames               = "db_names"
 

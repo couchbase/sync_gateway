@@ -1070,8 +1070,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			}
 			for _, id := range dbConfig.Logging.Audit.EnabledEvents {
 				id := base.AuditID(id)
-				if _, ok := base.AuditEvents[id]; !ok {
+				if e, ok := base.AuditEvents[id]; !ok {
 					multiError = multiError.Append(fmt.Errorf("unknown audit event ID %q", id))
+				} else if e.IsGlobalEvent {
+					multiError = multiError.Append(fmt.Errorf("event %q is not configurable at the database level", id))
 				}
 			}
 		}
@@ -2273,15 +2275,15 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 		enabledEvents := make(map[base.AuditID]struct{}, len(l.Audit.EnabledEvents))
 		events := l.Audit.EnabledEvents
 		if events == nil {
-			events = base.DefaultAuditEventIDs
+			events = base.DefaultDbAuditEventIDs
 		}
-		// always enable the non-filterable events
-		for id := range base.NonFilterableEvents {
-			enabledEvents[id] = struct{}{}
-		}
-		// enable the events specified in the config
 		for _, event := range events {
 			enabledEvents[base.AuditID(event)] = struct{}{}
+		}
+
+		// always enable the non-filterable events... since by definition they cannot be disabled
+		for id := range base.NonFilterableAuditEventsForDb {
+			enabledEvents[id] = struct{}{}
 		}
 
 		// user/role filtering

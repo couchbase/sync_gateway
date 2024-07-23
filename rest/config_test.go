@@ -696,6 +696,24 @@ func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
 	assert.Equal(t, base.RedactFull, sc.Logging.RedactionLevel)
 }
 
+func TestAuditLogConfigDatabaseEventInGlobal(t *testing.T) {
+	base.ResetGlobalTestLogging(t)
+	base.InitializeMemoryLoggers()
+
+	sc := NewEmptyStartupConfig()
+	sc.Logging.LogFilePath = t.TempDir()
+	sc.Logging.Audit.Enabled = base.BoolPtr(true)
+	sc.Logging.Audit.EnabledEvents = []uint{
+		uint(base.AuditIDSyncGatewayStartup),          // global, non-filterable
+		uint(base.AuditIDUserCreate),                  // database, filterable
+		uint(base.AuditIDSyncGatewayCollectInfoStart), // global, filterable
+	}
+
+	err := sc.SetupAndValidateLogging(base.TestCtx(t))
+	assert.ErrorContains(t, err, "1 errors")
+	assert.ErrorContains(t, err, "audit event ID 54100 \"Create user\" can only be configured at the database level")
+}
+
 func TestServerConfigValidate(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	// unsupported.stats_log_freq_secs

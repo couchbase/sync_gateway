@@ -4353,10 +4353,13 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	RequireEventCount(t, runtimeConfig, base.AuditIDAttachmentCreate, 0)
 
 	// Try disabling a non-filterable event
-	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled": true,"events":{"%s":false}}"`, base.AuditIDAuditEnabled))
-	rest.RequireStatus(t, resp, http.StatusBadRequest)
-	assert.Contains(t, resp.Body.String(), "couldn't update audit configuration")
-	assert.Contains(t, resp.Body.String(), fmt.Sprintf(`event \"%s\" is not filterable`, base.AuditIDAuditEnabled))
+	// We don't currently have a non-filterable database event, but this would be where we'd put one to test if we did!
+	if false { // nolint
+		resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"enabled": true,"events":{"%s":false}}"`, base.AuditIDAuditEnabled))
+		rest.RequireStatus(t, resp, http.StatusBadRequest)
+		assert.Contains(t, resp.Body.String(), "couldn't update audit configuration")
+		assert.Contains(t, resp.Body.String(), fmt.Sprintf(`event \"%s\" is not filterable`, base.AuditIDAuditEnabled))
+	}
 
 	// Re-enable the event via PUT, should remove other events
 	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config/audit", fmt.Sprintf(`{"enabled":true,"events":{"%s":true}}`, base.AuditIDAttachmentCreate))
@@ -4376,6 +4379,11 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", `{"events":{"123":true}}`)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
 	assert.Contains(t, resp.Body.String(), `unknown audit event ID: \"123\"`)
+
+	// Set a global-only audit ID
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", fmt.Sprintf(`{"events":{"%s":true}}`, base.AuditIDSyncGatewayCollectInfoStart))
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	assert.Contains(t, resp.Body.String(), fmt.Sprintf(`event \"%s\" is not configurable at the database level`, base.AuditIDSyncGatewayCollectInfoStart))
 }
 
 func RequireEventCount(t *testing.T, runtimeConfig *rest.RuntimeDatabaseConfig, auditID base.AuditID, expectedCount int) {
