@@ -116,6 +116,8 @@ const (
 	AuditIDDocumentUpdate       AuditID = 55002
 	AuditIDDocumentDelete       AuditID = 55003
 	AuditIDDocumentMetadataRead AuditID = 55004
+	AuditIDDocumentImport       AuditID = 55005
+	AuditIDDocumentResync       AuditID = 55006
 	// Document attachments events
 	AuditIDAttachmentCreate AuditID = 55010
 	AuditIDAttachmentRead   AuditID = 55011
@@ -1078,6 +1080,35 @@ var AuditEvents = events{
 		FilteringPermitted: true,
 		EventType:          eventTypeData,
 	},
+	AuditIDDocumentImport: {
+		Name:        "Import document",
+		Description: "A document was imported",
+		MandatoryFields: AuditFields{
+			AuditFieldDocID:      "document id",
+			AuditFieldDocVersion: "revision ID",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupKeyspace,
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDDocumentResync: {
+		Name:        "Resync document",
+		Description: "A document was resynced",
+		MandatoryFields: AuditFields{
+			AuditFieldDocID:      "document id",
+			AuditFieldDocVersion: "revision ID",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupKeyspace,
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+
 	AuditIDAttachmentCreate: {
 		Name:        "Create attachment",
 		Description: "A new attachment was created",
