@@ -4280,6 +4280,8 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	assert.Equal(t, false, responseBody["enabled"].(bool))
 	// check we got the verbose output
 	assert.NotEmpty(t, responseBody["events"].(map[string]interface{})[base.AuditIDPublicUserAuthenticated.String()].(map[string]interface{})["description"].(string), "expected verbose output (event description, etc.)")
+	// check that global event IDs were not present
+	assert.Nil(t, responseBody["events"].(map[string]interface{})[base.AuditIDSyncGatewayCollectInfoStart.String()], "expected global event ID to not be present")
 
 	// enable auditing on the database (upsert)
 	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", `{"enabled":true}`)
