@@ -230,10 +230,10 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	require.NoError(t, err, "NewDatabaseContext")
 	defer db.Close(ctx)
 
+	ctx = db.AddDatabaseLogContext(ctx)
 	err = db.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
-	ctx = db.AddDatabaseLogContext(ctx)
 	collection := GetSingleDatabaseCollection(t, db)
 
 	err, _ = base.RetryLoop(ctx, "wait for non-existent node to be removed", func() (shouldRetry bool, err error, value interface{}) {
