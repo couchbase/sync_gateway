@@ -457,6 +457,18 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		return false
 
 	}
+	auditFields := base.AuditFields{
+		base.AuditFieldSince:    options.Since.String(),
+		base.AuditFieldChannels: channelSet,
+		base.AuditFieldDocIDs:   opts.docIDs,
+	}
+	if options.Continuous {
+		auditFields[base.AuditFieldFeedType] = "continuous"
+	} else {
+		auditFields[base.AuditFieldFeedType] = "normal"
+	}
+	base.Audit(bh.loggingCtx, base.AuditIDChangesFeedStarted, auditFields)
+
 	_, forceClose := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {

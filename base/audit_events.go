@@ -804,7 +804,6 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupKeyspace,
-			fieldGroupRequest,
 			fieldGroupAuthenticated,
 		},
 		OptionalFields: AuditFields{
@@ -813,6 +812,9 @@ var AuditEvents = events{
 			AuditFieldChannels:    []string{"list", "of", "channels"},
 			AuditFieldFeedType:    "continuous, normal, longpoll, websocket, etc.",
 			AuditFieldIncludeDocs: true,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // active replicator push doesn't have local and remote
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
