@@ -80,7 +80,7 @@ func setupTestDBWithOptionsAndImport(t testing.TB, tBucket *base.TestBucket, dbc
 
 	db, err := CreateDatabase(dbCtx)
 	require.NoError(t, err, "Couldn't create database 'db'")
-	return db, ctx
+	return db, addDatabaseAndTestUserContext(ctx, db)
 }
 
 func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database, context.Context) {
@@ -133,9 +133,8 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
 	atomic.StoreUint32(&dbCtx.State, DBOnline)
-	ctx = db.AddDatabaseLogContext(ctx)
 
-	return db, ctx
+	return db, addDatabaseAndTestUserContext(ctx, db)
 }
 
 func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) (*Database, context.Context) {
@@ -162,8 +161,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 		dbCtx.Close(ctx)
 		t.Fatalf("Unable to create database: %v", err)
 	}
-	ctx = db.AddDatabaseLogContext(ctx)
-	return db, ctx
+	return db, addDatabaseAndTestUserContext(ctx, db)
 }
 
 func setupTestDBDefaultCollection(t testing.TB) (*Database, context.Context) {

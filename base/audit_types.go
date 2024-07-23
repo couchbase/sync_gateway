@@ -53,9 +53,10 @@ type EventDescriptor struct {
 	// EventType represents a type of event
 	EventType eventType
 
-	// isDatabaseEvent indicates whether the event is a database event or a global (SG) event
-	// this controls where this event can be configured (startup config (false) vs. db config (true))
-	//isDatabaseEvent bool
+	// IsGlobalEvent indicates where the event can be enabled
+	//  - true  = only via the bootstrap config
+	//  - false = only via the database config
+	IsGlobalEvent bool
 }
 
 type fieldGroup string

@@ -813,7 +813,7 @@ func (h *handler) handlePutDbAuditConfig() error {
 			}
 			_, ok := base.AuditEvents[auditID]
 			if !ok {
-				multiError = multiError.Append(fmt.Errorf("unknown audit event ID: %q", id))
+				multiError = multiError.Append(fmt.Errorf("unknown audit event ID: %q", auditID))
 				continue
 			}
 
@@ -829,12 +829,15 @@ func (h *handler) handlePutDbAuditConfig() error {
 			// check if explicitly disabled events are allowed to be filtered
 			// we'll ensure that non-filterable events are always considered enabled at runtime instead of at config persistence time
 			// this will ensure we are able to add events in the future that are non-filterable and have them work correctly
-			if _, ok := base.NonFilterableEvents[auditID]; ok && !eventEnabled {
-				multiError = multiError.Append(fmt.Errorf("event %q is not filterable", id))
-				continue
+			if e, ok := base.AuditEvents[auditID]; !ok {
+				multiError = multiError.Append(fmt.Errorf("unknown audit event ID: %q", auditID))
+			} else if e.IsGlobalEvent {
+				multiError = multiError.Append(fmt.Errorf("event %q is not configurable at the database level", auditID))
+			} else if !e.FilteringPermitted && !eventEnabled {
+				multiError = multiError.Append(fmt.Errorf("event %q is not filterable and cannot be disabled", auditID))
+			} else {
+				toChange[auditID] = eventEnabled
 			}
-
-			toChange[auditID] = eventEnabled
 		}
 		if err := multiError.ErrorOrNil(); err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "couldn't update audit configuration: %s", err)
@@ -1894,6 +1897,15 @@ func (h *handler) getUsers() error {
 	if marshalErr != nil {
 		return marshalErr
 	}
+
+	auditFields := base.AuditFields{
+		base.AuditFieldNameOnly: nameOnly,
+	}
+	if limit > 0 {
+		auditFields[base.AuditFieldLimit] = limit
+	}
+	base.Audit(h.ctx(), base.AuditIDUsersAll, auditFields)
+
 	h.writeRawJSON(bytes)
 	return nil
 }
@@ -1908,6 +1920,8 @@ func (h *handler) getRoles() error {
 	}
 
 	bytes, err := base.JSONMarshal(roles)
+
+	base.Audit(h.ctx(), base.AuditIDRolesAll, base.AuditFields{base.AuditFieldIncludeDeleted: includeDeleted})
 	h.writeRawJSON(bytes)
 	return err
 }

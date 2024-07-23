@@ -68,6 +68,7 @@ func TestAuditLoggingFields(t *testing.T) {
 					FileLoggerConfig: base.FileLoggerConfig{
 						Enabled: base.BoolPtr(true),
 					},
+					EnabledEvents: base.AllGlobalAuditeventIDs, // enable everything for testing
 				},
 			}
 			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
@@ -81,7 +82,7 @@ func TestAuditLoggingFields(t *testing.T) {
 	dbConfig.Logging = &DbLoggingConfig{
 		Audit: &DbAuditLoggingConfig{
 			Enabled:       base.BoolPtr(true),
-			EnabledEvents: base.AllAuditeventIDs, // enable everything for testing
+			EnabledEvents: base.AllDbAuditeventIDs, // enable everything for testing
 			DisabledUsers: []base.AuditLoggingPrincipal{
 				{Name: filteredPublicUsername, Domain: string(base.UserDomainSyncGateway)},
 				{Name: filteredAdminUsername, Domain: string(base.UserDomainCBServer)},

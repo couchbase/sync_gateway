@@ -536,7 +536,8 @@ func (rt *RestTester) GetUserAdminAPI(username string) auth.PrincipalConfig {
 // GetSingleTestDatabaseCollection will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
 func (rt *RestTester) GetSingleTestDatabaseCollection() (*db.DatabaseCollection, context.Context) {
 	c := db.GetSingleDatabaseCollection(rt.TB(), rt.GetDatabase())
-	return c, c.AddCollectionContext(rt.Context())
+	ctx := base.UserLogCtx(c.AddCollectionContext(rt.Context()), "gotest", base.UserDomainBuiltin, nil)
+	return c, ctx
 }
 
 // GetSingleTestDatabaseCollectionWithUser will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.

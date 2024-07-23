@@ -661,7 +661,7 @@ func TestAttachmentProcessError(t *testing.T) {
 	testDB1, ctx1 := setupTestDBForBucketDefaultCollection(t, b)
 	defer testDB1.Close(ctx1)
 
-	collection, _ := GetSingleDatabaseCollectionWithUser(ctx1, t, testDB1)
+	collection, ctx1 := GetSingleDatabaseCollectionWithUser(ctx1, t, testDB1)
 	CreateLegacyAttachmentDoc(t, ctx1, collection, "docID", []byte("{}"), "attKey", []byte("{}"))
 
 	err := testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})

@@ -676,8 +676,12 @@ func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, 
 	db, err := CreateDatabase(dbCtx)
 	require.NoError(t, err, "Couldn't create database 'db'")
 
-	ctx = db.AddDatabaseLogContext(ctx)
-	return db, ctx
+	return db, addDatabaseAndTestUserContext(ctx, db)
+}
+
+// addDatabaseAndTestUserContext adds a fake user to the context
+func addDatabaseAndTestUserContext(ctx context.Context, db *Database) context.Context {
+	return db.AddDatabaseLogContext(base.UserLogCtx(ctx, "gotest", base.UserDomainBuiltin, nil))
 }
 
 // GetScopesOptions sets up a ScopesOptions from a TestBucket. This will set up default or non default collections depending on the test harness use of SG_TEST_USE_DEFAULT_COLLECTION and whether the backing store supports collections.

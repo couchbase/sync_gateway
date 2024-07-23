@@ -850,9 +850,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// previous state.
 	if base.IsAuditEnabled() {
 		if contextOptions.LoggingConfig.DbAuditEnabled() {
-			base.Audit(ctx, base.AuditIDAuditEnabled, base.AuditFields{"audit_scope": "db", "db": dbName})
+			base.Audit(ctx, base.AuditIDAuditEnabled, base.AuditFields{base.AuditFieldAuditScope: "db", base.AuditFieldDatabase: dbName})
 		} else {
-			base.Audit(ctx, base.AuditIDAuditDisabled, base.AuditFields{"audit_scope": "db", "db": dbName})
+			base.Audit(ctx, base.AuditIDAuditDisabled, base.AuditFields{base.AuditFieldAuditScope: "db", base.AuditFieldDatabase: dbName})
 		}
 	}
 

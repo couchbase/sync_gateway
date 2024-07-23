@@ -141,7 +141,8 @@ var AuditEvents = events{
 		OptionalFields: AuditFields{
 			"db": "database name",
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDAuditDisabled: {
 		Name:               "Auditing disabled",
@@ -151,7 +152,8 @@ var AuditEvents = events{
 		MandatoryFields: AuditFields{
 			"audit_scope": "global or db",
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDAuditConfigChanged: {
 		Name:               "Auditing configuration changed",
@@ -167,7 +169,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			fieldGroupAuthenticated,
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDSyncGatewayStartup: {
 		Name:               "Sync Gateway startup",
@@ -184,7 +187,8 @@ var AuditEvents = events{
 			AuditFieldBcryptCost:                     10,
 			AuditFieldDisablePersistentConfig:        false,
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDPublicHTTPAPIRequest: {
 		Name:        "Public HTTP API request",
@@ -207,6 +211,7 @@ var AuditEvents = events{
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
 		EventType:          eventTypeUser,
+		IsGlobalEvent:      true,
 	},
 	AuditIDAdminHTTPAPIRequest: {
 		Name:        "Admin HTTP API request",
@@ -229,6 +234,7 @@ var AuditEvents = events{
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
 	},
 	AuditIDMetricsHTTPAPIRequest: {
 		Name:        "Metrics HTTP API request",
@@ -251,6 +257,7 @@ var AuditEvents = events{
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
 	},
 	AuditIDPublicUserAuthenticated: {
 		Name:        "Public API user authenticated",
@@ -352,7 +359,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			fieldGroupAuthenticated,
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDSyncGatewayCollectInfoStart: {
 		Name:               "sgcollect_info start",
@@ -371,7 +379,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			fieldGroupAuthenticated,
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDSyncGatewayCollectInfoStop: {
 		Name:               "sgcollect_info stop",
@@ -383,7 +392,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			fieldGroupAuthenticated,
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDSyncGatewayStats: {
 		Name:               "stats requested",
@@ -397,7 +407,8 @@ var AuditEvents = events{
 			fieldGroupRequest,
 			fieldGroupAuthenticated,
 		},
-		EventType: eventTypeAdmin,
+		EventType:     eventTypeAdmin,
+		IsGlobalEvent: true,
 	},
 	AuditIDSyncGatewayProfiling: {
 		Name:        "profiling requested",
@@ -411,6 +422,7 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
 	},
 	AuditIDClusterInfoRead: {
 		Name:               "Sync Gateway cluster info read",
@@ -418,6 +430,7 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
 	},
 	AuditIDCreateDatabase: {
 		Name:        "Create database",
@@ -471,6 +484,7 @@ var AuditEvents = events{
 		EnabledByDefault:   false, // because high volume (Capella UI)
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
 	},
 	AuditIDReadDatabaseConfig: {
 		Name:        "Read database config",
@@ -626,6 +640,7 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
 	},
 	AuditIDDatabaseRepair: {
 		Name:        "Database repair",
@@ -701,10 +716,15 @@ var AuditEvents = events{
 	},
 	AuditIDUsersAll: {
 		Name:        "Read all users",
-		Description: "All users were viewed",
+		Description: "List of all users was viewed",
 		MandatoryFields: AuditFields{
-			"db":        "database name",
-			"usernames": []string{"list", "of", "usernames"},
+			AuditFieldNameOnly: true,
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+		},
+		OptionalFields: AuditFields{
+			AuditFieldLimit: 100,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -759,10 +779,15 @@ var AuditEvents = events{
 	},
 	AuditIDRolesAll: {
 		Name:        "Read all roles",
-		Description: "All roles were viewed",
+		Description: "List of all roles was viewed",
 		MandatoryFields: AuditFields{
-			"db":    "database name",
-			"roles": []string{"list", "of", "roles"},
+			AuditFieldIncludeDeleted: true,
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupDatabase,
+		},
+		OptionalFields: AuditFields{
+			AuditFieldLimit: 100,
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
@@ -978,7 +1003,6 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
-			fieldGroupDatabase,
 			fieldGroupKeyspace,
 		},
 		EnabledByDefault:   false,
@@ -1010,7 +1034,6 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
-			fieldGroupDatabase,
 			fieldGroupKeyspace,
 		},
 		EnabledByDefault:   false,
@@ -1134,37 +1157,50 @@ func (e events) expandMandatoryFieldGroups() {
 	}
 }
 
-// AllAuditEventIDs is a list of all audit event IDs.
-var AllAuditeventIDs = buildAllAuditIDList(AuditEvents)
+// AllDbAuditeventIDs is a list of all audit event IDs that are available for the db config.
+var AllDbAuditeventIDs = buildAllAuditIDList(AuditEvents, false)
 
-func buildAllAuditIDList(e events) (ids []uint) {
+// AllGlobalAuditeventIDs is a list of all audit event IDs that are available for the bootstrap config.
+var AllGlobalAuditeventIDs = buildAllAuditIDList(AuditEvents, true)
+
+func buildAllAuditIDList(e events, globalEvents bool) (ids []uint) {
 	ids = make([]uint, 0, len(e))
-	for k := range e {
-		ids = append(ids, uint(k))
-	}
-	return ids
-}
-
-// DefaultAuditEventIDs is a list of audit event IDs that are enabled by default.
-var DefaultAuditEventIDs = buildDefaultAuditIDList(AuditEvents)
-
-func buildDefaultAuditIDList(e events) (ids []uint) {
 	for k, v := range e {
-		if v.EnabledByDefault {
+		if globalEvents == v.IsGlobalEvent {
 			ids = append(ids, uint(k))
 		}
 	}
 	return ids
 }
 
-// NonFilterableEvents is a map of audit events that are not permitted to be filtered.
-var NonFilterableEvents = buildNonFilterableEvents(AuditEvents)
+// DefaultDbAuditEventIDs is a list of audit event IDs that are enabled by default for the db config.
+var DefaultDbAuditEventIDs = buildDefaultAuditIDList(AuditEvents, false)
 
-func buildNonFilterableEvents(e events) events {
-	nonFilterable := make(events)
+// DefaultGlobalAuditEventIDs is a list of audit event IDs that are enabled by default for the bootstrap config.
+var DefaultGlobalAuditEventIDs = buildDefaultAuditIDList(AuditEvents, true)
+
+func buildDefaultAuditIDList(e events, globalEvents bool) (ids []uint) {
+	ids = make([]uint, 0)
 	for k, v := range e {
-		if !v.FilteringPermitted {
-			nonFilterable[k] = v
+		if v.EnabledByDefault && (globalEvents == v.IsGlobalEvent) {
+			ids = append(ids, uint(k))
+		}
+	}
+	return ids
+}
+
+// NonFilterableAuditEventsForDb is a map of db-scoped audit events and whether they are filterable.
+var NonFilterableAuditEventsForDb map[AuditID]struct{} = nonFilterableAuditEventsForScope(AuditEvents, false)
+
+// NonFilterableGlobalEvents is a map of global audit events and whether they are filterable.
+var NonFilterableAuditEventsForGlobal map[AuditID]struct{} = nonFilterableAuditEventsForScope(AuditEvents, true)
+
+// nonFilterableAuditEventsForScope returns a map of audit events that are not allowed to be disabled for the given scope.
+func nonFilterableAuditEventsForScope(e events, scopeGlobal bool) map[AuditID]struct{} {
+	nonFilterable := make(map[AuditID]struct{})
+	for k, v := range e {
+		if scopeGlobal == v.IsGlobalEvent && !v.FilteringPermitted {
+			nonFilterable[k] = struct{}{}
 		}
 	}
 	return nonFilterable
