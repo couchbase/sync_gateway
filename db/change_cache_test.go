@@ -1885,13 +1885,13 @@ func BenchmarkProcessEntry(b *testing.B) {
 			require.NoError(b, err)
 			defer context.Close(ctx)
 
+			ctx = context.AddDatabaseLogContext(ctx)
 			err = context.StartOnlineProcesses(ctx)
 			require.NoError(b, err)
 
 			collection := GetSingleDatabaseCollection(b, context)
 			collectionID := collection.GetCollectionID()
 
-			ctx = context.AddDatabaseLogContext(ctx)
 			changeCache := &changeCache{}
 			if err := changeCache.Init(ctx, context, context.channelCache, nil, nil, context.MetadataKeys); err != nil {
 				log.Printf("Init failed for changeCache: %v", err)
@@ -2109,10 +2109,10 @@ func TestProcessSkippedEntry(t *testing.T) {
 	require.NoError(t, err)
 	defer dbContext.Close(ctx)
 
+	ctx = dbContext.AddDatabaseLogContext(ctx)
 	err = dbContext.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
-	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
@@ -2185,10 +2185,10 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 	require.NoError(t, err)
 	defer dbContext.Close(ctx)
 
+	ctx = dbContext.AddDatabaseLogContext(ctx)
 	err = dbContext.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
-	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
@@ -2264,10 +2264,10 @@ func TestSkippedSequenceCompact(t *testing.T) {
 	require.NoError(t, err)
 	defer dbContext.Close(ctx)
 
+	ctx = dbContext.AddDatabaseLogContext(ctx)
 	err = dbContext.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
-	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
@@ -2321,10 +2321,10 @@ func TestReleasedSequenceRangeHandlingEverythingSkipped(t *testing.T) {
 	require.NoError(t, err)
 	defer dbContext.Close(ctx)
 
+	ctx = dbContext.AddDatabaseLogContext(ctx)
 	err = dbContext.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
-	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
@@ -2387,10 +2387,10 @@ func TestReleasedSequenceRangeHandlingEverythingPending(t *testing.T) {
 	require.NoError(t, err)
 	defer dbContext.Close(ctx)
 
+	ctx = dbContext.AddDatabaseLogContext(ctx)
 	err = dbContext.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
-	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
@@ -2447,10 +2447,10 @@ func TestReleasedSequenceRangeHandlingEverythingPendingAndProcessPending(t *test
 	require.NoError(t, err)
 	defer dbContext.Close(ctx)
 
+	ctx = dbContext.AddDatabaseLogContext(ctx)
 	err = dbContext.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
-	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
@@ -2514,10 +2514,10 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 	require.NoError(t, err)
 	defer dbContext.Close(ctx)
 
+	ctx = dbContext.AddDatabaseLogContext(ctx)
 	err = dbContext.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
-	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
@@ -2614,10 +2614,10 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 	require.NoError(t, err)
 	defer dbContext.Close(ctx)
 
+	ctx = dbContext.AddDatabaseLogContext(ctx)
 	err = dbContext.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
-	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
@@ -2698,10 +2698,10 @@ func TestReleasedSequenceRangeHandlingEdgeCase1(t *testing.T) {
 	require.NoError(t, err)
 	defer dbContext.Close(ctx)
 
+	ctx = dbContext.AddDatabaseLogContext(ctx)
 	err = dbContext.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
-	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
@@ -2768,10 +2768,10 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 	require.NoError(t, err)
 	defer dbContext.Close(ctx)
 
+	ctx = dbContext.AddDatabaseLogContext(ctx)
 	err = dbContext.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
-	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 100 * time.Millisecond,
@@ -2840,10 +2840,10 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInPending(t *testing.T) 
 	require.NoError(t, err)
 	defer dbContext.Close(ctx)
 
+	ctx = dbContext.AddDatabaseLogContext(ctx)
 	err = dbContext.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
-	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
@@ -2926,10 +2926,10 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	require.NoError(t, err)
 	defer dbContext.Close(ctx)
 
+	ctx = dbContext.AddDatabaseLogContext(ctx)
 	err = dbContext.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
-	ctx = dbContext.AddDatabaseLogContext(ctx)
 	testChangeCache := &changeCache{}
 	if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,

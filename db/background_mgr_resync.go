@@ -81,6 +81,7 @@ func (r *ResyncManager) Run(ctx context.Context, options map[string]interface{},
 		dbc := &DatabaseCollectionWithUser{
 			DatabaseCollection: database.CollectionByID[collectionID],
 		}
+		ctx = dbc.AddCollectionContext(ctx)
 		_, err := dbc.UpdateAllDocChannels(ctx, regenerateSequences, callback, terminator)
 		if err != nil {
 			return err
