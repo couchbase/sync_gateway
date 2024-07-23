@@ -1007,6 +1007,9 @@ var AuditEvents = events{
 			fieldGroupAuthenticated,
 			fieldGroupKeyspace,
 		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this is not present on ISGR or import
+		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
 		EventType:          eventTypeData,
@@ -1021,6 +1024,9 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
 			fieldGroupKeyspace,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this is not present on ISGR or import
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -1037,6 +1043,9 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
 			fieldGroupKeyspace,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this is not present on ISGR or import
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -1073,7 +1082,7 @@ var AuditEvents = events{
 			fieldGroupKeyspace,
 		},
 		optionalFieldGroups: []fieldGroup{
-			fieldGroupRequest, // this is not present on ISGR or import,
+			fieldGroupRequest, // this is not present on ISGR or import
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -1187,12 +1196,13 @@ var AuditEvents = events{
 }
 
 func init() {
-	AuditEvents.expandMandatoryFieldGroups()
+	AuditEvents.expandFieldGroups()
 }
 
-func (e events) expandMandatoryFieldGroups() {
+func (e events) expandFieldGroups() {
 	for _, descriptor := range e {
 		descriptor.expandMandatoryFieldGroups(descriptor.mandatoryFieldGroups)
+		descriptor.expandOptionalFieldGroups(descriptor.optionalFieldGroups)
 	}
 }
 

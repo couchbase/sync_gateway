@@ -2135,13 +2135,15 @@ func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context
 	return ctx
 }
 
+// AddBucketUserLogContext adds bucket user to the parent context for logging. This is used to mark actions not caused by a user.
 func (dbCtx *DatabaseContext) AddBucketUserLogContext(ctx context.Context) context.Context {
 	spec := dbCtx.BucketSpec
+	// Server is empty in testing only
 	if spec.Server == "" || spec.IsWalrusBucket() {
 		return base.UserLogCtx(ctx, "rosmar_noauth", base.UserDomainBuiltin, nil)
 	}
 	username, _, _ := dbCtx.BucketSpec.Auth.GetCredentials()
-	return base.UserLogCtx(ctx, username, base.UserDomainBuiltin, nil) // FIXME, should I pick up roles?
+	return base.UserLogCtx(ctx, username, base.UserDomainBuiltin, nil)
 
 }
 

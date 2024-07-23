@@ -1094,7 +1094,7 @@ func requireDocumentMetadataReadEvents(rt *RestTester, output []byte, docID stri
 	events := jsonLines(rt.TB(), output)
 	countFound := 0
 	for _, event := range events {
-		// skip events that are not document read events
+		// skip events that are the target eventID
 		if base.AuditID(event[base.AuditFieldID].(float64)) != base.AuditIDDocumentMetadataRead {
 			continue
 		}
@@ -1109,7 +1109,7 @@ func requireDocumentReadEvents(rt *RestTester, output []byte, docID string, docV
 	events := jsonLines(rt.TB(), output)
 	var docVersionsFound []string
 	for _, event := range events {
-		// skip events that are not document read events
+		// skip events that are the target eventID
 		if base.AuditID(event[base.AuditFieldID].(float64)) != base.AuditIDDocumentRead {
 			continue
 		}
@@ -1120,12 +1120,12 @@ func requireDocumentReadEvents(rt *RestTester, output []byte, docID string, docV
 	require.Equal(rt.TB(), docVersions, docVersionsFound)
 }
 
-// requireAttachmentEvents validates that create attachment events
+// requireAttachmentEvents validates that an attachment CRUD event occurred in the right number only on the correct document.
 func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte, docID, docVersion string, count int) {
 	events := jsonLines(rt.TB(), output)
 	countFound := 0
 	for _, event := range events {
-		// skip events that are not document read events
+		// skip events that are the target eventID
 		if base.AuditID(event[base.AuditFieldID].(float64)) != eventID {
 			continue
 		}
