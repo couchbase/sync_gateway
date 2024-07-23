@@ -758,7 +758,8 @@ func (h *handler) handleGetDbAuditConfig() error {
 
 	events := make(map[string]any, len(base.AuditEvents))
 	for id, descriptor := range base.AuditEvents {
-		if showOnlyFilterable && !descriptor.FilteringPermitted {
+		// skip global and non-filterable events
+		if descriptor.IsGlobalEvent || (showOnlyFilterable && !descriptor.FilteringPermitted) {
 			continue
 		}
 
