@@ -1,0 +1,14 @@
+{
+  "_sync": {
+    "rev": "1-ca9ad22802b66f662ff171f226211d5c",
+    "sequence": 1,
+    "recent_sequences": [1],
+    "history": {
+      "revs": ["1-ca9ad22802b66f662ff171f226211d5c"],
+      "parents": [-1],
+      "channels": [null]
+    },
+    "cas": "",
+    "time_saved": "2017-11-29T12:46:13.456631-08:00"
+  }
+}
