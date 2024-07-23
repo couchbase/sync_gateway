@@ -59,7 +59,7 @@ func generateCSVModuleDescriptor(e events) ([]byte, error) {
 	w := csv.NewWriter(buf)
 
 	// Write header
-	if err := w.Write([]string{"ID", "Name", "Description", "DefaultEnabled", "Filterable", "EventType", "MandatoryFields", "OptionalFields"}); err != nil {
+	if err := w.Write([]string{"ID", "Name", "Description", "DefaultEnabled", "Filterable", "EventScope", "EventType", "MandatoryFields", "OptionalFields"}); err != nil {
 		return nil, err
 	}
 
@@ -71,6 +71,11 @@ func generateCSVModuleDescriptor(e events) ([]byte, error) {
 
 	for _, id := range keys {
 		event := e[id]
+
+		eventScope := "Database"
+		if event.IsGlobalEvent {
+			eventScope = "Global"
+		}
 
 		mandatoryFields := event.MandatoryFields
 		mandatoryFieldKeys := maps.Keys(mandatoryFields)
@@ -84,6 +89,7 @@ func generateCSVModuleDescriptor(e events) ([]byte, error) {
 			event.Description,
 			strconv.FormatBool(event.EnabledByDefault),
 			strconv.FormatBool(event.FilteringPermitted),
+			eventScope,
 			string(event.EventType),
 			strings.Join(mandatoryFieldKeys, ", "),
 			strings.Join(optionalFieldKeys, ", "),
