@@ -2147,36 +2147,36 @@ type BucketInfo struct {
 // information (registry) for each
 func (h *handler) handleGetClusterInfo() error {
 
-	// If not using persistent config, returns legacy_config:true
-	if h.server.persistentConfig == false {
-		clusterInfo := ClusterInfo{
-			LegacyConfig: true,
-		}
-		h.writeJSON(clusterInfo)
-		return nil
-	}
-
 	clusterInfo := ClusterInfo{
-		Buckets: make(map[string]BucketInfo),
+		LegacyConfig: true,
 	}
 
-	bucketNames, err := h.server.GetBucketNames()
-	if err != nil {
-		return err
-	}
+	if !h.server.persistentConfig {
 
-	for _, bucketName := range bucketNames {
-		registry, err := h.server.BootstrapContext.getGatewayRegistry(h.ctx(), bucketName)
+		bucketNames, err := h.server.GetBucketNames()
 		if err != nil {
-			base.InfofCtx(h.ctx(), base.KeyAll, "Unable to retrieve registry for bucket %s during getClusterInfo: %v", base.MD(bucketName), err)
-			continue
+			return err
 		}
 
-		bucketInfo := BucketInfo{
-			Registry: *registry,
+		clusterInfo = ClusterInfo{
+			Buckets: make(map[string]BucketInfo, len(bucketNames)),
 		}
-		clusterInfo.Buckets[bucketName] = bucketInfo
+
+		for _, bucketName := range bucketNames {
+			registry, err := h.server.BootstrapContext.getGatewayRegistry(h.ctx(), bucketName)
+			if err != nil {
+				base.InfofCtx(h.ctx(), base.KeyAll, "Unable to retrieve registry for bucket %s during getClusterInfo: %v", base.MD(bucketName), err)
+				continue
+			}
+
+			bucketInfo := BucketInfo{
+				Registry: *registry,
+			}
+			clusterInfo.Buckets[bucketName] = bucketInfo
+		}
 	}
+
+	base.Audit(h.ctx(), base.AuditIDClusterInfoRead, nil)
 	h.writeJSON(clusterInfo)
 	return nil
 }
