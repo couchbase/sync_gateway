@@ -12,6 +12,7 @@ package rest
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strings"
@@ -970,6 +971,7 @@ func TestAuditAttachmentEvents(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		rt.Run(testCase.name, func(t *testing.T) {
+			attachmentName := "attachment1"
 			docID := strings.ReplaceAll(testCase.name, " ", "_")
 			docVersion := testCase.setupCode(t, docID)
 			output := base.AuditLogContents(t, func(t testing.TB) {
@@ -977,7 +979,7 @@ func TestAuditAttachmentEvents(t *testing.T) {
 			})
 			postAttachmentVersion, _ := rt.GetDoc(docID)
 
-			requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, postAttachmentVersion.RevID, testCase.attachmentDeleteCount)
+			requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, postAttachmentVersion.RevID, attachmentName, testCase.attachmentDeleteCount)
 		})
 	}
 }
@@ -1195,7 +1197,7 @@ func requireDocumentReadEvents(rt *RestTester, output []byte, docID string, docV
 }
 
 // requireAttachmentEvents validates that an attachment CRUD event occurred in the right number only on the correct document.
-func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte, docID, docVersion string, count int) {
+func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte, docID, docVersion string, attachmentName string, count int) {
 	events := jsonLines(rt.TB(), output)
 	countFound := 0
 	for _, event := range events {
@@ -1205,6 +1207,7 @@ func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte
 		}
 		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
 		require.Equal(rt.TB(), docVersion, event[base.AuditFieldDocVersion].(string))
+		require.Equal(rt.TB(), attachmentName, event[base.AuditFieldAttachmentID])
 		countFound++
 	}
 	require.Equal(rt.TB(), count, countFound, "expected exactly %d %s events, got %d", count, base.AuditEvents[eventID].Name, countFound)
@@ -1253,6 +1256,7 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 	base.ResetGlobalTestLogging(t)
 	base.InitializeMemoryLoggers()
 	rt := NewRestTester(t, &RestTesterConfig{
+		GuestEnabled:     true, // for blip testing
 		PersistentConfig: true,
 		SyncFn:           `function(doc) {channel(doc.channels);}`,
 		MutateStartupConfig: func(config *StartupConfig) {
@@ -1286,4 +1290,61 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 		},
 	})
 	return rt
+}
+
+func TestAuditBlipCRUD(t *testing.T) {
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+
+		rt := createAuditLoggingRestTester(t)
+		defer rt.Close()
+
+		RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+		opts := &BlipTesterClientOpts{SupportedBLIPProtocols: SupportedBLIPProtocols}
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer btc.Close()
+
+		testCases := []struct {
+			name                  string
+			setupCode             func(t testing.TB, docID string) DocVersion
+			auditableCode         func(t testing.TB, docID string, docVersion DocVersion)
+			attachmentCreateCount int
+			attachmentReadCount   int
+			attachmentUpdateCount int
+			attachmentDeleteCount int
+			attachmentName        string
+		}{
+			{
+				name:           "add attachment",
+				attachmentName: "attachment1",
+				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+					attData := base64.StdEncoding.EncodeToString([]byte("attach"))
+
+					version, err := btcRunner.PushRev(btc.id, docID, EmptyDocVersion(), []byte(`{"key":"val","_attachments":{"attachment1":{"data":"`+attData+`"}}}`))
+					require.NoError(t, err)
+					btcRunner.WaitForVersion(btc.id, docID, version)
+				},
+				attachmentCreateCount: 1,
+			},
+		}
+		for _, testCase := range testCases {
+			rt.Run(testCase.name, func(t *testing.T) {
+				docID := strings.ReplaceAll(testCase.name, " ", "_")
+				var docVersion DocVersion
+				if testCase.setupCode != nil {
+					docVersion = testCase.setupCode(t, docID)
+				}
+				output := base.AuditLogContents(t, func(t testing.TB) {
+					testCase.auditableCode(t, docID, docVersion)
+				})
+				postAttachmentVersion, _ := rt.GetDoc(docID)
+
+				requireAttachmentEvents(rt, base.AuditIDAttachmentCreate, output, docID, postAttachmentVersion.RevID, testCase.attachmentName, testCase.attachmentCreateCount)
+				requireAttachmentEvents(rt, base.AuditIDAttachmentRead, output, docID, postAttachmentVersion.RevID, testCase.attachmentName, testCase.attachmentReadCount)
+				requireAttachmentEvents(rt, base.AuditIDAttachmentUpdate, output, docID, postAttachmentVersion.RevID, testCase.attachmentName, testCase.attachmentUpdateCount)
+				requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, postAttachmentVersion.RevID, testCase.attachmentName, testCase.attachmentDeleteCount)
+			})
+		}
+	})
 }

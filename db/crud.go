@@ -1856,11 +1856,11 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 		if err != nil {
 			return
 		}
-		for name, att := range newAttachments {
+		for _, att := range newAttachments {
 			auditFields := base.AuditFields{
 				base.AuditFieldDocID:        doc.ID,
 				base.AuditFieldDocVersion:   newRevID,
-				base.AuditFieldAttachmentID: name,
+				base.AuditFieldAttachmentID: att.name,
 			}
 			if att.created {
 				base.Audit(ctx, base.AuditIDAttachmentCreate, auditFields)

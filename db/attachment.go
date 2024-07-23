@@ -41,6 +41,7 @@ var (
 type updatedAttachment struct {
 	body    []byte // The attachment data in bytes
 	created bool   // If true, this attachment is new on the document, otherwise it is an update.
+	name    string // The user facing attachment name
 }
 
 // updatedAttachments holds the user facing attachment name and raw contents
@@ -95,6 +96,7 @@ func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc 
 			_, updated := doc.SyncData.Attachments[name]
 			newAttachments[key] = updatedAttachment{
 				body:    attachment,
+				name:    name,
 				created: !updated,
 			}
 
