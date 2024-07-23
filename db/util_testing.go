@@ -12,7 +12,6 @@ package db
 
 import (
 	"context"
-	_ "embed"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -26,9 +25,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-//go:embed raw_doc_with_inline_sync.json
-var TestRawDocWithSyncMeta string
 
 // WaitForPrimaryIndexEmpty waits for #primary to be empty.
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
@@ -771,4 +767,23 @@ func DefaultMutateInOpts() *sgbucket.MutateInOptions {
 	return &sgbucket.MutateInOptions{
 		MacroExpansion: macroExpandSpec(base.SyncXattrName),
 	}
+}
+
+func RawDocWithInlineSyncData(_ testing.TB) string {
+	return `
+{
+  "_sync": {
+    "rev": "1-ca9ad22802b66f662ff171f226211d5c",
+    "sequence": 1,
+    "recent_sequences": [1],
+    "history": {
+      "revs": ["1-ca9ad22802b66f662ff171f226211d5c"],
+      "parents": [-1],
+      "channels": [null]
+    },
+    "cas": "",
+    "time_saved": "2017-11-29T12:46:13.456631-08:00"
+  }
+}
+`
 }

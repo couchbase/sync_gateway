@@ -1034,7 +1034,7 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 			{
 				name: "import doc with inline sync meta",
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-					_, err := rt.GetSingleDataStore().Add(docID, 0, []byte(db.TestRawDocWithSyncMeta))
+					_, err := rt.GetSingleDataStore().Add(docID, 0, []byte(db.RawDocWithInlineSyncData(t)))
 					require.NoError(t, err)
 					// this may get picked up by auto import or on demand import
 					_, _ = rt.GetDoc(docID)

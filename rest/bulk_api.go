@@ -458,17 +458,19 @@ func (h *handler) handleBulkGet() error {
 				base.AuditFieldDocID:      docid,
 				base.AuditFieldDocVersion: revid,
 			})
-			if atts, ok := body[db.BodyAttachments]; ok && atts != nil {
-				attsMap, ok := atts.(db.AttachmentsMeta)
-				if !ok {
-					base.WarnfCtx(h.ctx(), "Unexpected format of attachments in the body %+v", atts)
-				}
-				for attachment := range attsMap {
-					base.Audit(h.ctx(), base.AuditIDAttachmentRead, base.AuditFields{
-						base.AuditFieldDocID:        docid,
-						base.AuditFieldDocVersion:   revid,
-						base.AuditFieldAttachmentID: attachment,
-					})
+			if includeAttachments {
+				if atts, ok := body[db.BodyAttachments]; ok && atts != nil {
+					attsMap, ok := atts.(db.AttachmentsMeta)
+					if !ok {
+						base.WarnfCtx(h.ctx(), "Unexpected format of attachments in the body %+v", atts)
+					}
+					for attachment := range attsMap {
+						base.Audit(h.ctx(), base.AuditIDAttachmentRead, base.AuditFields{
+							base.AuditFieldDocID:        docid,
+							base.AuditFieldDocVersion:   revid,
+							base.AuditFieldAttachmentID: attachment,
+						})
+					}
 				}
 			}
 			h.db.DbStats.Database().NumDocReadsRest.Add(1)

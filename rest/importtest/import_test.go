@@ -1101,7 +1101,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	// Create via the SDK with sync metadata intact
 	expirySeconds := time.Second * 30
 	testExpiry := uint32(time.Now().Add(expirySeconds).Unix())
-	bodyString := db.TestRawDocWithSyncMeta
+	bodyString := db.RawDocWithInlineSyncData(t)
 	_, err := dataStore.Add(key, testExpiry, []byte(bodyString))
 	assert.NoError(t, err, "Error writing doc w/ expiry")
 
@@ -1343,7 +1343,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 			// Create via the SDK with sync metadata intact
 			expirySeconds := time.Second * 30
 			syncMetaExpiry := time.Now().Add(expirySeconds)
-			bodyString := db.TestRawDocWithSyncMeta
+			bodyString := db.RawDocWithInlineSyncData(t)
 			_, err := dataStore.Add(key, uint32(syncMetaExpiry.Unix()), []byte(bodyString))
 			assert.NoError(t, err, "Error writing doc w/ expiry")
 
