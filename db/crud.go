@@ -2116,18 +2116,18 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	}
 
 	if !isImport {
+		var channels []string
+		for channel := range doc.SyncData.Channels {
+			channels = append(channels, channel)
+		}
+		auditFields := base.AuditFields{
+			base.AuditFieldDocID:      docid,
+			base.AuditFieldDocVersion: newRevID,
+			base.AuditFieldChannels:   channels,
+		}
 		if doc.IsDeleted() {
-			base.Audit(ctx, base.AuditIDDocumentDelete, base.AuditFields{
-				base.AuditFieldDocID:      docid,
-				base.AuditFieldDocVersion: newRevID,
-				base.AuditFieldChannels:   doc.SyncData.Channels,
-			})
+			base.Audit(ctx, base.AuditIDDocumentDelete, auditFields)
 		} else {
-			auditFields := base.AuditFields{
-				base.AuditFieldDocID:      docid,
-				base.AuditFieldDocVersion: newRevID,
-				base.AuditFieldChannels:   doc.SyncData.Channels,
-			}
 			if isNewDocCreation {
 				base.Audit(ctx, base.AuditIDDocumentCreate, auditFields)
 			} else {

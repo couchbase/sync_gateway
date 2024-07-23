@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -25,6 +26,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+//go:embed raw_doc_with_inline_sync.json
+var TestRawDocWithSyncMeta string
 
 // WaitForPrimaryIndexEmpty waits for #primary to be empty.
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.

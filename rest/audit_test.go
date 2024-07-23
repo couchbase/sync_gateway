@@ -976,10 +976,101 @@ func TestAuditAttachmentEvents(t *testing.T) {
 				testCase.auditableCode(t, docID, docVersion)
 			})
 			postAttachmentVersion, _ := rt.GetDoc(docID)
-			requireAttachmentEvents(rt, base.AuditIDAttachmentCreate, output, docID, postAttachmentVersion.RevID, testCase.attachmentCreateCount)
-			requireAttachmentEvents(rt, base.AuditIDAttachmentRead, output, docID, postAttachmentVersion.RevID, testCase.attachmentReadCount)
-			requireAttachmentEvents(rt, base.AuditIDAttachmentUpdate, output, docID, postAttachmentVersion.RevID, testCase.attachmentUpdateCount)
+
 			requireAttachmentEvents(rt, base.AuditIDAttachmentDelete, output, docID, postAttachmentVersion.RevID, testCase.attachmentDeleteCount)
+		})
+	}
+}
+
+func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
+	rt := createAuditLoggingRestTester(t)
+	defer rt.Close()
+
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	type testCase struct {
+		name                string
+		setupCode           func(t testing.TB, docID string) DocVersion
+		auditableCode       func(t testing.TB, docID string, docVersion DocVersion)
+		documentCreateCount int
+		documentUpdateCount int
+		channels            []string
+	}
+	testCases := []testCase{
+		{
+			name: "create doc",
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"foo": "bar"}`), http.StatusCreated)
+			},
+			documentCreateCount: 1,
+			channels:            []string{},
+		},
+		{
+			name: "create doc with channels",
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"foo": "bar", "channels": ["A", "B"]}`), http.StatusCreated)
+			},
+			documentCreateCount: 1,
+			channels:            []string{"A", "B"},
+		},
+		{
+			name: "update doc",
+			setupCode: func(t testing.TB, docID string) DocVersion {
+				return rt.CreateTestDoc(docID)
+			},
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, `{"foo": "bar"}`), http.StatusCreated)
+			},
+			documentUpdateCount: 1,
+			channels:            []string{},
+		},
+		{
+			name: "update doc with channels",
+			setupCode: func(t testing.TB, docID string) DocVersion {
+				return rt.CreateTestDoc(docID)
+			},
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, `{"foo": "bar", "channels": ["A", "B"]}`), http.StatusCreated)
+			},
+			documentUpdateCount: 1,
+			channels:            []string{"A", "B"},
+		},
+	}
+	if base.TestUseXattrs() {
+		testCases = append(testCases, []testCase{
+			{
+				name: "import doc",
+				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+					importCount := rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
+					_, err := rt.GetSingleDataStore().Add(docID, 0, db.Body{"foo": "bar"})
+					require.NoError(t, err)
+					base.RequireWaitForStat(t, func() int64 {
+						return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
+					}, importCount+1)
+				},
+			},
+			{
+				name: "import doc with inline sync meta",
+				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+					_, err := rt.GetSingleDataStore().Add(docID, 0, []byte(db.TestRawDocWithSyncMeta))
+					require.NoError(t, err)
+					// this may get picked up by auto import or on demand import
+					_, _ = rt.GetDoc(docID)
+				},
+			}}...)
+	}
+	for _, testCase := range testCases {
+		rt.Run(testCase.name, func(t *testing.T) {
+			docID := strings.ReplaceAll(testCase.name, " ", "_")
+			var docVersion DocVersion
+			if testCase.setupCode != nil {
+				docVersion = testCase.setupCode(t, docID)
+			}
+			output := base.AuditLogContents(t, func(t testing.TB) {
+				testCase.auditableCode(t, docID, docVersion)
+			})
+			postAttachmentVersion, _ := rt.GetDoc(docID)
+			requireDocumentEvents(rt, base.AuditIDDocumentCreate, output, docID, postAttachmentVersion.RevID, testCase.documentCreateCount, testCase.channels)
+			requireDocumentEvents(rt, base.AuditIDDocumentUpdate, output, docID, postAttachmentVersion.RevID, testCase.documentUpdateCount, testCase.channels)
 		})
 	}
 }
@@ -1136,6 +1227,31 @@ func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte
 	require.Equal(rt.TB(), count, countFound, "expected exactly %d %s events, got %d", count, base.AuditEvents[eventID].Name, countFound)
 }
 
+// requireDocumentEvents validates that a document CRUD event occurred on the right doc ID with the correct channels.
+func requireDocumentEvents(rt *RestTester, eventID base.AuditID, output []byte, docID, docVersion string, count int, expectedChannels []string) {
+	events := jsonLines(rt.TB(), output)
+	countFound := 0
+	for _, event := range events {
+		// skip events that are the target eventID
+		if base.AuditID(event[base.AuditFieldID].(float64)) != eventID {
+			continue
+		}
+		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
+		require.Equal(rt.TB(), docVersion, event[base.AuditFieldDocVersion].(string))
+		rawChannels, ok := event[base.AuditFieldChannels].([]any)
+		if !ok {
+			require.Empty(rt.TB(), expectedChannels, "expected channels to be %+v since none were on audit event", expectedChannels)
+		}
+		channels := make([]string, 0, len(rawChannels))
+		for _, channel := range rawChannels {
+			channels = append(channels, channel.(string))
+		}
+		require.ElementsMatch(rt.TB(), expectedChannels, channels)
+		countFound++
+	}
+	require.Equal(rt.TB(), count, countFound, "expected exactly %d %s events, got %d", count, base.AuditEvents[eventID].Name, countFound)
+}
+
 // requireChangesStartEvent validates that there is a changes start event with the specified fields
 func requireChangesStartEvent(t testing.TB, output []byte, expectedFields map[string]any) {
 	events := jsonLines(t, output)
@@ -1164,6 +1280,7 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 	base.InitializeMemoryLoggers()
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
+		SyncFn:           `function(doc) {channel(doc.channels);}`,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Logging = base.LoggingConfig{
 				LogFilePath: tempdir,
