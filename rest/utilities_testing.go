@@ -356,7 +356,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
 			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
 		}
-
 		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
 		var err error
 		if rt.leakyBucketConfig != nil || isLeaky {

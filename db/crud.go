@@ -2116,14 +2116,9 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	}
 
 	if !isImport {
-		var channels []string
-		for channel := range doc.SyncData.Channels {
-			channels = append(channels, channel)
-		}
 		auditFields := base.AuditFields{
 			base.AuditFieldDocID:      docid,
 			base.AuditFieldDocVersion: newRevID,
-			base.AuditFieldChannels:   channels,
 		}
 		if doc.IsDeleted() {
 			base.Audit(ctx, base.AuditIDDocumentDelete, auditFields)
@@ -2404,7 +2399,7 @@ func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid strin
 }
 
 // Purges a document from the bucket (no tombstone)
-func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) error {
+func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string, needsAudit bool) error {
 	doc, err := db.GetDocument(ctx, key, DocUnmarshalAll)
 	if err != nil {
 		return err
@@ -2440,10 +2435,12 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) err
 			return err
 		}
 	}
-	base.Audit(ctx, base.AuditIDDocumentDelete, base.AuditFields{
-		base.AuditFieldDocID:  key,
-		base.AuditFieldPurged: true,
-	})
+	if needsAudit {
+		base.Audit(ctx, base.AuditIDDocumentDelete, base.AuditFields{
+			base.AuditFieldDocID:  key,
+			base.AuditFieldPurged: true,
+		})
+	}
 	return nil
 }
 

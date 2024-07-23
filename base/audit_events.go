@@ -1001,7 +1001,6 @@ var AuditEvents = events{
 		MandatoryFields: AuditFields{
 			AuditFieldDocID:      "document id",
 			AuditFieldDocVersion: "revision ID",
-			AuditFieldChannels:   []string{"list", "of", "channels"},
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
@@ -1038,7 +1037,6 @@ var AuditEvents = events{
 		MandatoryFields: AuditFields{
 			AuditFieldDocID:      "document id",
 			AuditFieldDocVersion: "revision ID",
-			AuditFieldChannels:   []string{"list", "of", "channels"},
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
@@ -1073,8 +1071,7 @@ var AuditEvents = events{
 			AuditFieldDocID: "document id",
 		},
 		OptionalFields: AuditFields{
-			AuditFieldDocVersion: "revision ID",                      // these are set when purged: false
-			AuditFieldChannels:   []string{"list", "of", "channels"}, // these are set when purged: false
+			AuditFieldDocVersion: "revision ID", // these are set when purged: false
 			AuditFieldPurged:     true,
 		},
 		mandatoryFieldGroups: []fieldGroup{

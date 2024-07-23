@@ -697,7 +697,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 		if bh.purgeOnRemoval && bh.activeCBMobileSubprotocol >= CBMobileReplicationV3 &&
 			(deletedFlags.HasFlag(changesDeletedFlagRevoked) || deletedFlags.HasFlag(changesDeletedFlagRemoved)) {
-			err := bh.collection.Purge(bh.loggingCtx, docID)
+			err := bh.collection.Purge(bh.loggingCtx, docID, true)
 			if err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Failed to purge document: %v", err)
 			}
@@ -989,7 +989,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 		if removed, ok := body[BodyRemoved].(bool); ok && removed {
 			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), revID)
-			if err := bh.collection.Purge(bh.loggingCtx, docID); err != nil {
+			if err := bh.collection.Purge(bh.loggingCtx, docID, true); err != nil {
 				return err
 			}
 

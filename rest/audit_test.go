@@ -986,14 +986,18 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 	rt := createAuditLoggingRestTester(t)
 	defer rt.Close()
 
-	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	dbConfig := rt.NewDbConfig()
+	if base.TestUseXattrs() {
+		// this is not set automatically for CE
+		dbConfig.AutoImport = base.BoolPtr(true)
+	}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 	type testCase struct {
 		name                string
 		setupCode           func(t testing.TB, docID string) DocVersion
 		auditableCode       func(t testing.TB, docID string, docVersion DocVersion)
 		documentCreateCount int
 		documentUpdateCount int
-		channels            []string
 	}
 	testCases := []testCase{
 		{
@@ -1002,15 +1006,6 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"foo": "bar"}`), http.StatusCreated)
 			},
 			documentCreateCount: 1,
-			channels:            []string{},
-		},
-		{
-			name: "create doc with channels",
-			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"foo": "bar", "channels": ["A", "B"]}`), http.StatusCreated)
-			},
-			documentCreateCount: 1,
-			channels:            []string{"A", "B"},
 		},
 		{
 			name: "update doc",
@@ -1021,18 +1016,6 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, `{"foo": "bar"}`), http.StatusCreated)
 			},
 			documentUpdateCount: 1,
-			channels:            []string{},
-		},
-		{
-			name: "update doc with channels",
-			setupCode: func(t testing.TB, docID string) DocVersion {
-				return rt.CreateTestDoc(docID)
-			},
-			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+docVersion.RevID, `{"foo": "bar", "channels": ["A", "B"]}`), http.StatusCreated)
-			},
-			documentUpdateCount: 1,
-			channels:            []string{"A", "B"},
 		},
 	}
 	if base.TestUseXattrs() {
@@ -1069,8 +1052,8 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 				testCase.auditableCode(t, docID, docVersion)
 			})
 			postAttachmentVersion, _ := rt.GetDoc(docID)
-			requireDocumentEvents(rt, base.AuditIDDocumentCreate, output, docID, postAttachmentVersion.RevID, testCase.documentCreateCount, testCase.channels)
-			requireDocumentEvents(rt, base.AuditIDDocumentUpdate, output, docID, postAttachmentVersion.RevID, testCase.documentUpdateCount, testCase.channels)
+			requireDocumentEvents(rt, base.AuditIDDocumentCreate, output, docID, postAttachmentVersion.RevID, testCase.documentCreateCount)
+			requireDocumentEvents(rt, base.AuditIDDocumentUpdate, output, docID, postAttachmentVersion.RevID, testCase.documentUpdateCount)
 		})
 	}
 }
@@ -1228,7 +1211,7 @@ func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte
 }
 
 // requireDocumentEvents validates that a document CRUD event occurred on the right doc ID with the correct channels.
-func requireDocumentEvents(rt *RestTester, eventID base.AuditID, output []byte, docID, docVersion string, count int, expectedChannels []string) {
+func requireDocumentEvents(rt *RestTester, eventID base.AuditID, output []byte, docID, docVersion string, count int) {
 	events := jsonLines(rt.TB(), output)
 	countFound := 0
 	for _, event := range events {
@@ -1238,15 +1221,6 @@ func requireDocumentEvents(rt *RestTester, eventID base.AuditID, output []byte, 
 		}
 		require.Equal(rt.TB(), event[base.AuditFieldDocID], docID)
 		require.Equal(rt.TB(), docVersion, event[base.AuditFieldDocVersion].(string))
-		rawChannels, ok := event[base.AuditFieldChannels].([]any)
-		if !ok {
-			require.Empty(rt.TB(), expectedChannels, "expected channels to be %+v since none were on audit event", expectedChannels)
-		}
-		channels := make([]string, 0, len(rawChannels))
-		for _, channel := range rawChannels {
-			channels = append(channels, channel.(string))
-		}
-		require.ElementsMatch(rt.TB(), expectedChannels, channels)
 		countFound++
 	}
 	require.Equal(rt.TB(), count, countFound, "expected exactly %d %s events, got %d", count, base.AuditEvents[eventID].Name, countFound)
