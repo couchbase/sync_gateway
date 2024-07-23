@@ -1069,7 +1069,9 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
 			fieldGroupKeyspace,
-			fieldGroupRequest,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this is not present on ISGR or import,
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -1105,7 +1107,9 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
 			fieldGroupKeyspace,
-			fieldGroupRequest,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this will be present everywhere except ISGR
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -1122,7 +1126,9 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
 			fieldGroupKeyspace,
-			fieldGroupRequest,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this will be present everywhere except tests and ISGR
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
@@ -1139,7 +1145,9 @@ var AuditEvents = events{
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
 			fieldGroupKeyspace,
-			fieldGroupRequest,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest, // this will be present everywhere except tests and ISGR
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
