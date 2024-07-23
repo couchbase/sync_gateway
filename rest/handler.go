@@ -896,8 +896,10 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 		} else {
 			dbCtx.DbStats.Security().AuthSuccessCount.Add(1)
 
-			username := base.GuestUsername
-			if !h.isGuest() {
+			username := ""
+			if h.isGuest() {
+				username = base.GuestUsername
+			} else if h.user != nil {
 				username = h.user.Name()
 			}
 			roleNames := getSGUserRolesForAudit(dbCtx, h.user)

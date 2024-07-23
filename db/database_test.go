@@ -126,6 +126,7 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 
+	ctx = dbCtx.AddDatabaseLogContext(ctx)
 	err = dbCtx.StartOnlineProcesses(ctx)
 	require.NoError(t, err)
 
@@ -151,6 +152,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 		testBucket.Close(ctx)
 		t.Fatalf("Unable to create database context: %v", err)
 	}
+	ctx = dbCtx.AddDatabaseLogContext(ctx)
 	err = dbCtx.StartOnlineProcesses(ctx)
 	if err != nil {
 		dbCtx.Close(ctx)
@@ -3312,6 +3314,8 @@ func TestBadDCPStart(t *testing.T) {
 			},
 		},
 	}
+
+	ctx = dbCtx.AddDatabaseLogContext(ctx)
 	err = dbCtx.StartOnlineProcesses(ctx)
 	require.Error(t, err)
 
