@@ -1549,7 +1549,7 @@ func (h *handler) handleSGCollect() error {
 		"keep_zip":     params.KeepZip,
 		"zip_filename": zipFilename,
 	}
-	base.Audit(h.ctx(), base.AuditIDSyncGatewayCollectInfoStop, auditFields)
+	base.Audit(h.ctx(), base.AuditIDSyncGatewayCollectInfoStart, auditFields)
 
 	return nil
 }
