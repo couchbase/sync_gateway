@@ -1007,9 +1007,6 @@ var AuditEvents = events{
 			fieldGroupDatabase,
 			fieldGroupKeyspace,
 		},
-		OptionalFields: AuditFields{
-			AuditFieldChannels: []string{"list", "of", "channels"},
-		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
 		EventType:          eventTypeData,
@@ -1041,9 +1038,6 @@ var AuditEvents = events{
 			fieldGroupAuthenticated,
 			fieldGroupDatabase,
 			fieldGroupKeyspace,
-		},
-		OptionalFields: AuditFields{
-			AuditFieldChannels: []string{"list", "of", "channels"},
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
