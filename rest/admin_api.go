@@ -2151,7 +2151,7 @@ func (h *handler) handleGetClusterInfo() error {
 		LegacyConfig: true,
 	}
 
-	if !h.server.persistentConfig {
+	if h.server.persistentConfig {
 
 		bucketNames, err := h.server.GetBucketNames()
 		if err != nil {
