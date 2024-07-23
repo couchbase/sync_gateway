@@ -299,6 +299,10 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 					return
 
 				case feed <- &change:
+					base.Audit(ctx, base.AuditIDDocumentRevoke, base.AuditFields{
+						base.AuditFieldDocID:      logEntry.DocID,
+						base.AuditFieldDocVersion: logEntry.RevID,
+					})
 					sentChanges++
 				}
 			}
