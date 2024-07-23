@@ -528,7 +528,7 @@ func (c *Checkpointer) getLocalCheckpoint() (checkpoint *replicationCheckpoint, 
 }
 
 func (c *Checkpointer) setLocalCheckpoint(checkpoint *replicationCheckpoint) (newRev string, err error) {
-	newRev, err = putSpecial(c.collectionDataStore, DocTypeLocal, CheckpointDocIDPrefix+c.clientID, checkpoint.Rev, checkpoint.AsBody(), c.localDocExpirySecs)
+	newRev, _, err = putSpecial(c.collectionDataStore, DocTypeLocal, CheckpointDocIDPrefix+c.clientID, checkpoint.Rev, checkpoint.AsBody(), c.localDocExpirySecs)
 	if err != nil {
 		base.TracefCtx(c.ctx, base.KeyReplicate, "Error setting local checkpoint(%v): %v", checkpoint, err)
 		return "", err

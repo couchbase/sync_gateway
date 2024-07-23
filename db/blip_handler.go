@@ -244,7 +244,7 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 	if revID := checkpointMessage.rev(); revID != "" {
 		checkpoint[BodyRev] = revID
 	}
-	revID, err := bh.collection.PutSpecial(DocTypeLocal, CheckpointDocIDPrefix+checkpointMessage.client(), checkpoint)
+	revID, _, err := bh.collection.PutSpecial(DocTypeLocal, CheckpointDocIDPrefix+checkpointMessage.client(), checkpoint)
 	if err != nil {
 		return err
 	}

@@ -432,7 +432,7 @@ func setLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey
 		Status: status,
 	}
 
-	_, err = putDocWithRevision(metadataStore, statusKey, revID, newStatus.AsBody(), localDocExpirySecs)
+	_, _, err = putDocWithRevision(metadataStore, statusKey, revID, newStatus.AsBody(), localDocExpirySecs)
 	return err
 }
 
@@ -451,6 +451,6 @@ func removeLocalStatus(ctx context.Context, metadataStore base.DataStore, status
 		return nil
 	}
 
-	_, err = putDocWithRevision(metadataStore, statusKey, currentStatus.Rev, nil, 0)
+	_, _, err = putDocWithRevision(metadataStore, statusKey, currentStatus.Rev, nil, 0)
 	return err
 }

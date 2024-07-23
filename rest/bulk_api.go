@@ -503,7 +503,7 @@ func (h *handler) handleBulkDocs() error {
 		// empty string and handled during normal doc processing)
 		docid, _ := doc[db.BodyId].(string)
 
-		if strings.HasPrefix(docid, "_local/") {
+		if strings.HasPrefix(docid, db.LocalDocPrefix) {
 			localDocs = append(localDocs, doc)
 		} else {
 			docs = append(docs, doc)
@@ -554,12 +554,10 @@ func (h *handler) handleBulkDocs() error {
 		for k, v := range doc {
 			doc[k] = base.FixJSONNumbers(v)
 		}
-		var err error
-		var revid string
-		offset := len("_local/")
+		offset := len(db.LocalDocPrefix)
 		docid, _ := doc[db.BodyId].(string)
 		idslug := docid[offset:]
-		revid, err = h.collection.PutSpecial(db.DocTypeLocal, idslug, doc)
+		revid, isNewDoc, err := h.collection.PutSpecial(db.DocTypeLocal, idslug, doc)
 		status := db.Body{}
 		status["id"] = docid
 		if err != nil {
@@ -568,9 +566,9 @@ func (h *handler) handleBulkDocs() error {
 			status["error"] = base.CouchHTTPErrorName(code)
 			status["reason"] = msg
 			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Local Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
-			err = nil
 		} else {
 			status["rev"] = revid
+			auditEventForDocumentUpsert(h.ctx(), docid, revid, isNewDoc)
 		}
 		result = append(result, status)
 	}
