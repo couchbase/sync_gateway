@@ -15,7 +15,10 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-const DocTypeLocal = "local"
+const (
+	DocTypeLocal   = "local"
+	LocalDocPrefix = "_local/"
+)
 
 func (c *DatabaseCollection) GetSpecial(doctype string, docid string) (Body, error) {
 
@@ -63,19 +66,24 @@ func getSpecialBytes(dataStore base.DataStore, doctype string, docID string, loc
 }
 
 // Updates or deletes a document with BodyRev-based version control.
-func putDocWithRevision(dataStore base.DataStore, docID string, matchRev string, body Body, expirySecs int) (newRevID string, err error) {
+func putDocWithRevision(dataStore base.DataStore, docID string, matchRev string, body Body, expirySecs int) (newRevID string, isNewDoc bool, err error) {
 	var revid string
 
 	var expiry uint32
 	if expirySecs > 0 {
 		expiry = base.SecondsToCbsExpiry(expirySecs)
 	}
+
+	// isNewDoc is set to false if the update is being applied on top of an existing document.
+	isNewDoc = true
+
 	_, err = dataStore.Update(docID, expiry, func(value []byte) ([]byte, *uint32, bool, error) {
 		if len(value) == 0 {
 			if matchRev != "" || body == nil {
 				return nil, nil, false, base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")
 			}
 		} else {
+			isNewDoc = false
 			prevBody := Body{}
 			if err := prevBody.Unmarshal(value); err != nil {
 				return nil, nil, false, err
@@ -101,13 +109,13 @@ func putDocWithRevision(dataStore base.DataStore, docID string, matchRev string,
 		}
 	})
 
-	return revid, err
+	return revid, isNewDoc, err
 }
 
-func putSpecial(dataStore base.DataStore, doctype string, docid string, matchRev string, body Body, localDocExpirySecs int) (string, error) {
+func putSpecial(dataStore base.DataStore, doctype string, docid string, matchRev string, body Body, localDocExpirySecs int) (revID string, isNewDoc bool, err error) {
 	key := RealSpecialDocID(doctype, docid)
 	if key == "" {
-		return "", base.HTTPErrorf(400, "Invalid doc ID")
+		return "", false, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 	// only local docs should have expiry based on localDocExpirySecs
 	if doctype != DocTypeLocal {
@@ -117,18 +125,18 @@ func putSpecial(dataStore base.DataStore, doctype string, docid string, matchRev
 }
 
 // Updates or deletes a special document.
-func (c *DatabaseCollection) putSpecial(doctype string, docid string, matchRev string, body Body) (string, error) {
+func (c *DatabaseCollection) putSpecial(doctype string, docid string, matchRev string, body Body) (revID string, isNewDoc bool, err error) {
 	return putSpecial(c.dataStore, doctype, docid, matchRev, body, int(c.localDocExpirySecs()))
 }
 
-func (c *DatabaseCollection) PutSpecial(doctype string, docid string, body Body) (string, error) {
+func (c *DatabaseCollection) PutSpecial(doctype string, docid string, body Body) (revID string, isNewDoc bool, err error) {
 	matchRev, _ := body[BodyRev].(string)
 	body, _ = stripAllSpecialProperties(body)
 	return c.putSpecial(doctype, docid, matchRev, body)
 }
 
 func (c *DatabaseCollection) DeleteSpecial(doctype string, docid string, revid string) error {
-	_, err := c.putSpecial(doctype, docid, revid, nil)
+	_, _, err := c.putSpecial(doctype, docid, revid, nil)
 	return err
 }
 

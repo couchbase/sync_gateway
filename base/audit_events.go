@@ -1001,7 +1001,6 @@ var AuditEvents = events{
 		MandatoryFields: AuditFields{
 			AuditFieldDocID:      "document id",
 			AuditFieldDocVersion: "revision ID",
-			AuditFieldChannels:   []string{"list", "of", "channels"},
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,
@@ -1034,7 +1033,6 @@ var AuditEvents = events{
 		MandatoryFields: AuditFields{
 			AuditFieldDocID:      "document id",
 			AuditFieldDocVersion: "revision ID",
-			AuditFieldChannels:   []string{"list", "of", "channels"},
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupAuthenticated,

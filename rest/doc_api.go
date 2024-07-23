@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"mime/multipart"
@@ -635,6 +636,8 @@ func (h *handler) handleDeleteDoc() error {
 // HTTP handler for a GET of a _local document
 func (h *handler) handleGetLocalDoc() error {
 	docid := h.PathVar("docid")
+	localDocID := db.LocalDocPrefix + docid
+
 	value, err := h.collection.GetSpecial(db.DocTypeLocal, docid)
 	if err != nil {
 		return err
@@ -642,7 +645,15 @@ func (h *handler) handleGetLocalDoc() error {
 	if value == nil {
 		return kNotFoundError
 	}
-	value[db.BodyId] = "_local/" + docid
+
+	value[db.BodyId] = localDocID
+	docVersion := value[db.BodyRev]
+
+	base.Audit(h.ctx(), base.AuditIDDocumentRead, base.AuditFields{
+		base.AuditFieldDocID:      localDocID,
+		base.AuditFieldDocVersion: docVersion,
+	})
+
 	h.writeJSON(value)
 	return nil
 }
@@ -650,21 +661,51 @@ func (h *handler) handleGetLocalDoc() error {
 // HTTP handler for a PUT of a _local document
 func (h *handler) handlePutLocalDoc() error {
 	docid := h.PathVar("docid")
+	localDocID := db.LocalDocPrefix + docid
+
 	body, err := h.readJSON()
-	if err == nil {
-		var revid string
-		revid, err = h.collection.PutSpecial(db.DocTypeLocal, docid, body)
-		if err == nil {
-			h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString("_local/"+docid)+`,"ok":true,"rev":"`+revid+`"}`))
-		}
+	if err != nil {
+		return err
 	}
-	return err
+
+	revid, isNewDoc, err := h.collection.PutSpecial(db.DocTypeLocal, docid, body)
+	if err != nil {
+		return err
+	}
+
+	auditEventForDocumentUpsert(h.ctx(), localDocID, revid, isNewDoc)
+
+	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(localDocID)+`,"ok":true,"rev":"`+revid+`"}`))
+	return nil
+}
+
+func auditEventForDocumentUpsert(ctx context.Context, docid string, revid string, isNewDoc bool) {
+	auditEvent := base.AuditIDDocumentUpdate
+	if isNewDoc {
+		auditEvent = base.AuditIDDocumentCreate
+	}
+	base.Audit(ctx, auditEvent, base.AuditFields{
+		base.AuditFieldDocID:      docid,
+		base.AuditFieldDocVersion: revid,
+	})
 }
 
 // HTTP handler for a DELETE of a _local document
 func (h *handler) handleDelLocalDoc() error {
 	docid := h.PathVar("docid")
-	return h.collection.DeleteSpecial(db.DocTypeLocal, docid, h.getQuery("rev"))
+	rev := h.getQuery("rev")
+	localDocID := db.LocalDocPrefix + docid
+
+	if err := h.collection.DeleteSpecial(db.DocTypeLocal, docid, rev); err != nil {
+		return err
+	}
+
+	base.Audit(h.ctx(), base.AuditIDDocumentDelete, base.AuditFields{
+		base.AuditFieldDocID:      localDocID,
+		base.AuditFieldDocVersion: rev,
+	})
+
+	return nil
 }
 
 // isGuest returns true if the current user is a guest

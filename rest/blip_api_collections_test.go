@@ -44,7 +44,7 @@ func TestBlipGetCollections(t *testing.T) {
 		checkpoint1Body := db.Body{"seq": "123"}
 		collection, _ := btc.rt.GetSingleTestDatabaseCollection()
 		scopeAndCollection := fmt.Sprintf("%s.%s", collection.ScopeName, collection.Name)
-		revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+		revID, _, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 		require.NoError(t, err)
 		checkpoint1RevID := "0-1"
 		require.Equal(t, checkpoint1RevID, revID)
@@ -164,7 +164,7 @@ func TestBlipReplicationNoDefaultCollection(t *testing.T) {
 		checkpointID1 := "checkpoint1"
 		checkpoint1Body := db.Body{"seq": "123"}
 		collection, _ := btc.rt.GetSingleTestDatabaseCollection()
-		revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+		revID, _, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 		require.NoError(t, err)
 		checkpoint1RevID := "0-1"
 		require.Equal(t, checkpoint1RevID, revID)
@@ -197,7 +197,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 		checkpointID1 := "checkpoint1"
 		checkpoint1Body := db.Body{"seq": "123"}
 		collection, _ := btc.rt.GetSingleTestDatabaseCollection()
-		revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+		revID, _, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 		require.NoError(t, err)
 		checkpoint1RevID := "0-1"
 		require.Equal(t, checkpoint1RevID, revID)
