@@ -1179,7 +1179,6 @@ var AuditEvents = events{
 		Description: "An attachment was deleted",
 		MandatoryFields: AuditFields{
 			AuditFieldDocID:        "document id",
-			AuditFieldDocVersion:   "revision ID",
 			AuditFieldAttachmentID: "attachment name",
 		},
 		mandatoryFieldGroups: []fieldGroup{
@@ -1188,6 +1187,9 @@ var AuditEvents = events{
 		},
 		optionalFieldGroups: []fieldGroup{
 			fieldGroupRequest, // this will be present everywhere except tests and ISGR
+		},
+		OptionalFields: AuditFields{
+			AuditFieldDocVersion: "revision ID", // this is not present if it occurs as part of a purge
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,

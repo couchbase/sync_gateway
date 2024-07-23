@@ -2415,18 +2415,36 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) err
 		return err
 	}
 
-	for attachmentID := range attachments {
+	for attachmentID, attachmentNames := range attachments {
 		err = db.dataStore.Delete(attachmentID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Unable to delete attachment %q. Error: %v", attachmentID, err)
 		}
+		for _, attachmentName := range attachmentNames {
+			base.Audit(ctx, base.AuditIDAttachmentDelete, base.AuditFields{
+				base.AuditFieldDocID:        doc.ID,
+				base.AuditFieldAttachmentID: attachmentName,
+			})
+		}
+
 	}
 
 	if db.UseXattrs() {
-		return db.dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName})
+		err := db.dataStore.DeleteWithXattrs(ctx, key, []string{base.SyncXattrName})
+		if err != nil {
+			return err
+		}
 	} else {
-		return db.dataStore.Delete(key)
+		err := db.dataStore.Delete(key)
+		if err != nil {
+			return err
+		}
 	}
+	base.Audit(ctx, base.AuditIDDocumentDelete, base.AuditFields{
+		base.AuditFieldDocID:  key,
+		base.AuditFieldPurged: true,
+	})
+	return nil
 }
 
 // ////// CHANNELS:
