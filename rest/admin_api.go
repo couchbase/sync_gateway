@@ -793,9 +793,14 @@ func (h *handler) handleGetDbAuditConfig() error {
 // PUT/POST audit config for database
 func (h *handler) handlePutDbAuditConfig() error {
 
-	var body HandleDbAuditConfigBody
+	var bodyRaw []byte
 	err := h.mutateDbConfig(func(config *DbConfig) error {
-		if err := h.readJSONInto(&body); err != nil {
+		bodyRaw, err := h.readBody()
+		if err != nil {
+			return err
+		}
+		var body HandleDbAuditConfigBody
+		if err := base.JSONUnmarshal(bodyRaw, &body); err != nil {
 			return err
 		}
 
@@ -860,7 +865,7 @@ func (h *handler) handlePutDbAuditConfig() error {
 	}
 	base.Audit(h.ctx(), base.AuditIDAuditConfigChanged, base.AuditFields{
 		base.AuditFieldAuditScope: "db",
-		base.AuditFieldPayload:    body,
+		base.AuditFieldPayload:    string(bodyRaw),
 	})
 	return nil
 }
