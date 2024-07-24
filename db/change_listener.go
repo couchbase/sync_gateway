@@ -306,6 +306,11 @@ type ChangeWaiter struct {
 func (listener *changeListener) NewWaiter(keys []string, trackUnusedSequences bool) *ChangeWaiter {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
+	return listener._newWaiter(keys, trackUnusedSequences)
+}
+
+// _newWaiter a new ChangeWaiter that will wait for changes for the given document keys, and will optionally track unused sequences.
+func (listener *changeListener) _newWaiter(keys []string, trackUnusedSequences bool) *ChangeWaiter {
 	return &ChangeWaiter{
 		listener:                  listener,
 		keys:                      keys,
@@ -329,11 +334,13 @@ func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user a
 		}
 		waitKeys = append(waitKeys, userKeys...)
 	}
-	waiter := listener.NewWaiter(waitKeys, trackUnusedSequences)
+	listener.tapNotifier.L.Lock()
+	defer listener.tapNotifier.L.Unlock()
+	waiter := listener._newWaiter(waitKeys, trackUnusedSequences)
 
 	waiter.userKeys = userKeys
 	if userKeys != nil {
-		waiter.lastUserCount = listener.CurrentCount(userKeys)
+		waiter.lastUserCount = listener._currentCount(userKeys)
 	}
 	return waiter
 }
