@@ -27,20 +27,20 @@ import (
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
 // changes.
 type changeListener struct {
-	ctx                   context.Context
-	bucket                base.Bucket
-	bucketName            string                 // Used for logging
-	tapFeed               base.TapFeed           // Observes changes to bucket
-	tapNotifier           *sync.Cond             // Posts notifications when documents are updated
-	FeedArgs              sgbucket.FeedArguments // The Tap Args (backfill, etc)
-	counter               uint64                 // Event counter; increments on every doc update
-	terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
-	keyCounts             map[string]uint64      // Latest count at which each doc key was updated
-	OnChangeCallback      DocChangedFunc
-	terminator            chan bool          // Signal to cause DCP feed to exit
-	sgCfgPrefix           string             // SG config key prefix
-	started               base.AtomicBool    // whether the feed has been started
-	metaKeys              *base.MetadataKeys // Metadata key formatter
+	ctx                    context.Context
+	bucket                 base.Bucket
+	bucketName             string                 // Used for logging
+	tapFeed                base.TapFeed           // Observes changes to bucket
+	tapNotifier            *sync.Cond             // Posts notifications when documents are updated
+	FeedArgs               sgbucket.FeedArguments // The Tap Args (backfill, etc)
+	counter                uint64                 // Event counter; increments on every doc update
+	_terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
+	keyCounts              map[string]uint64      // Latest count at which each doc key was updated
+	OnChangeCallback       DocChangedFunc
+	terminator             chan bool          // Signal to cause DCP feed to exit
+	sgCfgPrefix            string             // SG config key prefix
+	started                base.AtomicBool    // whether the feed has been started
+	metaKeys               *base.MetadataKeys // Metadata key formatter
 }
 
 type DocChangedFunc func(event sgbucket.FeedEvent)
@@ -48,7 +48,7 @@ type DocChangedFunc func(event sgbucket.FeedEvent)
 func (listener *changeListener) Init(name string, groupID string, metaKeys *base.MetadataKeys) {
 	listener.bucketName = name
 	listener.counter = 1
-	listener.terminateCheckCounter = 0
+	listener._terminateCheckCounter = 0
 	listener.keyCounts = map[string]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
 	listener.sgCfgPrefix = metaKeys.SGCfgPrefix(groupID)
@@ -233,10 +233,10 @@ func (listener *changeListener) NotifyCheckForTermination(ctx context.Context, k
 
 	// Increment terminateCheckCounter, but loop back to zero
 	//if we have reached maximum value for uint64 type
-	if listener.terminateCheckCounter < math.MaxUint64 {
-		listener.terminateCheckCounter++
+	if listener._terminateCheckCounter < math.MaxUint64 {
+		listener._terminateCheckCounter++
 	} else {
-		listener.terminateCheckCounter = 0
+		listener._terminateCheckCounter = 0
 	}
 
 	base.DebugfCtx(ctx, base.KeyChanges, "Notifying to check for _changes feed termination")
@@ -254,8 +254,8 @@ func (listener *changeListener) Wait(ctx context.Context, keys []string, counter
 	for {
 		curCounter := listener._currentCount(keys)
 
-		if curCounter != counter || listener.terminateCheckCounter != terminateCheckCounter {
-			return curCounter, listener.terminateCheckCounter
+		if curCounter != counter || listener._terminateCheckCounter != terminateCheckCounter {
+			return curCounter, listener._terminateCheckCounter
 		}
 
 		listener.tapNotifier.Wait()
@@ -304,11 +304,18 @@ type ChangeWaiter struct {
 
 // NewWaiter a new ChangeWaiter that will wait for changes for the given document keys, and will optionally track unused sequences.
 func (listener *changeListener) NewWaiter(keys []string, trackUnusedSequences bool) *ChangeWaiter {
+	listener.tapNotifier.L.Lock()
+	defer listener.tapNotifier.L.Unlock()
+	return listener._newWaiter(keys, trackUnusedSequences)
+}
+
+// _newWaiter a new ChangeWaiter that will wait for changes for the given document keys, and will optionally track unused sequences.
+func (listener *changeListener) _newWaiter(keys []string, trackUnusedSequences bool) *ChangeWaiter {
 	return &ChangeWaiter{
 		listener:                  listener,
 		keys:                      keys,
-		lastCounter:               listener.CurrentCount(keys),
-		lastTerminateCheckCounter: listener.terminateCheckCounter,
+		lastCounter:               listener._currentCount(keys),
+		lastTerminateCheckCounter: listener._terminateCheckCounter,
 		trackUnusedSequences:      trackUnusedSequences,
 	}
 }
@@ -327,11 +334,13 @@ func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user a
 		}
 		waitKeys = append(waitKeys, userKeys...)
 	}
-	waiter := listener.NewWaiter(waitKeys, trackUnusedSequences)
+	listener.tapNotifier.L.Lock()
+	defer listener.tapNotifier.L.Unlock()
+	waiter := listener._newWaiter(waitKeys, trackUnusedSequences)
 
 	waiter.userKeys = userKeys
 	if userKeys != nil {
-		waiter.lastUserCount = listener.CurrentCount(userKeys)
+		waiter.lastUserCount = listener._currentCount(userKeys)
 	}
 	return waiter
 }
