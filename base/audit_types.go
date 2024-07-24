@@ -74,7 +74,7 @@ const (
 var fieldsByGroup = map[fieldGroup]map[string]any{
 	fieldGroupGlobal: {
 		AuditFieldTimestamp:   "timestamp",
-		AuditFieldID:          uint(123),
+		AuditFieldID:          uint32(123),
 		AuditFieldName:        "event name",
 		AuditFieldDescription: "event description",
 	},

@@ -31,7 +31,7 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	}
 
 	// static event data
-	fields[AuditFieldID] = uint(id)
+	fields[AuditFieldID] = uint32(id)
 	fields[AuditFieldName] = AuditEvents[id].Name
 	fields[AuditFieldDescription] = AuditEvents[id].Description
 
