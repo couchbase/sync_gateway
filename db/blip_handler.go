@@ -365,6 +365,29 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
 
+	auditFields := base.AuditFields{
+		base.AuditFieldSince: subChangesParams.Since().String(),
+	}
+	var filters []string
+	if len(subChangesParams.docIDs()) > 0 {
+		auditFields[base.AuditFieldDocIDs] = subChangesParams.docIDs()
+		filters = append(filters, base.DocIDsFilter)
+	}
+	if subChangesParams.filter() != "" {
+		filters = append(filters, subChangesParams.filter())
+	}
+	if len(filters) > 0 {
+		auditFields[base.AuditFieldFilter] = strings.Join(filters, ",")
+	}
+	if continuous {
+		auditFields[base.AuditFieldFeedType] = "continuous"
+	} else {
+		auditFields[base.AuditFieldFeedType] = "normal"
+	}
+	if len(channels) > 0 {
+		auditFields[base.AuditFieldChannels] = channels
+	}
+	base.Audit(bh.loggingCtx, base.AuditIDChangesFeedStarted, auditFields)
 	return nil
 }
 
@@ -457,17 +480,6 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		return false
 
 	}
-	auditFields := base.AuditFields{
-		base.AuditFieldSince:    options.Since.String(),
-		base.AuditFieldChannels: channelSet,
-		base.AuditFieldDocIDs:   opts.docIDs,
-	}
-	if options.Continuous {
-		auditFields[base.AuditFieldFeedType] = "continuous"
-	} else {
-		auditFields[base.AuditFieldFeedType] = "normal"
-	}
-	base.Audit(bh.loggingCtx, base.AuditIDChangesFeedStarted, auditFields)
 
 	_, forceClose := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
