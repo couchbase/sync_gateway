@@ -2062,7 +2062,7 @@ func (h *handler) putReplication() error {
 	if err != nil {
 		return err
 	}
-	auditFields := base.AuditFields{base.AuditFieldReplicationID: replicationConfig.ID, base.AuditFieldPayload: body}
+	auditFields := base.AuditFields{base.AuditFieldReplicationID: replicationConfig.ID, base.AuditFieldPayload: string(body)}
 	if created {
 		h.writeStatus(http.StatusCreated, "Created")
 		base.Audit(h.ctx(), base.AuditIDISGRCreate, auditFields)

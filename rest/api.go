@@ -324,6 +324,8 @@ func (h *handler) handlePostResync() error {
 
 	action := h.getQuery("action")
 	regenerateSequences, _ := h.getOptBoolQuery("regenerate_sequences", false)
+	reset := h.getBoolQuery("reset")
+
 	body, err := h.readBody()
 	if err != nil {
 		return err
@@ -353,7 +355,7 @@ func (h *handler) handlePostResync() error {
 				"database":            h.db,
 				"regenerateSequences": regenerateSequences,
 				"collections":         resyncPostReqBody.Scope,
-				"reset":               h.getBoolQuery("reset"),
+				"reset":               reset,
 			})
 			if err != nil {
 				return err
@@ -367,7 +369,7 @@ func (h *handler) handlePostResync() error {
 			base.Audit(h.ctx(), base.AuditIDDatabaseResyncStart, base.AuditFields{
 				"collections":          resyncPostReqBody.Scope,
 				"regenerate_sequences": regenerateSequences,
-				"reset":                h.getQuery("reset"),
+				"reset":                reset,
 			})
 		} else {
 			dbState := atomic.LoadUint32(&h.db.State)
