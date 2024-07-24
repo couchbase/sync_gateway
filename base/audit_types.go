@@ -10,6 +10,7 @@ package base
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 )
 
@@ -172,6 +173,10 @@ func mandatoryFieldsPresent(fields, mandatoryFields AuditFields, baseName string
 			me = me.Append(fmt.Errorf("missing mandatory field %s", baseName+k))
 			continue
 		}
+		if !matchingTypes(v, fields[k]) {
+			me = me.Append(fmt.Errorf("field value for %s%s must be of type %T but had %T", baseName, k, v, fields[k]))
+			continue
+		}
 		// recurse if map
 		if vv, ok := v.(map[string]any); ok {
 			if pv, ok := fields[k].(map[string]any); ok {
@@ -180,4 +185,22 @@ func mandatoryFieldsPresent(fields, mandatoryFields AuditFields, baseName string
 		}
 	}
 	return me.ErrorOrNil()
+}
+
+// matchingTypes returns true if the types of a and b are the same.
+func matchingTypes(a, b any) bool {
+	typeOfA, typeOfB := reflect.TypeOf(a), reflect.TypeOf(b)
+	if typeOfA == nil || typeOfB == nil {
+		return typeOfA == typeOfB
+	}
+	// deref
+	if typeOfA.Kind() == reflect.Pointer && typeOfB.Kind() != reflect.Pointer {
+		typeOfA = typeOfA.Elem()
+	} else if typeOfB.Kind() == reflect.Pointer && typeOfA.Kind() != reflect.Pointer {
+		typeOfB = typeOfB.Elem()
+	}
+	if typeOfA.ConvertibleTo(typeOfB) {
+		return true
+	}
+	return typeOfA.Kind() == typeOfB.Kind()
 }
