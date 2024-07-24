@@ -73,7 +73,7 @@ const (
 var fieldsByGroup = map[fieldGroup]map[string]any{
 	fieldGroupGlobal: {
 		AuditFieldTimestamp:   "timestamp",
-		AuditFieldID:          123,
+		AuditFieldID:          uint(123),
 		AuditFieldName:        "event name",
 		AuditFieldDescription: "event description",
 	},
@@ -150,7 +150,7 @@ func (ed *EventDescriptor) expandOptionalFieldGroups(groups []fieldGroup) {
 
 func (i AuditID) MustValidateFields(f AuditFields) {
 	if err := i.ValidateFields(f); err != nil {
-		panic(fmt.Errorf("audit event %s(%s) invalid:\n%v", AuditEvents[i].Name, i, err))
+		panic(fmt.Errorf("audit event %q (%s) invalid:\n%v", i, AuditEvents[i].Name, err))
 	}
 }
 
@@ -168,14 +168,15 @@ func (i AuditID) ValidateFields(f AuditFields) error {
 func mandatoryFieldsPresent(fields, mandatoryFields AuditFields, baseName string) error {
 	me := &MultiError{}
 	for k, v := range mandatoryFields {
+		if _, ok := fields[k]; !ok {
+			me = me.Append(fmt.Errorf("missing mandatory field %s", baseName+k))
+			continue
+		}
 		// recurse if map
 		if vv, ok := v.(map[string]any); ok {
 			if pv, ok := fields[k].(map[string]any); ok {
 				me = me.Append(mandatoryFieldsPresent(pv, vv, baseName+k+"."))
 			}
-		}
-		if _, ok := fields[k]; !ok {
-			me = me.Append(fmt.Errorf("missing mandatory field %s", baseName+k))
 		}
 	}
 	return me.ErrorOrNil()

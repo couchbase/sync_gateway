@@ -31,7 +31,7 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 	}
 
 	// static event data
-	fields[AuditFieldID] = uint64(id)
+	fields[AuditFieldID] = uint(id)
 	fields[AuditFieldName] = AuditEvents[id].Name
 	fields[AuditFieldDescription] = AuditEvents[id].Description
 
@@ -86,7 +86,7 @@ func expandFields(id AuditID, ctx context.Context, globalFields AuditFields, add
 		}
 	}
 
-	fields[AuditFieldTimestamp] = time.Now()
+	fields[AuditFieldTimestamp] = time.Now().Format(time.RFC3339)
 
 	fields.merge(ctx, globalFields)
 	fields.merge(ctx, logCtx.RequestAdditionalAuditFields)
