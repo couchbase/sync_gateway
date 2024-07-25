@@ -2297,7 +2297,7 @@ func (c *DbConfig) toDbLogConfig(ctx context.Context) *base.DbLogConfig {
 		}
 
 		aud = &base.DbAuditLogConfig{
-			Enabled:       base.BoolDefault(l.Audit.Enabled, false),
+			Enabled:       base.BoolDefault(l.Audit.Enabled, base.DefaultDbAuditEnabled),
 			EnabledEvents: enabledEvents,
 			DisabledUsers: disabledUsers,
 			DisabledRoles: disabledRoles,
