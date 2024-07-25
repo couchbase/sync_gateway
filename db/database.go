@@ -71,6 +71,10 @@ var (
 	DefaultQueryPaginationLimit = 5000
 )
 
+var (
+	BypassReleasedSequenceWait atomic.Bool
+)
+
 const (
 	CompactIntervalMinDays = float32(0.04) // ~1 Hour in days
 	CompactIntervalMaxDays = float32(60)   // 60 Days in days
@@ -2340,7 +2344,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	// Unlock change cache.  Validate that any allocated sequences on other nodes have either been assigned or released
 	// before starting
-	if initialSequence > 0 {
+	if initialSequence > 0 && !BypassReleasedSequenceWait.Load() {
 		_ = db.sequences.waitForReleasedSequences(ctx, initialSequenceTime)
 	}
 

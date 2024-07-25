@@ -139,10 +139,11 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		MandatoryFields: AuditFields{
-			"audit_scope": "global or db",
+			AuditFieldAuditScope: "global or db",
 		},
 		OptionalFields: AuditFields{
-			"db": "database name",
+			AuditFieldDatabase:      "database name",
+			AuditFieldEnabledEvents: "54000,54001, etc",
 		},
 		EventType:     eventTypeAdmin,
 		IsGlobalEvent: true,
@@ -153,7 +154,10 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		MandatoryFields: AuditFields{
-			"audit_scope": "global or db",
+			AuditFieldAuditScope: "global or db",
+		},
+		OptionalFields: AuditFields{
+			AuditFieldDatabase: "database name",
 		},
 		EventType:     eventTypeAdmin,
 		IsGlobalEvent: true,
@@ -164,8 +168,8 @@ var AuditEvents = events{
 		EnabledByDefault:   true,
 		FilteringPermitted: false,
 		MandatoryFields: AuditFields{
-			"audit_scope":     "global or db",
-			AuditFieldPayload: "JSON representation of new db audit config",
+			AuditFieldAuditScope: "global or db",
+			AuditFieldPayload:    "JSON representation of new db audit config",
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupDatabase,
