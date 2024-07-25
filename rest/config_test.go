@@ -2997,3 +2997,68 @@ func TestInvalidDbConfigNoLongerPresentInBucket(t *testing.T) {
 	resp = rt.CreateDatabase(dbName, dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 }
+
+// TestNotFoundOnInvalidDatabase:
+//   - Create rest tester with large config polling interval
+//   - Insert a bad dbConfig into the bucket
+//   - Manually fetch and load db from buckets
+//   - Assert that the bad config is tracked as invalid config
+//   - Delete the bad config manually and attempt to correct the db config through create db endpoint
+//   - Assert db is removed form invalid db's and is now a running database on server context
+func TestNotFoundOnInvalidDatabase(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: base.GetTestBucket(t),
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			// configure the interval time to not run
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(100 * time.Second)
+		},
+		DatabaseConfig: nil,
+	})
+	defer rt.Close()
+	realBucketName := rt.CustomTestBucket.GetName()
+
+	// create a new invalid db config and persist to bucket
+	badName := "badBucketName"
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Name = "db1"
+
+	version, err := GenerateDatabaseConfigVersionID(rt.Context(), "", &dbConfig)
+	require.NoError(t, err)
+	metadataID, metadataIDError := rt.ServerContext().BootstrapContext.ComputeMetadataIDForDbConfig(base.TestCtx(t), &dbConfig)
+	require.NoError(t, metadataIDError)
+
+	// insert the db config with bad bucket name
+	dbConfig.Bucket = &badName
+	persistedConfig := DatabaseConfig{
+		Version:    version,
+		MetadataID: metadataID,
+		DbConfig:   dbConfig,
+		SGVersion:  base.ProductVersion.String(),
+	}
+	rt.InsertDbConfigToBucket(&persistedConfig, rt.CustomTestBucket.GetName())
+
+	// manually fetch and load db configs from bucket
+	_, err = rt.ServerContext().fetchAndLoadConfigs(rt.Context(), false)
+	require.NoError(t, err)
+
+	// assert the config is picked as invalid db config
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
+		assert.Equal(c, 1, len(invalidDatabases))
+	}, time.Second*10, time.Millisecond*100)
+
+	// delete the invalid db config to force the not found error
+	rt.DeleteDbConfigInBucket(dbConfig.Name, realBucketName)
+
+	// fix the bucket name and try fix corrupt db through create db endpoint
+	dbConfig.Bucket = &realBucketName
+	RequireStatus(t, rt.CreateDatabase(dbConfig.Name, dbConfig), http.StatusCreated)
+
+	// assert the config is remove the invalid config and we have a running db
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
+		assert.Equal(c, 0, len(invalidDatabases))
+		assert.Equal(c, 1, len(rt.ServerContext().dbConfigs))
+	}, time.Second*10, time.Millisecond*100)
+}
