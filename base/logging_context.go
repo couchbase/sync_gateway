@@ -69,8 +69,6 @@ type LogContext struct {
 	EffectiveDomain string
 }
 
-const DefaultDbAuditEnabled = false
-
 // DbLogConfig can be used to customise the logging for logs associated with this database.
 type DbLogConfig struct {
 	Console *DbConsoleLogConfig
