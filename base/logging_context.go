@@ -69,8 +69,6 @@ type LogContext struct {
 	EffectiveDomain string
 }
 
-const defaultDbAuditEnabled = true
-
 // DbLogConfig can be used to customise the logging for logs associated with this database.
 type DbLogConfig struct {
 	Console *DbConsoleLogConfig
@@ -81,7 +79,7 @@ func (dlc *DbLogConfig) DbAuditEnabled() bool {
 	if dlc != nil && dlc.Audit != nil {
 		return dlc.Audit.Enabled
 	}
-	return defaultDbAuditEnabled
+	return DefaultDbAuditEnabled
 }
 
 // DbConsoleLogConfig can be used to customise the console logging for logs associated with this database.

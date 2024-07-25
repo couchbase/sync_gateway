@@ -100,7 +100,7 @@ func DefaultPerDBLogging(bootstrapLoggingCnf base.LoggingConfig) *DbLoggingConfi
 		}
 	}
 	dblc.Audit = &DbAuditLoggingConfig{
-		Enabled:       base.BoolPtr(false),
+		Enabled:       base.BoolPtr(base.DefaultDbAuditEnabled),
 		EnabledEvents: base.DefaultDbAuditEventIDs,
 	}
 	return dblc
