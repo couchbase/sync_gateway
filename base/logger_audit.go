@@ -17,8 +17,11 @@ import (
 )
 
 const (
-	auditLogName        = "audit"
+	auditLogName = "audit"
+	// DefaultAuditEnabled is the default value for whether auditing is enabled globally.
 	defaultAuditEnabled = false
+	// DefaultDbAuditEnabled is the default value for whether database-level auditing is enabled.
+	DefaultDbAuditEnabled = false
 )
 
 // expandFields populates data with information from the id, context and additionalData.
