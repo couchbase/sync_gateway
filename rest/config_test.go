@@ -2993,4 +2993,7 @@ func TestInvalidDbConfigNoLongerPresentInBucket(t *testing.T) {
 		assert.Equal(c, 0, len(rt.ServerContext().dbConfigs))
 	}, time.Second*10, time.Millisecond*100)
 
+	// create db again, should succeed
+	resp = rt.CreateDatabase(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
 }
