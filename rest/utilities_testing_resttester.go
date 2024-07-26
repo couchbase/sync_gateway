@@ -323,6 +323,11 @@ func (rt *RestTester) InsertDbConfigToBucket(config *DatabaseConfig, bucketName 
 	require.NoError(rt.TB(), insertErr)
 }
 
+func (rt *RestTester) DeleteDbConfigInBucket(dbName, bucketName string) {
+	deleteErr := rt.ServerContext().BootstrapContext.DeleteConfig(base.TestCtx(rt.TB()), bucketName, rt.ServerContext().Config.Bootstrap.ConfigGroupID, dbName)
+	require.NoError(rt.TB(), deleteErr)
+}
+
 func (rt *RestTester) PersistDbConfigToBucket(dbConfig DbConfig, bucketName string) {
 	version, err := GenerateDatabaseConfigVersionID(rt.Context(), "", &dbConfig)
 	require.NoError(rt.TB(), err)
