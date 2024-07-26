@@ -3048,6 +3048,10 @@ func TestNotFoundOnInvalidDatabase(t *testing.T) {
 		assert.Equal(c, 1, len(invalidDatabases))
 	}, time.Second*10, time.Millisecond*100)
 
+	resp := rt.SendAdminRequest(http.MethodGet, "/db1/", "")
+	RequireStatus(t, resp, http.StatusNotFound)
+	assert.Contains(t, resp.Body.String(), "You must update database config immediately")
+
 	// delete the invalid db config to force the not found error
 	rt.DeleteDbConfigInBucket(dbConfig.Name, realBucketName)
 
