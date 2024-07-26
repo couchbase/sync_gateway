@@ -1714,7 +1714,6 @@ func TestReleaseSequenceOnDocWrite(t *testing.T) {
 		}
 	}
 
-	// Use leaky bucket to inject callback in query invocation
 	callbackConfig := base.LeakyBucketConfig{
 		UpdateCallback:                writeUpdateCallback,
 		ForceTimeoutErrorOnUpdateKeys: []string{timeoutDoc},
@@ -1748,7 +1747,7 @@ func TestReleaseSequenceOnDocWrite(t *testing.T) {
 	// get cached changes + assert the document is present
 	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err)
-	assert.Len(t, changes, 1)
+	require.Len(t, changes, 1)
 	assert.Equal(t, timeoutDoc, changes[0].ID)
 
 	// write doc that will have a conflict error, we should expect the document sequence to be released
