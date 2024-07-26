@@ -2060,7 +2060,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 		version := rt.PutDoc(docID, `{"test":true}`)
 
 		// start an initial pull
-		require.NoError(t, btcRunner.StartPullSince(btc.id, "true", "0", "true"))
+		require.NoError(t, btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: true, Since: "0", ActiveOnly: true}))
 		rev := btcRunner.WaitForVersion(btc.id, docID, version)
 		assert.Equal(t, `{"test":true}`, string(rev))
 
@@ -3009,7 +3009,7 @@ func TestBlipRefreshUser(t *testing.T) {
 		version := rt.PutDoc(docID, `{"channels":["chan1"]}`)
 
 		// Start a regular one-shot pull
-		err := btcRunner.StartPullSince(btc.id, "true", "0", "false")
+		err := btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: true, Since: "0"})
 		require.NoError(t, err)
 
 		_ = btcRunner.WaitForDoc(btc.id, docID)

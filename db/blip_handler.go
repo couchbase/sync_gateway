@@ -365,6 +365,25 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
 
+	auditFields := base.AuditFields{
+		base.AuditFieldSince: subChangesParams.Since().String(),
+	}
+	if subChangesParams.filter() != "" {
+		auditFields[base.AuditFieldFilter] = subChangesParams.filter()
+	}
+	if len(subChangesParams.docIDs()) > 0 {
+		auditFields[base.AuditFieldDocIDs] = subChangesParams.docIDs()
+		auditFields[base.AuditFieldFilter] = base.DocIDsFilter
+	}
+	if continuous {
+		auditFields[base.AuditFieldFeedType] = "continuous"
+	} else {
+		auditFields[base.AuditFieldFeedType] = "normal"
+	}
+	if len(channels) > 0 {
+		auditFields[base.AuditFieldChannels] = channels
+	}
+	base.Audit(bh.loggingCtx, base.AuditIDChangesFeedStarted, auditFields)
 	return nil
 }
 
@@ -457,6 +476,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		return false
 
 	}
+
 	_, forceClose := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
