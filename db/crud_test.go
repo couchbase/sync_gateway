@@ -1730,7 +1730,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	assert.Equal(t, int64(0), db.DbStats.Database().SequenceReleasedCount.Value())
 
 	// write doc that will return timeout but will actually be persisted successfully on server
-	// this mimics what was seen in CBSE-17458
+	// this mimics what was seen before
 	_, _, err = collection.Put(ctx, timeoutDoc, Body{"test": "doc"})
 	require.Error(t, err)
 

@@ -237,7 +237,7 @@ func IsDocNotFoundError(err error) bool {
 	}
 }
 
-func IsTimeoutError(err error) bool {
+func IsTemporaryKvError(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -250,6 +250,16 @@ func IsTimeoutError(err error) bool {
 	if errors.Is(err, gocb.ErrUnambiguousTimeout) {
 		return true
 	}
+	if errors.Is(err, gocb.ErrOverload) {
+		return true
+	}
+	if errors.Is(err, gocb.ErrTemporaryFailure) {
+		return true
+	}
+	if errors.Is(err, gocb.ErrCircuitBreakerOpen) {
+		return true
+	}
+
 	return false
 }
 
