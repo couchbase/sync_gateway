@@ -2096,15 +2096,17 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 	// If the WriteUpdate didn't succeed, check whether there are unused, allocated sequences that need to be accounted for
 	if err != nil {
-		if docSequence > 0 {
-			if seqErr := db.sequences().releaseSequence(ctx, docSequence); seqErr != nil {
-				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, seqErr)
-			}
+		if !base.IsTimeoutError(err) {
+			if docSequence > 0 {
+				if seqErr := db.sequences().releaseSequence(ctx, docSequence); seqErr != nil {
+					base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, seqErr)
+				}
 
-		}
-		for _, sequence := range unusedSequences {
-			if seqErr := db.sequences().releaseSequence(ctx, sequence); seqErr != nil {
-				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", sequence, seqErr)
+			}
+			for _, sequence := range unusedSequences {
+				if seqErr := db.sequences().releaseSequence(ctx, sequence); seqErr != nil {
+					base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", sequence, seqErr)
+				}
 			}
 		}
 	}

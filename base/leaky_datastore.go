@@ -267,7 +267,13 @@ func (lds *LeakyDataStore) WriteUpdateWithXattrs(ctx context.Context, k string, 
 			lds.config.UpdateCallback(k)
 			return updatedDoc, err
 		}
-		return lds.dataStore.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, previous, opts, wrapperCallback)
+		casOut, err = lds.dataStore.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, previous, opts, wrapperCallback)
+		for _, errorKey := range lds.config.ForceTimeoutErrorOnUpdateKeys {
+			if k == errorKey {
+				return 0, ErrTimeout
+			}
+		}
+		return casOut, err
 	}
 	return lds.dataStore.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, previous, opts, callback)
 }

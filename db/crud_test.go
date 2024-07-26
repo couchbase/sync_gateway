@@ -1680,3 +1680,88 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 	releasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value() - startReleasedSequenceCount
 	assert.Equal(t, int64(expectedReleasedSequenceCount), releasedSequenceCount)
 }
+
+// TestReleaseSequenceOnDocWrite:
+//   - Define a leaky bucket callback for a conflicting write + define key to return a timeout error for
+//   - Setup db with leaky bucket config
+//   - Init a channel cache by calling changes
+//   - Write a doc that will return timeout error but will successfully persist
+//   - Wait for it to arrive at change cache
+//   - Assert we don;t release a sequence for it + we hav eit in changes
+//   - Write new doc with conflict error
+//   - Assert we release a sequence for this
+func TestReleaseSequenceOnDocWrite(t *testing.T) {
+	defer SuspendSequenceBatching()()
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	var ctx context.Context
+	var db *Database
+	var enable bool
+
+	const (
+		conflictDoc = "doc1"
+		timeoutDoc  = "doc"
+	)
+
+	// call back to create a conflict mid write and force a non timeout error upon write attempt
+	writeUpdateCallback := func(key string) {
+		if key == "doc1" && enable {
+			enable = false
+			body := Body{"test": "doc"}
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+			_, _, err := collection.Put(ctx, conflictDoc, body)
+			assert.NoError(t, err)
+		}
+	}
+
+	// Use leaky bucket to inject callback in query invocation
+	callbackConfig := base.LeakyBucketConfig{
+		UpdateCallback:                writeUpdateCallback,
+		ForceTimeoutErrorOnUpdateKeys: []string{timeoutDoc},
+	}
+
+	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), callbackConfig)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// init channel cache
+	_, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(0), db.DbStats.Database().SequenceReleasedCount.Value())
+
+	// write doc that will return timeout but will actually be persisted successfully on server
+	// this mimics what was seen in CBSE-17458
+	_, _, err = collection.Put(ctx, timeoutDoc, Body{"test": "doc"})
+	require.Error(t, err)
+
+	// wait for changes
+	require.NoError(t, collection.WaitForPendingChanges(ctx))
+
+	// assert that no sequences were released + a sequence was cached
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		db.UpdateCalculatedStats(ctx)
+		assert.Equal(t, int64(0), db.DbStats.Database().SequenceReleasedCount.Value())
+		assert.Equal(t, int64(1), db.DbStats.Cache().HighSeqCached.Value())
+	}, time.Second*10, time.Millisecond*100)
+
+	// get cached changes + assert the document is present
+	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
+	require.NoError(t, err)
+	assert.Len(t, changes, 1)
+	assert.Equal(t, timeoutDoc, changes[0].ID)
+
+	// write doc that will have a conflict error, we should expect the document sequence to be released
+	enable = true
+	_, _, err = collection.Put(ctx, conflictDoc, Body{"test": "doc"})
+	require.Error(t, err)
+
+	// wait for changes
+	require.NoError(t, collection.WaitForPendingChanges(ctx))
+
+	// assert that a sequence was released after the above write error
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		db.UpdateCalculatedStats(ctx)
+		assert.Equal(t, int64(1), db.DbStats.Database().SequenceReleasedCount.Value())
+	}, time.Second*10, time.Millisecond*100)
+}

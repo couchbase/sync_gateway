@@ -237,6 +237,22 @@ func IsDocNotFoundError(err error) bool {
 	}
 }
 
+func IsTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrTimeout) {
+		return true
+	}
+	if errors.Is(err, gocb.ErrAmbiguousTimeout) {
+		return true
+	}
+	if errors.Is(err, gocb.ErrUnambiguousTimeout) {
+		return true
+	}
+	return false
+}
+
 func IsXattrNotFoundError(err error) bool {
 	if unwrappedErr := pkgerrors.Cause(err); unwrappedErr == nil {
 		return false
