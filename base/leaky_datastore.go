@@ -153,7 +153,13 @@ func (lds *LeakyDataStore) Update(k string, exp uint32, callback sgbucket.Update
 			lds.config.UpdateCallback(k)
 			return updated, expiry, isDelete, err
 		}
-		return lds.dataStore.Update(k, exp, wrapperCallback)
+		casOut, err = lds.dataStore.Update(k, exp, wrapperCallback)
+		for _, errorKey := range lds.config.ForceTimeoutErrorOnUpdateKeys {
+			if k == errorKey {
+				return 0, ErrTimeout
+			}
+		}
+		return casOut, err
 	}
 
 	casOut, err = lds.dataStore.Update(k, exp, callback)

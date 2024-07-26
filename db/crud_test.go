@@ -1690,7 +1690,7 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 //   - Assert we don;t release a sequence for it + we hav eit in changes
 //   - Write new doc with conflict error
 //   - Assert we release a sequence for this
-func TestReleaseSequenceOnDocWrite(t *testing.T) {
+func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	defer SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
