@@ -626,7 +626,7 @@ func (op *OIDCProvider) verifyToken(ctx context.Context, token string, callbackU
 	// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
 	idToken, err := client.verifyJWT(ctx, token)
 	if err != nil {
-		base.InfofCtx(ctx, base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
+		base.InfofCtx(ctx, base.KeyAuth, "Client %q could not verify JWT. Error: %v", base.UD(client.Config().ClientID), err)
 		return nil, err
 	}
 
