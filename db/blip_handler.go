@@ -368,16 +368,12 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	auditFields := base.AuditFields{
 		base.AuditFieldSince: subChangesParams.Since().String(),
 	}
-	var filters []string
+	if subChangesParams.filter() != "" {
+		auditFields[base.AuditFieldFilter] = subChangesParams.filter()
+	}
 	if len(subChangesParams.docIDs()) > 0 {
 		auditFields[base.AuditFieldDocIDs] = subChangesParams.docIDs()
-		filters = append(filters, base.DocIDsFilter)
-	}
-	if subChangesParams.filter() != "" {
-		filters = append(filters, subChangesParams.filter())
-	}
-	if len(filters) > 0 {
-		auditFields[base.AuditFieldFilter] = strings.Join(filters, ",")
+		auditFields[base.AuditFieldFilter] = base.DocIDsFilter
 	}
 	if continuous {
 		auditFields[base.AuditFieldFeedType] = "continuous"

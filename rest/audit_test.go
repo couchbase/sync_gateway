@@ -1221,6 +1221,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 				},
 			},
 			{
+				// invalid specification, this would ignore channel filter and only use docids filter
 				name: "blip changes with docids and channels",
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
 					require.NoError(t, btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "0", DocIDs: []string{docID, "non_existent"}, Channels: "A,B"}))
@@ -1232,7 +1233,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 					base.AuditFieldDocIDs:   []any{"blip_changes_with_docids_and_channels", "non_existent"},
 					base.AuditFieldChannels: []any{"A", "B"},
 					base.AuditFieldFeedType: "normal",
-					base.AuditFieldFilter:   base.DocIDsFilter + "," + base.ByChannelFilter,
+					base.AuditFieldFilter:   base.DocIDsFilter,
 					base.AuditFieldSince:    "0",
 				},
 			},
