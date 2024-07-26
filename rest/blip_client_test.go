@@ -752,34 +752,44 @@ func (btcRunner *BlipTestClientRunner) Collection(clientID uint32, collectionNam
 
 // StartPull will begin a continuous pull replication since 0 between the client and server
 func (btcc *BlipTesterCollectionClient) StartPull() (err error) {
-	return btcc.StartPullSince("true", "0", "false", "", "")
+	return btcc.StartPullSince(BlipTesterPullOptions{Continuous: true, Since: "0"})
 }
 
 func (btcc *BlipTesterCollectionClient) StartOneshotPull() (err error) {
-	return btcc.StartPullSince("false", "0", "false", "", "")
+	return btcc.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0"})
 }
 
 func (btcc *BlipTesterCollectionClient) StartOneshotPullFiltered(channels string) (err error) {
-	return btcc.StartPullSince("false", "0", "false", channels, "")
+	return btcc.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0", Channels: channels})
 }
 
 func (btcc *BlipTesterCollectionClient) StartOneshotPullRequestPlus() (err error) {
-	return btcc.StartPullSince("false", "0", "false", "", "true")
+	return btcc.StartPullSince(BlipTesterPullOptions{Continuous: false, Since: "0", RequestPlus: true})
+}
+
+// BlipTesterPullOptions represents options passed to StartPull (SubChanges) functions
+type BlipTesterPullOptions struct {
+	ActiveOnly  bool
+	Channels    string
+	Continuous  bool
+	DocIDs      []string
+	RequestPlus bool
+	Since       string
 }
 
 // StartPullSince will begin a pull replication between the client and server with the given params.
-func (btc *BlipTesterCollectionClient) StartPullSince(continuous, since, activeOnly, channels, requestPlus string) (err error) {
+func (btc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOptions) (err error) {
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile(db.MessageSubChanges)
-	subChangesRequest.Properties[db.SubChangesContinuous] = continuous
-	subChangesRequest.Properties[db.SubChangesSince] = since
-	subChangesRequest.Properties[db.SubChangesActiveOnly] = activeOnly
-	if channels != "" {
+	subChangesRequest.Properties[db.SubChangesContinuous] = fmt.Sprintf("%t", options.Continuous)
+	subChangesRequest.Properties[db.SubChangesSince] = options.Since
+	subChangesRequest.Properties[db.SubChangesActiveOnly] = fmt.Sprintf("%t", options.ActiveOnly)
+	if options.Channels != "" {
 		subChangesRequest.Properties[db.SubChangesFilter] = base.ByChannelFilter
-		subChangesRequest.Properties[db.SubChangesChannels] = channels
+		subChangesRequest.Properties[db.SubChangesChannels] = options.Channels
 	}
-	if requestPlus != "" {
-		subChangesRequest.Properties[db.SubChangesRequestPlus] = requestPlus
+	if options.RequestPlus {
+		subChangesRequest.Properties[db.SubChangesRequestPlus] = "true"
 	}
 	subChangesRequest.SetNoReply(true)
 
@@ -791,6 +801,13 @@ func (btc *BlipTesterCollectionClient) StartPullSince(continuous, since, activeO
 		subChangesRequest.Properties[db.SubChangesSendReplacementRevs] = "true"
 	}
 
+	if len(options.DocIDs) > 0 {
+		subChangesRequest.SetBody(base.MustJSONMarshal(btc.TB(),
+			db.SubChangesBody{
+				DocIDs: options.DocIDs,
+			},
+		))
+	}
 	if err := btc.sendPullMsg(subChangesRequest); err != nil {
 		return err
 	}
@@ -1198,12 +1215,8 @@ func (btcRunner *BlipTestClientRunner) PushRev(clientID uint32, docID string, ve
 	return btcRunner.SingleCollection(clientID).PushRev(docID, version, body)
 }
 
-func (btcRunner *BlipTestClientRunner) StartPullSince(clientID uint32, continuous, since, activeOnly string) error {
-	return btcRunner.SingleCollection(clientID).StartPullSince(continuous, since, activeOnly, "", "")
-}
-
-func (btcRunner *BlipTestClientRunner) StartFilteredPullSince(clientID uint32, continuous, since, activeOnly, channels string) error {
-	return btcRunner.SingleCollection(clientID).StartPullSince(continuous, since, activeOnly, channels, "")
+func (btcRunner *BlipTestClientRunner) StartPullSince(clientID uint32, options BlipTesterPullOptions) error {
+	return btcRunner.SingleCollection(clientID).StartPullSince(options)
 }
 
 func (btcRunner *BlipTestClientRunner) GetVersion(clientID uint32, docID string, docVersion DocVersion) ([]byte, bool) {
